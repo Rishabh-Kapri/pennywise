@@ -1,0 +1,14 @@
+.hover-color:hover {
+  color: #38bdf8 !important;
+}
+.hover-color:hover {
+  color: #ffffff !important;
+}
+
+.add-category-btn {
+  visibility: hidden;
+}
+
+.name-container:hover > .add-category-btn {
+  visibility: visible;
+}

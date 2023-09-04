@@ -1,0 +1,13 @@
+<ng-container
+  *ngIf="{
+    selectedComponent: store.selectedComponent$ | async
+  } as data">
+  <div class="flex">
+    <div style="flex: 0 0 auto" class="h-screen transition-transform">
+      <app-sidebar></app-sidebar>
+    </div>
+    <div class="flex-auto">
+      <app-budget *ngIf="data.selectedComponent === selectedComponent.BUDGET"></app-budget>
+    </div>
+  </div>
+</ng-container>

@@ -1,0 +1,50 @@
+<ng-container
+  *ngIf="{ inflowCategory: store.inflowCategory$ | async, selectedMonth: store.selectedMonth$ | async } as data">
+  <div class="">
+    <nav class="bg-zinc-800 h-20 sticky top-0 left-0 z-50 border-b border-gray-600">
+      <div class="max-w-screen-xl h-full flex flex-wrap items-center justify-between p-2 px-4">
+        <app-date-picker></app-date-picker>
+        <!-- Inflow -->
+        <div
+          *ngIf="data.inflowCategory"
+          class="h-16 flex items-center justify-between text-sm py-1.5 px-3 rounded-lg"
+          [ngClass]="{
+            'bg-budget-green text-slate-950': data?.inflowCategory?.budgeted! > 0,
+            'bg-neutral-400 text-neutral-700': data?.inflowCategory?.budgeted! === 0
+          }">
+          <div class="flex flex-col">
+            <div class="font-semibold text-lg">
+              {{ data?.inflowCategory?.budgeted | currency : 'INR' }}
+            </div>
+            <div *ngIf="data?.inflowCategory?.budgeted! === 0">All assigned</div>
+            <div *ngIf="data?.inflowCategory?.budgeted! > 0" class="text-slate-900">Ready to Assign</div>
+          </div>
+          <ng-icon
+            *ngIf="data?.inflowCategory?.budgeted! === 0"
+            class="ml-4"
+            name="heroCheckCircleSolid"
+            size="30px"></ng-icon>
+        </div>
+        <div class="flex md:order-2">
+          <button
+            type="button"
+            class="text-white bg-blue-700 hover:bg-blue-800 focus:ring-4 focus:outline-none focus:ring-blue-300 font-medium rounded-lg text-sm px-4 py-2 text-center mr-3 md:mr-0 dark:bg-blue-600 dark:hover:bg-blue-700 dark:focus:ring-blue-800">
+            Get started
+          </button>
+          <button
+            data-collapse-toggle="navbar-sticky"
+            type="button"
+            class="inline-flex items-center p-2 w-10 h-10 justify-center text-sm text-gray-500 rounded-lg md:hidden hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-200 dark:text-gray-400 dark:hover:bg-gray-700 dark:focus:ring-gray-600"
+            aria-controls="navbar-sticky"
+            aria-expanded="false">
+            <span class="sr-only">Open main menu</span>
+          </button>
+        </div>
+        <div class="items-center justify-between hidden w-full md:flex md:w-auto md:order-1" id="navbar-sticky"></div>
+      </div>
+    </nav>
+    <div class="bg-zinc-800 h-[calc(100vh-5rem)] w-[calc(100vw-16rem)]">
+      <app-category></app-category>
+    </div>
+  </div>
+</ng-container>

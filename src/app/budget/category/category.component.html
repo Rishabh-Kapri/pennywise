@@ -1,0 +1,85 @@
+<ng-container *ngIf="{ budgetKey: store.selectedMonth$ | async } as data">
+  <div class="flex w-full flex-wrap w-full">
+    <div class="p-1 text-sm hover-color border-b border-neutral-600 w-full">
+      <button id="addCategoryGroupBtn" data-dropdown-toggle="addCategoryGroupDropdown" class="flex items-center">
+        <ng-icon class="mr-1 hover:text-sky-400" name="heroPlusCircleSolid" color="#0ea5e9" size="20px"></ng-icon>
+        <span class="text-sky-500 hover:text-sky-400">Category Group</span>
+      </button>
+    </div>
+    <div class="text-white"></div>
+    <!-- header -->
+    <div class="w-full bg-zinc-850 flex text-[0.75rem] text-neutral-400 py-1.5 px-5 border-b border-neutral-600">
+      <div class="flex-40">CATEGORY</div>
+      <div class="flex-20 text-right">ASSIGNED</div>
+      <div class="flex-20 text-right">ACTIVITY</div>
+      <div class="flex-20 text-right">AVAILABLE</div>
+    </div>
+    <div class="w-full" *ngFor="let item of store.categoryGroupData$ | async; let index = index">
+      <div
+        class="flex items-center w-full py-1.5 px-5 text-sm text-white text-bold bg-zinc-850 border-b border-neutral-600">
+        <div class="flex-40 flex items-center cursor-pointer name-container">
+          <span>{{ item.name }}</span>
+          <button
+            [attr.data-dropdown-toggle]="'addCategoryDropdown-' + index"
+            [id]="'addCategoryBtn-' + index"
+            class="ml-1 flex items-center add-category-btn"
+            (click)="showDropdown(item.id, index)">
+            <ng-icon class="hover:text-sky-400" name="heroPlusCircleSolid" color="#0ea5e9" size="16px"></ng-icon>
+          </button>
+          <ng-container *ngTemplateOutlet="addCategoryTemplate; context: { item: item, index: index }"></ng-container>
+        </div>
+        <div class="flex-20 text-right" [ngClass]="{ 'text-neutral-500': item.budgeted === 0 }">
+          {{ item.budgeted | currency : 'INR' }}
+        </div>
+        <div class="flex-20 text-right" [ngClass]="{ 'text-neutral-500': item.activity === 0 }">
+          {{ item.activity | currency : 'INR' }}
+        </div>
+        <div class="flex-20 text-right" [ngClass]="{ 'text-neutral-500': item.balance === 0 }">
+          {{ item.balance | currency : 'INR' }}
+        </div>
+      </div>
+      <app-category-item
+        [categories]="item.categories"
+        [budgetKey]="data.budgetKey!"
+        (editCategoryEvent)="editCategory($event)"
+        (deleteCategoryEvent)="deleteCategory($event)"
+        (hideCategoryEvent)="hideCategory($event)"></app-category-item>
+    </div>
+  </div>
+</ng-container>
+
+<!-- Add category group dropdown -->
+<div id="addCategoryGroupDropdown" class="p-3 w-52 z-50 hidden bg-neutral-800 rounded-lg shadow-lg shadow-neutral-900">
+  <input
+    type="text"
+    class="block w-full text-sm text-white border border-neutral-500 rounded-md bg-neutral-700 focus:ring-blue-500 focus:border-blue-500 placeholder:text-slate-400"
+    placeholder="Add Category Group"
+    [(ngModel)]="categoryGroupName" />
+  <div class="text-right mt-5">
+    <button class="px-3 py-1 text-sm bg-sky-600 hover:bg-sky-500 text-white rounded-md" (click)="addCategoryGroup()">
+      Ok
+    </button>
+  </div>
+</div>
+
+<!-- Add category dropdown -->
+<ng-template #addCategoryTemplate let-index="index" let-item="item">
+  <div
+    [id]="'addCategoryDropdown-' + index"
+    class="p-3 z-50 w-52 hidden bg-neutral-800 rounded-lg shadow-lg shadow-neutral-900">
+    <ul [attr.aria-labelledby]="'addCategoryBtn-' + index">
+      <input
+        type="text"
+        class="block w-full text-sm text-white border border-neutral-500 rounded-md bg-neutral-700 focus:ring-blue-500 focus:border-blue-500 placeholder:text-slate-400"
+        placeholder="Add New Category"
+        [(ngModel)]="categoryName" />
+      <div class="text-right mt-5">
+        <button
+          class="px-3 py-1 text-sm bg-sky-600 hover:bg-sky-500 text-white rounded-md"
+          (click)="addCategory(item.id, index)">
+          Ok
+        </button>
+      </div>
+    </ul>
+  </div>
+</ng-template>

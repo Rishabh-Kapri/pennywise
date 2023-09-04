@@ -1,0 +1,143 @@
+<div *ngFor="let category of categories">
+  <div class="flex text-sm bg-zinc-900 items-center w-full p-2 px-4 border-b border-neutral-600">
+    <div class="text-white flex-40 pl-3 flex flex-col items-center">
+      <div class="self-start h-6 name-container mb-0.5">
+        <div>{{ category.name }}</div>
+        <button
+          [attr.data-dropdown-toggle]="'menuDropdown-' + category.id"
+          [id]="'menuBtn-' + category.id"
+          class="ml-1 flex items-center category-edit-btn"
+          (click)="showEditMenu(category)">
+          <ng-icon name="heroPencilSolid" class=""></ng-icon>
+        </button>
+      </div>
+      <div class="w-full bg-gray-700 rounded-full h-1">
+        <div
+          class="bg-budget-green h-1 rounded-full"
+          style="width: 100%"
+          [ngStyle]="{ width: category?.budgeted?.[budgetKey]! > 0 ? '100%' : '0%' }"></div>
+      </div>
+      <ng-container *ngTemplateOutlet="menuDropdownTemplate; context: { category: category }"></ng-container>
+    </div>
+    <div class="text-white flex-20 text-right">
+      <button
+        [hidden]="category.showBudgetInput"
+        class="h-6 w-40 border border-transparent rounded-lg p-0.5 hover:border-sky-500 text-right w-full"
+        (click)="showBudgetInput(category)">
+        {{ category.budgeted?.[budgetKey] ?? 0 | currency : 'INR' }}
+      </button>
+      <input
+        [id]="category.id"
+        [hidden]="!category.showBudgetInput"
+        type="text"
+        class="w-40 h-6 p-2 text-right border-transparent bg-transparent hover:border-blue-500 focus:border-blue-500 rounded-lg"
+        [ngModel]="category.budgeted[budgetKey]"
+        (focusout)="hideBudgetInput(category, $event)" />
+    </div>
+    <!-- @TODO - show activity menu -->
+    <div class="text-white flex-20 text-right pr-[2px]">
+      {{ category.activity?.[budgetKey] ?? 0 | currency : 'INR' }}
+    </div>
+    <div class="text-white flex-20 text-right">
+      <button
+        class="badge"
+        [ngClass]="{ active: category.balance?.[budgetKey]! !== 0, inactive: category.balance?.[budgetKey]! === 0 }"
+        [attr.data-dropdown-toggle]="'moveDropdown-' + category.id"
+        [id]="'moveBtn-' + category.id"
+        (click)="showMoveMenu(category)">
+        {{ category.balance?.[budgetKey] ?? 0 | currency : 'INR' }}
+      </button>
+      <ng-container *ngTemplateOutlet="moveDropdownTemplate; context: { category: category }"></ng-container>
+    </div>
+  </div>
+</div>
+
+<ng-template #menuDropdownTemplate let-category="category">
+  <div
+    [id]="'menuDropdown-' + category.id"
+    class="w-64 p-3 z-50 hidden bg-neutral-800 rounded-lg shadow-lg shadow-neutral-900">
+    <input
+      type="text"
+      class="block w-full text-sm text-white border border-neutral-500 rounded-md bg-neutral-700 focus:ring-blue-500 focus:border-blue-500 placeholder:text-slate-400"
+      placeholder="Enter Category Name"
+      [(ngModel)]="category.name" />
+    <div class="flex justify-between mt-3">
+      <div>
+        <button
+          class="px-3 py-1 text-sm border border-neutral-500 text-sky-500 hover:bg-sky-600 hover:text-white hover:border-transparent rounded-md"
+          (click)="hideCategory(category)">
+          Hide
+        </button>
+        <button
+          class="ml-2 px-3 py-1 text-sm border border-neutral-500 hover:bg-red-900 hover:border-transparent rounded-md"
+          (click)="deleteCategory(category)">
+          Delete
+        </button>
+      </div>
+      <div class="">
+        <button
+          class="px-3 py-1 text-sm bg-sky-600 hover:bg-sky-500 text-white rounded-md"
+          (click)="editCategory(category)">
+          Ok
+        </button>
+      </div>
+    </div>
+  </div>
+</ng-template>
+
+<ng-template #moveDropdownTemplate let-category="category">
+  <div
+    [id]="'moveDropdown-' + category.id"
+    class="flex flex-col w-64 px-3 py-4 z-50 hidden bg-neutral-800 rounded-lg shadow-lg shadow-neutral-900">
+    <div class="mb-2 flex flex-col">
+      <span class="text-left mb-1">
+        <span class="text-[0.825rem]">Move From </span>
+        <span class="font-bold">"{{ category.name }}"</span>:
+      </span>
+      <input
+        type="number"
+        class="block w-full text-sm h-9 text-white border border-neutral-500 rounded bg-neutral-700 focus:ring-blue-500 focus:border-blue-500 placeholder:text-slate-400"
+        [ngModel]="moveData.from.amount"
+        (ngModelChange)="changeMoveData($event, category)" />
+    </div>
+    <div>
+      <div class="text-[0.825rem] text-left mb-1">To:</div>
+      <button
+        [id]="'moveCategoriesBtn-' + category.id"
+        [attr.data-dropdown-toggle]="'moveCategoriesDropdown-' + category.id"
+        class="block w-full text-sm h-9 text-white px-2 text-left border border-neutral-500 rounded bg-neutral-700 focus:ring-blue-500 focus:border-blue-500"
+        (click)="showCategoryMenu(category)">
+        {{ moveData.to.name }}
+      </button>
+      <div
+        [id]="'moveCategoriesDropdown-' + category.id"
+        class="p-3 z-50 w-60 hidden bg-neutral-800 rounded shadow-lg shadow-neutral-900">
+        <div class="pb-0.5 font-bold border-b border-neutral-600 text-left">Budget Categories</div>
+        <div class="p-2 text-[0.8rem] overflow-scroll h-60">
+          <ul class="text-left mb-1" *ngFor="let group of store.categoryGroupData$ | async; let index = index">
+            <li class="font-bold">{{ group.name }}</li>
+            <div class="">
+              <ul *ngFor="let cat of group.categories">
+                <li
+                  class="flex justify-between px-1 py-0.5 hover:bg-neutral-700 cursor-pointer"
+                  (click)="selectMoveCategory(cat)">
+                  <span>{{ cat.name }}</span>
+                  <span class="text-budget-green">{{ cat?.balance?.[budgetKey] ?? 0 | currency : 'INR' }}</span>
+                </li>
+              </ul>
+            </div>
+          </ul>
+        </div>
+        <div class="border-t border-neutral-600"></div>
+      </div>
+    </div>
+    <div class="text-right mt-4">
+      <button class="px-3 py-1 text-sm bg-sky-600 hover:bg-sky-500 text-white rounded-md" (click)="moveBalance()">
+        Ok
+      </button>
+    </div>
+    <svg class="modal-arrow" viewBox="0 0 100 100" preserveAspectRatio="none">
+      <path d="M 0 100 L 50 0 L 100 100 L 0 100 Z" transform=""></path>
+    </svg>
+  </div>
+</ng-template>
