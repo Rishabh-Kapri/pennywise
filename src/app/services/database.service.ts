@@ -6,6 +6,7 @@ import {
   collectionData,
   doc,
   getDocs,
+  orderBy,
   query,
   updateDoc,
   where,
@@ -35,10 +36,31 @@ export class DatabaseService {
   payeeCollection = collection(this.firestore, 'payees');
   transactionCollection = collection(this.firestore, 'transactions');
 
-  constructor(private helperService: HelperService) {}
+  constructor(private helperService: HelperService) {
+    // setTimeout(() => {
+    //   const inflowCategory: CategoryDTO = {
+    //     budgetId: 'rVtxaeyQzBSlgG27wG4t',
+    //     categoryGroupId: 'xgpsA4qYpAmmJZEbWk9m',
+    //     name: INFLOW_CATEGORY_NAME,
+    //     budgeted: 100,
+    //     deleted: false,
+    //     createdAt: new Date(),
+    //     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    //   };
+    //   this.createCategory(inflowCategory);
+    // }, 3000);
+  }
 
   async createPayee(payee: Payee) {
     return await addDoc(this.payeeCollection, payee);
+  }
+
+  async editPayee(payee: Partial<Payee>) {
+    const payeeRef = doc(this.payeeCollection, payee.id);
+    await updateDoc(payeeRef, {
+      ...payee,
+      updatedAt: new Date().toISOString(),
+    });
   }
 
   dummyPromise() {
@@ -104,7 +126,7 @@ export class DatabaseService {
     const createdAccount = await addDoc(this.accountCollection, account);
     const payee: Payee = {
       budgetId: account.budgetId,
-      name: `Transfer - ${account.name}`,
+      name: `Transfer: ${account.name}`,
       transferAccountId: createdAccount.id,
       createdAt: new Date().toISOString(),
       deleted: false,
@@ -121,6 +143,15 @@ export class DatabaseService {
       ...account,
       updatedAt: new Date().toISOString(),
     });
+    console.log(account);
+    // also update the transfer payee
+    if (account.transferPayeeId) {
+      const payee: Partial<Payee> = {
+        id: account.transferPayeeId,
+        name: `Transfer: ${account.name}`,
+      };
+      await this.editPayee(payee);
+    }
   }
 
   async createCategoryGroup(group: CategoryGroup) {
@@ -140,7 +171,8 @@ export class DatabaseService {
   }
 
   async createTransaction(transaction: Transaction) {
-    return await addDoc(this.transactionCollection, transaction);
+    // @TODO: need to subtract or add from the account too
+    await addDoc(this.transactionCollection, transaction);
   }
 
   getBudgetsStream() {
@@ -155,6 +187,11 @@ export class DatabaseService {
   getAccountsStream(budgetId: string) {
     const q = query(this.accountCollection, where('budgetId', '==', budgetId));
     return collectionData(q, { idField: 'id' }) as Observable<Account[]>;
+  }
+
+  getPayeesStream(budgetId: string) {
+    const q = query(this.payeeCollection, where('budgetId', '==', budgetId));
+    return collectionData(q, { idField: 'id' }) as Observable<Payee[]>;
   }
 
   getCategoryGroupsStream(budgetId: string) {
@@ -184,7 +221,7 @@ export class DatabaseService {
   }
 
   getAllTransactionsStream(budgetId: string) {
-    const q = query(this.transactionCollection, and(where('budgetId', '==', budgetId)));
+    const q = query(this.transactionCollection, and(where('budgetId', '==', budgetId)), orderBy('createdAt', 'desc'));
     return collectionData(q, { idField: 'id' }) as Observable<Transaction[]>;
   }
 
@@ -202,7 +239,7 @@ export class DatabaseService {
         where('budgetId', '==', budgetId)
       )
     );
-    console.log('transaction query:', q);
+    // console.log('transaction query:', q);
     const docSnap = await getDocs(q);
     const transactions: Transaction[] = [];
     docSnap.forEach((doc) => {

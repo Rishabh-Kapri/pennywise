@@ -19,6 +19,7 @@ import {
   heroXMark,
   heroChevronLeft,
   heroChevronRight,
+  heroMagnifyingGlass,
 } from '@ng-icons/heroicons/outline';
 import { heroPencilSolid, heroPlusCircleSolid, heroCheckCircleSolid } from '@ng-icons/heroicons/solid';
 import { CommonModule } from '@angular/common';
@@ -30,6 +31,9 @@ import { DashboardComponent } from './dashboard/dashboard.component';
 import { DatePickerComponent } from './budget/date-picker/date-picker.component';
 import { CategoryComponent } from './budget/category/category.component';
 import { CategoryItemComponent } from './budget/category-item/category-item.component';
+import { MatDatepickerModule } from '@angular/material/datepicker';
+import { MatNativeDateModule } from '@angular/material/core';
+import { MatInputModule } from '@angular/material/input';
 
 @NgModule({
   declarations: [
@@ -49,6 +53,9 @@ import { CategoryItemComponent } from './budget/category-item/category-item.comp
     CommonModule,
     FormsModule,
     ReactiveFormsModule,
+    MatNativeDateModule,
+    MatDatepickerModule,
+    MatInputModule,
     provideFirebaseApp(() => initializeApp(environment.firebase)),
     provideFirestore(() => getFirestore()),
     NgIconsModule.withIcons({
@@ -65,6 +72,7 @@ import { CategoryItemComponent } from './budget/category-item/category-item.comp
       heroChevronRight,
       heroPlusCircleSolid,
       heroCheckCircleSolid,
+      heroMagnifyingGlass,
     }),
   ],
   providers: [],

@@ -1,0 +1,22 @@
+.budget {
+  @apply text-budget-green;
+}
+
+.selected {
+  background-color: rgb(0, 0, 0);
+}
+
+.modal-arrow {
+  @apply fill-neutral-850;
+  position: absolute;
+  top: -5%;
+  left: 44%;
+  height: 0.9375rem;
+  width: 1.875rem;
+  transform: rotate(0deg);
+}
+
+/* Firefox */
+input[type='number'] {
+  -moz-appearance: textfield;
+}

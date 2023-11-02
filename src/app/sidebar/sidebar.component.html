@@ -5,7 +5,8 @@
     accounts: store.accounts$ | async,
     budgets: store.budget$ | async,
     selectedBudget: store.selectedBudget$ | async,
-    unSelectedBudgets: unSelectedBudgets$ | async
+    unSelectedBudgets: unSelectedBudgets$ | async,
+    selectedAccount: store.selectedAccount$ | async
   } as data">
   <div class="flex h-screen w-64 flex-col justify-between bg-zinc-900 text-zinc-300 z-50 border-r border-neutral-700">
     <div class="p-2">
@@ -69,7 +70,8 @@
           <ng-container *ngFor="let account of data.accounts">
             <li
               class="flex items-center mb-1 p-1 px-3 rounded-lg transition duration-300 ease-in-out hover:text-white hover:bg-zinc-600 cursor-pointer account-container"
-              [ngClass]="{ 'bg-zinc-700': selectedAccount?.id === account.id }">
+              [ngClass]="{ 'bg-zinc-700': data.selectedAccount?.id === account.id }"
+              (click)="selectAccount(account)">
               <ng-icon name="heroPencilSolid" class="edit-btn" (click)="editAccount(account)"></ng-icon>
               <div class="mr-4 ml-4 w-full flex justify-between">
                 <div>{{ account.name }}</div>

@@ -71,8 +71,6 @@ export class DatePickerComponent implements OnInit {
     this.selectedMonth = month;
     this.isToday();
     this.setSelectedMonthKey();
-    // @TODO
-    // 1. select month and show its data
   }
 
   selectToday() {

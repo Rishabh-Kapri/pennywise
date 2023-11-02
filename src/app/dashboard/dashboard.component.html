@@ -1,6 +1,7 @@
 <ng-container
   *ngIf="{
-    selectedComponent: store.selectedComponent$ | async
+    selectedComponent: store.selectedComponent$ | async,
+    selectedAccount: store.selectedAccount$ | async
   } as data">
   <div class="flex">
     <div style="flex: 0 0 auto" class="h-screen transition-transform">
@@ -8,6 +9,10 @@
     </div>
     <div class="flex-auto">
       <app-budget *ngIf="data.selectedComponent === selectedComponent.BUDGET"></app-budget>
+      <app-transactions 
+        *ngIf="data.selectedComponent === selectedComponent.ACCOUNTS" 
+        [account]="data.selectedAccount">
+      </app-transactions>
     </div>
   </div>
 </ng-container>

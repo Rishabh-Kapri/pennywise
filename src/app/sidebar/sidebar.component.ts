@@ -33,7 +33,6 @@ export class SidebarComponent implements OnInit, AfterViewInit {
   accountTypeNames = AccountTypeNames;
   accountForm: FormGroup<AccountForm>;
 
-  selectedAccount: Account;
   editingAccount: Account;
   totalCurrentFunds$: Observable<number>;
   ynab_token = 'sDjhb_o63I9mPiRSW-x1Is_UNHSEZ4Uth4CbAR2Cayw';
@@ -50,10 +49,7 @@ export class SidebarComponent implements OnInit, AfterViewInit {
       type: new FormControl(null, { validators: [Validators.required] }),
       balance: new FormControl(null, { validators: [Validators.required] }),
     });
-    this.totalCurrentFunds$ = this.store.accounts$?.pipe(
-      map((data) => data.reduce((a, b) => a + b.balance, 0)),
-      tap(console.log)
-    );
+    this.totalCurrentFunds$ = this.store.accounts$?.pipe(map((data) => data.reduce((a, b) => a + b.balance, 0)));
     this.unSelectedBudgets$ = this.store.budget$.pipe(
       map((budgets) => budgets.filter((budget) => budget.isSelected === false))
     );
@@ -100,10 +96,9 @@ export class SidebarComponent implements OnInit, AfterViewInit {
       await this.dbService.editAccount(accountData);
     } else {
       const accountData = form.value as Account;
-      accountData.budgetId = this.store.selectedBudget$.value?.id!;
+      accountData.budgetId = this.store.selectedBudet,
       accountData.closed = false;
       accountData.deleted = false;
-      accountData.createdAt = new Date().toISOString();
       await this.dbService.createAccount(accountData);
     }
     this.isLoading = false;
@@ -111,6 +106,7 @@ export class SidebarComponent implements OnInit, AfterViewInit {
   }
 
   selectComponent(component: SelectedComponent) {
+    this.store.selectedAccount = null;
     this.store.selectedComponent = component;
   }
 
@@ -121,7 +117,6 @@ export class SidebarComponent implements OnInit, AfterViewInit {
     }
     const budget: Budget = {
       name: this.newBudgetName,
-      createdAt: new Date().toISOString(),
       isSelected: false,
     };
     await this.dbService.createBudget(budget);
@@ -137,5 +132,10 @@ export class SidebarComponent implements OnInit, AfterViewInit {
     }
     // update to selected
     await this.dbService.editBudget(budget);
+  }
+
+  selectAccount(account: Account) {
+    this.store.selectedAccount = account;
+    this.store.selectedComponent = SelectedComponent.ACCOUNTS;
   }
 }

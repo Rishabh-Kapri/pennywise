@@ -1,8 +1,12 @@
 import { AfterViewInit, Component, EventEmitter, Input, Output } from '@angular/core';
+import { Transaction } from '@angular/fire/firestore';
 import { Parser } from 'expr-eval';
 import { Dropdown, DropdownOptions } from 'flowbite';
-import { take } from 'rxjs';
+import { Observable, map, take } from 'rxjs';
+import { Account } from 'src/app/models/account.model';
 import { Category, InflowCategory } from 'src/app/models/category.model';
+import { Payee } from 'src/app/models/payee.model';
+import { HelperService } from 'src/app/services/helper.service';
 import { StoreService } from 'src/app/services/store.service';
 /**
  * Get category data
@@ -18,6 +22,10 @@ export class CategoryItemComponent implements AfterViewInit {
   @Output() editCategoryEvent = new EventEmitter<Category | InflowCategory>();
   @Output() deleteCategoryEvent = new EventEmitter<Category>();
   @Output() hideCategoryEvent = new EventEmitter<Category>();
+  accountObj$: Observable<Record<string, Account>>;
+  categoryObj$: Observable<Record<string, Category>>;
+  payeeObj$: Observable<Record<string, Payee>>;
+  categoryActivity: Transaction[];
 
   menuDropdown: Dropdown;
   moveDropdown: Dropdown;
@@ -35,7 +43,34 @@ export class CategoryItemComponent implements AfterViewInit {
     delay: 300,
     ignoreClickOutsideClass: false,
   };
-  constructor(public store: StoreService) {}
+  constructor(public store: StoreService, private helperService: HelperService) {}
+
+  ngOnInit(): void {
+    this.accountObj$ = this.store.accounts$.pipe(
+      map((accounts) => {
+        return accounts.reduce((obj: Record<string, Account>, acc: Account) => {
+          const data = Object.assign(obj, { [acc.id!]: acc });
+          return data;
+        }, {});
+      })
+    );
+    this.categoryObj$ = this.store.categories$.pipe(
+      map((categories) => {
+        return categories.reduce((obj: Record<string, Category>, category: Category) => {
+          const data = Object.assign(obj, { [category.id!]: category });
+          return data;
+        }, {});
+      })
+    );
+    this.payeeObj$ = this.store.payees$.pipe(
+      map((payees) => {
+        return payees.reduce((obj: Record<string, Payee>, payee: Payee) => {
+          const data = Object.assign(obj, { [payee.id!]: payee });
+          return data;
+        }, {});
+      })
+    );
+  }
 
   ngAfterViewInit(): void {
     // add info for assignment to categories
@@ -43,23 +78,13 @@ export class CategoryItemComponent implements AfterViewInit {
     //                               '2023-10': 1000
   }
 
-  /**
-   * Generic method for dropdown
-   */
-  getDropdownInstance(
-    category: Category,
-    targetIdPrefix: string,
-    triggerIdPrefix: string,
-    options?: DropdownOptions
-  ): Dropdown {
-    const targetEl = document.getElementById(`${targetIdPrefix}-${category.id}`);
-    const triggerEl = document.getElementById(`${triggerIdPrefix}-${category.id}`);
-    const dropdown = new Dropdown(targetEl, triggerEl, options);
-    return dropdown;
-  }
-
   showEditMenu(category: Category) {
-    this.menuDropdown = this.getDropdownInstance(category, 'menuDropdown', 'menuBtn', this.defaultOptions);
+    this.menuDropdown = this.helperService.getDropdownInstance(
+      category.id!,
+      'menuDropdown',
+      'menuBtn',
+      this.defaultOptions
+    );
     this.menuDropdown.toggle();
   }
 
@@ -119,7 +144,7 @@ export class CategoryItemComponent implements AfterViewInit {
   showMoveMenu(category: Category) {
     const options = { ...this.defaultOptions };
     options.placement = 'left';
-    this.moveDropdown = this.getDropdownInstance(category, 'moveDropdown', 'moveBtn', options);
+    this.moveDropdown = this.helperService.getDropdownInstance(category.id!, 'moveDropdown', 'moveBtn', options);
     this.moveData = {
       from: {
         categoryId: category.id!,
@@ -134,8 +159,8 @@ export class CategoryItemComponent implements AfterViewInit {
   }
 
   showCategoryMenu(category: Category) {
-    this.categoryDropdown = this.getDropdownInstance(
-      category,
+    this.categoryDropdown = this.helperService.getDropdownInstance(
+      category.id!,
       'moveCategoriesDropdown',
       'moveCategoriesBtn',
       this.defaultOptions
@@ -143,8 +168,19 @@ export class CategoryItemComponent implements AfterViewInit {
     this.categoryDropdown.toggle();
   }
 
+  showActivityMenu(category: Category) {
+    if (category?.activity?.[this.budgetKey] !== 0) {
+      const activityMenuDropdown = this.helperService.getDropdownInstance(
+        category.id!,
+        'activityMenu',
+        'activityMenuBtn',
+        this.defaultOptions
+      );
+      activityMenuDropdown.toggle();
+    }
+  }
+
   selectMoveCategory(category: Category) {
-    console.log(category);
     this.moveData.to.name = category.name;
     this.moveData.to.categoryId = category.id!;
     this.categoryDropdown.toggle();

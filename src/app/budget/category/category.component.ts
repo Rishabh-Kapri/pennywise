@@ -44,7 +44,7 @@ export class CategoryComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
     const data: CategoryGroup = {
-      budgetId: this.store.selectedBudget$.value?.id!,
+      budgetId: this.store.selectedBudet,
       name: this.categoryGroupName,
       hidden: false,
       deleted: false,
@@ -69,7 +69,7 @@ export class CategoryComponent implements OnInit, AfterViewInit, OnDestroy {
     }
     const key = this.store.selectedMonth;
     const category: CategoryDTO = {
-      budgetId: this.store.selectedBudget$.value?.id!,
+      budgetId: this.store.selectedBudet,
       name: this.categoryName,
       categoryGroupId: groupId,
       hidden: false,

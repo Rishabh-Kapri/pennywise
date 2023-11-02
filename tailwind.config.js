@@ -9,9 +9,14 @@ module.exports = {
       borderWidth: {
         3: '3px',
       },
+      borderRadius: {
+        'small': '0.2rem', 
+      },
       flex: {
-        33: '0 0 33.33333%',
+        5: '0 0 5%',
+        12.5: '0 0 12.5%',
         20: '0 0 20%',
+        33: '0 0 33.33333%',
         40: '0 0 40%',
       },
       colors: {
@@ -23,6 +28,9 @@ module.exports = {
         },
         'budget-green': '#6d9f38',
         'budget-green-hover': '#81b83d',
+      },
+      textColor: {
+        'budget-green': '#6d9f38',
       },
     },
   },
