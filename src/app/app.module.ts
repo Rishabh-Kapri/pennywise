@@ -1,6 +1,7 @@
 import { NgModule } from '@angular/core';
 import { BrowserModule } from '@angular/platform-browser';
-
+import { CommonModule } from '@angular/common';
+import { OverlayModule } from '@angular/cdk/overlay';
 import { AppRoutingModule } from './app-routing.module';
 import { AppComponent } from './app.component';
 import { SidebarComponent } from './sidebar/sidebar.component';
@@ -22,7 +23,6 @@ import {
   heroMagnifyingGlass,
 } from '@ng-icons/heroicons/outline';
 import { heroPencilSolid, heroPlusCircleSolid, heroCheckCircleSolid } from '@ng-icons/heroicons/solid';
-import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 import { initializeApp, provideFirebaseApp } from '@angular/fire/app';
 import { environment } from 'src/environment/environment';
@@ -31,9 +31,6 @@ import { DashboardComponent } from './dashboard/dashboard.component';
 import { DatePickerComponent } from './budget/date-picker/date-picker.component';
 import { CategoryComponent } from './budget/category/category.component';
 import { CategoryItemComponent } from './budget/category-item/category-item.component';
-import { MatDatepickerModule } from '@angular/material/datepicker';
-import { MatNativeDateModule } from '@angular/material/core';
-import { MatInputModule } from '@angular/material/input';
 
 @NgModule({
   declarations: [
@@ -53,9 +50,7 @@ import { MatInputModule } from '@angular/material/input';
     CommonModule,
     FormsModule,
     ReactiveFormsModule,
-    MatNativeDateModule,
-    MatDatepickerModule,
-    MatInputModule,
+    OverlayModule,
     provideFirebaseApp(() => initializeApp(environment.firebase)),
     provideFirestore(() => getFirestore()),
     NgIconsModule.withIcons({
