@@ -44,6 +44,11 @@ input[type='number'] {
   pointer-events: none;
 }
 
+.overspent {
+  @apply bg-red-800;
+  @appy text-neutral-400;
+}
+
 .modal-arrow {
   @apply fill-neutral-800;
   position: absolute;

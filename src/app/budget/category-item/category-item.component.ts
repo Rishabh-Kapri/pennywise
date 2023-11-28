@@ -1,11 +1,11 @@
 import { AfterViewInit, Component, EventEmitter, Input, Output } from '@angular/core';
-import { Transaction } from '@angular/fire/firestore';
 import { Parser } from 'expr-eval';
 import { Dropdown, DropdownOptions } from 'flowbite';
 import { Observable, map, take } from 'rxjs';
 import { Account } from 'src/app/models/account.model';
 import { Category, InflowCategory } from 'src/app/models/category.model';
 import { Payee } from 'src/app/models/payee.model';
+import { Transaction } from 'src/app/models/transaction.model';
 import { HelperService } from 'src/app/services/helper.service';
 import { StoreService } from 'src/app/services/store.service';
 /**
@@ -92,7 +92,9 @@ export class CategoryItemComponent implements AfterViewInit {
     category.showBudgetInput = true;
   }
 
-  // Budget to the category
+  /**
+   * Budget to the category
+   */
   hideBudgetInput(category: Category, event: any) {
     const currentBudget = category.budgeted[this.budgetKey];
     try {
@@ -169,7 +171,14 @@ export class CategoryItemComponent implements AfterViewInit {
   }
 
   showActivityMenu(category: Category) {
-    if (category?.activity?.[this.budgetKey] !== 0) {
+      // filter category activity transactions
+    const allTransactions = this.store.transactions$.value;
+    const categoryTransactions = this.helperService.getTransactionsForCategory(allTransactions, [category.id!]);
+    this.categoryActivity = this.helperService.filterTransactionsBasedOnMonth(
+      categoryTransactions,
+      this.store.selectedMonth
+    );
+    if (this.categoryActivity.length) {
       const activityMenuDropdown = this.helperService.getDropdownInstance(
         category.id!,
         'activityMenu',

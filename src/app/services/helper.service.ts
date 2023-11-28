@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 import { Transaction } from '../models/transaction.model';
 import { Category } from '../models/category.model';
 import { Dropdown, DropdownOptions } from 'flowbite';
+import { CategoryGroupData } from '../models/state.model';
 
 @Injectable({
   providedIn: 'root',
@@ -50,36 +51,86 @@ export class HelperService {
     return { year, month };
   }
 
+  /**
+   * Returns the month key in format yyyy-mm
+   */
   getCurrentMonthKey(): string {
     const date = new Date();
     return `${date.getFullYear()}-${date.getMonth()}`;
   }
 
   /**
-   * Get the activity amount for category based on the transactions
+   * Returns the current date using new Date() in format dd/mm/yyy
    */
-  getActivityForCategory(transactions: Transaction[], category: Category): number {
-    return transactions
-      .filter((transaction) => transaction.categoryId === category.id)
-      .reduce((acc, curr) => acc + curr.amount, 0);
+  getDateInDbFormat() {
+    const date = new Date();
+    return `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
   }
 
   /**
-   * Filter the transactions for the monthKey provided from all the transactions
+   * Currently parses DD/MM/YYY date format to MM/DD/YYYY
+   * @TODO In future if needed use moment.js for more customizability
    */
-  filterTransactionsBasedOnMonth(allTransactions: Transaction[], monthKey: string): Transaction[] {
+  getDateFormatToParse(dateString: string) {
+    const splitDate = dateString.split('/');
+    return `${splitDate[1]}/${splitDate[0]}/${splitDate[2]}`;
+  }
+
+  /**
+   * Get transactions for the category group
+   */
+  getTransactionForCategoryGroup(
+    transactions: Transaction[],
+    categoryGroupId: string,
+    categoryGroupData: CategoryGroupData[]
+  ): Transaction[] {
+    let groupTransactions: Transaction[] = [];
+    let categoryIds: string[] = [];
+    // get categories for the groupId
+    const groupData = categoryGroupData.find((group) => group.id === categoryGroupId);
+    if (groupData) {
+      categoryIds = groupData.categories.map((cat) => cat.id!);
+      groupTransactions = this.getTransactionsForCategory(transactions, categoryIds);
+    }
+    return groupTransactions;
+  }
+
+  /**
+   * Filters out transactions for specified category ids
+   * @param {Transaction[]} transactions the transactions from which to filter
+   * @param {string[]} categoryIds the ids of the categories
+   * @returns {Transaction[]} filtered transactions
+   */
+  getTransactionsForCategory(transactions: Transaction[], categoryIds: string[]): Transaction[] {
+    return transactions.filter((transaction) => categoryIds.includes(transaction.categoryId ?? ''));
+  }
+
+  /**
+   * Get the activity amount for category based on the transactions
+   */
+  getActivityForCategory(transactions: Transaction[], category: Category): number {
+    return this.getTransactionsForCategory(transactions, [category.id!]).reduce((acc, curr) => acc + curr.amount, 0);
+  }
+
+  /**
+   * Filter the transactions for the monthKey provided from the transactions
+   * @param {Transaction[]} transactions the transactions to filter from
+   * @param {string} monthKey the selected month key
+   * @returns Transaction[] the filtered transaction for the provided month
+   */
+  filterTransactionsBasedOnMonth(transactions: Transaction[], monthKey: string): Transaction[] {
     const { year, month } = this.splitKeyIntoMonthYear(monthKey);
     const startDate = new Date(year, month);
     const endDate = new Date(year, month + 1);
-    const filteredTransactions = allTransactions.filter((transaction) => {
-      const date = new Date(Date.parse(transaction.date));
+    const filteredTransactions = transactions.filter((transaction) => {
+      const date = new Date(Date.parse(this.getDateFormatToParse(transaction.date)));
       return date.getTime() >= startDate.getTime() && date.getTime() < endDate.getTime();
     });
     return filteredTransactions;
   }
 
   /**
-   * Generic method for dropdown
+   * Generic method that returns a dropdown instance
    */
   getDropdownInstance(
     id: string,

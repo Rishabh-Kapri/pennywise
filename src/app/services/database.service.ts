@@ -11,16 +11,17 @@ import {
   updateDoc,
   where,
   writeBatch,
+  deleteDoc,
 } from '@angular/fire/firestore';
 import { addDoc, collection } from 'firebase/firestore';
 import { Observable } from 'rxjs';
-import { Account } from '../models/account.model';
+import { Account, TrackingAccountType } from '../models/account.model';
 import { Budget } from '../models/budget.model';
 import { Category, CategoryDTO, InflowCategory } from '../models/category.model';
 import { CategoryGroup } from '../models/catergoryGroup';
 import { Payee } from '../models/payee.model';
 import { Transaction } from '../models/transaction.model';
-import { INFLOW_CATEGORY_NAME, MASTER_CATEGORY_GROUP_NAME } from '../constants/general';
+import { INFLOW_CATEGORY_NAME, MASTER_CATEGORY_GROUP_NAME, STARTING_BALANCE_PAYEE } from '../constants/general';
 import { HelperService } from './helper.service';
 
 @Injectable({
@@ -48,6 +49,17 @@ export class DatabaseService {
     //     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     //   };
     //   this.createCategory(inflowCategory);
+    // }, 3000);
+    // setTimeout(() => {
+    //   const payee: Payee = {
+    //     name: STARTING_BALANCE_PAYEE,
+    //     budgetId: 'rVtxaeyQzBSlgG27wG4t',
+    //     deleted: false,
+    //     createdAt: '2023-08-07T13:30:08.262Z',
+    //     transferAccountId: null,
+    //   };
+    //   console.log('creating payee', payee);
+    //   this.createPayee(payee);
     // }, 3000);
   }
 
@@ -90,8 +102,12 @@ export class DatabaseService {
     await batch.commit();
   }
 
+  /**
+   * Creates a new budget, also creates master category group, inflow category and a Starting Balance payee
+   */
   async createBudget(budget: Budget) {
     const createdBudget = await addDoc(this.budgetCollection, budget);
+
     const masterCategoryGroup: CategoryGroup = {
       budgetId: createdBudget.id,
       name: MASTER_CATEGORY_GROUP_NAME,
@@ -100,6 +116,7 @@ export class DatabaseService {
       createdAt: new Date().toISOString(),
     };
     const createdGroup = await this.createCategoryGroup(masterCategoryGroup);
+
     const inflowCategory: CategoryDTO = {
       budgetId: createdBudget.id,
       categoryGroupId: createdGroup.id,
@@ -109,6 +126,16 @@ export class DatabaseService {
       createdAt: new Date().toISOString(),
     };
     await this.createCategory(inflowCategory);
+
+    const startingBalancePayee: Payee = {
+      name: STARTING_BALANCE_PAYEE,
+      budgetId: createdBudget.id,
+      transferAccountId: null,
+      deleted: false,
+      createdAt: new Date().toISOString(),
+    };
+    await this.createPayee(startingBalancePayee);
+
     return createdBudget;
   }
 
@@ -121,29 +148,57 @@ export class DatabaseService {
     });
   }
 
-  async createAccount(account: Account) {
+  async createAccount(account: Account, inflowCategory: InflowCategory, startingPayee: Payee) {
     // create account
+    const isTrackingAcc = account.type === TrackingAccountType.ASSET || account.type === TrackingAccountType.LIABILITY;
+    account.createdAt = new Date().toISOString();
+    account.updatedAt = new Date().toISOString();
     const createdAccount = await addDoc(this.accountCollection, account);
+
+    // create payee
     const payee: Payee = {
       budgetId: account.budgetId,
       name: `Transfer: ${account.name}`,
       transferAccountId: createdAccount.id,
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       deleted: false,
     };
-    // create payee
     const createdPayee = await this.createPayee(payee);
     // update account with payeeId
-    await updateDoc(createdAccount, { payeeId: createdPayee.id });
+    await updateDoc(createdAccount, { transferPayeeId: createdPayee.id, updatedAt: new Date().toISOString() });
+
+    // create starting balance transaction
+    const categoryId = isTrackingAcc ? null : inflowCategory.id!;
+    const transaction: Transaction = {
+      accountId: createdAccount.id,
+      categoryId: categoryId,
+      budgetId: account.budgetId,
+      amount: account.balance,
+      payeeId: startingPayee.id!,
+      date: this.helperService.getDateInDbFormat(),
+      deleted: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await this.createTransaction(transaction);
+
+    // update inflow category too only for budget accounts
+    if (!isTrackingAcc) {
+      const editInflow: Partial<InflowCategory> = {
+        id: inflowCategory.id!,
+        budgeted: inflowCategory.budgeted + account.balance,
+      };
+      await this.editCategory(editInflow);
+    }
   }
 
-  async editAccount(account: Account) {
+  async editAccount(account: Partial<Account>) {
     const accountRef = doc(this.accountCollection, account.id);
     await updateDoc(accountRef, {
       ...account,
       updatedAt: new Date().toISOString(),
     });
-    console.log(account);
     // also update the transfer payee
     if (account.transferPayeeId) {
       const payee: Partial<Payee> = {
@@ -162,7 +217,7 @@ export class DatabaseService {
     return await addDoc(this.categoryCollection, category);
   }
 
-  async editCategory(category: CategoryDTO) {
+  async editCategory(category: Partial<CategoryDTO>) {
     const categoryRef = doc(this.categoryCollection, category.id);
     return await updateDoc(categoryRef, {
       ...category,
@@ -171,8 +226,21 @@ export class DatabaseService {
   }
 
   async createTransaction(transaction: Transaction) {
-    // @TODO: need to subtract or add from the account too
-    await addDoc(this.transactionCollection, transaction);
+    return await addDoc(this.transactionCollection, transaction);
+  }
+
+  async editTransaction(transaction: Partial<Transaction>) {
+    console.log('Editing transaction', transaction.id);
+    const transactionRef = doc(this.transactionCollection, transaction.id);
+    return await updateDoc(transactionRef, {
+      ...transaction,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  async deleteTransaction(transactionId: string) {
+    const transactionRef = doc(this.transactionCollection, transactionId);
+    await deleteDoc(transactionRef);
   }
 
   getBudgetsStream() {
@@ -221,7 +289,12 @@ export class DatabaseService {
   }
 
   getAllTransactionsStream(budgetId: string) {
-    const q = query(this.transactionCollection, and(where('budgetId', '==', budgetId)), orderBy('createdAt', 'desc'));
+    const q = query(
+      this.transactionCollection,
+      and(where('budgetId', '==', budgetId), where('deleted', '==', false)),
+      orderBy('date', 'desc'),
+      orderBy('updatedAt', 'desc')
+    );
     return collectionData(q, { idField: 'id' }) as Observable<Transaction[]>;
   }
 

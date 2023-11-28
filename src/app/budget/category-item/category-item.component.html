@@ -1,4 +1,8 @@
-<ng-container *ngIf="{ categoryObj: categoryObj$ | async, accountObj: accountObj$ | async } as data">
+<ng-container *ngIf="{ 
+    categoryObj: categoryObj$ | async, 
+    accountObj: accountObj$ | async,
+    payeeObj: payeeObj$ | async
+  } as data">
   <div *ngFor="let category of categories">
     <div class="flex text-sm bg-zinc-900 items-center w-full p-2 px-4 border-b border-neutral-600">
       <div class="text-white flex-40 pl-3 flex flex-col items-center">
@@ -31,24 +35,28 @@
           [id]="category.id"
           [hidden]="!category.showBudgetInput"
           type="text"
-          class="w-36 h-6 p-2 text-right border-transparent bg-transparent hover:border-blue-500 focus:border-blue-500 rounded-lg"
+          class="w-36 h-6 p-1 text-right border-transparent bg-transparent hover:border-blue-500 focus:border-blue-500 rounded-small"
           [ngModel]="category.budgeted[budgetKey]"
           (focusout)="hideBudgetInput(category, $event)" />
       </div>
       <div
-        class="text-white flex-20 text-right pr-[2px]"
+        class="flex-20 text-right pr-[2px] cursor-pointer"
         [id]="'activityMenuBtn-' + category.id"
-        [ngClass]="{ 'cursor-pointer': category.activity?.[budgetKey]! !== 0 }"
+        [ngClass]="{ 'text-white': category.activity?.[budgetKey]! !== 0, 'text-neutral-500': category.activity?.[budgetKey] === 0 }"
         (click)="showActivityMenu(category)">
         {{ category.activity?.[budgetKey] ?? 0 | currency : 'INR' }}
-        <ng-container *ngIf="category.activity?.[budgetKey]! !== 0">
-          <ng-container *ngTemplateOutlet="activityMenu; context: { category: category }"></ng-container>
-        </ng-container>
+        <!-- <ng-container *ngIf="category.activity?.[budgetKey]! !== 0"> -->
+        <ng-container *ngTemplateOutlet="activityMenu; context: { category: category }"></ng-container>
+        <!-- </ng-container> -->
       </div>
       <div class="text-white flex-20 text-right">
         <button
           class="badge"
-          [ngClass]="{ active: category.balance?.[budgetKey]! !== 0, inactive: category.balance?.[budgetKey]! === 0 }"
+          [ngClass]="{ 
+            active: category.balance?.[budgetKey]! > 0, 
+            inactive: category.balance?.[budgetKey]! === 0, 
+            overspent: category.balance?.[budgetKey]! < 0 
+          }"
           [attr.data-dropdown-toggle]="'moveDropdown-' + category.id"
           [id]="'moveBtn-' + category.id"
           (click)="showMoveMenu(category)">
@@ -92,6 +100,7 @@
     </div>
   </ng-template>
 
+  <!-- Move dropdown -->
   <ng-template #moveDropdownTemplate let-category="category">
     <div
       [id]="'moveDropdown-' + category.id"
@@ -149,6 +158,7 @@
     </div>
   </ng-template>
 
+  <!-- Activity Menu -->
   <ng-template #activityMenu let-category="category">
     <div
       [id]="'activityMenu-' + category.id"
@@ -170,7 +180,7 @@
               <th class="border-t border-b border-neutral-600 w-1/5 text-right text-sm font-normal text-neutral-400 px-1">AMOUNT</th>
             </tr>
           </thead>
-          <tbody class="w-full block" *ngFor="let transaction of store.transactions$ | async">
+          <tbody class="w-full block" *ngFor="let transaction of categoryActivity">
             <tr class="w-full flex">
               <td [title]="data?.accountObj?.[transaction.accountId]?.name" class="border-r border-b border-neutral-600 w-1/5 truncate text-left text-sm text-neutral-100 px-1">
                 {{ data?.accountObj?.[transaction.accountId]?.name }}
@@ -178,8 +188,8 @@
               <td [title]="transaction.date" class="border-r border-b border-neutral-600 w-1/5 truncate text-left text-sm text-neutral-100 px-1">
                 {{ transaction.date }}
               </td>
-              <td [title]="transaction.payeeId" class="border-r border-b border-neutral-600 w-1/5 truncate text-left text-sm text-neutral-100 px-1">
-                {{ transaction.payeeId }}
+              <td [title]="data?.payeeObj?.[transaction.payeeId]?.name" class="border-r border-b border-neutral-600 w-1/5 truncate text-left text-sm text-neutral-100 px-1">
+                {{ data?.payeeObj?.[transaction.payeeId]?.name }}
               </td>
               <td [title]="transaction.note ?? ''" class="border-r border-b border-neutral-600 w-1/5 truncate text-left text-sm text-neutral-100 px-1">
                 {{ transaction.note }}

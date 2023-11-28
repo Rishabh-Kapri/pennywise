@@ -1,8 +1,10 @@
 <ng-container
   *ngIf="{
+    allAccounts: store.allAccounts$ | async,
     selectedComp: store.selectedComponent$ | async,
     totalCurrentFunds: totalCurrentFunds$ | async,
-    accounts: store.accounts$ | async,
+    budgetAccountData: budgetAccountData$ | async,
+    trackingAccountData: trackingAccountData$ | async,
     budgets: store.budget$ | async,
     selectedBudget: store.selectedBudget$ | async,
     unSelectedBudgets: unSelectedBudgets$ | async,
@@ -48,26 +50,28 @@
           <a
             href="#"
             class="flex w-full cursor-pointer items-center rounded-lg px-3 py-2 transitiion duration-300 ease-in-out hover:bg-zinc-700 hover:text-white"
+            [ngClass]="{ 'bg-zinc-700': data.selectedComp === selectedComponent.ACCOUNTS && !data.selectedAccount }"
             (click)="selectComponent(selectedComponent.ACCOUNTS)">
             <ng-icon name="heroBuildingLibrary"></ng-icon>
             <span class="ml-3 font-bold">All Accounts</span>
           </a>
         </div>
       </div>
+      <!-- Budget Accounts -->
       <div class="flex mb-2 flex flex-col">
         <div
           class="flex w-full items-center justify-between"
-          aria-controls="dropdown-account"
-          data-collapse-toggle="dropdown-account">
+          aria-controls="dropdown-budget-account"
+          data-collapse-toggle="dropdown-budget-account">
           <div
             class="flex items-center ml-3 h-full cursor-pointer py-2 transition duration-300 ease-in-out hover:text-white">
             <ng-icon name="heroBanknotes"></ng-icon>
-            <span class="ml-3 font-bold">Accounts</span>
+            <span class="ml-3 font-bold">Budget</span>
           </div>
-          <span class="mr-3 text-sm">{{ data?.totalCurrentFunds | currency : 'INR' }}</span>
+          <span class="mr-3 text-sm">{{ data?.budgetAccountData?.totalAmount | currency : 'INR' }}</span>
         </div>
-        <ul id="dropdown-account" class="w-full border-zinc-800 text-sm">
-          <ng-container *ngFor="let account of data.accounts">
+        <ul id="dropdown-budget-account" class="w-full border-zinc-800 text-sm">
+          <ng-container *ngFor="let account of data.budgetAccountData?.accounts">
             <li
               class="flex items-center mb-1 p-1 px-3 rounded-lg transition duration-300 ease-in-out hover:text-white hover:bg-zinc-600 cursor-pointer account-container"
               [ngClass]="{ 'bg-zinc-700': data.selectedAccount?.id === account.id }"
@@ -81,6 +85,35 @@
           </ng-container>
         </ul>
       </div>
+      <!-- Tracking Accounts -->
+      <div class="flex mb-2 flex flex-col">
+        <div
+          class="flex w-full items-center justify-between"
+          aria-controls="dropdown-tracking-account"
+          data-collapse-toggle="dropdown-tracking-account">
+          <div
+            class="flex items-center ml-3 h-full cursor-pointer py-2 transition duration-300 ease-in-out hover:text-white">
+            <ng-icon name="heroCurrencyRupee"></ng-icon>
+            <span class="ml-3 font-bold">Tracking</span>
+          </div>
+          <span class="mr-3 text-sm">{{ data?.trackingAccountData?.totalAmount | currency : 'INR' }}</span>
+        </div>
+        <ul id="dropdown-tracking-account" class="w-full border-zinc-800 text-sm">
+          <ng-container *ngFor="let account of data?.trackingAccountData?.accounts">
+            <li
+              class="flex items-center mb-1 p-1 px-3 rounded-lg transition duration-300 ease-in-out hover:text-white hover:bg-zinc-600 cursor-pointer account-container"
+              [ngClass]="{ 'bg-zinc-700': data.selectedAccount?.id === account.id }"
+              (click)="selectAccount(account)">
+              <ng-icon name="heroPencilSolid" class="edit-btn" (click)="editAccount(account)"></ng-icon>
+              <div class="mr-4 ml-4 w-full flex justify-between">
+                <div>{{ account.name }}</div>
+                <div class="">{{ account.balance | currency : 'INR' }}</div>
+              </div>
+            </li>
+          </ng-container>
+        </ul>
+      </div>
+      
       <div class="mb-2">
         <div class="flex w-full items-center justify-between">
           <a
@@ -145,10 +178,17 @@
                   id="accountType"
                   class="w-full bg-gray-700 border border-gray-500 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500 cursor-pointer"
                   formControlName="type">
-                  <option selected>Select Account Type</option>
-                  <ng-container *ngFor="let item of accountTypeNames">
-                    <option [value]="item.value">{{ item.name }}</option>
-                  </ng-container>
+                  <!-- <option selected>Select Account Type</option> -->
+                  <optgroup label="Budget Accounts">
+                    <ng-container *ngFor="let item of budgetAccountNames">
+                      <option [value]="item.value">{{ item.name }}</option>
+                    </ng-container>
+                  </optgroup>
+                  <optgroup label="Tracking Accounts">
+                    <ng-container *ngFor="let item of trackingAccountNames">
+                      <option [value]="item.value">{{ item.name }}</option>
+                    </ng-container>
+                  </optgroup>
                 </select>
               </div>
             </div>

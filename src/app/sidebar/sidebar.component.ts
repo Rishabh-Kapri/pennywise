@@ -1,17 +1,24 @@
 import { AfterViewInit, Component, ElementRef, OnInit, ViewChild } from '@angular/core';
 import { DatabaseService } from '../services/database.service';
-import { Account, AccountType, AccountTypeNames } from '../models/account.model';
+import {
+  Account,
+  BudgetAccountType,
+  TrackingAccountType,
+  BudgetAccountNames,
+  TrackingAccountNames,
+} from '../models/account.model';
 import { FormControl, FormGroup, Validators } from '@angular/forms';
 import { StoreService } from '../services/store.service';
-import { catchError, map, startWith, tap } from 'rxjs/operators';
-import { Observable, of } from 'rxjs';
+import { catchError, map, startWith, switchMap, tap } from 'rxjs/operators';
+import { Observable, combineLatest, of } from 'rxjs';
 import { Modal, ModalOptions } from 'flowbite';
 import { SelectedComponent } from '../models/state.model';
 import { Budget } from '../models/budget.model';
+import { STARTING_BALANCE_PAYEE } from '../constants/general';
 
 interface AccountForm {
   name: FormControl<string | null>;
-  type: FormControl<AccountType | null>;
+  type: FormControl<BudgetAccountType | TrackingAccountType | null>;
   balance: FormControl<number | null>;
 }
 
@@ -27,11 +34,14 @@ export class SidebarComponent implements OnInit, AfterViewInit {
     backdropClasses: 'bg-gray-900 bg-opacity-50 dark:bg-opacity-80 fixed inset-0 z-40',
     closable: true,
   };
+  budgetAccountData$: Observable<{ totalAmount: number; accounts: Account[] }>;
+  trackingAccountData$: Observable<{ totalAmount: number; accounts: Account[] }>;
   selectedComponent = SelectedComponent;
   text = 'Add';
   addAcountModal: Modal;
-  accountTypeNames = AccountTypeNames;
   accountForm: FormGroup<AccountForm>;
+  budgetAccountNames = BudgetAccountNames;
+  trackingAccountNames = TrackingAccountNames;
 
   editingAccount: Account;
   totalCurrentFunds$: Observable<number>;
@@ -49,14 +59,27 @@ export class SidebarComponent implements OnInit, AfterViewInit {
       type: new FormControl(null, { validators: [Validators.required] }),
       balance: new FormControl(null, { validators: [Validators.required] }),
     });
-    this.totalCurrentFunds$ = this.store.accounts$?.pipe(map((data) => data.reduce((a, b) => a + b.balance, 0)));
+    this.budgetAccountData$ = combineLatest([this.store.budgetAccounts$]).pipe(
+      switchMap(([accounts]) => {
+        let data = {
+          totalAmount: accounts.reduce((a, b) => a + b.balance, 0),
+          accounts,
+        };
+        return of(data);
+      })
+    );
+    this.trackingAccountData$ = combineLatest([this.store.trackingAccounts$]).pipe(
+      switchMap(([accounts]) => {
+        let data = {
+          totalAmount: accounts.reduce((a, b) => a + b.balance, 0),
+          accounts,
+        };
+        return of(data);
+      })
+    );
+    this.totalCurrentFunds$ = this.store.allAccounts$?.pipe(map((data) => data.reduce((a, b) => a + b.balance, 0)));
     this.unSelectedBudgets$ = this.store.budget$.pipe(
       map((budgets) => budgets.filter((budget) => budget.isSelected === false))
-    );
-    this.store.accounts$?.pipe(
-      map((data) => ({ isLoading: true, data })),
-      catchError((error) => of({ isLoading: false, error })),
-      startWith({ isLoading: true })
     );
   }
 
@@ -96,10 +119,10 @@ export class SidebarComponent implements OnInit, AfterViewInit {
       await this.dbService.editAccount(accountData);
     } else {
       const accountData = form.value as Account;
-      accountData.budgetId = this.store.selectedBudet,
-      accountData.closed = false;
+      (accountData.budgetId = this.store.selectedBudet), (accountData.closed = false);
       accountData.deleted = false;
-      await this.dbService.createAccount(accountData);
+      const startingBalPayee = this.store.payees$.value.find((payee) => payee.name === STARTING_BALANCE_PAYEE)!;
+      await this.dbService.createAccount(accountData, this.store.inflowCategory$.value!, startingBalPayee);
     }
     this.isLoading = false;
     this.resetAccountForm();

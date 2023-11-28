@@ -1,11 +1,22 @@
 import { Injectable } from '@angular/core';
 import { FormGroup } from '@angular/forms';
-import { BehaviorSubject, Observable, combineLatest, concatMap, filter, from, of, startWith, switchMap } from 'rxjs';
+import {
+  BehaviorSubject,
+  Observable,
+  combineLatest,
+  combineLatestAll,
+  concatMap,
+  filter,
+  from,
+  of,
+  startWith,
+  switchMap,
+} from 'rxjs';
 import { Budget } from '../models/budget.model';
 import { CategoryGroup } from '../models/catergoryGroup';
 import { Category, InflowCategory } from '../models/category.model';
 import { Payee } from '../models/payee.model';
-import { Account } from '../models/account.model';
+import { Account, BudgetAccountType, TrackingAccountType } from '../models/account.model';
 import { DatabaseService } from './database.service';
 import { CategoryGroupData, SelectedComponent } from '../models/state.model';
 import { INFLOW_CATEGORY_NAME } from '../constants/general';
@@ -17,6 +28,8 @@ import { NormalizedTransaction, Transaction } from '../models/transaction.model'
 })
 export class StoreService {
   accounts$: BehaviorSubject<Account[]> = new BehaviorSubject<Account[]>([]);
+  trackingAccounts$ = new BehaviorSubject<Account[]>([]);
+  budgetAccounts$ = new BehaviorSubject<Account[]>([]);
   budget$: Observable<Budget[]>;
   categoryGroups$: BehaviorSubject<CategoryGroup[]> = new BehaviorSubject<CategoryGroup[]>([]);
   categories$: BehaviorSubject<Category[]> = new BehaviorSubject<Category[]>([]);
@@ -31,6 +44,7 @@ export class StoreService {
   categoryGroupData$: Observable<CategoryGroupData[]>;
   selectedBudget$ = new BehaviorSubject<Budget | null>(null);
   inflowCategory$ = new BehaviorSubject<InflowCategory | null>(null);
+  allAccounts$: Observable<Account[]>;
   normalizedTransactions$: Observable<NormalizedTransaction[]>;
   categoryGroupDataWithInflow: any;
 
@@ -55,6 +69,18 @@ export class StoreService {
         const selectedBudget = budget;
         this.dbService.getAccountsStream(selectedBudget?.id!).subscribe((accounts) => {
           this.accounts$.next(accounts);
+          // this.trackingAccounts$.next(
+          //   accounts.filter((acc) =>
+          //     [TrackingAccountType.ASSET, TrackingAccountType.LIABILITY].includes(<TrackingAccountType>acc.type)
+          //   )
+          // );
+          // this.budgetAccounts$.next(
+          //   accounts.filter((acc) =>
+          //     [BudgetAccountType.CREDIT_CARD, BudgetAccountType.SAVINGS, BudgetAccountType.CHECKING].includes(
+          //       <BudgetAccountType>acc.type
+          //     )
+          //   )
+          // );
         });
         this.dbService.getCategoriesStream(selectedBudget?.id!).subscribe((categories) => {
           this.categories$.next(categories as Category[]);
@@ -75,10 +101,31 @@ export class StoreService {
         this.selectedBudget$.next(selectedBudget);
       });
 
-    // calculate normalized transactions
+    this.allAccounts$ = combineLatest([this.accounts$, this.transactions$]).pipe(
+      switchMap(([accounts, transactions]) => {
+        for (const acc of accounts) {
+          acc.balance = transactions.filter((tran) => tran.accountId === acc.id!).reduce((a, b) => a + b.amount, 0);
+        }
+        this.budgetAccounts$.next(
+          accounts.filter((acc) =>
+            [BudgetAccountType.CREDIT_CARD, BudgetAccountType.SAVINGS, BudgetAccountType.CHECKING].includes(
+              <BudgetAccountType>acc.type
+            )
+          )
+        );
+        this.trackingAccounts$.next(
+          accounts.filter((acc) =>
+            [TrackingAccountType.ASSET, TrackingAccountType.LIABILITY].includes(<TrackingAccountType>acc.type)
+          )
+        );
+        return of(accounts);
+      })
+    );
+
+    // Calculate Normalized Transactions
     this.normalizedTransactions$ = combineLatest([
       this.transactions$.pipe(startWith([])),
-      this.accounts$.pipe(startWith([])),
+      this.allAccounts$.pipe(startWith([])),
       this.payees$.pipe(startWith([])),
       this.categories$.pipe(startWith([])),
       this.selectedAccount$,
@@ -86,28 +133,36 @@ export class StoreService {
     ]).pipe(
       switchMap(([transactions, accounts, payees, categories, selectedAccount]) => {
         const normalizedTransactions: NormalizedTransaction[] = [];
-        let prevBal = 0;
+        let prevTransacAmount = 0;
+        let accBal = 0;
         transactions = transactions.filter((tran) => !selectedAccount || tran.accountId === selectedAccount.id);
-        for (const transaction of transactions) {
+        for (const [index, value] of transactions.entries()) {
+          const transaction = value;
           const account = accounts.find((acc) => acc.id === transaction.accountId);
+          if (index > 0) {
+            accBal = normalizedTransactions[index - 1].balance - prevTransacAmount;
+          } else {
+            accBal = account?.balance ?? 0;
+          }
           const payee = payees.find((payee) => payee.id === transaction.payeeId);
           const transac: NormalizedTransaction = {
             id: transaction.id!,
             budgetId: transaction.budgetId,
             date: transaction.date,
             outflow: transaction.amount < 0 ? Math.abs(transaction.amount) : null,
-            inflow: transaction.amount > 0 ? Math.abs(transaction.amount) : null,
-            balance: (account?.balance ?? 0) + prevBal,
+            inflow: transaction.amount >= 0 ? Math.abs(transaction.amount) : null,
+            balance: accBal,
             note: transaction.note,
+            transferTransactionId: transaction.transferTransactionId ?? null,
             accountName: account?.name ?? '',
             accountId: account?.id!,
             payeeName: payee?.name ?? '',
             payeeId: payee?.id!,
-            categoryName: categories.find((cat) => cat.id === transaction.categoryId)?.name ?? '',
+            categoryName: categories.find((cat) => cat.id === transaction.categoryId)?.name ?? null,
             categoryId: transaction.categoryId,
           };
           normalizedTransactions.push(transac);
-          prevBal = transaction.amount;
+          prevTransacAmount = transaction.amount;
         }
         return of(normalizedTransactions);
       })
