@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { Account, TrackingAccountType } from '../models/account.model';
 import { StoreService } from '../services/store.service';
-import { map, switchMap } from 'rxjs/operators';
+import { debounceTime, map, startWith, switchMap } from 'rxjs/operators';
 import { BehaviorSubject, Observable, combineLatest, of } from 'rxjs';
 import { Category } from '../models/category.model';
 import {
@@ -26,7 +26,7 @@ import { DatabaseService } from '../services/database.service';
 import { PopoverService } from '../services/popover.service';
 import { PopoverRef } from '../services/popover-ref';
 import { Parser } from 'expr-eval';
-import { INFLOW_CATEGORY_NAME, STARTING_BALANCE_PAYEE } from '../constants/general';
+import { STARTING_BALANCE_PAYEE } from '../constants/general';
 
 declare var Datepicker: any;
 
@@ -63,7 +63,9 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
 
   accountData$: Observable<{ name: string; accounts: Account[] }[]>;
   categoryGroupData$: Observable<CategoryGroupData[]>;
+  filteredTransactions$: Observable<NormalizedTransaction[]>;
   payeesData$: Observable<PayeesData>;
+  searchTransations$ = new BehaviorSubject<string>('');
   searchCategory$ = new BehaviorSubject<string>('');
   searchPayee$ = new BehaviorSubject<string>('');
   searchAccount$ = new BehaviorSubject<string>('');
@@ -89,6 +91,29 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
         return of(groupData);
       })
     );
+
+    this.filteredTransactions$ = combineLatest([
+      this.store.normalizedTransactions$,
+      this.searchTransations$.pipe(startWith('')),
+    ]).pipe(
+      debounceTime(500),
+      switchMap(([normalizedTransactions, searchTransations]) => {
+        const search = searchTransations.toLowerCase();
+        let value = normalizedTransactions;
+        if (search) {
+          value = normalizedTransactions.filter((t) => {
+            return (
+              t.accountName.toLowerCase().includes(search) ||
+              t.payeeName.toLowerCase().includes(search) ||
+              t.categoryName?.toLowerCase().includes(search) ||
+              t.note?.toLowerCase().includes(search)
+            );
+          });
+        }
+        return of(value);
+      })
+    );
+
     this.categoryGroupData$ = combineLatest([
       this.store.categoryGroupData$,
       this.store.inflowCategory$,
@@ -99,9 +124,15 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
         const inflowGroup: CategoryGroupData = {
           name: 'Inflow',
           id: '1',
-          balance: 0,
-          budgeted: 0,
-          activity: 0,
+          balance: {
+            [selectedMonth]: 0,
+          },
+          budgeted: {
+            [selectedMonth]: 0,
+          },
+          activity: {
+            [selectedMonth]: 0,
+          },
           categories: [
             {
               id: inflowCategory?.id!,
@@ -174,6 +205,11 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
     this.cancelTransactionSave();
   }
 
+  searchTransations(event: any) {
+    this.searchTransations$.next(event.target.value);
+    this.cdRef.detectChanges();
+  }
+
   searchAccount(event: any) {
     this.searchAccount$.next(event.target.value);
     this.cdRef.detectChanges();
@@ -204,9 +240,11 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
   }
 
   addTransaction() {
+    window.scroll(0, 0);
     this.currentMode = Mode.CREATE;
     this.selectedTransaction = {
       transferTransactionId: null,
+      transferAccountId: null,
       accountName: '',
       accountId: '',
       budgetId: this.store.selectedBudet,
@@ -385,7 +423,12 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
     this.closeCategorySelectMenu();
   }
 
-  deleteTransaction(transaction: NormalizedTransaction) { }
+  deleteTransaction(transaction: NormalizedTransaction) {
+    this.dbService.deleteTransaction(transaction.id!);
+    if (transaction.transferTransactionId) {
+      this.dbService.deleteTransaction(transaction.transferTransactionId);
+    }
+  }
 
   cancelTransactionSave() {
     this.currentMode = Mode.NONE;
@@ -401,145 +444,86 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
       const amount = this.selectedTransaction.inflow ?? -this.selectedTransaction?.outflow! ?? 0;
       switch (this.currentMode) {
         case Mode.CREATE:
-          if (this.selectedTransaction.categoryName === INFLOW_CATEGORY_NAME) {
-            // update inflow category
-            const inflowCategory = this.store.inflowCategory$.value;
-            if (inflowCategory) {
-              this.dbService.editCategory({
-                id: inflowCategory.id!,
-                budgeted: inflowCategory.budgeted + amount,
-              });
-            }
-          }
-          this.createNewTransaction(this.selectedTransaction, amount, this.selectedAccount, this.selectedPayee);
+          console.log('Creating new transaction');
+          this.createNewTransaction(amount, this.selectedTransaction, this.selectedAccount, this.selectedPayee);
           this.cancelTransactionSave();
           break;
         case Mode.EDIT:
-          let existingTransaction = this.store.transactions$.value.find(
-            (tran) => tran.id === this.selectedTransaction?.id
-          );
-          const inflowCategory = this.store.inflowCategory$.value;
-          // when payee is changed
-          const isNewTransaction =
-            this.selectedTransaction.payeeId !== existingTransaction?.payeeId ||
-            this.selectedTransaction.accountId !== existingTransaction?.accountId;
-
-          // update amount in inflow category
+          const transactions = this.store.transactions$.value;
+          let existingTransaction = transactions.find((tran) => tran.id === this.selectedTransaction?.id);
+          // console.log('selected payee:', this.selectedPayee);
+          // console.log('selected account:', this.selectedAccount);
+          // console.log('selected transaction:', this.selectedTransaction);
+          // console.log('exisiting transaction:', existingTransaction);
+          // console.log(
+          //   'transfer transaction:',
+          //   this.store.transactions$.value.find((tran) => tran.id! === existingTransaction?.transferTransactionId)
+          // );
           if (
-            this.selectedTransaction.categoryId === inflowCategory?.id &&
-            existingTransaction?.categoryId !== inflowCategory?.id
+            this.selectedTransaction.payeeId !== existingTransaction?.payeeId &&
+            this.selectedTransaction.accountId !== existingTransaction?.accountId
           ) {
-            // if new category is inflow and older wasn't
-            // add amount to inflow
-            this.dbService.editCategory({
-              id: inflowCategory.id!,
-              budgeted: inflowCategory.budgeted + amount,
-            });
-          } else if (
-            existingTransaction?.categoryId === inflowCategory?.id &&
-            this.selectedTransaction.categoryId !== inflowCategory?.id
-          ) {
-            // if new category isn't inflow and older was
-            // subtract amount from inflow
-            this.dbService.editCategory({
-              id: inflowCategory?.id,
-              budgeted: (inflowCategory?.budgeted ?? 0) - (existingTransaction?.amount ?? 0),
-            });
-          } else if (
-            existingTransaction?.categoryId === inflowCategory?.id &&
-            this.selectedTransaction.categoryId === inflowCategory?.id
-          ) {
-            // if old and new categories are inflow
-            const diff = amount - (existingTransaction?.amount ?? 0);
-            this.dbService.editCategory({
-              id: inflowCategory.id,
-              budgeted: inflowCategory.budgeted + diff,
-            });
-          }
-
-          if (this.selectedPayee.transferAccountId) {
+            // changing payees and accounts
+            // this is a completely new transaction, delete both existingTransaction and existing transferTransaction
+            this.dbService.deleteTransaction(existingTransaction?.id!);
             if (existingTransaction?.transferTransactionId) {
-              if (isNewTransaction) {
-                // changing payees and accounts
-                // this is a completely new transaction
-                console.log('new transaction');
-                // delete both existingTransaction and existing transferTransaction
-                this.dbService.deleteTransaction(existingTransaction.id!);
-                this.dbService.deleteTransaction(existingTransaction.transferTransactionId);
-                this.createNewTransaction(this.selectedTransaction, amount, this.selectedAccount, this.selectedPayee);
-              } else if (
-                this.selectedTransaction.payeeId !== existingTransaction.payeeId &&
-                this.selectedTransaction.accountId === existingTransaction.accountId
-              ) {
-                console.log('changed transfer payees');
-                // only changing payees
-                // @TODO: subtract amount from existing transfer payee account
-                // @TODO: add amount to selected transfer payee account
-                // @TODO: update tranferTransaction: accountId, amount
-                // @TODO: update selectTransaction: payeeId, amount
-              } else {
-                // only changing accounts
-                // update selected transaction
-                console.log('Selected:', this.selectedTransaction, 'Existing:', existingTransaction);
-                this.dbService.editTransaction({
-                  id: this.selectedTransaction.id!,
-                  amount,
-                  categoryId: this.selectedTransaction.categoryId,
-                  note: this.selectedTransaction.note,
-                  date: this.selectedTransaction.date,
-                });
-                // update transfer transaction
-                this.dbService.editTransaction({
-                  id: existingTransaction.transferTransactionId!,
-                  amount: -amount,
-                  categoryId: this.selectedTransaction.categoryId,
-                  note: this.selectedTransaction.note,
-                  date: this.selectedTransaction.date,
-                });
+              this.dbService.deleteTransaction(existingTransaction.transferTransactionId);
+            }
+            this.createNewTransaction(amount, this.selectedTransaction, this.selectedAccount, this.selectedPayee);
+          } else {
+            // just update the info of selected transaction and transfer if it exists, no need for all the logic
+            // update selected transaction
+            const editData = {
+              id: this.selectedTransaction.id!,
+              amount,
+              date: this.selectedTransaction.date,
+              payeeId: this.selectedTransaction.payeeId,
+              accountId: this.selectedTransaction.accountId,
+              categoryId: this.selectedTransaction.categoryId,
+              note: this.selectedTransaction.note,
+              transferTransactionId:
+                this.selectedPayee.transferAccountId && existingTransaction?.transferTransactionId
+                  ? existingTransaction.transferTransactionId
+                  : null,
+              transferAccountId:
+                this.selectedPayee.transferAccountId && existingTransaction?.transferTransactionId
+                  ? this.selectedPayee.transferAccountId
+                  : null,
+            };
+            this.dbService.editTransaction(editData);
+            if (existingTransaction?.transferTransactionId) {
+              const transferTransaction = transactions.find(
+                (tran) => tran.id! === existingTransaction?.transferTransactionId
+              );
+              if (transferTransaction) {
+                const isDeleteTransfer = this.selectedPayee.transferAccountId ? false : true;
+                if (isDeleteTransfer) {
+                  this.dbService.deleteTransaction(transferTransaction.id!);
+                } else {
+                  const transferEditData = {
+                    id: transferTransaction.id!,
+                    amount: -amount,
+                    payeeId: this.selectedAccount.transferPayeeId!,
+                    accountId: this.selectedPayee.transferAccountId!,
+                    categoryId: null, // will always be null, check handleTransferTransaction method for details
+                    transferTransactionId: transferTransaction.transferTransactionId,
+                    transferAccountId: this.selectedAccount.id!,
+                    date: this.selectedTransaction.date,
+                    note: this.selectedTransaction.note ?? '',
+                  };
+                  this.dbService.editTransaction(transferEditData);
+                }
               }
             } else {
-              console.log('creating new transfer transaction');
-              // this means the original was normal payee, and new is transfer
-              // in this case the payees cannot be similar, only accounts can be
-              this.handleTransferTransaction(
-                -amount,
-                this.selectedTransaction.accountId,
-                this.selectedTransaction.id!,
-                this.selectedPayee.id!,
-                this.selectedPayee.transferAccountId,
-                this.selectedAccount.transferPayeeId!
-              );
-            }
-          } else {
-            // normal payee is selected
-            if (existingTransaction?.transferTransactionId) {
-              console.log('deleting transfer transaction');
-              // previous payee was transfer payee, delete the transfer transaction
-              await this.dbService.editTransaction({
-                id: existingTransaction.transferTransactionId,
-                deleted: true,
-              });
-              await this.dbService.editTransaction({
-                id: this.selectedTransaction.id!,
-                payeeId: this.selectedTransaction.payeeId,
-                amount,
-                categoryId: this.selectedTransaction.categoryId,
-                note: this.selectedTransaction.note,
-                date: this.selectedTransaction.date,
-                transferTransactionId: null,
-                transferAccountId: null,
-              });
-            } else {
-              // previous payee was normal, just update the payeeId
-              console.log('current & previous normal payees');
-              await this.dbService.editTransaction({
-                id: this.selectedTransaction.id,
-                payeeId: this.selectedTransaction.payeeId,
-                amount,
-                categoryId: this.selectedTransaction.categoryId,
-                note: this.selectedTransaction.note,
-                date: this.selectedTransaction.date,
-              });
+              if (this.selectedPayee.transferAccountId) {
+                // if no transfer transaction exists but new payee is transfer, create a new transfer transaction
+                this.handleTransferTransaction(
+                  -amount,
+                  this.selectedTransaction,
+                  this.selectedPayee,
+                  this.selectedAccount
+                );
+              }
             }
           }
           this.cancelTransactionSave();
@@ -548,7 +532,13 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
     }
   }
 
-  async createNewTransaction(selectedTransaction: NormalizedTransaction, amount: number, selectedAccount: Account, selectedPayee: Payee) {
+  async createNewTransaction(
+    amount: number,
+    selectedTransaction: NormalizedTransaction,
+    selectedAccount: Account,
+    selectedPayee: Payee
+  ) {
+    console.log('Selected transaction:', selectedTransaction);
     const newTransaction: Transaction = {
       budgetId: this.store.selectedBudet,
       date: selectedTransaction.date,
@@ -561,17 +551,12 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
       updatedAt: new Date().toISOString(),
       deleted: false,
     };
+    console.log('New transaction:', newTransaction);
     const createdTransac = await this.dbService.createTransaction(newTransaction);
+    selectedTransaction.id = createdTransac.id;
     if (selectedPayee?.transferAccountId) {
       // this is a transfer payee, create another transaction
-      this.handleTransferTransaction(
-        -amount,
-        newTransaction.accountId,
-        createdTransac.id,
-        this.selectedPayee.id!,
-        selectedPayee.transferAccountId!,
-        selectedAccount?.transferPayeeId!
-      );
+      this.handleTransferTransaction(-amount, selectedTransaction, selectedPayee, selectedAccount);
     }
   }
 
@@ -580,47 +565,46 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
    * - Handles creation of transfer transaction, the transaction that is associated with transfer payee
    * - It also edits the current transaction with the updated data
    * @param {number} amount the amount for this transaction (make sure amount is negative for outflow)
-   * @param {string} accountId the accountId of the current transaction
-   * @param {string} transactionId the transaction id which this transfer transaction is associated with
-   * @param {string} payeeId the payee id which the current transaction has been selected
-   * @param {string} transferAccountId the id of the account this transaction is of, this will be the account the transfer is being made to
-   * @param {string} transferPayeeId the id of the payee
+   * @param {NormalizedTransaction} selectedTransaction the current transaction being created/edited
+   * @param {Payee} selectedPayee the selected payee of current transaction, it should have the transferAccountId
+   * @param {Account} selectedAccount the selected account of the current transaction
    */
   async handleTransferTransaction(
     amount: number,
-    accountId: string,
-    transactionId: string,
-    payeeId: string,
-    transferAccountId: string,
-    transferPayeeId: string
+    selectedTransaction: NormalizedTransaction,
+    selectedPayee: Payee,
+    selectedAccount: Account
   ) {
     const transferTransac: Transaction = {
       budgetId: this.store.selectedBudet,
-      transferTransactionId: transactionId,
-      transferAccountId: accountId,
-      date: this.selectedTransaction?.date!,
       amount: amount,
-      accountId: transferAccountId,
-      payeeId: transferPayeeId!,
+      accountId: selectedPayee.transferAccountId!,
+      payeeId: selectedAccount.transferPayeeId!,
+      transferTransactionId: selectedTransaction.id!,
+      transferAccountId: selectedAccount.id!,
+      date: selectedTransaction.date,
       // @NOTE: for now tranfer transaction won't have a category since I can only transfer between budget accounts or from budget to tracking accounts
       // transactions cannot be created from tracking accounts, only to them from budget accounts, either inflow or outflow
-      categoryId: null, 
-      note: this.selectedTransaction?.note ?? '',
+      categoryId: null,
+      note: selectedTransaction.note ?? '',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       deleted: false,
     };
-    console.log('Transfer Transaction:', transferTransac, 'Selected Transaction:', this.selectedTransaction);
+    console.log('Transfer Transaction:', transferTransac, 'Selected Transaction:', selectedTransaction);
     const transferCreatedTransac = await this.dbService.createTransaction(transferTransac);
-    await this.dbService.editTransaction({
-      id: transactionId,
-      payeeId,
+    const editData = {
+      id: selectedTransaction.id!,
+      payeeId: selectedPayee.id!,
+      accountId: selectedAccount.id!,
       amount: -amount,
       transferTransactionId: transferCreatedTransac.id,
-      transferAccountId,
-      categoryId: this.selectedTransaction?.categoryId,
-      note: this.selectedTransaction?.note,
-      date: this.selectedTransaction?.date,
-    });
+      transferAccountId: selectedPayee.transferAccountId!,
+      categoryId: selectedTransaction.categoryId,
+      note: selectedTransaction.note ?? '',
+      date: selectedTransaction.date,
+    };
+    console.log('editing selected transaction:', editData);
+    await this.dbService.editTransaction(editData);
   }
 }

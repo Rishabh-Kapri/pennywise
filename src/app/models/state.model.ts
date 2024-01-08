@@ -9,9 +9,9 @@ export interface HttpState<T> {
 export interface CategoryGroupData {
   name: string;
   id: string;
-  balance: number;
-  budgeted: number;
-  activity: number;
+  balance: Record<string, number>;
+  budgeted: Record<string, number>;
+  activity: Record<string, number>;
   categories: Category[];
 }
 

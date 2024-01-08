@@ -173,7 +173,13 @@ export class CategoryItemComponent implements AfterViewInit {
   showActivityMenu(category: Category) {
       // filter category activity transactions
     const allTransactions = this.store.transactions$.value;
-    const categoryTransactions = this.helperService.getTransactionsForCategory(allTransactions, [category.id!]);
+    const ccAccount = this.store.accounts$.value.find((acc) => acc.name.toLowerCase().includes('credit'));
+    let categoryTransactions: Transaction[] = [];
+    if (this.helperService.isCategoryCreditCard(category)) {
+      categoryTransactions = this.helperService.getTransactionsForAccount(allTransactions, [ccAccount?.id!]);
+    } else {
+      categoryTransactions = this.helperService.getTransactionsForCategory(allTransactions, [category.id!]);
+    }
     this.categoryActivity = this.helperService.filterTransactionsBasedOnMonth(
       categoryTransactions,
       this.store.selectedMonth

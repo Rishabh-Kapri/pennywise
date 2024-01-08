@@ -1,26 +1,28 @@
 <ng-container *ngIf="{
     totalCurrentFunds: totalCurrentFunds$ | async,
     normalizedTransactions: store.normalizedTransactions$ | async,
+    filteredTransactions: filteredTransactions$ | async,
     accountData: accountData$ | async,
     transactions: store.transactions$ | async,
     categoryObj: categoryObj$ | async,
     categoryGroupData: categoryGroupData$ | async,
     payeesData: payeesData$ | async,
     selectedMonth: store.selectedMonth$ | async,
+    searchTransations: searchTransations$ | async,
     searchAccount: searchAccount$ | async,
     searchPayee: searchPayee$ | async,
     searchCategory: searchCategory$ | async
   } as data">
-  <div class="flex flex-col flex-wrap w-full h-full">
-    <div class="w-full flex-5 text-xl font-bold bg-zinc-850 border-b border-neutral-600 text-white p-3 pl-4">
-      {{ account?.name || 'All Accounts' }}
-    </div>
-    <div class="w-full flex-5 bg-zinc-850 border-b text-base font-bold border-neutral-600 text-white p-3 pl-4 budget">
-      {{ data.totalCurrentFunds | currency : 'INR' }}
-    </div>
-    <div class="w-full flex-1 bg-zinc-800">
+  <div class="flex flex-col w-full">
+    <nav class="sticky top-0">
+      <div class="w-full flex-5 text-xl font-bold bg-zinc-850 border-b border-neutral-600 text-white p-3 pl-4">
+        {{ account?.name || 'All Accounts' }}
+      </div>
+      <div class="w-full flex-5 bg-zinc-850 border-b text-base font-bold border-neutral-600 text-white p-3 pl-4 budget">
+        {{ data.totalCurrentFunds | currency : 'INR' }}
+      </div>
       <!-- Toolbar -->
-      <div class="flex justify-between p-1 pl-3 text-sm hover-color border-b border-neutral-600 w-full">
+      <div class="flex justify-between p-1 pl-3 bg-zinc-800 text-sm hover-color border-b border-neutral-600 w-full">
         <button 
           id="addTransactionBtn" 
           class="flex items-center" 
@@ -38,6 +40,8 @@
             type="search"
             placeholder="Search transactions"
             class="block w-full pl-7 p-1 text-sm text-neutral-400 border border-1 border-gray-300 rounded-lg bg-transparent focus:ring-sky-400 focus:border-sky-400"
+            [ngModel]="data.searchTransations"
+            (keyup)="searchTransations($event)"
             required>
         </div>
       </div>
@@ -50,6 +54,8 @@
           </div>
         </ng-container>
       </div>
+    </nav>
+    <div class="w-full flex-1 bg-zinc-800">
       <!-- Add new transaction -->
       <div class="w-full flex flex-col selected">
         <div
@@ -161,7 +167,7 @@
           <button class="mr-2 px-3 py-0.5 text-sm bg-sky-600 hover:bg-sky-500 text-white rounded-md" (click)="saveTransaction()">Save</button>
         </div>
       </div>
-      <ng-container *ngFor="let transaction of data.normalizedTransactions">
+      <ng-container *ngFor="let transaction of data.filteredTransactions">
         <div class="w-full flex flex-col">
           <div
             class="w-full h-9 flex justify-between text-[0.85rem] border-b border-neutral-600 text-white"
@@ -175,7 +181,7 @@
               <div
                 *ngIf="selectedTransaction?.id !== transaction.id"
                 [title]="transaction.accountName"
-                class="p-0.5">
+                class="p-0.5 text-left">
                 {{ transaction.accountName }}
               </div>
               <input
@@ -191,7 +197,9 @@
             <div
               [class]="transactionColumnsObj['Date'].class"
               class="h-full self-center text-center p-1 truncate">
-              <div *ngIf="selectedTransaction?.id !== transaction.id" class="p-0.5 text-left">{{ transaction.date }}</div>
+              <div *ngIf="selectedTransaction?.id !== transaction.id" class="p-0.5 text-left">
+                {{ transaction.date | date:'dd/MM/yyyy' }}
+              </div>
               <input
                 *ngIf="selectedTransaction && selectedTransaction?.id === transaction.id"
                 type="text"
@@ -322,7 +330,7 @@
               *ngIf="account !== null"
               [class]="transactionColumnsObj['Balance'].class"
               class="h-full self-center p-1 border-r border-neutral-600 truncate">
-              <div class="p-0.5 text-right" *ngIf="currentMode === mode.NONE">{{ transaction.balance }}</div>
+              <div class="p-0.5 text-right" *ngIf="currentMode === mode.NONE">{{ transaction.balance | number:'1.2-2' }}</div>
             </div>
           </div>
           <div

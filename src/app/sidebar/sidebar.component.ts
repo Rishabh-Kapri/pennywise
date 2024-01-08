@@ -9,7 +9,7 @@ import {
 } from '../models/account.model';
 import { FormControl, FormGroup, Validators } from '@angular/forms';
 import { StoreService } from '../services/store.service';
-import { catchError, map, startWith, switchMap, tap } from 'rxjs/operators';
+import { filter, map, switchMap } from 'rxjs/operators';
 import { Observable, combineLatest, of } from 'rxjs';
 import { Modal, ModalOptions } from 'flowbite';
 import { SelectedComponent } from '../models/state.model';
@@ -36,6 +36,7 @@ export class SidebarComponent implements OnInit, AfterViewInit {
   };
   budgetAccountData$: Observable<{ totalAmount: number; accounts: Account[] }>;
   trackingAccountData$: Observable<{ totalAmount: number; accounts: Account[] }>;
+  closedAccounts$: Observable<Account[]>;
   selectedComponent = SelectedComponent;
   text = 'Add';
   addAcountModal: Modal;
@@ -77,6 +78,7 @@ export class SidebarComponent implements OnInit, AfterViewInit {
         return of(data);
       })
     );
+    this.closedAccounts$ = this.store.allAccounts$.pipe(map((accounts) => accounts.filter((acc) => acc.closed)));
     this.totalCurrentFunds$ = this.store.allAccounts$?.pipe(map((data) => data.reduce((a, b) => a + b.balance, 0)));
     this.unSelectedBudgets$ = this.store.budget$.pipe(
       map((budgets) => budgets.filter((budget) => budget.isSelected === false))

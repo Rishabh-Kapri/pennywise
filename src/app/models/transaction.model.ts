@@ -23,6 +23,7 @@ export interface NormalizedTransaction {
   balance: number;
   note?: string;
   transferTransactionId: string | null,
+  transferAccountId: string | null,
   accountName: string;
   accountId: string;
   payeeName: string;

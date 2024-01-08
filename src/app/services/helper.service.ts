@@ -3,6 +3,7 @@ import { Transaction } from '../models/transaction.model';
 import { Category } from '../models/category.model';
 import { Dropdown, DropdownOptions } from 'flowbite';
 import { CategoryGroupData } from '../models/state.model';
+import { Account } from '../models/account.model';
 
 @Injectable({
   providedIn: 'root',
@@ -95,6 +96,13 @@ export class HelperService {
     return groupTransactions;
   }
 
+  isCategoryCreditCard(category: Category) {
+    if (category.name.toLowerCase().includes('credit')) {
+      return true;
+    }
+    return false;
+  }
+
   /**
    * Filters out transactions for specified category ids
    * @param {Transaction[]} transactions the transactions from which to filter
@@ -105,11 +113,27 @@ export class HelperService {
     return transactions.filter((transaction) => categoryIds.includes(transaction.categoryId ?? ''));
   }
 
+  getTransactionsForAccount(transactions: Transaction[], accountIds: string[]) {
+    return transactions.filter((transaction) => accountIds.includes(transaction.accountId ?? ''));
+  }
+
   /**
    * Get the activity amount for category based on the transactions
+   * @param {Transaction[]} transactions the transactions from which to filter
+   * @param {Category} category the category to get activity for
    */
-  getActivityForCategory(transactions: Transaction[], category: Category): number {
-    return this.getTransactionsForCategory(transactions, [category.id!]).reduce((acc, curr) => acc + curr.amount, 0);
+  getActivityForCategory(transactions: Transaction[], category: Category, accounts: Account[]): number {
+    let filteredTransactions: Transaction[] = [];
+    if (this.isCategoryCreditCard(category)) {
+      // if category is credit card then fetch accountId
+      const ccAccount = accounts.find((acc) => acc.name.toLowerCase().includes('credit'));
+      if (ccAccount) {
+        filteredTransactions = this.getTransactionsForAccount(transactions, [ccAccount.id!]);
+      }
+    } else {
+      filteredTransactions = this.getTransactionsForCategory(transactions, [category.id!]);
+    }
+    return filteredTransactions.reduce((acc, curr) => acc + curr.amount, 0);
   }
 
   /**
@@ -118,12 +142,15 @@ export class HelperService {
    * @param {string} monthKey the selected month key
    * @returns Transaction[] the filtered transaction for the provided month
    */
-  filterTransactionsBasedOnMonth(transactions: Transaction[], monthKey: string): Transaction[] {
+  filterTransactionsBasedOnMonth(transactions: Transaction[], monthKey: string, categoryName?: string): Transaction[] {
     const { year, month } = this.splitKeyIntoMonthYear(monthKey);
     const startDate = new Date(year, month);
     const endDate = new Date(year, month + 1);
+    if (monthKey === '2021-7' && categoryName === 'YNAB') {
+      console.log('DATE:', startDate, endDate, transactions);
+    }
     const filteredTransactions = transactions.filter((transaction) => {
-      const date = new Date(Date.parse(this.getDateFormatToParse(transaction.date)));
+      const date = new Date(transaction.date);
       return date.getTime() >= startDate.getTime() && date.getTime() < endDate.getTime();
     });
     return filteredTransactions;

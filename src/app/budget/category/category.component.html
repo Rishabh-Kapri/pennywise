@@ -1,49 +1,56 @@
-<ng-container *ngIf="{ budgetKey: store.selectedMonth$ | async } as data">
-  <div class="flex w-full flex-wrap w-full">
-    <div class="p-1 text-sm hover-color border-b border-neutral-600 w-full">
-      <button id="addCategoryGroupBtn" data-dropdown-toggle="addCategoryGroupDropdown" class="flex items-center">
-        <ng-icon class="mr-1 hover:text-sky-400" name="heroPlusCircleSolid" color="#0ea5e9" size="20px"></ng-icon>
-        <span class="text-sky-500 hover:text-sky-400">Category Group</span>
-      </button>
-    </div>
-    <!-- header -->
-    <div class="w-full bg-zinc-850 flex text-[0.75rem] text-neutral-400 py-1.5 px-5 border-b border-neutral-600">
-      <div class="flex-40">CATEGORY</div>
-      <div class="flex-20 text-right">ASSIGNED</div>
-      <div class="flex-20 text-right">ACTIVITY</div>
-      <div class="flex-20 text-right">AVAILABLE</div>
-    </div>
-    <div class="w-full" *ngFor="let item of store.categoryGroupData$ | async; let index = index">
-      <div
-        class="flex items-center w-full py-1.5 px-5 text-sm text-white text-bold bg-zinc-850 border-b border-neutral-600">
-        <div class="flex-40 flex items-center cursor-pointer name-container">
-          <span>{{ item.name }}</span>
-          <button
-            [attr.data-dropdown-toggle]="'addCategoryDropdown-' + index"
-            [id]="'addCategoryBtn-' + index"
-            class="ml-1 flex items-center add-category-btn"
-            (click)="showDropdown(item.id, index)">
-            <ng-icon class="hover:text-sky-400" name="heroPlusCircleSolid" color="#0ea5e9" size="16px"></ng-icon>
-          </button>
-          <ng-container *ngTemplateOutlet="addCategoryTemplate; context: { item: item, index: index }"></ng-container>
-        </div>
-        <div class="flex-20 text-right" [ngClass]="{ 'text-neutral-500': item.budgeted === 0 }">
-          {{ item.budgeted | currency : 'INR' }}
-        </div>
-        <div class="flex-20 text-right" [ngClass]="{ 'text-neutral-500': item.activity === 0 }">
-          {{ item.activity | currency : 'INR' }}
-        </div>
-        <div class="flex-20 text-right" [ngClass]="{ 'text-neutral-500': item.balance === 0 }">
-          {{ item.balance | currency : 'INR' }}
-        </div>
+<ng-container *ngIf="{
+    budgetKey: store.selectedMonth$ | async ,
+    selectedMonth: store.selectedMonth$ | async,
+    categoryGroupData: store.categoryGroupData$ | async
+  } as data">
+  <div class="flex justify-between">
+    <div class="flex flex-wrap flex-[0_0_75%]">
+      <div class="p-1 text-sm hover-color border-b border-neutral-600 w-full">
+        <button id="addCategoryGroupBtn" data-dropdown-toggle="addCategoryGroupDropdown" class="flex items-center">
+          <ng-icon class="mr-1 hover:text-sky-400" name="heroPlusCircleSolid" color="#0ea5e9" size="20px"></ng-icon>
+          <span class="text-sky-500 hover:text-sky-400">Category Group</span>
+        </button>
       </div>
-      <app-category-item
-        [categories]="item.categories"
-        [budgetKey]="data.budgetKey!"
-        (editCategoryEvent)="editCategory($event)"
-        (deleteCategoryEvent)="deleteCategory($event)"
-        (hideCategoryEvent)="hideCategory($event)"></app-category-item>
+      <!-- header -->
+      <div class="w-full bg-zinc-850 flex text-[0.75rem] text-neutral-400 py-1.5 px-5 border-b border-neutral-600">
+        <div class="flex-40">CATEGORY</div>
+        <div class="flex-20 text-right">ASSIGNED</div>
+        <div class="flex-20 text-right">ACTIVITY</div>
+        <div class="flex-20 text-right">AVAILABLE</div>
+      </div>
+      <div class="w-full" *ngFor="let item of data.categoryGroupData; let index = index">
+        <div
+          class="flex items-center w-full py-1.5 px-5 text-sm text-white text-bold bg-zinc-850 border-b border-neutral-600">
+          <div class="flex-40 flex items-center cursor-pointer name-container">
+            <span>{{ item.name }}</span>
+            <button
+              [attr.data-dropdown-toggle]="'addCategoryDropdown-' + index"
+              [id]="'addCategoryBtn-' + index"
+              class="ml-1 flex items-center add-category-btn"
+              (click)="showDropdown(item.id, index)">
+              <ng-icon class="hover:text-sky-400" name="heroPlusCircleSolid" color="#0ea5e9" size="16px"></ng-icon>
+            </button>
+            <ng-container *ngTemplateOutlet="addCategoryTemplate; context: { item: item, index: index }"></ng-container>
+          </div>
+          <div class="flex-20 text-right" [ngClass]="{ 'text-neutral-500': item.budgeted[data.selectedMonth ?? ''] === 0 }">
+            {{ item.budgeted?.[data.selectedMonth ?? ''] ?? 0 | currency : 'INR' }}
+          </div>
+          <div class="flex-20 text-right" [ngClass]="{ 'text-neutral-500': item.activity[data.selectedMonth ?? ''] === 0 }">
+            {{ item.activity?.[data?.selectedMonth ?? ''] ?? 0 | currency : 'INR' }}
+          </div>
+          <div class="flex-20 text-right" [ngClass]="{ 'text-neutral-500': item.balance[data.selectedMonth ?? ''] === 0 }">
+            {{ item.balance?.[data?.selectedMonth ?? ''] ?? 0 | currency : 'INR' }}
+          </div>
+        </div>
+        <app-category-item
+          [categories]="item.categories"
+          [budgetKey]="data.budgetKey!"
+          (editCategoryEvent)="editCategory($event)"
+          (deleteCategoryEvent)="deleteCategory($event)"
+          (hideCategoryEvent)="hideCategory($event)"></app-category-item>
+      </div>
     </div>
+    <div class="border-l border-neutral-600 flex-[0_0_25%]">Test</div>
   </div>
 </ng-container>
 

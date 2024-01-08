@@ -5,12 +5,14 @@
     totalCurrentFunds: totalCurrentFunds$ | async,
     budgetAccountData: budgetAccountData$ | async,
     trackingAccountData: trackingAccountData$ | async,
+    closedAccounts: closedAccounts$ | async,
     budgets: store.budget$ | async,
     selectedBudget: store.selectedBudget$ | async,
     unSelectedBudgets: unSelectedBudgets$ | async,
-    selectedAccount: store.selectedAccount$ | async
+    selectedAccount: store.selectedAccount$ | async,
+    inflowWithBalance: store.inflowWithBalance$ | async
   } as data">
-  <div class="flex h-screen w-64 flex-col justify-between bg-zinc-900 text-zinc-300 z-50 border-r border-neutral-700">
+  <div class="flex h-screen h-inherit w-64 flex-col justify-between bg-zinc-900 text-zinc-300 z-50 border-r border-neutral-700">
     <div class="p-2">
       <div class="mb-2">
         <div class="flex w-full items-center justify-between">
@@ -58,7 +60,7 @@
         </div>
       </div>
       <!-- Budget Accounts -->
-      <div class="flex mb-2 flex flex-col">
+      <div class="mb-2 flex flex-col">
         <div
           class="flex w-full items-center justify-between"
           aria-controls="dropdown-budget-account"
@@ -86,7 +88,7 @@
         </ul>
       </div>
       <!-- Tracking Accounts -->
-      <div class="flex mb-2 flex flex-col">
+      <div class="mb-2 flex flex-col">
         <div
           class="flex w-full items-center justify-between"
           aria-controls="dropdown-tracking-account"
@@ -114,15 +116,30 @@
         </ul>
       </div>
       
-      <div class="mb-2">
-        <div class="flex w-full items-center justify-between">
-          <a
-            href="#"
-            class="flex w-full cursor-pointer items-center rounded-lg px-3 py-2 transitiion duration-300 ease-in-out hover:bg-zinc-700 hover:text-white">
-            <ng-icon name="heroCurrencyRupee"></ng-icon>
-            <span class="ml-3 font-bold">Assets & Liabilities</span>
-          </a>
+      <div class="flex flex-col mb-2">
+        <div 
+          class="flex w-full items-center justify-between"
+          aria-controls="dropdown-closed-account"
+          data-collapse-toggle="dropdown-closed-account">
+          <div
+            class="flex items-center ml-3 h-full cursor-pointer py-2 transition duration-300 ease-in-out hover:text-white">
+            <span class="ml-3 font-bold">Closed</span>
+          </div>
         </div>
+        <ul id="dropdown-closed-account" class="w-full border-zinc-800 text-sm">
+          <ng-container *ngFor="let account of data?.closedAccounts">
+            <li
+              class="flex items-center mb-1 p-1 px-3 rounded-lg transition duration-300 ease-in-out hover:text-white hover:bg-zinc-600 cursor-pointer account-container"
+              [ngClass]="{ 'bg-zinc-700': data.selectedAccount?.id === account.id }"
+              (click)="selectAccount(account)">
+              <ng-icon name="heroPencilSolid" class="edit-btn" (click)="editAccount(account)"></ng-icon>
+              <div class="mr-4 ml-4 w-full flex justify-between">
+                <div>{{ account.name }}</div>
+                <div class="">{{ account.balance | currency : 'INR' }}</div>
+              </div>
+            </li>
+          </ng-container>
+        </ul>
       </div>
       <button
         type="button"

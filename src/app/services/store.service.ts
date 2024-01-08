@@ -9,6 +9,7 @@ import {
   filter,
   from,
   of,
+  shareReplay,
   startWith,
   switchMap,
 } from 'rxjs';
@@ -19,7 +20,7 @@ import { Payee } from '../models/payee.model';
 import { Account, BudgetAccountType, TrackingAccountType } from '../models/account.model';
 import { DatabaseService } from './database.service';
 import { CategoryGroupData, SelectedComponent } from '../models/state.model';
-import { INFLOW_CATEGORY_NAME } from '../constants/general';
+import { INFLOW_CATEGORY_NAME, MASTER_CATEGORY_GROUP_NAME } from '../constants/general';
 import { HelperService } from './helper.service';
 import { NormalizedTransaction, Transaction } from '../models/transaction.model';
 
@@ -27,6 +28,7 @@ import { NormalizedTransaction, Transaction } from '../models/transaction.model'
   providedIn: 'root',
 })
 export class StoreService {
+  categoryName = 'YNAB';
   accounts$: BehaviorSubject<Account[]> = new BehaviorSubject<Account[]>([]);
   trackingAccounts$ = new BehaviorSubject<Account[]>([]);
   budgetAccounts$ = new BehaviorSubject<Account[]>([]);
@@ -47,6 +49,7 @@ export class StoreService {
   allAccounts$: Observable<Account[]>;
   normalizedTransactions$: Observable<NormalizedTransaction[]>;
   categoryGroupDataWithInflow: any;
+  inflowWithBalance$: Observable<InflowCategory | null>;
 
   accountForm: FormGroup;
 
@@ -69,18 +72,6 @@ export class StoreService {
         const selectedBudget = budget;
         this.dbService.getAccountsStream(selectedBudget?.id!).subscribe((accounts) => {
           this.accounts$.next(accounts);
-          // this.trackingAccounts$.next(
-          //   accounts.filter((acc) =>
-          //     [TrackingAccountType.ASSET, TrackingAccountType.LIABILITY].includes(<TrackingAccountType>acc.type)
-          //   )
-          // );
-          // this.budgetAccounts$.next(
-          //   accounts.filter((acc) =>
-          //     [BudgetAccountType.CREDIT_CARD, BudgetAccountType.SAVINGS, BudgetAccountType.CHECKING].includes(
-          //       <BudgetAccountType>acc.type
-          //     )
-          //   )
-          // );
         });
         this.dbService.getCategoriesStream(selectedBudget?.id!).subscribe((categories) => {
           this.categories$.next(categories as Category[]);
@@ -107,19 +98,23 @@ export class StoreService {
           acc.balance = transactions.filter((tran) => tran.accountId === acc.id!).reduce((a, b) => a + b.amount, 0);
         }
         this.budgetAccounts$.next(
-          accounts.filter((acc) =>
-            [BudgetAccountType.CREDIT_CARD, BudgetAccountType.SAVINGS, BudgetAccountType.CHECKING].includes(
-              <BudgetAccountType>acc.type
-            )
+          accounts.filter(
+            (acc) =>
+              [BudgetAccountType.CREDIT_CARD, BudgetAccountType.SAVINGS, BudgetAccountType.CHECKING].includes(
+                <BudgetAccountType>acc.type
+              ) && !acc.closed
           )
         );
         this.trackingAccounts$.next(
-          accounts.filter((acc) =>
-            [TrackingAccountType.ASSET, TrackingAccountType.LIABILITY].includes(<TrackingAccountType>acc.type)
+          accounts.filter(
+            (acc) =>
+              [TrackingAccountType.ASSET, TrackingAccountType.LIABILITY].includes(<TrackingAccountType>acc.type) &&
+              !acc.closed
           )
         );
         return of(accounts);
-      })
+      }),
+      shareReplay(1)
     );
 
     // Calculate Normalized Transactions
@@ -151,9 +146,10 @@ export class StoreService {
             date: transaction.date,
             outflow: transaction.amount < 0 ? Math.abs(transaction.amount) : null,
             inflow: transaction.amount >= 0 ? Math.abs(transaction.amount) : null,
-            balance: accBal,
+            balance: Number(accBal.toFixed(2)),
             note: transaction.note,
             transferTransactionId: transaction.transferTransactionId ?? null,
+            transferAccountId: transaction.transferAccountId ?? null,
             accountName: account?.name ?? '',
             accountId: account?.id!,
             payeeName: payee?.name ?? '',
@@ -165,7 +161,8 @@ export class StoreService {
           prevTransacAmount = transaction.amount;
         }
         return of(normalizedTransactions);
-      })
+      }),
+      shareReplay(1)
     );
 
     this.categoryGroupData$ = combineLatest([
@@ -177,43 +174,97 @@ export class StoreService {
       switchMap(([categoryGroups, categories, transactions, selectedMonth]) => {
         const categoryGroupData: CategoryGroupData[] = [];
         for (const group of categoryGroups) {
-          if (group.name !== 'Master Category') {
+          if (group.name !== MASTER_CATEGORY_GROUP_NAME) {
             const groupCategories = categories.filter((cat) => cat.categoryGroupId === group.id);
+            if (group.name === 'One time expenses') {
+              // console.log('GROUP:', group, groupCategories);
+            }
             const data: CategoryGroupData = {
               categories: [
                 ...groupCategories.map((category) => {
-                  if (category.name === 'group 4 - cat 1') {
-                    // console.log(transactions);
-                  }
                   const currentMonthTransactions = this.helperService.filterTransactionsBasedOnMonth(
                     transactions,
                     this.selectedMonth
                   );
+                  let currMonthCatTransactions: Transaction[] = [];
+                  const ccAccount = this.accounts$.value.find((acc) => acc.name.toLowerCase().includes('credit'));
+                  if (this.helperService.isCategoryCreditCard(category)) {
+                    currMonthCatTransactions = this.helperService.getTransactionsForAccount(currentMonthTransactions, [
+                      ccAccount?.id!,
+                    ]);
+                  } else {
+                    currMonthCatTransactions = this.helperService.getTransactionsForCategory(currentMonthTransactions, [
+                      category.id!,
+                    ]);
+                  }
                   if (category?.budgeted?.[selectedMonth] === undefined) {
                     category.budgeted = { ...category.budgeted, [selectedMonth]: 0 };
                   }
                   category.activity = {
                     ...category.activity,
-                    [selectedMonth]: this.helperService.getActivityForCategory(currentMonthTransactions, category),
+                    [selectedMonth]: currMonthCatTransactions.reduce((acc, curr) => acc + curr.amount, 0),
                   };
                   category.balance = {
                     ...category.balance,
-                    [selectedMonth]: this.getCategoryBalance(this.selectedMonth, category, currentMonthTransactions),
+                    [selectedMonth]: this.getCategoryBalance(this.selectedMonth, category, currMonthCatTransactions),
                   };
                   return { ...category, showBudgetInput: false };
                 }),
               ],
               name: group.name,
               id: group.id!,
-              balance: groupCategories.reduce((acc, curr) => acc + (curr.balance?.[selectedMonth] ?? 0), 0),
-              budgeted: groupCategories.reduce((acc, curr) => acc + (curr.budgeted?.[selectedMonth] ?? 0), 0),
-              activity: groupCategories.reduce((acc, curr) => acc + (curr.activity?.[selectedMonth] ?? 0), 0),
+              balance: {
+                [selectedMonth]: groupCategories.reduce((amount, cat) => {
+                  return amount + (cat?.balance?.[selectedMonth] ?? 0);
+                }, 0),
+              },
+              activity: {
+                [selectedMonth]: groupCategories.reduce((amount, cat) => {
+                  return amount + (cat?.activity?.[selectedMonth] ?? 0);
+                }, 0),
+              },
+              budgeted: {
+                [selectedMonth]: groupCategories.reduce((amount, cat) => {
+                  return amount + (cat?.budgeted?.[selectedMonth] ?? 0);
+                }, 0),
+              },
             };
             categoryGroupData.push(data);
           }
         }
         return of(categoryGroupData);
-      })
+      }),
+      shareReplay(1)
+    );
+
+    this.inflowWithBalance$ = combineLatest([
+      this.selectedMonth$,
+      this.inflowCategory$,
+      this.categories$,
+      this.transactions$,
+    ]).pipe(
+      switchMap(([selectedMonth, inflowCategory, categories, transactions]) => {
+        const categoriesWithoutInflow = categories.filter((cat) => cat.name !== INFLOW_CATEGORY_NAME);
+        // console.log(selectedMonth, inflowCategory, categoriesWithoutInflow);
+        if (inflowCategory) {
+          const totalBudgeted = categoriesWithoutInflow.reduce((totalBudgeted, cat) => {
+            return totalBudgeted + Object.values(cat.budgeted).reduce((a, b) => a + b, 0);
+          }, 0);
+          // console.log('totalAssigned:', totalBudgeted);
+          const inflowAmount = this.helperService
+            .getTransactionsForCategory(transactions, [inflowCategory.id!])
+            .reduce((totalAmount, transaction) => totalAmount + transaction.amount, 0);
+          // console.log(
+          //   'inflowTransactions:',
+          //   this.helperService.getTransactionsForCategory(transactions, [inflowCategory.id!])
+          // );
+          // console.log('inflowAmount:', inflowAmount);
+          inflowCategory.budgeted = inflowAmount - totalBudgeted;
+        }
+        console.log(inflowCategory);
+        return of(inflowCategory);
+      }),
+      shareReplay(1)
     );
   }
 
@@ -264,26 +315,67 @@ export class StoreService {
   }
 
   /**
-   * Fetches the category's balance
-   *
+   * @description Fetches the category's balance
+   * @param {string} monthKey the key of the month
+   * @param {Category} category the category for which balance is to be fetched
+   * @param {Transaction[]} currentTransactions the category transactions for monthKey
    */
   getCategoryBalance(monthKey: string, category: Category, currentTransactions: Transaction[]): number {
     let balance = 0;
     const previousMonthKey = this.helperService.getPreviousMonthKey(monthKey);
+    if (category.name === this.categoryName) {
+      // console.log('Month key:', monthKey, category.name, currentTransactions, 'Previous month:', previousMonthKey);
+    }
     if (category.budgeted[previousMonthKey] === undefined) {
       // if previous month budgeted doesn't exists, use the current month budgeted
       // even if no money is assigned, 0 will be present as budgeted even if one category is budgeted
-      balance =
-        (category.budgeted?.[monthKey] ?? 0) + this.helperService.getActivityForCategory(currentTransactions, category);
+      balance = (category.budgeted?.[monthKey] ?? 0) + currentTransactions.reduce((acc, curr) => acc + curr.amount, 0);
+      // if (category.name === 'Unexpected expenses') {
+      //   console.log('Cat budgeted:', category.budgeted?.[monthKey]);
+      //   console.log('Bal:', balance, this.helperService.getTransactionsForCategory(currentTransactions, [category.id!]));
+      // }
     } else {
+      // if (category.name === 'Unexpected expenses') {
+      //   console.log('Cat previous balance:', category.balance?.[previousMonthKey], 'Cat curr budgeted:', category.budgeted?.[monthKey]);
+      // }
       // if previous month has money budgeted
       if (category.balance?.[previousMonthKey] === undefined) {
+        // console.log('if no balance is calculated for previous month', monthKey);
         // if no balance is calculated for pervious month then calculate it
-        const transactions = this.helperService.filterTransactionsBasedOnMonth(
+        const previousMonthKeyTransactions = this.helperService.filterTransactionsBasedOnMonth(
           this.transactions$.value,
-          previousMonthKey
+          previousMonthKey,
+          category.name
         );
-        balance = this.getCategoryBalance(previousMonthKey, category, transactions);
+        let catPreviousMonthTransactions: Transaction[] = [];
+        const ccAccount = this.accounts$.value.find((acc) => acc.name.toLowerCase().includes('credit'));
+        if (this.helperService.isCategoryCreditCard(category)) {
+          catPreviousMonthTransactions = this.helperService.getTransactionsForAccount(previousMonthKeyTransactions, [
+            ccAccount?.id!,
+          ]);
+        } else {
+          catPreviousMonthTransactions = this.helperService.getTransactionsForCategory(previousMonthKeyTransactions, [
+            category.id!,
+          ]);
+        }
+        balance = this.getCategoryBalance(previousMonthKey, category, catPreviousMonthTransactions);
+        if (category.name === this.categoryName) {
+          // console.log(
+          //   'Month transactions: ',
+          //   previousMonthKeyTransactions,
+          //   'Month category transactions:',
+          //   catPreviousMonthTransactions
+          // );
+          // console.log(
+          //   previousMonthKey,
+          //   'Budgeted:',
+          //   category.budgeted?.[previousMonthKey],
+          //   'Activity:',
+          //   catPreviousMonthTransactions.reduce((a, c) => a + c.amount, 0),
+          //   'Balance:',
+          //   balance
+          // );
+        }
         if (category.balance) {
           category.balance = {
             ...category.balance,
@@ -294,23 +386,21 @@ export class StoreService {
           category.balance[previousMonthKey] = balance;
         }
         // calculate current month balance
-        if (category.name === 'group 4 - cat 1' && monthKey === '2023-8') {
-          // console.log(currentTransactions);
-          // console.log('Activity:', this.helperService.getActivityForCategory(currentTransactions, category));
-        }
         balance =
           category.balance[previousMonthKey] +
           category.budgeted[monthKey] +
-          this.helperService.getActivityForCategory(currentTransactions, category);
+          currentTransactions.reduce((acc, curr) => acc + curr.amount, 0);
       } else {
-        // if balance if calculated for previous month
+        // console.log('if balance is calculated for previous month');
+        // if balance is calculated for previous month
         balance =
           category.balance[previousMonthKey] +
           category.budgeted[monthKey] +
-          this.helperService.getActivityForCategory(currentTransactions, category);
+          currentTransactions.reduce((acc, curr) => acc + curr.amount, 0);
         category.balance[monthKey] = balance;
       }
     }
+    balance = Number(Number(balance).toFixed(2));
     return balance;
   }
 
