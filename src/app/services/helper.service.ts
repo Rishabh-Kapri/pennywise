@@ -146,9 +146,6 @@ export class HelperService {
     const { year, month } = this.splitKeyIntoMonthYear(monthKey);
     const startDate = new Date(year, month);
     const endDate = new Date(year, month + 1);
-    if (monthKey === '2021-7' && categoryName === 'YNAB') {
-      console.log('DATE:', startDate, endDate, transactions);
-    }
     const filteredTransactions = transactions.filter((transaction) => {
       const date = new Date(transaction.date);
       return date.getTime() >= startDate.getTime() && date.getTime() < endDate.getTime();

@@ -259,9 +259,8 @@ export class StoreService {
           //   this.helperService.getTransactionsForCategory(transactions, [inflowCategory.id!])
           // );
           // console.log('inflowAmount:', inflowAmount);
-          inflowCategory.budgeted = inflowAmount - totalBudgeted;
+          inflowCategory.budgeted = Number(Number(inflowAmount - totalBudgeted).toFixed(2));
         }
-        console.log(inflowCategory);
         return of(inflowCategory);
       }),
       shareReplay(1)
