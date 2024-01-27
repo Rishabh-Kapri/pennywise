@@ -13,7 +13,7 @@
     searchPayee: searchPayee$ | async,
     searchCategory: searchCategory$ | async
   } as data">
-  <div class="flex flex-col w-full">
+  <div class="flex flex-col w-full h-screen">
     <nav class="sticky top-0">
       <div class="w-full flex-5 text-xl font-bold bg-zinc-850 border-b border-neutral-600 text-white p-3 pl-4">
         {{ account?.name || 'All Accounts' }}
@@ -55,7 +55,7 @@
         </ng-container>
       </div>
     </nav>
-    <div class="w-full flex-1 bg-zinc-800">
+    <div class="w-full h-full overflow-y-auto flex-1 bg-zinc-800">
       <!-- Add new transaction -->
       <div class="w-full flex flex-col selected">
         <div
@@ -167,7 +167,7 @@
           <button class="mr-2 px-3 py-0.5 text-sm bg-sky-600 hover:bg-sky-500 text-white rounded-md" (click)="saveTransaction()">Save</button>
         </div>
       </div>
-      <ng-container *ngFor="let transaction of data.filteredTransactions">
+      <ng-container *ngFor="let transaction of data.filteredTransactions; trackBy: trackByTransactionId">
         <div class="w-full flex flex-col">
           <div
             class="w-full h-9 flex justify-between text-[0.85rem] border-b border-neutral-600 text-white"
@@ -181,7 +181,7 @@
               <div
                 *ngIf="selectedTransaction?.id !== transaction.id"
                 [title]="transaction.accountName"
-                class="p-0.5 text-left">
+                class="p-0.5 text-left truncate">
                 {{ transaction.accountName }}
               </div>
               <input
@@ -197,7 +197,7 @@
             <div
               [class]="transactionColumnsObj['Date'].class"
               class="h-full self-center text-center p-1 truncate">
-              <div *ngIf="selectedTransaction?.id !== transaction.id" class="p-0.5 text-left">
+              <div *ngIf="selectedTransaction?.id !== transaction.id" class="p-0.5 text-left truncate">
                 {{ transaction.date | date:'dd/MM/yyyy' }}
               </div>
               <input
@@ -214,7 +214,7 @@
               [id]="'payeeSelectBtn-' + transaction.id">
               <div
                 *ngIf="selectedTransaction?.id !== transaction.id"
-                class="p-0.5 text-left"
+                class="p-0.5 text-left truncate"
                 [title]="transaction.payeeName">
                 {{ transaction.payeeName }}
               </div>
@@ -252,7 +252,7 @@
               [id]="'categorySelectBtn-' + transaction.id">
               <div
                 *ngIf="selectedTransaction?.id !== transaction.id"
-                class="p-0.5 text-left"
+                class="p-0.5 text-left truncate"
                 [class.disabled-text]="transaction.categoryId === null"
                 [title]="transaction.categoryName">
                 {{ transaction.categoryName ? transaction.categoryName : 'Category Not Needed' }}

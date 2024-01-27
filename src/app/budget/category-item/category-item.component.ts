@@ -21,7 +21,7 @@ export class CategoryItemComponent implements AfterViewInit {
   @Input() budgetKey: string;
   @Output() editCategoryEvent = new EventEmitter<Category | InflowCategory>();
   @Output() deleteCategoryEvent = new EventEmitter<Category>();
-  @Output() hideCategoryEvent = new EventEmitter<Category>();
+  @Output() hideUnhideCategoryEvent = new EventEmitter<Category>();
   accountObj$: Observable<Record<string, Account>>;
   categoryObj$: Observable<Record<string, Category>>;
   payeeObj$: Observable<Record<string, Payee>>;
@@ -138,8 +138,8 @@ export class CategoryItemComponent implements AfterViewInit {
     this.menuDropdown.hide();
   }
 
-  hideCategory(category: Category) {
-    this.hideCategoryEvent.emit(category);
+  hideUnhideCategory(category: Category) {
+    this.hideUnhideCategoryEvent.emit(category);
     this.menuDropdown.hide();
   }
 

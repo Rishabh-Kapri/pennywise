@@ -9,6 +9,7 @@ export interface HttpState<T> {
 export interface CategoryGroupData {
   name: string;
   id: string;
+  collapsed: boolean;
   balance: Record<string, number>;
   budgeted: Record<string, number>;
   activity: Record<string, number>;

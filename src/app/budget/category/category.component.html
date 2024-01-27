@@ -18,17 +18,24 @@
         <div class="flex-20 text-right">ACTIVITY</div>
         <div class="flex-20 text-right">AVAILABLE</div>
       </div>
-      <div class="w-full" *ngFor="let item of data.categoryGroupData; let index = index">
-        <div
-          class="flex items-center w-full py-1.5 px-5 text-sm text-white text-bold bg-zinc-850 border-b border-neutral-600">
+      <div
+        class="w-full"
+        *ngFor="let item of data.categoryGroupData; let index = index">
+        <div class="flex items-center w-full py-1.5 px-5 text-sm text-white text-bold bg-zinc-850 border-b border-neutral-600">
           <div class="flex-40 flex items-center cursor-pointer name-container">
-            <span>{{ item.name }}</span>
+            <span (click)="showHideGroupCategories(item)">{{ item.name }}</span>
             <button
+              *ngIf="item.id !== 'hidden-cat'" 
               [attr.data-dropdown-toggle]="'addCategoryDropdown-' + index"
               [id]="'addCategoryBtn-' + index"
               class="ml-1 flex items-center add-category-btn"
               (click)="showDropdown(item.id, index)">
-              <ng-icon class="hover:text-sky-400" name="heroPlusCircleSolid" color="#0ea5e9" size="16px"></ng-icon>
+              <ng-icon 
+                class="hover:text-sky-400" 
+                name="heroPlusCircleSolid" 
+                color="#0ea5e9" 
+                size="16px">
+              </ng-icon>
             </button>
             <ng-container *ngTemplateOutlet="addCategoryTemplate; context: { item: item, index: index }"></ng-container>
           </div>
@@ -42,12 +49,14 @@
             {{ item.balance?.[data?.selectedMonth ?? ''] ?? 0 | currency : 'INR' }}
           </div>
         </div>
-        <app-category-item
-          [categories]="item.categories"
-          [budgetKey]="data.budgetKey!"
-          (editCategoryEvent)="editCategory($event)"
-          (deleteCategoryEvent)="deleteCategory($event)"
-          (hideCategoryEvent)="hideCategory($event)"></app-category-item>
+        <div [ngClass]="{ hidden: item.collapsed }">
+          <app-category-item
+            [categories]="item.categories"
+            [budgetKey]="data.budgetKey!"
+            (editCategoryEvent)="editCategory($event)"
+            (deleteCategoryEvent)="deleteCategory($event)"
+            (hideUnhideCategoryEvent)="hideUnhideCategory($event)"></app-category-item>
+        </div>
       </div>
     </div>
     <div class="border-l border-neutral-600 flex-[0_0_25%]">Test</div>

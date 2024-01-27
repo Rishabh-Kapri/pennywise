@@ -80,8 +80,8 @@
               (click)="selectAccount(account)">
               <ng-icon name="heroPencilSolid" class="edit-btn" (click)="editAccount(account)"></ng-icon>
               <div class="mr-4 ml-4 w-full flex justify-between">
-                <div>{{ account.name }}</div>
-                <div class="">{{ account.balance | currency : 'INR' }}</div>
+                <div class="w-21 truncate" [title]="account.name">{{ account.name }}</div>
+                <div class="truncate">{{ account.balance | currency : 'INR' }}</div>
               </div>
             </li>
           </ng-container>
@@ -108,14 +108,15 @@
               (click)="selectAccount(account)">
               <ng-icon name="heroPencilSolid" class="edit-btn" (click)="editAccount(account)"></ng-icon>
               <div class="mr-4 ml-4 w-full flex justify-between">
-                <div>{{ account.name }}</div>
-                <div class="">{{ account.balance | currency : 'INR' }}</div>
+                <div class="w-21 truncate" [title]="account.name">{{ account.name }}</div>
+                <div class="truncate">{{ account.balance | currency : 'INR' }}</div>
               </div>
             </li>
           </ng-container>
         </ul>
       </div>
       
+      <!-- Closed Accounts -->
       <div class="flex flex-col mb-2">
         <div 
           class="flex w-full items-center justify-between"
@@ -126,7 +127,7 @@
             <span class="ml-3 font-bold">Closed</span>
           </div>
         </div>
-        <ul id="dropdown-closed-account" class="w-full border-zinc-800 text-sm">
+        <ul id="dropdown-closed-account" class="w-full hidden border-zinc-800 text-sm">
           <ng-container *ngFor="let account of data?.closedAccounts">
             <li
               class="flex items-center mb-1 p-1 px-3 rounded-lg transition duration-300 ease-in-out hover:text-white hover:bg-zinc-600 cursor-pointer account-container"
@@ -134,8 +135,8 @@
               (click)="selectAccount(account)">
               <ng-icon name="heroPencilSolid" class="edit-btn" (click)="editAccount(account)"></ng-icon>
               <div class="mr-4 ml-4 w-full flex justify-between">
-                <div>{{ account.name }}</div>
-                <div class="">{{ account.balance | currency : 'INR' }}</div>
+                <div class="w-21 truncate" [title]="account.name">{{ account.name }}</div>
+                <div class="truncate">{{ account.balance | currency : 'INR' }}</div>
               </div>
             </li>
           </ng-container>
@@ -228,7 +229,8 @@
           <button
             *ngIf="text === 'Edit'"
             type="button"
-            class="text-white border border-neutral-500 hover:bg-red-900 hover:border-transparent font-semibold rounded-lg text-sm px-4 py-1.5 text-center">
+            class="text-white border border-neutral-500 hover:bg-red-900 hover:border-transparent font-semibold rounded-lg text-sm px-4 py-1.5 text-center"
+            (click)="closeAccount()">
             Close Account
           </button>
           <button

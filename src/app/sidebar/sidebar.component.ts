@@ -163,4 +163,9 @@ export class SidebarComponent implements OnInit, AfterViewInit {
     this.store.selectedAccount = account;
     this.store.selectedComponent = SelectedComponent.ACCOUNTS;
   }
+
+  async closeAccount() {
+    const acc = { ...this.editingAccount, closed: true };
+    await this.dbService.editAccount(acc);
+  }
 }

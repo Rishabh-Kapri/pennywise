@@ -3,6 +3,7 @@ import { Dropdown } from 'flowbite';
 import { BehaviorSubject } from 'rxjs';
 import { Category, CategoryDTO, InflowCategory } from 'src/app/models/category.model';
 import { CategoryGroup } from 'src/app/models/catergoryGroup';
+import { CategoryGroupData } from 'src/app/models/state.model';
 import { DatabaseService } from 'src/app/services/database.service';
 import { HelperService } from 'src/app/services/helper.service';
 import { StoreService } from 'src/app/services/store.service';
@@ -62,6 +63,10 @@ export class CategoryComponent implements OnInit, AfterViewInit, OnDestroy {
     dropdown.toggle();
   }
 
+  showHideGroupCategories(group: CategoryGroupData) {
+    group.collapsed = !group.collapsed;
+  }
+
   async addCategory(groupId: string, index: number) {
     if (!this.categoryName) {
       this.groupDropdowns[groupId].hide();
@@ -95,22 +100,19 @@ export class CategoryComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   async editCategory(category: Category | InflowCategory) {
-    console.log('editing category', category.name);
     const data: Category | InflowCategory = this.removeKeys(category);
     await this.dbService.editCategory(data);
   }
 
   async deleteCategory(category: Category) {
-    console.log('deleting category', category.name);
     const data = this.removeKeys(category);
     data.deleted = true;
     await this.dbService.editCategory(data);
   }
 
-  async hideCategory(category: Category) {
-    console.log('hiding category', category.name);
+  async hideUnhideCategory(category: Category) {
     const data = this.removeKeys(category);
-    data.hidden = true;
+    data.hidden = !data.hidden;
     await this.dbService.editCategory(data);
   }
 }

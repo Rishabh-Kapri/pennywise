@@ -106,7 +106,8 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
               t.accountName.toLowerCase().includes(search) ||
               t.payeeName.toLowerCase().includes(search) ||
               t.categoryName?.toLowerCase().includes(search) ||
-              t.note?.toLowerCase().includes(search)
+              t.note?.toLowerCase().includes(search) ||
+              t.date?.includes(search)
             );
           });
         }
@@ -133,6 +134,7 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
           activity: {
             [selectedMonth]: 0,
           },
+          collapsed: false,
           categories: [
             {
               id: inflowCategory?.id!,
@@ -287,10 +289,6 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
     new Datepicker(datePickerEl, {});
   }
 
-  changeTransactionDate(date: string, transaction: NormalizedTransaction) {
-    console.log(date, transaction);
-  }
-
   showAccountSelectMenu(content: TemplateRef<any>, origin: HTMLInputElement) {
     if (this.accountOverlayRef?.isOpen) {
       return;
@@ -396,7 +394,6 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
     if (this.selectedTransaction) {
       const budgetAccounts = this.store.budgetAccounts$.value;
       const isSelectedAccBudget = budgetAccounts.find((acc) => acc.id! === this.selectedPayee?.transferAccountId!);
-      console.log(isSelectedAccBudget, this.selectedPayee, budgetAccounts);
       if (isSelectedAccBudget) {
         this.selectedTransaction.categoryId = null;
         this.selectedTransaction.categoryName = null;
@@ -414,7 +411,6 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
   }
 
   selectCategory(category: Category) {
-    console.log('selecting category:', category);
     if (this.selectedTransaction) {
       this.selectedTransaction.categoryId = category.id!;
       this.selectedTransaction.categoryName = category.name;
@@ -444,7 +440,6 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
       const amount = this.selectedTransaction.inflow ?? -this.selectedTransaction?.outflow! ?? 0;
       switch (this.currentMode) {
         case Mode.CREATE:
-          console.log('Creating new transaction');
           this.createNewTransaction(amount, this.selectedTransaction, this.selectedAccount, this.selectedPayee);
           this.cancelTransactionSave();
           break;
@@ -538,7 +533,6 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
     selectedAccount: Account,
     selectedPayee: Payee
   ) {
-    console.log('Selected transaction:', selectedTransaction);
     const newTransaction: Transaction = {
       budgetId: this.store.selectedBudet,
       date: selectedTransaction.date,
@@ -551,8 +545,8 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
       updatedAt: new Date().toISOString(),
       deleted: false,
     };
-    console.log('New transaction:', newTransaction);
     const createdTransac = await this.dbService.createTransaction(newTransaction);
+    this.store.newTransaction$.next({ value: { id: createdTransac.id, ...newTransaction }, mode: 'add' });
     selectedTransaction.id = createdTransac.id;
     if (selectedPayee?.transferAccountId) {
       // this is a transfer payee, create another transaction
@@ -591,8 +585,8 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
       updatedAt: new Date().toISOString(),
       deleted: false,
     };
-    console.log('Transfer Transaction:', transferTransac, 'Selected Transaction:', selectedTransaction);
     const transferCreatedTransac = await this.dbService.createTransaction(transferTransac);
+    this.store.newTransaction$.next({ value: { id: transferCreatedTransac.id, ...transferTransac }, mode: 'add' });
     const editData = {
       id: selectedTransaction.id!,
       payeeId: selectedPayee.id!,
@@ -604,7 +598,10 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
       note: selectedTransaction.note ?? '',
       date: selectedTransaction.date,
     };
-    console.log('editing selected transaction:', editData);
     await this.dbService.editTransaction(editData);
+  }
+
+  trackByTransactionId(index: number, transaction: NormalizedTransaction) {
+    return transaction.id!;
   }
 }

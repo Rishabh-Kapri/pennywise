@@ -1,5 +1,5 @@
-<ng-container *ngIf="{ 
-    categoryObj: categoryObj$ | async, 
+<ng-container *ngIf="{
+    categoryObj: categoryObj$ | async,
     accountObj: accountObj$ | async,
     payeeObj: payeeObj$ | async
   } as data">
@@ -16,9 +16,9 @@
             <ng-icon name="heroPencilSolid" class=""></ng-icon>
           </button>
         </div>
-        <div class="w-full bg-gray-700 rounded-full h-1">
+        <div class="w-full bg-gray-700 rounded-small h-1">
           <div
-            class="bg-budget-green h-1 rounded-full"
+            class="bg-budget-green h-1 rounded-small"
             style="width: 100%"
             [ngStyle]="{ width: category?.budgeted?.[budgetKey]! > 0 ? '100%' : '0%' }"></div>
         </div>
@@ -27,7 +27,7 @@
       <div class="text-white flex-20 text-right pl-5">
         <button
           [hidden]="category.showBudgetInput"
-          class="h-6 w-40 border border-transparent rounded-lg p-0.5 hover:border-sky-500 text-right w-full"
+          class="h-6 w-36 border border-transparent rounded-small p-0.5 hover:border-sky-500 text-right"
           (click)="showBudgetInput(category)">
           {{ category.budgeted?.[budgetKey] ?? 0 | currency : 'INR' }}
         </button>
@@ -40,22 +40,23 @@
           (focusout)="hideBudgetInput(category, $event)" />
       </div>
       <div
-        class="flex-20 text-right pr-[2px] cursor-pointer"
-        [id]="'activityMenuBtn-' + category.id"
-        [ngClass]="{ 'text-white': category.activity?.[budgetKey]! !== 0, 'text-neutral-500': category.activity?.[budgetKey] === 0 }"
-        (click)="showActivityMenu(category)">
-        {{ category.activity?.[budgetKey] ?? 0 | currency : 'INR' }}
-        <!-- <ng-container *ngIf="category.activity?.[budgetKey]! !== 0"> -->
+        class="flex-20 text-right pr-[2px]"
+        [ngClass]="{ 'text-slate-200': category.activity?.[budgetKey]! !== 0, 'text-neutral-500': category.activity?.[budgetKey] === 0 }">
+        <span
+          [id]="'activityMenuBtn-' + category.id"
+          class="cursor-pointer hover:text-white"
+          (click)="showActivityMenu(category)">
+          {{ category.activity?.[budgetKey] ?? 0 | currency : 'INR' }}
+        </span>
         <ng-container *ngTemplateOutlet="activityMenu; context: { category: category }"></ng-container>
-        <!-- </ng-container> -->
       </div>
       <div class="text-white flex-20 text-right">
         <button
           class="badge"
-          [ngClass]="{ 
-            active: category.balance?.[budgetKey]! > 0, 
-            inactive: category.balance?.[budgetKey]! === 0, 
-            overspent: category.balance?.[budgetKey]! < 0 
+          [ngClass]="{
+            active: category.balance?.[budgetKey]! > 0,
+            inactive: category.balance?.[budgetKey]! === 0,
+            overspent: category.balance?.[budgetKey]! < 0
           }"
           [attr.data-dropdown-toggle]="'moveDropdown-' + category.id"
           [id]="'moveBtn-' + category.id"
@@ -80,8 +81,8 @@
         <div>
           <button
             class="px-3 py-1 text-sm border border-neutral-500 text-sky-500 hover:bg-sky-600 hover:text-white hover:border-transparent rounded-md"
-            (click)="hideCategory(category)">
-            Hide
+            (click)="hideUnhideCategory(category)">
+            {{ category.hidden ? 'Unhide' : 'Hide' }}
           </button>
           <button
             class="ml-2 px-3 py-1 text-sm border border-neutral-500 hover:bg-red-900 hover:border-transparent rounded-md"
@@ -138,7 +139,11 @@
                     class="flex justify-between px-1 py-0.5 hover:bg-neutral-700 cursor-pointer"
                     (click)="selectMoveCategory(cat)">
                     <span>{{ cat.name }}</span>
-                    <span class="text-budget-green">{{ cat?.balance?.[budgetKey] ?? 0 | currency : 'INR' }}</span>
+                    <span
+                      class="text-budget-green"
+                      [ngClass]="{ 'text-red-700': cat?.balance?.[budgetKey]! < 0}">
+                      {{ cat?.balance?.[budgetKey] ?? 0 | currency : 'INR' }}
+                    </span>
                   </li>
                 </ul>
               </div>

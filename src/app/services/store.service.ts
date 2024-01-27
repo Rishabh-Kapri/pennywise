@@ -124,7 +124,6 @@ export class StoreService {
       this.payees$.pipe(startWith([])),
       this.categories$.pipe(startWith([])),
       this.selectedAccount$,
-      // @TODO: add search subject here
     ]).pipe(
       switchMap(([transactions, accounts, payees, categories, selectedAccount]) => {
         const normalizedTransactions: NormalizedTransaction[] = [];
@@ -175,10 +174,7 @@ export class StoreService {
         const categoryGroupData: CategoryGroupData[] = [];
         for (const group of categoryGroups) {
           if (group.name !== MASTER_CATEGORY_GROUP_NAME) {
-            const groupCategories = categories.filter((cat) => cat.categoryGroupId === group.id);
-            if (group.name === 'One time expenses') {
-              // console.log('GROUP:', group, groupCategories);
-            }
+            const groupCategories = categories.filter((cat) => cat.categoryGroupId === group.id && !cat.hidden);
             const data: CategoryGroupData = {
               categories: [
                 ...groupCategories.map((category) => {
@@ -228,10 +224,64 @@ export class StoreService {
                   return amount + (cat?.budgeted?.[selectedMonth] ?? 0);
                 }, 0),
               },
+              collapsed: false,
             };
             categoryGroupData.push(data);
           }
         }
+        const hiddenCategories = categories.filter((cat) => cat.hidden);
+        const hiddenGroup = {
+          name: 'Hidden',
+          id: `hidden-cat`,
+          balance: {
+            [selectedMonth]: categories.reduce((amount, cat) => {
+              return amount + (cat?.balance?.[selectedMonth] ?? 0);
+            }, 0),
+          },
+          activity: {
+            [selectedMonth]: categories.reduce((amount, cat) => {
+              return amount + (cat?.activity?.[selectedMonth] ?? 0);
+            }, 0),
+          },
+          budgeted: {
+            [selectedMonth]: categories.reduce((amount, cat) => {
+              return amount + (cat?.budgeted?.[selectedMonth] ?? 0);
+            }, 0),
+          },
+          collapsed: true,
+          categories: [
+            ...hiddenCategories.map((category) => {
+              const currentMonthTransactions = this.helperService.filterTransactionsBasedOnMonth(
+                transactions,
+                this.selectedMonth
+              );
+              let currMonthCatTransactions: Transaction[] = [];
+              const ccAccount = this.accounts$.value.find((acc) => acc.name.toLowerCase().includes('credit'));
+              if (this.helperService.isCategoryCreditCard(category)) {
+                currMonthCatTransactions = this.helperService.getTransactionsForAccount(currentMonthTransactions, [
+                  ccAccount?.id!,
+                ]);
+              } else {
+                currMonthCatTransactions = this.helperService.getTransactionsForCategory(currentMonthTransactions, [
+                  category.id!,
+                ]);
+              }
+              if (category?.budgeted?.[selectedMonth] === undefined) {
+                category.budgeted = { ...category.budgeted, [selectedMonth]: 0 };
+              }
+              category.activity = {
+                ...category.activity,
+                [selectedMonth]: currMonthCatTransactions.reduce((acc, curr) => acc + curr.amount, 0),
+              };
+              category.balance = {
+                ...category.balance,
+                [selectedMonth]: this.getCategoryBalance(this.selectedMonth, category, currMonthCatTransactions),
+              };
+              return { ...category, showBudgetInput: false };
+            }),
+          ],
+        };
+        categoryGroupData.push(hiddenGroup);
         return of(categoryGroupData);
       }),
       shareReplay(1)
