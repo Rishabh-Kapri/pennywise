@@ -9,18 +9,3 @@ export const environment = {
     appId: '1:1034450232305:web:2c3c66eb7e9c721dfc9a50',
   },
 };
-const firebaseConfig = {
-
-  apiKey: "AIzaSyALw4eqJI67iyiT2Fl0pdKwos0Lx8CoRLM",
-
-  authDomain: "pennywise-e951e.firebaseapp.com",
-
-  projectId: "pennywise-e951e",
-
-  storageBucket: "pennywise-e951e.appspot.com",
-
-  messagingSenderId: "424193935860",
-
-  appId: "1:424193935860:web:b504c4e73ae7b4daa5d1a1"
-
-};
