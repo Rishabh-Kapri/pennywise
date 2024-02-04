@@ -1,4 +1,4 @@
-import { AfterViewInit, Component, OnDestroy, OnInit } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, OnDestroy, OnInit } from '@angular/core';
 import { Dropdown } from 'flowbite';
 import { BehaviorSubject } from 'rxjs';
 import { Category, CategoryDTO, InflowCategory } from 'src/app/models/category.model';
@@ -12,6 +12,7 @@ import { StoreService } from 'src/app/services/store.service';
   selector: 'app-category',
   templateUrl: './category.component.html',
   styleUrls: ['./category.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CategoryComponent implements OnInit, AfterViewInit, OnDestroy {
   groupTargetEl: HTMLElement | null;

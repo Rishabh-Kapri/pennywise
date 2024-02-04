@@ -32,6 +32,16 @@ export interface NormalizedTransaction {
   categoryId: string | null;
 }
 
+export type TransactionSearchKeys = 'date' | 'payeeName' | 'categoryName' | 'note' | 'accountName';
+
+export const SearchColumns = {
+  date: 'date',
+  payee: 'payeeName',
+  category: 'categoryName',
+  memo: 'note',
+  account: 'accountName',
+};
+
 export const SelectedAccountColumns = [
   { name: 'Date', class: 'flex-[0_0_11%]' },
   { name: 'Payee', class: 'flex-[0_0_19.666%]' },

@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { StoreService } from '../services/store.service';
 import { SelectedComponent } from '../models/state.model';
 
@@ -6,6 +6,7 @@ import { SelectedComponent } from '../models/state.model';
   selector: 'app-dashboard',
   templateUrl: './dashboard.component.html',
   styleUrls: ['./dashboard.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DashboardComponent {
   selectedComponent = SelectedComponent;

@@ -1,4 +1,5 @@
 import {
+  ChangeDetectionStrategy,
   ChangeDetectorRef,
   Component,
   Input,
@@ -16,8 +17,10 @@ import { Category } from '../models/category.model';
 import {
   AllAccountsColumns,
   NormalizedTransaction,
+  SearchColumns,
   SelectedAccountColumns,
   Transaction,
+  TransactionSearchKeys,
 } from '../models/transaction.model';
 import { HelperService } from '../services/helper.service';
 import { CategoryGroupData } from '../models/state.model';
@@ -45,6 +48,7 @@ interface PayeesData {
   selector: 'app-transactions',
   templateUrl: './transactions.component.html',
   styleUrls: ['./transactions.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class TransactionsComponent implements OnChanges, OnDestroy {
   @Input() account: Account | null;
@@ -99,16 +103,31 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
       debounceTime(500),
       switchMap(([normalizedTransactions, searchTransations]) => {
         const search = searchTransations.toLowerCase();
+        const searchArr = search.split(':');
+        let col: keyof typeof SearchColumns;
+        let searchTerm: string = '';
+        if (searchArr.length > 1) {
+          col = searchArr[0] as keyof typeof SearchColumns;
+          searchTerm = searchArr[1];
+        } else {
+          searchTerm = searchArr[0];
+        }
         let value = normalizedTransactions;
-        if (search) {
+        if (searchTerm) {
           value = normalizedTransactions.filter((t) => {
-            return (
-              t.accountName.toLowerCase().includes(search) ||
-              t.payeeName.toLowerCase().includes(search) ||
-              t.categoryName?.toLowerCase().includes(search) ||
-              t.note?.toLowerCase().includes(search) ||
-              t.date?.includes(search)
-            );
+            if (col) {
+              const key = SearchColumns[col] as TransactionSearchKeys;
+              const value = t[key];
+              return value?.toLowerCase().includes(searchTerm);
+            } else {
+              return (
+                t.accountName.toLowerCase().includes(searchTerm) ||
+                t.payeeName.toLowerCase().includes(searchTerm) ||
+                t.categoryName?.toLowerCase().includes(searchTerm) ||
+                t.note?.toLowerCase().includes(searchTerm) ||
+                t.date?.includes(searchTerm)
+              );
+            }
           });
         }
         return of(value);
@@ -546,7 +565,6 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
       deleted: false,
     };
     const createdTransac = await this.dbService.createTransaction(newTransaction);
-    this.store.newTransaction$.next({ value: { id: createdTransac.id, ...newTransaction }, mode: 'add' });
     selectedTransaction.id = createdTransac.id;
     if (selectedPayee?.transferAccountId) {
       // this is a transfer payee, create another transaction
@@ -586,7 +604,6 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
       deleted: false,
     };
     const transferCreatedTransac = await this.dbService.createTransaction(transferTransac);
-    this.store.newTransaction$.next({ value: { id: transferCreatedTransac.id, ...transferTransac }, mode: 'add' });
     const editData = {
       id: selectedTransaction.id!,
       payeeId: selectedPayee.id!,

@@ -1,4 +1,4 @@
-import { AfterViewInit, Component, EventEmitter, Input, Output } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import { Parser } from 'expr-eval';
 import { Dropdown, DropdownOptions } from 'flowbite';
 import { Observable, map, take } from 'rxjs';
@@ -15,6 +15,7 @@ import { StoreService } from 'src/app/services/store.service';
   selector: 'app-category-item',
   templateUrl: './category-item.component.html',
   styleUrls: ['./category-item.component.scss'],
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CategoryItemComponent implements AfterViewInit {
   @Input() categories: Category[];
