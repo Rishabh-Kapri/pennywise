@@ -5,37 +5,31 @@
       <div class="max-w-screen-xl h-full bg-zinc-850 flex flex-wrap items-center justify-between p-2 px-4">
         <app-date-picker></app-date-picker>
         <!-- Inflow -->
-        <div
-          *ngIf="data.inflowCategory"
-          class="h-16 flex items-center justify-between text-sm py-1.5 px-3 rounded-lg"
-          [ngClass]="{
+        @if (data.inflowCategory) {
+          <div
+            class="h-16 flex items-center justify-between text-sm py-1.5 px-3 rounded-lg"
+            [ngClass]="{
             'bg-budget-green text-slate-950': data?.inflowCategory?.budgeted! > 0,
             'bg-neutral-400 text-neutral-700': data?.inflowCategory?.budgeted! === 0
-          }">
-          <div class="flex flex-col">
-            <div class="font-semibold text-lg">
-              {{ (data?.inflowCategory?.budgeted || 0) | number:'1.2-2' }}
+            }">
+            <div class="flex flex-col">
+              <div class="font-semibold text-lg">
+                {{ (data?.inflowCategory?.budgeted || 0) | number:'1.2-2' }}
+              </div>
+              @if (data?.inflowCategory?.budgeted! === 0) {
+                <div>All assigned</div>
+              } @else {
+                <div class="text-slate-900">Ready to Assign</div>
+              }
             </div>
-            <div *ngIf="data?.inflowCategory?.budgeted! === 0">All assigned</div>
-            <div *ngIf="data?.inflowCategory?.budgeted! > 0" class="text-slate-900">Ready to Assign</div>
+            @if (data?.inflowCategory?.budgeted! === 0) {
+              <ng-icon
+                class="ml-4"
+                name="heroCheckCircleSolid"
+                size="30px"></ng-icon>
+            }
           </div>
-          <ng-icon
-            *ngIf="data?.inflowCategory?.budgeted! === 0"
-            class="ml-4"
-            name="heroCheckCircleSolid"
-            size="30px"></ng-icon>
-        </div>
-        <div class="flex md:order-2">
-          <button
-            data-collapse-toggle="navbar-sticky"
-            type="button"
-            class="inline-flex items-center p-2 w-10 h-10 justify-center text-sm text-gray-500 rounded-lg md:hidden hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-gray-200 dark:text-gray-400 dark:hover:bg-gray-700 dark:focus:ring-gray-600"
-            aria-controls="navbar-sticky"
-            aria-expanded="false">
-            <span class="sr-only">Open main menu</span>
-          </button>
-        </div>
-        <div class="items-center justify-between hidden w-full md:flex md:w-auto md:order-1" id="navbar-sticky"></div>
+        }
       </div>
     </nav>
     <div class="flex flex-col flex-wrap bg-zinc-800 h-[calc(100vh-5rem)] w-[calc(100vw-16rem)] overflow-y-auto">

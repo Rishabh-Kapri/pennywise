@@ -9,10 +9,12 @@
     </div>
     <div class="flex-auto h-screen overflow-y-auto">
       <app-budget *ngIf="data.selectedComponent === selectedComponent.BUDGET"></app-budget>
-      <app-transactions 
-        *ngIf="data.selectedComponent === selectedComponent.ACCOUNTS" 
-        [account]="data.selectedAccount">
-      </app-transactions>
+      @defer (when data.selectedComponent === selectedComponent.ACCOUNTS) {
+        <app-transactions
+          *ngIf="data.selectedComponent === selectedComponent.ACCOUNTS"
+          [account]="data.selectedAccount">
+        </app-transactions>
+      }
     </div>
   </div>
 </ng-container>

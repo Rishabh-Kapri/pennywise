@@ -65,10 +65,10 @@
           "builder": "@angular-devkit/build-angular:dev-server",
           "configurations": {
             "production": {
-              "browserTarget": "pennywise:build:production"
+              "buildTarget": "pennywise:build:production"
             },
             "development": {
-              "browserTarget": "pennywise:build:development"
+              "buildTarget": "pennywise:build:development"
             }
           },
           "defaultConfiguration": "development"
@@ -76,7 +76,7 @@
         "extract-i18n": {
           "builder": "@angular-devkit/build-angular:extract-i18n",
           "options": {
-            "browserTarget": "pennywise:build"
+            "buildTarget": "pennywise:build"
           }
         },
         "test": {
