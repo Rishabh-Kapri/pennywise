@@ -11,7 +11,7 @@ import {
 } from '@angular/core';
 import { Account, TrackingAccountType } from '../models/account.model';
 import { StoreService } from '../services/store.service';
-import { debounceTime, map, startWith, switchMap } from 'rxjs/operators';
+import { debounceTime, filter, map, startWith, switchMap } from 'rxjs/operators';
 import { BehaviorSubject, Observable, combineLatest, of } from 'rxjs';
 import { Category } from '../models/category.model';
 import {
@@ -78,13 +78,15 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
   categoryOverlayRef: PopoverRef;
   accountOverlayRef: PopoverRef;
 
+  searching = false;
+
   constructor(
     public store: StoreService,
     public helperService: HelperService,
     private cdRef: ChangeDetectorRef,
     private dbService: DatabaseService,
     private viewContainerRef: ViewContainerRef,
-    private popper: PopoverService
+    private popper: PopoverService,
   ) {
     this.accountData$ = combineLatest([this.store.budgetAccounts$, this.store.trackingAccounts$]).pipe(
       switchMap(([budgetAccounts, trackingAccounts]) => {
@@ -93,45 +95,125 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
           { name: 'Tracking Accounts', accounts: trackingAccounts },
         ];
         return of(groupData);
-      })
+      }),
     );
 
     this.filteredTransactions$ = combineLatest([
       this.store.normalizedTransactions$,
       this.searchTransations$.pipe(startWith('')),
     ]).pipe(
-      debounceTime(500),
+      debounceTime(750),
+      filter(() => !this.searching),
       switchMap(([normalizedTransactions, searchTransations]) => {
+        this.searching = true;
         const search = searchTransations.toLowerCase();
-        const searchArr = search.split(':');
-        let col: keyof typeof SearchColumns;
+        const multiSearchArr = search.split(',');
+
+        let filters: any = {};
         let searchTerm: string = '';
-        if (searchArr.length > 1) {
-          col = searchArr[0] as keyof typeof SearchColumns;
-          searchTerm = searchArr[1];
-        } else {
-          searchTerm = searchArr[0];
+
+        // multiSearchArr.forEach(([key, value]) => {
+        //   console.log(key, value);
+        //   if (value) {
+        //     filters[key] = value.trim();
+        //   } else {
+        //     searchTerm = value.trim();
+        //   }
+        // })
+        searchTerm = '';
+        console.log(multiSearchArr);
+        for (const arr of multiSearchArr) {
+          const searchArr = arr.split(':');
+          if (searchArr.length > 1) {
+            filters[searchArr[0]] = searchArr[1];
+            // col = [...col, searchArr[0]];
+            searchTerm = searchArr[1];
+          } else {
+            searchTerm = searchArr[0];
+          }
         }
-        let value = normalizedTransactions;
-        if (searchTerm) {
-          value = normalizedTransactions.filter((t) => {
-            if (col) {
-              const key = SearchColumns[col] as TransactionSearchKeys;
-              const value = t[key];
-              return value?.toLowerCase().includes(searchTerm);
-            } else {
-              return (
-                t.accountName.toLowerCase().includes(searchTerm) ||
-                t.payeeName.toLowerCase().includes(searchTerm) ||
-                t.categoryName?.toLowerCase().includes(searchTerm) ||
-                t.note?.toLowerCase().includes(searchTerm) ||
-                t.date?.includes(searchTerm)
-              );
+        for (const filterKey of Object.keys(filters)) {
+          if (filterKey === 'payee') {
+            filters.payee = filters.payee.split('|');
+          } else if (filterKey === 'category') {
+            filters.category = filters.category.split('|')
+          } else if (filterKey === 'date') {
+            const dateArr: string[] = filters.date.split('-');
+            if (filters.date.length) {
+              filters.date = {
+                from: '',
+                to: '',
+              };
             }
-          });
+            const [from, to] = dateArr;
+            if (from) {
+              const [fromYear, fromMonth, fromDay] = from.split('/');
+              const parsedFromMonth = fromMonth ?? '01';
+              const parsedFromDay = fromDay ?? '01';
+              const parsedFromDate = `${fromYear}-${parsedFromMonth}-${parsedFromDay}`;
+              filters.date.from = parsedFromDate;
+              if (to) {
+                const [toYear, toMonth, toDay] = to.split('/');
+                const parsedToDate = `${toYear}-${toMonth ?? '01'}-${toDay ?? '01'}`;
+                filters.date.to = parsedToDate;
+              } else {
+                if (fromYear) {
+                  if (!fromMonth) {
+                    // if only year is present set to date to end of year
+                    filters.date.to = `${Number(fromYear) + 1}-${parsedFromMonth}-${parsedFromDay}`;
+                  } else if (fromMonth && !fromDay) {
+                    // if only year and month is present
+                    const toDate = new Date(Number(fromYear), Number(fromMonth), Number(parsedFromDay));
+                    filters.date.to = `${toDate.getFullYear()}-${toDate.getMonth() + 1}-${toDate.getDate()}`;
+                  } else if (fromMonth && fromDay) {
+                    // if all year, month and day is present
+                    const toDate = new Date(Number(fromYear), Number(fromMonth) - 1, Number(fromDay) + 1);
+                    filters.date.to = `${toDate.getFullYear()}-${toDate.getMonth() + 1}-${toDate.getDate()}`;
+                  }
+                }
+              }
+            }
+          }
         }
-        return of(value);
-      })
+        console.log(filters);
+        let tempTxns = normalizedTransactions;
+        if (searchTerm) {
+          if (Object.keys(filters).length) {
+            for (const key of Object.keys(filters)) {
+              const k = SearchColumns[key as keyof typeof SearchColumns] as TransactionSearchKeys;
+              if (key === 'date') {
+                tempTxns = tempTxns.filter((txn) => {
+                  return this.filterByDate(filters[key], txn);
+                });
+              } else if (key === 'payee' || key === 'category') {
+                tempTxns = tempTxns.filter((txn) => {
+                  return filters[key].some((payee: string) => txn[k]?.toLowerCase().includes(payee));
+                });
+              } else {
+                tempTxns = tempTxns.filter((txn) => {
+                  return txn[k]?.toLowerCase().includes(filters[key]);
+                });
+              }
+            }
+          } else {
+            tempTxns = tempTxns.filter((txn) => {
+              return (
+                txn.accountName.toLowerCase().includes(searchTerm) ||
+                txn.payeeName.toLowerCase().includes(searchTerm) ||
+                txn.categoryName?.toLowerCase().includes(searchTerm) ||
+                txn.note?.toLowerCase().includes(searchTerm) ||
+                txn.date?.includes(searchTerm)
+              );
+            });
+          }
+        }
+        console.log(
+          'COST:',
+          tempTxns.reduce((val, txn) => -(txn.outflow ?? 0) + (txn.inflow ?? 0) + val, 0),
+        );
+        this.searching = false;
+        return of(tempTxns);
+      }),
     );
 
     this.categoryGroupData$ = combineLatest([
@@ -177,7 +259,7 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
           );
         });
         return of([inflowGroup, ...data]);
-      })
+      }),
     );
 
     this.payeesData$ = combineLatest([this.store.payees$, this.searchPayee$]).pipe(
@@ -199,7 +281,7 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
           }
         }
         return of(payeesData);
-      })
+      }),
     );
   }
 
@@ -210,7 +292,7 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
           const data = Object.assign(obj, { [category.id!]: category });
           return data;
         }, {});
-      })
+      }),
     );
   }
 
@@ -224,6 +306,21 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
 
   ngOnDestroy(): void {
     this.cancelTransactionSave();
+  }
+
+  private filterByDate(dateObj: { from: string; to: string }, transaction: NormalizedTransaction): boolean {
+    let returnValue = false;
+    const txnDate = new Date(transaction.date);
+    const fromDate = new Date(dateObj.from);
+    if (dateObj.to && dateObj.from) {
+      const toDate = new Date(dateObj.to);
+      returnValue = txnDate.getTime() >= fromDate.getTime() && txnDate.getTime() < toDate.getTime();
+    } else if (dateObj.from && !dateObj.to) {
+      returnValue = dateObj.from.toLowerCase().includes(transaction.date) || txnDate.getTime() >= fromDate.getTime();
+    } else {
+      returnValue = true;
+    }
+    return returnValue;
   }
 
   searchTransations(event: any) {
@@ -365,7 +462,7 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
       if (this.selectedTransaction) {
         this.selectedTransaction[field] = expr.evaluate();
       }
-    } catch (err) { }
+    } catch (err) {}
   }
 
   async createNewPayee() {
@@ -507,7 +604,7 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
             this.dbService.editTransaction(editData);
             if (existingTransaction?.transferTransactionId) {
               const transferTransaction = transactions.find(
-                (tran) => tran.id! === existingTransaction?.transferTransactionId
+                (tran) => tran.id! === existingTransaction?.transferTransactionId,
               );
               if (transferTransaction) {
                 const isDeleteTransfer = this.selectedPayee.transferAccountId ? false : true;
@@ -535,7 +632,7 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
                   -amount,
                   this.selectedTransaction,
                   this.selectedPayee,
-                  this.selectedAccount
+                  this.selectedAccount,
                 );
               }
             }
@@ -550,7 +647,7 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
     amount: number,
     selectedTransaction: NormalizedTransaction,
     selectedAccount: Account,
-    selectedPayee: Payee
+    selectedPayee: Payee,
   ) {
     const newTransaction: Transaction = {
       budgetId: this.store.selectedBudet,
@@ -585,7 +682,7 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
     amount: number,
     selectedTransaction: NormalizedTransaction,
     selectedPayee: Payee,
-    selectedAccount: Account
+    selectedAccount: Account,
   ) {
     const transferTransac: Transaction = {
       budgetId: this.store.selectedBudet,

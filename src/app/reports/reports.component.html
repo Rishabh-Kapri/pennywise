@@ -1,0 +1,85 @@
+<ng-container
+  *ngIf="{
+    accountData: accountData$ | async
+  } as data">
+  <div class="flex flex-col w-full h-screen bg-zinc-850">
+    <nav class="sticky top-0">
+      <div
+        class="w-full flex justify-between text-xl font-bold bg-zinc-850 border-b border-neutral-600 text-white p-3 pl-4">
+        <div class="">Spending</div>
+        <div>Networth</div>
+        <div>Income v Expense</div>
+      </div>
+      <!-- Toolbar -->
+      <div class="w-full flex-5 bg-zinc-850 border-b text-base font-bold border-neutral-600 text-white p-3 pl-4">
+        <button #accountFilterBtn (click)="showAccountFilter(accountSelect, accountFilterBtn)">Accounts</button>
+        <button #dateFilterBtn (click)="showDateFilter(accountSelect, accountFilterBtn)">Accounts</button>
+      </div>
+    </nav>
+  </div>
+
+  <ng-template #accountSelect>
+    <div
+      class="flex flex-col text-[0.9rem] w-72 py-3 z-50 bg-neutral-850 rounded-lg shadow-lg shadow-neutral-900 py-1 px-2">
+      <div class="text-white font-bold pb-1 text-lg">Accounts</div>
+      <div class="border-t border-neutral-600"></div>
+      <div class="flex text-sky-500 py-1 font-bold">
+        <div class="mr-2 cursor-pointer">Select All</div>
+        <div class="cursor-pointer">Select None</div>
+      </div>
+      <div class="border-t border-neutral-600"></div>
+      <div class="py-2 overflow-scroll h-60">
+        <ul class="text-left mb-1" *ngFor="let group of data.accountData">
+          <input
+            type="checkbox"
+            class="rounded text-blue-600 bg-neutral-850 border-gray-600 focus:ring-blue-600 focus:ring-2 ring-offset-gray-800" />
+          <label>{{ group.name }}</label>
+          <!-- <li class="font-bold px-3 text-neutral-400 text-[0.8rem]">{{ group.name }}</li> -->
+          <div>
+            <ul *ngFor="let account of group.accounts">
+              <li class="flex justify-between px-4 py-0.5 text-white hover:bg-neutral-700 cursor-pointer">
+                <span [title]="account.name" class="pl-2">{{ account.name }}</span>
+              </li>
+            </ul>
+          </div>
+        </ul>
+      </div>
+      <div class="border-t border-neutral-600"></div>
+      <svg class="modal-arrow" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <path d="M 0 100 L 50 0 L 100 100 L 0 100 Z" transform=""></path>
+      </svg>
+    </div>
+  </ng-template>
+  <ng-template #accountSelect>
+    <div
+      class="flex flex-col text-[0.9rem] w-72 py-3 z-50 bg-neutral-850 rounded-lg shadow-lg shadow-neutral-900 py-1 px-2">
+      <div class="text-white font-bold pb-1 text-lg">Accounts</div>
+      <div class="border-t border-neutral-600"></div>
+      <div class="flex text-sky-500 py-1 font-bold">
+        <div class="mr-2 cursor-pointer">Select All</div>
+        <div class="cursor-pointer">Select None</div>
+      </div>
+      <div class="border-t border-neutral-600"></div>
+      <div class="py-2 overflow-scroll h-60">
+        <ul class="text-left mb-1" *ngFor="let group of data.accountData">
+          <input
+            type="checkbox"
+            class="rounded text-blue-600 bg-neutral-850 border-gray-600 focus:ring-blue-600 focus:ring-2 ring-offset-gray-800" />
+          <label>{{ group.name }}</label>
+          <!-- <li class="font-bold px-3 text-neutral-400 text-[0.8rem]">{{ group.name }}</li> -->
+          <div>
+            <ul *ngFor="let account of group.accounts">
+              <li class="flex justify-between px-4 py-0.5 text-white hover:bg-neutral-700 cursor-pointer">
+                <span [title]="account.name" class="pl-2">{{ account.name }}</span>
+              </li>
+            </ul>
+          </div>
+        </ul>
+      </div>
+      <div class="border-t border-neutral-600"></div>
+      <svg class="modal-arrow" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <path d="M 0 100 L 50 0 L 100 100 L 0 100 Z" transform=""></path>
+      </svg>
+    </div>
+  </ng-template>
+</ng-container>

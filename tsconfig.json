@@ -27,6 +27,7 @@
     "strictInjectionParameters": true,
     "strictInputAccessModifiers": true,
     "strictTemplates": true,
+    "_enabledBlockTypes": ["if", "for", "switch", "defer"],
     "extendedDiagnostics": {
       "checks": {
         "optionalChainNotNullable": "suppress"

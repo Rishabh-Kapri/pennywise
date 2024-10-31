@@ -14,7 +14,7 @@ import {
   deleteDoc,
 } from '@angular/fire/firestore';
 import { addDoc, collection } from 'firebase/firestore';
-import { Observable } from 'rxjs';
+import { Observable, of } from 'rxjs';
 import { Account, TrackingAccountType } from '../models/account.model';
 import { Budget } from '../models/budget.model';
 import { Category, CategoryDTO, InflowCategory } from '../models/category.model';
@@ -23,6 +23,7 @@ import { Payee } from '../models/payee.model';
 import { Transaction } from '../models/transaction.model';
 import { INFLOW_CATEGORY_NAME, MASTER_CATEGORY_GROUP_NAME, STARTING_BALANCE_PAYEE } from '../constants/general';
 import { HelperService } from './helper.service';
+import { accounts, categories, categoryGroups, payees, transactions } from 'src/assets/mock-data';
 
 @Injectable({
   providedIn: 'root',
@@ -255,23 +256,27 @@ export class DatabaseService {
   getAccountsStream(budgetId: string) {
     const q = query(this.accountCollection, where('budgetId', '==', budgetId));
     return collectionData(q, { idField: 'id' }) as Observable<Account[]>;
+    // return of(accounts) as Observable<Account[]>;
   }
 
   getPayeesStream(budgetId: string) {
     const q = query(this.payeeCollection, where('budgetId', '==', budgetId));
     return collectionData(q, { idField: 'id' }) as Observable<Payee[]>;
+    // return of(payees);
   }
 
   getCategoryGroupsStream(budgetId: string) {
     const q = query(this.categoryGroupCollection, where('budgetId', '==', budgetId));
     const data = collectionData(q, { idField: 'id' }) as Observable<CategoryGroup[]>;
     return data;
+    // return of(categoryGroups);
   }
 
   getCategoriesStream(budgetId: string) {
     const q = query(this.categoryCollection, and(where('deleted', '==', false), where('budgetId', '==', budgetId)));
     const data = collectionData(q, { idField: 'id' }) as Observable<CategoryDTO[]>;
     return data;
+    // return of(categories);
   }
 
   getMonthsTransactionsStream(monthKey: string, budgetId: string) {
@@ -296,6 +301,7 @@ export class DatabaseService {
       orderBy('updatedAt', 'desc')
     );
     return collectionData(q, { idField: 'id' }) as Observable<Transaction[]>;
+    // return of(transactions) as Observable<Transaction[]>;
   }
 
   async getMonthsTransactions(monthKey: string, budgetId: string) {

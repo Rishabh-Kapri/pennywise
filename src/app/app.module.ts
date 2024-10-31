@@ -31,6 +31,7 @@ import { DashboardComponent } from './dashboard/dashboard.component';
 import { DatePickerComponent } from './budget/date-picker/date-picker.component';
 import { CategoryComponent } from './budget/category/category.component';
 import { CategoryItemComponent } from './budget/category-item/category-item.component';
+import { ReportsComponent } from './reports/reports.component';
 
 @NgModule({
   declarations: [
@@ -69,6 +70,7 @@ import { CategoryItemComponent } from './budget/category-item/category-item.comp
       heroCheckCircleSolid,
       heroMagnifyingGlass,
     }),
+    ReportsComponent,
   ],
   providers: [],
   bootstrap: [AppComponent],

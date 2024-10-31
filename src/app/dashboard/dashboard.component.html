@@ -8,13 +8,21 @@
       <app-sidebar></app-sidebar>
     </div>
     <div class="flex-auto h-screen overflow-y-auto">
-      <app-budget *ngIf="data.selectedComponent === selectedComponent.BUDGET"></app-budget>
-      @defer (when data.selectedComponent === selectedComponent.ACCOUNTS) {
-        <app-transactions
-          *ngIf="data.selectedComponent === selectedComponent.ACCOUNTS"
-          [account]="data.selectedAccount">
-        </app-transactions>
+      @if (data.selectedComponent === selectedComponent.BUDGET) {
+        <app-budget></app-budget>
+      } @else if (data.selectedComponent === selectedComponent.REPORTS) {
+        <app-reports></app-reports>
+      } @else if (data.selectedComponent === selectedComponent.ACCOUNTS) {
+        <app-transactions [account]="data.selectedAccount"></app-transactions>
+      } @else {
+        <app-header></app-header>
       }
+      <!-- @defer (when data.selectedComponent === selectedComponent.ACCOUNTS) { -->
+      <!--   <app-transactions -->
+      <!--     *ngIf="data.selectedComponent === selectedComponent.ACCOUNTS" -->
+      <!--     [account]="data.selectedAccount"> -->
+      <!--   </app-transactions> -->
+      <!-- } -->
     </div>
   </div>
 </ng-container>
