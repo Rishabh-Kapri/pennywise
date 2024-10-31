@@ -2,7 +2,7 @@ import { AfterViewInit, ChangeDetectionStrategy, Component, EventEmitter, Input,
 import { Parser } from 'expr-eval';
 import { Dropdown, DropdownOptions } from 'flowbite';
 import { Observable, map, take } from 'rxjs';
-import { Account } from 'src/app/models/account.model';
+import { Account, BudgetAccountType } from 'src/app/models/account.model';
 import { Category, InflowCategory } from 'src/app/models/category.model';
 import { Payee } from 'src/app/models/payee.model';
 import { Transaction } from 'src/app/models/transaction.model';
@@ -111,8 +111,7 @@ export class CategoryItemComponent implements AfterViewInit {
       const budgeted = category.budgeted[this.budgetKey];
       const inflowCategory = this.store.inflowCategory$.value!;
       const balance = inflowCategory.budgeted;
-      const diff = budgeted - currentBudget;
-      console.log('DIFF:', diff);
+      const diff = Number(Number(budgeted - currentBudget).toFixed(2));
       if (diff <= balance) {
         // subtract from inflow
         inflowCategory.budgeted -= diff;
@@ -121,7 +120,8 @@ export class CategoryItemComponent implements AfterViewInit {
         // unassign the budgeted
         category.budgeted[this.budgetKey] = currentBudget;
       }
-      console.log(category, inflowCategory);
+      category.budgeted[this.budgetKey] = Number(Number(category.budgeted[this.budgetKey]).toFixed(2));
+      inflowCategory.budgeted = Number(Number(inflowCategory.budgeted).toFixed(2));
       this.editCategoryEvent.emit(category);
       this.editCategoryEvent.emit(inflowCategory);
       // check all other categories and assign zero to them if not assigned
@@ -174,10 +174,12 @@ export class CategoryItemComponent implements AfterViewInit {
   showActivityMenu(category: Category) {
       // filter category activity transactions
     const allTransactions = this.store.transactions$.value;
-    const ccAccount = this.store.accounts$.value.find((acc) => acc.name.toLowerCase().includes('credit'));
+    const ccAccounts = this.store.accounts$.value.filter((acc) => acc.type === BudgetAccountType.CREDIT_CARD);
     let categoryTransactions: Transaction[] = [];
     if (this.helperService.isCategoryCreditCard(category)) {
-      categoryTransactions = this.helperService.getTransactionsForAccount(allTransactions, [ccAccount?.id!]);
+      categoryTransactions = this.helperService.getTransactionsForAccount(allTransactions, [
+        ...ccAccounts.map((acc) => acc.id!),
+      ]);
     } else {
       categoryTransactions = this.helperService.getTransactionsForCategory(allTransactions, [category.id!]);
     }

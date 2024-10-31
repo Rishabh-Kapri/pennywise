@@ -97,7 +97,7 @@ export class HelperService {
   }
 
   isCategoryCreditCard(category: Category) {
-    if (category.name.toLowerCase().includes('credit')) {
+    if (category?.name?.toLowerCase().includes('credit')) {
       return true;
     }
     return false;
@@ -113,7 +113,11 @@ export class HelperService {
     return transactions.filter((transaction) => categoryIds.includes(transaction.categoryId ?? ''));
   }
 
-  getTransactionsForAccount(transactions: Transaction[], accountIds: string[]) {
+  getTransactionsForAccount(transactions: Transaction[], accountIds: string[], shouldConsole: boolean = false) {
+    if (shouldConsole) {
+      console.log('getTransactionsForAccount:', transactions, accountIds);
+      console.log(transactions.filter((txn) => accountIds.includes(txn.accountId ?? '')));
+    }
     return transactions.filter((transaction) => accountIds.includes(transaction.accountId ?? ''));
   }
 
@@ -142,13 +146,18 @@ export class HelperService {
    * @param {string} monthKey the selected month key
    * @returns Transaction[] the filtered transaction for the provided month
    */
-  filterTransactionsBasedOnMonth(transactions: Transaction[], monthKey: string, categoryName?: string): Transaction[] {
+  filterTransactionsBasedOnMonth(transactions: Transaction[], monthKey: string, categoryId?: string): Transaction[] {
     const { year, month } = this.splitKeyIntoMonthYear(monthKey);
     const startDate = new Date(year, month);
     const endDate = new Date(year, month + 1);
     const filteredTransactions = transactions.filter((transaction) => {
       const date = new Date(transaction.date);
       return date.getTime() >= startDate.getTime() && date.getTime() < endDate.getTime();
+      // return (
+      //   date.getTime() >= startDate.getTime() &&
+      //   date.getTime() < endDate.getTime() &&
+      //   (!categoryId || transaction.categoryId === categoryId)
+      // );
     });
     return filteredTransactions;
   }

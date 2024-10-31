@@ -167,7 +167,7 @@
   <ng-template #activityMenu let-category="category">
     <div
       [id]="'activityMenu-' + category.id"
-      class="flex flex-col w-[28rem] px-4 py-3 z-50 hidden bg-neutral-800 rounded-lg shadow-lg shadow-neutral-900">
+      class="flex flex-col w-[28rem] max-h-[20rem] px-4 py-3 z-50 hidden bg-neutral-800 rounded-lg shadow-lg shadow-neutral-900">
       <div class="mb-2 flex flex-col">
         <span class="flex flex-col text-left mb-1">
           <span class="text-neutral-500 text-lg">Activty</span>
@@ -185,25 +185,27 @@
               <th class="border-t border-b border-neutral-600 w-1/5 text-right text-sm font-normal text-neutral-400 px-1">AMOUNT</th>
             </tr>
           </thead>
-          <tbody class="w-full block" *ngFor="let transaction of categoryActivity">
-            <tr class="w-full flex">
-              <td [title]="data?.accountObj?.[transaction.accountId]?.name" class="border-r border-b border-neutral-600 w-1/5 truncate text-left text-sm text-neutral-100 px-1">
-                {{ data?.accountObj?.[transaction.accountId]?.name }}
-              </td>
-              <td [title]="transaction.date" class="border-r border-b border-neutral-600 w-1/5 truncate text-left text-sm text-neutral-100 px-1">
-                {{ transaction.date }}
-              </td>
-              <td [title]="data?.payeeObj?.[transaction.payeeId]?.name" class="border-r border-b border-neutral-600 w-1/5 truncate text-left text-sm text-neutral-100 px-1">
-                {{ data?.payeeObj?.[transaction.payeeId]?.name }}
-              </td>
-              <td [title]="transaction.note ?? ''" class="border-r border-b border-neutral-600 w-1/5 truncate text-left text-sm text-neutral-100 px-1">
-                {{ transaction.note }}
-              </td>
-              <td [title]="transaction.amount" class="border-b border-neutral-600 w-1/5 truncate text-right text-sm text-neutral-100 px-1">
-                {{ transaction.amount | currency: 'INR' }}
-              </td>
-            </tr>
-          </tbody>
+          <div class="overflow-y-auto max-h-[13rem]">
+            <tbody class="w-full block" *ngFor="let transaction of categoryActivity">
+              <tr class="w-full flex">
+                <td [title]="data?.accountObj?.[transaction.accountId]?.name" class="border-r border-b border-neutral-600 w-1/5 truncate text-left text-sm text-neutral-100 px-1">
+                  {{ data?.accountObj?.[transaction.accountId]?.name }}
+                </td>
+                <td [title]="transaction.date" class="border-r border-b border-neutral-600 w-1/5 truncate text-left text-sm text-neutral-100 px-1">
+                  {{ transaction.date }}
+                </td>
+                <td [title]="data?.payeeObj?.[transaction.payeeId]?.name" class="border-r border-b border-neutral-600 w-1/5 truncate text-left text-sm text-neutral-100 px-1">
+                  {{ data?.payeeObj?.[transaction.payeeId]?.name }}
+                </td>
+                <td [title]="transaction.note ?? ''" class="border-r border-b border-neutral-600 w-1/5 truncate text-left text-sm text-neutral-100 px-1">
+                  {{ transaction.note }}
+                </td>
+                <td [title]="transaction.amount" class="border-b border-neutral-600 w-1/5 truncate text-right text-sm text-neutral-100 px-1">
+                  {{ transaction.amount | currency: 'INR' }}
+                </td>
+              </tr>
+            </tbody>
+          </div>
         </table>
       </div>
     </div>

@@ -52,6 +52,18 @@
           <a
             href="#"
             class="flex w-full cursor-pointer items-center rounded-lg px-3 py-2 transitiion duration-300 ease-in-out hover:bg-zinc-700 hover:text-white"
+            [ngClass]="{ 'bg-zinc-700': data.selectedComp === selectedComponent.REPORTS }"
+            (click)="selectComponent(selectedComponent.REPORTS)">
+            <ng-icon name="heroRectangleStack"></ng-icon>
+            <span class="ml-3 font-bold">Reports</span>
+          </a>
+        </div>
+      </div>
+      <div class="mb-2">
+        <div class="flex w-full items-center justify-between">
+          <a
+            href="#"
+            class="flex w-full cursor-pointer items-center rounded-lg px-3 py-2 transitiion duration-300 ease-in-out hover:bg-zinc-700 hover:text-white"
             [ngClass]="{ 'bg-zinc-700': data.selectedComp === selectedComponent.ACCOUNTS && !data.selectedAccount }"
             (click)="selectComponent(selectedComponent.ACCOUNTS)">
             <ng-icon name="heroBuildingLibrary"></ng-icon>

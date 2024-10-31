@@ -64,9 +64,15 @@ export class CategoryComponent implements OnInit, AfterViewInit, OnDestroy {
     dropdown.toggle();
   }
 
+  collapseAll() {
+    const collapseAllGroup = this.store.collapseAllGroup$.value;
+    this.store.collapseAllGroup$.next(!collapseAllGroup);
+  }
+
   showHideGroupCategories(group: CategoryGroupData) {
     group.collapsed = !group.collapsed;
   }
+  
 
   async addCategory(groupId: string, index: number) {
     if (!this.categoryName) {

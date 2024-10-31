@@ -22,12 +22,13 @@ import { CategoryGroupData, SelectedComponent } from '../models/state.model';
 import { INFLOW_CATEGORY_NAME, MASTER_CATEGORY_GROUP_NAME } from '../constants/general';
 import { HelperService } from './helper.service';
 import { NormalizedTransaction, Transaction } from '../models/transaction.model';
-import { getAuth, signInAnonymously } from 'firebase/auth';
+import { getAuth, signInAnonymously, signInWithEmailAndPassword } from 'firebase/auth';
 
 @Injectable({
   providedIn: 'root',
 })
 export class StoreService {
+  keys: string[] = [];
   accounts$: BehaviorSubject<Account[]> = new BehaviorSubject<Account[]>([]);
   trackingAccounts$ = new BehaviorSubject<Account[]>([]);
   budgetAccounts$ = new BehaviorSubject<Account[]>([]);
@@ -49,19 +50,25 @@ export class StoreService {
   normalizedTransactions$: Observable<NormalizedTransaction[]>;
   categoryGroupDataWithInflow: any;
   inflowWithBalance$: Observable<InflowCategory | null>;
+  collapseAllGroup$ = new BehaviorSubject<boolean>(false);
 
   accountForm: FormGroup;
 
-  private _selectedComponent = new BehaviorSubject<SelectedComponent>(SelectedComponent.BUDGET);
+  private _selectedComponent = new BehaviorSubject<SelectedComponent>(SelectedComponent.REPORTS);
   private _selectedAccount = new BehaviorSubject<Account | null>(null);
   private _selectedMonth = new BehaviorSubject<string>(this.helperService.getCurrentMonthKey());
 
   constructor(private dbService: DatabaseService, private helperService: HelperService) {}
 
+  private sumTransaction(transactions: Transaction[]) {
+    return transactions.reduce((acc, curr) => acc + curr.amount, 0);
+  }
+
   async init() {
     const auth = getAuth();
     // when app is first loaded this will fetch the data of the current view
     // get current month's data
+
     this.budget$ = this.dbService.getBudgetsStream();
     this.budget$
       .pipe(
@@ -169,8 +176,9 @@ export class StoreService {
       this.categories$,
       this.transactions$.pipe(startWith([])),
       this.selectedMonth$,
+      this.collapseAllGroup$,
     ]).pipe(
-      switchMap(([categoryGroups, categories, transactions, selectedMonth]) => {
+      switchMap(([categoryGroups, categories, transactions, selectedMonth, collapseAllGroup]) => {
         const categoryGroupData: CategoryGroupData[] = [];
         for (const group of categoryGroups) {
           if (group.name !== MASTER_CATEGORY_GROUP_NAME) {
@@ -180,18 +188,21 @@ export class StoreService {
                 ...groupCategories.map((category) => {
                   const currentMonthTransactions = this.helperService.filterTransactionsBasedOnMonth(
                     transactions,
-                    this.selectedMonth
+                    selectedMonth
                   );
                   let currMonthCatTransactions: Transaction[] = [];
-                  const ccAccount = this.accounts$.value.find((acc) => acc.name.toLowerCase().includes('credit'));
+                  const ccAccounts = this.accounts$.value.filter((acc) => acc.type === BudgetAccountType.CREDIT_CARD);
+
                   if (this.helperService.isCategoryCreditCard(category)) {
                     currMonthCatTransactions = this.helperService.getTransactionsForAccount(currentMonthTransactions, [
-                      ccAccount?.id!,
+                      ...ccAccounts.map((acc) => acc.id!),
                     ]);
                   } else {
                     currMonthCatTransactions = this.helperService.getTransactionsForCategory(currentMonthTransactions, [
                       category.id!,
                     ]);
+                    if (category.name === '♪ Spotify') {
+                    }
                   }
                   if (category?.budgeted?.[selectedMonth] === undefined) {
                     category.budgeted = { ...category.budgeted, [selectedMonth]: 0 };
@@ -200,9 +211,14 @@ export class StoreService {
                     ...category.activity,
                     [selectedMonth]: currMonthCatTransactions.reduce((acc, curr) => acc + curr.amount, 0),
                   };
+                  // category.balance = this.getCategoryBalanceIterative(
+                  //   this.selectedMonth,
+                  //   category,
+                  //   currMonthCatTransactions
+                  // );
                   category.balance = {
                     ...category.balance,
-                    [selectedMonth]: this.getCategoryBalance(this.selectedMonth, category, currMonthCatTransactions),
+                    [selectedMonth]: this.getCategoryBalance(selectedMonth, category, currMonthCatTransactions),
                   };
                   return { ...category, showBudgetInput: false };
                 }),
@@ -224,7 +240,7 @@ export class StoreService {
                   return amount + (cat?.budgeted?.[selectedMonth] ?? 0);
                 }, 0),
               },
-              collapsed: false,
+              collapsed: collapseAllGroup,
             };
             categoryGroupData.push(data);
           }
@@ -253,13 +269,15 @@ export class StoreService {
             ...hiddenCategories.map((category) => {
               const currentMonthTransactions = this.helperService.filterTransactionsBasedOnMonth(
                 transactions,
-                this.selectedMonth
+                selectedMonth
               );
               let currMonthCatTransactions: Transaction[] = [];
-              const ccAccount = this.accounts$.value.find((acc) => acc.name.toLowerCase().includes('credit'));
+              const ccAccounts = this.accounts$.value.filter((acc) => acc.type === BudgetAccountType.CREDIT_CARD);
+              if (category.name === '♪ Spotify') {
+              }
               if (this.helperService.isCategoryCreditCard(category)) {
                 currMonthCatTransactions = this.helperService.getTransactionsForAccount(currentMonthTransactions, [
-                  ccAccount?.id!,
+                  ...ccAccounts.map((acc) => acc.id!)
                 ]);
               } else {
                 currMonthCatTransactions = this.helperService.getTransactionsForCategory(currentMonthTransactions, [
@@ -273,9 +291,14 @@ export class StoreService {
                 ...category.activity,
                 [selectedMonth]: currMonthCatTransactions.reduce((acc, curr) => acc + curr.amount, 0),
               };
+              // category.balance = this.getCategoryBalanceIterative(
+              //   this.selectedMonth,
+              //   category,
+              //   currMonthCatTransactions
+              // );
               category.balance = {
                 ...category.balance,
-                [selectedMonth]: this.getCategoryBalance(this.selectedMonth, category, currMonthCatTransactions),
+                [selectedMonth]: this.getCategoryBalance(selectedMonth, category, currMonthCatTransactions),
               };
               return { ...category, showBudgetInput: false };
             }),
@@ -287,11 +310,7 @@ export class StoreService {
       shareReplay(1)
     );
 
-    this.inflowWithBalance$ = combineLatest([
-      this.inflowCategory$,
-      this.categories$,
-      this.transactions$,
-    ]).pipe(
+    this.inflowWithBalance$ = combineLatest([this.inflowCategory$, this.categories$, this.transactions$]).pipe(
       switchMap(([inflowCategory, categories, transactions]) => {
         const categoriesWithoutInflow = categories.filter((cat) => cat.name !== INFLOW_CATEGORY_NAME);
         if (inflowCategory) {
@@ -308,7 +327,10 @@ export class StoreService {
       shareReplay(1)
     );
 
-    signInAnonymously(auth).then().catch();
+    const email = 'rishabhkapri@gmail.com';
+    const pass = 'U7h%QG2$573Nj!@H';
+    // signInAnonymously(auth).then().catch();
+    signInWithEmailAndPassword(auth, email, pass).then().catch();
   }
 
   get selectedBudet() {
@@ -365,25 +387,26 @@ export class StoreService {
    */
   getCategoryBalance(monthKey: string, category: Category, currentTransactions: Transaction[]): number {
     let balance = 0;
+    const isCategoryCreditCard = this.helperService.isCategoryCreditCard(category);
     const previousMonthKey = this.helperService.getPreviousMonthKey(monthKey);
-    if (category.budgeted[previousMonthKey] === undefined) {
+    if ((category.budgeted[previousMonthKey] === undefined && !isCategoryCreditCard) || previousMonthKey === '2021-5') {
       // if previous month budgeted doesn't exists, use the current month budgeted
       // even if no money is assigned, 0 will be present as budgeted even if one category is budgeted
-      balance = (category.budgeted?.[monthKey] ?? 0) + currentTransactions.reduce((acc, curr) => acc + curr.amount, 0);
+      balance = (category.budgeted?.[monthKey] ?? 0) + this.sumTransaction(currentTransactions);
     } else {
       // if previous month has money budgeted
       if (category.balance?.[previousMonthKey] === undefined) {
         // if no balance is calculated for pervious month then calculate it
         const previousMonthKeyTransactions = this.helperService.filterTransactionsBasedOnMonth(
           this.transactions$.value,
-          previousMonthKey,
-          category.name
+          previousMonthKey
         );
         let catPreviousMonthTransactions: Transaction[] = [];
-        const ccAccount = this.accounts$.value.find((acc) => acc.name.toLowerCase().includes('credit'));
-        if (this.helperService.isCategoryCreditCard(category)) {
+        const ccAccounts = this.accounts$.value.filter((acc) => acc.type === BudgetAccountType.CREDIT_CARD);
+
+        if (isCategoryCreditCard) {
           catPreviousMonthTransactions = this.helperService.getTransactionsForAccount(previousMonthKeyTransactions, [
-            ccAccount?.id!,
+            ...ccAccounts.map((acc) => acc.id!)
           ]);
         } else {
           catPreviousMonthTransactions = this.helperService.getTransactionsForCategory(previousMonthKeyTransactions, [
@@ -402,20 +425,76 @@ export class StoreService {
         }
         // calculate current month balance
         balance =
-          category.balance[previousMonthKey] +
-          category.budgeted[monthKey] +
-          currentTransactions.reduce((acc, curr) => acc + curr.amount, 0);
+          (category.balance[previousMonthKey] ?? 0) +
+          (category.budgeted[monthKey] ?? 0) +
+          this.sumTransaction(currentTransactions);
       } else {
         // if balance is calculated for previous month
         balance =
-          category.balance[previousMonthKey] +
-          category.budgeted[monthKey] +
-          currentTransactions.reduce((acc, curr) => acc + curr.amount, 0);
+          category.balance[previousMonthKey] + category.budgeted[monthKey] + this.sumTransaction(currentTransactions);
         category.balance[monthKey] = balance;
       }
     }
     balance = Number(Number(balance).toFixed(2));
     return balance;
+  }
+
+  // use a loop instead of recursion
+  getCategoryBalanceIterative(monthKey: string, category: Category, currentTransactions: Transaction[]) {
+    function sortFunc(a: string, b: string) {
+      const value1 = a.split('-');
+      const value2 = b.split('-');
+      const year1 = +value1[0];
+      const month1 = +value1[1];
+      const year2 = +value2[0];
+      const month2 = +value2[1];
+      let returnValue = 0;
+      if (year1 === year2) {
+        if (month1 >= month2) {
+          returnValue = -1;
+        } else {
+          returnValue = 1;
+        }
+      } else if (year1 > year2) {
+        returnValue = -1;
+      } else {
+        returnValue = 1;
+      }
+      return returnValue;
+    }
+    if (!this.keys.length) {
+      this.keys = Object.keys(category.budgeted).sort(sortFunc).reverse();
+    }
+    for (let index = 0; index < this.keys.length; index++) {
+      const key = `${this.keys[index]}`;
+      if (category?.balance?.[key] !== undefined) {
+        continue;
+      }
+      const currentMonthTransactions = this.helperService.filterTransactionsBasedOnMonth(this.transactions$.value, key);
+      let currMonthCatTransactions: Transaction[] = [];
+      const ccAccount = this.accounts$.value.find((acc) => acc.name.toLowerCase().includes('credit'));
+
+      if (this.helperService.isCategoryCreditCard(category)) {
+        currMonthCatTransactions = this.helperService.getTransactionsForAccount(currentMonthTransactions, [
+          ccAccount?.id!,
+        ]);
+      } else {
+        currMonthCatTransactions = this.helperService.getTransactionsForCategory(currentMonthTransactions, [
+          category.id!,
+        ]);
+      }
+      if (!category.balance) {
+        category.balance = {};
+      }
+      const prevKey = `${this.keys[index - 1]}`;
+      const prevBal = prevKey !== 'undefined' ? category.balance[prevKey] : 0;
+      const bal = prevBal + category.budgeted[key] + this.sumTransaction(currMonthCatTransactions);
+      category.balance[key] = Number(Number(bal).toFixed(2));
+      if (key === monthKey) {
+        break;
+      }
+    }
+    return category.balance;
   }
 
   async assignZeroToUnassignedCategories() {

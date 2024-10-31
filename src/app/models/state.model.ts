@@ -19,6 +19,7 @@ export interface CategoryGroupData {
 export enum SelectedComponent {
   BUDGET = 'budget',
   ACCOUNTS = 'accounts',
+  REPORTS = 'reports',
   OTHERS = 'others',
   SETTINGS = 'settings',
 }

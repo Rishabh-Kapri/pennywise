@@ -32,7 +32,8 @@ export interface InflowCategory extends CategoryDTO {
 export interface Goal {
   type: string; // type of goal @TODO: define this
   day: number; // day of the month
-  target: number; // amount in the goal
+  target: string; // needed for spending, savings 
+  amount: number; // amount in the goal
   targetMonth: string;
   overallFunded: number;
 }

@@ -22,6 +22,7 @@
     "@angular/router": "^17.1.2",
     "expr-eval": "^2.0.2",
     "firebase": "^10.5.2",
+    "highcharts-angular": "^4.0.0",
     "rxfire": "^6.0.5",
     "rxjs": "^7.8.1",
     "tslib": "^2.3.0",
