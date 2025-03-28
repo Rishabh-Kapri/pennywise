@@ -4,6 +4,9 @@ import { Category } from '../models/category.model';
 import { Dropdown, DropdownOptions } from 'flowbite';
 import { CategoryGroupData } from '../models/state.model';
 import { Account } from '../models/account.model';
+import { Store } from '@ngxs/store';
+import { TransactionsState } from '../store/dashboard/states/transactions/transactions.state';
+import { AccountsState } from '../store/dashboard/states/accounts/accounts.state';
 
 @Injectable({
   providedIn: 'root',
@@ -18,7 +21,7 @@ export class HelperService {
     ignoreClickOutsideClass: false,
   };
 
-  constructor() {}
+  constructor(private ngxsStore: Store) {}
 
   keyValuePipeOriginalOrder() {
     return 0;
@@ -83,7 +86,7 @@ export class HelperService {
   getTransactionForCategoryGroup(
     transactions: Transaction[],
     categoryGroupId: string,
-    categoryGroupData: CategoryGroupData[]
+    categoryGroupData: CategoryGroupData[],
   ): Transaction[] {
     let groupTransactions: Transaction[] = [];
     let categoryIds: string[] = [];
@@ -140,6 +143,10 @@ export class HelperService {
     return filteredTransactions.reduce((acc, curr) => acc + curr.amount, 0);
   }
 
+  reduceCategoriesAmount(categories: Category[], key: 'balance' | 'activity' | 'budgeted', monthKey: string) {
+    return categories.reduce((amount, cat) => amount + (cat?.[key]?.[monthKey] ?? 0), 0);
+  }
+
   /**
    * Filter the transactions for the monthKey provided from the transactions
    * @param {Transaction[]} transactions the transactions to filter from
@@ -169,11 +176,73 @@ export class HelperService {
     id: string,
     targetIdPrefix: string,
     triggerIdPrefix: string,
-    options: DropdownOptions = this.defaultOptions
+    options: DropdownOptions = this.defaultOptions,
   ): Dropdown {
     const targetEl = document.getElementById(`${targetIdPrefix}-${id}`);
     const triggerEl = document.getElementById(`${triggerIdPrefix}-${id}`);
     const dropdown = new Dropdown(targetEl, triggerEl, options);
     return dropdown;
+  }
+
+  sumTransaction(transactions: Transaction[]) {
+    return transactions.reduce((acc, curr) => acc + curr.amount, 0);
+  }
+
+  /**
+   * @description Fetches the category's balance
+   * @param {string} monthKey the key of the month
+   * @param {Category} category the category for which balance is to be fetched
+   * @param {Transaction[]} currentTransactions the category transactions for monthKey
+   */
+  getCategoryBalance(monthKey: string, category: Category, currentTransactions: Transaction[]): number {
+    let balance = 0;
+    const isCategoryCreditCard = this.isCategoryCreditCard(category);
+    const previousMonthKey = this.getPreviousMonthKey(monthKey);
+    if ((category.budgeted[previousMonthKey] === undefined && !isCategoryCreditCard) || previousMonthKey === '2021-5') {
+      // if previous month budgeted doesn't exists, use the current month budgeted
+      // even if no money is assigned, 0 will be present as budgeted even if one category is budgeted
+      balance = (category.budgeted?.[monthKey] ?? 0) + this.sumTransaction(currentTransactions);
+    } else {
+      // if previous month has money budgeted
+      if (category.balance?.[previousMonthKey] === undefined) {
+        // if no balance is calculated for pervious month then calculate it
+        const previousMonthKeyTransactions = this.filterTransactionsBasedOnMonth(
+          this.ngxsStore.selectSnapshot(TransactionsState.getAllTransactions),
+          previousMonthKey,
+        );
+        let catPreviousMonthTransactions: Transaction[] = [];
+        const ccAccounts = this.ngxsStore.selectSnapshot(AccountsState.getCreditCardAccounts);
+
+        if (isCategoryCreditCard) {
+          catPreviousMonthTransactions = this.getTransactionsForAccount(previousMonthKeyTransactions, [
+            ...ccAccounts.map((acc) => acc.id!),
+          ]);
+        } else {
+          catPreviousMonthTransactions = this.getTransactionsForCategory(previousMonthKeyTransactions, [category.id!]);
+        }
+        balance = this.getCategoryBalance(previousMonthKey, category, catPreviousMonthTransactions);
+        if (category.balance) {
+          category.balance = {
+            ...category.balance,
+            [previousMonthKey]: balance,
+          };
+        } else {
+          category.balance = {};
+          category.balance[previousMonthKey] = balance;
+        }
+        // calculate current month balance
+        balance =
+          (category.balance[previousMonthKey] ?? 0) +
+          (category.budgeted[monthKey] ?? 0) +
+          this.sumTransaction(currentTransactions);
+      } else {
+        // if balance is calculated for previous month
+        balance =
+          category.balance[previousMonthKey] + category.budgeted[monthKey] + this.sumTransaction(currentTransactions);
+        category.balance[monthKey] = balance;
+      }
+    }
+    balance = Number(Number(balance).toFixed(2));
+    return balance;
   }
 }

@@ -15,6 +15,8 @@ import { Modal, ModalOptions } from 'flowbite';
 import { SelectedComponent } from '../models/state.model';
 import { Budget } from '../models/budget.model';
 import { STARTING_BALANCE_PAYEE } from '../constants/general';
+import { Store } from '@ngxs/store';
+import { CategoryGroupsState } from '../store/dashboard/states/categoryGroups/categoryGroups.state';
 
 interface AccountForm {
   name: FormControl<string | null>;
@@ -52,7 +54,11 @@ export class SidebarComponent implements OnInit, AfterViewInit {
   isLoading = false;
   newBudgetName = '';
 
-  constructor(private dbService: DatabaseService, public store: StoreService) {}
+  constructor(
+    private dbService: DatabaseService,
+    private ngxsStore: Store,
+    public store: StoreService,
+  ) {}
 
   ngOnInit(): void {
     this.accountForm = new FormGroup<AccountForm>({
@@ -67,7 +73,7 @@ export class SidebarComponent implements OnInit, AfterViewInit {
           accounts,
         };
         return of(data);
-      })
+      }),
     );
     this.trackingAccountData$ = combineLatest([this.store.trackingAccounts$]).pipe(
       switchMap(([accounts]) => {
@@ -76,12 +82,12 @@ export class SidebarComponent implements OnInit, AfterViewInit {
           accounts,
         };
         return of(data);
-      })
+      }),
     );
-    this.closedAccounts$ = this.store.allAccounts$.pipe(map((accounts) => accounts.filter((acc) => acc.closed)));
+    this.closedAccounts$ = this.store.allAccounts$?.pipe(map((accounts) => accounts.filter((acc) => acc.closed)));
     this.totalCurrentFunds$ = this.store.allAccounts$?.pipe(map((data) => data.reduce((a, b) => a + b.balance, 0)));
-    this.unSelectedBudgets$ = this.store.budget$.pipe(
-      map((budgets) => budgets.filter((budget) => budget.isSelected === false))
+    this.unSelectedBudgets$ = this.store.budget$?.pipe(
+      map((budgets) => budgets.filter((budget) => budget.isSelected === false)),
     );
   }
 
