@@ -23,6 +23,13 @@ import { INFLOW_CATEGORY_NAME, MASTER_CATEGORY_GROUP_NAME } from '../constants/g
 import { HelperService } from './helper.service';
 import { NormalizedTransaction, Transaction } from '../models/transaction.model';
 import { getAuth, signInAnonymously, signInWithEmailAndPassword } from 'firebase/auth';
+import { Store } from '@ngxs/store';
+import { AccountsActions } from '../store/dashboard/states/accounts/accounts.action';
+import { BudgetsActions } from '../store/dashboard/states/budget/budget.action';
+import { CategoriesActions } from '../store/dashboard/states/categories/categories.action';
+import { CategoryGroupsActions } from '../store/dashboard/states/categoryGroups/categoryGroups.action';
+import { TransactionsActions } from '../store/dashboard/states/transactions/transaction.action';
+import { PayeesActions } from '../store/dashboard/states/payees/payees.action';
 
 @Injectable({
   providedIn: 'root',
@@ -58,10 +65,33 @@ export class StoreService {
   private _selectedAccount = new BehaviorSubject<Account | null>(null);
   private _selectedMonth = new BehaviorSubject<string>(this.helperService.getCurrentMonthKey());
 
-  constructor(private dbService: DatabaseService, private helperService: HelperService) {}
+  constructor(
+    private dbService: DatabaseService,
+    private helperService: HelperService,
+    private ngxsStore: Store,
+  ) {}
 
   private sumTransaction(transactions: Transaction[]) {
     return transactions.reduce((acc, curr) => acc + curr.amount, 0);
+  }
+
+  initStoreActions() {
+    const auth = getAuth();
+    const email = 'rishabhkapri@gmail.com';
+    const pass = 'U7h%QG2$573Nj!@H';
+    // signInAnonymously(auth).then().catch();
+    signInWithEmailAndPassword(auth, email, pass).then().catch();
+    this.ngxsStore.dispatch([
+      new BudgetsActions.GetAllBudgets(),
+      new AccountsActions.GetAllAccounts(),
+      new PayeesActions.GetAllPayees(),
+      new CategoriesActions.GetAllCategories(),
+      new CategoryGroupsActions.GetAllCategoryGroups(),
+      new TransactionsActions.GetAllTransactions()
+    ]).subscribe(res => {
+      console.log('all actions dispatched', res);
+      this.ngxsStore.dispatch(new CategoryGroupsActions.SetCategoryGroupData());
+    });
   }
 
   async init() {
@@ -73,7 +103,7 @@ export class StoreService {
     this.budget$
       .pipe(
         concatMap((budgets) => from(budgets)),
-        filter((budget) => budget.isSelected === true)
+        filter((budget) => budget.isSelected === true),
       )
       .subscribe((budget) => {
         const selectedBudget = budget;
@@ -108,20 +138,20 @@ export class StoreService {
           accounts.filter(
             (acc) =>
               [BudgetAccountType.CREDIT_CARD, BudgetAccountType.SAVINGS, BudgetAccountType.CHECKING].includes(
-                <BudgetAccountType>acc.type
-              ) && !acc.closed
-          )
+                <BudgetAccountType>acc.type,
+              ) && !acc.closed,
+          ),
         );
         this.trackingAccounts$.next(
           accounts.filter(
             (acc) =>
               [TrackingAccountType.ASSET, TrackingAccountType.LIABILITY].includes(<TrackingAccountType>acc.type) &&
-              !acc.closed
-          )
+              !acc.closed,
+          ),
         );
         return of(accounts);
       }),
-      shareReplay(1)
+      shareReplay(1),
     );
 
     // Calculate Normalized Transactions
@@ -168,7 +198,7 @@ export class StoreService {
         }
         return of(normalizedTransactions);
       }),
-      shareReplay(1)
+      shareReplay(1),
     );
 
     this.categoryGroupData$ = combineLatest([
@@ -188,7 +218,7 @@ export class StoreService {
                 ...groupCategories.map((category) => {
                   const currentMonthTransactions = this.helperService.filterTransactionsBasedOnMonth(
                     transactions,
-                    selectedMonth
+                    selectedMonth,
                   );
                   let currMonthCatTransactions: Transaction[] = [];
                   const ccAccounts = this.accounts$.value.filter((acc) => acc.type === BudgetAccountType.CREDIT_CARD);
@@ -269,7 +299,7 @@ export class StoreService {
             ...hiddenCategories.map((category) => {
               const currentMonthTransactions = this.helperService.filterTransactionsBasedOnMonth(
                 transactions,
-                selectedMonth
+                selectedMonth,
               );
               let currMonthCatTransactions: Transaction[] = [];
               const ccAccounts = this.accounts$.value.filter((acc) => acc.type === BudgetAccountType.CREDIT_CARD);
@@ -277,7 +307,7 @@ export class StoreService {
               }
               if (this.helperService.isCategoryCreditCard(category)) {
                 currMonthCatTransactions = this.helperService.getTransactionsForAccount(currentMonthTransactions, [
-                  ...ccAccounts.map((acc) => acc.id!)
+                  ...ccAccounts.map((acc) => acc.id!),
                 ]);
               } else {
                 currMonthCatTransactions = this.helperService.getTransactionsForCategory(currentMonthTransactions, [
@@ -307,7 +337,7 @@ export class StoreService {
         categoryGroupData.push(hiddenGroup);
         return of(categoryGroupData);
       }),
-      shareReplay(1)
+      shareReplay(1),
     );
 
     this.inflowWithBalance$ = combineLatest([this.inflowCategory$, this.categories$, this.transactions$]).pipe(
@@ -324,7 +354,7 @@ export class StoreService {
         }
         return of(inflowCategory);
       }),
-      shareReplay(1)
+      shareReplay(1),
     );
 
     const email = 'rishabhkapri@gmail.com';
@@ -399,14 +429,14 @@ export class StoreService {
         // if no balance is calculated for pervious month then calculate it
         const previousMonthKeyTransactions = this.helperService.filterTransactionsBasedOnMonth(
           this.transactions$.value,
-          previousMonthKey
+          previousMonthKey,
         );
         let catPreviousMonthTransactions: Transaction[] = [];
         const ccAccounts = this.accounts$.value.filter((acc) => acc.type === BudgetAccountType.CREDIT_CARD);
 
         if (isCategoryCreditCard) {
           catPreviousMonthTransactions = this.helperService.getTransactionsForAccount(previousMonthKeyTransactions, [
-            ...ccAccounts.map((acc) => acc.id!)
+            ...ccAccounts.map((acc) => acc.id!),
           ]);
         } else {
           catPreviousMonthTransactions = this.helperService.getTransactionsForCategory(previousMonthKeyTransactions, [

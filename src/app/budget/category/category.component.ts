@@ -1,4 +1,5 @@
 import { AfterViewInit, ChangeDetectionStrategy, Component, OnDestroy, OnInit } from '@angular/core';
+import { Store } from '@ngxs/store';
 import { Dropdown } from 'flowbite';
 import { BehaviorSubject } from 'rxjs';
 import { Category, CategoryDTO, InflowCategory } from 'src/app/models/category.model';
@@ -7,6 +8,7 @@ import { CategoryGroupData } from 'src/app/models/state.model';
 import { DatabaseService } from 'src/app/services/database.service';
 import { HelperService } from 'src/app/services/helper.service';
 import { StoreService } from 'src/app/services/store.service';
+import { CategoryGroupsState } from 'src/app/store/dashboard/states/categoryGroups/categoryGroups.state';
 
 @Component({
   selector: 'app-category',
@@ -25,7 +27,14 @@ export class CategoryComponent implements OnInit, AfterViewInit, OnDestroy {
 
   destroy$ = new BehaviorSubject<boolean>(false);
 
-  constructor(private dbService: DatabaseService, public store: StoreService, private helperService: HelperService) {}
+  categoryGroups$ = this.ngxsStore.select(CategoryGroupsState.getCategoryGroups);
+
+  constructor(
+    private dbService: DatabaseService,
+    private helperService: HelperService,
+    private ngxsStore: Store,
+    public store: StoreService,
+  ) {}
 
   ngOnInit(): void {}
 
@@ -72,7 +81,6 @@ export class CategoryComponent implements OnInit, AfterViewInit, OnDestroy {
   showHideGroupCategories(group: CategoryGroupData) {
     group.collapsed = !group.collapsed;
   }
-  
 
   async addCategory(groupId: string, index: number) {
     if (!this.categoryName) {
