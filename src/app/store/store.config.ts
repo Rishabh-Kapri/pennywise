@@ -35,5 +35,5 @@ export const LOGGER_CONFIG: NgxsLoggerPluginOptions = {
    * import { environment } from '@env';
    * disabled: environment.production
    */
-  disabled: false
+  disabled: true
 };

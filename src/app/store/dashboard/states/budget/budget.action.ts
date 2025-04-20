@@ -4,4 +4,13 @@ export namespace BudgetsActions {
   export class GetAllBudgets {
     static readonly type = '[Budgets] GetAll';
   }
+  export class SetSelectedMonth {
+    static readonly type = '[Budgets] SetSelectedMonth';
+    constructor(readonly payload: string) {}
+  }
+  export class SetSelectedBudget {
+    static readonly type = '[Budgets] SetSelectedBudget';
+    constructor(readonly payload: Budget) {}
+  }
+
 }

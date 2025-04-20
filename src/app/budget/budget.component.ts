@@ -1,5 +1,8 @@
 import { ChangeDetectionStrategy, Component, OnInit } from '@angular/core';
 import { StoreService } from '../services/store.service';
+import { Store } from '@ngxs/store';
+import { CategoriesState } from '../store/dashboard/states/categories/categories.state';
+import { BudgetsState } from '../store/dashboard/states/budget/budget.state';
 
 @Component({
   selector: 'app-budget',
@@ -8,7 +11,13 @@ import { StoreService } from '../services/store.service';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class BudgetComponent implements OnInit {
-  constructor(public store: StoreService) {}
+  inflowCategory$ = this.ngxsStore.select(CategoriesState.getInflowWithBalance);
+  selectedMonth$ = this.ngxsStore.select(BudgetsState.getSelectedMonth);
+
+  constructor(
+    private ngxsStore: Store,
+    public store: StoreService,
+  ) {}
 
   ngOnInit(): void {}
 }

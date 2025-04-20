@@ -131,7 +131,7 @@
           class="p-3 z-50 w-60 hidden bg-neutral-800 rounded shadow-lg shadow-neutral-900">
           <div class="pb-0.5 font-bold border-b border-neutral-600 text-left">Budget Categories</div>
           <div class="p-2 text-[0.8rem] overflow-scroll h-60">
-            <ul class="text-left mb-1" *ngFor="let group of store.categoryGroupData$ | async; let index = index">
+            <ul class="text-left mb-1" *ngFor="let group of categoryGroupData$ | async; let index = index">
               <li class="font-bold">{{ group.name }}</li>
               <div class="">
                 <ul *ngFor="let cat of group.categories">

@@ -8,6 +8,8 @@ import { CategoryGroupData } from 'src/app/models/state.model';
 import { DatabaseService } from 'src/app/services/database.service';
 import { HelperService } from 'src/app/services/helper.service';
 import { StoreService } from 'src/app/services/store.service';
+import { BudgetsState } from 'src/app/store/dashboard/states/budget/budget.state';
+import { CategoryGroupsActions } from 'src/app/store/dashboard/states/categoryGroups/categoryGroups.action';
 import { CategoryGroupsState } from 'src/app/store/dashboard/states/categoryGroups/categoryGroups.state';
 
 @Component({
@@ -27,7 +29,8 @@ export class CategoryComponent implements OnInit, AfterViewInit, OnDestroy {
 
   destroy$ = new BehaviorSubject<boolean>(false);
 
-  categoryGroups$ = this.ngxsStore.select(CategoryGroupsState.getCategoryGroups);
+  categoryGroups$ = this.ngxsStore.select(CategoryGroupsState.getCategoryGroupData);
+  selectedMonth$ = this.ngxsStore.select(BudgetsState.getSelectedMonth);
 
   constructor(
     private dbService: DatabaseService,
@@ -55,7 +58,7 @@ export class CategoryComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
     const data: CategoryGroup = {
-      budgetId: this.store.selectedBudet,
+      budgetId: this.ngxsStore.selectSnapshot(BudgetsState.getSelectedBudget)?.id ?? '',
       name: this.categoryGroupName,
       hidden: false,
       deleted: false,
@@ -74,12 +77,11 @@ export class CategoryComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   collapseAll() {
-    const collapseAllGroup = this.store.collapseAllGroup$.value;
-    this.store.collapseAllGroup$.next(!collapseAllGroup);
+    this.ngxsStore.dispatch(new CategoryGroupsActions.ToggleCategoryGroupsCollapse());
   }
 
   showHideGroupCategories(group: CategoryGroupData) {
-    group.collapsed = !group.collapsed;
+    this.ngxsStore.dispatch(new CategoryGroupsActions.ToggleCategoryGroupCollapse(group));
   }
 
   async addCategory(groupId: string, index: number) {
@@ -87,9 +89,9 @@ export class CategoryComponent implements OnInit, AfterViewInit, OnDestroy {
       this.groupDropdowns[groupId].hide();
       return;
     }
-    const key = this.store.selectedMonth;
+    const key = this.ngxsStore.selectSnapshot(BudgetsState.getSelectedMonth);
     const category: CategoryDTO = {
-      budgetId: this.store.selectedBudet,
+      budgetId: this.ngxsStore.selectSnapshot(BudgetsState.getSelectedBudget)?.id ?? '',
       name: this.categoryName,
       categoryGroupId: groupId,
       hidden: false,
@@ -126,7 +128,7 @@ export class CategoryComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   async hideUnhideCategory(category: Category) {
-    const data = this.removeKeys(category);
+    const data = this.removeKeys({ ...category });
     data.hidden = !data.hidden;
     await this.dbService.editCategory(data);
   }

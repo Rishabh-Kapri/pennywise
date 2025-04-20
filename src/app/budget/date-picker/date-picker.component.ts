@@ -1,7 +1,9 @@
 import { Component, OnInit, TemplateRef, ViewContainerRef } from '@angular/core';
+import { Store } from '@ngxs/store';
 import { PopoverRef } from 'src/app/services/popover-ref';
 import { PopoverService } from 'src/app/services/popover.service';
 import { StoreService } from 'src/app/services/store.service';
+import { BudgetsActions } from 'src/app/store/dashboard/states/budget/budget.action';
 
 enum DATE_VALUE {
   MONTH,
@@ -29,6 +31,10 @@ export class DatePickerComponent implements OnInit {
     { value: 'December', shortName: 'Dec', type: DATE_VALUE.MONTH },
   ];
   YEARS = [
+    { value: '2030', shortName: '2030', type: DATE_VALUE.YEAR },
+    { value: '2029', shortName: '2029', type: DATE_VALUE.YEAR },
+    { value: '2028', shortName: '2028', type: DATE_VALUE.YEAR },
+    { value: '2027', shortName: '2027', type: DATE_VALUE.YEAR },
     { value: '2026', shortName: '2026', type: DATE_VALUE.YEAR },
     { value: '2025', shortName: '2025', type: DATE_VALUE.YEAR },
     { value: '2024', shortName: '2024', type: DATE_VALUE.YEAR },
@@ -44,14 +50,19 @@ export class DatePickerComponent implements OnInit {
   showTodayButton = false;
   dateOverlayRef: PopoverRef;
 
-  constructor(public store: StoreService, private viewContainerRef: ViewContainerRef, private popper: PopoverService) { }
+  constructor(
+    private ngxsStore: Store,
+    public store: StoreService,
+    private viewContainerRef: ViewContainerRef,
+    private popper: PopoverService,
+  ) {}
 
   ngOnInit(): void {
     this.initDate();
   }
 
   setSelectedMonthKey() {
-    this.store.selectedMonth = `${this.selectedYear}-${this.selectedMonth}`;
+    this.ngxsStore.dispatch(new BudgetsActions.SetSelectedMonth(`${this.selectedYear}-${this.selectedMonth}`));
   }
 
   initDate() {

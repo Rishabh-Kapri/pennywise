@@ -30,6 +30,8 @@ import { CategoriesActions } from '../store/dashboard/states/categories/categori
 import { CategoryGroupsActions } from '../store/dashboard/states/categoryGroups/categoryGroups.action';
 import { TransactionsActions } from '../store/dashboard/states/transactions/transaction.action';
 import { PayeesActions } from '../store/dashboard/states/payees/payees.action';
+import { BudgetsState } from '../store/dashboard/states/budget/budget.state';
+import { CategoriesState } from '../store/dashboard/states/categories/categories.state';
 
 @Injectable({
   providedIn: 'root',
@@ -81,16 +83,21 @@ export class StoreService {
     const pass = 'U7h%QG2$573Nj!@H';
     // signInAnonymously(auth).then().catch();
     signInWithEmailAndPassword(auth, email, pass).then().catch();
-    this.ngxsStore.dispatch([
-      new BudgetsActions.GetAllBudgets(),
-      new AccountsActions.GetAllAccounts(),
-      new PayeesActions.GetAllPayees(),
-      new CategoriesActions.GetAllCategories(),
-      new CategoryGroupsActions.GetAllCategoryGroups(),
-      new TransactionsActions.GetAllTransactions()
-    ]).subscribe(res => {
-      console.log('all actions dispatched', res);
-      this.ngxsStore.dispatch(new CategoryGroupsActions.SetCategoryGroupData());
+    // fetch budget first
+    this.ngxsStore.dispatch([new BudgetsActions.GetAllBudgets()]).subscribe({
+      next: (res) => {
+        console.log('fetched all budgets');
+        const selectedBudget = this.ngxsStore.selectSnapshot(BudgetsState.getSelectedBudget);
+        const selectedBudgetId = selectedBudget?.id ?? '';
+        console.log(selectedBudget, selectedBudgetId);
+        this.ngxsStore.dispatch([
+          new TransactionsActions.GetAllTransactions(selectedBudgetId),
+          new PayeesActions.GetAllPayees(selectedBudgetId),
+          new CategoriesActions.GetAllCategories(selectedBudgetId),
+          new CategoryGroupsActions.GetAllCategoryGroups(selectedBudgetId),
+          new AccountsActions.GetAllAccounts(selectedBudgetId),
+        ]);
+      },
     });
   }
 
@@ -528,6 +535,9 @@ export class StoreService {
   }
 
   async assignZeroToUnassignedCategories() {
-    this.dbService.assignZeroToUnassignedCategories(this.categories$.value, this.selectedMonth);
+    this.dbService.assignZeroToUnassignedCategories(
+      this.ngxsStore.selectSnapshot(CategoriesState.getAllCategories),
+      this.ngxsStore.selectSnapshot(BudgetsState.getSelectedMonth),
+    );
   }
 }
