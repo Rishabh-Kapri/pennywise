@@ -17,6 +17,14 @@ import { Budget } from '../models/budget.model';
 import { STARTING_BALANCE_PAYEE } from '../constants/general';
 import { Store } from '@ngxs/store';
 import { CategoryGroupsState } from '../store/dashboard/states/categoryGroups/categoryGroups.state';
+import { BudgetsState } from '../store/dashboard/states/budget/budget.state';
+import { AccountsState } from '../store/dashboard/states/accounts/accounts.state';
+import { PayeesState } from '../store/dashboard/states/payees/payees.state';
+import { CategoriesState } from '../store/dashboard/states/categories/categories.state';
+import { AccountsActions } from '../store/dashboard/states/accounts/accounts.action';
+import { BudgetsActions } from '../store/dashboard/states/budget/budget.action';
+import { ConfigActions } from '../store/dashboard/states/config/config.action';
+import { ConfigState } from '../store/dashboard/states/config/config.state';
 
 interface AccountForm {
   name: FormControl<string | null>;
@@ -36,9 +44,6 @@ export class SidebarComponent implements OnInit, AfterViewInit {
     backdropClasses: 'bg-gray-900 bg-opacity-50 dark:bg-opacity-80 fixed inset-0 z-40',
     closable: true,
   };
-  budgetAccountData$: Observable<{ totalAmount: number; accounts: Account[] }>;
-  trackingAccountData$: Observable<{ totalAmount: number; accounts: Account[] }>;
-  closedAccounts$: Observable<Account[]>;
   selectedComponent = SelectedComponent;
   text = 'Add';
   addAcountModal: Modal;
@@ -47,12 +52,24 @@ export class SidebarComponent implements OnInit, AfterViewInit {
   trackingAccountNames = TrackingAccountNames;
 
   editingAccount: Account;
-  totalCurrentFunds$: Observable<number>;
-  ynab_token = 'sDjhb_o63I9mPiRSW-x1Is_UNHSEZ4Uth4CbAR2Cayw';
-  unSelectedBudgets$: Observable<Budget[]>;
 
   isLoading = false;
   newBudgetName = '';
+
+  budgetAccountData$: Observable<{ totalAmount: number; accounts: Account[] }>;
+  trackingAccountData$: Observable<{ totalAmount: number; accounts: Account[] }>;
+
+  totalCurrentFunds$ = this.ngxsStore.select(AccountsState.getTotalCurrentFunds);
+  allBudgets$ = this.ngxsStore.select(BudgetsState.getAllBudgets);
+  selectedBudget$ = this.ngxsStore.select(BudgetsState.getSelectedBudget);
+  unSelectedBudgets$ = this.ngxsStore.select(BudgetsState.getUnselectedBudgets);
+  allAccounts$ = this.ngxsStore.select(AccountsState.getAllAccounts);
+  selectedAccount$ = this.ngxsStore.select(AccountsState.getSelectedAccount);
+  closedAccounts$ = this.ngxsStore.select(AccountsState.getClosedAccounts);
+  budgetAccounts$ = this.ngxsStore.select(AccountsState.getBudgetAccounts);
+  trackingAccounts$ = this.ngxsStore.select(AccountsState.getTrackingAccounts);
+  inflowWithBalance$ = this.ngxsStore.select(CategoriesState.getInflowWithBalance);
+  selectedComponent$ = this.ngxsStore.select(ConfigState.getSelectedComponent);
 
   constructor(
     private dbService: DatabaseService,
@@ -66,28 +83,23 @@ export class SidebarComponent implements OnInit, AfterViewInit {
       type: new FormControl(null, { validators: [Validators.required] }),
       balance: new FormControl(null, { validators: [Validators.required] }),
     });
-    this.budgetAccountData$ = combineLatest([this.store.budgetAccounts$]).pipe(
+    this.budgetAccountData$ = combineLatest([this.budgetAccounts$]).pipe(
       switchMap(([accounts]) => {
         let data = {
-          totalAmount: accounts.reduce((a, b) => a + b.balance, 0),
+          totalAmount: Number(accounts.reduce((a, b) => a + b.balance, 0).toFixed(2)),
           accounts,
         };
         return of(data);
       }),
     );
-    this.trackingAccountData$ = combineLatest([this.store.trackingAccounts$]).pipe(
+    this.trackingAccountData$ = combineLatest([this.trackingAccounts$]).pipe(
       switchMap(([accounts]) => {
         let data = {
-          totalAmount: accounts.reduce((a, b) => a + b.balance, 0),
+          totalAmount: Number(accounts.reduce((a, b) => a + b.balance, 0).toFixed(2)),
           accounts,
         };
         return of(data);
       }),
-    );
-    this.closedAccounts$ = this.store.allAccounts$?.pipe(map((accounts) => accounts.filter((acc) => acc.closed)));
-    this.totalCurrentFunds$ = this.store.allAccounts$?.pipe(map((data) => data.reduce((a, b) => a + b.balance, 0)));
-    this.unSelectedBudgets$ = this.store.budget$?.pipe(
-      map((budgets) => budgets.filter((budget) => budget.isSelected === false)),
     );
   }
 
@@ -127,18 +139,23 @@ export class SidebarComponent implements OnInit, AfterViewInit {
       await this.dbService.editAccount(accountData);
     } else {
       const accountData = form.value as Account;
-      (accountData.budgetId = this.store.selectedBudet), (accountData.closed = false);
+      accountData.budgetId = this.ngxsStore.selectSnapshot(BudgetsState.getSelectedBudget)?.id ?? '';
+      accountData.closed = false;
       accountData.deleted = false;
-      const startingBalPayee = this.store.payees$.value.find((payee) => payee.name === STARTING_BALANCE_PAYEE)!;
-      await this.dbService.createAccount(accountData, this.store.inflowCategory$.value!, startingBalPayee);
+      const startingBalPayee = this.ngxsStore.selectSnapshot(PayeesState.getStartingBalancePayee)!;
+      await this.dbService.createAccount(
+        accountData,
+        this.ngxsStore.selectSnapshot(CategoriesState.getInflowWithBalance)!,
+        startingBalPayee,
+      );
     }
     this.isLoading = false;
     this.resetAccountForm();
   }
 
   selectComponent(component: SelectedComponent) {
-    this.store.selectedAccount = null;
-    this.store.selectedComponent = component;
+    this.ngxsStore.dispatch(new AccountsActions.SetSelectedAccount(null));
+    this.ngxsStore.dispatch(new ConfigActions.SetSelectedComponent(component));
   }
 
   async addBudget() {
@@ -155,7 +172,7 @@ export class SidebarComponent implements OnInit, AfterViewInit {
 
   async selectBudget(budget: Budget) {
     budget.isSelected = true;
-    const selectedBudget = this.store.selectedBudget$.value;
+    const selectedBudget = this.ngxsStore.selectSnapshot(BudgetsState.getSelectedBudget);
     if (selectedBudget) {
       selectedBudget.isSelected = false;
       // update selected to unselected
@@ -163,11 +180,12 @@ export class SidebarComponent implements OnInit, AfterViewInit {
     }
     // update to selected
     await this.dbService.editBudget(budget);
+    this.ngxsStore.dispatch(new BudgetsActions.SetSelectedBudget(budget));
   }
 
   selectAccount(account: Account) {
-    this.store.selectedAccount = account;
-    this.store.selectedComponent = SelectedComponent.ACCOUNTS;
+    this.ngxsStore.dispatch(new AccountsActions.SetSelectedAccount(account));
+    this.ngxsStore.dispatch(new ConfigActions.SetSelectedComponent(SelectedComponent.ACCOUNTS));
   }
 
   async closeAccount() {

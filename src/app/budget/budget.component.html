@@ -1,7 +1,10 @@
 <ng-container
-  *ngIf="{ inflowCategory: store.inflowCategory$ | async, selectedMonth: store.selectedMonth$ | async } as data">
+  *ngIf="{
+    inflowCategory: inflowCategory$ | async,
+    selectedMonth: selectedMonth$ | async
+  } as data">
   <div class="">
-    <nav class="bg-zinc-800 h-20 sticky top-0 left-0 z-50 border-b border-gray-600">
+    <nav class="bg-zinc-800 h-20 sticky eop-0 left-0 z-50 border-b border-gray-600">
       <div class="max-w-screen-xl h-full bg-zinc-850 flex flex-wrap items-center justify-between p-2 px-4">
         <app-date-picker></app-date-picker>
         <!-- Inflow -->

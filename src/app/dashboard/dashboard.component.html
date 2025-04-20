@@ -1,7 +1,7 @@
 <ng-container
   *ngIf="{
-    selectedComponent: store.selectedComponent$ | async,
-    selectedAccount: store.selectedAccount$ | async
+    selectedComponent: selectedComponent$ | async,
+    selectedAccount: selectedAccount$ | async
   } as data">
   <div class="flex h-screen">
     <div style="flex: 0 0 auto" class="h-screen transition-transform overflow-y-auto">

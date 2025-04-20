@@ -1,16 +1,16 @@
 <ng-container
   *ngIf="{
-    allAccounts: store.allAccounts$ | async,
-    selectedComp: store.selectedComponent$ | async,
+    allAccounts: allAccounts$ | async,
+    selectedComp: selectedComponent$ | async,
     totalCurrentFunds: totalCurrentFunds$ | async,
     budgetAccountData: budgetAccountData$ | async,
     trackingAccountData: trackingAccountData$ | async,
     closedAccounts: closedAccounts$ | async,
-    budgets: store.budget$ | async,
-    selectedBudget: store.selectedBudget$ | async,
+    budgets: allBudgets$ | async,
+    selectedBudget: selectedBudget$ | async,
     unSelectedBudgets: unSelectedBudgets$ | async,
-    selectedAccount: store.selectedAccount$ | async,
-    inflowWithBalance: store.inflowWithBalance$ | async
+    selectedAccount: selectedAccount$ | async,
+    inflowWithBalance: inflowWithBalance$ | async
   } as data">
   <div class="flex h-screen h-inherit w-64 flex-col justify-between bg-zinc-900 text-zinc-300 z-50 border-r border-neutral-700">
     <div class="p-2">

@@ -5,7 +5,12 @@
 @import '~@angular/cdk/overlay-prebuilt.css';
 
 html, body { height: 100%; }
-body { margin: 0; font-family: Roboto, "Helvetica Neue", sans-serif; }
+body {
+  margin: 0;
+  /* font-family: Roboto, "Helvetica Neue", sans-serif;  */
+  font-family: "Nunito Sans", sans-serif;
+  font-weight: 400
+}
 .popover-class {
   margin-top: 14px;
 }

@@ -1,7 +1,7 @@
 <ng-container *ngIf="{
-    budgetKey: store.selectedMonth$ | async ,
-    selectedMonth: store.selectedMonth$ | async,
-    categoryGroupData: store.categoryGroupData$ | async
+    budgetKey: selectedMonth$ | async ,
+    selectedMonth: selectedMonth$ | async,
+    categoryGroupData: categoryGroups$ | async
   } as data">
   <div class="flex justify-between">
     <div class="flex flex-wrap flex-[0_0_75%]">
@@ -25,15 +25,15 @@
           <div class="flex-40 flex items-center cursor-pointer name-container">
             <span (click)="showHideGroupCategories(item)">{{ item.name }}</span>
             <button
-              *ngIf="item.id !== 'hidden-cat'" 
+              *ngIf="item.id !== 'hidden-cat'"
               [attr.data-dropdown-toggle]="'addCategoryDropdown-' + index"
               [id]="'addCategoryBtn-' + index"
               class="ml-1 flex items-center add-category-btn"
               (click)="showDropdown(item.id, index)">
-              <ng-icon 
-                class="hover:text-sky-400" 
-                name="heroPlusCircleSolid" 
-                color="#0ea5e9" 
+              <ng-icon
+                class="hover:text-sky-400"
+                name="heroPlusCircleSolid"
+                color="#0ea5e9"
                 size="16px">
               </ng-icon>
             </button>

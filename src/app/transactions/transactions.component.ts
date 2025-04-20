@@ -30,6 +30,14 @@ import { PopoverService } from '../services/popover.service';
 import { PopoverRef } from '../services/popover-ref';
 import { Parser } from 'expr-eval';
 import { STARTING_BALANCE_PAYEE } from '../constants/general';
+import { Store } from '@ngxs/store';
+import { TransactionsState } from '../store/dashboard/states/transactions/transactions.state';
+import { AccountsState } from '../store/dashboard/states/accounts/accounts.state';
+import { CategoryGroupsState } from '../store/dashboard/states/categoryGroups/categoryGroups.state';
+import { CategoriesState } from '../store/dashboard/states/categories/categories.state';
+import { PayeesState } from '../store/dashboard/states/payees/payees.state';
+import { BudgetsState } from '../store/dashboard/states/budget/budget.state';
+import { PayeesActions } from '../store/dashboard/states/payees/payees.action';
 
 declare var Datepicker: any;
 
@@ -74,6 +82,19 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
   searchPayee$ = new BehaviorSubject<string>('');
   searchAccount$ = new BehaviorSubject<string>('');
 
+  allTransactions$ = this.ngxsStore.select(TransactionsState.getAllTransactions);
+  normalizedTransactions$ = this.ngxsStore.select(TransactionsState.getNormalizedTransaction);
+  budgetAccounts$ = this.ngxsStore.select(AccountsState.getBudgetAccounts);
+  trackingAccounts$ = this.ngxsStore.select(AccountsState.getTrackingAccounts);
+
+  categoryGroupsData$ = this.ngxsStore.select(CategoryGroupsState.getCategoryGroupData);
+  inflowCategory$ = this.ngxsStore.select(CategoriesState.getInflowWithBalance);
+  allPayees$ = this.ngxsStore.select(PayeesState.getAllPayees);
+  allCategories$ = this.ngxsStore.select(CategoriesState.getAllCategories);
+  allAccounts$ = this.ngxsStore.select(AccountsState.getAllAccounts);
+  selectedMonth$ = this.ngxsStore.select(BudgetsState.getSelectedMonth);
+  // totalCurrentFunds$ = this.ngxsStore.select(AccountsState.getTotalCurrentFunds);
+
   payeeOverlayRef: PopoverRef;
   categoryOverlayRef: PopoverRef;
   accountOverlayRef: PopoverRef;
@@ -83,12 +104,13 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
   constructor(
     public store: StoreService,
     public helperService: HelperService,
+    private ngxsStore: Store,
     private cdRef: ChangeDetectorRef,
     private dbService: DatabaseService,
     private viewContainerRef: ViewContainerRef,
     private popper: PopoverService,
   ) {
-    this.accountData$ = combineLatest([this.store.budgetAccounts$, this.store.trackingAccounts$]).pipe(
+    this.accountData$ = combineLatest([this.budgetAccounts$, this.trackingAccounts$]).pipe(
       switchMap(([budgetAccounts, trackingAccounts]) => {
         const groupData = [
           { name: 'Budget Accounts', accounts: budgetAccounts },
@@ -99,7 +121,7 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
     );
 
     this.filteredTransactions$ = combineLatest([
-      this.store.normalizedTransactions$,
+      this.normalizedTransactions$,
       this.searchTransations$.pipe(startWith('')),
     ]).pipe(
       debounceTime(750),
@@ -136,7 +158,7 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
           if (filterKey === 'payee') {
             filters.payee = filters.payee.split('|');
           } else if (filterKey === 'category') {
-            filters.category = filters.category.split('|')
+            filters.category = filters.category.split('|');
           } else if (filterKey === 'date') {
             const dateArr: string[] = filters.date.split('-');
             if (filters.date.length) {
@@ -217,12 +239,13 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
     );
 
     this.categoryGroupData$ = combineLatest([
-      this.store.categoryGroupData$,
-      this.store.inflowCategory$,
+      this.categoryGroupsData$,
+      this.inflowCategory$,
       this.searchCategory$,
     ]).pipe(
       switchMap(([categoryGroupData, inflowCategory, search]) => {
-        const selectedMonth = this.store.selectedMonth;
+        console.log('::246', categoryGroupData, inflowCategory, search);
+        const selectedMonth = this.ngxsStore.selectSnapshot(BudgetsState.getSelectedMonth);
         const inflowGroup: CategoryGroupData = {
           name: 'Inflow',
           id: '1',
@@ -262,7 +285,7 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
       }),
     );
 
-    this.payeesData$ = combineLatest([this.store.payees$, this.searchPayee$]).pipe(
+    this.payeesData$ = combineLatest([this.allPayees$, this.searchPayee$]).pipe(
       switchMap(([payees, search]) => {
         const payeesData: PayeesData = {
           Transfers: [],
@@ -286,7 +309,7 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
   }
 
   ngOnInit(): void {
-    this.categoryObj$ = this.store.categories$.pipe(
+    this.categoryObj$ = this.allCategories$.pipe(
       map((categories) => {
         return categories.reduce((obj: Record<string, Category>, category: Category) => {
           const data = Object.assign(obj, { [category.id!]: category });
@@ -350,7 +373,7 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
       this.totalCurrentFunds$ = of(this.account.balance);
     } else {
       this.transactionColumns = structuredClone(AllAccountsColumns);
-      this.totalCurrentFunds$ = this.store.accounts$?.pipe(map((data) => data.reduce((a, b) => a + b.balance, 0)));
+      this.totalCurrentFunds$ = this.allAccounts$?.pipe(map((data) => data.reduce((a, b) => a + b.balance, 0)));
     }
     this.transactionColumnsObj = structuredClone(this.transactionColumns).reduce((obj, col) => {
       return Object.assign(obj, { [col.name]: col });
@@ -365,7 +388,7 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
       transferAccountId: null,
       accountName: '',
       accountId: '',
-      budgetId: this.store.selectedBudet,
+      budgetId: this.ngxsStore.selectSnapshot(BudgetsState.getSelectedBudget)?.id!,
       date: '',
       outflow: null,
       inflow: null,
@@ -386,11 +409,15 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
     }
     // @TODO: for now setting mode as edit on select, change later
     this.currentMode = Mode.EDIT;
-    const account = this.store.accounts$.value.find((acc) => acc.id! === transaction.accountId);
+    const account = this.ngxsStore
+      .selectSnapshot(AccountsState.getAllAccounts)
+      .find((acc) => acc.id! === transaction.accountId);
     if (account) {
       this.selectedAccount = account;
     }
-    const payee = this.store.payees$.value.find((payee) => payee.id! === transaction.payeeId);
+    const payee = this.ngxsStore
+      .selectSnapshot(PayeesState.getAllPayees)
+      .find((payee) => payee.id! === transaction.payeeId);
     if (payee) {
       this.selectedPayee = payee;
     }
@@ -468,12 +495,14 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
   async createNewPayee() {
     const payee: Payee = {
       name: this.searchPayee$.value,
-      budgetId: this.store.selectedBudet,
+      budgetId: this.ngxsStore.selectSnapshot(BudgetsState.getSelectedBudget)?.id!,
       transferAccountId: null,
       deleted: false,
       createdAt: new Date().toISOString(),
     };
+    // this.ngxsStore.dispatch(new PayeesActions.CreatePayee(payee));
     return await this.dbService.createPayee(payee);
+
   }
 
   selectAccount(account: Account) {
@@ -493,7 +522,7 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
     let selectedPayeeId = payee?.id!;
     let selectedPayeeName = payee?.name!;
     if (event === 'enter') {
-      const allPayees = this.store.payees$.value;
+      const allPayees = this.ngxsStore.selectSnapshot(PayeesState.getAllPayees);
       const searchPayee = this.searchPayee$.value;
       const filteredPayee = allPayees.find((payee) => payee.name.toLowerCase() === searchPayee.toLowerCase());
       if (filteredPayee) {
@@ -508,7 +537,7 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
       }
     }
     if (this.selectedTransaction) {
-      const budgetAccounts = this.store.budgetAccounts$.value;
+      const budgetAccounts = this.ngxsStore.selectSnapshot(AccountsState.getBudgetAccounts);
       const isSelectedAccBudget = budgetAccounts.find((acc) => acc.id! === this.selectedPayee?.transferAccountId!);
       if (isSelectedAccBudget) {
         this.selectedTransaction.categoryId = null;
@@ -560,7 +589,7 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
           this.cancelTransactionSave();
           break;
         case Mode.EDIT:
-          const transactions = this.store.transactions$.value;
+          const transactions = this.ngxsStore.selectSnapshot(TransactionsState.getAllTransactions);
           let existingTransaction = transactions.find((tran) => tran.id === this.selectedTransaction?.id);
           // console.log('selected payee:', this.selectedPayee);
           // console.log('selected account:', this.selectedAccount);
@@ -650,7 +679,7 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
     selectedPayee: Payee,
   ) {
     const newTransaction: Transaction = {
-      budgetId: this.store.selectedBudet,
+      budgetId: this.ngxsStore.selectSnapshot(BudgetsState.getSelectedBudget)?.id!,
       date: selectedTransaction.date,
       amount: amount,
       accountId: selectedTransaction.accountId,
@@ -685,7 +714,7 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
     selectedAccount: Account,
   ) {
     const transferTransac: Transaction = {
-      budgetId: this.store.selectedBudet,
+      budgetId: this.ngxsStore.selectSnapshot(BudgetsState.getSelectedBudget)?.id!,
       amount: amount,
       accountId: selectedPayee.transferAccountId!,
       payeeId: selectedAccount.transferPayeeId!,

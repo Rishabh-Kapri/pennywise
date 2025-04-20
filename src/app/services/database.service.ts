@@ -24,6 +24,10 @@ import { Transaction } from '../models/transaction.model';
 import { INFLOW_CATEGORY_NAME, MASTER_CATEGORY_GROUP_NAME, STARTING_BALANCE_PAYEE } from '../constants/general';
 import { HelperService } from './helper.service';
 import { accounts, categories, categoryGroups, payees, transactions } from 'src/assets/mock-data';
+import { Store } from '@ngxs/store';
+import { TransactionsActions } from '../store/dashboard/states/transactions/transaction.action';
+import { AccountsActions } from '../store/dashboard/states/accounts/accounts.action';
+import { CategoryGroupsActions } from '../store/dashboard/states/categoryGroups/categoryGroups.action';
 
 @Injectable({
   providedIn: 'root',
@@ -38,7 +42,10 @@ export class DatabaseService {
   payeeCollection = collection(this.firestore, 'payees');
   transactionCollection = collection(this.firestore, 'transactions');
 
-  constructor(private helperService: HelperService) {
+  constructor(
+    private ngxsStore: Store,
+    private helperService: HelperService,
+  ) {
     // setTimeout(() => {
     //   const inflowCategory: CategoryDTO = {
     //     budgetId: 'rVtxaeyQzBSlgG27wG4t',
@@ -65,7 +72,10 @@ export class DatabaseService {
   }
 
   async createPayee(payee: Payee) {
-    return await addDoc(this.payeeCollection, payee);
+    console.trace('createPayee:', payee);
+    const createdPayee = await addDoc(this.payeeCollection, payee);
+    console.log('created the payee:', createdPayee, createdPayee.id);
+    return createdPayee;
   }
 
   async editPayee(payee: Partial<Payee>) {
@@ -220,28 +230,38 @@ export class DatabaseService {
 
   async editCategory(category: Partial<CategoryDTO>) {
     const categoryRef = doc(this.categoryCollection, category.id);
-    return await updateDoc(categoryRef, {
+    const editedCategory = await updateDoc(categoryRef, {
       ...category,
       updatedAt: new Date().toISOString(),
     });
+    this.ngxsStore.dispatch(new CategoryGroupsActions.SetCategoryGroupData());
+    return editedCategory;
   }
 
   async createTransaction(transaction: Transaction) {
-    return await addDoc(this.transactionCollection, transaction);
+    const createdTxn = await addDoc(this.transactionCollection, transaction);
+    console.log('createTransaction', transaction, createdTxn);
+    this.ngxsStore.dispatch(new TransactionsActions.ProcessNormalisedTransaction());
+    this.ngxsStore.dispatch(new AccountsActions.SetBalanceForAccounts());
+    return createdTxn;
   }
 
   async editTransaction(transaction: Partial<Transaction>) {
     console.log('Editing transaction', transaction.id);
     const transactionRef = doc(this.transactionCollection, transaction.id);
-    return await updateDoc(transactionRef, {
+    const editedTxn = await updateDoc(transactionRef, {
       ...transaction,
       updatedAt: new Date().toISOString(),
     });
+    this.ngxsStore.dispatch(new TransactionsActions.ProcessNormalisedTransaction());
+    this.ngxsStore.dispatch(new AccountsActions.SetBalanceForAccounts());
+    return editedTxn;
   }
 
   async deleteTransaction(transactionId: string) {
     const transactionRef = doc(this.transactionCollection, transactionId);
     await deleteDoc(transactionRef);
+    this.ngxsStore.dispatch(new TransactionsActions.ProcessNormalisedTransaction());
   }
 
   getBudgetsStream() {
@@ -286,8 +306,8 @@ export class DatabaseService {
       and(
         where('date', '>=', new Date(year, month, 0).toISOString()),
         where('date', '<', new Date(year, month + 1, 0).toISOString()),
-        where('budgetId', '==', budgetId)
-      )
+        where('budgetId', '==', budgetId),
+      ),
     );
     const data = collectionData(q, { idField: 'id' }) as Observable<Transaction[]>;
     return data;
@@ -298,7 +318,7 @@ export class DatabaseService {
       this.transactionCollection,
       and(where('budgetId', '==', budgetId), where('deleted', '==', false)),
       orderBy('date', 'desc'),
-      orderBy('updatedAt', 'desc')
+      orderBy('updatedAt', 'desc'),
     );
     return collectionData(q, { idField: 'id' }) as Observable<Transaction[]>;
     // return of(transactions) as Observable<Transaction[]>;
@@ -315,8 +335,8 @@ export class DatabaseService {
       and(
         where('date', '>=', new Date(year, month, 0).toISOString()),
         where('date', '<', new Date(year, month + 1, 0).toISOString()),
-        where('budgetId', '==', budgetId)
-      )
+        where('budgetId', '==', budgetId),
+      ),
     );
     // console.log('transaction query:', q);
     const docSnap = await getDocs(q);
