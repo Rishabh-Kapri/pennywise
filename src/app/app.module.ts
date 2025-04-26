@@ -33,6 +33,7 @@ import { CategoryComponent } from './budget/category/category.component';
 import { CategoryItemComponent } from './budget/category-item/category-item.component';
 import { ReportsComponent } from './reports/reports.component';
 import { NgxsStoreModule } from './store/store.module';
+import { AutoFocusDirective } from './directives/autofocus.directive';
 
 @NgModule({
   declarations: [
@@ -45,6 +46,7 @@ import { NgxsStoreModule } from './store/store.module';
     DatePickerComponent,
     CategoryComponent,
     CategoryItemComponent,
+    AutoFocusDirective,
   ],
   imports: [
     BrowserModule,

@@ -26,14 +26,15 @@
       </div>
       <div class="text-white flex-20 text-right pl-5">
         <button
-          [hidden]="category.showBudgetInput"
+          *ngIf="!category.showBudgetInput"
           class="h-6 w-36 border border-transparent rounded-small p-0.5 hover:border-sky-500 text-right"
           (click)="showBudgetInput(category)">
           {{ category.budgeted?.[budgetKey] ?? 0 | currency : 'INR' }}
         </button>
         <input
+          *ngIf=category.showBudgetInput
+          autoFocus
           [id]="category.id"
-          [hidden]="!category.showBudgetInput"
           type="text"
           class="w-36 h-6 p-1 text-right border-transparent bg-transparent hover:border-blue-500 focus:border-blue-500 rounded-small"
           [ngModel]="category.budgeted[budgetKey]"

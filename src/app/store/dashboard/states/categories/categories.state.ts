@@ -36,7 +36,6 @@ export class CategoriesState {
   static getCategory(id: string): (state: CategoriesStateModel) => Category | null {
     return createSelector([CategoriesState], (state: CategoriesStateModel) => {
       const foundCategory = state.allCategories.find(cat => cat.id === id) ?? null;
-      console.log(foundCategory);
       return JSON.parse(JSON.stringify(foundCategory));
     });
   }
@@ -65,7 +64,7 @@ export class CategoriesState {
     ctx: StateContext<CategoriesStateModel>,
     { payload }: Emitted<CategoriesActions.GetAllCategories, Category[]>,
   ) {
-    console.log(payload);
+    console.log(payload.filter(cat => cat.name === '🏋🏽 Gym' || cat.name === '🛒 Groceries'));
     ctx.setState({
       allCategories: payload,
       inflowCategory: (payload.find((cat) => cat.name === INFLOW_CATEGORY_NAME) as unknown as InflowCategory) ?? null,
