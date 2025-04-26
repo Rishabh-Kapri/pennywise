@@ -44,8 +44,8 @@ export class CategoryItemComponent implements AfterViewInit {
   categoryDropdown: Dropdown;
   parser = new Parser();
   moveData = {
-    from: { categoryId: '', amount: 0 },
-    to: { categoryId: '', name: '' },
+    from: { categoryId: '', groupId: '', amount: 0 },
+    to: { categoryId: '', groupId: '', name: '' },
   };
   defaultOptions: DropdownOptions = {
     placement: 'bottom',
@@ -116,6 +116,10 @@ export class CategoryItemComponent implements AfterViewInit {
    * Budget to the category
    */
   hideBudgetInput(category: Category, event: any) {
+    // @TODO
+    // 1. improve the logic here to only call dispatch when event isn't zero
+    // 2. handle catch error for ngxs
+    // 3. handle editing of category in a more efficient way
     const categoryCopy = <Category>JSON.parse(JSON.stringify(category));
     const currentBudget = categoryCopy.budgeted[this.budgetKey];
     try {
@@ -175,10 +179,12 @@ export class CategoryItemComponent implements AfterViewInit {
     this.moveData = {
       from: {
         categoryId: category.id!,
+        groupId: category.categoryGroupId,
         amount: category.balance?.[this.budgetKey]!,
       },
       to: {
         categoryId: '',
+        groupId: '',
         name: '',
       },
     };
@@ -225,6 +231,7 @@ export class CategoryItemComponent implements AfterViewInit {
   selectMoveCategory(category: Category) {
     this.moveData.to.name = category.name;
     this.moveData.to.categoryId = category.id!;
+    this.moveData.to.groupId = category.categoryGroupId;
     this.categoryDropdown.toggle();
   }
 
@@ -245,18 +252,33 @@ export class CategoryItemComponent implements AfterViewInit {
     if (this.moveData?.from?.amount === null || !this.moveData?.to?.categoryId) {
       return;
     }
-    const moveTo = this.ngxsStore.selectSnapshot(CategoriesState.getCategory(this.moveData.to.categoryId));
+    const moveTo = this.ngxsStore.selectSnapshot(
+      CategoryGroupsState.getCategory(this.moveData.to.categoryId, this.moveData.to.groupId),
+    );
 
-    const moveFrom = this.ngxsStore.selectSnapshot(CategoriesState.getCategory(this.moveData.from.categoryId));
+    const moveFrom = this.ngxsStore.selectSnapshot(
+      CategoryGroupsState.getCategory(this.moveData.from.categoryId, this.moveData.from.groupId),
+    );
+    console.log('moveBalance:::', this.moveData);
+    console.log('moveTo', moveTo);
+    console.log('moveFrom', moveFrom);
     if (moveTo) {
-      // moveTo.budgeted[this.budgetKey] += this.moveData.from.amount;
-      // moveTo.balance[this.budgetKey] += this.moveData.from.amount;
-      // this.editCategoryEvent.emit(moveTo);
+      moveTo.budgeted[this.budgetKey] += this.moveData.from.amount;
+      if (moveTo.balance) {
+        moveTo.balance[this.budgetKey] += this.moveData.from.amount;
+      } else {
+        moveTo.balance = {
+          [this.budgetKey]: this.moveData.from.amount,
+        };
+      }
+      this.editCategoryEvent.emit(moveTo);
     }
     if (moveFrom) {
-      // moveFrom.budgeted[this.budgetKey] -= this.moveData.from.amount;
-      // moveFrom.balance[this.budgetKey] -= this.moveData.from.amount;
-      // this.editCategoryEvent.emit(moveFrom);
+      moveFrom.budgeted[this.budgetKey] -= this.moveData.from.amount;
+      if (moveFrom.balance) {
+        moveFrom.balance[this.budgetKey] -= this.moveData.from.amount;
+      }
+      this.editCategoryEvent.emit(moveFrom);
     }
   }
 }

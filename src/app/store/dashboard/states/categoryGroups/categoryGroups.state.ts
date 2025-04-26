@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { Emitted, NgxsFirestoreConnect, StreamEmitted } from '@ngxs-labs/firestore-plugin';
-import { Action, NgxsOnInit, Selector, State, StateContext, Store } from '@ngxs/store';
+import { Action, NgxsOnInit, Selector, State, StateContext, Store, createSelector } from '@ngxs/store';
 import { CategoryGroup } from 'src/app/models/catergoryGroup';
 import { CategoryGroupData } from 'src/app/models/state.model';
 import { CategoryGroupsFirestore } from 'src/app/services/databases/categoryGroups.firestore';
@@ -42,6 +42,23 @@ export class CategoryGroupsState implements NgxsOnInit {
   @Selector()
   static getCollapseAllGroups(state: CategoryGroupsStateModel): boolean {
     return state.collapseAllGroups;
+  }
+  
+  static getCategory(categoryId: string, groupId: string) {
+    return createSelector([CategoryGroupsState], (state: CategoryGroupsStateModel) => {
+      let foundCategory: Category | null = null;
+      for (const group of state.categoryGroups) {
+        if (group.id === groupId) {
+          for (const cat of group.categories) {
+            if (cat.id === categoryId) {
+              foundCategory = JSON.parse(JSON.stringify(cat));
+              break;
+            }
+          }
+        }
+      }
+      return foundCategory;
+    });
   }
 
   constructor(
