@@ -53,6 +53,7 @@
       </div>
       <div class="text-white flex-20 text-right">
         <button
+          *ngIf="!helperService.isCategoryCreditCard(category)"
           class="badge"
           [ngClass]="{
             active: category.balance?.[budgetKey]! > 0,
@@ -64,6 +65,11 @@
           (click)="showMoveMenu(category)">
           {{ category.balance?.[budgetKey] ?? 0 | currency : 'INR' }}
         </button>
+        <span 
+          *ngIf="helperService.isCategoryCreditCard(category)"
+          class="badge active">
+          {{ (category.balance?.[budgetKey] ?? 0) | abs }}
+        </span>
         <ng-container *ngTemplateOutlet="moveDropdownTemplate; context: { category: category }"></ng-container>
       </div>
     </div>
@@ -141,9 +147,15 @@
                     (click)="selectMoveCategory(cat)">
                     <span>{{ cat.name }}</span>
                     <span
+                      *ngIf="!helperService.isCategoryCreditCard(cat)"
                       class="text-budget-green"
-                      [ngClass]="{ 'text-red-700': cat?.balance?.[budgetKey]! < 0}">
+                      [ngClass]="{ 'text-red-700': cat?.balance?.[budgetKey]! < 0 }">
                       {{ cat?.balance?.[budgetKey] ?? 0 | currency : 'INR' }}
+                    </span>
+                    <span 
+                      *ngIf="helperService.isCategoryCreditCard(cat)"
+                      class="text-budget-green">
+                      {{ (cat?.balance?.[budgetKey] ?? 0) | abs }}
                     </span>
                   </li>
                 </ul>

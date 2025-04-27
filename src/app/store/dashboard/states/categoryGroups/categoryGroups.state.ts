@@ -43,7 +43,7 @@ export class CategoryGroupsState implements NgxsOnInit {
   static getCollapseAllGroups(state: CategoryGroupsStateModel): boolean {
     return state.collapseAllGroups;
   }
-  
+
   static getCategory(categoryId: string, groupId: string) {
     return createSelector([CategoryGroupsState], (state: CategoryGroupsStateModel) => {
       let foundCategory: Category | null = null;
@@ -158,23 +158,16 @@ export class CategoryGroupsState implements NgxsOnInit {
           name: group.name,
           id: group.id!,
           collapsed: state.collapseAllGroups,
-          balance: {
-            [selectedMonth]: this.helperService.reduceCategoriesAmount(groupCategories, 'balance', selectedMonth),
-          },
-          activity: {
-            [selectedMonth]: this.helperService.reduceCategoriesAmount(groupCategories, 'activity', selectedMonth),
-          },
-          budgeted: {
-            [selectedMonth]: this.helperService.reduceCategoriesAmount(groupCategories, 'budgeted', selectedMonth),
-          },
           categories: [
             ...groupCategories.map((category) => {
               const currentMonthTxns = this.helperService.filterTransactionsBasedOnMonth(transactions, selectedMonth);
               let currMonthCatTxns: Transaction[] = [];
               if (this.helperService.isCategoryCreditCard(category)) {
-                currMonthCatTxns = this.helperService.getTransactionsForAccount(currMonthCatTxns, [
+                console.log('credit card category:', category, category.name);
+                currMonthCatTxns = this.helperService.getTransactionsForAccount(currentMonthTxns, [
                   ...ccAccounts.map((acc) => acc.id!),
                 ]);
+                console.log('credit card category txns:', currMonthCatTxns, currMonthCatTxns.reduce((acc, curr) => acc + curr.amount, 0));
               } else {
                 currMonthCatTxns = this.helperService.getTransactionsForCategory(currentMonthTxns, [category.id!]);
               }
@@ -195,6 +188,15 @@ export class CategoryGroupsState implements NgxsOnInit {
               return { ...category, showBudgetInput: false };
             }),
           ],
+          balance: {
+            [selectedMonth]: this.helperService.reduceCategoriesAmount(groupCategories, 'balance', selectedMonth),
+          },
+          activity: {
+            [selectedMonth]: this.helperService.reduceCategoriesAmount(groupCategories, 'activity', selectedMonth),
+          },
+          budgeted: {
+            [selectedMonth]: this.helperService.reduceCategoriesAmount(groupCategories, 'budgeted', selectedMonth),
+          },
         };
         categoryGroupData.push(data);
       }
