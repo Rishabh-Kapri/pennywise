@@ -34,6 +34,7 @@ import { CategoryItemComponent } from './budget/category-item/category-item.comp
 import { ReportsComponent } from './reports/reports.component';
 import { NgxsStoreModule } from './store/store.module';
 import { AutoFocusDirective } from './directives/autofocus.directive';
+import { AbsolutePipe } from './pipes/absolute.pipe';
 
 @NgModule({
   declarations: [
@@ -47,6 +48,7 @@ import { AutoFocusDirective } from './directives/autofocus.directive';
     CategoryComponent,
     CategoryItemComponent,
     AutoFocusDirective,
+    AbsolutePipe,
   ],
   imports: [
     BrowserModule,

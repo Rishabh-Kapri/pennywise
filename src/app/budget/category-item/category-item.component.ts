@@ -58,7 +58,7 @@ export class CategoryItemComponent implements AfterViewInit {
   constructor(
     private ngxsStore: Store,
     public store: StoreService,
-    private helperService: HelperService,
+    public helperService: HelperService,
   ) {}
 
   ngOnInit(): void {
@@ -168,6 +168,7 @@ export class CategoryItemComponent implements AfterViewInit {
   }
 
   hideUnhideCategory(category: Category) {
+    // @TODO: only hide category when balance is zero
     this.hideUnhideCategoryEvent.emit(category);
     this.menuDropdown.hide();
   }
@@ -259,9 +260,6 @@ export class CategoryItemComponent implements AfterViewInit {
     const moveFrom = this.ngxsStore.selectSnapshot(
       CategoryGroupsState.getCategory(this.moveData.from.categoryId, this.moveData.from.groupId),
     );
-    console.log('moveBalance:::', this.moveData);
-    console.log('moveTo', moveTo);
-    console.log('moveFrom', moveFrom);
     if (moveTo) {
       moveTo.budgeted[this.budgetKey] += this.moveData.from.amount;
       if (moveTo.balance) {

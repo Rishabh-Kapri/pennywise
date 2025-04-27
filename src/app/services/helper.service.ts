@@ -99,11 +99,8 @@ export class HelperService {
     return groupTransactions;
   }
 
-  isCategoryCreditCard(category: Category) {
-    if (category?.name?.toLowerCase().includes('credit')) {
-      return true;
-    }
-    return false;
+  isCategoryCreditCard(category: Category): boolean {
+    return category?.name?.toLowerCase().includes('credit');
   }
 
   /**
