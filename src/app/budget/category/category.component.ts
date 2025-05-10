@@ -17,6 +17,7 @@ import { CategoryGroupsState } from 'src/app/store/dashboard/states/categoryGrou
   templateUrl: './category.component.html',
   styleUrls: ['./category.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: false,
 })
 export class CategoryComponent implements OnInit, AfterViewInit, OnDestroy {
   groupTargetEl: HTMLElement | null;

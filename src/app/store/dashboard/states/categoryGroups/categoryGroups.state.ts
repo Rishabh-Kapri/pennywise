@@ -44,6 +44,12 @@ export class CategoryGroupsState implements NgxsOnInit {
     return state.collapseAllGroups;
   }
 
+  static getCategoryGroupById(groupId: string) {
+    return createSelector([CategoryGroupsState], (state: CategoryGroupsStateModel) => {
+      return state.categoryGroups.find((group) => group.id === groupId);
+    });
+  }
+
   static getCategory(categoryId: string, groupId: string) {
     return createSelector([CategoryGroupsState], (state: CategoryGroupsStateModel) => {
       let foundCategory: Category | null = null;
@@ -167,7 +173,11 @@ export class CategoryGroupsState implements NgxsOnInit {
                 currMonthCatTxns = this.helperService.getTransactionsForAccount(currentMonthTxns, [
                   ...ccAccounts.map((acc) => acc.id!),
                 ]);
-                console.log('credit card category txns:', currMonthCatTxns, currMonthCatTxns.reduce((acc, curr) => acc + curr.amount, 0));
+                console.log(
+                  'credit card category txns:',
+                  currMonthCatTxns,
+                  currMonthCatTxns.reduce((acc, curr) => acc + curr.amount, 0),
+                );
               } else {
                 currMonthCatTxns = this.helperService.getTransactionsForCategory(currentMonthTxns, [category.id!]);
               }

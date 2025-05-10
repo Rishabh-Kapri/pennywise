@@ -23,15 +23,23 @@
     "@ngxs-labs/firestore-plugin": "^18.0.3",
     "@ngxs/devtools-plugin": "18.1.6",
     "@ngxs/logger-plugin": "18.1.6",
-    "@ngxs/storage-plugin": "18.1.6",
+    "@ngxs/storage-plugin": "^18.1.6",
     "@ngxs/store": "^18.1.6",
     "expr-eval": "^2.0.2",
     "firebase": "^10.5.2",
+    "highcharts": "^12.2.0",
     "highcharts-angular": "^4.0.0",
     "rxfire": "^6.0.5",
     "rxjs": "^7.8.1",
     "tslib": "^2.3.0",
     "zone.js": "~0.14.3"
+  },
+  "overrides": {
+    "@ngxs-labs/firestore-plugin": {
+      "@angular/fire": "$@angular/fire",
+      "@ngxs/store": "$@ngxs/store",
+      "firebase": ">=9.0.0"
+    }
   },
   "devDependencies": {
     "@angular-devkit/build-angular": "^17.1.2",

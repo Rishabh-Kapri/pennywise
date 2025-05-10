@@ -32,6 +32,10 @@ export class CategoriesState {
   static getAllCategories(state: CategoriesStateModel): Category[] {
     return state.allCategories;
   }
+  @Selector()
+  static getInflowWithBalance(state: CategoriesStateModel): InflowCategory | null {
+    return state.inflowCategory;
+  }
 
   static getCategory(id: string): (state: CategoriesStateModel) => Category | null {
     return createSelector([CategoriesState], (state: CategoriesStateModel) => {
@@ -39,9 +43,11 @@ export class CategoriesState {
       return JSON.parse(JSON.stringify(foundCategory));
     });
   }
-  @Selector()
-  static getInflowWithBalance(state: CategoriesStateModel): InflowCategory | null {
-    return state.inflowCategory;
+  static getCategoryFromName(name: string): (state: CategoriesStateModel) => Category | null {
+    return createSelector([CategoriesState], (state: CategoriesStateModel) => {
+      const foundCategory = state.allCategories.find(cat => cat.name === name) ?? null;
+      return JSON.parse(JSON.stringify(foundCategory));
+    });
   }
 
   constructor(
@@ -64,7 +70,7 @@ export class CategoriesState {
     ctx: StateContext<CategoriesStateModel>,
     { payload }: Emitted<CategoriesActions.GetAllCategories, Category[]>,
   ) {
-    console.log(payload.filter(cat => cat.name === '🏋🏽 Gym' || cat.name === '🛒 Groceries'));
+    console.log(payload.filter(cat => cat.name === '✈️ Travel - LT' || cat.name === INFLOW_CATEGORY_NAME));
     ctx.setState({
       allCategories: payload,
       inflowCategory: (payload.find((cat) => cat.name === INFLOW_CATEGORY_NAME) as unknown as InflowCategory) ?? null,

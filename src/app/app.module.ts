@@ -35,6 +35,7 @@ import { ReportsComponent } from './reports/reports.component';
 import { NgxsStoreModule } from './store/store.module';
 import { AutoFocusDirective } from './directives/autofocus.directive';
 import { AbsolutePipe } from './pipes/absolute.pipe';
+import { HighchartsChartModule } from 'highcharts-angular';
 
 @NgModule({
   declarations: [
@@ -44,6 +45,7 @@ import { AbsolutePipe } from './pipes/absolute.pipe';
     BudgetComponent,
     TransactionsComponent,
     DashboardComponent,
+    ReportsComponent,
     DatePickerComponent,
     CategoryComponent,
     CategoryItemComponent,
@@ -75,8 +77,8 @@ import { AbsolutePipe } from './pipes/absolute.pipe';
       heroCheckCircleSolid,
       heroMagnifyingGlass,
     }),
-    ReportsComponent,
     NgxsStoreModule,
+    HighchartsChartModule,
   ],
   providers: [],
   bootstrap: [AppComponent],

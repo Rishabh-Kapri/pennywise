@@ -9,6 +9,7 @@ import { ngxsFirestoreConnections } from '@ngxs-labs/firestore-plugin';
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: false,
 })
 export class AppComponent implements OnInit {
   title = 'pennywise';

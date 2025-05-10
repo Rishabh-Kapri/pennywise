@@ -10,6 +10,7 @@ import { ConfigState } from '../store/dashboard/states/config/config.state';
   templateUrl: './dashboard.component.html',
   styleUrls: ['./dashboard.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: false,
 })
 export class DashboardComponent {
   selectedComponent = SelectedComponent;

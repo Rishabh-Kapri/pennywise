@@ -10,11 +10,13 @@ import {
   STATES_MODULES
 } from './store.config';
 import { NgxsFirestoreModule } from '@ngxs-labs/firestore-plugin';
+import { NgxsStoragePluginModule } from '@ngxs/storage-plugin';
 
 @NgModule({
   imports: [
     CommonModule,
     NgxsModule.forRoot(STATES_MODULES, OPTIONS_CONFIG),
+    NgxsStoragePluginModule.forRoot({ keys: '*' }),
     NgxsReduxDevtoolsPluginModule.forRoot(DEVTOOLS_REDUX_CONFIG),
     NgxsLoggerPluginModule.forRoot(LOGGER_CONFIG),
     NgxsFirestoreModule.forRoot(),

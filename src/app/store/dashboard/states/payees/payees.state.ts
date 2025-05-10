@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { Connected, Emitted, NgxsFirestoreConnect, StreamEmitted } from '@ngxs-labs/firestore-plugin';
-import { Action, NgxsOnInit, Selector, State, StateContext, Store } from '@ngxs/store';
+import { Action, NgxsOnInit, Selector, State, StateContext, Store, createSelector } from '@ngxs/store';
 import { Payee } from 'src/app/models/payee.model';
 import { PayeesFirestore } from 'src/app/services/databases/payees.firestore';
 import { PayeesActions } from './payees.action';
@@ -25,6 +25,13 @@ export class PayeesState implements NgxsOnInit {
   @Selector()
   static getStartingBalancePayee(state: PayeesStateModel): Payee | null {
     return state.allPayees.find((payee) => payee.name === STARTING_BALANCE_PAYEE) ?? null;
+  }
+
+  static getPayeeFromId(id: string): (state: PayeesStateModel) => Payee | null {
+    return createSelector([PayeesState], (state: PayeesStateModel) => {
+      const foundPayee = state.allPayees.find((payee) => payee.id === id) ?? null;
+      return JSON.parse(JSON.stringify(foundPayee));
+    });
   }
 
   constructor(
