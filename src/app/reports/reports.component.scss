@@ -34,3 +34,7 @@
 input[type='number'] {
   -moz-appearance: textfield;
 }
+
+.highcharts-container, .highcharts-container > svg{
+  overflow:visible !important;
+}

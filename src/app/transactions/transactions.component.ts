@@ -57,6 +57,7 @@ interface PayeesData {
   templateUrl: './transactions.component.html',
   styleUrls: ['./transactions.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: false,
 })
 export class TransactionsComponent implements OnChanges, OnDestroy {
   @Input() account: Account | null;
@@ -244,7 +245,6 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
       this.searchCategory$,
     ]).pipe(
       switchMap(([categoryGroupData, inflowCategory, search]) => {
-        console.log('::246', categoryGroupData, inflowCategory, search);
         const selectedMonth = this.ngxsStore.selectSnapshot(BudgetsState.getSelectedMonth);
         const inflowGroup: CategoryGroupData = {
           name: 'Inflow',

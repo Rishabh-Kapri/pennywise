@@ -7,6 +7,7 @@ import { Account } from '../models/account.model';
 import { Store } from '@ngxs/store';
 import { TransactionsState } from '../store/dashboard/states/transactions/transactions.state';
 import { AccountsState } from '../store/dashboard/states/accounts/accounts.state';
+import { categoryGroups } from 'src/assets/mock-data';
 
 @Injectable({
   providedIn: 'root',
@@ -61,6 +62,56 @@ export class HelperService {
   getCurrentMonthKey(): string {
     const date = new Date();
     return `${date.getFullYear()}-${date.getMonth()}`;
+  }
+
+  /**
+   * Returns the date in the format YYYY-MM-DD
+   * @Param{number} monthDiff optional diff for month, default is zero
+   */
+  getDateInStringFormat(dateObj: Date, monthDiff: number = 0): string {
+    dateObj.setDate(1);
+    dateObj.setMonth(dateObj.getMonth() + monthDiff);
+    const date = dateObj.getDate();
+    const month = dateObj.getMonth() + 1;
+    // return `${dateObj.getFullYear()}-${month < 10 ? '0' + month : month}-${date < 10 ? '0' + date : date}`;
+    return `${dateObj.getFullYear()}-${month}-${date}`;
+  }
+
+  getCurrentMonthDateRange() {
+    const startDate = this.getDateInStringFormat(new Date());
+    const endDate = this.getDateInStringFormat(new Date(), 1);
+    return { startDate, endDate };
+  }
+
+  /**
+   * Returns the startDate and endDate array between two dates
+   * @Param{string} startDate the date to start with, should be in format YYYY-MM-DD
+   * @Param{string} endDate the date to end with (non-inclusive), should be in format YYYY-MM-DD
+   */
+  getDateArr(startDate: string, endDate: string): { startDate: string; endDate: string; monthKey: string }[] {
+    const arr: { startDate: string; endDate: string; monthKey: string }[] = [];
+
+    let startDateStr = startDate;
+    let endDateStr = endDate;
+    let startDateObj = new Date(startDateStr);
+    const endDateObj = new Date(endDateStr);
+
+    let count = 0;
+    while (startDateObj.getTime() !== endDateObj.getTime()) {
+      const dateStrIncrement = this.getDateInStringFormat(startDateObj, 1);
+      arr.push({
+        startDate: startDateStr,
+        endDate: dateStrIncrement,
+        monthKey: `${startDateObj.getFullYear()}-${startDateObj.getMonth()-1}`,
+      });
+      startDateStr = dateStrIncrement;
+      startDateObj = new Date(startDateStr);
+      count += 1;
+      if (count === 5) {
+        break;
+      }
+    }
+    return arr;
   }
 
   /**
@@ -119,6 +170,25 @@ export class HelperService {
       console.log(transactions.filter((txn) => accountIds.includes(txn.accountId ?? '')));
     }
     return transactions.filter((transaction) => accountIds.includes(transaction.accountId ?? ''));
+  }
+
+  filterTransactionsReport(
+    transactions: Transaction[],
+    categoryIds: string[],
+    accountIds: string[],
+    startDateStr: string,
+    endDateStr: string,
+  ) {
+    const startDate = new Date(startDateStr);
+    const endDate = new Date(endDateStr);
+    const filteredTxnsDate = transactions.filter((txn) => {
+      const date = new Date(txn.date);
+      return date.getTime() >= startDate.getTime() && date.getTime() < endDate.getTime();
+    });
+    // when selecting all categories or accounts the following function calls can be skipped
+    const categoryTxns = this.getTransactionsForCategory(filteredTxnsDate, categoryIds);
+    const accountTxns = this.getTransactionsForAccount(categoryTxns, accountIds);
+    return accountTxns;
   }
 
   /**

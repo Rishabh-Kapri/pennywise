@@ -9,6 +9,7 @@ import { BudgetsState } from '../store/dashboard/states/budget/budget.state';
   templateUrl: './budget.component.html',
   styleUrls: ['./budget.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: false,
 })
 export class BudgetComponent implements OnInit {
   inflowCategory$ = this.ngxsStore.select(CategoriesState.getInflowWithBalance);

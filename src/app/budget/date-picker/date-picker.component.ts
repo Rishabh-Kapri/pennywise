@@ -13,6 +13,7 @@ enum DATE_VALUE {
   selector: 'app-date-picker',
   templateUrl: './date-picker.component.html',
   styleUrls: ['./date-picker.component.scss'],
+  standalone: false,
 })
 export class DatePickerComponent implements OnInit {
   dateValue = DATE_VALUE;

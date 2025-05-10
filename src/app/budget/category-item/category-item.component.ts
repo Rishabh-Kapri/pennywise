@@ -25,6 +25,7 @@ import { TransactionsState } from 'src/app/store/dashboard/states/transactions/t
   templateUrl: './category-item.component.html',
   styleUrls: ['./category-item.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: false,
 })
 export class CategoryItemComponent implements AfterViewInit {
   @Input() categories: Category[];
@@ -137,9 +138,12 @@ export class CategoryItemComponent implements AfterViewInit {
     if (categoryCopy.budgeted[this.budgetKey] !== currentBudget) {
       // check if inflow has the amount that is being budgeted
       const budgeted = categoryCopy.budgeted[this.budgetKey];
-      const inflowCategory = this.ngxsStore.selectSnapshot(CategoriesState.getInflowWithBalance)!;
+      const inflowCategory = JSON.parse(
+        JSON.stringify(this.ngxsStore.selectSnapshot(CategoriesState.getInflowWithBalance)!),
+      );
       const balance = inflowCategory.budgeted;
       const diff = Number(Number(budgeted - currentBudget).toFixed(2));
+      console.log(diff);
       if (diff <= balance) {
         // subtract from inflow
         inflowCategory.budgeted -= diff;
@@ -150,6 +154,8 @@ export class CategoryItemComponent implements AfterViewInit {
       }
       categoryCopy.budgeted[this.budgetKey] = Number(Number(categoryCopy.budgeted[this.budgetKey]).toFixed(2));
       inflowCategory.budgeted = Number(Number(inflowCategory.budgeted).toFixed(2));
+
+      console.log(categoryCopy.budgeted[this.budgetKey], inflowCategory.budgeted);
       this.editCategoryEvent.emit(categoryCopy);
       this.editCategoryEvent.emit(inflowCategory);
       // check all other categories and assign zero to them if not assigned
