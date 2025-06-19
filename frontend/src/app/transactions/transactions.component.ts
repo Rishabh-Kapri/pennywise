@@ -686,6 +686,7 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
       payeeId: selectedTransaction.payeeId,
       categoryId: selectedTransaction.categoryId,
       note: selectedTransaction.note ?? '',
+      source: 'pennywise',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       deleted: false,
@@ -725,6 +726,7 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
       // transactions cannot be created from tracking accounts, only to them from budget accounts, either inflow or outflow
       categoryId: null,
       note: selectedTransaction.note ?? '',
+      source: 'pennywise',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       deleted: false,

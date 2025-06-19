@@ -188,6 +188,7 @@ export class DatabaseService {
       amount: account.balance,
       payeeId: startingPayee.id!,
       date: this.helperService.getDateInDbFormat(),
+      source: 'pennywise',
       deleted: false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

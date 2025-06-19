@@ -16,10 +16,10 @@ import {
   heroBanknotes,
   heroCurrencyRupee,
   heroChevronDown,
+  heroChevronRight,
   heroPlusCircle,
   heroXMark,
   heroChevronLeft,
-  heroChevronRight,
   heroMagnifyingGlass,
 } from '@ng-icons/heroicons/outline';
 import { heroPencilSolid, heroPlusCircleSolid, heroCheckCircleSolid } from '@ng-icons/heroicons/solid';
@@ -36,6 +36,9 @@ import { NgxsStoreModule } from './store/store.module';
 import { AutoFocusDirective } from './directives/autofocus.directive';
 import { AbsolutePipe } from './pipes/absolute.pipe';
 import { HighchartsChartModule } from 'highcharts-angular';
+import { CalculateAveragePipe } from './pipes/calculateAverage.pipe';
+import { CalculateTotalPipe } from './pipes/calculateTotal.pipe';
+import { AddZeroPrefixToDate } from './pipes/addZeroPrefixDate.pipe';
 
 @NgModule({
   declarations: [
@@ -51,6 +54,9 @@ import { HighchartsChartModule } from 'highcharts-angular';
     CategoryItemComponent,
     AutoFocusDirective,
     AbsolutePipe,
+    CalculateAveragePipe,
+    CalculateTotalPipe,
+    AddZeroPrefixToDate,
   ],
   imports: [
     BrowserModule,

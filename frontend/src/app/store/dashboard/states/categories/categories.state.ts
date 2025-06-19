@@ -70,7 +70,6 @@ export class CategoriesState {
     ctx: StateContext<CategoriesStateModel>,
     { payload }: Emitted<CategoriesActions.GetAllCategories, Category[]>,
   ) {
-    console.log(payload.filter(cat => cat.name === '✈️ Travel - LT' || cat.name === INFLOW_CATEGORY_NAME));
     ctx.setState({
       allCategories: payload,
       inflowCategory: (payload.find((cat) => cat.name === INFLOW_CATEGORY_NAME) as unknown as InflowCategory) ?? null,
@@ -79,7 +78,6 @@ export class CategoriesState {
 
   @Action(CategoriesActions.UpdateCategory)
   updateCategory(ctx: StateContext<CategoriesStateModel>, { payload }: CategoriesActions.UpdateCategory) {
-    console.log('updateCategory:', payload);
     ctx.setState(
       patch<CategoriesStateModel>({
         allCategories: updateItem<Category>((cat) => {
@@ -91,17 +89,22 @@ export class CategoriesState {
 
   @Action(CategoriesActions.SetInflowCategoryBalance)
   setInflowCategoryBalance(ctx: StateContext<CategoriesStateModel>) {
+    console.log('setInflowCategoryBalance', ctx);
     const state = ctx.getState();
     const inflowCategory = Object.assign({}, state.inflowCategory);
+    console.log(inflowCategory);
     const transactions = this.ngxsStore.selectSnapshot(TransactionsState.getAllTransactions);
     const categoriesWithoutInflow = state.allCategories.filter((cat) => cat.name !== INFLOW_CATEGORY_NAME);
+    console.log(categoriesWithoutInflow);
     if (inflowCategory) {
       const totalBudgeted = categoriesWithoutInflow.reduce((totalBudgeted, cat) => {
         return totalBudgeted + Object.values(cat.budgeted).reduce((a, b) => a + b, 0);
       }, 0);
+      console.log('totalBudgeted:', totalBudgeted);
       const inflowAmount = this.helperService
         .getTransactionsForCategory(transactions, [inflowCategory.id!])
         .reduce((totalAmount, transaction) => totalAmount + transaction.amount, 0);
+      console.log('inflowAmount:', inflowAmount);
       inflowCategory.budgeted = Number(Number(inflowAmount - totalBudgeted).toFixed(2));
 
       ctx.patchState({

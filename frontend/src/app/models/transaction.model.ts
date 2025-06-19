@@ -9,6 +9,7 @@ export interface Transaction {
   categoryId: string | null; // id of the category which the transaction belongs to, null for transfer transaction
   transferTransactionId?: string | null; // id of the tranfer transaction
   transferAccountId?: string | null; // id of the transfer account, only present when transferTransactionId is present
+  source: 'pennywise' | 'cron';
   createdAt?: string;
   updatedAt?: string;
   deleted: boolean;

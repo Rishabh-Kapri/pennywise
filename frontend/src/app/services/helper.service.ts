@@ -73,7 +73,6 @@ export class HelperService {
     dateObj.setMonth(dateObj.getMonth() + monthDiff);
     const date = dateObj.getDate();
     const month = dateObj.getMonth() + 1;
-    // return `${dateObj.getFullYear()}-${month < 10 ? '0' + month : month}-${date < 10 ? '0' + date : date}`;
     return `${dateObj.getFullYear()}-${month}-${date}`;
   }
 
@@ -84,11 +83,21 @@ export class HelperService {
   }
 
   /**
-   * Returns the startDate and endDate array between two dates
+   * Returns the startDate and endDate array between two dates.
    * @Param{string} startDate the date to start with, should be in format YYYY-MM-DD
    * @Param{string} endDate the date to end with (non-inclusive), should be in format YYYY-MM-DD
+   * @example
+   * startDate = "2025-01-01"
+   * endDate = "2025-03-01"
+   * const range = getDateRange(startDate, endDate)
+   * console.log(range)
+   * [
+       { startDate: '2025-1-1', endDate: '2025-2-1', monthKey: '2025-0' },
+       { startDate: '2025-2-1', endDate: '2025-3-1', monthKey: '2025-1' },
+       { startDate: '2025-3-1', endDate: '2025-4-1', monthKey: '2025-2' }
+   * ]
    */
-  getDateArr(startDate: string, endDate: string): { startDate: string; endDate: string; monthKey: string }[] {
+  getDateRange(startDate: string, endDate: string): { startDate: string; endDate: string; monthKey: string }[] {
     const arr: { startDate: string; endDate: string; monthKey: string }[] = [];
 
     let startDateStr = startDate;
@@ -96,7 +105,6 @@ export class HelperService {
     let startDateObj = new Date(startDateStr);
     const endDateObj = new Date(endDateStr);
 
-    let count = 0;
     while (startDateObj.getTime() !== endDateObj.getTime()) {
       const dateStrIncrement = this.getDateInStringFormat(startDateObj, 1);
       arr.push({
@@ -106,10 +114,6 @@ export class HelperService {
       });
       startDateStr = dateStrIncrement;
       startDateObj = new Date(startDateStr);
-      count += 1;
-      if (count === 5) {
-        break;
-      }
     }
     return arr;
   }
