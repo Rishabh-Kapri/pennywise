@@ -10,7 +10,7 @@ import {
   ViewContainerRef,
 } from '@angular/core';
 import { StoreService } from '../services/store.service';
-import { BehaviorSubject, Observable, Subject, combineLatest, filter, of, switchMap, take, takeUntil } from 'rxjs';
+import { Observable, Subject, combineLatest, combineLatestAll, filter, of, switchMap, take, takeUntil } from 'rxjs';
 import { PopoverRef } from '../services/popover-ref';
 import { PopoverService } from '../services/popover.service';
 import { Store } from '@ngxs/store';
@@ -24,6 +24,8 @@ import { Transaction } from '../models/transaction.model';
 import { CategoriesState } from '../store/dashboard/states/categories/categories.state';
 import { INFLOW_CATEGORY_NAME } from '../constants/general';
 import { PayeesState } from '../store/dashboard/states/payees/payees.state';
+import { Amount, CategoryData, CategoryGroupReport, DateRange, IncomeData } from '../models/reports.model';
+import { AccountGroups, CategoryGroups } from '../models/reports.model';
 
 enum Tab {
   SPENDING = 'spending',
@@ -49,8 +51,8 @@ export class ReportsComponent implements AfterViewInit, OnDestroy {
 
   showReports = false;
   currentTab: Tab = Tab.SPENDING;
-  accountData$: Observable<any[]>;
-  categoryGroupData$: Observable<any[]>;
+  accountData$: Observable<AccountGroups[]>;
+  categoryGroupData$: Observable<CategoryGroups[]>;
 
   budgetAccounts$ = this.ngxsStore.select(AccountsState.getBudgetAccounts);
   trackingAccounts$ = this.ngxsStore.select(AccountsState.getTrackingAccounts);
@@ -63,7 +65,7 @@ export class ReportsComponent implements AfterViewInit, OnDestroy {
   selectedDateRange = { ...this.helperService.getCurrentMonthDateRange() };
 
   selectedCategories: any[] = [];
-  dateArr: { startDate: string; endDate: string; monthKey: string }[] = [];
+  dateRange: DateRange[] = [];
 
   // highcharts related
   // @TODO: show total inside the pie chart
@@ -89,7 +91,6 @@ export class ReportsComponent implements AfterViewInit, OnDestroy {
         load: function () {},
         redraw: (e) => {},
         drilldown: (e) => {
-          console.log(e);
           const series = e.seriesOptions as Highcharts.SeriesPieOptions;
           this.selectedCategories = series?.data as any[];
         },
@@ -197,193 +198,10 @@ export class ReportsComponent implements AfterViewInit, OnDestroy {
   oneToOneFlag = false;
   runOutsideAngular = false;
 
-  // tessting
-  sampleIncomeData: {
-    payee: string;
-    amounts: {
-      [monthKey: string]: number;
-    };
-  }[] = [
-    {
-      payee: 'Delivery Solutions',
-      amounts: {
-        '2025-0': 145000,
-        '2025-1': 145000,
-        '2025-2': 145000,
-        '2025-3': 150000,
-        '2025-4': 167710,
-      },
-    },
-    {
-      payee: 'HDFC',
-      amounts: {
-        '2025-0': 100,
-        '2025-1': 500,
-        '2025-2': 1000,
-        '2025-3': 300,
-        '2025-4': 700,
-      },
-    },
-  ];
-  sampleCategoriesData: {
-    groupName: string;
-    categories: {
-      name: string;
-      amounts: { [monthKey: string]: number };
-    }[];
-  }[] = [
-    {
-      groupName: 'Bills',
-      categories: [
-        {
-          name: 'Spotify',
-          amounts: {
-            '2025-0': 149,
-            '2025-1': 149,
-            '2025-2': 149,
-            '2025-3': 149,
-            '2025-4': 149,
-          },
-        },
-        {
-          name: 'Google Drive',
-          amounts: {
-            '2025-0': 650,
-            '2025-1': 650,
-            '2025-2': 650,
-            '2025-3': 650,
-            '2025-4': 650,
-          },
-        },
-      ],
-    },
-    {
-      groupName: 'Living Expenses',
-      categories: [
-        {
-          name: 'Gym',
-          amounts: {
-            '2025-0': 3000,
-            '2025-1': 6000,
-            '2025-2': 4000,
-            '2025-3': 4200,
-            '2025-4': 1000,
-          },
-        },
-        {
-          name: 'Clothing',
-          amounts: {
-            '2025-0': 0,
-            '2025-1': 0,
-            '2025-2': 12000,
-            '2025-3': 0,
-            '2025-4': 3000,
-          },
-        },
-      ],
-    },
-    {
-      groupName: 'Living Expenses',
-      categories: [
-        {
-          name: 'Gym',
-          amounts: {
-            '2025-0': 3000,
-            '2025-1': 6000,
-            '2025-2': 4000,
-            '2025-3': 4200,
-            '2025-4': 1000,
-          },
-        },
-        {
-          name: 'Clothing',
-          amounts: {
-            '2025-0': 0,
-            '2025-1': 0,
-            '2025-2': 12000,
-            '2025-3': 0,
-            '2025-4': 3000,
-          },
-        },
-      ],
-    },
-    {
-      groupName: 'Living Expenses',
-      categories: [
-        {
-          name: 'Gym',
-          amounts: {
-            '2025-0': 3000,
-            '2025-1': 6000,
-            '2025-2': 4000,
-            '2025-3': 4200,
-            '2025-4': 1000,
-          },
-        },
-        {
-          name: 'Clothing',
-          amounts: {
-            '2025-0': 0,
-            '2025-1': 0,
-            '2025-2': 12000,
-            '2025-3': 0,
-            '2025-4': 3000,
-          },
-        },
-      ],
-    },
-    {
-      groupName: 'Living Expenses',
-      categories: [
-        {
-          name: 'Gym',
-          amounts: {
-            '2025-0': 3000,
-            '2025-1': 6000,
-            '2025-2': 4000,
-            '2025-3': 4200,
-            '2025-4': 1000,
-          },
-        },
-        {
-          name: 'Clothing',
-          amounts: {
-            '2025-0': 0,
-            '2025-1': 0,
-            '2025-2': 12000,
-            '2025-3': 0,
-            '2025-4': 3000,
-          },
-        },
-      ],
-    },
-    {
-      groupName: 'Living Expenses',
-      categories: [
-        {
-          name: 'Gym',
-          amounts: {
-            '2025-0': 3000,
-            '2025-1': 6000,
-            '2025-2': 4000,
-            '2025-3': 4200,
-            '2025-4': 1000,
-          },
-        },
-        {
-          name: 'Clothing',
-          amounts: {
-            '2025-0': 0,
-            '2025-1': 0,
-            '2025-2': 12000,
-            '2025-3': 0,
-            '2025-4': 3000,
-          },
-        },
-      ],
-    },
-  ];
-
+  isFilterApplied = false;
+  incomeData: IncomeData[] = [];
+  categoriesExpenseData: CategoryGroupReport[] = [];
+    
   constructor(
     private ngxsStore: Store,
     private cdr: ChangeDetectorRef,
@@ -392,7 +210,6 @@ export class ReportsComponent implements AfterViewInit, OnDestroy {
     private helperService: HelperService,
     public store: StoreService,
   ) {
-    console.log(this.sampleIncomeData);
     this.accountData$ = combineLatest([this.budgetAccounts$, this.trackingAccounts$]).pipe(
       takeUntil(this._destroy$),
       switchMap(([budgetAccounts, trackingAccounts]) => {
@@ -426,31 +243,39 @@ export class ReportsComponent implements AfterViewInit, OnDestroy {
     this.categoryGroupData$ = combineLatest([this.categoryGroups$]).pipe(
       takeUntil(this._destroy$),
       switchMap(([categoryGroupData]) => {
-        const groups: any[] = [];
+        const groups: CategoryGroups[] = [];
         for (const groupData of categoryGroupData) {
-          groups.push({
-            ...groupData,
-            isChecked: true,
-            categories: [
-              ...groupData.categories.map((cat) => {
-                return {
-                  ...cat,
-                  isChecked: true,
-                };
-              }),
-            ],
-          });
+          let isChecked = false;
+          if (groupData.name === 'Investments') {
+            isChecked = true;
+          }
+          // @TODO: put this in a constant
+          if (groupData.name !== 'Credit Card Payments' && groupData.name !== 'Hidden') {
+            groups.push({
+              ...groupData,
+              isChecked: true,
+              categories: [
+                ...groupData.categories.map((cat) => {
+                  return {
+                    ...cat,
+                    isChecked: true,
+                  };
+                }),
+              ],
+            });
+          }
         }
         return of(groups);
       }),
     );
     combineLatest([this.categoryGroupData$, this.accountData$])
       .pipe(
-        filter(([categoryGroups, accountGroups]) => categoryGroups.length && accountGroups[1]?.accounts.length),
-        take(1),
+        filter(([categoryGroups, accountGroups]) => categoryGroups.length > 0 && accountGroups[1]?.accounts.length > 0),
       )
       .subscribe(([categoryGroups, accountGroups]) => {
-        this.applyFilter(categoryGroups, accountGroups);
+        if (!this.isFilterApplied) {
+          this.applyFilter(categoryGroups, accountGroups);
+        }
       });
   }
 
@@ -458,15 +283,50 @@ export class ReportsComponent implements AfterViewInit, OnDestroy {
 
   changeTab(tab: Tab) {
     this.currentTab = tab;
-    if (tab === Tab.INCOME_EXPENSE) {
-      const startDate = this.helperService.getDateInStringFormat(new Date(), -4);
-      const endDate = this.helperService.getDateInStringFormat(new Date(), 0);
-      this.selectedDateRange = {
-        startDate,
-        endDate,
-      };
-      this.dateArr = this.helperService.getDateArr(startDate, endDate);
-      this.getIncomeSources();
+    switch (this.currentTab) {
+      case Tab.SPENDING: {
+        combineLatest([this.categoryGroupData$, this.accountData$])
+          .pipe(
+            filter(
+              ([categoryGroups, accountGroups]) => categoryGroups.length > 0 && accountGroups[1]?.accounts.length > 0,
+            ),
+            take(1),
+          )
+          .subscribe(([categoryGroups, accountGroups]) => {
+            if (!this.isFilterApplied) {
+              this.applyFilter(categoryGroups, accountGroups);
+            }
+          });
+        break;
+      }
+      case Tab.NETWORTH: {
+        break;
+      }
+      case Tab.INCOME_EXPENSE: {
+        combineLatest([this.categoryGroupData$, this.accountData$])
+          .pipe(
+            filter(
+              ([categoryGroups, accountGroups]) => categoryGroups.length > 0 && accountGroups[1]?.accounts.length > 0,
+            ),
+            take(1),
+          )
+          .subscribe(([categoryGroups, accountGroups]) => {
+            console.log('categoryGroups:::', categoryGroups);
+            if (!this.isFilterApplied) {
+              const startDate = this.helperService.getDateInStringFormat(new Date(), -5);
+              const endDate = this.helperService.getDateInStringFormat(new Date(), 1);
+              this.selectedDateRange = {
+                startDate,
+                endDate,
+              };
+              this.dateRange = this.helperService.getDateRange(startDate, endDate);
+              this.getIncomeSources();
+              this.getCategoriesExpense(categoryGroups);
+              this.applyFilter(categoryGroups, accountGroups);
+            }
+          });
+        break;
+      }
     }
   }
 
@@ -480,9 +340,9 @@ export class ReportsComponent implements AfterViewInit, OnDestroy {
   selectFilter(
     filter: 'categories' | 'accounts',
     type: 'all' | 'none' | 'group' | 'item',
+    allGroups: any,
     group?: any,
     item?: any,
-    allGroups?: any,
   ) {
     const filterObj = filter === 'categories' ? this.categoryFilter : this.accountFilter;
     switch (type) {
@@ -514,7 +374,6 @@ export class ReportsComponent implements AfterViewInit, OnDestroy {
             item.isChecked = group.isChecked;
           });
         }
-
         break;
       }
       case 'item': {
@@ -528,30 +387,41 @@ export class ReportsComponent implements AfterViewInit, OnDestroy {
         break;
       }
     }
+    if (filter === 'categories') {
+      this.categoryGroupData$ = of(allGroups);
+    } else if (filter === 'accounts') {
+      this.accountData$ = of(allGroups);
+    }
   }
 
   selectDate(event: any, key: 'startDate' | 'endDate') {
-    console.log(event.target.value);
-    this.selectedDateRange[key] = event.target.value;
+    const filteredDate = event.target.value
+      .split('-')
+      .map((val: string) => val.replace(/^0+/, ''))
+      .join('-');
+    this.selectedDateRange[key] = filteredDate;
   }
 
-  applyFilter(categoryGroups: any, accountGroups: any) {
+  getSelectedCategories(categoryGroups: CategoryGroups[]): string[] {
+    const categoryGroupMap = categoryGroups
+      .map((group) => {
+        const checkedCategories = group.categories
+          .filter((cat) => cat.isChecked)
+          .map((cat) => ({ id: cat.id!, name: cat.name }));
+        return checkedCategories.length > 0 ? [group.id!, { name: group.name, categories: checkedCategories }] : null;
+      })
+      .filter(Boolean);
+    const categoryIds = categoryGroups.flatMap((group) =>
+      group.categories.filter((cat) => cat.isChecked).map((cat) => cat.id!),
+    );
+    return categoryIds;
+  }
+
+  applyFilter(categoryGroups: CategoryGroups[], accountGroups: AccountGroups[]) {
+    this.isFilterApplied = true;
     if (this.activeFilterOverlayRef?.isOpen) {
       this.activeFilterOverlayRef.close();
     }
-    const categoryGroupMap: Map<string, { name: string; categories: any[] }> = new Map(
-      categoryGroups
-        .map((group: any) => {
-          const checkedCategories = group.categories
-            .filter((cat: any) => cat.isChecked)
-            .map((cat: any) => ({ id: cat.id, name: cat.name }));
-          return checkedCategories.length > 0 ? [group.id, { name: group.name, categories: checkedCategories }] : null;
-        })
-        .filter(Boolean),
-    );
-    const categoryIds = categoryGroups.flatMap((group: any) =>
-      group.categories.filter((cat: any) => cat.isChecked).map((cat: any) => cat.id),
-    );
 
     const allTransactions = this.ngxsStore.selectSnapshot(TransactionsState.getAllTransactions);
     const accountIds = accountGroups.flatMap((group: any) =>
@@ -559,9 +429,10 @@ export class ReportsComponent implements AfterViewInit, OnDestroy {
     );
 
     const { startDate, endDate } = this.selectedDateRange;
+    // get transaction between date range for the categories and accounts selected
     const filteredTransactions = this.helperService.filterTransactionsReport(
       allTransactions,
-      categoryIds,
+      this.getSelectedCategories(categoryGroups),
       accountIds,
       startDate,
       endDate,
@@ -569,7 +440,7 @@ export class ReportsComponent implements AfterViewInit, OnDestroy {
 
     let chartSeries = [];
     const drilldownSeries = [];
-    for (const [groupId, groupValue] of categoryGroupMap.entries()) {
+    for (const [groupId, groupValue] of categoryGroups.entries()) {
       const transactionAmount = this.getTransactionsAmount(
         filteredTransactions,
         groupValue.categories.map((cat: any) => cat.id),
@@ -602,9 +473,10 @@ export class ReportsComponent implements AfterViewInit, OnDestroy {
     this.selectedCategories = chartSeries;
 
     this.cdr.markForCheck();
+    this.isFilterApplied = false;
   }
 
-  getCategoriesData(transactions: Transaction[], categoryData: { id: string; name: string }[]) {
+  getCategoriesData(transactions: Transaction[], categoryData: any[]) {
     let data = [];
     for (const category of categoryData) {
       const amount = this.getTransactionsAmount(transactions, [category.id]);
@@ -623,14 +495,14 @@ export class ReportsComponent implements AfterViewInit, OnDestroy {
   }
 
   getIncomeSources() {
-    this.sampleIncomeData = [];
+    this.incomeData = [];
     const incomeSources: { [payeeId: string]: { [monthKey: string]: number } } = {};
     const allTransactions = this.ngxsStore.selectSnapshot(TransactionsState.getAllTransactions);
     // get all income transactions for the month range
     const dateMap = new Map();
 
     const incomeCategory = this.ngxsStore.selectSnapshot(CategoriesState.getCategoryFromName(INFLOW_CATEGORY_NAME));
-    for (const month of this.dateArr) {
+    for (const month of this.dateRange) {
       if (incomeCategory) {
         dateMap.set(month.monthKey, {});
         const monthTxns = this.helperService.filterTransactionsBasedOnMonth(allTransactions, month.monthKey);
@@ -639,12 +511,6 @@ export class ReportsComponent implements AfterViewInit, OnDestroy {
         for (const incomeTxn of incomeTxns) {
           const payees = dateMap.get(month.monthKey);
           payees[incomeTxn.payeeId] = incomeTxn.amount + (payees[incomeTxn.payeeId] ?? 0);
-          // const currentAmount = payeeMap.get(incomeTxn.payeeId);
-          // if (currentAmount !== undefined) {
-          //   payeeMap.set(incomeTxn.payeeId, currentAmount + incomeTxn.amount);
-          // } else {
-          //   payeeMap.set(incomeTxn.payeeId, incomeTxn.amount);
-          // }
         }
 
         for (const [payeeId, amount] of payeeMap) {
@@ -657,29 +523,63 @@ export class ReportsComponent implements AfterViewInit, OnDestroy {
     }
     for (const [monthKey, payees] of dateMap) {
       for (const [payeeId, amount] of Object.entries(payees)) {
-        const foundPayee = this.ngxsStore.selectSnapshot(PayeesState.getPayeeFromId(payeeId));
-        console.log(monthKey, foundPayee?.name, amount, incomeSources[payeeId]);
+        // const foundPayee = this.ngxsStore.selectSnapshot(PayeesState.getPayeeFromId(payeeId));
         if (incomeSources[payeeId]) {
           incomeSources[payeeId][monthKey] = amount as number;
         } else {
           incomeSources[payeeId] = {
-            [monthKey]: amount as number
-          }
+            [monthKey]: amount as number,
+          };
         }
-        // incomeSources[payeeId] = {
-        //   ...incomeSources[payeeId],
-        //   [monthKey]: amount,
-        // };
       }
     }
     for (const [payeeId, value] of Object.entries(incomeSources)) {
       const foundPayee = this.ngxsStore.selectSnapshot(PayeesState.getPayeeFromId(payeeId));
-      this.sampleIncomeData.push({
+      this.incomeData.push({
         payee: foundPayee?.name ?? '',
         amounts: value,
       });
     }
-    console.log(this.sampleIncomeData);
+  }
+
+  getCategoriesExpense(categoryGroups: CategoryGroups[]) {
+    const allTransactions = this.ngxsStore.selectSnapshot(TransactionsState.getAllTransactions);
+
+    // Pre-compute monthly transactions
+    const monthlyTxnsCache = new Map<string, Transaction[]>();
+    for (const month of this.dateRange) {
+      monthlyTxnsCache.set(
+        month.monthKey,
+        this.helperService.filterTransactionsBasedOnMonth(allTransactions, month.monthKey),
+      );
+    }
+    this.categoriesExpenseData = categoryGroups
+      .filter((group) => group.isChecked && group.categories.some((cat) => cat.isChecked))
+      .map((group) => {
+        console.log(group);
+        const categories = group.categories
+          .filter((cat) => cat.isChecked)
+          .map((cat) => {
+            console.log(cat);
+            const amounts: Amount = {};
+            for (const month of this.dateRange) {
+              const monthTxns = monthlyTxnsCache.get(month.monthKey)!;
+              const categoryTxns = this.helperService.getTransactionsForCategory(monthTxns, [cat.id!]);
+              console.log(month, categoryTxns);
+              // amounts[month.monthKey] = Math.abs(this.helperService.sumTransaction(categoryTxns));
+              amounts[month.monthKey] = (this.helperService.sumTransaction(categoryTxns));
+            }
+            return {
+              name: cat.name,
+              amounts,
+            };
+          });
+        return {
+          groupName: group.name,
+          collapse: false,
+          categories,
+        };
+      });
   }
 
   ngOnDestroy(): void {

@@ -45,8 +45,9 @@
         <button class="flex gap-1 items-center px-2 hover:text-sky-400"
                 #dateFilterBtn
                 (click)="showFilterPopover(dateSelect, dateFilterBtn)">
-          <span>{{ selectedDateRange.startDate | date:'MMM d, YY' }} - {{ selectedDateRange.endDate | date:'MMM d, YY'
-            }}</span>
+          <span>
+            {{ selectedDateRange.startDate | date:'MMM d, YY' }} - {{ selectedDateRange.endDate | date:'MMM d, YY' }}
+          </span>
           <ng-icon name="heroChevronDown"
                    size="16px"
                    strokeWidth="3">
@@ -69,7 +70,7 @@
          class="text-white bg-zinc-900">
       <!-- Title -->
       <div class="w-full p-3 text-lg font-bold">Income v Expense</div>
-    
+
       <div class="flex w-full text-sm">
         <!-- Separating header row for scroll -->
         <!-- <div class="w-full h-[35px] flex"> -->
@@ -85,11 +86,11 @@
         <!-- First column showing payees & category names -->
         <div class="flex-[0_0_25%] flex flex-col border-r border-neutral-500">
           <!-- Rows -->
-    
+
           <!-- Months row -->
           <div class="h-[35px] w-full flex text-right py-2 px-4 border-b border-neutral-500 font-bold"></div>
-    
-          <!-- Income row -->
+
+          <!-- Income collapsible row -->
           <div class="h-[45px] w-full flex pb-1.5 pt-4 px-4 border-b border-neutral-500 text-white font-bold">
             <div class="flex items-center gap-1 cursor-pointer">
               <ng-icon name="heroChevronDown"
@@ -99,7 +100,7 @@
               <div class="text-budget-green text-base">Income</div>
             </div>
           </div>
-    
+
           <!-- All income sources -->
           <div class="h-[35px] w-full flex items-center gap-1 py-2 px-7 bg-zinc-850 border-b border-neutral-500 font-bold cursor-pointer">
             <div>All Income Sources</div>
@@ -107,18 +108,18 @@
                      size="16px"
                      strokeWidth="3"></ng-icon>
           </div>
-    
-          <!-- Payees -->
-          <div *ngFor="let incomeData of sampleIncomeData"
+
+          <!-- Individual Payees -->
+          <div *ngFor="let incomeData of incomeData"
                class="h-[35px] w-full flex text-right py-2 px-4 border-b border-neutral-500">
             <div class="pl-5 text-left font-bold">{{ incomeData.payee }}</div>
           </div>
-    
+
           <!-- Payees total -->
           <div class="h-[35px] w-full py-2 px-4 pl-9 bg-zinc-850 border-b border-neutral-500 font-bold">
             Total Income
           </div>
-    
+
           <!-- Expense row -->
           <div class="h-[45px] w-full flex pb-1.5 pt-4 px-4 border-b border-neutral-500 text-white font-bold">
             <div class="flex items-center gap-1 cursor-pointer">
@@ -128,32 +129,35 @@
               <div class="text-red-800 text-base">Expense</div>
             </div>
           </div>
-    
+
           <!-- Category groups -->
-          <div *ngFor="let catData of sampleCategoriesData"
+          <div *ngFor="let groupData of categoriesExpenseData"
                class="flex flex-col">
             <div class="h-[35px] w-full flex bg-zinc-850 py-2 px-4 border-b border-neutral-500">
-              <div class="flex items-center gap-1 pl-3 text-left font-bold cursor-pointer">
-                <div>{{ catData.groupName }}</div>
-                <ng-icon name="heroChevronDown"
+              <div class="flex items-center gap-1 pl-3 text-left font-bold cursor-pointer"
+                   (click)="groupData.collapse = !groupData.collapse">
+                <div>{{ groupData.groupName }}</div>
+                <ng-icon [name]="groupData.collapse ? 'heroChevronRight' : 'heroChevronDown'"
                          size="16px"
                          strokeWidth="3"></ng-icon>
               </div>
             </div>
-            <div *ngFor="let cat of catData.categories"
-                 class="h-[35px] w-full py-2 px-4 pl-9 border-b border-neutral-500">
-              {{ cat.name }}
-            </div>
+            <ng-container *ngIf="!groupData.collapse">
+              <div *ngFor="let cat of groupData.categories"
+                   class="h-[35px] w-full py-2 px-4 pl-9 border-b border-neutral-500">
+                {{ cat.name }}
+              </div>
+            </ng-container>
           </div>
         </div>
-    
+
         <!-- Second column showing months calculations -->
         <div class="flex-[0_0_75%] flex flex-col overflow-scroll">
           <!-- Rows -->
-    
+
           <!-- Months row -->
           <div class="h-[35px] w-full flex text-right font-bold">
-            <ng-container *ngFor="let date of dateArr">
+            <ng-container *ngFor="let date of dateRange">
               <div class="flex-[0_0_20%] py-2 px-4 border-b border-neutral-500">
                 {{ date.startDate | date:'MMM YY' }}
               </div>
@@ -161,84 +165,99 @@
             <div class="flex-[0_0_20%] py-2 px-4 border-b border-neutral-500">Average</div>
             <div class="flex-[0_0_20%] py-2 px-4 border-b border-neutral-500">Total</div>
           </div>
-    
-          <!-- Income row -->
+
+          <!-- Income collapsible row -->
           <div class="h-[45px] w-full flex">
-            <ng-container *ngFor="let date of dateArr">
+            <ng-container *ngFor="let date of dateRange">
               <div class="flex-[0_0_20%] border-b border-neutral-500"></div>
             </ng-container>
             <div class="flex-[0_0_20%] py-2 px-4 border-b border-neutral-500"></div>
             <div class="flex-[0_0_20%] py-2 px-4 border-b border-neutral-500"></div>
           </div>
-    
+
           <!-- All income sources -->
           <div class="h-[35px] w-full flex">
-            <ng-container *ngFor="let date of dateArr">
+            <ng-container *ngFor="let date of dateRange">
               <div class="flex-[0_0_20%] border-b border-neutral-500 bg-zinc-850">
               </div>
             </ng-container>
             <div class="flex-[0_0_20%] py-2 px-4 border-b border-neutral-500 bg-zinc-850"></div>
             <div class="flex-[0_0_20%] py-2 px-4 border-b border-neutral-500 bg-zinc-850"></div>
           </div>
-    
+
           <!-- Income amounts -->
-          <div *ngFor="let incomeData of sampleIncomeData"
+          <div *ngFor="let incData of incomeData"
                class="h-[35px] w-full flex text-right">
-            <ng-container *ngFor="let date of dateArr">
+            <ng-container *ngFor="let date of dateRange">
               <div class="flex-[0_0_20%] py-2 px-4 border-b border-neutral-500">
-                {{ incomeData.amounts?.[date.monthKey] ?? 0 }}
+                {{ incData.amounts?.[date.monthKey] ?? 0 | currency: 'INR' }}
               </div>
             </ng-container>
-            <div class="flex-[0_0_20%] py-2 px-4 border-b border-neutral-500 truncate">{{ incomeData.payee }} avg</div>
-            <div class="flex-[0_0_20%] py-2 px-4 border-b border-neutral-500 truncate">{{ incomeData.payee }} total</div>
+            <div class="flex-[0_0_20%] py-2 px-4 border-b border-neutral-500 truncate">
+              {{ incData.amounts| calculateAverage: dateRange.length | currency: 'INR' }}
+            </div>
+            <div class="flex-[0_0_20%] py-2 px-4 border-b border-neutral-500 truncate">
+              {{ incomeData | calculateTotal: 'payee':incData.payee | currency: 'INR' }}
+            </div>
           </div>
-    
+
           <!-- Payees total -->
           <div class="h-[35px] flex text-right">
-            <ng-container *ngFor="let date of dateArr">
+            <ng-container *ngFor="let date of dateRange">
               <div class="flex-[0_0_20%] py-2 px-4 border-b border-neutral-500 bg-zinc-850">
-                {{ date.startDate | date: 'MMM YY' }} total
+                {{ incomeData | calculateTotal: 'payeeMonth':date.monthKey | currency: 'INR' }}
               </div>
             </ng-container>
-            <div class="flex-[0_0_20%] py-2 px-4 border-b border-neutral-500 bg-zinc-850">All incomes avg</div>
-            <div class="flex-[0_0_20%] py-2 px-4 border-b border-neutral-500 bg-zinc-850">All incomes total</div>
+            <div class="flex-[0_0_20%] py-2 px-4 border-b border-neutral-500 bg-zinc-850">
+              {{ (incomeData | calculateTotal: 'payeeMonth':'all') / dateRange.length | currency: 'INR' }}
+            </div>
+            <div class="flex-[0_0_20%] py-2 px-4 border-b border-neutral-500 bg-zinc-850">
+              {{ incomeData | calculateTotal: 'payeeMonth':'all' | currency: 'INR' }}
+            </div>
           </div>
-    
+
           <!-- Expense row -->
           <div class="h-[45px] w-full flex">
-            <ng-container *ngFor="let date of dateArr">
+            <ng-container *ngFor="let date of dateRange">
               <div class="flex-[0_0_20%] border-b border-neutral-500"></div>
             </ng-container>
             <div class="flex-[0_0_20%] py-2 px-4 border-b border-neutral-500"></div>
             <div class="flex-[0_0_20%] py-2 px-4 border-b border-neutral-500"></div>
           </div>
-    
+
           <!-- Category groups amount -->
-          <div *ngFor="let catData of sampleCategoriesData"
+          <div *ngFor="let groupData of categoriesExpenseData"
                class="flex flex-col text-right">
             <div class="h-[35px] w-full flex">
-              <ng-container *ngFor="let date of dateArr">
+              <ng-container *ngFor="let date of dateRange">
                 <div class="flex-[0_0_20%] py-2 px-4 bg-zinc-850 border-b border-neutral-500 truncate">
-                  {{ date.startDate | date: 'MMM YY' }} {{ catData.groupName }} amount
+                  {{ groupData | calculateTotal: 'group':date.monthKey | currency: 'INR' }}
                 </div>
               </ng-container>
               <div class="flex-[0_0_20%] py-2 px-4 bg-zinc-850 border-b border-neutral-500 truncate">
-                {{ catData.groupName }} avg
+                {{ (groupData | calculateTotal: 'group':'all') / dateRange.length | currency: 'INR' }}
               </div>
-              <div class="flex-[0_0_20%] py-2 px-4 bg-zinc-850 border-b border-neutral-500 truncate">
-                {{ catData.groupName }} total
+              <div class="flex-[0_0_20%] py-2 px-4 bg-zinc-850 border-b border-neutral-500 truncate"
+                   [title]="((groupData | calculateTotal: 'group':'all') / (incomeData | calculateTotal: 'payeeMonth':'all') * 100) | number: '1.1-2'">
+                {{ groupData | calculateTotal: 'group':'all' | currency: 'INR' }}
               </div>
             </div>
-            <div *ngFor="let cat of catData.categories"
-                 class="h-[35px] w-full flex text-right">
-              <ng-container *ngFor="let date of dateArr">
-                <div class="flex-[0_0_20%] py-2 px-4 pl-9 border-b border-neutral-500">
-                  {{ cat.amounts[date.monthKey] }}
+            <ng-container *ngIf="!groupData.collapse">
+              <div *ngFor="let cat of groupData.categories"
+                   class="h-[35px] w-full flex text-right">
+                <ng-container *ngFor="let date of dateRange">
+                  <div class="flex-[0_0_20%] py-2 px-4 pl-9 border-b border-neutral-500">
+                    {{ cat.amounts[date.monthKey] | currency: 'INR' }}
+                  </div>
+                </ng-container>
+                <div class="flex-[0_0_20%] py-2 px-4 pl-9 border-b border-neutral-500 truncate">
+                  {{ (groupData | calculateTotal: 'category':cat.name) / dateRange.length | currency: 'INR' }}
                 </div>
-              </ng-container>
-              <div class="flex-[0_0_20%] py-2 px-4 pl-9 border-b border-neutral-500 truncate">{{ cat.name }} avg</div>
-              <div class="flex-[0_0_20%] py-2 px-4 pl-9 border-b border-neutral-500 truncate">{{ cat.name }} total</div>
-            </div>
+                <div class="flex-[0_0_20%] py-2 px-4 pl-9 border-b border-neutral-500 truncate">
+                  {{ groupData | calculateTotal: 'category':cat.name | currency: 'INR' }}
+                </div>
+              </div>
+            </ng-container>
           </div>
         </div>
       </div>
@@ -250,7 +269,7 @@
 <!--     <div class="flex-[0_0_35%]"></div> -->
 <!--     <div class="flex-[0_0_65%] text-sm text-neutral-400 flex justify-between"> -->
 <!--       <div -->
-<!--         *ngFor="let date of dateArr" -->
+<!--         *ngFor="let date of dateRange" -->
 <!--         class="flex-[0_0_33%]"> -->
 <!--         {{ date.startDate | date: 'MMM YY' }} -->
 <!--       </div> -->
@@ -296,9 +315,9 @@
       <div class="border-t border-neutral-600"></div>
       <div class="flex text-sky-500 py-1 font-bold">
         <div class="px-3 py-1 cursor-pointer hover:bg-sky-500 hover:text-white hover:rounded-full"
-             (click)="selectFilter('categories', 'all', null, null, data.categoryGroupData)">Select All</div>
+             (click)="selectFilter('categories', 'all', data.categoryGroupData, null, null)">Select All</div>
         <div class="px-3 py-1 cursor-pointer hover:bg-sky-500 hover:text-white hover:rounded-full"
-             (click)="selectFilter('categories', 'none', null, null, data.categoryGroupData)">Select None</div>
+             (click)="selectFilter('categories', 'none', data.categoryGroupData, null, null)">Select None</div>
       </div>
       <div class="border-t border-neutral-600"></div>
       <div class="px-1 py-2 overflow-scroll h-60">
@@ -308,7 +327,7 @@
             <input type="checkbox"
                    class="rounded text-blue-600 bg-neutral-850 border-gray-600 focus:ring-blue-600 focus:ring-2 ring-offset-gray-800 cursor-pointer"
                    [ngModel]="group.isChecked"
-                   (change)="selectFilter('categories', 'group', group, null)" />
+                   (change)="selectFilter('categories', 'group', data.categoryGroupData, group, null)" />
             <label class="text-neutral-400 font-bold pl-2">{{ group.name }}</label>
           </div>
           <div>
@@ -318,7 +337,7 @@
                   <input type="checkbox"
                          class="rounded text-blue-600 bg-neutral-850 border-gray-600 focus:ring-blue-600 focus:ring-2 ring-offset-gray-800 cursor-pointer"
                          [ngModel]="category.isChecked"
-                         (change)="selectFilter('categories', 'item', group, category)" />
+                         (change)="selectFilter('categories', 'item', data.categoryGroupData, group, category)" />
                   <label class="pl-2">{{ category.name }}</label>
                 </div>
               </li>
@@ -334,7 +353,7 @@
         <!--   Cancel -->
         <!-- </button> -->
         <button class="mr-2 px-3 py-0.5 text-sm bg-sky-600 hover:bg-sky-500 text-white rounded-md"
-                (click)="applyFilter(data.categoryGroupData, data.accountData)">
+                (click)="applyFilter(data.categoryGroupData ?? [], data.accountData ?? [])">
           Done
         </button>
       </div>
@@ -347,6 +366,7 @@
     </div>
   </ng-template>
 
+  <!-- Dropdown templates -->
   <ng-template #accountSelect>
     <div
          class="flex flex-col text-[0.9rem] w-72 py-3 z-50 bg-neutral-850 rounded-lg shadow-lg shadow-neutral-900 py-1 px-2">
@@ -393,7 +413,7 @@
         <!--   Cancel -->
         <!-- </button> -->
         <button class="mr-2 px-3 py-0.5 text-sm bg-sky-600 hover:bg-sky-500 text-white rounded-md"
-                (click)="applyFilter(data.categoryGroupData, data.accountData)">
+                (click)="applyFilter(data.categoryGroupData ?? [], data.accountData ?? [])">
           Done
         </button>
       </div>
@@ -405,7 +425,7 @@
       </svg>
       </div>
       </ng-template>
-      
+
       <ng-template #dateSelect>
         <div
              class="flex flex-col text-[0.9rem] w-100 py-3 z-50 bg-neutral-850 rounded-lg shadow-lg shadow-neutral-900 py-1 px-2">
@@ -416,14 +436,14 @@
               <label class="block mb-1">Start Date</label>
               <input type="date"
                      class="w-full bg-neutral-700 rounded p-1"
-                     [ngModel]="selectedDateRange.startDate"
+                     [ngModel]="selectedDateRange.startDate | addZeroPrefixToDate"
                      (change)="selectDate($event, 'startDate')" />
             </div>
             <div class="text-white">
               <label class="block mb-1">End Date</label>
               <input type="date"
                      class="w-full bg-neutral-700 rounded p-1"
-                     [ngModel]="selectedDateRange.endDate"
+                     [ngModel]="selectedDateRange.endDate | addZeroPrefixToDate"
                      (change)="selectDate($event, 'endDate')" />
             </div>
           </div>
@@ -435,7 +455,7 @@
             <!--   Cancel -->
             <!-- </button> -->
             <button class="mr-2 px-3 py-0.5 text-sm bg-sky-600 hover:bg-sky-500 text-white rounded-md"
-                    (click)="applyFilter(data.categoryGroupData, data.accountData)">
+                    (click)="applyFilter(data.categoryGroupData ?? [], data.accountData ?? [])">
               Done
             </button>
           </div>
@@ -448,7 +468,7 @@
     </div>
   </ng-template>
   <!-- Filters Templates End -->
-  
+
   <ng-template #incomeMonth>
   </ng-template>
 
