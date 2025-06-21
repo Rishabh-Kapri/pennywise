@@ -12,8 +12,32 @@
     selectedAccount: selectedAccount$ | async,
     inflowWithBalance: inflowWithBalance$ | async
   } as data">
-  <div class="flex h-screen h-inherit w-64 flex-col justify-between bg-zinc-900 text-zinc-300 z-50 border-r border-neutral-700">
-    <div class="p-2">
+  
+  <!-- Mobile overlay -->
+  <div 
+    *ngIf="isMobileSidebarOpen" 
+    class="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
+    (click)="closeMobileSidebar()">
+  </div>
+
+  <!-- Sidebar -->
+  <div 
+    class="fixed lg:relative lg:translate-x-0 h-screen w-64 flex flex-col justify-between bg-zinc-900 text-zinc-300 z-50 border-r border-neutral-700 transition-transform duration-300 ease-in-out"
+    [ngClass]="{
+      'translate-x-0': isMobileSidebarOpen,
+      '-translate-x-full': !isMobileSidebarOpen
+    }">
+    
+    <!-- Mobile close button -->
+    <div class="lg:hidden flex justify-end p-3 border-b border-neutral-700">
+      <button 
+        (click)="closeMobileSidebar()"
+        class="text-zinc-300 hover:text-white p-2 rounded-lg hover:bg-zinc-700 transition-colors duration-200">
+        <ng-icon name="heroXMark" size="24px"></ng-icon>
+      </button>
+    </div>
+
+    <div class="p-2 flex-1 overflow-y-auto">
       <div class="mb-2">
         <div class="flex w-full items-center justify-between">
           <a

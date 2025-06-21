@@ -4,7 +4,7 @@
     categoryGroupData: categoryGroups$ | async
   } as data">
   <div class="flex justify-between">
-    <div class="flex flex-wrap flex-[0_0_75%]">
+    <div class="flex flex-wrap w-full lg:flex-[0_0_75%]">
       <div class="p-1 text-sm hover-color border-b border-neutral-600 w-full">
         <button id="addCategoryGroupBtn" data-dropdown-toggle="addCategoryGroupDropdown" class="flex items-center">
           <ng-icon class="mr-1 hover:text-sky-400" name="heroPlusCircleSolid" color="#0ea5e9" size="20px"></ng-icon>
@@ -13,23 +13,23 @@
       </div>
       <!-- header -->
       <div class="w-full bg-zinc-850 flex text-[0.75rem] text-neutral-400 py-1.5 px-5 border-b border-neutral-600">
-        <div class="flex-40 cursor-pointer" (click)="collapseAll()">CATEGORY</div>
-        <div class="flex-20 text-right">ASSIGNED</div>
-        <div class="flex-20 text-right">ACTIVITY</div>
-        <div class="flex-20 text-right">AVAILABLE</div>
+        <div class="flex-[0_0_60%] sm:flex-40 cursor-pointer" (click)="collapseAll()">CATEGORY</div>
+        <div class="flex-20 text-right hidden sm:block">ASSIGNED</div>
+        <div class="flex-20 text-right hidden sm:block">ACTIVITY</div>
+        <div class="flex-[0_0_40%] sm:flex-20 text-right">AVAILABLE</div>
       </div>
       <div
         class="w-full"
         *ngFor="let item of data.categoryGroupData; let index = index">
         <div class="flex items-center w-full py-1.5 px-5 text-sm text-white text-bold bg-zinc-850 border-b border-neutral-600">
-          <div class="flex-40 flex items-center cursor-pointer name-container">
+          <div class="flex-[0_0_60%] sm:flex-40 flex items-center cursor-pointer name-container">
             <span (click)="showHideGroupCategories(item)">{{ item.name }}</span>
             <button
               *ngIf="item.id !== 'hidden-cat'"
               [attr.data-dropdown-toggle]="'addCategoryDropdown-' + index"
               [id]="'addCategoryBtn-' + index"
               class="ml-1 flex items-center add-category-btn"
-              (click)="showDropdown(item.id, index)">
+              (click)="showDropdown(item.id, index); $event.stopPropagation()">
               <ng-icon
                 class="hover:text-sky-400"
                 name="heroPlusCircleSolid"
@@ -39,13 +39,16 @@
             </button>
             <ng-container *ngTemplateOutlet="addCategoryTemplate; context: { item: item, index: index }"></ng-container>
           </div>
-          <div class="flex-20 text-right" [ngClass]="{ 'text-neutral-500': item.budgeted[data.selectedMonth ?? ''] === 0 }">
+          <div class="flex-20 text-right hidden sm:block" 
+               [ngClass]="{ 'text-neutral-500': item.budgeted[data.selectedMonth ?? ''] === 0 }">
             {{ item.budgeted?.[data.selectedMonth ?? ''] ?? 0 | currency : 'INR' }}
           </div>
-          <div class="flex-20 text-right" [ngClass]="{ 'text-neutral-500': item.activity[data.selectedMonth ?? ''] === 0 }">
+          <div class="flex-20 text-right hidden sm:block" 
+               [ngClass]="{ 'text-neutral-500': item.activity[data.selectedMonth ?? ''] === 0 }">
             {{ item.activity?.[data?.selectedMonth ?? ''] ?? 0 | currency : 'INR' }}
           </div>
-          <div class="flex-20 text-right" [ngClass]="{ 'text-neutral-500': item.balance[data.selectedMonth ?? ''] === 0 }">
+          <div class="flex-[0_0_40%] sm:flex-20 text-right" 
+               [ngClass]="{ 'text-neutral-500': item.balance[data.selectedMonth ?? ''] === 0 }">
             {{ item.balance?.[data?.selectedMonth ?? ''] ?? 0 | currency : 'INR' }}
           </div>
         </div>
@@ -55,12 +58,44 @@
             [budgetKey]="data.budgetKey!"
             (editCategoryEvent)="editCategory($event)"
             (deleteCategoryEvent)="deleteCategory($event)"
-            (hideUnhideCategoryEvent)="hideUnhideCategory($event)"></app-category-item>
+            (hideUnhideCategoryEvent)="hideUnhideCategory($event)"
+            (showDetailsEvent)="showDetails($event)"></app-category-item>
         </div>
       </div>
     </div>
-    <div class="border-l border-neutral-600 flex-[0_0_25%]">Test</div>
+    <!-- Details Panel -->
+    <div 
+      class="fixed top-0 right-0 h-full w-full sm:w-80 bg-zinc-900 z-50 transition-transform duration-300 ease-in-out border-l border-neutral-700
+             lg:relative lg:translate-x-0 lg:flex-[0_0_25%]"
+      [ngClass]="{
+        'translate-x-0': isDetailsPanelOpen,
+        'translate-x-full': !isDetailsPanelOpen,
+        'hidden lg:block': !isDetailsPanelOpen
+      }">
+        <div *ngIf="selectedCategory; else noCategorySelected" class="h-full">
+            <div class="p-4 flex justify-between items-center border-b border-neutral-700 lg:hidden">
+              <h3 class="text-lg font-bold">{{ selectedCategory.name }}</h3>
+              <button (click)="closeDetails()" class="p-2 text-neutral-400 hover:text-white">
+                <ng-icon name="heroXMark" size="24"></ng-icon>
+              </button>
+            </div>
+            <div class="p-4">
+                <h3 class="text-lg font-bold hidden lg:block">{{ selectedCategory.name }}</h3>
+                <p class="text-sm text-neutral-400">Details about this category.</p>
+                <!-- More details here -->
+            </div>
+        </div>
+        <ng-template #noCategorySelected>
+            <div class="p-4 text-center text-neutral-500 hidden lg:block">
+                Select a category to see details.
+            </div>
+        </ng-template>
+    </div>
   </div>
+
+  <!-- Overlay for mobile -->
+  <div *ngIf="isDetailsPanelOpen" (click)="closeDetails()" class="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"></div>
+
 </ng-container>
 
 <!-- Add category group dropdown -->

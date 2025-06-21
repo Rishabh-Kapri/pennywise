@@ -56,6 +56,9 @@ export class SidebarComponent implements OnInit, AfterViewInit {
 
   isLoading = false;
   newBudgetName = '';
+  
+  // Mobile sidebar state
+  isMobileSidebarOpen = false;
 
   budgetAccountData$: Observable<{ totalAmount: number; accounts: Account[] }>;
   trackingAccountData$: Observable<{ totalAmount: number; accounts: Account[] }>;
@@ -108,6 +111,15 @@ export class SidebarComponent implements OnInit, AfterViewInit {
     this.addAcountModal = new Modal(this.addAccountModalRef.nativeElement, this.modalOptions);
   }
 
+  // Mobile sidebar methods
+  public toggleMobileSidebar() {
+    this.isMobileSidebarOpen = !this.isMobileSidebarOpen;
+  }
+
+  public closeMobileSidebar() {
+    this.isMobileSidebarOpen = false;
+  }
+
   resetAccountForm() {
     this.text = 'Add';
     this.accountForm.reset();
@@ -157,6 +169,8 @@ export class SidebarComponent implements OnInit, AfterViewInit {
   selectComponent(component: SelectedComponent) {
     this.ngxsStore.dispatch(new AccountsActions.SetSelectedAccount(null));
     this.ngxsStore.dispatch(new ConfigActions.SetSelectedComponent(component));
+    // Close mobile sidebar when navigating
+    this.closeMobileSidebar();
   }
 
   async addBudget() {
@@ -187,6 +201,8 @@ export class SidebarComponent implements OnInit, AfterViewInit {
   selectAccount(account: Account) {
     this.ngxsStore.dispatch(new AccountsActions.SetSelectedAccount(account));
     this.ngxsStore.dispatch(new ConfigActions.SetSelectedComponent(SelectedComponent.ACCOUNTS));
+    // Close mobile sidebar when selecting account
+    this.closeMobileSidebar();
   }
 
   async closeAccount() {

@@ -4,15 +4,17 @@
     payeeObj: payeeObj$ | async
   } as data">
   <div *ngFor="let category of categories">
-    <div class="flex text-sm bg-zinc-900 items-center w-full p-2 px-4 border-b border-neutral-600">
-      <div class="text-white flex-40 pl-3 flex flex-col items-center">
+    <div
+      class="flex text-sm bg-zinc-900 items-center w-full p-2 px-4 border-b border-neutral-600 cursor-pointer"
+      (click)="showDetailsEvent.emit(category)">
+      <div class="text-white flex-[0_0_60%] sm:flex-40 pl-3 flex flex-col items-center">
         <div class="self-start h-6 name-container mb-0.5">
           <div>{{ category.name }}</div>
           <button
             [attr.data-dropdown-toggle]="'menuDropdown-' + category.id"
             [id]="'menuBtn-' + category.id"
             class="ml-1 flex items-center category-edit-btn"
-            (click)="showEditMenu(category)">
+            (click)="showEditMenu(category); $event.stopPropagation()">
             <ng-icon name="heroPencilSolid" class=""></ng-icon>
           </button>
         </div>
@@ -24,11 +26,11 @@
         </div>
         <ng-container *ngTemplateOutlet="menuDropdownTemplate; context: { category: category }"></ng-container>
       </div>
-      <div class="text-white flex-20 text-right pl-5">
+      <div class="text-white flex-20 text-right pl-5 hidden sm:block">
         <button
           *ngIf="!category.showBudgetInput"
           class="h-6 w-36 border border-transparent rounded-small p-0.5 hover:border-sky-500 text-right"
-          (click)="showBudgetInput(category)">
+          (click)="showBudgetInput(category); $event.stopPropagation()">
           {{ category.budgeted?.[budgetKey] ?? 0 | currency : 'INR' }}
         </button>
         <input
@@ -41,17 +43,17 @@
           (focusout)="hideBudgetInput(category, $event)" />
       </div>
       <div
-        class="flex-20 text-right pr-[2px]"
+        class="flex-20 text-right pr-[2px] hidden sm:block"
         [ngClass]="{ 'text-slate-200': category.activity?.[budgetKey]! !== 0, 'text-neutral-500': category.activity?.[budgetKey] === 0 }">
         <span
           [id]="'activityMenuBtn-' + category.id"
           class="cursor-pointer hover:text-white"
-          (click)="showActivityMenu(category)">
+          (click)="showActivityMenu(category); $event.stopPropagation()">
           {{ category.activity?.[budgetKey] ?? 0 | currency : 'INR' }}
         </span>
         <ng-container *ngTemplateOutlet="activityMenu; context: { category: category }"></ng-container>
       </div>
-      <div class="text-white flex-20 text-right">
+      <div class="text-white flex-[0_0_40%] sm:flex-20 text-right">
         <button
           *ngIf="!helperService.isCategoryCreditCard(category)"
           class="badge"
@@ -62,7 +64,7 @@
           }"
           [attr.data-dropdown-toggle]="'moveDropdown-' + category.id"
           [id]="'moveBtn-' + category.id"
-          (click)="showMoveMenu(category)">
+          (click)="showMoveMenu(category); $event.stopPropagation()">
           {{ category.balance?.[budgetKey] ?? 0 | currency : 'INR' }}
         </button>
         <span 

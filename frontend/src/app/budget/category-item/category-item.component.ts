@@ -33,6 +33,7 @@ export class CategoryItemComponent implements AfterViewInit {
   @Output() editCategoryEvent = new EventEmitter<Category | InflowCategory>();
   @Output() deleteCategoryEvent = new EventEmitter<Category>();
   @Output() hideUnhideCategoryEvent = new EventEmitter<Category>();
+  @Output() showDetailsEvent = new EventEmitter<Category>();
 
   accountObj$: Observable<Record<string, Account>>;
   categoryObj$: Observable<Record<string, Category>>;
