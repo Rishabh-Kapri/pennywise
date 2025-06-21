@@ -39,6 +39,8 @@ import { HighchartsChartModule } from 'highcharts-angular';
 import { CalculateAveragePipe } from './pipes/calculateAverage.pipe';
 import { CalculateTotalPipe } from './pipes/calculateTotal.pipe';
 import { AddZeroPrefixToDate } from './pipes/addZeroPrefixDate.pipe';
+import { AccountsMobileComponent } from './accounts/accounts-mobile.component';
+import { TransactionsMobileComponent } from './transactions/mobile/transactions-mobile.component';
 
 @NgModule({
   declarations: [
@@ -57,6 +59,8 @@ import { AddZeroPrefixToDate } from './pipes/addZeroPrefixDate.pipe';
     CalculateAveragePipe,
     CalculateTotalPipe,
     AddZeroPrefixToDate,
+    AccountsMobileComponent,
+    TransactionsMobileComponent,
   ],
   imports: [
     BrowserModule,

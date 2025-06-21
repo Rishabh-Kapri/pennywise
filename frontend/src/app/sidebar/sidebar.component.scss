@@ -5,3 +5,31 @@
 .account-container:hover > .edit-btn {
   visibility: visible;
 }
+
+// Mobile-specific styles
+@media (max-width: 1023px) {
+  // Make edit buttons always visible on mobile for better UX
+  .edit-btn {
+    visibility: visible;
+    opacity: 0.7;
+  }
+  
+  .account-container:hover > .edit-btn {
+    opacity: 1;
+  }
+  
+  // Increase touch targets for mobile
+  .account-container {
+    min-height: 44px;
+  }
+  
+  // Better spacing for mobile
+  .p-2 {
+    padding: 0.75rem;
+  }
+  
+  // Ensure proper scrolling on mobile
+  .overflow-y-auto {
+    -webkit-overflow-scrolling: touch;
+  }
+}

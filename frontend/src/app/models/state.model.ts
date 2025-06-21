@@ -20,6 +20,8 @@ export enum SelectedComponent {
   BUDGET = 'budget',
   ACCOUNTS = 'accounts',
   REPORTS = 'reports',
+  ACCOUNTS_MOBILE = 'accounts-mobile',
+  TRANSACTIONS_MOBILE = 'transactions-mobile',
   OTHERS = 'others',
   SETTINGS = 'settings',
 }

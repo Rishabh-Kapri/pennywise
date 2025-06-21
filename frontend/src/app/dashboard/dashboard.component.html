@@ -4,18 +4,25 @@
     selectedAccount: selectedAccount$ | async
   } as data">
   <div class="flex h-screen">
-    <div style="flex: 0 0 auto" class="h-screen transition-transform overflow-y-auto">
+    <!-- Sidebar container (hidden on mobile) -->
+    <div class="hidden lg:flex lg:flex-shrink-0">
       <app-sidebar></app-sidebar>
     </div>
-    <div class="flex-auto h-screen overflow-y-auto">
+    
+    <!-- Main content -->
+    <div class="flex-1 lg:ml-0 pb-16 lg:pb-0">
       @if (data.selectedComponent === selectedComponent.BUDGET) {
         <app-budget></app-budget>
       } @else if (data.selectedComponent === selectedComponent.REPORTS) {
         <app-reports></app-reports>
       } @else if (data.selectedComponent === selectedComponent.ACCOUNTS) {
         <app-transactions [account]="data.selectedAccount"></app-transactions>
+      } @else if (data.selectedComponent === selectedComponent.ACCOUNTS_MOBILE) {
+        <app-accounts-mobile></app-accounts-mobile>
+      } @else if (data.selectedComponent === selectedComponent.TRANSACTIONS_MOBILE) {
+        <app-transactions-mobile></app-transactions-mobile>
       } @else {
-        <app-header></app-header>
+        <app-budget></app-budget>
       }
       <!-- @defer (when data.selectedComponent === selectedComponent.ACCOUNTS) { -->
       <!--   <app-transactions -->
@@ -24,5 +31,25 @@
       <!--   </app-transactions> -->
       <!-- } -->
     </div>
+
+    <!-- Bottom nav for mobile -->
+    <nav class="fixed bottom-0 left-0 w-full flex justify-around items-center bg-zinc-900 border-t border-neutral-700 z-50 block lg:hidden h-16">
+      <button (click)="selectComponent(selectedComponent.BUDGET)" class="flex flex-col items-center text-zinc-300 hover:text-emerald-400 focus:outline-none">
+        <ng-icon name="heroRectangleStack" size="28px"></ng-icon>
+        <span class="text-xs mt-1">Budget</span>
+      </button>
+      <button (click)="selectComponent(selectedComponent.TRANSACTIONS_MOBILE)" class="flex flex-col items-center text-zinc-300 hover:text-emerald-400 focus:outline-none">
+        <ng-icon name="heroBanknotes" size="28px"></ng-icon>
+        <span class="text-xs mt-1">Trans.</span>
+      </button>
+      <button (click)="selectComponent(selectedComponent.REPORTS)" class="flex flex-col items-center text-zinc-300 hover:text-emerald-400 focus:outline-none">
+        <ng-icon name="heroChartBar" size="28px"></ng-icon>
+        <span class="text-xs mt-1">Reports</span>
+      </button>
+      <button (click)="selectComponent(selectedComponent.ACCOUNTS_MOBILE)" class="flex flex-col items-center text-zinc-300 hover:text-emerald-400 focus:outline-none">
+        <ng-icon name="heroBuildingLibrary" size="28px"></ng-icon>
+        <span class="text-xs mt-1">Accounts</span>
+      </button>
+    </nav>
   </div>
 </ng-container>

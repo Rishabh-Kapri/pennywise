@@ -33,6 +33,9 @@ export class CategoryComponent implements OnInit, AfterViewInit, OnDestroy {
   categoryGroups$ = this.ngxsStore.select(CategoryGroupsState.getCategoryGroupData);
   selectedMonth$ = this.ngxsStore.select(BudgetsState.getSelectedMonth);
 
+  isDetailsPanelOpen = false;
+  selectedCategory: Category | InflowCategory | null = null;
+
   constructor(
     private dbService: DatabaseService,
     private helperService: HelperService,
@@ -51,6 +54,16 @@ export class CategoryComponent implements OnInit, AfterViewInit, OnDestroy {
     this.groupTargetEl = document.getElementById('addCategoryGroupDropdown');
     this.groupTriggerEl = document.getElementById('addCategoryGroupBtn');
     this.groupDropdown = new Dropdown(this.groupTargetEl, this.groupTriggerEl);
+  }
+
+  showDetails(category: Category | InflowCategory) {
+    this.selectedCategory = category;
+    this.isDetailsPanelOpen = true;
+  }
+
+  closeDetails() {
+    this.isDetailsPanelOpen = false;
+    this.selectedCategory = null;
   }
 
   async addCategoryGroup() {

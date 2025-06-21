@@ -1,0 +1,69 @@
+<div class="block lg:hidden relative min-h-screen bg-zinc-900">
+  <div class="p-4">
+    <!-- Budget Accounts -->
+    <div *ngIf="budgetAccountData$ | async as budgetData">
+      <div class="flex justify-between items-center mb-2">
+        <span class="font-bold text-emerald-400 text-lg">Budget Accounts</span>
+        <span class="font-semibold text-white">{{ budgetData.totalAmount | currency:'INR' }}</span>
+      </div>
+      <div *ngFor="let account of budgetData.accounts" class="flex items-center justify-between bg-zinc-800 rounded-lg px-3 py-2 mb-2">
+        <div>
+          <div class="font-semibold text-white">{{ account.name }}</div>
+          <div class="text-xs text-zinc-400">{{ account.balance | currency:'INR' }}</div>
+        </div>
+        <button (click)="openEditAccount(account)" class="text-sky-400 hover:text-sky-200 p-2">
+          <ng-icon name="heroPencilSolid" size="20px"></ng-icon>
+        </button>
+      </div>
+    </div>
+    <!-- Tracking Accounts -->
+    <div *ngIf="trackingAccountData$ | async as trackingData" class="mt-6">
+      <div class="flex justify-between items-center mb-2">
+        <span class="font-bold text-blue-400 text-lg">Tracking Accounts</span>
+        <span class="font-semibold text-white">{{ trackingData.totalAmount | currency:'INR' }}</span>
+      </div>
+      <div *ngFor="let account of trackingData.accounts" class="flex items-center justify-between bg-zinc-800 rounded-lg px-3 py-2 mb-2">
+        <div>
+          <div class="font-semibold text-white">{{ account.name }}</div>
+          <div class="text-xs text-zinc-400">{{ account.balance | currency:'INR' }}</div>
+        </div>
+        <button (click)="openEditAccount(account)" class="text-sky-400 hover:text-sky-200 p-2">
+          <ng-icon name="heroPencilSolid" size="20px"></ng-icon>
+        </button>
+      </div>
+    </div>
+    <!-- Closed Accounts -->
+    <div *ngIf="closedAccountData$ | async as closedData" class="mt-6">
+      <div class="flex justify-between items-center mb-2">
+        <span class="font-bold text-zinc-400 text-lg">Closed Accounts</span>
+        <span class="font-semibold text-white">{{ closedData.totalAmount | currency:'INR' }}</span>
+      </div>
+      <div *ngFor="let account of closedData.accounts" class="flex items-center justify-between bg-zinc-800 rounded-lg px-3 py-2 mb-2 opacity-60">
+        <div>
+          <div class="font-semibold text-white">{{ account.name }}</div>
+          <div class="text-xs text-zinc-400">{{ account.balance | currency:'INR' }}</div>
+        </div>
+        <button (click)="openEditAccount(account)" class="text-sky-400 hover:text-sky-200 p-2">
+          <ng-icon name="heroPencilSolid" size="20px"></ng-icon>
+        </button>
+      </div>
+    </div>
+  </div>
+  <!-- Floating Add Account Button -->
+  <button (click)="openAddAccount()" class="fixed bottom-24 right-6 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full shadow-lg p-4 z-50">
+    <ng-icon name="heroPlusCircle" size="28px"></ng-icon>
+  </button>
+  <!-- Add/Edit Account Modal Placeholder -->
+  <div *ngIf="showAccountModal" class="fixed inset-0 bg-black bg-opacity-60 z-50 flex items-center justify-center">
+    <div class="bg-zinc-900 rounded-lg p-6 w-11/12 max-w-md">
+      <div class="flex justify-between items-center mb-4">
+        <span class="font-bold text-lg text-white">{{ editingAccount ? 'Edit Account' : 'Add Account' }}</span>
+        <button (click)="closeAccountModal()" class="text-zinc-400 hover:text-white">
+          <ng-icon name="heroXMark" size="24px"></ng-icon>
+        </button>
+      </div>
+      <!-- Account form will go here (reuse sidebar logic) -->
+      <div class="text-zinc-400 text-center py-8">Account form coming soon...</div>
+    </div>
+  </div>
+</div> 

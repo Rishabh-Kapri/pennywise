@@ -1,9 +1,10 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, AfterViewInit } from '@angular/core';
 import { StoreService } from '../services/store.service';
 import { SelectedComponent } from '../models/state.model';
 import { Store } from '@ngxs/store';
 import { AccountsState } from '../store/dashboard/states/accounts/accounts.state';
 import { ConfigState } from '../store/dashboard/states/config/config.state';
+import { ConfigActions } from '../store/dashboard/states/config/config.action';
 
 @Component({
   selector: 'app-dashboard',
@@ -12,7 +13,7 @@ import { ConfigState } from '../store/dashboard/states/config/config.state';
   changeDetection: ChangeDetectionStrategy.OnPush,
   standalone: false,
 })
-export class DashboardComponent {
+export class DashboardComponent implements AfterViewInit {
   selectedComponent = SelectedComponent;
 
   selectedAccount$ = this.ngxsStore.select(AccountsState.getSelectedAccount);
@@ -22,4 +23,12 @@ export class DashboardComponent {
     private ngxsStore: Store,
     public store: StoreService,
   ) {}
+
+  ngAfterViewInit(): void {
+    // No sidebar logic needed
+  }
+
+  public selectComponent(component: SelectedComponent) {
+    this.ngxsStore.dispatch(new ConfigActions.SetSelectedComponent(component));
+  }
 }
