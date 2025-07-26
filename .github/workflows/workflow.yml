@@ -24,6 +24,7 @@ jobs:
 
   copy_env_files:
     runs-on: [self-hosted, unraid]
+    needs: build
     steps:
       - name: Copy Env Files
         run: |
@@ -33,6 +34,7 @@ jobs:
 
   build_docker:
     runs-on: [self-hosted, unraid]
+    needs: copy_env_files
     steps:
       - name: Stop existing container
         run: docker compose -f ./backend/docker-compose.yml down
