@@ -24,7 +24,7 @@ jobs:
 
   copy_env_files:
     runs-on: [self-hosted, unraid]
-    needs: build
+    needs: checkout_repo
     steps:
       - name: Copy Env Files
         run: |
