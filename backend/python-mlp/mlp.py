@@ -1145,14 +1145,6 @@ def train_category():
 # train_payee()
 # train_category()
 
-# category_mlp = PennywiseMLP("category")
-# category_mlp.k_fold_train_validate(hyper_parameters=category_params, cv_folds=5)
-# category_mlp = PennywiseMLP("category", 0.0001, [256, 128, 64])
-# category_mlp = PennywiseMLP("category", [1024, 512, 256], learning_rate=0.01, decay=0.001, l1_l2_lambdas={"l2w": 0.0005, "l2b": 0.0005})
-# category_mlp.train(hyper_parameters=category_params[2])
-# category_mlp.save_model(path="pennywise_category_mlp.parms")
-# category_mlp.test(test_emails, "email_text")
-
 account_params: list[HyperParameters] = [
     {
         "hidden_layers": [256],
@@ -1162,9 +1154,3 @@ account_params: list[HyperParameters] = [
         "epochs": 500,
     }
 ]
-# account_mlp = PennywiseMLP("account", 0.0011, [128])
-# account_mlp.train(1000)
-# account_mlp.test(test_emails, "email_text")
-# account_mlp = PennywiseMLP("account")
-# account_mlp.train(hyper_parameters=account_params[0])
-# account_mlp.save_model(path="pennywise_account_mlp.parms")
