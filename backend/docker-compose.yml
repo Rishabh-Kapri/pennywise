@@ -16,9 +16,11 @@ services:
       - GOOGLE_APPLICATION_CREDENTIALS=/secrets/service-account.json
     volumes:
       - ./go-gmail/pennywise-39654-c87f94721374.json:/secrets/service-account.json:ro
+    restart: always
 
   python-mlp:
     build:
       context: ./python-mlp
     ports:
       - '5050:8000'
+    restart: always
