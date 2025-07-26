@@ -59,7 +59,7 @@ jobs:
         id: filter
         run: |
           changed_files="${{ steps.changes.outputs.CHANGED }}"
-          echo $(changed_files)
+          echo $changed_files
           services=""
           for file in $changed_files; do
             if [[ "file" =~ ^services/([^/]+)/ ]]; then
@@ -72,7 +72,7 @@ jobs:
       - name: Build changed service
         run: |
           services="${{ steps.filter.output.SERVICES }}"
-          echo $(services)
+          echo $services
           for svc in $services; do
             echo "Building $svc..."
             docker-compose -f ./backend/docker-compose.yml build $svc
