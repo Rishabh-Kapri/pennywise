@@ -1,0 +1,40 @@
+.budget {
+  @apply text-budget-green;
+}
+
+.selected {
+  background-color: #141412;
+}
+
+.modal-arrow {
+  @apply fill-neutral-850;
+  position: absolute;
+  top: 0%;
+  left: 49%;
+  height: 0.9375rem;
+  width: 1.875rem;
+  transform: rotate(0deg);
+}
+
+.disabled-btn {
+  opacity: 70%;
+  pointer-events: none;
+}
+
+.disabled {
+  @apply text-neutral-500;
+  pointer-events: none;
+}
+
+.disabled-text {
+  @apply text-neutral-500;
+}
+
+/* Firefox */
+input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+.highcharts-container, .highcharts-container > svg{
+  overflow:visible !important;
+}

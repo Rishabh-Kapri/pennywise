@@ -1,0 +1,42 @@
+// Mobile budget component styles
+// Most styling is handled by Tailwind classes
+
+// Custom scrollbar for the modal
+.modal-content {
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: #3f3f46;
+    border-radius: 3px;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: #52525b;
+    border-radius: 3px;
+    
+    &:hover {
+      background: #71717a;
+    }
+  }
+}
+
+// Smooth transitions for progress bars
+.progress-bar {
+  transition: width 0.3s ease-in-out;
+}
+
+// Hover effects for cards
+.category-card {
+  transition: all 0.2s ease-in-out;
+  
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+} 
+
+.flex-2-5 {
+  flex: 2.5;
+}

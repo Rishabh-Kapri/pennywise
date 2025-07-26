@@ -1,0 +1,48 @@
+<ng-container
+  *ngIf="{
+    inflowCategory: inflowCategory$ | async,
+    selectedMonth: selectedMonth$ | async
+  } as data">
+  <div class="">
+    <nav class="bg-zinc-800 h-20 sticky eop-0 left-0 z-50 border-b border-gray-600">
+      <div class="max-w-screen-xl h-full bg-zinc-850 flex flex-col justify-center p-2 px-4">
+        <div class="flex w-full items-center justify-between">
+          <div class="flex-shrink-0">
+            <app-date-picker></app-date-picker>
+          </div>
+          <!-- Inflow -->
+          <div *ngIf="data.inflowCategory"
+            class="h-16 flex items-center justify-between text-sm py-1.5 px-3 rounded-lg ml-4"
+            [ngClass]="{
+            'bg-budget-green text-slate-950': data?.inflowCategory?.budgeted! > 0,
+            'bg-neutral-400 text-neutral-700': data?.inflowCategory?.budgeted! === 0
+            }">
+            <div class="flex flex-col">
+              <div class="font-semibold text-lg">
+                {{ (data?.inflowCategory?.budgeted || 0) | number:'1.2-2' }}
+              </div>
+              <div *ngIf="data?.inflowCategory?.budgeted! === 0; else readyToAssign">
+                All assigned
+              </div>
+              <ng-template #readyToAssign>
+                <div class="text-slate-900">Ready to Assign</div>
+              </ng-template>
+            </div>
+            <ng-container *ngIf="data?.inflowCategory?.budgeted! === 0">
+              <ng-icon
+                class="ml-4"
+                name="heroCheckCircleSolid"
+                size="30px"></ng-icon>
+            </ng-container>
+          </div>
+        </div>
+      </div>
+    </nav>
+    <div class="flex flex-col flex-wrap bg-zinc-800 h-[calc(100vh-5rem)] w-full lg:w-full overflow-y-auto">
+      <app-category></app-category>
+      <!-- <div class="border border-l"> -->
+      <!--   Test -->
+      <!-- </div> -->
+    </div>
+  </div>
+</ng-container>
