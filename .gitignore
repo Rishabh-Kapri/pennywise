@@ -47,3 +47,11 @@ firebase.json
 firestore.*
 .firebaserc
 .firebase/
+
+# Python & go
+__pycache__
+venv
+pennywise-39654-c87f94721374.json
+data
+data-bkp
+.env
