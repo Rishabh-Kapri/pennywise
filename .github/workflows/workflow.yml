@@ -79,11 +79,11 @@ jobs:
           done
           unique_services=$(printf "%s\n" "${service_set[@]}" | sort -u | tr '\n' ' ')
           echo "Final service list: ${unique_services}"
-          echo "SERVICES=${unique_services}" >> $GITHUB_OUTPUT
+          echo "SERVICES=$unique_services" >> $GITHUB_OUTPUT
 
       - name: Build changed service
         run: |
-          services="${{ steps.filter.output.SERVICES }}"
+          services="${{ steps.filter.outputs.SERVICES }}"
           echo "Services: ${services}"
           for svc in $services; do
             echo "Building $svc..."
