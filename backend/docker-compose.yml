@@ -6,13 +6,9 @@ services:
       context: ./go-gmail
     ports:
       - '5000:8080'
+    env_file:
+      - ./.env
     environment:
-      - GOOGLE_CLIENT_ID=1034450232305-0egkc86doams46v1ikjmsubc67btkrej.apps.googleusercontent.com
-      - GOOGLE_CLIENT_SECRET=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
-      - PROJECT_ID=pennywise-39654
-      - PUBSUB_TOPIC=gmail_watch
-      - NTFY_TOPIC=f5cec4e5-8103-4e0e-a6b6-57a5626fbd68
-      - MLP_API=http://192.168.1.34:5050
       - GOOGLE_APPLICATION_CREDENTIALS=/secrets/service-account.json
     volumes:
       - ./go-gmail/pennywise-39654-c87f94721374.json:/secrets/service-account.json:ro
