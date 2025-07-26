@@ -1,0 +1,60 @@
+.category-edit-btn {
+  visibility: hidden;
+}
+
+.name-container {
+  display: flex;
+  align-items: center;
+}
+
+.name-container:hover > .category-edit-btn {
+  visibility: visible;
+}
+
+/* Chrome, Safari, Edge, Opera */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Firefox */
+input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+.badge {
+  border-radius: 25px;
+  padding: 3px 7px;
+}
+
+.active {
+  @apply bg-budget-green;
+  cursor: pointer;
+  color: black;
+}
+
+.active:hover {
+  @apply bg-budget-green-hover;
+}
+
+.inactive {
+  @apply bg-neutral-600;
+  @apply text-neutral-400;
+  pointer-events: none;
+}
+
+.overspent {
+  @apply bg-red-800;
+  @appy text-neutral-400;
+}
+
+.modal-arrow {
+  @apply fill-neutral-800;
+  position: absolute;
+  top: 46%;
+  left: 97%;
+  height: 0.9375rem;
+  width: 1.875rem;
+  transform: rotate(90deg);
+}

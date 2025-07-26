@@ -1,0 +1,282 @@
+<ng-container
+  *ngIf="{
+    inflowCategory: inflowCategory$ | async,
+    categoryGroupData: categoryGroupsData$ | async,
+    selectedMonth: selectedMonth$ | async,
+    selectedHumanMonth: selectedHumanMonth$ | async,
+    accountObj: accountObj$ | async,
+    payeeObj: payeeObj$ | async,
+  } as data">
+  <div class="flex flex-col min-h-screen bg-zinc-800 pb-20">
+    <!-- Header -->
+    <div class="flex items-center justify-between px-4 pt-6 pb-2">
+      <h1 class="text-3xl font-extrabold tracking-tight text-white">Budget</h1>
+      <app-date-picker></app-date-picker>
+    </div>
+
+    <!-- Inflow Category -->
+    <div *ngIf="data.inflowCategory" class="px-4 mb-6">
+      <div class="bg-zinc-900 rounded-xl p-4 border border-neutral-700">
+        <div class="flex justify-between items-center">
+          <div>
+            <h3 class="text-lg font-semibold text-emerald-400">{{ data.inflowCategory.name }}</h3>
+            <p class="text-sm text-neutral-400">Income and other money</p>
+          </div>
+          <div class="text-right">
+            <div class="text-2xl font-bold text-emerald-400">
+              {{ getCategoryBalance(data.inflowCategory, data.selectedMonth) | currency: 'INR' : 'symbol' : '1.2-2' }}
+            </div>
+            <div class="text-sm text-neutral-400">
+              {{ getCategoryBudgeted(data.inflowCategory, data.selectedMonth) | currency: 'INR' : 'symbol' : '1.2-2' }} budgeted
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Category Groups -->
+    <div class="flex-1 overflow-y-auto px-4">
+      <ng-container *ngIf="data.categoryGroupData">
+        <ng-container *ngFor="let categoryGroup of data.categoryGroupData; trackBy: trackByGroup">
+          <div class="mb-6">
+            <div class="flex justify-between items-center mb-3">
+              <h3 class="text-lg font-semibold text-white">{{ categoryGroup.name }}</h3>
+              <span class="text-sm text-neutral-400">
+                {{ categoryGroup?.budgeted?.[data.selectedMonth!] ?? 0 | currency: 'INR' : 'symbol' : '1.2-2' }} budgeted
+              </span>
+            </div>
+            <div *ngIf="!categoryGroup.collapsed" class="space-y-3">
+              <ng-container *ngFor="let category of categoryGroup.categories; trackBy: trackByCategory">
+                <div 
+                  class="bg-zinc-900 rounded-xl p-4 border border-neutral-700 cursor-pointer hover:bg-zinc-800 transition-colors duration-200"
+                  (click)="showCategoryDetails(category)">
+                  <div class="flex justify-between items-start mb-2">
+                    <div>
+                      <h4 class="text-lg font-semibold text-white">{{ category.name }}</h4>
+                      <div class="flex items-center space-x-2 mt-1">
+                        <span class="text-xs bg-neutral-700 text-neutral-300 px-2 py-1 rounded-full">
+                          {{ getTransactionCount(category) }} transactions
+                        </span>
+                      </div>
+                    </div>
+                    <div class="text-right">
+                      <div class="text-lg font-semibold" [ngClass]="getAvailableAmountColor(category)">
+                        {{ category?.balance?.[data.selectedMonth!] ?? 0 | currency: 'INR' : 'symbol' : '1.2-2' }}
+                      </div>
+                      <div class="text-sm text-neutral-400">
+                        {{ category?.budgeted?.[data.selectedMonth!] ?? 0 | currency: 'INR' : 'symbol' : '1.2-2' }} budgeted
+                      </div>
+                    </div>
+                  </div>
+                  <!-- Progress Bar -->
+                  <div class="w-full bg-neutral-700 rounded-full h-2 mb-2">
+                    <div 
+                      class="h-full rounded-full transition-all duration-300"
+                      [ngClass]="getProgressBarClass(category, data.selectedMonth)"
+                      [style.width.%]="getProgressPercentage(category)">
+                    </div>
+                  </div>
+                  <div 
+                    class="flex justify-between text-sm text-neutral-400">
+                    <span>Activity</span>
+                    <span
+                      [ngClass]="{
+                        'text-red-400': category?.activity?.[data.selectedMonth!]! < 0,
+                        'text-green-400': category?.activity?.[data.selectedMonth!]! > 0,
+                        'text-zinc-400': category?.activity?.[data.selectedMonth!]! === 0 
+                      }">
+                      {{ category?.activity?.[data.selectedMonth!] ?? 0 | abs | currency: 'INR' : 'symbol' : '1.2-2' }}
+                    </span>
+                  </div>
+                </div>
+              </ng-container>
+            </div>
+          </div>
+        </ng-container>
+      </ng-container>
+    </div>
+
+    <!-- Floating Action Button -->
+    <!-- <button class="fixed bottom-24 right-6 z-50 bg-zinc-800 text-white rounded-full shadow-lg w-14 h-14 flex items-center justify-center text-3xl hover:bg-zinc-700 border border-neutral-700 focus:outline-none"> -->
+    <!--   <ng-icon name="heroPlusCircleSolid" size="36px"></ng-icon> -->
+    <!-- </button> -->
+
+    <!-- Category Details Modal -->
+    <div
+      *ngIf="isDetailsModalOpen"
+      class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
+      (click)="closeDetailsModal()">
+      <div
+        class="bg-zinc-900 rounded-xl w-full max-w-md max-h-[80vh] overflow-y-auto"
+        (click)="$event.stopPropagation()">
+        <!-- Modal Header -->
+        <div class="flex items-center justify-between p-4 border-b border-neutral-700">
+          <h3 class="text-lg font-bold text-white">{{ selectedCategory?.name }}</h3>
+          <button (click)="closeDetailsModal()" class="text-neutral-400 hover:text-white">
+            <ng-icon name="heroXMark" size="24px"></ng-icon>
+          </button>
+        </div>
+
+        <!-- Modal Content -->
+        <div class="p-4">
+          <ng-container *ngIf="selectedCategory">
+            <!-- Budgeted Amount -->
+            <div class="mb-4">
+              <label class="block text-sm font-medium text-neutral-400 mb-2">Budgeted</label>
+              <div class="bg-zinc-800 rounded-lg px-3 py-2 border border-neutral-700">
+                <span class="text-white font-semibold">
+                  {{ getCategoryBudgeted(selectedCategory, selectedMonth$ | async) | currency: 'INR' : 'symbol' : '1.2-2' }}
+                </span>
+              </div>
+            </div>
+
+            <!-- Available Amount -->
+            <div class="mb-4">
+              <label class="block text-sm font-medium text-neutral-400 mb-2">Available</label>
+              <div class="bg-zinc-800 rounded-lg px-3 py-2 border border-neutral-700">
+                <span [ngClass]="getAvailableAmountColor(selectedCategory)" class="font-semibold">
+                  {{ getCategoryBalance(selectedCategory, selectedMonth$ | async) | currency: 'INR' : 'symbol' : '1.2-2' }}
+                </span>
+              </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex gap-2 mb-6">
+              <button
+                class="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg font-medium">
+                Move Money
+              </button>
+              <button class="flex-1 bg-neutral-700 hover:bg-neutral-600 text-white py-2 px-4 rounded-lg font-medium">
+                Edit
+              </button>
+            </div>
+
+            <!-- Transactions Section -->
+            <div>
+              <h4 class="text-lg text-center font-semibold text-white mb-3">Recent Transactions : {{ data.selectedHumanMonth | date: 'MMM, y' }}</h4>
+              <div class="space-y-2">
+                <ng-container *ngIf="categoryTransactions.length > 0; else noTransactions">
+                  <ng-container *ngFor="let transaction of categoryTransactions; trackBy: trackByTransaction">
+                    <ng-container *ngIf="data.accountObj && data.payeeObj">
+                      <div class="bg-zinc-800 rounded-lg px-3 py-2 border border-neutral-700">
+                        <div class="flex justify-between items-center">
+                          <span class="text-white text-sm">{{ data.payeeObj[transaction.payeeId]?.name || 'Unknown Payee' }}</span>
+                          <span
+                            [ngClass]="transaction.amount >= 0 ? 'text-green-400' : 'text-red-400'"
+                            class="text-sm font-medium">
+                            {{ transaction.amount | abs | currency: 'INR' : 'symbol' : '1.2-2' }}
+                          </span>
+                        </div>
+                        <div class="flex justify-between items-center mt-1">
+                          <span class="text-neutral-400 text-xs">
+                            {{ data.accountObj[transaction.accountId]?.name || 'Unknown Account' }}
+                          </span>
+                          <span class="text-neutral-400 text-xs">{{ transaction.date | date: 'MMM d, y' }}</span>
+                        </div>
+                        <span *ngIf="transaction.note" class="text-neutral-400 text-xs block mt-1">
+                          {{ transaction.note }}
+                        </span>
+                      </div>
+                    </ng-container>
+                  </ng-container>
+                </ng-container>
+                <ng-template #noTransactions>
+                  <div class="text-center text-neutral-400 py-4">No transactions found for this category.</div>
+                </ng-template>
+              </div>
+            </div>
+          </ng-container>
+        </div>
+      </div>
+    </div>
+
+    <!-- Move Money Modal -->
+    <div
+      *ngIf="isMoveModalOpen"
+      class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
+      (click)="closeMoveModal()">
+      <div
+        class="bg-zinc-900 rounded-xl w-full max-w-md max-h-[80vh] overflow-y-auto"
+        (click)="$event.stopPropagation()">
+        <!-- Modal Header -->
+        <div class="flex items-center justify-between p-4 border-b border-neutral-700">
+          <h3 class="text-lg font-bold text-white">Move Money</h3>
+          <button (click)="closeMoveModal()" class="text-neutral-400 hover:text-white">
+            <ng-icon name="heroXMark" size="24px"></ng-icon>
+          </button>
+        </div>
+
+        <!-- Modal Content -->
+        <div class="p-4">
+          <!-- Move From Section -->
+          <div class="mb-4">
+            <label class="block text-sm font-medium text-neutral-400 mb-2">
+              Move From "{{ selectedCategory?.name }}"
+            </label>
+            <input
+              type="number"
+              class="block w-full text-sm h-10 text-white border border-neutral-500 rounded bg-neutral-700 focus:ring-blue-500 focus:border-blue-500 placeholder:text-slate-400 px-3"
+              [ngModel]="moveData.from.amount"
+              (ngModelChange)="changeMoveAmount($event)"
+              placeholder="Enter amount" />
+          </div>
+
+          <!-- Move To Section -->
+          <div class="mb-6">
+            <label class="block text-sm font-medium text-neutral-400 mb-2">To Category</label>
+            <div class="relative">
+              <button
+                class="block w-full text-sm h-10 text-white px-3 text-left border border-neutral-500 rounded bg-neutral-700 focus:ring-blue-500 focus:border-blue-500"
+                (click)="showCategorySelector = !showCategorySelector">
+                {{ moveData.to.name }}
+              </button>
+
+              <!-- Category Selector Dropdown -->
+              <div
+                *ngIf="showCategorySelector"
+                class="absolute z-10 w-full mt-1 bg-neutral-800 rounded-lg shadow-lg border border-neutral-700 max-h-60 overflow-y-auto">
+                <ng-container *ngIf="categoryGroupData$ | async as categoryGroups">
+                  <ng-container *ngFor="let group of categoryGroups">
+                    <div class="px-3 py-2 text-xs font-semibold text-neutral-400 border-b border-neutral-700">
+                      {{ group.name }}
+                    </div>
+                    <ng-container *ngFor="let category of group.categories">
+                      <button
+                        class="w-full px-3 py-2 text-left text-sm text-white hover:bg-neutral-700"
+                        (click)="selectMoveCategory(category); showCategorySelector = false">
+                        <div class="flex justify-between items-center">
+                          <span>{{ category.name }}</span>
+                          <span class="text-green-400 text-xs">
+                            {{
+                              getCategoryBalance(category, selectedMonth$ | async)
+                                | currency: 'INR' : 'symbol' : '1.2-2'
+                            }}
+                          </span>
+                        </div>
+                      </button>
+                    </ng-container>
+                  </ng-container>
+                </ng-container>
+              </div>
+            </div>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="flex gap-2">
+            <button
+              (click)="closeMoveModal()"
+              class="flex-1 bg-neutral-700 hover:bg-neutral-600 text-white py-2 px-4 rounded-lg font-medium">
+              Cancel
+            </button>
+            <button
+              (click)="moveBalance()"
+              [disabled]="!moveData.to.categoryId || moveData.from.amount <= 0"
+              class="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-neutral-600 disabled:cursor-not-allowed text-white py-2 px-4 rounded-lg font-medium">
+              Move Money
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</ng-container>

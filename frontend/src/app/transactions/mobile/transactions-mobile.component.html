@@ -1,0 +1,60 @@
+<div class="flex flex-col min-h-screen bg-zinc-800 pb-20">
+  <!-- Header -->
+  <div class="flex items-center justify-between px-4 pt-6 pb-2">
+    <h1 class="text-3xl font-extrabold tracking-tight text-white">Transactions</h1>
+    <div class="flex gap-4">
+      <button class="text-neutral-400 hover:text-white"><ng-icon name="heroFunnel" size="24px"></ng-icon></button>
+      <button class="text-neutral-400 hover:text-white"><ng-icon name="heroMagnifyingGlass" size="24px"></ng-icon></button>
+    </div>
+  </div>
+
+  <!-- Transactions List -->
+  <div class="flex-1 overflow-y-auto px-2">
+    <ng-container *ngIf="groupedTransactions$ | async as grouped">
+      <ng-container *ngFor="let month of grouped; trackBy: trackByMonth">
+        <div class="text-lg font-bold text-white mt-6 mb-2 px-2">{{ month.month }}</div>
+        <ng-container *ngFor="let dateGroup of month.dates; trackBy: trackByDate">
+          <div class="text-xs text-neutral-400 font-semibold mt-4 mb-1 px-2">{{ dateGroup.date }}</div>
+          <div class="flex flex-col gap-2">
+            <ng-container *ngFor="let txn of dateGroup.transactions; trackBy: trackByTxn">
+              <div class="flex items-center justify-between bg-zinc-900 rounded-xl px-4 py-3 shadow-sm border border-neutral-700">
+                <!-- Transaction Info (left side) -->
+                <div class="flex-1">
+                  <div class="flex flex-col">
+                    <div *ngIf="txn.categoryName; else payeeOnly">
+                      <span class="text-white font-semibold">{{ txn.categoryName }}</span>
+                      <span class="text-neutral-400 text-sm"> · {{ txn.payeeName }}</span>
+                    </div>
+                    <ng-template #payeeOnly>
+                      <span class="text-white font-semibold">{{ txn.payeeName }}</span>
+                    </ng-template>
+                    <span *ngIf="txn.note" class="text-neutral-400 text-xs mt-1 ml-1">{{ txn.note }}</span>
+                  </div>
+                </div>
+                <!-- Amount (right side) -->
+                <div class="text-right">
+                  <span [ngClass]="txn.inflow ? 'text-green-400 font-bold' : 'text-red-400 font-bold'">
+                    <ng-container *ngIf="txn.inflow !== null && txn.inflow !== undefined; else outflowBlock">
+                      +{{ txn.inflow | currency:'INR':'symbol':'1.2-2' }}
+                    </ng-container>
+                    <ng-template #outflowBlock>
+                      <ng-container *ngIf="txn.outflow !== null && txn.outflow !== undefined">
+                        -{{ txn.outflow | currency:'INR':'symbol':'1.2-2' }}
+                      </ng-container>
+                    </ng-template>
+                  </span>
+                </div>
+              </div>
+            </ng-container>
+          </div>
+        </ng-container>
+      </ng-container>
+      <div *ngIf="grouped.length === 0" class="text-center text-neutral-400 mt-12">No transactions found.</div>
+    </ng-container>
+  </div>
+
+  <!-- Floating Action Button -->
+  <button class="fixed bottom-24 right-6 z-50 bg-zinc-800 text-white rounded-full shadow-lg w-14 h-14 flex items-center justify-center text-3xl hover:bg-zinc-700 border border-neutral-700 focus:outline-none">
+    <ng-icon name="heroPlusCircleSolid" size="36px"></ng-icon>
+  </button>
+</div> 

@@ -1,0 +1,69 @@
+.budget {
+  @apply text-budget-green;
+}
+
+.selected {
+  background-color: #141412;
+}
+
+.modal-arrow {
+  @apply fill-neutral-850;
+  position: absolute;
+  top: 0%;
+  left: 49%;
+  height: 0.9375rem;
+  width: 1.875rem;
+  transform: rotate(0deg);
+}
+
+.disabled-btn {
+  opacity: 70%;
+  pointer-events: none;
+}
+
+.disabled {
+  @apply text-neutral-500;
+  pointer-events: none;
+}
+
+.disabled-text {
+  @apply text-neutral-500;
+}
+
+/* Firefox */
+input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+// Minimal card style for transaction list
+.card-transaction {
+  min-height: 40px;
+  padding: 0.5rem 1rem;
+  border-radius: 0.75rem;
+  background: theme('colors.zinc.900');
+  border: 1px solid theme('colors.neutral.700');
+  transition: background 0.2s;
+  font-size: 0.9rem;
+  &:hover {
+    background: theme('colors.zinc.800');
+  }
+}
+
+.card-transaction > div {
+  font-size: 0.9rem;
+}
+
+// Remove extra margin from last card
+.card-transaction:last-child {
+  margin-bottom: 0;
+}
+
+// Compact header row
+.header-row {
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  border-radius: 0.75rem 0.75rem 0 0;
+  background: theme('colors.zinc.800');
+  color: theme('colors.neutral.400');
+  border-bottom: 1px solid theme('colors.neutral.700');
+}
