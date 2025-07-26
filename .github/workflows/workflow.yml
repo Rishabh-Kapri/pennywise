@@ -6,12 +6,9 @@ on:
       - master
 
 jobs:
-  build:
+  checkout_repo:
     runs-on: [self-hosted, unraid]
     steps:
-      - name: Start build
-        run: echo "Starting build step!!!!!"
-
       - name: Checkout Repo
         uses: actions/checkout@v4
 
@@ -25,8 +22,20 @@ jobs:
           echo "OS Info:"
           uname -a
 
-      - name: Stop existing containers
+  copy_env_files:
+    runs-on: [self-hosted, unraid]
+    steps:
+      - name: Copy Env Files
+        run: |
+          cp /mnt/user/LoganShare/Code/secrets/pennywise/.env ./backend/go-gmail/.env
+          cp /mnt/user/LoganShare/Code/secrets/pennywise/.env ./backend/go-pennywise-api/.env
+          cp /mnt/user/LoganShare/Code/secrets/pennywise/pennywise-39654-c87f94721374.json ./backend/go-gmail/pennywise-39654-c87f94721374.json
+
+  build_docker:
+    runs-on: [self-hosted, unraid]
+    steps:
+      - name: Stop existing container
         run: docker compose -f ./backend/docker-compose.yml down
 
-      - name: Build and start container
+      - name: Build and start containers
         run: docker compose -f ./backend/docker-compose.yml up --build -d
