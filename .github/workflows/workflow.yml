@@ -2,12 +2,21 @@ name: Atlas Runner
 
 on:
   push:
-    branches: [master]
+    branches:
+      - master
 
 jobs:
   build:
     runs-on: [self-hosted, unraid]
     steps:
-      - uses: actions/checkout@v4
-      - name: Say Hello
-        run: echo "Hello from Unraid!"
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Set up docker compose
+        run: docker compose version
+
+      - name: Stop existing containers
+        run: docker compose -f ./backend/docker-compose.yml down
+
+      - name: Build and start container
+        run: docker compose -f ./backend/docker-compose.yml up -d
