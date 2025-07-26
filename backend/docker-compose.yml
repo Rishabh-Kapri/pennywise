@@ -7,7 +7,7 @@ services:
     ports:
       - '5000:8080'
     env_file:
-      - ./.env
+      - ./go-gmail/.env
     environment:
       - GOOGLE_APPLICATION_CREDENTIALS=/secrets/service-account.json
     volumes:
