@@ -55,3 +55,5 @@ pennywise-39654-c87f94721374.json
 data
 data-bkp
 .env
+process_data.py
+test.go
