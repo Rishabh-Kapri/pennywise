@@ -58,11 +58,17 @@ jobs:
       - name: Determine changed service
         id: filter
         run: |
+          declare -A folder_to_service
+          folder_to_service["go-gmail"]="gmail-watch"
+          folder_to_service["python-mlp"]="python-mlp"
+          folder_to_service["go-pennywise-api"]="pennywise-api"
+          folder_to_service["src"]="pennywise-app"
+
           changed_files="${{ steps.changes.outputs.CHANGED }}"
           echo $changed_files
           services=""
           for file in $changed_files; do
-            if [[ "file" =~ ^services/([^/]+)/ ]]; then
+            if [[ "file" =~ ^(backend|frontend)\/([^\/]+)\/ ]]; then
               svc=${BASH_REMATCH[1]}
               services+="$svc "
             fi
