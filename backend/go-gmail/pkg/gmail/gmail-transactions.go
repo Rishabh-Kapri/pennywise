@@ -121,7 +121,8 @@ func getFirestoreClient() *firestore.Client {
 	projectId := os.Getenv("PROJECT_ID")
 	log.Printf("Setting up firestore client %v", projectId)
 	ctx := context.Background()
-	opt := option.WithCredentialsFile("./pennywise-39654-c87f94721374.json")
+	credsFile := os.Getenv("GCLOUD_SECRETS_FILE")
+	opt := option.WithCredentialsFile(credsFile)
 	firestoreClient, err := firestore.NewClient(ctx, projectId, opt)
 	if err != nil {
 		log.Fatalf("Error while setting up firestore client: %v", err.Error())

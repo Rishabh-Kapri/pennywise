@@ -1,9 +1,10 @@
-package mlp
+package pubsub
 
 import (
 	"context"
 	"encoding/json"
 	"log"
+	"os"
 
 	"gmail-transactions/pkg/gmail"
 
@@ -16,11 +17,8 @@ type GmailPushPayload struct {
 }
 
 func PullMessages() {
-	projectId := "pennywise-39654"
-	topicId := "process_transactions"
-	topicId = "gmail_watch"
-	subName := "process_transactions-sub"
-	subName = "gmail_watch"
+	projectId := os.Getenv("PROJECT_ID")
+	subName := os.Getenv("SUB_NAME")
 
 	ctx := context.Background()
 
@@ -29,17 +27,8 @@ func PullMessages() {
 		log.Fatalf("Failed to create client: %v", err)
 	}
 
-	topic := client.Topic(topicId)
-	ok, err := topic.Exists(ctx)
-	if err != nil {
-		log.Fatalf("Failed to check if topic exists: %v", err)
-	}
-	if !ok {
-		log.Fatalf("Topic %s does not exists", topicId)
-	}
-
 	sub := client.Subscription(subName)
-	ok, err = sub.Exists(ctx)
+	ok, err := sub.Exists(ctx)
 	if err != nil {
 		log.Fatalf("Failed to check if sub exists: %v", err)
 	}
@@ -58,7 +47,7 @@ func PullMessages() {
 		log.Printf("Processing event data: %v", m)
 		_, err = gmail.ProcessGmailHistoryId(m)
 		if err != nil {
-			log.Printf("Error while processing gmail historyId: %v", err.Error())
+			log.Printf("Error while processing gmail historyId %v: %v", m.HistoryId, err.Error())
 			return
 			// msg.Nack()
 		} else {
