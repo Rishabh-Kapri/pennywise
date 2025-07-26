@@ -11,6 +11,8 @@ jobs:
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Needed for full git history comparison
 
   copy_env_files:
     runs-on: [self-hosted, unraid]
@@ -20,7 +22,7 @@ jobs:
         run: |
           echo "Hostname: $(hostname)"
           echo "Running as: $(whoami)"
-          echo "Current directory: ${pwd}"
+          echo "Current directory: $(pwd)"
           echo "Files:"
           ls -la
           ls -la backend/go-gmail
@@ -37,7 +39,7 @@ jobs:
         run: |
           echo "Hostname: $(hostname)"
           echo "Running as: $(whoami)"
-          echo "Current directory: ${pwd}"
+          echo "Current directory: $(pwd)"
           echo "Files:"
           ls -la backend/go-gmail
           ls -la backend/go-pennywise-api
@@ -48,8 +50,36 @@ jobs:
     runs-on: [self-hosted, unraid]
     needs: copy_env_files
     steps:
-      - name: Stop existing container
-        run: docker compose -f ./backend/docker-compose.yml down
+      - name: Get changed files
+        id: changes
+        run: |
+          echo "CHANGED=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | xargs)" >> $GITHUB_OUTPUT
 
-      - name: Build and start containers
-        run: docker compose -f ./backend/docker-compose.yml up --build -d
+      - name: Determine changed service
+        id: filter
+        run: |
+          changed_files="${{ steps.changes.outputs.CHANGED }}"
+          echo $(changed_files)
+          services=""
+          for file in $changed_files; do
+            if [[ "file" =~ ^services/([^/]+)/ ]]; then
+              svc=${BASH_REMATCH[1]}
+              services+="$svc "
+            fi
+          done
+          echo "SERVICES=$(echo $services | tr ' ' '\n' | sort -u | tr '\n' ' ')" >> $GITHUB_OUTPUT
+
+      - name: Build changed service
+        run: |
+          services="${{ steps.filter.output.SERVICES }}"
+          echo $(services)
+          for svc in $services; do
+            echo "Building $svc..."
+            docker-compose -f ./backend/docker-compose.yml build $svc
+          done
+
+      # - name: Stop existing container
+      #   run: docker compose -f ./backend/docker-compose.yml down
+
+      # - name: Build and start containers
+      #   run: docker compose -f ./backend/docker-compose.yml up --build -d
