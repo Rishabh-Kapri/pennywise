@@ -57,6 +57,7 @@ export class PayeesState implements NgxsOnInit {
 
   @Action(StreamEmitted(PayeesActions.GetAllPayees))
   getAllPayees(ctx: StateContext<PayeesStateModel>, { payload }: Emitted<PayeesActions.GetAllPayees, Payee[]>) {
+    console.log("PAYEES:::", payload);
     ctx.patchState({
       allPayees: payload,
     });

@@ -8,6 +8,7 @@ import { SidebarComponent } from './sidebar/sidebar.component';
 import { HeaderComponent } from './header/header.component';
 import { TransactionsComponent } from './transactions/transactions.component';
 import { BudgetComponent } from './budget/budget.component';
+import { BudgetMobileComponent } from './budget/budget-mobile.component';
 import { NgIconsModule } from '@ng-icons/core';
 import {
   heroHome,
@@ -21,6 +22,8 @@ import {
   heroXMark,
   heroChevronLeft,
   heroMagnifyingGlass,
+  heroCalendarDays,
+  heroChartBar,
 } from '@ng-icons/heroicons/outline';
 import { heroPencilSolid, heroPlusCircleSolid, heroCheckCircleSolid } from '@ng-icons/heroicons/solid';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
@@ -48,6 +51,7 @@ import { TransactionsMobileComponent } from './transactions/mobile/transactions-
     SidebarComponent,
     HeaderComponent,
     BudgetComponent,
+    BudgetMobileComponent,
     TransactionsComponent,
     DashboardComponent,
     ReportsComponent,
@@ -86,6 +90,8 @@ import { TransactionsMobileComponent } from './transactions/mobile/transactions-
       heroPlusCircleSolid,
       heroCheckCircleSolid,
       heroMagnifyingGlass,
+      heroCalendarDays,
+      heroChartBar,
     }),
     NgxsStoreModule,
     HighchartsChartModule,

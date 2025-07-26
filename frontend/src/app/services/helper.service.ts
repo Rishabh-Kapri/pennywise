@@ -48,6 +48,12 @@ export class HelperService {
     const previousKey = `${date.getFullYear()}-${date.getMonth()}`;
     return previousKey;
   }
+  
+  getSelectedMonthInHumanFormat(key: string): string {
+    const [year, month] = key.split('-');
+    const date = new Date(Number(year), Number(month));
+    return `${year}-${Number(month) + 1}`;
+  }
 
   splitKeyIntoMonthYear(key: string) {
     const selectedDate = key.split('-');

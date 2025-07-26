@@ -11,6 +11,7 @@ export interface BudgetsStateModel {
   allBudgets: Budget[];
   selectedBudget: Budget | null;
   selectedMonth: string;
+  selectedHumanMonth: string;
 }
 @State<BudgetsStateModel>({
   name: 'budgets',
@@ -18,6 +19,7 @@ export interface BudgetsStateModel {
     allBudgets: [],
     selectedBudget: null,
     selectedMonth: '',
+    selectedHumanMonth: '',
   },
 })
 @Injectable()
@@ -29,6 +31,10 @@ export class BudgetsState implements NgxsOnInit {
   @Selector()
   static getSelectedMonth(state: BudgetsStateModel): string {
     return state.selectedMonth;
+  }
+  @Selector()
+  static getSelectedHumanMonth(state: BudgetsStateModel): string {
+    return state.selectedHumanMonth;
   }
   @Selector()
   static getSelectedBudget(state: BudgetsStateModel): Budget | null {
@@ -55,11 +61,14 @@ export class BudgetsState implements NgxsOnInit {
 
   @Action(StreamEmitted(BudgetsActions.GetAllBudgets))
   getAllBudgets(ctx: StateContext<BudgetsStateModel>, { payload }: Emitted<BudgetsActions.GetAllBudgets, Budget[]>) {
+    console.log("BUDGETS:::", payload);
     const selectedBudget = payload.find((budget) => budget.isSelected === true) ?? null;
+    const selectedMonth = this.helperService.getCurrentMonthKey();
     ctx.setState({
       allBudgets: payload,
       selectedBudget,
-      selectedMonth: this.helperService.getCurrentMonthKey(),
+      selectedMonth: selectedMonth,
+      selectedHumanMonth: this.helperService.getSelectedMonthInHumanFormat(selectedMonth),
     });
     if (!selectedBudget) {
       // @TODO: dispatch an error message
@@ -70,6 +79,7 @@ export class BudgetsState implements NgxsOnInit {
   setSelectedMonth(ctx: StateContext<BudgetsStateModel>, { payload }: BudgetsActions.SetSelectedMonth) {
     ctx.patchState({
       selectedMonth: payload,
+      selectedHumanMonth: this.helperService.getSelectedMonthInHumanFormat(payload),
     });
     this.ngxsStore.dispatch(new CategoryGroupsActions.SetCategoryGroupData());
   }

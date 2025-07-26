@@ -89,6 +89,7 @@ export class AccountsState {
     ctx: StateContext<AccountStateModel>,
     { payload }: Emitted<AccountsActions.GetAllAccounts, Account[]>,
   ) {
+    console.log("ACCOUNTS::::", payload);
     ctx.patchState({
       allAccounts: payload,
       budgetAccounts: this.filterBudgetAccounts(payload),

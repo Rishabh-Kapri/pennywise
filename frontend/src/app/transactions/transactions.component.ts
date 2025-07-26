@@ -404,6 +404,7 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
   }
 
   selectTransaction(transaction: NormalizedTransaction) {
+    console.log('selecting transaction:', transaction);
     if (this.selectedTransaction?.id === transaction.id) {
       return;
     }
@@ -572,8 +573,10 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
   }
 
   cancelTransactionSave() {
+    console.log(this, 'cancelTransactionSave:', this.selectedTransaction);
     this.currentMode = Mode.NONE;
     this.selectedTransaction = null;
+    console.log(this, 'cancelTransactionSave:', this.selectedTransaction);
   }
 
   async saveTransaction() {
