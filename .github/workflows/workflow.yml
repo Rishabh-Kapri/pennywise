@@ -29,9 +29,9 @@ jobs:
           uname -a
       - name: Copy Env Files
         run: |
-          cp /mnt/user/LoganShare/Code/secrets/pennywise/.env /backend/go-gmail/.env
-          cp /mnt/user/LoganShare/Code/secrets/pennywise/pennywise-39654-c87f94721374.json /backend/go-gmail/pennywise-39654-c87f94721374.json
-          cp /mnt/user/LoganShare/Code/secrets/pennywise/.env /backend/go-pennywise-api/.env
+          cp /mnt/user/LoganShare/Code/secrets/pennywise/.env backend/go-gmail/.env
+          cp /mnt/user/LoganShare/Code/secrets/pennywise/pennywise-39654-c87f94721374.json backend/go-gmail/pennywise-39654-c87f94721374.json
+          cp /mnt/user/LoganShare/Code/secrets/pennywise/.env backend/go-pennywise-api/.env
 
       - name: Print Info After
         run: |
