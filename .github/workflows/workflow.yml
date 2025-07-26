@@ -12,7 +12,11 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@v4
 
-      - name: Print Info
+  copy_env_files:
+    runs-on: [self-hosted, unraid]
+    needs: checkout_repo
+    steps:
+      - name: Print Info Before
         run: |
           echo "Hostname: $(hostname)"
           echo "Running as: $(whoami)"
@@ -21,16 +25,21 @@ jobs:
           ls -la
           echo "OS Info:"
           uname -a
-
-  copy_env_files:
-    runs-on: [self-hosted, unraid]
-    needs: checkout_repo
-    steps:
       - name: Copy Env Files
         run: |
           cp /mnt/user/LoganShare/Code/secrets/pennywise/.env ./backend/go-gmail/.env
           cp /mnt/user/LoganShare/Code/secrets/pennywise/.env ./backend/go-pennywise-api/.env
           cp /mnt/user/LoganShare/Code/secrets/pennywise/pennywise-39654-c87f94721374.json ./backend/go-gmail/pennywise-39654-c87f94721374.json
+
+      - name: Print Info After
+        run: |
+          echo "Hostname: $(hostname)"
+          echo "Running as: $(whoami)"
+          echo "Current directory: ${pwd}"
+          echo "Files:"
+          ls -la
+          echo "OS Info:"
+          uname -a
 
   build_docker:
     runs-on: [self-hosted, unraid]
