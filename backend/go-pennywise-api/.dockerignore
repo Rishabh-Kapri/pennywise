@@ -1,0 +1,9 @@
+# Ignore test data
+data/
+data-bkp/
+
+# Ignore env files
+.env
+
+# Ignore OS files
+.DS_Store
