@@ -599,7 +599,7 @@ func processEmail() {}
 
 // Receives pubsub event from gmail_watch topic
 func ProcessGmailHistoryId(eventData EventData) (bool, error) {
-	log.Println(eventData)
+	log.Println("Processing event data:", eventData)
 	email := eventData.Email
 	// log.Printf("EMAIL: %v", email)
 	refreshToken, err := getRefreshToken(email)
