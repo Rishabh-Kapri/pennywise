@@ -40,6 +40,7 @@ func main() {
 	}
 	log.Printf("project id %v", os.Getenv("PROJECT_ID"))
 	go pubsub.PullMessages()
+	// go pubsub.TestMessages()
 	// go gmail.Init()
 
 	// http.HandleFunc("/", handler)
