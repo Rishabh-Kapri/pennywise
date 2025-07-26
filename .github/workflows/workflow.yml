@@ -63,12 +63,13 @@ jobs:
           folder_to_service["python-mlp"]="python-mlp"
           # folder_to_service["go-pennywise-api"]="pennywise-api"
           # folder_to_service["src"]="pennywise-app"
+          folder_to_service["workflows"]="python-mlp"
 
           changed_files="${{ steps.changes.outputs.CHANGED }}"
           echo "Changed files: ${changed_files}"
           service_set=()
           for file in $changed_files; do
-            if [[ $file =~ ^(backend|frontend)\/([^\/]+)\/ ]]; then
+            if [[ $file =~ ^(backend|frontend|.github)\/([^\/]+)\/ ]]; then
               folder=${BASH_REMATCH[2]}
               service=${folder_to_service[$folder]}
               if [[ -n "$service" ]]; then
@@ -78,12 +79,12 @@ jobs:
           done
           unique_services=$(printf "%s\n" "${service_set[@]}" | sort -u | tr '\n' ' ')
           echo "Final service list: ${unique_services}"
-          echo "SERVICES=$unique_services" >> "$GITHUB_OUTPUT"
+          echo "SERVICES=${unique_services}" >> $GITHUB_OUTPUT
 
       - name: Build changed service
         run: |
           services="${{ steps.filter.output.SERVICES }}"
-          echo $services
+          echo "Services: ${services}"
           for svc in $services; do
             echo "Building $svc..."
             docker-compose -f ./backend/docker-compose.yml build $svc
