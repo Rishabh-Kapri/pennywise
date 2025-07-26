@@ -2,12 +2,31 @@ name: Atlas Runner
 
 on:
   push:
-    branches: [master]
+    branches:
+      - master
 
 jobs:
   build:
     runs-on: [self-hosted, unraid]
     steps:
-      - uses: actions/checkout@v4
-      - name: Say Hello
-        run: echo "Hello from Unraid!"
+      - name: Start build
+        run: echo "Starting build step!!!!!"
+
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Print Info
+        run: |
+          echo "Hostname: $(hostname)"
+          echo "Running as: $(whoami)"
+          echo "Current directory: ${pwd}"
+          echo "Files:"
+          ls -la
+          echo "OS Info:"
+          uname -a
+
+      - name: Stop existing containers
+        run: docker compose -f ./pennywise/backend/docker-compose.yml down
+
+      - name: Build and start container
+        run: docker compose -f ./pennywise/backend/docker-compose.yml up -d
