@@ -61,8 +61,8 @@ jobs:
           declare -A folder_to_service
           folder_to_service["go-gmail"]="gmail-watch"
           folder_to_service["python-mlp"]="python-mlp"
-          folder_to_service["go-pennywise-api"]="pennywise-api"
-          folder_to_service["src"]="pennywise-app"
+          # folder_to_service["go-pennywise-api"]="pennywise-api"
+          # folder_to_service["src"]="pennywise-app"
 
           changed_files="${{ steps.changes.outputs.CHANGED }}"
           echo "Changed files: ${changed_files}"
@@ -76,7 +76,7 @@ jobs:
               fi
             fi
           done
-          unique_services=$(print "%s\n" "${service_set[@]}" | sort -u | tr '\n' ' ')
+          unique_services=$(printf "%s\n" "${service_set[@]}" | sort -u | tr '\n' ' ')
           echo "Final service list: ${unique_services}"
           echo "SERVICES=$unique_services" >> "$GITHUB_OUTPUT"
 
