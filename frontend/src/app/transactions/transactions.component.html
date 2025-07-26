@@ -33,8 +33,9 @@
           </span>
           <button
             (click)="addTransaction()"
-            class="px-5 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold shadow transition-all">
-            <ng-icon name="heroPlusCircleSolid" size="22px" class="mr-1"></ng-icon> Add Transaction
+            class="px-5 py-2 flex rounded-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold shadow transition-all">
+            <ng-icon name="heroPlusCircleSolid" size="22px" class="mr-1"></ng-icon> 
+            <span>Add Transaction</span>
           </button>
         </div>
       </div>
@@ -118,7 +119,7 @@
       <div 
         class="w-full pl-2"
         *ngIf="currentMode === mode.CREATE && selectedTransaction">
-        <div class="flex flex-col card-transaction flex justify-between text-xs text-white">
+        <div class="flex flex-col card-transaction justify-between text-xs text-white">
           <div class="flex flex-row">
             <!-- Account name -->
             <div
@@ -135,7 +136,9 @@
                 (keyup)="searchAccount($event)" />
             </div>
             <!-- Date -->
-            <div [class]="transactionColumnsObj['Date'].class" class="h-full self-center text-center p-1 truncate">
+            <div 
+              [class]="transactionColumnsObj['Date'].class" 
+              class="h-full self-center text-center p-1 truncate">
               <input
                 type="text"
                 class="w-full h-full py-0.5 px-1 text-left border-sky-400 rounded-small bg-transparent hover:border-blue-500 focus:border-blue-500 placeholder:text-slate-400"
@@ -143,7 +146,9 @@
                 [(ngModel)]="selectedTransaction.date" />
             </div>
             <!-- Payee -->
-            <div [class]="transactionColumnsObj['Payee'].class" class="h-full self-center text-center p-1 truncate">
+            <div 
+              [class]="transactionColumnsObj['Payee'].class" 
+              class="h-full self-center text-center p-1 truncate">
               <input
                 #payeeInput
                 type="text"
@@ -155,7 +160,9 @@
                 (keyup.enter)="selectPayee('enter')" />
             </div>
             <!-- Category -->
-            <div [class]="transactionColumnsObj['Category'].class" class="h-full self-center text-center p-1 truncate">
+            <div 
+              [class]="transactionColumnsObj['Category'].class"
+              class="h-full self-center text-center p-1 truncate">
               <input
                 #categoryInput
                 type="text"
@@ -178,7 +185,9 @@
                 [(ngModel)]="selectedTransaction.note" />
             </div>
             <!-- Outfow -->
-            <div [class]="transactionColumnsObj['Outflow'].class" class="h-full self-center text-center p-1 truncate">
+            <div 
+              [class]="transactionColumnsObj['Outflow'].class"
+              class="h-full self-center text-center p-1 truncate">
               <input
                 type="text"
                 class="w-full h-full py-0.5 px-1 text-right border-sky-400 rounded-small bg-transparent hover:border-blue-500 focus:border-blue-500"
@@ -223,194 +232,195 @@
       </div>
       <!-- Card-based transaction list -->
       <ng-container *ngFor="let txn of filteredTransactions$ | async; let i = index; trackBy: trackByTransactionId">
-        <div class="w-full flex flex-col pl-2">
-          <div
-            class="card-transaction w-full h-9 flex items-center bg-zinc-900 border border-neutral-700 rounded-xl cursor-pointer hover:bg-zinc-800 transition-all"
-            [ngClass]="{ selected: txn.id === selectedTransaction?.id }"
-            (click)="selectTransaction(txn)">
-            <!-- Account name -->
-            <div
-              *ngIf="!account"
-              [class]="transactionColumnsObj['Account'].class"
-              class="h-full flex items-center text-center text-xs self-center text-white truncate">
+        <div class="w-full pl-2">
+          <div 
+            class="flex flex-col card-transaction justify-center text-white cursor-pointer"
+            [ngClass]="{ selected: txn.id === selectedTransaction?.id }">
+            <div 
+              class="flex flex-row" 
+              (click)="selectTransaction(txn)">
               <div
-                *ngIf="selectedTransaction?.id !== txn.id"
-                [title]="txn.accountName"
-                class="text-left truncate">
-                {{ txn.accountName }}
+                *ngIf="!account"
+                [class]="transactionColumnsObj['Account'].class"
+                class="pr-2 h-full flex items-center text-center self-center text-white truncate">
+                <div
+                  *ngIf="selectedTransaction?.id !== txn.id"
+                  [title]="txn.accountName"
+                  class="text-left truncate">
+                  {{ txn.accountName }}
+                </div>
+                <input
+                  *ngIf="selectedTransaction?.id === txn.id"
+                  #accountInput
+                  type="text"
+                  class="w-full h-full py-0.5 px-1 text-[0.85rem] text-center border-sky-400 bg-transparent hover:border-blue-500 focus:border-blue-500 placeholder:text-slate-400 rounded-small cursor-pointer"
+                  [ngModel]="data.searchAccount"
+                  (focusin)="showAccountSelectMenu(accountSelect, accountInput)"
+                  (keyup)="searchAccount($event)" />
               </div>
-              <input
-                *ngIf="selectedTransaction?.id === txn.id"
-                #accountInput
-                type="text"
-                class="w-full h-full py-0.5 px-1 text-[0.85rem] text-center border-sky-400 bg-transparent hover:border-blue-500 focus:border-blue-500 placeholder:text-slate-400 rounded-small cursor-pointer"
-                [ngModel]="data.searchAccount"
-                (focusin)="showAccountSelectMenu(accountSelect, accountInput)"
-                (keyup)="searchAccount($event)" />
-            </div>
-            <!-- Date -->
-            <div
-              [class]="transactionColumnsObj['Date'].class"
-              class="h-full flex items-center text-xs text-neutral-300 self-center text-center truncate">
-              <div 
-                *ngIf="selectedTransaction?.id !== txn.id" 
-                class="text-left truncate">
-                {{ txn.date | date: 'dd/MM/yyyy' }}
-              </div>
-              <input
-                *ngIf="selectedTransaction && selectedTransaction?.id === txn.id"
-                type="text"
-                class="w-full h-full py-0.5 px-1 text-[0.85rem] text-left border-sky-400 rounded-small bg-transparent hover:border-blue-500 focus:border-blue-500"
-                placeholder="date"
-                [(ngModel)]="selectedTransaction.date" />
-            </div>
-            <!-- Payee -->
-            <div
-              class="pr-2 h-full flex items-center text-xs text-white self-center text-center truncate"
-              [class]="transactionColumnsObj['Payee'].class"
-              [id]="'payeeSelectBtn-' + txn.id">
-              <div 
-                *ngIf="selectedTransaction?.id !== txn.id" 
-                class="text-left truncate" 
-                [title]="txn.payeeName">
-                {{ txn.payeeName }}
-              </div>
-              <!-- <input -->
-              <!--   [id]="'payeeSelectInput-' + transaction.id" -->
-              <!--   *ngIf="selectedTransaction?.id === transaction.id" -->
-              <!--   type="text" -->
-              <!--   class="w-full h-full py-0.5 px-1 text-[0.85rem] text-center border-sky-400 bg-transparent hover:border-blue-500 focus:border-blue-500 placeholder:text-slate-400 rounded-small" -->
-              <!--   [attr.data-dropdown-toggle]="'payeeSelectDropdown-' + transaction.id" -->
-              <!--   [ngModel]="data.searchPayee" -->
-              <!--   (focusin)="showPayeeMenu(transaction)" -->
-              <!--   (keyup)="searchPayee($event)"/> -->
-              <input
-                *ngIf="selectedTransaction?.id === txn.id"
-                #payeeInput
-                [id]="'payeeSelectInput-' + txn.id"
-                type="text"
-                class="w-full h-full py-0.5 px-1 text-[0.85rem] text-left border-sky-400 bg-transparent hover:border-blue-500 focus:border-blue-500 placeholder:text-slate-400 rounded-small cursor-pointer"
-                [ngModel]="data.searchPayee"
-                (focusin)="showPayeeSelectMenu(payeeSelect, payeeInput)"
-                (keyup)="searchPayee($event)"
-                (keyup.enter)="selectPayee('enter')" />
-              <!-- <ng-container -->
-              <!--   *ngTemplateOutlet="payeeSelectTemplate; context: { -->
-              <!--     transaction: transaction, -->
-              <!--     payeesData: data.payeesData, -->
-              <!--     selectedMonth: data.selectedMonth -->
-              <!--   }"> -->
-              <!-- </ng-container> -->
-            </div>
-            <!-- Category -->
-            <div
-              class="h-full flex items-center text-xs text-white self-center text-center truncate"
-              [class]="transactionColumnsObj['Category'].class"
-              [id]="'categorySelectBtn-' + txn.id">
+              <!-- Date -->
               <div
-                *ngIf="selectedTransaction?.id !== txn.id"
-                class="text-left truncate"
-                [class.disabled-text]="txn.categoryId === null"
-                [title]="txn.categoryName">
-                {{ txn.categoryName ? txn.categoryName : 'Category Not Needed' }}
+                [class]="transactionColumnsObj['Date'].class"
+                class="pr-2 h-full flex items-center text-neutral-300 self-center text-center truncate">
+                <div 
+                  *ngIf="selectedTransaction?.id !== txn.id" 
+                  class="text-left truncate">
+                  {{ txn.date | date: 'dd/MM/yyyy' }}
+                </div>
+                <input
+                  *ngIf="selectedTransaction && selectedTransaction?.id === txn.id"
+                  type="text"
+                  class="w-full h-full py-0.5 px-1 text-[0.85rem] text-left border-sky-400 rounded-small bg-transparent hover:border-blue-500 focus:border-blue-500"
+                  placeholder="date"
+                  [(ngModel)]="selectedTransaction.date" />
               </div>
-              <!-- <input -->
-              <!--   [id]="'categorySelectInput-' + transaction.id" -->
-              <!--   *ngIf="selectedTransaction?.id === transaction.id" -->
-              <!--   type="text" -->
-              <!--   class="w-full h-full py-0.5 px-1 text-[0.85rem] text-center border-sky-400 bg-transparent hover:border-blue-500 focus:border-blue-500 placeholder:text-slate-400 rounded-small" -->
-              <!--   [ngModel]="searchCategory$ | async" -->
-              <!--   (focusin)="showCategorySelectMenu(transaction)" -->
-              <!--   (keyup)="searchCategory($event)"/> -->
-              <input
-                *ngIf="selectedTransaction?.id === txn.id"
-                #categoryInput
-                type="text"
-                class="w-full h-full py-0.5 px-1 text-[0.85rem] text-left border-sky-400 bg-transparent hover:border-blue-500 focus:border-blue-500 placeholder:text-slate-400 rounded-small cursor-pointer"
-                [class.disabled]="selectedTransaction?.categoryId === null"
-                [ngModel]="data.searchCategory"
-                (focusin)="showCategorySelectMenu(categorySelect, categoryInput)"
-                (keyup)="searchCategory($event)" />
-              <!-- <ng-container -->
-              <!--   *ngTemplateOutlet="categorySelect; context: { -->
-              <!--     transaction: transaction, -->
-              <!--     categoryGroupData: data.categoryGroupData, -->
-              <!--     selectedMonth: data.selectedMonth -->
-              <!--   }"> -->
-              <!-- </ng-container> -->
-            </div>
-            <!-- Memo -->
-            <div
-              [class]="transactionColumnsObj['Memo'].class"
-              class="pr-2 h-full flex items-center text-xs text-neutral-400 self-center text-center truncate">
-              <div 
-                *ngIf="selectedTransaction?.id !== txn.id" 
-                [title]="txn.note ?? ''" 
-                class="text-left truncate">
-                {{ txn.note }}
+              <!-- Payee -->
+              <div
+                class="pr-2 h-full flex items-center text-white self-center text-center truncate"
+                [class]="transactionColumnsObj['Payee'].class"
+                [id]="'payeeSelectBtn-' + txn.id">
+                <div 
+                  *ngIf="selectedTransaction?.id !== txn.id" 
+                  class="text-left truncate" 
+                  [title]="txn.payeeName">
+                  {{ txn.payeeName }}
+                </div>
+                <!-- <input -->
+                <!--   [id]="'payeeSelectInput-' + transaction.id" -->
+                <!--   *ngIf="selectedTransaction?.id === transaction.id" -->
+                <!--   type="text" -->
+                <!--   class="w-full h-full py-0.5 px-1 text-[0.85rem] text-center border-sky-400 bg-transparent hover:border-blue-500 focus:border-blue-500 placeholder:text-slate-400 rounded-small" -->
+                <!--   [attr.data-dropdown-toggle]="'payeeSelectDropdown-' + transaction.id" -->
+                <!--   [ngModel]="data.searchPayee" -->
+                <!--   (focusin)="showPayeeMenu(transaction)" -->
+                <!--   (keyup)="searchPayee($event)"/> -->
+                <input
+                  *ngIf="selectedTransaction?.id === txn.id"
+                  #payeeInput
+                  [id]="'payeeSelectInput-' + txn.id"
+                  type="text"
+                  class="w-full h-full py-0.5 px-1 text-[0.85rem] text-left border-sky-400 bg-transparent hover:border-blue-500 focus:border-blue-500 placeholder:text-slate-400 rounded-small cursor-pointer"
+                  [ngModel]="data.searchPayee"
+                  (focusin)="showPayeeSelectMenu(payeeSelect, payeeInput)"
+                  (keyup)="searchPayee($event)"
+                  (keyup.enter)="selectPayee('enter')" />
+                <!-- <ng-container -->
+                <!--   *ngTemplateOutlet="payeeSelectTemplate; context: { -->
+                <!--     transaction: transaction, -->
+                <!--     payeesData: data.payeesData, -->
+                <!--     selectedMonth: data.selectedMonth -->
+                <!--   }"> -->
+                <!-- </ng-container> -->
               </div>
-              <input
-                *ngIf="selectedTransaction && selectedTransaction?.id === txn.id"
-                type="text"
-                class="w-full h-full py-0.5 px-1 text-[0.85rem] text-left border-sky-400 bg-transparent hover:border-blue-500 focus:border-blue-500 placeholder:text-slate-400 rounded-small"
-                placeholder="memo"
-                [(ngModel)]="selectedTransaction.note" />
-            </div>
-            <!-- Outfow -->
-            <div
-              [class]="transactionColumnsObj['Outflow'].class"
-              class="h-full flex items-center text-xs text-red-400 self-center text-center truncate">
-              <div 
-                *ngIf="selectedTransaction?.id !== txn.id" 
-                class="text-right">
-                {{ txn.outflow | currency: 'INR' }}
+              <!-- Category -->
+              <div
+                class="pr-2 h-full flex items-center text-white self-center text-center truncate"
+                [class]="transactionColumnsObj['Category'].class"
+                [id]="'categorySelectBtn-' + txn.id">
+                <div
+                  *ngIf="selectedTransaction?.id !== txn.id"
+                  class="text-left truncate"
+                  [class.disabled-text]="txn.categoryId === null"
+                  [title]="txn.categoryName">
+                  {{ txn.categoryName ? txn.categoryName : 'Category Not Needed' }}
+                </div>
+                <!-- <input -->
+                <!--   [id]="'categorySelectInput-' + transaction.id" -->
+                <!--   *ngIf="selectedTransaction?.id === transaction.id" -->
+                <!--   type="text" -->
+                <!--   class="w-full h-full py-0.5 px-1 text-[0.85rem] text-center border-sky-400 bg-transparent hover:border-blue-500 focus:border-blue-500 placeholder:text-slate-400 rounded-small" -->
+                <!--   [ngModel]="searchCategory$ | async" -->
+                <!--   (focusin)="showCategorySelectMenu(transaction)" -->
+                <!--   (keyup)="searchCategory($event)"/> -->
+                <input
+                  *ngIf="selectedTransaction?.id === txn.id"
+                  #categoryInput
+                  type="text"
+                  class="w-full h-full py-0.5 px-1 text-[0.85rem] text-left border-sky-400 bg-transparent hover:border-blue-500 focus:border-blue-500 placeholder:text-slate-400 rounded-small cursor-pointer"
+                  [class.disabled]="selectedTransaction?.categoryId === null"
+                  [ngModel]="data.searchCategory"
+                  (focusin)="showCategorySelectMenu(categorySelect, categoryInput)"
+                  (keyup)="searchCategory($event)" />
+                <!-- <ng-container -->
+                <!--   *ngTemplateOutlet="categorySelect; context: { -->
+                <!--     transaction: transaction, -->
+                <!--     categoryGroupData: data.categoryGroupData, -->
+                <!--     selectedMonth: data.selectedMonth -->
+                <!--   }"> -->
+                <!-- </ng-container> -->
               </div>
-              <input
-                *ngIf="selectedTransaction && selectedTransaction?.id === txn.id"
-                type="text"
-                class="w-full h-full py-0.5 px-1 text-[0.85rem] text-right border-sky-400 rounded-small bg-transparent hover:border-blue-500 focus:border-blue-500"
-                placeholder="ouflow"
-                [ngModel]="selectedTransaction.outflow"
-                (ngModelChange)="changeAmount('outflow')"
-                (focusout)="setAmount('outflow', $event)" />
-            </div>
-            <!-- Inflow -->
-            <div
-              [class]="transactionColumnsObj['Inflow'].class"
-              class="h-full flex justify-end items-center text-xs text-green-400 self-center text-center truncate">
-              <div 
-                *ngIf="selectedTransaction?.id !== txn.id" 
-                class="text-right">
-                {{ txn.inflow | currency: 'INR' }}
+              <!-- Memo -->
+              <div
+                [class]="transactionColumnsObj['Memo'].class"
+                class="pr-2 h-full flex items-center text-neutral-400 self-center text-center truncate">
+                <div 
+                  *ngIf="selectedTransaction?.id !== txn.id" 
+                  [title]="txn.note ?? ''" 
+                  class="text-left truncate">
+                  {{ txn.note }}
+                </div>
+                <input
+                  *ngIf="selectedTransaction && selectedTransaction?.id === txn.id"
+                  type="text"
+                  class="w-full h-full py-0.5 px-1 text-[0.85rem] text-left border-sky-400 bg-transparent hover:border-blue-500 focus:border-blue-500 placeholder:text-slate-400 rounded-small"
+                  placeholder="memo"
+                  [(ngModel)]="selectedTransaction.note" />
               </div>
-              <input
-                *ngIf="selectedTransaction && selectedTransaction?.id === txn.id"
-                type="text"
-                class="w-full h-full py-0.5 px-1 text-[0.85rem] text-right border-sky-400 rounded-small bg-transparent hover:border-blue-500 focus:border-blue-500"
-                placeholder="inflow"
-                [ngModel]="selectedTransaction.inflow"
-                (ngModelChange)="changeAmount('inflow')"
-                (focusout)="setAmount('inflow', $event)" />
-            </div>
-            <!-- Balance -->
-            <div
-              *ngIf="account !== null"
-              [class]="transactionColumnsObj['Balance'].class"
-              class="h-full flex justify-end items-center text-xs text-white self-center truncate">
-              <div 
-                *ngIf="currentMode === mode.NONE"
-                class="text-right">
-                {{ txn.balance | number: '1.2-2' }}
+              <!-- Outfow -->
+              <div
+                [class]="transactionColumnsObj['Outflow'].class"
+                class="pr-2 h-full flex items-center text-red-400 self-center text-center truncate">
+                <div 
+                  *ngIf="selectedTransaction?.id !== txn.id" 
+                  class="text-right">
+                  {{ txn.outflow | currency: 'INR' }}
+                </div>
+                <input
+                  *ngIf="selectedTransaction && selectedTransaction?.id === txn.id"
+                  type="text"
+                  class="w-full h-full py-0.5 px-1 text-[0.85rem] text-right border-sky-400 rounded-small bg-transparent hover:border-blue-500 focus:border-blue-500"
+                  placeholder="ouflow"
+                  [ngModel]="selectedTransaction.outflow"
+                  (ngModelChange)="changeAmount('outflow')"
+                  (focusout)="setAmount('outflow', $event)" />
               </div>
+              <!-- Inflow -->
+              <div
+                [class]="transactionColumnsObj['Inflow'].class"
+                class="h-full flex justify-end items-center text-green-400 self-center text-center truncate">
+                <div 
+                  *ngIf="selectedTransaction?.id !== txn.id" 
+                  class="text-right">
+                  {{ txn.inflow | currency: 'INR' }}
+                </div>
+                <input
+                  *ngIf="selectedTransaction && selectedTransaction?.id === txn.id"
+                  type="text"
+                  class="w-full h-full py-0.5 px-1 text-[0.85rem] text-right border-sky-400 rounded-small bg-transparent hover:border-blue-500 focus:border-blue-500"
+                  placeholder="inflow"
+                  [ngModel]="selectedTransaction.inflow"
+                  (ngModelChange)="changeAmount('inflow')"
+                  (focusout)="setAmount('inflow', $event)" />
+              </div>
+              <!-- Balance -->
+              <div
+                *ngIf="account !== null"
+                [class]="transactionColumnsObj['Balance'].class"
+                class="pr-2 h-full flex justify-end items-center text-white self-center truncate">
+                <div 
+                  *ngIf="currentMode === mode.NONE"
+                  class="text-right">
+                  {{ txn.balance | number: '1.2-2' }}
+                </div>
+              </div>  
             </div>
-
-            <div
-              *ngIf="currentMode === mode.EDIT && selectedTransaction?.id === txn.id"
-              class="py-2 flex justify-end selected border-b border-neutral-600">
+            <div 
+              class="py-2 flex justify-end"
+              *ngIf="currentMode === mode.EDIT && selectedTransaction?.id === txn.id">
               <button
-                class="mr-2 px-3 py-0.5 text-sm border border-neutral-500 text-red-800 hover:bg-red-900 hover:text-white hover:border-transparent rounded-md"
-                (click)="deleteTransaction(txn)">
-                Delete
+                  class="mr-2 px-3 py-0.5 text-sm border border-neutral-500 text-red-800 hover:bg-red-900 hover:text-white hover:border-transparent rounded-md"
+                  (click)="deleteTransaction(txn)">
+                  Delete
               </button>
               <button
                 class="mr-2 px-3 py-0.5 text-sm border border-neutral-500 text-sky-500 hover:bg-sky-600 hover:text-white hover:border-transparent rounded-md"
@@ -418,9 +428,9 @@
                 Cancel
               </button>
               <button
-                class="mr-2 px-3 py-0.5 text-sm bg-sky-600 hover:bg-sky-500 text-white rounded-md"
-                (click)="saveTransaction()">
-                Save
+                  class="mr-2 px-3 py-0.5 text-sm bg-sky-600 hover:bg-sky-500 text-white rounded-md"
+                  (click)="saveTransaction()">
+                  Save
               </button>
             </div>
           </div>

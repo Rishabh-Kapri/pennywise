@@ -70,6 +70,7 @@ export class CategoriesState {
     ctx: StateContext<CategoriesStateModel>,
     { payload }: Emitted<CategoriesActions.GetAllCategories, Category[]>,
   ) {
+    console.log("CATEGORIES::::", payload);
     ctx.setState({
       allCategories: payload,
       inflowCategory: (payload.find((cat) => cat.name === INFLOW_CATEGORY_NAME) as unknown as InflowCategory) ?? null,

@@ -169,7 +169,7 @@ export class DatabaseService {
     // create payee
     const payee: Payee = {
       budgetId: account.budgetId,
-      name: `Transfer: ${account.name}`,
+      name: `Transfer : ${account.name}`,
       transferAccountId: createdAccount.id,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -215,7 +215,7 @@ export class DatabaseService {
     if (account.transferPayeeId) {
       const payee: Partial<Payee> = {
         id: account.transferPayeeId,
-        name: `Transfer: ${account.name}`,
+        name: `Transfer : ${account.name}`,
       };
       await this.editPayee(payee);
     }

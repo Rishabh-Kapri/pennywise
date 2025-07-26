@@ -66,6 +66,7 @@ export class TransactionsState implements NgxsOnInit {
     ctx: StateContext<TransactionsStateModel>,
     { payload }: Emitted<TransactionsActions.GetAllTransactions, Transaction[]>,
   ) {
+    console.log("TXNS::::", payload);
     ctx.patchState({
       allTransactions: payload,
     });
@@ -121,6 +122,7 @@ export class TransactionsState implements NgxsOnInit {
       normalizedTransactions.push(normalizedTxn);
       prevTransacAmount = transaction.amount;
     }
+    console.log(normalizedTransactions);
     ctx.patchState({
       normalizedTransactions,
     });

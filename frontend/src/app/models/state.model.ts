@@ -18,6 +18,7 @@ export interface CategoryGroupData {
 
 export enum SelectedComponent {
   BUDGET = 'budget',
+  BUDGET_MOBILE = 'budget-mobile',
   ACCOUNTS = 'accounts',
   REPORTS = 'reports',
   ACCOUNTS_MOBILE = 'accounts-mobile',

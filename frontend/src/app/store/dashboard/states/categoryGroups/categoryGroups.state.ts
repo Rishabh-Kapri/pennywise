@@ -92,6 +92,7 @@ export class CategoryGroupsState implements NgxsOnInit {
     ctx: StateContext<CategoryGroupsStateModel>,
     { payload }: Emitted<CategoryGroupsActions.GetAllCategoryGroups, CategoryGroup[]>,
   ) {
+    console.log("GROUPS:::", payload)
     ctx.patchState({
       allCategoryGroups: payload,
     });
