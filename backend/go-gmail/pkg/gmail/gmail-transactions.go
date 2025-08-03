@@ -439,7 +439,7 @@ func getPrevHistoryId(email string) (uint64, error) {
 }
 
 func parseEmail(html string) (*EmailDetails, error) {
-	re := regexp.MustCompile(`(?i)(Dear\s+(Customer|Card Member|Card Holder).*?)\,*(\s|\S)+(\d{2}-$\d{2}-\d{4}|\d{2}-\d{2}-\d{2})`)
+	re := regexp.MustCompile(`(?i)(Dear\s+(Customer|Card Member|Card Holder).*?)\,*(\s|\S)+(\d{2}-\d{2}-\d{4}|\d{2}-\d{2}-\d{2})`)
 	match := re.FindStringSubmatch(html)
 	// log.Println("match 0", match[0])
 	// log.Println("match 1", match[1])
