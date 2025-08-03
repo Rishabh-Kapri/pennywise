@@ -87,7 +87,7 @@ jobs:
           echo "Services: ${services}"
           for svc in $services; do
             echo "Building $svc..."
-            docker-compose -f ./backend/docker-compose.yml build $svc
+            docker-compose -f ./backend/docker-compose.yml up --build $svc -d
           done
 
       # - name: Stop existing container
