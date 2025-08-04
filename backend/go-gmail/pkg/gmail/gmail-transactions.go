@@ -272,9 +272,6 @@ func addTransactionToFirestore(transactionData ParsedTransactionData) (bool, err
 
 	ctx := context.Background()
 	budgetId := "Mm1kjyD58NQnNzOfx460"
-	// @TODO: Add functionality to assign categories based on payee
-	// unexpectedCatId := ""
-	// unexpectedPayeeId := ""
 
 	accountDocs, err := getAllDocuments(firestoreClient, "accounts")
 	if err != nil {
@@ -293,13 +290,13 @@ func addTransactionToFirestore(transactionData ParsedTransactionData) (bool, err
 	var foundCategory map[string]any
 
 	for _, acc := range accountDocs {
-		if acc.Data()["name"].(string) == transactionData.AccName {
+		if strings.Contains(acc.Data()["name"].(string), transactionData.AccName) {
 			foundAcc = acc.Data()
 		}
 	}
 	if transactionData.Category != "null" {
 		for _, cat := range categoryDocs {
-			if cat.Data()["name"].(string) == transactionData.Category {
+			if strings.Contains(cat.Data()["name"].(string), transactionData.Category) {
 				foundCategory = cat.Data()
 				break
 			}
@@ -307,7 +304,7 @@ func addTransactionToFirestore(transactionData ParsedTransactionData) (bool, err
 	}
 	if len(foundAcc) > 0 {
 		for _, payee := range payeeDocs {
-			if payee.Data()["name"].(string) == transactionData.Payee {
+			if strings.Contains(payee.Data()["name"].(string), transactionData.Payee) {
 				foundPayee = payee.Data()
 				break
 			}
@@ -453,7 +450,7 @@ func parseEmail(html string) (*EmailDetails, error) {
 
 		log.Println("📝 Email Text: ", trimmedText)
 
-		amountRegex := regexp.MustCompile(`(?i)(Rs\.?\s?)([\d,]+\.\d{2})`)
+		amountRegex := regexp.MustCompile(`(?i)(Rs\.?\s?)([\d,]+\.\d+)`)
 		typeRegex := regexp.MustCompile(`(?i)(credited|debited)`)
 		dateRegex := regexp.MustCompile(`\d{2}-\d{2}-\d{4}|\d{2}-\d{2}-\d{2}`)
 		date := dateRegex.FindString(trimmedText)
