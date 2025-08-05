@@ -6,11 +6,12 @@ import (
 
 	"pennywise-api/internal/model"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type AccountRepository interface {
-	GetAll(ctx context.Context, budgetId string) ([]model.Account, error)
+	GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Account, error)
 	Create(ctx context.Context, account model.Account) error
 }
 
@@ -22,10 +23,10 @@ func NewAccountRepository(db *pgxpool.Pool) AccountRepository {
 	return &accountRepo{db: db}
 }
 
-func (r *accountRepo) GetAll(ctx context.Context, budgetId string) ([]model.Account, error) {
+func (r *accountRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Account, error) {
 	rows, err := r.db.Query(
 		ctx,
-		"SELECT id, name, transfer_payee_id, type, closed, created_at, updated_at FROM accounts WHERE budget_id = $1 AND deleted = $2",
+		"SELECT id, name, budget_id, transfer_payee_id, type, closed, created_at, updated_at FROM accounts WHERE budget_id = $1 AND deleted = $2",
 		budgetId, false,
 	)
 	if err != nil {
@@ -36,7 +37,7 @@ func (r *accountRepo) GetAll(ctx context.Context, budgetId string) ([]model.Acco
 	var accounts []model.Account
 	for rows.Next() {
 		var a model.Account
-		err := rows.Scan(&a.ID, &a.Name, &a.TransferPayeeID, &a.Type, &a.Closed, &a.CreatedAt, &a.UpdatedAt)
+		err := rows.Scan(&a.ID, &a.Name, &a.BudgetID, &a.TransferPayeeID, &a.Type, &a.Closed, &a.CreatedAt, &a.UpdatedAt)
 		if err != nil {
 			errorMsg := errors.New("Error while parsing account rows: ")
 			return nil, errors.Join(errorMsg, err)

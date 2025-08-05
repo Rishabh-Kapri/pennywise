@@ -26,3 +26,5 @@ services:
       context: ./go-pennywise-api
     ports:
       - '5151:5151'
+    env_file:
+      - ./go-pennywise-api/.env

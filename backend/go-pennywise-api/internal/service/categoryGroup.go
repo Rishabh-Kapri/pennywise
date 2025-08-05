@@ -2,10 +2,11 @@ package service
 
 import (
 	"context"
-	"errors"
 
 	"pennywise-api/internal/model"
 	"pennywise-api/internal/repository"
+
+	"github.com/google/uuid"
 )
 
 type CategoryGroupService interface {
@@ -21,9 +22,6 @@ func NewCategoryGroupService(r repository.CategoryGroupRepository) CategoryGroup
 }
 
 func (s *categoryGroupService) GetAll(ctx context.Context) ([]model.CategoryGroup, error) {
-	budgetId, ok := ctx.Value("budgetId").(string)
-	if !ok || budgetId == "" {
-		return nil, errors.New("Missing budgetId in context")
-	}
+	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
 	return s.repo.GetAll(ctx, budgetId)
 }
