@@ -1,20 +1,24 @@
 package model
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type Transaction struct {
-	ID                    string    `json:"id"`
-	BudgetID              string    `json:"budgetId"`
-	Date                  string    `json:"date"`
-	PayeeID               string    `json:"payeeId"`
-	CategoryID            string    `json:"categoryId"`
-	AccountID             string    `json:"accountId"`
-	Note                  string    `json:"note"`
-	Amount                float64   `json:"amount"`
-	Source                string    `json:"source"`
-	TransferAccountID     string    `json:"transferAccountId"`
-	TransferTransactionID string    `json:"transferTransactionId"`
-	Deleted               bool      `json:"deleted"`
-	CreatedAt             time.Time `json:"createdAt"`
-	UpdatedAt             time.Time `json:"updatedAt"`
+	ID                    uuid.UUID  `json:"id"`
+	BudgetID              uuid.UUID  `json:"budgetId"`
+	Date                  string     `json:"date"`
+	PayeeID               *uuid.UUID `json:"payeeId,omitempty"`
+	CategoryID            *uuid.UUID `json:"categoryId,omitempty"`
+	AccountID             *uuid.UUID `json:"accountId,omitempty"`
+	Note                  string     `json:"note"`
+	Amount                float64    `json:"amount"`
+	Source                string     `json:"source"`
+	TransferAccountID     *uuid.UUID `json:"transferAccountId,omitempty"`
+	TransferTransactionID *uuid.UUID `json:"transferTransactionId,omitempty"`
+	Deleted               bool       `json:"deleted"`
+	CreatedAt             time.Time  `json:"createdAt"`
+	UpdatedAt             time.Time  `json:"updatedAt"`
 }

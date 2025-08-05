@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 const (
@@ -19,6 +20,13 @@ func GetBudgetId(c *gin.Context) (context.Context, error) {
 	if budgetId == "" {
 		return nil, errors.New("Missing budgetId in context")
 	}
-	ctx := context.WithValue(c.Request.Context(), "budgetId", budgetId)
+	if err := uuid.Validate(budgetId); err != nil {
+		return nil, errors.New("Please enter a valid budgetId")
+	}
+	parsedBudgetId, err := uuid.Parse(budgetId)
+	if err != nil {
+		return nil, errors.New("Error while parsing budgetId to UUID")
+	}
+	ctx := context.WithValue(c.Request.Context(), "budgetId", parsedBudgetId)
 	return ctx, nil
 }

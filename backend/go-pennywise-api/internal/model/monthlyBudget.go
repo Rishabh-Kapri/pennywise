@@ -1,12 +1,16 @@
 package model
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type MonthlyBudget struct {
-	ID               string    `json:"id"`
+	ID               uuid.UUID `json:"id"`
 	Month            string    `json:"month"`
-	BudgetID         string    `json:"budgetId"`
-	CategoryID       string    `json:"categoryId"`
+	BudgetID         uuid.UUID `json:"budgetId"`
+	CategoryID       uuid.UUID `json:"categoryId"`
 	Budgeted         int       `json:"budgeted"`
 	CarryoverBalance int       `json:"carryoverBalance"`
 	CreatedAt        time.Time `json:"createdAt"`
