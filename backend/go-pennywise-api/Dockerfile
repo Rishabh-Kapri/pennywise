@@ -13,7 +13,7 @@ RUN go mod download
 COPY . .
 
 # Build
-RUN go build -o api .
+RUN go build -o api ./cmd/api
 
 # Stage 2: Create a minimal image
 FROM alpine:latest
@@ -32,4 +32,4 @@ ENV TZ=Asia/Kolkata
 EXPOSE 5151
 
 # Run the binary
-ENTRYPOINT [ "./api" ]
+ENTRYPOINT ["./api"]
