@@ -1,12 +1,16 @@
 package model
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type Category struct {
-	ID              string             `json:"id"`
+	ID              uuid.UUID          `json:"id"`
 	Name            string             `json:"name"`
-	BudgetID        string             `json:"budgetId"`
-	CategoryGroupID string             `json:"categoryGroupId"`
+	BudgetID        uuid.UUID          `json:"budgetId"`
+	CategoryGroupID uuid.UUID          `json:"categoryGroupId"`
 	Budgeted        map[string]float32 `json:"budgeted"`
 	Note            string             `json:"note"`
 	Hidden          bool               `json:"hidden"`
