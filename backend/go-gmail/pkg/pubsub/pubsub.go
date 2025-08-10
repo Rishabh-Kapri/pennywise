@@ -103,7 +103,7 @@ func (p *EventProcessor) processMessage(event *pubsub.Message) {
 		event.Nack()
 		return
 	}
-	FakeProcessHistoryId(m)
+	// FakeProcessHistoryId(m)
 }
 
 // adds the event to the pendingEvents channel
