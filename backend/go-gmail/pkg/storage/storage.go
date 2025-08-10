@@ -36,9 +36,11 @@ func NewService(config *config.Config) *Service {
 	return &Service{config: config, firestoreClient: getFirestoreClient(config)}
 }
 
-func (s *Service) GetRefreshToken(email string) (string, error) {
-	defer s.firestoreClient.Close()
+func (s *Service) Close() error {
+	return s.firestoreClient.Close()
+}
 
+func (s *Service) GetRefreshToken(email string) (string, error) {
 	ctx := context.Background()
 
 	collection := s.firestoreClient.Collection("users")
@@ -54,8 +56,6 @@ func (s *Service) GetRefreshToken(email string) (string, error) {
 }
 
 func (s *Service) GetPrevHistoryId(email string) (uint64, error) {
-	defer s.firestoreClient.Close()
-
 	ctx := context.Background()
 
 	log.Printf("GetPrevHistoryId: %v", email)
@@ -67,9 +67,9 @@ func (s *Service) GetPrevHistoryId(email string) (uint64, error) {
 	if err == iterator.Done {
 		return 0, err
 	}
-	// if doc == nil || !doc.Exists() {
-	// 	return 0, nil
-	// }
+	if doc == nil || !doc.Exists() {
+		return 0, nil
+	}
 	historyId, ok := doc.Data()["historyId"].(int64)
 	if !ok {
 		return 0, errors.New("Cannot convert to int64")
@@ -84,8 +84,6 @@ func (s *Service) GetPrevHistoryId(email string) (uint64, error) {
 }
 
 func (s *Service) UpdateHistoryId(email string, historyId uint64) error {
-	defer s.firestoreClient.Close()
-
 	ctx := context.Background()
 
 	collection := s.firestoreClient.Collection("gmailHistoryIds")

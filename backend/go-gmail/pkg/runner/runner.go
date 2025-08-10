@@ -43,6 +43,10 @@ func NewRunner(
 	}
 }
 
+func (r *Runner) Close() error {
+	return r.storage.Close()
+}
+
 func (s *Runner) ProcessGmailHistoryId(eventData EventData) error {
 	log.Println("Processing event", eventData)
 
