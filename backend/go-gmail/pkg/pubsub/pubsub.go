@@ -167,7 +167,14 @@ func PullMessages() {
 		pennywise.NewService(),
 	)
 
-	ctx := context.Background()
+	defer func() {
+		if err := runner.Close(); err != nil {
+			log.Fatalf("Failed to close runner: %v", err)
+		}
+	}()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	projectId := config.ProjectID
 	subName := config.SubscriptionName
@@ -175,6 +182,7 @@ func PullMessages() {
 	if err != nil {
 		log.Fatalf("Failed to create client: %v", err)
 	}
+	defer client.Close()
 
 	sub := client.Subscription(subName)
 	ok, err := sub.Exists(ctx)
