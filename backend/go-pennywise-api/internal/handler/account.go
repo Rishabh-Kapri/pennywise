@@ -1,8 +1,8 @@
 package handler
 
 import (
-	"log"
 	"net/http"
+	"strings"
 
 	"pennywise-api/internal/model"
 	"pennywise-api/internal/service"
@@ -14,6 +14,7 @@ import (
 
 type AccountHandler interface {
 	List(c *gin.Context)
+	Search(c *gin.Context)
 	Create(c *gin.Context)
 }
 
@@ -40,6 +41,21 @@ func (h *accountHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, accounts)
 }
 
+func (h *accountHandler) Search(c *gin.Context) {
+	ctx, err := utils.GetBudgetId(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	name := strings.TrimSpace(c.Query("name"))
+	accounts, err := h.service.Search(ctx, name)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, accounts)
+}
+
 func (h *accountHandler) Create(c *gin.Context) {
 	ctx, err := utils.GetBudgetId(c)
 	if err != nil {
@@ -52,12 +68,10 @@ func (h *accountHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	log.Println(body)
-	err = h.service.Create(ctx, body)
+	createdAcc, err := h.service.Create(ctx, body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	// @TODO: return created account obj
-	c.JSON(http.StatusCreated, body)
+	c.JSON(http.StatusCreated, createdAcc)
 }

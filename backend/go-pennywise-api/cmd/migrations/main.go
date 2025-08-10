@@ -31,7 +31,33 @@ type genericMigrator[T any] struct {
 	InsertFn  func(ctx context.Context, db *pgxpool.Pool, data []T) error
 }
 
-// const BUDGET_ID = "7974d2a6-688f-11f0-8536-9c6b002128a7"
+func uuidOrNull(id *uuid.UUID) interface{} {
+	if id != nil && *id == uuid.Nil {
+		return nil
+	}
+	return id
+}
+
+func checkForInvalidUUIDs() {
+	file, _ := os.Open("data/transactions.json")
+	defer file.Close()
+
+	var txns []map[string]interface{} // or use your actual Payee struct
+	json.NewDecoder(file).Decode(&txns)
+
+	for i, txn := range txns {
+		if txn["transferTransactionId"] != nil {
+			id, ok := txn["transferTransactionId"].(string)
+			if !ok {
+				fmt.Printf("Entry %d missing id field or not a string\n", i)
+				continue
+			}
+			if _, err := uuid.Parse(id); err != nil {
+				fmt.Printf("Invalid UUID at entry %d: %q %v (%v)\n", i, id, txn["id"], err)
+			}
+		}
+	}
+}
 
 func loadFileData[T any](path string) ([]T, error) {
 	file, err := os.Open(path)
@@ -59,11 +85,11 @@ func loadFileData[T any](path string) ([]T, error) {
 func runMigration[T any](ctx context.Context, db *pgxpool.Pool, m genericMigrator[T], path string) error {
 	var data []T
 	if path != "" {
-		data1, err := loadFileData[T](path)
+		returnedData, err := loadFileData[T](path)
 		if err != nil {
 			return fmt.Errorf("runMigration: error while loading file %v", err.Error())
 		}
-		data = data1
+		data = returnedData
 	}
 	if err := m.InsertFn(ctx, db, data); err != nil {
 		return fmt.Errorf("runMigration: error while inserting data for: %v, %v", path, err.Error())
@@ -100,7 +126,7 @@ func insertBudgets(ctx context.Context, db *pgxpool.Pool, data []model.Budget) e
 	return br.Close()
 }
 
-func alterAccounts(ctx context.Context, db *pgxpool.Pool) error {
+func alterAccountsTable(ctx context.Context, db *pgxpool.Pool) error {
 	alterAccountTableQuery := `
 		ALTER TABLE accounts
     ADD CONSTRAINT fk_transfer_payee_id
@@ -113,15 +139,18 @@ func alterAccounts(ctx context.Context, db *pgxpool.Pool) error {
 	return err
 }
 
-func alterTransactions(ctx context.Context, db *pgxpool.Pool) error {
+func alterTransactionsTable(ctx context.Context, db *pgxpool.Pool) error {
 	alterTxnTableQuery := `
 		ALTER TABLE transactions
-    ADD CONSTRAINT fk_transfer_transaction_id
-		FOREIGN KEY (transfer_transaction_id) REFERENCES transactions(id)
+			ADD CONSTRAINT fk_transfer_transaction_id FOREIGN KEY (transfer_transaction_id) REFERENCES transactions(id),
+			ADD CONSTRAINT fk_payee_id FOREIGN KEY (payee_id) REFERENCES payees(id),
+			ADD CONSTRAINT fk_account_id FOREIGN KEY (account_id) REFERENCES accounts(id),
+			ADD CONSTRAINT fk_category_id FOREIGN KEY (category_id) REFERENCES categories(id),
+			ADD CONSTRAINT fk_transfer_account_id FOREIGN KEY (transfer_account_id) REFERENCES accounts(id);
 	`
 	_, err := db.Exec(ctx, alterTxnTableQuery)
 	if err != nil {
-		log.Fatalf("Error while altering accounts table %v", err.Error())
+		log.Fatalf("Error while altering transactions table %v", err.Error())
 	}
 	return err
 }
@@ -159,18 +188,21 @@ func insertAccounts(ctx context.Context, db *pgxpool.Pool, data []model.Account)
 	}
 	batch := &pgx.Batch{}
 	for _, d := range data {
-		id, _ := uuid.Parse(d.ID)
-		var transferPayeeId uuid.UUID
-		if d.TransferPayeeID != "" {
-			transferPayeeId, _ = uuid.Parse(d.TransferPayeeID)
-		}
 		batch.Queue(
 			`INSERT INTO accounts (
 				id, name, budget_id, transfer_payee_id, type, closed, deleted, created_at, updated_at
 			) VALUES (
 				$1, $2, $3, $4, $5, $6, $7, $8, $9
 			) ON CONFLICT DO NOTHING`,
-			id, d.Name, d.BudgetID, transferPayeeId, d.Type, d.Closed, d.Deleted, d.CreatedAt, d.UpdatedAt,
+			d.ID,
+			d.Name,
+			d.BudgetID,
+			uuidOrNull(d.TransferPayeeID),
+			d.Type,
+			d.Closed,
+			d.Deleted,
+			d.CreatedAt,
+			d.UpdatedAt,
 		)
 	}
 	br := db.SendBatch(ctx, batch)
@@ -200,17 +232,18 @@ func insertCategoryGroups(ctx context.Context, db *pgxpool.Pool, data []model.Ca
 		if d.Name == "Credit Card Payments" {
 			isSystem = true
 		}
-		var id uuid.UUID
-		if err := uuid.Validate(d.ID); err != nil {
-			id, _ = uuid.NewUUID()
-		} else {
-			id, _ = uuid.Parse(d.ID)
-		}
 		batch.Queue(
 			`INSERT INTO category_groups (
 				id, name, budget_id, hidden, is_system, deleted, created_at, updated_at
 			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT DO NOTHING`,
-			id, d.Name, d.BudgetID, d.Hidden, isSystem, d.Deleted, d.CreatedAt, d.UpdatedAt,
+			d.ID,
+			d.Name,
+			d.BudgetID,
+			d.Hidden,
+			isSystem,
+			d.Deleted,
+			d.CreatedAt,
+			d.UpdatedAt,
 		)
 	}
 	br := db.SendBatch(ctx, batch)
@@ -226,8 +259,8 @@ func insertMonthlyBudgets(ctx context.Context, db *pgxpool.Pool, data map[string
 		month TEXT NOT NULL,
 		budget_id UUID NOT NULL REFERENCES budgets(id),
 		category_id UUID NOT NULL REFERENCES categories(id),
-		budgeted REAL NOT NULL,
-		carryover_balance REAL NOT NULL,
+		budgeted NUMERIC(12, 2) NOT NULL,
+		carryover_balance NUMERIC(12, 2) NOT NULL,
 		created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 		updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 	)`
@@ -256,32 +289,6 @@ func insertMonthlyBudgets(ctx context.Context, db *pgxpool.Pool, data map[string
 	return br.Close()
 }
 
-func convertFileDataToUUID() {
-	file, _ := os.Open("data/payees.json")
-	defer file.Close()
-
-	bytes, _ := io.ReadAll(file)
-
-	var data []model.Payee
-
-	_ = json.Unmarshal(bytes, &data)
-
-	dataJson, err := json.Marshal(data)
-	// for i := range data {
-	// 	d := &data[i]
-	// id, _ := uuid.Parse(d.ID)
-	// if err := uuid.Validate(d.ID); err != nil {
-	// 	log.Printf("Error while validating uuid %v :%v", d.ID, err.Error())
-	// }
-	// d.Uuid, _ = uuid.Parse(d.ID)
-	// log.Printf("%v %v %v", id, id.String(), d.Uuid)
-	// }
-	if err != nil {
-		log.Fatalf("Error while writing file %v", err.Error())
-	}
-	err = os.WriteFile("data/payees.json", dataJson, 0o644)
-}
-
 func insertCategories(ctx context.Context, db *pgxpool.Pool, data []model.Category) error {
 	createAccountTableQuery := `
 	CREATE TABLE IF NOT EXISTS categories (
@@ -306,18 +313,24 @@ func insertCategories(ctx context.Context, db *pgxpool.Pool, data []model.Catego
 		if d.Name == "Inflow: Ready to Assign" {
 			isSystem = true
 		}
-		id, _ := uuid.Parse(d.ID)
-		budgetId, _ := uuid.Parse(d.BudgetID)
-		categoryGroupId, _ := uuid.Parse(d.CategoryGroupID)
 		if !isSystem {
 			// @INFO: Uncomment when running migration
-			insertMonthlyBudgets(ctx, db, d.Budgeted, budgetId, id)
+			insertMonthlyBudgets(ctx, db, d.Budgeted, d.BudgetID, d.ID)
 		}
 		batch.Queue(
 			`INSERT INTO categories (
 				id, name, budget_id, category_group_id, note, hidden, is_system, deleted, created_at, updated_at
 			) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) ON CONFLICT DO NOTHING`,
-			id, d.Name, budgetId, categoryGroupId, d.Note, d.Hidden, isSystem, d.Deleted, d.CreatedAt, d.UpdatedAt,
+			d.ID,
+			d.Name,
+			d.BudgetID,
+			d.CategoryGroupID,
+			d.Note,
+			d.Hidden,
+			isSystem,
+			d.Deleted,
+			d.CreatedAt,
+			d.UpdatedAt,
 		)
 	}
 	br := db.SendBatch(ctx, batch)
@@ -339,36 +352,22 @@ func insertInflowCategory(ctx context.Context, db *pgxpool.Pool, data []InflowCa
 func insertPayees(ctx context.Context, db *pgxpool.Pool, data []model.Payee) error {
 	batch := &pgx.Batch{}
 	for _, d := range data {
-		// id, _ := uuid.Parse(d.ID)
-		// _, err := db.Exec(ctx, `
-		// 	INSERT INTO payees (
-		// 		id, name, budget_id, transfer_account_id, deleted, created_at, updated_at
-		// 	) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING
-		// 	`,
-		// 	id, d.Name, d.BudgetID, d.TransferAccountID, d.Deleted, d.CreatedAt, d.UpdatedAt,
-		// )
-		// if err != nil {
-		// 	log.Printf("Error while insert payee: %v %v", d.ID, err.Error())
-		// 	return err
-		// }
-		var transferAccId *uuid.UUID
-		if d.TransferAccountID != "" {
-			parsedId, _ := uuid.Parse(d.TransferAccountID)
-			transferAccId = &parsedId
-		} else {
-			transferAccId = nil
-		}
-		// log.Printf("id: %v, %v transferAccId: %v", id, d.TransferAccountID, transferAccId)
 		batch.Queue(`
 			INSERT INTO payees (
 				id, name, budget_id, transfer_account_id, deleted, created_at, updated_at
 			) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING
 			`,
-			d.ID, d.Name, d.BudgetID, transferAccId, d.Deleted, d.CreatedAt, d.UpdatedAt,
+			d.ID,
+			d.Name,
+			d.BudgetID,
+			uuidOrNull(d.TransferAccountID),
+			d.Deleted,
+			d.CreatedAt,
+			d.UpdatedAt,
 		)
 	}
 	br := db.SendBatch(ctx, batch)
-	// alterAccounts(ctx, db)
+	// alterAccountsTable(ctx, db)
 	defer br.Close()
 	return br.Close()
 }
@@ -379,13 +378,13 @@ func insertTransactions(ctx context.Context, db *pgxpool.Pool, data []model.Tran
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 		budget_id UUID NOT NULL REFERENCES budgets(id),
 		date TEXT NOT NULL,
-		payee_id UUID REFERENCES payees(id),
-		category_id UUID REFERENCES categories(id),
-		account_id UUID NOT NULL REFERENCES accounts(id),
+		payee_id UUID,
+		category_id UUID,
+		account_id UUID NOT NULL,
 		note TEXT,
-		amount REAL NOT NULL,
+		amount NUMERIC(12, 2) NOT NULL,
 		source TEXT,
-		transfer_account_id UUID REFERENCES accounts(id),
+		transfer_account_id UUID,
 		transfer_transaction_id UUID, 
 		deleted BOOLEAN DEFAULT false,
 		created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -397,52 +396,33 @@ func insertTransactions(ctx context.Context, db *pgxpool.Pool, data []model.Tran
 	}
 	batch := &pgx.Batch{}
 	for _, d := range data {
-		var accountId *uuid.UUID
-		if d.AccountID != "" {
-			parsedId, _ := uuid.Parse(d.AccountID)
-			accountId = &parsedId
-		} else {
-			accountId = nil
-		}
-		var payeeId *uuid.UUID
-		if d.PayeeID != "" {
-			parsedId, _ := uuid.Parse(d.PayeeID)
-			payeeId = &parsedId
-		} else {
-			payeeId = nil
-		}
-		var catId *uuid.UUID
-		if d.CategoryID != "" {
-			parsedId, _ := uuid.Parse(d.CategoryID)
-			catId = &parsedId
-		} else {
-			catId = nil
-		}
-		var transferAccId *uuid.UUID
-		if d.TransferAccountID != "" {
-			parsedId, _ := uuid.Parse(d.TransferAccountID)
-			transferAccId = &parsedId
-		} else {
-			transferAccId = nil
-		}
-		var transferTxnId *uuid.UUID
-		if d.TransferTransactionID != "" {
-			parsedId, _ := uuid.Parse(d.TransferTransactionID)
-			transferTxnId = &parsedId
-		} else {
-			transferTxnId = nil
-		}
 		batch.Queue(
 			`INSERT INTO transactions (
 				id, budget_id, date, payee_id, category_id, account_id, note, amount, source, transfer_account_id, transfer_transaction_id, deleted, created_at, updated_at
 			) VALUES (
 				$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
 			) ON CONFLICT DO NOTHING`,
-			d.ID, d.BudgetID, d.Date, payeeId, catId, accountId, d.Note, d.Amount, d.Source, transferAccId, transferTxnId, d.Deleted, d.CreatedAt, d.UpdatedAt,
+			d.ID,
+			d.BudgetID,
+			d.Date,
+			uuidOrNull(d.PayeeID),
+			uuidOrNull(d.CategoryID),
+			uuidOrNull(d.AccountID),
+			d.Note,
+			d.Amount,
+			d.Source,
+			uuidOrNull(d.TransferAccountID),
+			uuidOrNull(d.TransferTransactionID),
+			d.Deleted,
+			d.CreatedAt,
+			d.UpdatedAt,
 		)
+
 		// _, err = db.Exec(ctx, `
+		//
 		// INSERT INTO transactions (
-		// 		id, budget_id, date, payee_id, category_id, account_id, note, amount, source, transfer_account_id, transfer_transaction_id, deleted, created_at, updated_at
+		//
+		// id, budget_id, date, payee_id, category_id, account_id, note, amount, source, transfer_account_id, transfer_transaction_id, deleted, created_at, updated_at
 		// 	) VALUES (
 		// 		$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
 		// 	) ON CONFLICT DO NOTHING
@@ -455,7 +435,7 @@ func insertTransactions(ctx context.Context, db *pgxpool.Pool, data []model.Tran
 		// }
 	}
 	br := db.SendBatch(ctx, batch)
-	alterTransactions(ctx, db)
+	alterTransactionsTable(ctx, db)
 	defer br.Close()
 	return br.Close()
 }
@@ -464,25 +444,29 @@ func insertPredictions(ctx context.Context, db *pgxpool.Pool, data []model.Predi
 	createPredictionTableQuery := `
 	CREATE TABLE IF NOT EXISTS predictions (
 		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+		budget_id UUID NOT NULL REFERENCES budgets(id),
+		transaction_id UUID NOT NULL REFERENCES transactions(id),
 		email_text TEXT,
+		amount NUMERIC(12, 2),
 		account TEXT,
-		account_prediction REAL,
+		account_prediction NUMERIC(10, 2),
 		payee TEXT,
-		payee_prediction REAL,
+		payee_prediction NUMERIC(10, 2),
 		category TEXT,
-		category_prediction REAL,
+		category_prediction NUMERIC(10, 2),
 		has_user_corrected BOOLEAN,
 		user_corrected_account TEXT,
 		user_corrected_payee TEXT,
 		user_corrected_category TEXT,
 		created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-		updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+		updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 	)
 	`
 	_, err := db.Exec(ctx, createPredictionTableQuery)
 	if err != nil {
 		log.Fatalf("Error while creating predictions table %v", err.Error())
 	}
+	log.Printf("Predictions table created")
 	return err
 }
 
@@ -491,13 +475,15 @@ func main() {
 
 	defer dbConn.Close()
 
+	// checkForInvalidUUIDs()
+
 	// convertFileDataToUUID()
 
 	migrations := []struct {
 		Path     string
 		Migrator any
 	}{
-		// {"data/budgets.json", genericMigrator[model.Budget]{TableName: "budgets", InsertFn: insertBudgets}},
+		{"data/budgets.json", genericMigrator[model.Budget]{TableName: "budgets", InsertFn: insertBudgets}},
 		{"data/accounts.json", genericMigrator[model.Account]{TableName: "accounts", InsertFn: insertAccounts}},
 		{"data/categoryGroups.json", genericMigrator[model.CategoryGroup]{TableName: "category_groups", InsertFn: insertCategoryGroups}},
 		{"data/categories.json", genericMigrator[model.Category]{TableName: "categories", InsertFn: insertCategories}},
@@ -539,6 +525,10 @@ func main() {
 		case genericMigrator[model.Transaction]:
 			if err := runMigration(ctx, dbConn, m, migration.Path); err != nil {
 				log.Printf("Error while running transactions migration: %v", err)
+			}
+		case genericMigrator[model.Prediction]:
+			if err := runMigration(ctx, dbConn, m, migration.Path); err != nil {
+				log.Printf("Error while running predictions migration: %v", err)
 			}
 		}
 	}

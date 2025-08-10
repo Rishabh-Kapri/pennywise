@@ -1,18 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
-	"os"
 
-	pubsub "gmail-transactions/pkg"
-
-	// "io"
-
-	// "time"
-
-	"github.com/joho/godotenv"
+	"gmail-transactions/pkg/gmail"
+	"gmail-transactions/pkg/pubsub"
 )
 
 func handler(w http.ResponseWriter, r *http.Request) {
@@ -26,24 +21,19 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusAccepted)
 
-	// data := gmail.Init()
-	// log.Println(data)
-	// requestBody, _ := json.Marshal(data)
-	// log.Println(string(requestBody))
-	// w.Write(requestBody)
+	data := gmail.Init()
+	log.Println(data)
+	requestBody, _ := json.Marshal(data)
+	log.Println("return data", string(requestBody))
+	w.Write(requestBody)
 }
 
 func main() {
-	err := godotenv.Load(".env")
-	if err != nil {
-		log.Fatalf("Error while loading .env: %v", err.Error())
-	}
-	log.Printf("project id %v", os.Getenv("PROJECT_ID"))
 	go pubsub.PullMessages()
-	// go pubsub.TestMessages()
+	// // go pubsub.TestMessages()
 	// go gmail.Init()
 
-	// http.HandleFunc("/", handler)
+	http.HandleFunc("/", handler)
 	fmt.Println("Server listening on port 8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
