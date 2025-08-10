@@ -87,7 +87,6 @@ jobs:
           echo "Services: ${services}"
           # docker handles only building relevant files
           docker-compose -f ./backend/docker-compose.yml up --build -d
-          done
 
       # - name: Stop existing container
       #   run: docker compose -f ./backend/docker-compose.yml down
