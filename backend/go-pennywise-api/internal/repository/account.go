@@ -7,12 +7,14 @@ import (
 	"pennywise-api/internal/model"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type AccountRepository interface {
 	GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Account, error)
-	Create(ctx context.Context, account model.Account) error
+	Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.Account, error)
+	Create(ctx context.Context, account model.Account) (*model.Account, error)
 }
 
 type accountRepo struct {
@@ -21,6 +23,64 @@ type accountRepo struct {
 
 func NewAccountRepository(db *pgxpool.Pool) AccountRepository {
 	return &accountRepo{db: db}
+}
+
+// createAccountWithPayee creates an account with a payee
+// first creates an account,
+// then creates a payee using the accountId as transferAccountId
+// then updates the account with the payeeId as transferPayeeId
+func createAccountWithPayee(ctx context.Context, db *pgxpool.Pool, account model.Account) (*model.Account, error) {
+	tx, err := db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback(ctx)
+		}
+	}()
+
+	// create an account
+	var createdAcc model.Account
+	err = tx.QueryRow(
+		ctx,
+		`INSERT INTO accounts (
+		  name, type, budget_id, closed, deleted, created_at, updated_at
+		 ) VALUES ($1, $2, $3, FALSE, FALSE, NOW(), NOW()) 
+		 RETURNING id, name, type, budget_id`,
+		account.Name, account.Type, account.BudgetID,
+	).Scan(&createdAcc.ID, &createdAcc.Name, &createdAcc.Type, &createdAcc.BudgetID)
+	if err != nil {
+		return nil, err
+	}
+
+	// create a payee with transfer account id
+	var payeeId uuid.UUID
+	payeeName := "Transfer : " + account.Name
+	err = tx.QueryRow(
+		ctx,
+		`INSERT INTO payees (name, budget_id,  transfer_account_id, deleted, created_at, updated_at)
+		   VALUES ($1, $2, $3, FALSE, NOW(), NOW()) 
+		 RETURNING id`,
+		payeeName, account.BudgetID, createdAcc.ID,
+	).Scan(&payeeId)
+	if err != nil {
+		return nil, err
+	}
+
+	// udpate account with transfer payee id
+	_, err = tx.Exec(
+		ctx,
+		`UPDATE accounts SET transfer_payee_id = $1 WHERE id = $2`,
+		payeeId, createdAcc.ID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return &createdAcc, nil
 }
 
 func (r *accountRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Account, error) {
@@ -47,12 +107,31 @@ func (r *accountRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.A
 	return accounts, nil
 }
 
-func (r *accountRepo) Create(ctx context.Context, account model.Account) error {
-	// @TODO: handle creation of account by creating transfer payee first, use db transactions
-	_, err := r.db.Exec(
+func (r *accountRepo) Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.Account, error) {
+	rows, err := r.db.Query(
 		ctx,
-		"INSERT INTO accounts (budget_id, name, transfer_payee_id, type, closed, deleted, created_at) VALUES ($1, $2, $3, $4, false, false, NOW())",
-		account.BudgetID, account.Name, account.TransferPayeeID, account.Type,
+		"SELECT id, name, budget_id, transfer_payee_id, type, closed, created_at, updated_at FROM accounts WHERE budget_id = $1 AND name LIKE $2",
+		budgetId, "%"+query+"%",
 	)
-	return err
+	if err != nil {
+		return nil, err
+	}
+	var accounts []model.Account
+	defer rows.Close()
+	for rows.Next() {
+		var account model.Account
+		err := rows.Scan(&account.ID, &account.Name, &account.BudgetID, &account.TransferPayeeID, &account.Type, &account.Closed, &account.CreatedAt, &account.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		accounts = append(accounts, account)
+	}
+
+	return accounts, nil
+}
+
+func (r *accountRepo) Create(ctx context.Context, account model.Account) (*model.Account, error) {
+	createdAcc, err := createAccountWithPayee(ctx, r.db, account)
+
+	return createdAcc, err
 }

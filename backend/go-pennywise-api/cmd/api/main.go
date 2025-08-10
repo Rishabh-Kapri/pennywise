@@ -25,6 +25,10 @@ func main() {
 	accountService := service.NewAccountService(accountRepo)
 	accountHandler := handler.NewAccountHandler(accountService)
 
+	payeeRepo := repository.NewPayeesRepository(dbConn)
+	payeeService := service.NewPayeeService(payeeRepo)
+	payeeHandler := handler.NewPayeeHandler(payeeService)
+
 	categoryGroupRepo := repository.NewCategoryGroupRepository(dbConn)
 	categoryGroupService := service.NewCategoryGroupService(categoryGroupRepo)
 	categoryGroupHandler := handler.NewCategoryGroupHandler(categoryGroupService)
@@ -44,11 +48,24 @@ func main() {
 	{
 		api := router.Group("/api")
 		api.GET("", healthPage) // simple health check
-		api.GET("/category-groups", categoryGroupHandler.List)
+		{
+			accountGroup  := router.Group("/api/accounts")
+			accountGroup.GET("/search", accountHandler.Search)
+			accountGroup.GET("", accountHandler.List)
+			accountGroup.POST("", accountHandler.Create)
+		}
+		{
+			groupGroup := router.Group("/api/category-groups")
+			groupGroup.GET("", categoryGroupHandler.List)
+			groupGroup.POST("", categoryGroupHandler.Create)
+			groupGroup.PUT(":id", categoryGroupHandler.Update)
+			groupGroup.DELETE(":id", categoryGroupHandler.DeleteById)
+		}
 		{
 			categoryGroup := router.Group("/api/categories")
 			categoryGroup.POST("", categoryHandler.Create)
 			categoryGroup.GET("", categoryHandler.List)
+			categoryGroup.GET("/search", categoryHandler.Search)
 			categoryGroup.GET(":id", categoryHandler.GetById)
 			categoryGroup.PUT(":id", categoryHandler.Update)
 			categoryGroup.DELETE(":id", categoryHandler.DeleteById)
@@ -56,12 +73,26 @@ func main() {
 		{
 			transactionGroup := router.Group("/api/transactions")
 			transactionGroup.GET("", transactionHandler.List)
+			transactionGroup.GET("/normalized", transactionHandler.ListNormalized)
+			transactionGroup.POST("", transactionHandler.Create)
+			transactionGroup.PATCH(":id", transactionHandler.Update)
+			transactionGroup.DELETE(":id", transactionHandler.DeleteById)
 		}
-		api.GET("/predictions", predictionHandler.List)
-		api.POST("/predictions", predictionHandler.Create)
-
-		api.GET("/accounts", accountHandler.List)
-		api.POST("/accounts", accountHandler.Create)
+		{
+			payeeGroup := router.Group("/api/payees")
+			payeeGroup.GET("", payeeHandler.List)
+			payeeGroup.GET("/search", payeeHandler.Search)
+			payeeGroup.POST("", payeeHandler.Create)
+			payeeGroup.PATCH(":id", payeeHandler.Update)
+			payeeGroup.DELETE(":id", payeeHandler.DeleteById)
+		}
+		{
+			predictionGroup := router.Group("/api/predictions")
+			predictionGroup.GET("", predictionHandler.List)
+			predictionGroup.POST("", predictionHandler.Create)
+			predictionGroup.PATCH(":id", predictionHandler.Update)
+			predictionGroup.DELETE(":id", predictionHandler.DeleteById)
+		}
 	}
 	router.Run("0.0.0.0:5151")
 }

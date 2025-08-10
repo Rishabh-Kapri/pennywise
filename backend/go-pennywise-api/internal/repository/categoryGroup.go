@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"errors"
+	"time"
 
 	"pennywise-api/internal/model"
 
@@ -11,8 +13,9 @@ import (
 
 type CategoryGroupRepository interface {
 	GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.CategoryGroup, error)
-	// GetById(ctx context.Context, id string) (model.CategoryGroup, error)
-	// Create(ctx context.Context, category model.CategoryGroup) error
+	Create(ctx context.Context, categoryGroup model.CategoryGroup) error
+	Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, categoryGroup model.CategoryGroup) error
+	DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error
 }
 
 type categoryGroupRepo struct {
@@ -46,4 +49,46 @@ func (r *categoryGroupRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]m
 	return groups, nil
 }
 
-// func (r)
+func (r *categoryGroupRepo) Create(ctx context.Context, categoryGroup model.CategoryGroup) error {
+	_, err := r.db.Exec(
+		ctx,
+		`INSERT INTO category_groups (id, name, budget_id, hidden, is_system, deleted, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		categoryGroup.ID,
+		categoryGroup.Name,
+		categoryGroup.BudgetID,
+		categoryGroup.Hidden,
+		categoryGroup.IsSystem,
+		categoryGroup.Deleted,
+		categoryGroup.CreatedAt,
+		categoryGroup.UpdatedAt,
+	)
+	return err
+}
+
+func (r *categoryGroupRepo) Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, categoryGroup model.CategoryGroup) error {
+	_, err := r.db.Exec(
+		ctx,
+		`UPDATE category_groups SET name = $1, hidden = $2, is_system = $3, updated_at = $4 WHERE id = $5 AND budget_id = $6`,
+		categoryGroup.Name,
+		categoryGroup.Hidden,
+		categoryGroup.IsSystem,
+		time.Now(),
+		id,
+		budgetId,
+	)
+	return err
+}
+
+func (r *categoryGroupRepo) DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error {
+	cmdTag, err := r.db.Exec(
+		ctx,
+		`UPDATE category_groups SET deleted = TRUE WHERE id = $1 AND budget_id = $2`,
+		id,
+		budgetId,
+	)
+	if cmdTag.RowsAffected() == 0 {
+		return errors.New("Category group not found")
+	}
+	return err
+}

@@ -2,6 +2,8 @@ package repository
 
 import (
 	"context"
+	"errors"
+	"log"
 
 	"pennywise-api/internal/model"
 
@@ -11,9 +13,11 @@ import (
 
 type TransactionRepository interface {
 	GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Transaction, error)
+	GetAllNormalized(ctx context.Context, budgetId uuid.UUID) ([]model.Transaction, error)
 	// GetById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Transaction, error)
-	// Create(ctx context.Context, txn model.Transaction) error
-	// DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error
+	Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, txn model.Transaction) error
+	Create(ctx context.Context, txn model.Transaction) (*model.Transaction, error)
+	DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error
 }
 
 type transactionRepo struct {
@@ -48,4 +52,141 @@ func (r *transactionRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]mod
 		transactions = append(transactions, txn)
 	}
 	return transactions, nil
+}
+
+func (r *transactionRepo) GetAllNormalized(ctx context.Context, budgetId uuid.UUID) ([]model.Transaction, error) {
+	rows, err := r.db.Query(
+		ctx,
+		`SELECT
+				transactions.id, transactions.budget_id, transactions.date, transactions.payee_id, transactions.category_id, transactions.account_id, transactions.note, transactions.amount, transactions.transfer_account_id, transactions.transfer_transaction_id, transactions.created_at, transactions.updated_at,
+				accounts.name AS account_name,
+				payees.name AS payee_name,
+				categories.name AS category_name
+			FROM
+				transactions
+			LEFT JOIN accounts   ON transactions.account_id  = accounts.id
+			LEFT JOIN payees     ON transactions.payee_id    = payees.id
+			LEFT JOIN categories ON transactions.category_id = categories.id
+			WHERE transactions.budget_id = $1 AND transactions.deleted = FALSE
+			ORDER BY date DESC, updated_at DESC;`,
+		budgetId,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var txns []model.Transaction
+	for rows.Next() {
+		var txn model.Transaction
+		err := rows.Scan(
+			&txn.ID,
+			&txn.BudgetID,
+			&txn.Date,
+			&txn.PayeeID,
+			&txn.CategoryID,
+			&txn.AccountID,
+			&txn.Note,
+			&txn.Amount,
+			&txn.TransferAccountID,
+			&txn.TransferTransactionID,
+			&txn.CreatedAt,
+			&txn.UpdatedAt,
+			&txn.AccountName,
+			&txn.PayeeName,
+			&txn.CategoryName,
+		)
+		if err != nil {
+			return nil, err
+		}
+		txns = append(txns, txn)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return txns, nil
+}
+
+func (r *transactionRepo) Create(ctx context.Context, txn model.Transaction) (*model.Transaction, error) {
+	var createdTxn model.Transaction
+	err := r.db.QueryRow(
+		ctx,
+		`INSERT INTO transactions (
+			budget_id,
+		  date,
+		  payee_id,
+		  category_id,
+		  account_id,
+		  note,
+		  amount,
+		  transfer_account_id,
+		  transfer_transaction_id,
+		  created_at,
+		  updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+		RETURNING id, amount, budget_id`,
+		txn.BudgetID,
+		txn.Date,
+		txn.PayeeID,
+		txn.CategoryID,
+		txn.AccountID,
+		txn.Note,
+		txn.Amount,
+		txn.TransferAccountID,
+		txn.TransferTransactionID,
+	).Scan(&createdTxn.ID, &createdTxn.Amount, &createdTxn.BudgetID)
+	if err != nil {
+		return nil, err
+	}
+	return &createdTxn, nil
+}
+
+func (r *transactionRepo) Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, txn model.Transaction) error {
+	cmdTag, err := r.db.Exec(
+		ctx,
+		`UPDATE transactions SET 
+				date = $1,
+				payee_id = $2,
+				category_id = $3,
+				account_id = $4,
+				note = $5,
+				amount = $6, 
+				transfer_account_id = $7,
+				transfer_transaction_id = $8,
+				updated_at = NOW()
+		 WHERE budget_id = $9 AND id = $10`,
+		txn.Date,
+		txn.PayeeID,
+		txn.CategoryID,
+		txn.AccountID,
+		txn.Note,
+		txn.Amount,
+		txn.TransferAccountID,
+		txn.TransferTransactionID,
+		budgetId,
+		id,
+	)
+	if err != nil {
+		return err
+	}
+	if cmdTag.RowsAffected() == 0 {
+		return errors.New("Provide a valid id")
+	}
+	return nil
+}
+
+func (r *transactionRepo) DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error {
+	cmdTag, err := r.db.Exec(
+		ctx,
+		"UPDATE transactions SET deleted = TRUE WHERE budget_id = $1 AND id = $2",
+		budgetId, id,
+	)
+	if err != nil {
+		return err
+	}
+	if cmdTag.RowsAffected() == 0 {
+		return errors.New("Provide a valid id")
+	}
+	log.Printf("Soft deleted transaction with id: %v", id)
+	return nil
 }
