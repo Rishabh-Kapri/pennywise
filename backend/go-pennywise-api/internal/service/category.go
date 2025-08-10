@@ -11,9 +11,11 @@ import (
 
 type CategoryService interface {
 	GetAll(ctx context.Context) ([]model.Category, error)
+	Search(ctx context.Context, query string) ([]model.Category, error)
 	GetById(ctx context.Context, id uuid.UUID) (*model.Category, error)
 	Create(ctx context.Context, category model.Category) error
 	DeleteById(ctx context.Context, id uuid.UUID) error
+	Update(ctx context.Context, id uuid.UUID, category model.Category) error
 }
 
 type categoryService struct {
@@ -27,6 +29,11 @@ func NewCategoryService(r repository.CategoryRepository) CategoryService {
 func (s *categoryService) GetAll(ctx context.Context) ([]model.Category, error) {
 	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
 	return s.repo.GetAll(ctx, budgetId)
+}
+
+func (s *categoryService) Search(ctx context.Context, query string) ([]model.Category, error) {
+	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	return s.repo.Search(ctx, budgetId, query)
 }
 
 func (s *categoryService) GetById(ctx context.Context, id uuid.UUID) (*model.Category, error) {
@@ -43,4 +50,9 @@ func (s *categoryService) Create(ctx context.Context, category model.Category) e
 func (s *categoryService) DeleteById(ctx context.Context, id uuid.UUID) error {
 	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
 	return s.repo.DeleteById(ctx, budgetId, id)
+}
+
+func (s *categoryService) Update(ctx context.Context, id uuid.UUID, category model.Category) error {
+	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	return s.repo.Update(ctx, budgetId, id, category)
 }
