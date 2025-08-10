@@ -58,6 +58,7 @@ func (s *Service) GetPrevHistoryId(email string) (uint64, error) {
 
 	ctx := context.Background()
 
+	log.Printf("GetPrevHistoryId: %v", email)
 	collection := s.firestoreClient.Collection("gmailHistoryIds")
 	query := collection.Where("email", "==", email)
 	iter := query.Documents(ctx)
@@ -66,6 +67,9 @@ func (s *Service) GetPrevHistoryId(email string) (uint64, error) {
 	if err == iterator.Done {
 		return 0, err
 	}
+	// if doc == nil || !doc.Exists() {
+	// 	return 0, nil
+	// }
 	historyId, ok := doc.Data()["historyId"].(int64)
 	if !ok {
 		return 0, errors.New("Cannot convert to int64")
