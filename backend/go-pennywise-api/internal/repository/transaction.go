@@ -138,7 +138,7 @@ func (r *transactionRepo) Create(ctx context.Context, txn model.Transaction) ([]
 	if err != nil {
 		return nil, err
 	}
-	txns := make([]model.Transaction, 1)
+	txns := make([]model.Transaction, 0)
 	return append(txns, createdTxn), nil
 }
 
