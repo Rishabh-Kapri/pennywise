@@ -21,13 +21,13 @@ type Patterns struct {
 }
 
 type EmailDetails struct {
-	Text            string
-	Date            string
-	Amount          float64
-	TransactionType string
-	Account         string `json:"account"`
-	Payee           string `json:"payee"`
-	Type            string `json:"type"`
+	Text            string  `json:"email_text"`
+	Date            string  `json:"date"`
+	Amount          float64 `json:"amount"`
+	TransactionType string  `json:"transaction_type"`
+	Account         string  `json:"account"`
+	Payee           string  `json:"payee"`
+	Type            string  `json:"type"` // used for predictions
 }
 
 func NewEmailParser() *EmailParser {
