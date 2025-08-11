@@ -56,12 +56,12 @@ func (h *predictionHandler) Create(c *gin.Context) {
 		return
 	}
 	log.Println(body)
-	err = h.service.Create(ctx, body)
+	createdPredictions, err := h.service.Create(ctx, body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusCreated, body)
+	c.JSON(http.StatusCreated, createdPredictions)
 }
 
 func (h *predictionHandler) Update(c *gin.Context) {
@@ -93,7 +93,6 @@ func (h *predictionHandler) Update(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, body)
 }
-
 
 func (h *predictionHandler) DeleteById(c *gin.Context) {
 	ctx, err := utils.GetBudgetId(c)

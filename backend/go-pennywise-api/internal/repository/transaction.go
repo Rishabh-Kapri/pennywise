@@ -16,7 +16,7 @@ type TransactionRepository interface {
 	GetAllNormalized(ctx context.Context, budgetId uuid.UUID) ([]model.Transaction, error)
 	// GetById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Transaction, error)
 	Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, txn model.Transaction) error
-	Create(ctx context.Context, txn model.Transaction) (*model.Transaction, error)
+	Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error)
 	DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error
 }
 
@@ -107,7 +107,7 @@ func (r *transactionRepo) GetAllNormalized(ctx context.Context, budgetId uuid.UU
 	return txns, nil
 }
 
-func (r *transactionRepo) Create(ctx context.Context, txn model.Transaction) (*model.Transaction, error) {
+func (r *transactionRepo) Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error) {
 	var createdTxn model.Transaction
 	err := r.db.QueryRow(
 		ctx,
@@ -138,7 +138,8 @@ func (r *transactionRepo) Create(ctx context.Context, txn model.Transaction) (*m
 	if err != nil {
 		return nil, err
 	}
-	return &createdTxn, nil
+	txns := make([]model.Transaction, 1)
+	return append(txns, createdTxn), nil
 }
 
 func (r *transactionRepo) Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, txn model.Transaction) error {

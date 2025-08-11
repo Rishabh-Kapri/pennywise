@@ -164,7 +164,7 @@ func PullMessages() {
 		parser.NewEmailParser(),
 		prediction.NewService(config),
 		storage.NewService(config),
-		pennywise.NewService(),
+		pennywise.NewService(config),
 	)
 
 	defer func() {
