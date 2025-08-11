@@ -73,12 +73,12 @@ func (h *transactionHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	createdTxn, err := h.service.Create(ctx, body)
+	createdTxns, err := h.service.Create(ctx, body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusCreated, createdTxn)
+	c.JSON(http.StatusCreated, createdTxns)
 }
 
 func (h *transactionHandler) Update(c *gin.Context) {
