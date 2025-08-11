@@ -13,12 +13,12 @@ import (
 )
 
 type Runner struct {
-	auth        *auth.Service
-	gmail       *gmail.Service
-	parser      *parser.EmailParser
-	prediction  *prediction.Service
-	storage     *storage.Service
-	pennywiseService *pennywise.Service
+	auth       *auth.Service
+	gmail      *gmail.Service
+	parser     *parser.EmailParser
+	prediction *prediction.Service
+	storage    *storage.Service
+	pennywise  *pennywise.Service
 }
 
 type EventData struct {
@@ -40,6 +40,7 @@ func NewRunner(
 		parser:     parserService,
 		prediction: predictionService,
 		storage:    storageService,
+		pennywise:  pennywiseService,
 	}
 }
 
@@ -97,13 +98,13 @@ func (s *Runner) ProcessGmailHistoryId(eventData EventData) error {
 			log.Printf("Error while getting predicted fields: %v", err)
 			return err
 		}
-		createdTxn, err := s.pennywiseService.CreateTransaction(parsedDetails, predictedFields)
+		createdTxn, err := s.pennywise.CreateTransaction(parsedDetails, predictedFields)
 		if err != nil {
 			log.Printf("Error while creating transaction: %v", err)
 			return err
 		}
-		err = s.pennywiseService.CreatePrediction(parsedDetails, predictedFields, createdTxn)
-		if err!= nil {
+		err = s.pennywise.CreatePrediction(parsedDetails, predictedFields, createdTxn)
+		if err != nil {
 			log.Printf("Error while creating prediction: %v", err)
 			return err
 		}
