@@ -57,7 +57,9 @@ func NewService(config *config.Config) *Service {
 
 // add query params to url
 func (s *Service) getEncodedURL(path string, queryData map[string]string) (string, error) {
-	log.Printf("%v %v", s.config, s.config.PennywiseApi)
+	log.Printf("%v", s)
+	log.Printf("%v", s.config)
+	log.Printf("%v", s.config.PennywiseApi)
 	baseUrl, err := url.Parse(s.config.PennywiseApi)
 	if err != nil {
 		log.Printf("Error while parsing Pennywise API URL: %v", err)
