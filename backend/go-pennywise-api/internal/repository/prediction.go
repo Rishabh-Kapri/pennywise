@@ -149,7 +149,7 @@ func (r *predictionRepo) Create(ctx context.Context, prediction model.Prediction
 	if err != nil {
 		return nil, err
 	}
-	predictions := make([]model.Prediction, 1)
+	predictions := make([]model.Prediction, 0)
 	return append(predictions, createdPrediction), nil
 }
 
