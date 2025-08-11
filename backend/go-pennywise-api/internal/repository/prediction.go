@@ -14,7 +14,7 @@ import (
 
 type PredictionRepository interface {
 	GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Prediction, error)
-	Create(ctx context.Context, prediction model.Prediction) error
+	Create(ctx context.Context, prediction model.Prediction) ([]model.Prediction, error)
 	Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, prediction model.Prediction) error
 	// DeleteById deletes a prediction by budget and prediction id.
 	DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error
@@ -92,8 +92,9 @@ func (r *predictionRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]mode
 // Create inserts a new Prediction record into the predictions table.
 // It sets prediction fields, initializes has_user_corrected to false, and user-corrected fields to nil.
 // Returns any error encountered during the database operation.
-func (r *predictionRepo) Create(ctx context.Context, prediction model.Prediction) error {
-	_, err := r.db.Exec(
+func (r *predictionRepo) Create(ctx context.Context, prediction model.Prediction) ([]model.Prediction, error) {
+	var createdPrediction model.Prediction
+	err := r.db.QueryRow(
 		ctx,
 		`INSERT INTO predictions (
 				budget_id,
@@ -112,7 +113,8 @@ func (r *predictionRepo) Create(ctx context.Context, prediction model.Prediction
 				user_corrected_category,
 				created_at,
 				updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+		RETURNING id, budget_id, transaction_id, email_text, amount, account, account_prediction, payee, payee_prediction, category, category_prediction, has_user_corrected, created_at`,
 		prediction.BudgetID,
 		prediction.TransactionID,
 		prediction.EmailText,
@@ -129,8 +131,26 @@ func (r *predictionRepo) Create(ctx context.Context, prediction model.Prediction
 		nil,
 		time.Now(),
 		time.Now(),
+	).Scan(
+		&createdPrediction.ID,
+		&createdPrediction.BudgetID,
+		&createdPrediction.TransactionID,
+		&createdPrediction.EmailText,
+		&createdPrediction.Amount,
+		&createdPrediction.Account,
+		&createdPrediction.AccountPrediction,
+		&createdPrediction.Payee,
+		&createdPrediction.PayeePrediction,
+		&createdPrediction.Category,
+		&createdPrediction.CategoryPrediction,
+		&createdPrediction.HasUserCorrected,
+		&createdPrediction.CreatedAt,
 	)
-	return err
+	if err != nil {
+		return nil, err
+	}
+	predictions := make([]model.Prediction, 1)
+	return append(predictions, createdPrediction), nil
 }
 
 // Update modifies an existing Prediction record in the predictions table.

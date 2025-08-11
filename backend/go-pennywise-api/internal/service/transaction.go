@@ -14,7 +14,7 @@ type TransactionService interface {
 	GetAllNormalized(ctx context.Context) ([]model.Transaction, error)
 	// GetById(ctx context.Context, id uuid.UUID) (*model.Transaction, error)
 	Update(ctx context.Context, id uuid.UUID, txn model.Transaction) error
-	Create(ctx context.Context, txn model.Transaction) (*model.Transaction, error)
+	Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error)
 	DeleteById(ctx context.Context, id uuid.UUID) error
 }
 
@@ -36,7 +36,7 @@ func (s *transactionService) GetAllNormalized(ctx context.Context) ([]model.Tran
 	return s.repo.GetAllNormalized(ctx, budgetId)
 }
 
-func (s *transactionService) Create(ctx context.Context, txn model.Transaction) (*model.Transaction, error) {
+func (s *transactionService) Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error) {
 	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
 	txn.BudgetID = budgetId
 	return s.repo.Create(ctx, txn)

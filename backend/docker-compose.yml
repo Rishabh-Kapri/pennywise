@@ -14,6 +14,8 @@ services:
       - ./go-gmail/pennywise-39654-c87f94721374.json:/secrets/service-account.json:ro
     depends_on:
       - python-mlp
+      - pennywise-api
+    restart: unless-stopped
 
   python-mlp:
     build:
