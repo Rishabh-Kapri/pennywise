@@ -57,6 +57,7 @@ func NewService(config *config.Config) *Service {
 
 // add query params to url
 func (s *Service) getEncodedURL(path string, queryData map[string]string) (string, error) {
+	log.Printf("%v %v", s.config, s.config.PennywiseApi)
 	baseUrl, err := url.Parse(s.config.PennywiseApi)
 	if err != nil {
 		log.Printf("Error while parsing Pennywise API URL: %v", err)
@@ -140,6 +141,7 @@ func (s *Service) CreateTransaction(parsedDetails *parser.EmailDetails, predicte
 		Category: predictedFields.Category.Label,
 	}
 	log.Printf("Creating transaction: %+v", txnData)
+	log.Printf("Predicted fields: %+v", predictedFields)
 
 	accQueryMap := map[string]string{"name": txnData.Account}
 	accounts, err := s.makePennywiseRequest("/api/accounts/search", http.MethodGet, accQueryMap, nil)
