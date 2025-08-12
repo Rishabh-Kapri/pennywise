@@ -247,9 +247,12 @@ func (s *Service) GetUserHistoryId(email string) (uint64, error) {
 	if len(res) == 0 {
 		return 0, fmt.Errorf("No user found with email %s", email)
 	}
-	historyId := res[0]["historyId"].(uint64)
+	historyId, ok := res[0]["historyId"].(float64)
+	if !ok {
+		return 0, fmt.Errorf("Unexpected type for historyId")
+	}
 
-	return historyId, nil
+	return uint64(historyId), nil
 }
 
 func (s *Service) UpdateUserHistoryId(email string, historyId uint64) error {
