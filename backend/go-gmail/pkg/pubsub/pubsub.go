@@ -158,7 +158,7 @@ func TestMessages() {
 func PullMessages() {
 	config := config.LoadConfig()
 
-	runner := runner.NewRunner(
+	runnerInstance := runner.NewRunner(
 		auth.NewService(config),
 		gmail.NewService(config),
 		parser.NewEmailParser(),
@@ -168,7 +168,7 @@ func PullMessages() {
 	)
 
 	defer func() {
-		if err := runner.Close(); err != nil {
+		if err := runnerInstance.Close(); err != nil {
 			log.Fatalf("Failed to close runner: %v", err)
 		}
 	}()
@@ -193,12 +193,23 @@ func PullMessages() {
 		log.Fatalf("Sub %s does not exists", subName)
 	}
 
-	processor := NewEventProcessor(runner)
-	// start a goroutine to process events
-	go processor.startProcessing(ctx)
+	// processor := NewEventProcessor(runner)
+	// // start a goroutine to process events
+	// go processor.startProcessing(ctx)
 
 	err = sub.Receive(ctx, func(ctx context.Context, msg *pubsub.Message) {
-		log.Printf("Received event data: %v", msg)
-		processor.addEventDataToQueue(msg)
+		log.Printf("Received event data: %+v", msg)
+		// processor.addEventDataToQueue(msg)
+		var m runner.EventData
+		if err := json.Unmarshal(msg.Data, &m); err != nil {
+			log.Printf("Failed to unmarshal message: %v", err)
+			return
+		}
+		err = runnerInstance.ProcessGmailHistoryId(m)
+		if err != nil {
+			log.Printf("Failed to process message: %v", err)
+			return
+		}
+		msg.Ack()
 	})
 }
