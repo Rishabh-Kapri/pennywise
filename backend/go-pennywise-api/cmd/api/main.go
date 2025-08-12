@@ -25,6 +25,10 @@ func main() {
 	accountService := service.NewAccountService(accountRepo)
 	accountHandler := handler.NewAccountHandler(accountService)
 
+	userRepo := repository.NewUserRepository(dbConn)
+	userService := service.NewUserService(userRepo)
+	userHandler := handler.NewUserHandler(userService)
+
 	payeeRepo := repository.NewPayeesRepository(dbConn)
 	payeeService := service.NewPayeeService(payeeRepo)
 	payeeHandler := handler.NewPayeeHandler(payeeService)
@@ -49,10 +53,15 @@ func main() {
 		api := router.Group("/api")
 		api.GET("", healthPage) // simple health check
 		{
-			accountGroup  := router.Group("/api/accounts")
+			accountGroup := router.Group("/api/accounts")
 			accountGroup.GET("/search", accountHandler.Search)
 			accountGroup.GET("", accountHandler.List)
 			accountGroup.POST("", accountHandler.Create)
+		}
+		{
+			userGroup := router.Group("/api/users")
+			userGroup.GET("/search", userHandler.Search)
+			userGroup.PATCH("", userHandler.Update)
 		}
 		{
 			groupGroup := router.Group("/api/category-groups")

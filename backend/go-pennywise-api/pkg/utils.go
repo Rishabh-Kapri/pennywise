@@ -12,9 +12,7 @@ const (
 	BUDGET_ID_HEADER = "X-Budget-ID"
 )
 
-/**
-* Take gin context and return the budgetId, checks for error and returns it in context
- */
+// Take gin context and return the budgetId embedded in context, checks for error and returns it in context
 func GetBudgetId(c *gin.Context) (context.Context, error) {
 	budgetId := c.GetHeader(BUDGET_ID_HEADER)
 	if budgetId == "" {
