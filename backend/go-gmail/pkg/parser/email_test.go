@@ -22,9 +22,36 @@ func TestExtractDate(t *testing.T) {
 		want    string
 		wantErr bool
 	}{
-		{"ValidDateYYYY", "Dear Card Member, <br> <br>Thank you for using your HDFC Bank Credit Card ending 4432 for Rs 5065.68 at NAKODA DAIRY PRIVATE L on 04-08-2025.", "2025-08-04", false},
-		{"ValidDateYY", "Dear Customer,</r> Rs. 3000.00 is successfully credited to your account **8936 by VPA vishakhamarkun17@okicici VISHAKHA MARKUN on 09-08-25.", "2025-08-09", false},
-		{"NoDate", "", "", true},
+		{
+			"Valid Date YYYY",
+			"Dear Card Member, <br> <br>Thank you for using your HDFC Bank Credit Card ending 4432 for Rs 5065.68 at NAKODA DAIRY PRIVATE L on 04-08-2025.",
+			"2025-08-04",
+			false,
+		},
+		{
+			"Valid Date Slash Separator",
+			"Dear Customer, Greetings from HDFC Bank! Your Spotify bill, set up through E-mandate (Auto payment), has been successfully paid using your HDFC Bank Credit Card ending 4432. Transaction Details: Amount: INR 149.00 Date: 12/08/2025.",
+			"2025-08-12",
+			false,
+		},
+		{
+			"Valid Date Month Name",
+			"Dear Customer, Greetings from HDFC Bank!  Rs.438.87 is debited from your HDFC Bank Credit Card ending 4432 towards OPENAI on 11 Aug, 2025.",
+			"2025-08-11",
+			false,
+		},
+		{
+			"Valid Date YY",
+			"Dear Customer,</r> Rs. 3000.00 is successfully credited to your account **8936 by VPA vishakhamarkun17@okicici VISHAKHA MARKUN on 09-08-25.",
+			"2025-08-09",
+			false,
+		},
+		{
+			"NoDate",
+			"",
+			"",
+			true,
+		},
 	}
 
 	for _, testCase := range tests {
@@ -76,9 +103,41 @@ func TestExtractAmount(t *testing.T) {
 		want    float64
 		wantErr bool
 	}{
-		{"DebitCC", "Dear Card Member, <br> <br>Thank you for using your HDFC Bank Credit Card ending 4432 for Rs 5065.68 at NAKODA DAIRY PRIVATE L on 04-08-2025.", "debited", -5065.68, false},
-		{"DebitUPI", "Dear Customer,</r> Rs.500.00 has been debited from account 8936 to VPA vishakhamarkun17@okicici VISHAKHA MARKUN on 09-08-25.", "debited", -500, false},
-		{"CreditUPI", "Dear Customer,</r> Rs. 3000.00 is successfully credited to your account **8936 by VPA vishakhamarkun17@okicici VISHAKHA MARKUN on 09-08-25.", "credited", 3000, false},
+		{
+			"CC Debit",
+			"Dear Card Member, <br> <br>Thank you for using your HDFC Bank Credit Card ending 4432 for Rs 5065.68 at NAKODA DAIRY PRIVATE L on 04-08-2025.",
+			"debited",
+			-5065.68,
+			false,
+		},
+		{
+			"CC Debit New",
+			"Dear Customer, Greetings from HDFC Bank!  Rs.438.87 is debited from your HDFC Bank Credit Card ending 4432 towards OPENAI on 11 Aug, 2025.",
+			"debited",
+			-438.87,
+			false,
+		},
+		{
+			"CC Mandate",
+			"Dear Customer, Greetings from HDFC Bank! Your Spotify bill, set up through E-mandate (Auto payment), has been successfully paid using your HDFC Bank Credit Card ending 4432. Transaction Details: Amount: INR 149.00 Date: 12/08/2025.",
+			"debited",
+			-149,
+			false,
+		},
+		{
+			"UPI Debit",
+			"Dear Customer,</r> Rs.500.00 has been debited from account 8936 to VPA vishakhamarkun17@okicici VISHAKHA MARKUN on 09-08-25.",
+			"debited",
+			-500,
+			false,
+		},
+		{
+			"UPI Credit",
+			"Dear Customer,</r> Rs. 3000.00 is successfully credited to your account **8936 by VPA vishakhamarkun17@okicici VISHAKHA MARKUN on 09-08-25.",
+			"credited",
+			3000,
+			false,
+		},
 	}
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -95,6 +154,60 @@ func TestExtractAmount(t *testing.T) {
 	}
 }
 
+func TestExtractText(t *testing.T) {
+	parser := NewEmailParser()
+	tests := []struct {
+		name    string
+		html    string
+		want    string
+		wantErr bool
+	}{
+		{
+			"CC Debit",
+			readTestEmail(t, "testdata/valid_cc.txt"),
+			"Dear Customer, Thank you for using HDFC Bank Credit Card 4432 for Rs. 22.63 at GOOGLE CLOUD CYBS SI on 03-07-2025.",
+			false,
+		},
+		{
+			"CC Debit New",
+			readTestEmail(t, "testdata/valid_cc_new.txt"),
+			"Dear Customer, Greetings from HDFC Bank!  Rs.438.87 is debited from your HDFC Bank Credit Card ending 4432 towards OPENAI on 11 Aug, 2025.",
+			false,
+		},
+		{
+			"CC Mandate",
+			readTestEmail(t, "testdata/valid_cc_mandate.txt"),
+			"Dear Customer, Greetings from HDFC Bank! Your Spotify bill, set up through E-mandate (Auto payment), has been successfully paid using your HDFC Bank Credit Card ending 4432. Transaction Details: Amount: INR 149.00 Date: 12/08/2025.",
+			false,
+		},
+		{
+			"UPI Debit",
+			readTestEmail(t, "testdata/valid_upi_debit.txt"),
+			"Dear Customer, Rs.500.00 has been debited from account 8936 to VPA 9997167687@ybl RISHABH KAPRI S O GOKUL CHANDRA KAP on 14-07-25.",
+			false,
+		},
+		{
+			"UPI Credit",
+			readTestEmail(t, "testdata/valid_upi_credit.txt"),
+			"Dear Customer, Rs. 3000.00 is successfully credited to your account **8936 by VPA 9997167687@ybl RISHABH KAPRI S O GOKUL CHANDRA KAP on 12-07-25.",
+			false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			email := &EmailDetails{}
+			err := parser.extractText(email, tt.html)
+
+			if tt.wantErr && err == nil {
+				t.Errorf("Expected error, got nil")
+			}
+			if !tt.wantErr && (err != nil || email.Text != tt.want) {
+				t.Errorf("Expected: %v; got: %v (err %v)", tt.want, email.Text, err)
+			}
+		})
+	}
+}
+
 func TestParseEmail(t *testing.T) {
 	parser := NewEmailParser()
 	tests := []struct {
@@ -103,9 +216,36 @@ func TestParseEmail(t *testing.T) {
 		want    string
 		wantErr bool
 	}{
-		{"DebitCC", readTestEmail(t, "testdata/valid_cc.txt"), "Dear Customer, Thank you for using HDFC Bank Credit Card 4432 for Rs. 22.63 at GOOGLE CLOUD CYBS SI on 03-07-2025.", false},
-		{"DebitUPI", readTestEmail(t, "testdata/valid_upi_debit.txt"), "Dear Customer, Rs.500.00 has been debited from account 8936 to VPA 9997167687@ybl RISHABH KAPRI S O GOKUL CHANDRA KAP on 14-07-25.", false},
-		{"CreditUPI", readTestEmail(t, "testdata/valid_upi_credit.txt"), "Dear Customer, Rs. 3000.00 is successfully credited to your account **8936 by VPA 9997167687@ybl RISHABH KAPRI S O GOKUL CHANDRA KAP on 12-07-25.", false},
+		{
+			"DebitCC",
+			readTestEmail(t, "testdata/valid_cc.txt"),
+			"Dear Customer, Thank you for using HDFC Bank Credit Card 4432 for Rs. 22.63 at GOOGLE CLOUD CYBS SI on 03-07-2025.",
+			false,
+		},
+		{
+			"DebitCCNew",
+			readTestEmail(t, "testdata/valid_cc_new.txt"),
+			"Dear Customer, Greetings from HDFC Bank!  Rs.438.87 is debited from your HDFC Bank Credit Card ending 4432 towards OPENAI on 11 Aug, 2025.",
+			false,
+		},
+		{
+			"CCMandate",
+			readTestEmail(t, "testdata/valid_cc_mandate.txt"),
+			"Dear Customer, Greetings from HDFC Bank! Your Spotify bill, set up through E-mandate (Auto payment), has been successfully paid using your HDFC Bank Credit Card ending 4432. Transaction Details: Amount: INR 149.00 Date: 12/08/2025.",
+			false,
+		},
+		{
+			"DebitUPI",
+			readTestEmail(t, "testdata/valid_upi_debit.txt"),
+			"Dear Customer, Rs.500.00 has been debited from account 8936 to VPA 9997167687@ybl RISHABH KAPRI S O GOKUL CHANDRA KAP on 14-07-25.",
+			false,
+		},
+		{
+			"CreditUPI",
+			readTestEmail(t, "testdata/valid_upi_credit.txt"),
+			"Dear Customer, Rs. 3000.00 is successfully credited to your account **8936 by VPA 9997167687@ybl RISHABH KAPRI S O GOKUL CHANDRA KAP on 12-07-25.",
+			false,
+		},
 	}
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
