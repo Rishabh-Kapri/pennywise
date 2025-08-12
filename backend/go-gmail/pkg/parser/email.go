@@ -33,10 +33,10 @@ type EmailDetails struct {
 func NewEmailParser() *EmailParser {
 	return &EmailParser{
 		patterns: &Patterns{
-			EmailRegex:   regexp.MustCompile(`(?i)(Dear\s+(Customer|Card Member|Card Holder).*?)\,*(\s|\S)+(\d{2}-\d{2}-\d{4}|\d{2}-\d{2}-\d{2})`),
-			AmountRegex:  regexp.MustCompile(`(?i)(Rs\.?\s?)([\d,]+\.\d+)`),
+			EmailRegex:   regexp.MustCompile(`(?i)(Dear\s+(Customer|Card Member|Card Holder).*?)\,*(\s|\S)+(\d{2}-\d{2}-\d{4}|\d{2}-\d{2}-\d{2}|\d{2}\/\d{2}\/\d+|\d{2}\s*\w+,\s*\d+)`),
+			AmountRegex:  regexp.MustCompile(`(?i)(Rs\.?\s?|INR\s?)([\d,]+\.\d+)`),
 			TypeRegex:    regexp.MustCompile(`(?i)(credited|debited)`),
-			DateRegex:    regexp.MustCompile(`\d{2}-\d{2}-\d{4}|\d{2}-\d{2}-\d{2}`),
+			DateRegex:    regexp.MustCompile(`\d{2}-\d{2}-\d{4}|\d{2}-\d{2}-\d{2}|\d{2}\/\d{2}\/\d+|\d{2}\s*\w+,\s*\d+`),
 			NewlineRegex: regexp.MustCompile(`\n`),
 		},
 	}
@@ -52,8 +52,14 @@ func (s *EmailParser) extractDate(emailDetails *EmailDetails) error {
 	var err error
 	if len(dateMatch) == 10 {
 		parsed, err = time.Parse("02-01-2006", dateMatch)
+		if err != nil {
+			parsed, err = time.Parse("02/01/2006", dateMatch)
+		}
 	} else if len(dateMatch) == 8 {
 		parsed, err = time.Parse("02-01-06", dateMatch)
+	} else if len(dateMatch) == 12 {
+		// for "12 Aug, 2025" dates
+		parsed, err = time.Parse("02 Jan, 2006", dateMatch)
 	}
 	if err != nil {
 		return fmt.Errorf("Date parse error: %s", err)
@@ -90,16 +96,25 @@ func (s *EmailParser) extractType(emailDetails *EmailDetails) error {
 	return nil
 }
 
-func (s *EmailParser) ParseEmail(html string) (*EmailDetails, error) {
+func (s *EmailParser) extractText(emailDetails *EmailDetails, html string) error {
 	match := s.patterns.EmailRegex.FindStringSubmatch(html)
 	if len(match) == 0 {
-		return nil, errors.New("No transaction pattern found")
+		return errors.New("No transaction text pattern found")
 	}
+	emailDetails.Text = s.patterns.NewlineRegex.ReplaceAllString(match[0], " ") + "."
+	return nil
+}
+
+func (s *EmailParser) ParseEmail(html string) (*EmailDetails, error) {
 	emailDetails := &EmailDetails{
-		Text:            s.patterns.NewlineRegex.ReplaceAllString(match[0], " ") + ".",
+		Text:            "",
 		Date:            "",
 		Amount:          0,
 		TransactionType: "debited",
+	}
+
+	if err := s.extractText(emailDetails, html); err != nil {
+		return nil, err
 	}
 
 	if err := s.extractDate(emailDetails); err != nil {
