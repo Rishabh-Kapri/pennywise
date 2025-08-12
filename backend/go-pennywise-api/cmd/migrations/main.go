@@ -210,6 +210,41 @@ func insertAccounts(ctx context.Context, db *pgxpool.Pool, data []model.Account)
 	return br.Close()
 }
 
+func insertUsers(ctx context.Context, db *pgxpool.Pool, data []model.User) error {
+	createUsersTableQuery := `
+	CREATE TABLE IF NOT EXISTS users (
+		id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+		budget_id UUID NOT NULL REFERENCES budgets(id),
+		email TEXT NOT NULL,
+	  history_id NUMERIC(10, 0) NOT NULL,
+		deleted BOOLEAN DEFAULT false,
+		created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+		updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+	)`
+	_, err := db.Exec(ctx, createUsersTableQuery)
+	if err != nil {
+		log.Fatalf("Error while creating users table %v", err.Error())
+	}
+	batch := &pgx.Batch{}
+	for _, d := range data {
+		batch.Queue(
+			`INSERT INTO users (
+			id, budget_id, email, history_id, deleted, created_at, updated_at
+			) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING`,
+			d.ID,
+			d.BudgetID,
+			d.Email,
+			d.HistoryID,
+			d.Deleted,
+			d.CreatedAt,
+			d.UpdatedAt,
+		)
+	}
+	br := db.SendBatch(ctx, batch)
+	defer br.Close()
+	return br.Close()
+}
+
 func insertCategoryGroups(ctx context.Context, db *pgxpool.Pool, data []model.CategoryGroup) error {
 	createCategoryGroupTableQuery := `
 	CREATE TABLE IF NOT EXISTS category_groups (
@@ -485,6 +520,7 @@ func main() {
 	}{
 		{"data/budgets.json", genericMigrator[model.Budget]{TableName: "budgets", InsertFn: insertBudgets}},
 		{"data/accounts.json", genericMigrator[model.Account]{TableName: "accounts", InsertFn: insertAccounts}},
+		{"data/users.json", genericMigrator[model.User]{TableName: "users", InsertFn: insertUsers}},
 		{"data/categoryGroups.json", genericMigrator[model.CategoryGroup]{TableName: "category_groups", InsertFn: insertCategoryGroups}},
 		{"data/categories.json", genericMigrator[model.Category]{TableName: "categories", InsertFn: insertCategories}},
 		{"data/inflowCategory.json", genericMigrator[InflowCategory]{TableName: "categories", InsertFn: insertInflowCategory}},
@@ -505,6 +541,10 @@ func main() {
 		case genericMigrator[model.Account]:
 			if err := runMigration(ctx, dbConn, m, migration.Path); err != nil {
 				log.Printf("Error while running accounts migration: %v", err)
+			}
+		case genericMigrator[model.User]:
+			if err := runMigration(ctx, dbConn, m, migration.Path); err != nil {
+				log.Printf("Error while running users migrations: %v", err)
 			}
 		case genericMigrator[model.CategoryGroup]:
 			if err := runMigration(ctx, dbConn, m, migration.Path); err != nil {
