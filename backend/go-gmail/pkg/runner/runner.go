@@ -66,6 +66,7 @@ func (s *Runner) ProcessGmailHistoryId(eventData EventData) error {
 	if err != nil {
 		return fmt.Errorf("Failed to get prev history id: %w", err)
 	}
+	log.Printf("Received history id: %v", prevHistoryId)
 
 	if err := s.pennywise.UpdateUserHistoryId(eventData.Email, eventData.HistoryId); err != nil {
 		return fmt.Errorf("Failed to update history id: %w", err)

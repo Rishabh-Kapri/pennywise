@@ -124,10 +124,18 @@ func (s *Service) makePennywiseRequest(endpoint string, method string, queryData
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return nil, fmt.Errorf("API error %v: %s", endpoint, res.Status)
 	}
+	var resArr []map[string]any
+	var resObj map[string]any
 	var response []map[string]any
-	err = json.Unmarshal(body, &response)
+
+	err = json.Unmarshal(body, &resArr)
+	response = resArr
 	if err != nil {
-		return nil, fmt.Errorf("Error while unmarshalling pennywise api response: %v", err.Error())
+		err = json.Unmarshal(body, &resObj)
+		if err != nil {
+			return nil, fmt.Errorf("Error while unmarshaling pennywise api response: %v", err.Error())
+		}
+		response = []map[string]any{resObj}
 	}
 	return response, nil
 }
