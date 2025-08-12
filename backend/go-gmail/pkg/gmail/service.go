@@ -42,16 +42,17 @@ func (s *Service) SetupWatch(email string, token *oauth2.Token, oauthConfig *oau
 }
 
 func (s *Service) GetMessageHistory(email string, historyId uint64, token *oauth2.Token, oauthConfig *oauth2.Config) ([]EmailData, error) {
+	log.Printf("GetMessageHistory: %v %v", email, historyId)
 	ctx := context.Background()
 	gmailService, err := gmail.NewService(ctx, option.WithTokenSource(oauthConfig.TokenSource(ctx, token)))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Error while creating gmail service: %v", err.Error())
 	}
 	listCall := gmailService.Users.History.List(email)
 	listCall.StartHistoryId(historyId)
 	historyRes, err := listCall.Do()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Error while doing listCall.Do: %v", err.Error())
 	}
 	seen := make(map[string]bool)
 	var msgData []EmailData
