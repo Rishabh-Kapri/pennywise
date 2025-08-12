@@ -118,12 +118,13 @@ func (r *transactionRepo) Create(ctx context.Context, txn model.Transaction) ([]
 		  category_id,
 		  account_id,
 		  note,
+		  source,
 		  amount,
 		  transfer_account_id,
 		  transfer_transaction_id,
 		  created_at,
 		  updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
 		RETURNING id, amount, budget_id`,
 		txn.BudgetID,
 		txn.Date,
@@ -131,6 +132,7 @@ func (r *transactionRepo) Create(ctx context.Context, txn model.Transaction) ([]
 		txn.CategoryID,
 		txn.AccountID,
 		txn.Note,
+		txn.Source,
 		txn.Amount,
 		txn.TransferAccountID,
 		txn.TransferTransactionID,
