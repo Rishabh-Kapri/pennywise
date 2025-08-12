@@ -62,12 +62,12 @@ func (s *Runner) ProcessGmailHistoryId(eventData EventData) error {
 		return fmt.Errorf("Failed to get access token: %w", err)
 	}
 
-	prevHistoryId, err := s.storage.GetPrevHistoryId(eventData.Email)
+	prevHistoryId, err := s.pennywise.GetUserHistoryId(eventData.Email)
 	if err != nil {
 		return fmt.Errorf("Failed to get prev history id: %w", err)
 	}
 
-	if err := s.storage.UpdateHistoryId(eventData.Email, eventData.HistoryId); err != nil {
+	if err := s.pennywise.UpdateUserHistoryId(eventData.Email, eventData.HistoryId); err != nil {
 		return fmt.Errorf("Failed to update history id: %w", err)
 	}
 

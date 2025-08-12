@@ -57,9 +57,6 @@ func NewService(config *config.Config) *Service {
 
 // add query params to url
 func (s *Service) getEncodedURL(path string, queryData map[string]string) (string, error) {
-	log.Printf("%v", s)
-	log.Printf("%v", s.config)
-	log.Printf("%v", s.config.PennywiseApi)
 	baseUrl, err := url.Parse(s.config.PennywiseApi)
 	if err != nil {
 		log.Printf("Error while parsing Pennywise API URL: %v", err)
@@ -78,6 +75,7 @@ func (s *Service) getEncodedURL(path string, queryData map[string]string) (strin
 // makePennywiseApiRequest makes a request to Pennywise API
 func (s *Service) makePennywiseRequest(endpoint string, method string, queryData map[string]string, data any) ([]map[string]any, error) {
 	url, err := s.getEncodedURL(endpoint, queryData)
+	log.Printf("Making request to %v", url)
 	if err != nil {
 		log.Printf("Error while encoding url for %v: %v", endpoint, err)
 		return nil, err
@@ -235,5 +233,34 @@ func (s *Service) CreatePrediction(parsedDetails *parser.EmailDetails, predicted
 		return fmt.Errorf("Error while creating prediction %s", err.Error())
 	}
 	log.Printf("Prediction created %v", res)
+	return nil
+}
+
+func (s *Service) GetUserHistoryId(email string) (uint64, error) {
+	userQueryMap := map[string]string{"email": email}
+	log.Printf("Getting user history id for email %s", email)
+	res, err := s.makePennywiseRequest("/api/users/search", "GET", userQueryMap, nil)
+	if err != nil {
+		log.Printf("Error while getting user history id %v", err)
+		return 0, err
+	}
+	if len(res) == 0 {
+		return 0, fmt.Errorf("No user found with email %s", email)
+	}
+	historyId := res[0]["historyId"].(uint64)
+
+	return historyId, nil
+}
+
+func (s *Service) UpdateUserHistoryId(email string, historyId uint64) error {
+	userData := map[string]any{
+		"email":     email,
+		"historyId": historyId,
+	}
+	res, err := s.makePennywiseRequest("/api/users", "PATCH", nil, userData)
+	if err != nil {
+		return err
+	}
+	log.Printf("User historyId updated: %v", res)
 	return nil
 }
