@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 
 	"gmail-transactions/pkg/config"
@@ -89,6 +90,7 @@ func (s *Service) GetPredictedFields(parsedDetails *parser.EmailDetails, fallbac
 	if err != nil {
 		return predicted, err
 	}
+	log.Printf("Predicted account: %v\n", accountPrediction)
 
 	if accountPrediction.Confidence < CONFIDENCE_THRESHOLD {
 		return predicted, nil
@@ -96,24 +98,32 @@ func (s *Service) GetPredictedFields(parsedDetails *parser.EmailDetails, fallbac
 
 	predicted.Account.Label = accountPrediction.Label
 	predicted.Account.Confidence = accountPrediction.Confidence
+	parsedDetails.Account = accountPrediction.Label
 
 	payeePrediction, err := s.CallPredictApi(parsedDetails, "payee")
 	if err != nil {
 		return predicted, err
 	}
+	log.Printf("Predicted payee: %v\n", payeePrediction)
+
 	if payeePrediction.Confidence < CONFIDENCE_THRESHOLD {
 		return predicted, nil
 	}
+
 	predicted.Payee.Label = payeePrediction.Label
 	predicted.Payee.Confidence = payeePrediction.Confidence
+	parsedDetails.Payee = payeePrediction.Label
 
 	categoryPrediction, err := s.CallPredictApi(parsedDetails, "category")
 	if err != nil {
 		return predicted, err
 	}
+	log.Printf("Predicted category: %v\n", categoryPrediction)
+
 	if categoryPrediction.Confidence < CONFIDENCE_THRESHOLD {
 		return predicted, nil
 	}
+
 	predicted.Category.Label = categoryPrediction.Label
 	predicted.Category.Confidence = categoryPrediction.Confidence
 
