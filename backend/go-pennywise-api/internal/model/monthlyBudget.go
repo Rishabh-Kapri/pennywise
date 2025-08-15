@@ -11,8 +11,8 @@ type MonthlyBudget struct {
 	Month            string    `json:"month"`
 	BudgetID         uuid.UUID `json:"budgetId"`
 	CategoryID       uuid.UUID `json:"categoryId"`
-	Budgeted         int       `json:"budgeted"`
-	CarryoverBalance int       `json:"carryoverBalance"`
+	Budgeted         float64   `json:"budgeted"`
+	CarryoverBalance float64   `json:"carryoverBalance"`
 	CreatedAt        time.Time `json:"createdAt"`
 	UpdatedAt        time.Time `json:"updatedAt"`
 }
