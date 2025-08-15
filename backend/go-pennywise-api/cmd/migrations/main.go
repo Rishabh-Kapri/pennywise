@@ -38,27 +38,6 @@ func uuidOrNull(id *uuid.UUID) interface{} {
 	return id
 }
 
-func checkForInvalidUUIDs() {
-	file, _ := os.Open("data/transactions.json")
-	defer file.Close()
-
-	var txns []map[string]interface{} // or use your actual Payee struct
-	json.NewDecoder(file).Decode(&txns)
-
-	for i, txn := range txns {
-		if txn["transferTransactionId"] != nil {
-			id, ok := txn["transferTransactionId"].(string)
-			if !ok {
-				fmt.Printf("Entry %d missing id field or not a string\n", i)
-				continue
-			}
-			if _, err := uuid.Parse(id); err != nil {
-				fmt.Printf("Invalid UUID at entry %d: %q %v (%v)\n", i, id, txn["id"], err)
-			}
-		}
-	}
-}
-
 func loadFileData[T any](path string) ([]T, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -312,11 +291,12 @@ func insertMonthlyBudgets(ctx context.Context, db *pgxpool.Pool, data map[string
 		}
 		keyInt := int(keyFloat) + 1
 		newKey := key[0] + "-" + fmt.Sprintf("%02d", keyInt)
-		batch.Queue(
-			`INSERT INTO monthly_budgets (
-				month, budget_id, category_id, budgeted, carryover_balance
-			) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`,
-			newKey, budgetId, categoryId, budgeted, 0,
+		batch.Queue(`
+				INSERT INTO monthly_budgets (
+					budget_id, category_id, month, budgeted, carryover_balance, created_at, updated_at
+				) VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+				ON CONFLICT DO NOTHING
+			`, budgetId, categoryId, newKey, budgeted, 0,
 		)
 	}
 	br := db.SendBatch(ctx, batch)
@@ -505,15 +485,7 @@ func insertPredictions(ctx context.Context, db *pgxpool.Pool, data []model.Predi
 	return err
 }
 
-func main() {
-	dbConn := db.Connect()
-
-	defer dbConn.Close()
-
-	// checkForInvalidUUIDs()
-
-	// convertFileDataToUUID()
-
+func run(dbConn *pgxpool.Pool) {
 	migrations := []struct {
 		Path     string
 		Migrator any
@@ -572,4 +544,165 @@ func main() {
 			}
 		}
 	}
+}
+
+func createMonthlyBudgetsBackupTable(db *pgxpool.Pool) {
+	ctx := context.Background()
+	_, err := db.Exec(ctx, "CREATE TABLE IF NOT EXISTS monthly_budgets_backup AS TABLE monthly_budgets")
+	if err != nil {
+		log.Printf("error while creating monthly_budgets_backup table: %v", err)
+		return
+	}
+}
+
+func getBalances(db *pgxpool.Pool) {
+	ctx := context.Background()
+	_, err := db.Exec(
+		ctx,
+		`
+		WITH activity_per_month AS (
+				SELECT
+					t.budget_id,
+					t.category_id,
+					LEFT(t.date, 7) AS month,
+					SUM(t.amount) AS activity
+			FROM transactions t
+			GROUP BY t.budget_id, t.category_id, LEFT(t.date, 7)
+		),
+		mb_ordered AS (
+		  SELECT
+		    mb.id,
+		    mb.carryover_balance,
+		    mb.budgeted,
+		    COALESCE(apm.activity, 0) AS activity,
+		    LAG(mb.carryover_balance) OVER (
+		      PARTITION BY mb.budget_id, mb.category_id ORDER BY mb.month
+		    ) AS prev_carryover
+		  FROM monthly_budgets_backup mb
+		  LEFT JOIN activity_per_month apm
+		    ON mb.budget_id = apm.budget_id
+		    AND mb.category_id = apm.category_id
+		    AND mb.month = apm.month
+		)
+		UPDATE monthly_budgets_backup mb
+		SET carryover_balance = COALESCE(mb2.prev_carryover, 0) + mb2.budgeted - mb2.activity
+		FROM mb_ordered mb2
+		WHERE mb.id = mb2.id
+		`,
+	)
+	if err != nil {
+		log.Printf("error while updating monthly_budgets: %v", err)
+		return
+	}
+}
+
+func updateCarryover(db *pgxpool.Pool) {
+	ctx := context.Background()
+
+	// 1. Find all (budget_id, category_id) in monthly_budgets
+	rows, err := db.Query(
+		ctx, `
+			SELECT DISTINCT budget_id, category_id FROM monthly_budgets
+		`,
+	)
+	if err != nil {
+		log.Printf("error while updating carryover: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	var unqiueMonthCat []model.MonthlyBudget
+	for rows.Next() {
+		var monthlyBudget model.MonthlyBudget
+		err := rows.Scan(&monthlyBudget.BudgetID, &monthlyBudget.CategoryID)
+		if err != nil {
+			log.Printf("error while fetching monthly budgets: %v", err)
+			return
+		}
+		unqiueMonthCat = append(unqiueMonthCat, monthlyBudget)
+	}
+
+	// 2. for each monthlyBudget, update carryover_balance for each month
+	for _, monthCat := range unqiueMonthCat {
+		monthRows, err := db.Query(
+			ctx, `
+				SELECT id, month, budget_id, category_id, budgeted, carryover_balance, created_at, updated_at
+				FROM monthly_budgets
+				WHERE budget_id = $1 AND category_id = $2
+				ORDER BY month ASC
+			`, monthCat.BudgetID, monthCat.CategoryID,
+		)
+		if err != nil {
+			log.Printf("error while fetching monthly budgets: %v", err)
+			return
+		}
+		defer monthRows.Close()
+		var mbRows []model.MonthlyBudget
+		for monthRows.Next() {
+			var r model.MonthlyBudget
+			err := monthRows.Scan(
+				&r.ID,
+				&r.Month,
+				&r.BudgetID,
+				&r.CategoryID,
+				&r.Budgeted,
+				&r.CarryoverBalance,
+				&r.CreatedAt,
+				&r.UpdatedAt,
+			)
+			if err != nil {
+				log.Printf("error while scanning monthly budgets: %v", err)
+				return
+			}
+			mbRows = append(mbRows, r)
+		}
+
+		prevCarryover := 0.0
+		// sum transactions for each monthlyBudget month
+		for _, b := range mbRows {
+			// log.Printf("%+v", b)
+			var activity float64
+
+			err = db.QueryRow(
+				ctx, `
+					SELECT COALESCE(SUM(amount), 0)
+					FROM transactions
+					WHERE budget_id = $1 AND category_id = $2 AND date LIKE $3
+				`, b.BudgetID, b.CategoryID, b.Month+"%",
+			).Scan(&activity)
+			if err != nil {
+				log.Printf("error while scanning transactions for activity: %v", err)
+				return
+			}
+			carryover := (prevCarryover + b.Budgeted) + activity // adding activity because amount is negative for debit
+			rounded_carryover, err := strconv.ParseFloat(fmt.Sprintf("%.2f", carryover), 64)
+			if err != nil {
+				log.Printf("error while rounding carryover: %v", err)
+				return
+			}
+			_, err = db.Exec(
+				ctx, `
+					UPDATE monthly_budgets
+					SET carryover_balance=$1
+				  WHERE id=$2
+				`, rounded_carryover, b.ID,
+			)
+			if err != nil {
+				log.Printf("error while updating carryover balance for id %v: %v", b.ID, err)
+				return
+			}
+			prevCarryover = carryover
+		}
+	}
+	log.Printf("carryover_balance updated for all monthly_budgets")
+}
+
+func main() {
+	dbConn := db.Connect()
+
+	defer dbConn.Close()
+
+	// run(dbConn)
+	// createMonthlyBudgetsBackupTable(dbConn)
+	updateCarryover(dbConn)
 }
