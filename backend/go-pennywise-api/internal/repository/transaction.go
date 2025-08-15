@@ -7,7 +7,10 @@ import (
 
 	"pennywise-api/internal/model"
 
+	utils "pennywise-api/pkg"
+
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -108,8 +111,17 @@ func (r *transactionRepo) GetAllNormalized(ctx context.Context, budgetId uuid.UU
 }
 
 func (r *transactionRepo) Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error) {
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback(ctx)
+		}
+	}()
 	var createdTxn model.Transaction
-	err := r.db.QueryRow(
+	err = tx.QueryRow(
 		ctx,
 		`INSERT INTO transactions (
 			budget_id,
@@ -140,12 +152,33 @@ func (r *transactionRepo) Create(ctx context.Context, txn model.Transaction) ([]
 	if err != nil {
 		return nil, err
 	}
+	// only update when categoryId is present
+	log.Printf("%v", txn.CategoryID)
+	if txn.CategoryID != nil {
+		monthKey := utils.GetMonthKey(txn.Date)
+		if err := utils.UpdateCarryover(ctx, tx, *txn.CategoryID, txn.Amount, monthKey); err != nil {
+			return nil, err
+		}
+	}
+	if err = tx.Commit(ctx); err != nil {
+		return nil, err
+	}
 	txns := make([]model.Transaction, 0)
 	return append(txns, createdTxn), nil
 }
 
 func (r *transactionRepo) Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, txn model.Transaction) error {
-	cmdTag, err := r.db.Exec(
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback(ctx)
+		}
+	}()
+
+	cmdTag, err := tx.Exec(
 		ctx,
 		`UPDATE transactions SET 
 				date = $1,
@@ -175,20 +208,46 @@ func (r *transactionRepo) Update(ctx context.Context, budgetId uuid.UUID, id uui
 	if cmdTag.RowsAffected() == 0 {
 		return errors.New("Provide a valid id")
 	}
+	if txn.CategoryID != nil {
+		monthKey := utils.GetMonthKey(txn.Date)
+		if err = utils.UpdateCarryover(ctx, tx, *txn.CategoryID, txn.Amount, monthKey); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
 func (r *transactionRepo) DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error {
-	cmdTag, err := r.db.Exec(
-		ctx,
-		"UPDATE transactions SET deleted = TRUE WHERE budget_id = $1 AND id = $2",
-		budgetId, id,
-	)
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
-	if cmdTag.RowsAffected() == 0 {
+	defer func() {
+		if err != nil {
+			tx.Rollback(ctx)
+		}
+	}()
+
+	var updatedTxn model.Transaction
+	err = tx.QueryRow(
+		ctx,
+		`UPDATE transactions 
+		SET deleted = TRUE WHERE budget_id = $1 AND id = $2 
+		RETURNING id, budget_id, date, payee_id, category_id, account_id, amount`,
+		budgetId, id,
+	).Scan(&updatedTxn.ID, &updatedTxn.BudgetID, &updatedTxn.Date, &updatedTxn.PayeeID, &updatedTxn.CategoryID, &updatedTxn.AccountID, &updatedTxn.Amount)
+	if err != nil {
+		return err
+	}
+	if updatedTxn.ID == uuid.Nil {
 		return errors.New("Provide a valid id")
+	}
+
+	// Reverse the amount for updation
+	monthKey := utils.GetMonthKey(updatedTxn.Date)
+	if err = utils.UpdateCarryover(ctx, tx, *updatedTxn.CategoryID, -(updatedTxn.Amount), monthKey); err != nil {
+		return err
 	}
 	log.Printf("Soft deleted transaction with id: %v", id)
 	return nil
