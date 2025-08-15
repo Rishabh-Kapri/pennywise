@@ -102,6 +102,9 @@ func (s *Service) IsTransactionEmail(emailHeader []*gmail.MessagePartHeader) (bo
 		if strings.Contains(valueLower, "txn") ||
 			strings.Contains(valueLower, "alert : update") ||
 			strings.Contains(valueLower, "alert :  update") ||
+		  strings.Contains(valueLower, "credit card") ||
+		  strings.Contains(valueLower, "debited") ||
+		  strings.Contains(valueLower, "instaalert") ||
 			strings.Contains(valueLower, "view: account") {
 			isTransaction = true
 		}
