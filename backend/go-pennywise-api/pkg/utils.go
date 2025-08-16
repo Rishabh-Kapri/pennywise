@@ -18,20 +18,30 @@ const (
 // @TODO: add more validations
 // Returns the month key from date (YYYY-MM-DD) in the format YYYY-MM.
 func GetMonthKey(date string) string {
-	key  := strings.Split(date, "-")
-	monthKey  := key[0] + "-" + key[1]
+	key := strings.Split(date, "-")
+	monthKey := key[0] + "-" + key[1]
 	return monthKey
 }
 
 // Updates the carryover_balance column in the monthly_budgets table.
 // Pass a context.Context, a pgx.Tx transaction, a categoryId, an amount (reverse it for deletion), and a monthKey (YYYY-MM).
 func UpdateCarryover(ctx context.Context, tx pgx.Tx, categoryId uuid.UUID, amount float64, monthKey string) error {
+	if categoryId == uuid.Nil {
+		return fmt.Errorf("categoryId cannot be nil")
+	}
+	if amount == 0 {
+		log.Printf("Skipping carryover update for 0 amount")
+		return nil
+	}
+	if monthKey == "" {
+		return fmt.Errorf("monthKey cannot be empty")
+	}
 	cmdTag, err := tx.Exec(
 		ctx, `
 			UPDATE monthly_budgets
 			SET carryover_balance = carryover_balance + $1
-			WHERE category_id = $2 AND month = $3
-		`, amount, categoryId, monthKey,
+			WHERE TO_DATE(month, 'YYYY-MM') >= TO_DATE($2, 'YYYY-MM') AND category_id = $3
+		`, amount, monthKey, categoryId,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update carryover: %v", err)
