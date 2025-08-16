@@ -91,13 +91,13 @@ func (s *Service) GetPredictedFields(parsedDetails *parser.EmailDetails, fallbac
 		return predicted, err
 	}
 	log.Printf("Predicted account: %v\n", accountPrediction)
+	predicted.Account.Label = accountPrediction.Label
+	predicted.Account.Confidence = accountPrediction.Confidence
 
 	if accountPrediction.Confidence < CONFIDENCE_THRESHOLD {
 		return predicted, nil
 	}
 
-	predicted.Account.Label = accountPrediction.Label
-	predicted.Account.Confidence = accountPrediction.Confidence
 	parsedDetails.Account = accountPrediction.Label
 
 	payeePrediction, err := s.CallPredictApi(parsedDetails, "payee")
@@ -105,13 +105,13 @@ func (s *Service) GetPredictedFields(parsedDetails *parser.EmailDetails, fallbac
 		return predicted, err
 	}
 	log.Printf("Predicted payee: %v\n", payeePrediction)
+	predicted.Payee.Label = payeePrediction.Label
+	predicted.Payee.Confidence = payeePrediction.Confidence
 
 	if payeePrediction.Confidence < CONFIDENCE_THRESHOLD {
 		return predicted, nil
 	}
 
-	predicted.Payee.Label = payeePrediction.Label
-	predicted.Payee.Confidence = payeePrediction.Confidence
 	parsedDetails.Payee = payeePrediction.Label
 
 	categoryPrediction, err := s.CallPredictApi(parsedDetails, "category")
@@ -119,13 +119,12 @@ func (s *Service) GetPredictedFields(parsedDetails *parser.EmailDetails, fallbac
 		return predicted, err
 	}
 	log.Printf("Predicted category: %v\n", categoryPrediction)
+	predicted.Category.Label = categoryPrediction.Label
+	predicted.Category.Confidence = categoryPrediction.Confidence
 
 	if categoryPrediction.Confidence < CONFIDENCE_THRESHOLD {
 		return predicted, nil
 	}
-
-	predicted.Category.Label = categoryPrediction.Label
-	predicted.Category.Confidence = categoryPrediction.Confidence
 
 	return predicted, nil
 }
