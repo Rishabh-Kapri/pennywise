@@ -30,9 +30,43 @@ func NewCategoryRepository(db *pgxpool.Pool) CategoryRepository {
 
 func (r *categoryRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Category, error) {
 	rows, err := r.db.Query(
-		ctx,
-		"SELECT id, name, budget_id, category_group_id, hidden, note, is_system, created_at, updated_at FROM categories WHERE budget_id = $1 AND deleted = FALSE",
-		budgetId,
+		ctx, `
+			SELECT 
+				categories.id, 
+		    categories.name, 
+				categories.budget_id, 
+				categories.category_group_id, 
+				categories.hidden, 
+				categories.note, 
+				categories.is_system, 
+				categories.created_at, 
+				categories.updated_at,
+		    COALESCE(
+		      json_object_agg(monthly_budgets.month, monthly_budgets.budgeted) 
+		      FILTER (WHERE monthly_budgets.month IS NOT NULL), '{}'
+		    ) AS budgeted,
+		    COALESCE(
+		      (
+		        SELECT json_object_agg(tx.month, tx.sum)
+		        FROM (
+		          SELECT
+		            TO_CHAR(date_trunc('month', transactions.date::date), 'YYYY-MM') AS month,
+		            SUM(transactions.amount) AS sum
+		          FROM transactions
+		          WHERE transactions.category_id = categories.id
+		          GROUP BY month
+		        ) AS tx
+		      ), '{}'
+		    ) AS activity,
+		    COALESCE(
+		      json_object_agg(monthly_budgets.month, monthly_budgets.carryover_balance) 
+		      FILTER (WHERE monthly_budgets.month IS NOT NULL), '{}'
+		    ) AS balance
+			FROM categories 
+		  LEFT JOIN monthly_budgets ON categories.id = monthly_budgets.category_id
+			WHERE categories.budget_id = $1 AND categories.deleted = FALSE
+		  GROUP BY categories.id
+		`, budgetId,
 	)
 	if err != nil {
 		return nil, err
@@ -42,7 +76,20 @@ func (r *categoryRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.
 	var categories []model.Category
 	for rows.Next() {
 		var c model.Category
-		err := rows.Scan(&c.ID, &c.Name, &c.BudgetID, &c.CategoryGroupID, &c.Hidden, &c.Note, &c.IsSystem, &c.CreatedAt, &c.UpdatedAt)
+		err := rows.Scan(
+			&c.ID,
+			&c.Name,
+			&c.BudgetID,
+			&c.CategoryGroupID,
+			&c.Hidden,
+			&c.Note,
+			&c.IsSystem,
+			&c.CreatedAt,
+			&c.UpdatedAt,
+			&c.Budgeted,
+			&c.Activity,
+			&c.Balance,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -54,10 +101,43 @@ func (r *categoryRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.
 func (r *categoryRepo) Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.Category, error) {
 	log.Printf("%v %v", budgetId, query)
 	rows, err := r.db.Query(
-		ctx,
-		`SELECT id, name, budget_id, category_group_id, hidden, note, is_system, created_at, updated_at FROM categories 
-		   WHERE budget_id  = $1 AND deleted = FALSE AND name LIKE $2`,
-		budgetId, "%"+query+"%",
+		ctx, `
+			SELECT 
+				categories.id,
+				categories.name,
+				categories.budget_id,
+				categories.category_group_id,
+				categories.hidden,
+				categories.note,
+				categories.is_system,
+				categories.created_at,
+				categories.updated_at,
+				COALESCE(
+					json_object_agg(monthly_budgets.month, monthly_budgets.budgeted)
+					FILTER (WHERE monthly_budgets.month IS NOT NULL), '{}'
+				) AS budgeted,
+				COALESCE(
+					(
+						SELECT json_object_agg(tx.month, tx.sum)
+						FROM (
+							SELECT
+								TO_CHAR(date_trunc('month', transactions.date::date), 'YYYY-MM') AS month,
+								SUM(transactions.amount) AS sum
+							FROM transactions
+							WHERE transactions.category_id = categories.id
+							GROUP BY month
+						) AS tx
+					), '{}'
+				) AS activity,
+				COALESCE(
+					json_object_agg(monthly_budgets.month, monthly_budgets.carryover_balance) 
+					FILTER (WHERE monthly_budgets.month IS NOT NULL), '{}'
+				) AS balance
+			FROM categories 
+		  LEFT JOIN monthly_budgets ON categories.id = monthly_budgets.category_id
+			WHERE categories.budget_id  = $1 AND categories.deleted = FALSE AND categories.name LIKE $2
+		  GROUP BY categories.id
+		`, budgetId, "%"+query+"%",
 	)
 	if err != nil {
 		return nil, err
@@ -67,7 +147,20 @@ func (r *categoryRepo) Search(ctx context.Context, budgetId uuid.UUID, query str
 	var categories []model.Category
 	for rows.Next() {
 		var c model.Category
-		err := rows.Scan(&c.ID, &c.Name, &c.BudgetID, &c.CategoryGroupID, &c.Hidden, &c.Note, &c.IsSystem, &c.CreatedAt, &c.UpdatedAt)
+		err := rows.Scan(
+			&c.ID,
+			&c.Name,
+			&c.BudgetID,
+			&c.CategoryGroupID,
+			&c.Hidden,
+			&c.Note,
+			&c.IsSystem,
+			&c.CreatedAt,
+			&c.UpdatedAt,
+			&c.Budgeted,
+			&c.Activity,
+			&c.Balance,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -78,13 +171,60 @@ func (r *categoryRepo) Search(ctx context.Context, budgetId uuid.UUID, query str
 
 func (r *categoryRepo) GetById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Category, error) {
 	row := r.db.QueryRow(
-		ctx,
-		"SELECT id, name, budget_id, category_group_id, hidden, note, is_system, created_at, updated_at FROM categories WHERE budget_id = $1 AND deleted = FALSE AND id = $2",
-		budgetId, id,
+		ctx, `
+			SELECT 
+				categories.id,
+				categories.name,
+				categories.budget_id,
+				categories.category_group_id,
+				categories.hidden,
+				categories.note,
+				categories.is_system,
+				categories.created_at,
+				categories.updated_at,
+				COALESCE(
+					json_object_agg(monthly_budgets.month, monthly_budgets.budgeted)
+					FILTER (WHERE monthly_budgets.month IS NOT NULL), '{}'
+				) AS budgeted,
+				COALESCE(
+					(
+						SELECT json_object_agg(tx.month, tx.sum)
+						FROM (
+							SELECT
+								TO_CHAR(date_trunc('month', transactions.date::date), 'YYYY-MM') AS month,
+								SUM(transactions.amount) AS sum
+							FROM transactions
+							WHERE transactions.category_id = categories.id
+							GROUP BY month
+						) AS tx
+					), '{}'
+				) AS activity,
+				COALESCE(
+					json_object_agg(monthly_budgets.month, monthly_budgets.carryover_balance) 
+					FILTER (WHERE monthly_budgets.month IS NOT NULL), '{}'
+				) AS balance
+			FROM categories 
+		  LEFT JOIN monthly_budgets ON categories.id = monthly_budgets.category_id
+			WHERE categories.budget_id = $1 AND categories.deleted = FALSE AND categories.id = $2
+		  GROUP BY categories.id
+		`, budgetId, id,
 	)
 
 	var c model.Category
-	err := row.Scan(&c.ID, &c.Name, &c.BudgetID, &c.CategoryGroupID, &c.Hidden, &c.Note, &c.IsSystem, &c.CreatedAt, &c.UpdatedAt)
+	err := row.Scan(
+		&c.ID,
+		&c.Name,
+		&c.BudgetID,
+		&c.CategoryGroupID,
+		&c.Hidden,
+		&c.Note,
+		&c.IsSystem,
+		&c.CreatedAt,
+		&c.UpdatedAt,
+		&c.Budgeted,
+		&c.Activity,
+		&c.Balance,
+	)
 	if err != nil {
 		return nil, err
 	}
