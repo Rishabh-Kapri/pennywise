@@ -85,9 +85,24 @@ func createAccountWithPayee(ctx context.Context, db *pgxpool.Pool, account model
 
 func (r *accountRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Account, error) {
 	rows, err := r.db.Query(
-		ctx,
-		"SELECT id, name, budget_id, transfer_payee_id, type, closed, created_at, updated_at FROM accounts WHERE budget_id = $1 AND deleted = $2",
-		budgetId, false,
+		ctx, `
+		SELECT 
+		  accounts.id,
+		  accounts.name,
+		  accounts.budget_id,
+		  accounts.transfer_payee_id,
+		  accounts.type,
+		  accounts.closed,
+		  accounts.created_at,
+		  accounts.updated_at,
+		  COALESCE((
+				SELECT SUM(transactions.amount)
+				FROM transactions
+				WHERE transactions.account_id = accounts.id AND transactions.deleted = FALSE
+		  ), 0) as balance
+		FROM accounts
+		WHERE budget_id = $1 AND deleted = FALSE
+		`, budgetId,
 	)
 	if err != nil {
 		return nil, err
@@ -97,7 +112,17 @@ func (r *accountRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.A
 	var accounts []model.Account
 	for rows.Next() {
 		var a model.Account
-		err := rows.Scan(&a.ID, &a.Name, &a.BudgetID, &a.TransferPayeeID, &a.Type, &a.Closed, &a.CreatedAt, &a.UpdatedAt)
+		err := rows.Scan(
+			&a.ID,
+			&a.Name,
+			&a.BudgetID,
+			&a.TransferPayeeID,
+			&a.Type,
+			&a.Closed,
+			&a.CreatedAt,
+			&a.UpdatedAt,
+			&a.Balance,
+		)
 		if err != nil {
 			errorMsg := errors.New("Error while parsing account rows: ")
 			return nil, errors.Join(errorMsg, err)
@@ -109,8 +134,24 @@ func (r *accountRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.A
 
 func (r *accountRepo) Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.Account, error) {
 	rows, err := r.db.Query(
-		ctx,
-		"SELECT id, name, budget_id, transfer_payee_id, type, closed, created_at, updated_at FROM accounts WHERE budget_id = $1 AND name LIKE $2",
+		ctx, `
+			SELECT 
+				accounts.id,
+				accounts.name,
+				accounts.budget_id,
+				accounts.transfer_payee_id,
+				accounts.type,
+				accounts.closed,
+				accounts.created_at,
+				accounts.updated_at,
+				COALESCE((
+					SELECT SUM(transactions.amount)
+					FROM transactions
+					WHERE transactions.account_id = accounts.id AND transactions.deleted = FALSE
+				), 0) as balance
+			FROM accounts
+		  WHERE budget_id = $1 AND deleted = FALSE AND name LIKE $2
+		`,
 		budgetId, "%"+query+"%",
 	)
 	if err != nil {
@@ -119,12 +160,22 @@ func (r *accountRepo) Search(ctx context.Context, budgetId uuid.UUID, query stri
 	var accounts []model.Account
 	defer rows.Close()
 	for rows.Next() {
-		var account model.Account
-		err := rows.Scan(&account.ID, &account.Name, &account.BudgetID, &account.TransferPayeeID, &account.Type, &account.Closed, &account.CreatedAt, &account.UpdatedAt)
+		var a model.Account
+		err := rows.Scan(
+			&a.ID,
+			&a.Name,
+			&a.BudgetID,
+			&a.TransferPayeeID,
+			&a.Type,
+			&a.Closed,
+			&a.CreatedAt,
+			&a.UpdatedAt,
+			&a.Balance,
+		)
 		if err != nil {
 			return nil, err
 		}
-		accounts = append(accounts, account)
+		accounts = append(accounts, a)
 	}
 
 	return accounts, nil
