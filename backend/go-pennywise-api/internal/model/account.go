@@ -12,6 +12,7 @@ type Account struct {
 	BudgetID        uuid.UUID  `json:"budgetId"`
 	TransferPayeeID *uuid.UUID `json:"transferPayeeId,omitempty"`
 	Type            string     `json:"type"`
+	Balance         float64    `json:"balance,omitempty"`
 	Closed          bool       `json:"closed"`
 	Deleted         bool       `json:"deleted"`
 	CreatedAt       time.Time  `json:"createdAt"`
