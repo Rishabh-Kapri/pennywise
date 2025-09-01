@@ -153,10 +153,10 @@ func (r *transactionRepo) Create(ctx context.Context, txn model.Transaction) ([]
 		return nil, err
 	}
 	// only update when categoryId is present
-	log.Printf("%v", txn.CategoryID)
-	if txn.CategoryID != nil {
+	// TODO: move the Inflow category check to utils
+	if txn.CategoryID != nil && txn.CategoryID.String() != "02fc5abc-94b7-4b03-9077-5d153011fd3f" {
 		monthKey := utils.GetMonthKey(txn.Date)
-		if err := utils.UpdateCarryover(ctx, tx, *txn.CategoryID, txn.Amount, monthKey); err != nil {
+		if err := utils.UpdateCarryover(ctx, tx, txn.BudgetID, *txn.CategoryID, txn.Amount, monthKey); err != nil {
 			return nil, err
 		}
 	}
@@ -210,7 +210,7 @@ func (r *transactionRepo) Update(ctx context.Context, budgetId uuid.UUID, id uui
 	}
 	if txn.CategoryID != nil {
 		monthKey := utils.GetMonthKey(txn.Date)
-		if err = utils.UpdateCarryover(ctx, tx, *txn.CategoryID, txn.Amount, monthKey); err != nil {
+		if err = utils.UpdateCarryover(ctx, tx, budgetId, *txn.CategoryID, txn.Amount, monthKey); err != nil {
 			return err
 		}
 	}
@@ -246,7 +246,7 @@ func (r *transactionRepo) DeleteById(ctx context.Context, budgetId uuid.UUID, id
 
 	// Reverse the amount for updation
 	monthKey := utils.GetMonthKey(updatedTxn.Date)
-	if err = utils.UpdateCarryover(ctx, tx, *updatedTxn.CategoryID, -(updatedTxn.Amount), monthKey); err != nil {
+	if err = utils.UpdateCarryover(ctx, tx, budgetId, *updatedTxn.CategoryID, -(updatedTxn.Amount), monthKey); err != nil {
 		return err
 	}
 	log.Printf("Soft deleted transaction with id: %v", id)
