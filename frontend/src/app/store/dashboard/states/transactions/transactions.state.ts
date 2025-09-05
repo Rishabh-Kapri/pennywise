@@ -10,6 +10,7 @@ import { PayeesState } from '../payees/payees.state';
 import { CategoriesState } from '../categories/categories.state';
 import { and, orderBy, query, where } from 'firebase/firestore';
 import { ConfigState } from '../config/config.state';
+import { HttpService } from 'src/app/services/http.service';
 
 export interface TransactionsStateModel {
   allTransactions: Transaction[];
@@ -24,6 +25,7 @@ export interface TransactionsStateModel {
 })
 @Injectable()
 export class TransactionsState implements NgxsOnInit {
+  readonly BASE_ENDPOINT = 'transactions';
   @Selector()
   static getAllTransactions(state: TransactionsStateModel): Transaction[] {
     return state.allTransactions;
@@ -37,44 +39,84 @@ export class TransactionsState implements NgxsOnInit {
     private ngxsStore: Store,
     private ngxsFirestoreConnect: NgxsFirestoreConnect,
     private transactionsFs: TransactionsFirestore,
-  ) {}
+    private httpService: HttpService,
+  ) { }
 
-  ngxsOnInit(): void {}
+  ngxsOnInit(): void { }
 
-  @Action(TransactionsActions.GetAllTransactions)
-  initTransactionsStream(
+  // @Action(TransactionsActions.GetAllTransactions)
+  // initTransactionsStream(
+  //   ctx: StateContext<TransactionsStateModel>,
+  //   { budgetId }: TransactionsActions.GetAllTransactions,
+  // ) {
+  // this.ngxsFirestoreConnect.connect(TransactionsActions.GetAllTransactions, {
+  //   to: () => {
+  //     return this.transactionsFs.collection$((ref) =>
+  //       query(
+  //         ref,
+  //         and(where('budgetId', '==', budgetId), where('deleted', '==', false)),
+  //         orderBy('date', 'desc'),
+  //         orderBy('updatedAt', 'desc'),
+  //       ),
+  //     );
+  //   },
+  //   connectedActionFinishesOn: 'FirstEmit',
+  // });
+  // }
+
+  // @Action(StreamEmitted(TransactionsActions.GetAllTransactions))
+  // getAllTransactions(
+  //   ctx: StateContext<TransactionsStateModel>,
+  //   { payload }: Emitted<TransactionsActions.GetAllTransactions, Transaction[]>,
+  // ) {
+  //   console.log("TXNS::::", payload);
+  //   ctx.patchState({
+  //     allTransactions: payload,
+  //   });
+  //   const isStateLoading = this.ngxsStore.selectSnapshot(ConfigState.getStateLoadingStatus);
+  //   // processNormalisedTransactions if state is finished loading
+  //   if (!isStateLoading) {
+  //     this.ngxsStore.dispatch(new TransactionsActions.ProcessNormalisedTransaction());
+  //   }
+  // }
+
+  @Action(TransactionsActions.GetNormalisedTransaction)
+  getAllNormalisedTransaction(
     ctx: StateContext<TransactionsStateModel>,
-    { budgetId }: TransactionsActions.GetAllTransactions,
+    { accountId }: TransactionsActions.GetNormalisedTransaction,
   ) {
-    this.ngxsFirestoreConnect.connect(TransactionsActions.GetAllTransactions, {
-      to: () => {
-        return this.transactionsFs.collection$((ref) =>
-          query(
-            ref,
-            and(where('budgetId', '==', budgetId), where('deleted', '==', false)),
-            orderBy('date', 'desc'),
-            orderBy('updatedAt', 'desc'),
-          ),
-        );
+    const url = accountId ? `transactions/normalized?accountId=${accountId}` : 'transactions/normalized';
+    this.httpService.get<NormalizedTransaction[]>(url).subscribe({
+      next: (txns) => {
+        console.log(txns);
+        ctx.patchState({
+          normalizedTransactions: txns,
+        });
       },
-      connectedActionFinishesOn: 'FirstEmit',
     });
   }
 
-  @Action(StreamEmitted(TransactionsActions.GetAllTransactions))
-  getAllTransactions(
-    ctx: StateContext<TransactionsStateModel>,
-    { payload }: Emitted<TransactionsActions.GetAllTransactions, Transaction[]>,
-  ) {
-    console.log("TXNS::::", payload);
-    ctx.patchState({
-      allTransactions: payload,
+  @Action(TransactionsActions.CreateTransaction)
+  createTransaction(ctx: StateContext<TransactionsStateModel>, { payload }: TransactionsActions.CreateTransaction) {
+    console.log('creating transaction', this.BASE_ENDPOINT, payload);
+    this.httpService.post<Partial<Transaction>>(this.BASE_ENDPOINT, payload).subscribe({
+      next: (res) => {
+        console.log('transaction created', res);
+        ctx.dispatch(new TransactionsActions.GetNormalisedTransaction(payload.accountId ?? ''));
+      },
     });
-    const isStateLoading = this.ngxsStore.selectSnapshot(ConfigState.getStateLoadingStatus);
-    // processNormalisedTransactions if state is finished loading
-    if (!isStateLoading) {
-      this.ngxsStore.dispatch(new TransactionsActions.ProcessNormalisedTransaction());
-    }
+  }
+
+  @Action(TransactionsActions.EditTransaction)
+  editTransaction(ctx: StateContext<TransactionsStateModel>, { data }: TransactionsActions.EditTransaction) {
+    const url = `${this.BASE_ENDPOINT}/${data.id}`;
+    console.log('updating transaction', url, data);
+    this.httpService.patch<Partial<Transaction>>(url, data).subscribe({
+      next: (res) => {
+        console.log(res);
+        ctx.dispatch(new TransactionsActions.GetNormalisedTransaction(data.accountId ?? ''));
+      },
+    });
   }
 
   @Action(TransactionsActions.ProcessNormalisedTransaction)

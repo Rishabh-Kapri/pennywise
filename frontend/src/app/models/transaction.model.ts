@@ -1,3 +1,8 @@
+export enum TransactionSource {
+  PENNYWISE = 'PENNYWISE',
+  MLP = 'MLP',
+}
+
 export interface Transaction {
   id?: string;
   budgetId: string;
@@ -9,7 +14,7 @@ export interface Transaction {
   categoryId: string | null; // id of the category which the transaction belongs to, null for transfer transaction
   transferTransactionId?: string | null; // id of the tranfer transaction
   transferAccountId?: string | null; // id of the transfer account, only present when transferTransactionId is present
-  source: 'pennywise' | 'cron';
+  source: TransactionSource;
   createdAt?: string;
   updatedAt?: string;
   deleted: boolean;
@@ -19,6 +24,7 @@ export interface NormalizedTransaction {
   id?: string;
   budgetId: string;
   date: string;
+  amount?: number;
   outflow: number | null;
   inflow: number | null;
   balance: number;

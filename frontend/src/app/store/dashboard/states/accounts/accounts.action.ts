@@ -5,6 +5,9 @@ export namespace AccountsActions {
     static readonly type = '[Accounts] GetAllAccounts';
     constructor(readonly budgetId: string) {}
   }
+  export class GetAccounts {
+    static readonly type =  '[Accounts] GetAccounts';
+  }
   export class SetBudgetAccounts {
     static readonly type = '[Accounts] SetBudgetAccounts';
   }

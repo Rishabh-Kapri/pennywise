@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pennywise New Design - Color Palette</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* Light Theme */
+            --pw-bg-light: #F4F6F6; 
+            --pw-text-primary-light: #2C383F;
+            --pw-text-secondary-light: #37474F;
+            --pw-surface-light: #FFFFFF;
+
+            /* Dark Theme */
+            --pw-bg-dark: #2C383F; 
+            --pw-text-primary-dark: #F4F6F6;
+            --pw-text-secondary-dark: #D9E7E5;
+            --pw-surface-dark: #37474F;
+
+            /* Brand & Accent Colors */
+            --pw-card-dark-teal: #42887C;
+            --pw-card-muted-blue: #81B2CA;
+            --pw-accent-yellow: #FAB512;
+            --pw-text-on-dark: #FFFFFF;
+
+            /* Icon Backgrounds */
+            --pw-icon-bg-green: #D9E7E5;
+            --pw-icon-green: #42887C;
+            --pw-icon-bg-purple: #E6E2E6;
+            --pw-icon-purple: #836F81;
+
+            /* Other */
+            --pw-border-radius: 1.25rem; /* 20px */
+            --pw-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Nunito Sans", sans-serif;
+            background-color: var(--pw-bg-light);
+            color: var(--pw-text-primary-light);
+            padding: 2rem;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        body.dark {
+            background-color: var(--pw-bg-dark);
+            color: var(--pw-text-primary-dark);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+        }
+
+        .theme-switcher {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem;
+            background-color: var(--pw-surface-light);
+            border-radius: 99px;
+            border: 1px solid #E5E7EB;
+        }
+        body.dark .theme-switcher {
+            background-color: var(--pw-surface-dark);
+            border-color: #374151;
+        }
+
+        .theme-switcher button {
+            border: none;
+            background: none;
+            padding: 0.5rem;
+            border-radius: 99px;
+            cursor: pointer;
+            color: var(--pw-text-secondary-light);
+        }
+        body.dark .theme-switcher button {
+            color: var(--pw-text-secondary-dark);
+        }
+        .theme-switcher button.active {
+            background-color: var(--pw-accent-yellow);
+            color: #1F2937;
+        }
+
+        .palette-section {
+            margin-bottom: 3rem;
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            color: inherit;
+        }
+
+        .color-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .color-card {
+            background-color: var(--pw-surface-light);
+            border-radius: var(--pw-border-radius);
+            overflow: hidden;
+            box-shadow: var(--pw-shadow);
+            border: 1px solid #E5E7EB;
+            transition: all 0.3s;
+        }
+        body.dark .color-card {
+            background-color: var(--pw-surface-dark);
+            border-color: #374151;
+        }
+
+        .color-swatch {
+            width: 100%;
+            height: 80px;
+        }
+
+        .color-info {
+            padding: 1rem;
+        }
+
+        .color-info h3 {
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+        }
+
+        .color-code {
+            font-family: monospace;
+            font-size: 0.875rem;
+            color: #6B7280;
+        }
+        body.dark .color-code {
+            color: #9CA3AF;
+        }
+
+        /* Demo Section */
+        .demo-section {
+            background-color: var(--pw-surface-light);
+            border-radius: var(--pw-border-radius);
+            padding: 2rem;
+            box-shadow: var(--pw-shadow);
+            border: 1px solid #E5E7EB;
+            transition: all 0.3s;
+        }
+        body.dark .demo-section {
+            background-color: var(--pw-surface-dark);
+            border-color: #374151;
+        }
+
+        .demo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .demo-card {
+            padding: 1.5rem;
+            border-radius: var(--pw-border-radius);
+            color: var(--pw-text-on-dark);
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .card-dark-teal { background-color: var(--pw-card-dark-teal); }
+        .card-muted-blue { background-color: var(--pw-card-muted-blue); }
+        .card-light {
+            background-color: var(--pw-surface-light);
+            color: var(--pw-text-primary-light);
+            box-shadow: var(--pw-shadow);
+            border: 1px solid #E5E7EB;
+        }
+        body.dark .card-light {
+            background-color: var(--pw-surface-dark);
+            color: var(--pw-text-primary-dark);
+            border-color: #374151;
+        }
+
+        .demo-card .label { font-size: 0.875rem; opacity: 0.8; }
+        .demo-card .amount { font-size: 2rem; font-weight: 800; }
+        .demo-card .details { font-size: 0.875rem; opacity: 0.8; }
+
+        .icon-circle {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>New Design Palette</h1>
+            <div class="theme-switcher">
+                <button id="light-btn" class="active">☀️ Light</button>
+                <button id="dark-btn">🌙 Dark</button>
+            </div>
+        </div>
+
+        <!-- Background & Surface Colors -->
+        <div class="palette-section">
+            <h2 class="section-title">Background & Surface</h2>
+            <div class="color-grid">
+                <div class="color-card">
+                    <div class="color-swatch" style="background-color: #F4F6F6;"></div>
+                    <div class="color-info"><h3>BG Light</h3><div class="color-code">#F4F6F6</div></div>
+                </div>
+                <div class="color-card">
+                    <div class="color-swatch" style="background-color: #FFFFFF;"></div>
+                    <div class="color-info"><h3>Surface Light</h3><div class="color-code">#FFFFFF</div></div>
+                </div>
+                <div class="color-card">
+                    <div class="color-swatch" style="background-color: #2C383F;"></div>
+                    <div class="color-info"><h3>BG Dark</h3><div class="color-code">#2C383F</div></div>
+                </div>
+                <div class="color-card">
+                    <div class="color-swatch" style="background-color: #37474F;"></div>
+                    <div class="color-info"><h3>Surface Dark</h3><div class="color-code">#37474F</div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card & Accent Colors -->
+        <div class="palette-section">
+            <h2 class="section-title">Card & Accent Colors</h2>
+            <div class="color-grid">
+                <div class="color-card">
+                    <div class="color-swatch" style="background-color: #42887C;"></div>
+                    <div class="color-info"><h3>Dark Teal Card</h3><div class="color-code">#42887C</div></div>
+                </div>
+                <div class="color-card">
+                    <div class="color-swatch" style="background-color: #81B2CA;"></div>
+                    <div class="color-info"><h3>Muted Blue Card</h3><div class="color-code">#81B2CA</div></div>
+                </div>
+                <div class="color-card">
+                    <div class="color-swatch" style="background-color: #FAB512;"></div>
+                    <div class="color-info"><h3>Accent Yellow</h3><div class="color-code">#FAB512</div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Icon Colors -->
+        <div class="palette-section">
+            <h2 class="section-title">Icon Colors</h2>
+            <div class="color-grid">
+                <div class="color-card">
+                    <div class="color-swatch" style="background-color: #D9E7E5;"></div>
+                    <div class="color-info"><h3>Icon BG Green</h3><div class="color-code">#D9E7E5</div></div>
+                </div>
+                <div class="color-card">
+                    <div class="color-swatch" style="background-color: #42887C;"></div>
+                    <div class="color-info"><h3>Icon Green</h3><div class="color-code">#42887C</div></div>
+                </div>
+                <div class="color-card">
+                    <div class="color-swatch" style="background-color: #E6E2E6;"></div>
+                    <div class="color-info"><h3>Icon BG Purple</h3><div class="color-code">#E6E2E6</div></div>
+                </div>
+                <div class="color-card">
+                    <div class="color-swatch" style="background-color: #836F81;"></div>
+                    <div class="color-info"><h3>Icon Purple</h3><div class="color-code">#836F81</div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Demo Section -->
+        <div class="palette-section">
+            <h2 class="section-title">Live Demo</h2>
+            <div class="demo-section">
+                <div class="demo-grid">
+                    <div class="demo-card card-dark-teal">
+                        <span class="label">Available balance</span>
+                        <span class="amount">$3,578</span>
+                        <span class="details">See details</span>
+                    </div>
+                    <div class="demo-card card-muted-blue">
+                        <span class="label">Budget for October</span>
+                        <span class="amount">$2,478</span>
+                        <span class="details">Cash Available</span>
+                    </div>
+                    <div class="demo-card card-light">
+                        <div style="display:flex; align-items:center; gap: 1rem;">
+                            <div class="icon-circle" style="background-color: var(--pw-icon-bg-green); color: var(--pw-icon-green);">🏠</div>
+                            <div>
+                                <span class="amount" style="font-size: 1.5rem;">$1,800.00</span>
+                                <div class="details">Income</div>
+                            </div>
+                        </div>
+                    </div>
+                     <div class="demo-card card-light">
+                        <div style="display:flex; align-items:center; gap: 1rem;">
+                            <div class="icon-circle" style="background-color: var(--pw-icon-bg-purple); color: var(--pw-icon-purple);">🛒</div>
+                            <div>
+                                <span class="amount" style="font-size: 1.5rem;">$1,800.00</span>
+                                <div class="details">Expense</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const lightBtn = document.getElementById('light-btn');
+        const darkBtn = document.getElementById('dark-btn');
+        const body = document.body;
+
+        lightBtn.addEventListener('click', () => {
+            body.classList.remove('dark');
+            lightBtn.classList.add('active');
+            darkBtn.classList.remove('active');
+        });
+
+        darkBtn.addEventListener('click', () => {
+            body.classList.add('dark');
+            darkBtn.classList.add('active');
+            lightBtn.classList.remove('active');
+        });
+    </script>
+</body>
+</html>

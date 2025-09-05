@@ -1,5 +1,6 @@
 import { Component, OnInit, TemplateRef, ViewContainerRef } from '@angular/core';
 import { Store } from '@ngxs/store';
+import { HelperService } from 'src/app/services/helper.service';
 import { PopoverRef } from 'src/app/services/popover-ref';
 import { PopoverService } from 'src/app/services/popover.service';
 import { StoreService } from 'src/app/services/store.service';
@@ -56,6 +57,7 @@ export class DatePickerComponent implements OnInit {
     public store: StoreService,
     private viewContainerRef: ViewContainerRef,
     private popper: PopoverService,
+    private helperService: HelperService,
   ) {}
 
   ngOnInit(): void {
@@ -63,7 +65,8 @@ export class DatePickerComponent implements OnInit {
   }
 
   setSelectedMonthKey() {
-    this.ngxsStore.dispatch(new BudgetsActions.SetSelectedMonth(`${this.selectedYear}-${this.selectedMonth}`));
+    const monthKey = this.helperService.getSelectedMonthInHumanFormat(`${this.selectedYear}-${this.selectedMonth}`);
+    this.ngxsStore.dispatch(new BudgetsActions.SetSelectedMonth(monthKey));
   }
 
   initDate() {

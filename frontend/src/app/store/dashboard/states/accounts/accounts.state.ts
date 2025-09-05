@@ -1,13 +1,12 @@
 import { Injectable } from '@angular/core';
 import { Action, Selector, State, StateContext, Store } from '@ngxs/store';
 import { AccountsActions } from './accounts.action';
-import { Emitted, NgxsFirestoreConnect, StreamEmitted } from '@ngxs-labs/firestore-plugin';
+import { NgxsFirestoreConnect } from '@ngxs-labs/firestore-plugin';
 import { AccountsFirestore } from 'src/app/services/databases/accounts.firestore';
 import { Account, BudgetAccountType, TrackingAccountType } from 'src/app/models/account.model';
 import { TransactionsState } from '../transactions/transactions.state';
-import { query, where } from 'firebase/firestore';
-import { ConfigActions } from '../config/config.action';
 import { TransactionsActions } from '../transactions/transaction.action';
+import { HttpService } from 'src/app/services/http.service';
 
 export interface AccountStateModel {
   selectedAccount: Account | null;
@@ -67,35 +66,55 @@ export class AccountsState {
   }
   @Selector()
   static getTotalCurrentFunds(state: AccountStateModel): number {
-    return state.allAccounts.reduce((a, b) => a + b.balance, 0);
+    return state.allAccounts.reduce((a, b) => a + (b.balance ?? 0), 0);
   }
 
   constructor(
     private ngxsStore: Store,
     private ngxsFirestoreConnect: NgxsFirestoreConnect,
     private accountsFs: AccountsFirestore,
-  ) {}
+    private httpService: HttpService,
+  ) { }
 
-  @Action(AccountsActions.GetAllAccounts)
-  initAccountsStream(ctx: StateContext<AccountStateModel>, { budgetId }: AccountsActions.GetAllAccounts) {
-    this.ngxsFirestoreConnect.connect(AccountsActions.GetAllAccounts, {
-      to: () => this.accountsFs.collection$((ref) => query(ref, where('budgetId', '==', budgetId))),
-      connectedActionFinishesOn: 'FirstEmit',
-    });
-  }
+  // @Action(AccountsActions.GetAllAccounts)
+  // initAccountsStream(ctx: StateContext<AccountStateModel>, { budgetId }: AccountsActions.GetAllAccounts) {
+  //   this.ngxsFirestoreConnect.connect(AccountsActions.GetAllAccounts, {
+  //     to: () => this.accountsFs.collection$((ref) => query(ref, where('budgetId', '==', budgetId))),
+  //     connectedActionFinishesOn: 'FirstEmit',
+  //   });
+  // }
 
-  @Action(StreamEmitted(AccountsActions.GetAllAccounts))
-  getAllAccounts(
-    ctx: StateContext<AccountStateModel>,
-    { payload }: Emitted<AccountsActions.GetAllAccounts, Account[]>,
-  ) {
-    console.log("ACCOUNTS::::", payload);
-    ctx.patchState({
-      allAccounts: payload,
-      budgetAccounts: this.filterBudgetAccounts(payload),
-      trackingAccounts: this.filterTrackingAccounts(payload),
+  // @Action(StreamEmitted(AccountsActions.GetAllAccounts))
+  // getAllAccounts(
+  //   ctx: StateContext<AccountStateModel>,
+  //   { payload }: Emitted<AccountsActions.GetAllAccounts, Account[]>,
+  // ) {
+  //   console.log("ACCOUNTS::::", payload);
+  //   ctx.patchState({
+  //     allAccounts: payload,
+  //     budgetAccounts: this.filterBudgetAccounts(payload),
+  //     trackingAccounts: this.filterTrackingAccounts(payload),
+  //   });
+  //   this.ngxsStore.dispatch(new ConfigActions.SetStateLoadingStatus(false));
+  // }
+
+  @Action(AccountsActions.GetAccounts)
+  getAllAccount(ctx: StateContext<AccountStateModel>) {
+    this.httpService.get<Account[]>('accounts').subscribe({
+      next: (accounts) => {
+        const allAccounts = accounts.map((acc) => {
+          return {
+            ...acc,
+            balance: acc.balance ?? 0,
+          } as Account;
+        });
+        ctx.patchState({
+          allAccounts: allAccounts,
+          budgetAccounts: this.filterBudgetAccounts(accounts),
+          trackingAccounts: this.filterTrackingAccounts(accounts),
+        });
+      },
     });
-    this.ngxsStore.dispatch(new ConfigActions.SetStateLoadingStatus(false));
   }
 
   @Action(AccountsActions.SetBudgetAccounts)
@@ -117,7 +136,8 @@ export class AccountsState {
     ctx.patchState({
       selectedAccount: payload,
     });
-    this.ngxsStore.dispatch(new TransactionsActions.ProcessNormalisedTransaction());
+    // this.ngxsStore.dispatch(new TransactionsActions.ProcessNormalisedTransaction());
+    this.ngxsStore.dispatch(new TransactionsActions.GetNormalisedTransaction(payload?.id ?? ''));
   }
 
   @Action(AccountsActions.SetBalanceForAccounts)
