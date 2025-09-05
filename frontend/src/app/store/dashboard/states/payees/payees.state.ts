@@ -6,6 +6,7 @@ import { PayeesFirestore } from 'src/app/services/databases/payees.firestore';
 import { PayeesActions } from './payees.action';
 import { STARTING_BALANCE_PAYEE } from 'src/app/constants/general';
 import { query, where } from 'firebase/firestore';
+import { HttpService } from 'src/app/services/http.service';
 
 export interface PayeesStateModel {
   allPayees: Payee[];
@@ -18,6 +19,8 @@ export interface PayeesStateModel {
 })
 @Injectable()
 export class PayeesState implements NgxsOnInit {
+  readonly ENDPOINT = 'payees';
+
   @Selector()
   static getAllPayees(state: PayeesStateModel): Payee[] {
     return state.allPayees;
@@ -38,7 +41,8 @@ export class PayeesState implements NgxsOnInit {
     private ngxsStore: Store,
     private ngxsFirestoreConnect: NgxsFirestoreConnect,
     private payeesFs: PayeesFirestore,
-  ) {}
+    private httpService: HttpService,
+  ) { }
 
   ngxsOnInit() {
     // this.ngxsFirestoreConnect.connect(PayeesActions.GetAllPayees, {
@@ -47,19 +51,40 @@ export class PayeesState implements NgxsOnInit {
     // });
   }
 
-  @Action(PayeesActions.GetAllPayees)
-  initPayeesStream(ctx: StateContext<PayeesStateModel>, { budgetId }: PayeesActions.GetAllPayees) {
-    this.ngxsFirestoreConnect.connect(PayeesActions.GetAllPayees, {
-      to: () => this.payeesFs.collection$((ref) => query(ref, where('budgetId', '==', budgetId))),
-      // connectedActionFinishesOn: 'FirstEmit',
+  // @Action(PayeesActions.GetAllPayees)
+  // initPayeesStream(ctx: StateContext<PayeesStateModel>, { budgetId }: PayeesActions.GetAllPayees) {
+  //   this.ngxsFirestoreConnect.connect(PayeesActions.GetAllPayees, {
+  //     to: () => this.payeesFs.collection$((ref) => query(ref, where('budgetId', '==', budgetId))),
+  //     // connectedActionFinishesOn: 'FirstEmit',
+  //   });
+  // }
+  //
+  // @Action(StreamEmitted(PayeesActions.GetAllPayees))
+  // getAllPayees(ctx: StateContext<PayeesStateModel>, { payload }: Emitted<PayeesActions.GetAllPayees, Payee[]>) {
+  //   console.log("PAYEES:::", payload);
+  //   ctx.patchState({
+  //     allPayees: payload,
+  //   });
+  // }
+
+  @Action(PayeesActions.GetPayees)
+  getPayees(ctx: StateContext<PayeesStateModel>) {
+    this.httpService.get<Payee[]>(this.ENDPOINT).subscribe({
+      next: (payees) => {
+        ctx.patchState({
+          allPayees: payees,
+        });
+      },
     });
   }
 
-  @Action(StreamEmitted(PayeesActions.GetAllPayees))
-  getAllPayees(ctx: StateContext<PayeesStateModel>, { payload }: Emitted<PayeesActions.GetAllPayees, Payee[]>) {
-    console.log("PAYEES:::", payload);
-    ctx.patchState({
-      allPayees: payload,
+  @Action(PayeesActions.CreatePayee)
+  createPayee(ctx: StateContext<PayeesStateModel>, { payload }: PayeesActions.CreatePayee) {
+    this.httpService.post<Partial<Payee>>(this.ENDPOINT, payload).subscribe({
+      next: (res) => {
+        console.log('Payee created: ', res);
+        ctx.dispatch(new PayeesActions.GetPayees());
+      },
     });
   }
 }

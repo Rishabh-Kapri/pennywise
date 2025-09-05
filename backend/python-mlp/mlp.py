@@ -496,7 +496,7 @@ class PennywiseMLP:
         # Only initialise the labels and extra params when training a new model
         # load_model method will handle loading these params for existing model
         self.type = type
-        self.model = SentenceTransformer(model)
+        self.model = SentenceTransformer(model, trust_remote_code=True)
         if is_new:
             (
                 emails,
@@ -614,7 +614,7 @@ class PennywiseMLP:
 
         # Load and process data
         try:
-            with open("./normalized_with_email.json", "r") as file:
+            with open("./data/normalized_with_email.json", "r") as file:
                 email_data = json.load(file)
         except FileNotFoundError:
             raise FileNotFoundError("normalized_with_email.json not found")
@@ -660,7 +660,9 @@ class PennywiseMLP:
         Y = np.eye(len(self.label_encoder.classes_))[y_indices].T  # type: ignore
         return Y.T
 
-    def load_model(self, path="pennywise_mlp.parms"):
+    def load_model(self, path):
+        if path is None:
+            raise Exception("No model path provided")
         try:
             with open(path, "rb") as f:
                 data = pickle.load(f)
@@ -680,7 +682,9 @@ class PennywiseMLP:
         except FileNotFoundError:
             raise FileNotFoundError(f"{path} not found")
 
-    def save_model(self, path="pennywise_mlp.parms"):
+    def save_model(self, path):
+        if path is None:
+            raise Exception("No path provided to save model")
         model_data = {
             "mlp": {
                 "weights": [w.tolist() for w in self.mlp.weights.values()],
@@ -1052,7 +1056,7 @@ category_params: list[HyperParameters] = [
 
 
 def predict_payee():
-    file = open("./test_data.json")
+    file = open("./data/test_data.json")
     test_emails = json.load(file)
 
     payee_mlp = PennywiseMLP(type="payee", is_new=False, model="all-mpnet-base-v2")
@@ -1077,7 +1081,7 @@ def predict_payee():
 
 
 def predict_category():
-    file = open("./test_data.json")
+    file = open("./data/test_data.json")
     test_emails = json.load(file)
 
     category_mlp = PennywiseMLP("category", is_new=False)
@@ -1094,7 +1098,7 @@ def predict_category():
 
 
 def predict_account():
-    file = open("./test_data.json")
+    file = open("./data/test_data.json")
     test_emails = json.load(file)
 
     account_mlp = PennywiseMLP("account", is_new=False)
@@ -1114,23 +1118,24 @@ def predict_account():
 
 
 def train_payee():
-    file = open("./test_data.json")
+    file = open("./data/test_data.json")
     test_emails = json.load(file)
 
-    mlp = PennywiseMLP(type="payee", is_new=True, model="all-mpnet-base-v2")
-    mlp.load_model(path="pennywise_payee_mlp.parms")
+    mlp = PennywiseMLP(type="payee", is_new=True, model="nomic-ai/nomic-embed-text-v1.5")
+    # mlp.load_model(path="pennywise_payee_mlp.parms")
     # results = mlp.k_fold_train_validate(hyper_parameters=payee_params, cv_folds=5)
     # mlp.train(hyper_parameters=results["best_params"])
-    # mlp.train(hyper_parameters=payee_params[0]) # best params with all-mpnet-base-v2
+    mlp.train(hyper_parameters=payee_params[2]) # best params with all-mpnet-base-v2
     mlp.test(test_data=test_emails, key="email_text")
     # mlp.save_model(path="pennywise_payee_mlp.parms")
 
 
 def train_category():
-    file = open("./test_data.json")
+    file = open("./data/test_data.json")
     test_emails = json.load(file)
 
-    mlp = PennywiseMLP(type="category", is_new=True)
+    # mlp = PennywiseMLP(type="category", is_new=True, model="nomic-ai/nomic-embed-text-v1.5")
+    mlp = PennywiseMLP(type="category", is_new=False)
     mlp.load_model(path="pennywise_category_mlp.parms")
     # results = mlp.k_fold_train_validate(hyper_parameters=category_params, cv_folds=5)
     # mlp.train(hyper_parameters=results["best_params"])

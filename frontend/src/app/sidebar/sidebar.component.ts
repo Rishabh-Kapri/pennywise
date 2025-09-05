@@ -90,7 +90,7 @@ export class SidebarComponent implements OnInit, AfterViewInit {
     this.budgetAccountData$ = combineLatest([this.budgetAccounts$]).pipe(
       switchMap(([accounts]) => {
         let data = {
-          totalAmount: Number(accounts.reduce((a, b) => a + b.balance, 0).toFixed(2)),
+          totalAmount: Number(accounts.reduce((a, b) => a + (b.balance ?? 0), 0).toFixed(2)),
           accounts,
         };
         return of(data);
@@ -99,7 +99,7 @@ export class SidebarComponent implements OnInit, AfterViewInit {
     this.trackingAccountData$ = combineLatest([this.trackingAccounts$]).pipe(
       switchMap(([accounts]) => {
         let data = {
-          totalAmount: Number(accounts.reduce((a, b) => a + b.balance, 0).toFixed(2)),
+          totalAmount: Number(accounts.reduce((a, b) => a + (b.balance ?? 0), 0).toFixed(2)),
           accounts,
         };
         return of(data);

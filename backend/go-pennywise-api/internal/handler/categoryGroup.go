@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strings"
 
 	"pennywise-api/internal/model"
 	"pennywise-api/internal/service"
@@ -33,7 +34,8 @@ func (h *categoryGroupHandler) List(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	groups, err := h.service.GetAll(ctx)
+	month := strings.TrimSpace(c.Query("month"))
+	groups, err := h.service.GetAll(ctx, month)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

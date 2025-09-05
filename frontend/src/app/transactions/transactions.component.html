@@ -371,7 +371,7 @@
                 [class]="transactionColumnsObj['Outflow'].class"
                 class="pr-2 h-full flex items-center text-red-400 self-center text-center truncate">
                 <div 
-                  *ngIf="selectedTransaction?.id !== txn.id" 
+                  *ngIf="selectedTransaction?.id !== txn.id && (txn.outflow  ?? 0) > 0" 
                   class="text-right">
                   {{ txn.outflow | currency: 'INR' }}
                 </div>
@@ -389,7 +389,7 @@
                 [class]="transactionColumnsObj['Inflow'].class"
                 class="h-full flex justify-end items-center text-green-400 self-center text-center truncate">
                 <div 
-                  *ngIf="selectedTransaction?.id !== txn.id" 
+                  *ngIf="selectedTransaction?.id !== txn.id && (txn?.inflow ?? 0) > 0" 
                   class="text-right">
                   {{ txn.inflow | currency: 'INR' }}
                 </div>

@@ -15,6 +15,7 @@ import { AccountsState } from '../accounts/accounts.state';
 import { Category } from 'src/app/models/category.model';
 import { query, where } from 'firebase/firestore';
 import { StateOperator, compose, patch, updateItem } from '@ngxs/store/operators';
+import { HttpService } from 'src/app/services/http.service';
 
 export interface CategoryGroupsStateModel {
   allCategoryGroups: CategoryGroup[];
@@ -72,29 +73,44 @@ export class CategoryGroupsState implements NgxsOnInit {
     private ngxsFirestoreConnect: NgxsFirestoreConnect,
     private categoryGroupsFs: CategoryGroupsFirestore,
     private helperService: HelperService,
-  ) {}
+    private httpService: HttpService,
+  ) { }
 
-  ngxsOnInit(): void {}
+  ngxsOnInit(): void { }
 
-  @Action(CategoryGroupsActions.GetAllCategoryGroups)
-  initCategoryGroupsStream(
-    ctx: StateContext<CategoryGroupsStateModel>,
-    { budgetId }: CategoryGroupsActions.GetAllCategoryGroups,
-  ) {
-    this.ngxsFirestoreConnect.connect(CategoryGroupsActions.GetAllCategoryGroups, {
-      to: () => this.categoryGroupsFs.collection$((ref) => query(ref, where('budgetId', '==', budgetId))),
-      connectedActionFinishesOn: 'FirstEmit',
-    });
-  }
+  // @Action(CategoryGroupsActions.GetAllCategoryGroups)
+  // initCategoryGroupsStream(
+  //   ctx: StateContext<CategoryGroupsStateModel>,
+  //   { budgetId }: CategoryGroupsActions.GetAllCategoryGroups,
+  // ) {
+  //   this.ngxsFirestoreConnect.connect(CategoryGroupsActions.GetAllCategoryGroups, {
+  //     to: () => this.categoryGroupsFs.collection$((ref) => query(ref, where('budgetId', '==', budgetId))),
+  //     connectedActionFinishesOn: 'FirstEmit',
+  //   });
+  // }
+  //
+  // @Action(StreamEmitted(CategoryGroupsActions.GetAllCategoryGroups))
+  // getAllBudgets(
+  //   ctx: StateContext<CategoryGroupsStateModel>,
+  //   { payload }: Emitted<CategoryGroupsActions.GetAllCategoryGroups, CategoryGroup[]>,
+  // ) {
+  //   console.log("GROUPS:::", payload)
+  //   ctx.patchState({
+  //     allCategoryGroups: payload,
+  //   });
+  // }
 
-  @Action(StreamEmitted(CategoryGroupsActions.GetAllCategoryGroups))
-  getAllBudgets(
-    ctx: StateContext<CategoryGroupsStateModel>,
-    { payload }: Emitted<CategoryGroupsActions.GetAllCategoryGroups, CategoryGroup[]>,
-  ) {
-    console.log("GROUPS:::", payload)
-    ctx.patchState({
-      allCategoryGroups: payload,
+  @Action(CategoryGroupsActions.GetCategoryGroups)
+  getCategoryGroups(ctx: StateContext<CategoryGroupsStateModel>, { month }: CategoryGroupsActions.GetCategoryGroups) {
+    const url = month ? `category-groups?month=${month}` : 'category-groups';
+    this.httpService.get<CategoryGroupData[]>(url).subscribe({
+      next: (groups) => {
+        console.log(groups);
+        ctx.patchState({
+          // allCategoryGroups: groups,
+          categoryGroups: groups,
+        });
+      },
     });
   }
 
@@ -173,7 +189,7 @@ export class CategoryGroupsState implements NgxsOnInit {
                 console.log('credit card category:', category, category.name);
                 currMonthCatTxns = this.helperService.getTransactionsForAccount(currentMonthTxns, [
                   ...ccAccounts.map((acc) => acc.id!),
-                ]);
+                ]) as Transaction[];
                 console.log(
                   'credit card category txns:',
                   currMonthCatTxns,
@@ -242,7 +258,7 @@ export class CategoryGroupsState implements NgxsOnInit {
           if (this.helperService.isCategoryCreditCard(category)) {
             currMonthCatTransactions = this.helperService.getTransactionsForAccount(currentMonthTransactions, [
               ...ccAccounts.map((acc) => acc.id!),
-            ]);
+            ]) as Transaction[];
           } else {
             currMonthCatTransactions = this.helperService.getTransactionsForCategory(currentMonthTransactions, [
               category.id!,

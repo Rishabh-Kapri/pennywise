@@ -442,7 +442,7 @@ export class ReportsComponent implements AfterViewInit, OnDestroy {
     const drilldownSeries = [];
     for (const [groupId, groupValue] of categoryGroups.entries()) {
       const transactionAmount = this.getTransactionsAmount(
-        filteredTransactions,
+        <Transaction[]>filteredTransactions,
         groupValue.categories.map((cat: any) => cat.id),
       );
       if (transactionAmount) {
@@ -454,7 +454,7 @@ export class ReportsComponent implements AfterViewInit, OnDestroy {
         drilldownSeries.push({
           name: groupValue.name,
           id: groupValue.name,
-          data: this.getCategoriesData(filteredTransactions, groupValue.categories),
+          data: this.getCategoriesData(<Transaction[]>filteredTransactions, groupValue.categories),
         });
       }
     }

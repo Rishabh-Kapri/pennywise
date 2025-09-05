@@ -8,6 +8,8 @@ export const environment = {
     messagingSenderId: '1034450232305',
     appId: '1:1034450232305:web:2c3c66eb7e9c721dfc9a50',
   },
+  // apiUrl: 'http://192.168.1.34:5151/api',
+  apiUrl: 'http://localhost:5151/api',
   // firebase: {
   //   apiKey: 'AIzaSyALw4eqJI67iyiT2Fl0pdKwos0Lx8CoRLM',
   //   authDomain: 'pennywise-e951e.firebaseapp.com',

@@ -3,6 +3,7 @@
     accountObj: accountObj$ | async,
     payeeObj: payeeObj$ | async
   } as data">
+  {{ budgetKey }}
   <div *ngFor="let category of categories">
     <div
       class="flex text-sm bg-zinc-900 items-center w-full p-2 px-4 border-b border-neutral-600 cursor-pointer"
@@ -44,7 +45,10 @@
       </div>
       <div
         class="flex-20 text-right pr-[2px] hidden sm:block"
-        [ngClass]="{ 'text-slate-200': category.activity?.[budgetKey]! !== 0, 'text-neutral-500': category.activity?.[budgetKey] === 0 }">
+        [ngClass]="{ 
+          'text-slate-200': (category.activity?.[budgetKey] ?? 0) !== 0,
+          'text-neutral-500': (category.activity?.[budgetKey] ?? 0) === 0
+         }">
         <span
           [id]="'activityMenuBtn-' + category.id"
           class="cursor-pointer hover:text-white"
@@ -215,8 +219,8 @@
                 <td [title]="transaction.note ?? ''" class="border-r border-b border-neutral-600 w-1/5 truncate text-left text-sm text-neutral-100 px-1">
                   {{ transaction.note }}
                 </td>
-                <td [title]="transaction.amount" class="border-b border-neutral-600 w-1/5 truncate text-right text-sm text-neutral-100 px-1">
-                  {{ transaction.amount | currency: 'INR' }}
+                <td [title]="transaction.amount ?? 0" class="border-b border-neutral-600 w-1/5 truncate text-right text-sm text-neutral-100 px-1">
+                  {{ transaction.amount ?? 0 | currency: 'INR' }}
                 </td>
               </tr>
             </tbody>
