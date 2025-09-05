@@ -21,6 +21,7 @@ import {
   SelectedAccountColumns,
   Transaction,
   TransactionSearchKeys,
+  TransactionSource,
 } from '../models/transaction.model';
 import { HelperService } from '../services/helper.service';
 import { CategoryGroupData } from '../models/state.model';
@@ -38,6 +39,7 @@ import { CategoriesState } from '../store/dashboard/states/categories/categories
 import { PayeesState } from '../store/dashboard/states/payees/payees.state';
 import { BudgetsState } from '../store/dashboard/states/budget/budget.state';
 import { PayeesActions } from '../store/dashboard/states/payees/payees.action';
+import { TransactionsActions } from '../store/dashboard/states/transactions/transaction.action';
 
 declare var Datepicker: any;
 
@@ -370,10 +372,10 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
     this.transactionColumns = [];
     if (this.account) {
       this.transactionColumns = structuredClone(SelectedAccountColumns);
-      this.totalCurrentFunds$ = of(this.account.balance);
+      this.totalCurrentFunds$ = of(this.account.balance ?? 0);
     } else {
       this.transactionColumns = structuredClone(AllAccountsColumns);
-      this.totalCurrentFunds$ = this.allAccounts$?.pipe(map((data) => data.reduce((a, b) => a + b.balance, 0)));
+      this.totalCurrentFunds$ = this.allAccounts$?.pipe(map((data) => data.reduce((a, b) => a + (b.balance ?? 0), 0)));
     }
     this.transactionColumnsObj = structuredClone(this.transactionColumns).reduce((obj, col) => {
       return Object.assign(obj, { [col.name]: col });
@@ -501,9 +503,7 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
       deleted: false,
       createdAt: new Date().toISOString(),
     };
-    // this.ngxsStore.dispatch(new PayeesActions.CreatePayee(payee));
-    return await this.dbService.createPayee(payee);
-
+    this.ngxsStore.dispatch(new PayeesActions.CreatePayee(payee));
   }
 
   selectAccount(account: Account) {
@@ -531,10 +531,10 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
         selectedPayeeId = filteredPayee.id!;
         selectedPayeeName = filteredPayee.name;
       } else {
-        const createdPayee = await this.createNewPayee();
-        // then select this new created payee
-        selectedPayeeId = createdPayee.id;
-        selectedPayeeName = searchPayee;
+        // const createdPayee = await this.createNewPayee();
+        // // then select this new created payee
+        // selectedPayeeId = createdPayee.id;
+        // selectedPayeeName = searchPayee;
       }
     }
     if (this.selectedTransaction) {
@@ -566,10 +566,10 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
   }
 
   deleteTransaction(transaction: NormalizedTransaction) {
-    this.dbService.deleteTransaction(transaction.id!);
-    if (transaction.transferTransactionId) {
-      this.dbService.deleteTransaction(transaction.transferTransactionId);
-    }
+    // this.dbService.deleteTransaction(transaction.id!);
+    // if (transaction.transferTransactionId) {
+    //   this.dbService.deleteTransaction(transaction.transferTransactionId);
+    // }
   }
 
   cancelTransactionSave() {
@@ -585,15 +585,21 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
         this.selectedTransaction.accountId = this.selectedAccount.id!;
         this.selectedTransaction.accountName = this.selectedAccount.name;
       }
-      const amount = this.selectedTransaction.inflow ?? -this.selectedTransaction?.outflow! ?? 0;
+      let amount = 0;
+      if ((this.selectedTransaction?.outflow ?? 0) != 0)  {
+        amount  = -(this.selectedTransaction?.outflow ?? 0);
+      } else  {
+        amount  = this.selectedTransaction?.inflow ?? 0;
+      }
       switch (this.currentMode) {
         case Mode.CREATE:
           this.createNewTransaction(amount, this.selectedTransaction, this.selectedAccount, this.selectedPayee);
           this.cancelTransactionSave();
           break;
         case Mode.EDIT:
-          const transactions = this.ngxsStore.selectSnapshot(TransactionsState.getAllTransactions);
-          let existingTransaction = transactions.find((tran) => tran.id === this.selectedTransaction?.id);
+          const transactions = this.ngxsStore.selectSnapshot(TransactionsState.getNormalizedTransaction);
+          let existingTransaction = transactions.find((txn) => txn.id === this.selectedTransaction?.id);
+          console.log(this.selectedTransaction, this.currentMode, existingTransaction);
           // console.log('selected payee:', this.selectedPayee);
           // console.log('selected account:', this.selectedAccount);
           // console.log('selected transaction:', this.selectedTransaction);
@@ -608,11 +614,11 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
           ) {
             // changing payees and accounts
             // this is a completely new transaction, delete both existingTransaction and existing transferTransaction
-            this.dbService.deleteTransaction(existingTransaction?.id!);
-            if (existingTransaction?.transferTransactionId) {
-              this.dbService.deleteTransaction(existingTransaction.transferTransactionId);
-            }
-            this.createNewTransaction(amount, this.selectedTransaction, this.selectedAccount, this.selectedPayee);
+            // this.dbService.deleteTransaction(existingTransaction?.id!);
+            // if (existingTransaction?.transferTransactionId) {
+            //   this.dbService.deleteTransaction(existingTransaction.transferTransactionId);
+            // }
+            // this.createNewTransaction(amount, this.selectedTransaction, this.selectedAccount, this.selectedPayee);
           } else {
             // just update the info of selected transaction and transfer if it exists, no need for all the logic
             // update selected transaction
@@ -633,15 +639,17 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
                   ? this.selectedPayee.transferAccountId
                   : null,
             };
-            this.dbService.editTransaction(editData);
+            console.log('dispatching action', editData);
+            // this.dbService.editTransaction(editData);
+            this.ngxsStore.dispatch(new TransactionsActions.EditTransaction(editData))
             if (existingTransaction?.transferTransactionId) {
               const transferTransaction = transactions.find(
-                (tran) => tran.id! === existingTransaction?.transferTransactionId,
+                (txn) => txn.id! === existingTransaction?.transferTransactionId,
               );
               if (transferTransaction) {
                 const isDeleteTransfer = this.selectedPayee.transferAccountId ? false : true;
                 if (isDeleteTransfer) {
-                  this.dbService.deleteTransaction(transferTransaction.id!);
+                  // this.dbService.deleteTransaction(transferTransaction.id!);
                 } else {
                   const transferEditData = {
                     id: transferTransaction.id!,
@@ -654,7 +662,7 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
                     date: this.selectedTransaction.date,
                     note: this.selectedTransaction.note ?? '',
                   };
-                  this.dbService.editTransaction(transferEditData);
+                  // this.dbService.editTransaction(transferEditData);
                 }
               }
             } else {
@@ -689,16 +697,17 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
       payeeId: selectedTransaction.payeeId,
       categoryId: selectedTransaction.categoryId,
       note: selectedTransaction.note ?? '',
-      source: 'pennywise',
+      source: TransactionSource.PENNYWISE,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       deleted: false,
     };
-    const createdTransac = await this.dbService.createTransaction(newTransaction);
-    selectedTransaction.id = createdTransac.id;
+    // const createdTransac = await this.dbService.createTransaction(newTransaction);
+    // selectedTransaction.id = createdTransac.id;
+    this.ngxsStore.dispatch(new TransactionsActions.CreateTransaction(newTransaction));
     if (selectedPayee?.transferAccountId) {
       // this is a transfer payee, create another transaction
-      this.handleTransferTransaction(-amount, selectedTransaction, selectedPayee, selectedAccount);
+      // this.handleTransferTransaction(-amount, selectedTransaction, selectedPayee, selectedAccount);
     }
   }
 
@@ -729,24 +738,24 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
       // transactions cannot be created from tracking accounts, only to them from budget accounts, either inflow or outflow
       categoryId: null,
       note: selectedTransaction.note ?? '',
-      source: 'pennywise',
+      source: TransactionSource.PENNYWISE,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       deleted: false,
     };
-    const transferCreatedTransac = await this.dbService.createTransaction(transferTransac);
+    // const transferCreatedTransac = await this.dbService.createTransaction(transferTransac);
     const editData = {
       id: selectedTransaction.id!,
       payeeId: selectedPayee.id!,
       accountId: selectedAccount.id!,
       amount: -amount,
-      transferTransactionId: transferCreatedTransac.id,
+      // transferTransactionId: transferCreatedTransac.id,
       transferAccountId: selectedPayee.transferAccountId!,
       categoryId: selectedTransaction.categoryId,
       note: selectedTransaction.note ?? '',
       date: selectedTransaction.date,
     };
-    await this.dbService.editTransaction(editData);
+    // await this.dbService.editTransaction(editData);
   }
 
   trackByTransactionId(index: number, transaction: NormalizedTransaction) {

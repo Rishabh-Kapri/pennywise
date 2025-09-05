@@ -10,6 +10,7 @@ import { TransactionsState } from '../transactions/transactions.state';
 import { query, where } from 'firebase/firestore';
 import { CategoryGroupsActions } from '../categoryGroups/categoryGroups.action';
 import { patch, updateItem } from '@ngxs/store/operators';
+import { HttpService } from 'src/app/services/http.service';
 
 export interface CategoriesStateModel {
   allCategories: Category[];
@@ -39,13 +40,13 @@ export class CategoriesState {
 
   static getCategory(id: string): (state: CategoriesStateModel) => Category | null {
     return createSelector([CategoriesState], (state: CategoriesStateModel) => {
-      const foundCategory = state.allCategories.find(cat => cat.id === id) ?? null;
+      const foundCategory = state.allCategories.find((cat) => cat.id === id) ?? null;
       return JSON.parse(JSON.stringify(foundCategory));
     });
   }
   static getCategoryFromName(name: string): (state: CategoriesStateModel) => Category | null {
     return createSelector([CategoriesState], (state: CategoriesStateModel) => {
-      const foundCategory = state.allCategories.find(cat => cat.name === name) ?? null;
+      const foundCategory = state.allCategories.find((cat) => cat.name === name) ?? null;
       return JSON.parse(JSON.stringify(foundCategory));
     });
   }
@@ -55,25 +56,38 @@ export class CategoriesState {
     private ngxsFirestoreConnect: NgxsFirestoreConnect,
     private categoriesFs: CategoriesFirestore,
     private helperService: HelperService,
-  ) {}
+    private httpService: HttpService,
+  ) { }
 
-  @Action(CategoriesActions.GetAllCategories)
-  initCategoriesStream(ctx: StateContext<CategoriesStateModel>, { budgetId }: CategoriesActions.GetAllCategories) {
-    this.ngxsFirestoreConnect.connect(CategoriesActions.GetAllCategories, {
-      to: () => this.categoriesFs.collection$((ref) => query(ref, where('budgetId', '==', budgetId))),
-      connectedActionFinishesOn: 'FirstEmit',
-    });
-  }
+  // @Action(CategoriesActions.GetAllCategories)
+  // initCategoriesStream(ctx: StateContext<CategoriesStateModel>, { budgetId }: CategoriesActions.GetAllCategories) {
+  //   this.ngxsFirestoreConnect.connect(CategoriesActions.GetAllCategories, {
+  //     to: () => this.categoriesFs.collection$((ref) => query(ref, where('budgetId', '==', budgetId))),
+  //     connectedActionFinishesOn: 'FirstEmit',
+  //   });
+  // }
+  //
+  // @Action(StreamEmitted(CategoriesActions.GetAllCategories))
+  // getAllCategories(
+  //   ctx: StateContext<CategoriesStateModel>,
+  //   { payload }: Emitted<CategoriesActions.GetAllCategories, Category[]>,
+  // ) {
+  //   console.log("CATEGORIES::::", payload);
+  //   ctx.setState({
+  //     allCategories: payload,
+  //     inflowCategory: (payload.find((cat) => cat.name === INFLOW_CATEGORY_NAME) as unknown as InflowCategory) ?? null,
+  //   });
+  // }
 
-  @Action(StreamEmitted(CategoriesActions.GetAllCategories))
-  getAllCategories(
-    ctx: StateContext<CategoriesStateModel>,
-    { payload }: Emitted<CategoriesActions.GetAllCategories, Category[]>,
-  ) {
-    console.log("CATEGORIES::::", payload);
-    ctx.setState({
-      allCategories: payload,
-      inflowCategory: (payload.find((cat) => cat.name === INFLOW_CATEGORY_NAME) as unknown as InflowCategory) ?? null,
+  @Action(CategoriesActions.GetCategories)
+  getCategories(ctx: StateContext<CategoriesStateModel>) {
+    this.httpService.get<Category[]>('categories').subscribe({
+      next: (categories) => {
+        ctx.setState({
+          allCategories: categories,
+          inflowCategory: (categories.find((cat) => cat.name === INFLOW_CATEGORY_NAME) as unknown as InflowCategory)?? null,
+        })
+      }
     });
   }
 

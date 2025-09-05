@@ -8,6 +8,7 @@ import (
 	"pennywise-api/internal/repository"
 	"pennywise-api/internal/service"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
@@ -19,7 +20,19 @@ func main() {
 	dbConn := db.Connect()
 	router := gin.Default()
 
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:5000"},
+		AllowMethods:     []string{"GET", "POST", "PATCH", "PUT", "DELETE"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "X-Budget-ID"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+	}))
+
 	defer dbConn.Close()
+
+	budgetRepo := repository.NewBudgetRepository(dbConn)
+	budgetService := service.NewBudgetService(budgetRepo)
+	budgetHandler := handler.NewBudgetHandler(budgetService)
 
 	accountRepo := repository.NewAccountRepository(dbConn)
 	accountService := service.NewAccountService(accountRepo)
@@ -38,20 +51,30 @@ func main() {
 	categoryGroupHandler := handler.NewCategoryGroupHandler(categoryGroupService)
 
 	categoryRepo := repository.NewCategoryRepository(dbConn)
-	categoryService := service.NewCategoryService(categoryRepo)
+	monthlyBudgetRepo := repository.NewMonthlyBudgetRepository(dbConn)
+	categoryService := service.NewCategoryService(categoryRepo, monthlyBudgetRepo)
 	categoryHandler := handler.NewCategoryHandler(categoryService)
-
-	transactionRepo := repository.NewTransactionRepository(dbConn)
-	transactionService := service.NewTransactionService(transactionRepo)
-	transactionHandler := handler.NewTransactionHandler(transactionService)
 
 	predictionRepo := repository.NewPredictionRepository(dbConn)
 	predictionService := service.NewPredictionService(predictionRepo)
 	predictionHandler := handler.NewPredictionHandler(predictionService)
 
+	transactionRepo := repository.NewTransactionRepository(dbConn)
+	transactionService := service.NewTransactionService(transactionRepo, predictionRepo, accountRepo, payeeRepo, categoryRepo)
+	transactionHandler := handler.NewTransactionHandler(transactionService)
+
+
+	embeddingRepo := repository.NewEmbeddingRepository(dbConn)
+	embeddingService := service.NewEmbeddingService(embeddingRepo)
+	embeddingHandler := handler.NewEmbeddingHandler(embeddingService)
+
 	{
 		api := router.Group("/api")
 		api.GET("", healthPage) // simple health check
+		{
+			budgetGroup := router.Group("/api/budgets")
+			budgetGroup.GET("", budgetHandler.List)
+		}
 		{
 			accountGroup := router.Group("/api/accounts")
 			accountGroup.GET("/search", accountHandler.Search)
@@ -74,6 +97,7 @@ func main() {
 			categoryGroup := router.Group("/api/categories")
 			categoryGroup.POST("", categoryHandler.Create)
 			categoryGroup.GET("", categoryHandler.List)
+			categoryGroup.PATCH("/:id/:month", categoryHandler.UpdateBudget)
 			categoryGroup.GET("/search", categoryHandler.Search)
 			categoryGroup.GET(":id", categoryHandler.GetById)
 			categoryGroup.PUT(":id", categoryHandler.Update)
@@ -101,6 +125,11 @@ func main() {
 			predictionGroup.POST("", predictionHandler.Create)
 			predictionGroup.PATCH(":id", predictionHandler.Update)
 			predictionGroup.DELETE(":id", predictionHandler.DeleteById)
+		}
+		{
+			embeddingGroup := router.Group("/api/embeddings")
+			embeddingGroup.POST("", embeddingHandler.Create)
+			embeddingGroup.GET("/search", embeddingHandler.Search)
 		}
 	}
 	router.Run("0.0.0.0:5151")

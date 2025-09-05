@@ -6,7 +6,7 @@ import { Observable, map, take } from 'rxjs';
 import { Account, BudgetAccountType } from 'src/app/models/account.model';
 import { Category, InflowCategory } from 'src/app/models/category.model';
 import { Payee } from 'src/app/models/payee.model';
-import { Transaction } from 'src/app/models/transaction.model';
+import { NormalizedTransaction, Transaction } from 'src/app/models/transaction.model';
 import { HelperService } from 'src/app/services/helper.service';
 import { StoreService } from 'src/app/services/store.service';
 import { AccountsState } from 'src/app/store/dashboard/states/accounts/accounts.state';
@@ -39,7 +39,7 @@ export class CategoryItemComponent implements AfterViewInit {
   categoryObj$: Observable<Record<string, Category>>;
   payeeObj$: Observable<Record<string, Payee>>;
   categoryGroupData$ = this.ngxsStore.select(CategoryGroupsState.getCategoryGroupData);
-  categoryActivity: Transaction[];
+  categoryActivity: NormalizedTransaction[];
 
   menuDropdown: Dropdown;
   moveDropdown: Dropdown;
@@ -88,6 +88,7 @@ export class CategoryItemComponent implements AfterViewInit {
         }, {});
       }),
     );
+    console.log(this.categories);
   }
 
   ngAfterViewInit(): void {
@@ -211,20 +212,23 @@ export class CategoryItemComponent implements AfterViewInit {
 
   showActivityMenu(category: Category) {
     // filter category activity transactions
-    const allTransactions = this.ngxsStore.selectSnapshot(TransactionsState.getAllTransactions);
+    const allTransactions = this.ngxsStore.selectSnapshot(TransactionsState.getNormalizedTransaction);
     const ccAccounts = this.ngxsStore.selectSnapshot(AccountsState.getCreditCardAccounts);
-    let categoryTransactions: Transaction[] = [];
+    console.log(category, allTransactions, ccAccounts);
+    let categoryTransactions: NormalizedTransaction[] = [];
     if (this.helperService.isCategoryCreditCard(category)) {
-      categoryTransactions = this.helperService.getTransactionsForAccount(allTransactions, [
+      categoryTransactions = <NormalizedTransaction[]>this.helperService.getTransactionsForAccount(allTransactions, [
         ...ccAccounts.map((acc) => acc.id!),
       ]);
     } else {
       categoryTransactions = this.helperService.getTransactionsForCategory(allTransactions, [category.id!]);
+      console.log(categoryTransactions)
     }
     this.categoryActivity = this.helperService.filterTransactionsBasedOnMonth(
       categoryTransactions,
       this.ngxsStore.selectSnapshot(BudgetsState.getSelectedMonth),
     );
+    console.log(this.categoryActivity, this.ngxsStore.selectSnapshot(BudgetsState.getSelectedMonth));
     if (this.categoryActivity.length) {
       const activityMenuDropdown = this.helperService.getDropdownInstance(
         category.id!,

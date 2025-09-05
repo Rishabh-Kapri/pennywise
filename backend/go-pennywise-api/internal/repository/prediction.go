@@ -3,19 +3,23 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"time"
 
 	"pennywise-api/internal/model"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type PredictionRepository interface {
 	GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Prediction, error)
+	GetByTxnId(ctx context.Context, budgetId uuid.UUID, txnId uuid.UUID) (*model.Prediction, error)
+	GetByTxnIdTx(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, txnId uuid.UUID) (*model.Prediction, error)
 	Create(ctx context.Context, prediction model.Prediction) ([]model.Prediction, error)
-	Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, prediction model.Prediction) error
+	Update(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID, prediction model.Prediction) error
 	// DeleteById deletes a prediction by budget and prediction id.
 	DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error
 }
@@ -89,6 +93,72 @@ func (r *predictionRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]mode
 	return predictions, nil
 }
 
+func (r *predictionRepo) GetByTxnId(ctx context.Context, budgetId uuid.UUID, txnId uuid.UUID) (*model.Prediction, error) {
+	var p model.Prediction
+	err := r.db.QueryRow(
+		ctx, `
+		  SELECT *
+		  FROM predictions
+		  WHERE budget_id = $1 AND transaction_id = $2
+		`, budgetId, txnId,
+	).Scan(
+		&p.ID,
+		&p.BudgetID,
+		&p.TransactionID,
+		&p.EmailText,
+		&p.Amount,
+		&p.Account,
+		&p.AccountPrediction,
+		&p.Payee,
+		&p.PayeePrediction,
+		&p.Category,
+		&p.CategoryPrediction,
+		&p.HasUserCorrected,
+		&p.UserCorrectedPayee,
+		&p.UserCorrectedAccount,
+		&p.UserCorrectedCategory,
+		&p.CreatedAt,
+		&p.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+func (r *predictionRepo) GetByTxnIdTx(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, txnId uuid.UUID) (*model.Prediction, error) {
+	var p model.Prediction
+	err := tx.QueryRow(
+		ctx, `
+		  SELECT *
+		  FROM predictions
+		  WHERE budget_id = $1 AND transaction_id = $2
+		`, budgetId, txnId,
+	).Scan(
+		&p.ID,
+		&p.BudgetID,
+		&p.TransactionID,
+		&p.EmailText,
+		&p.Amount,
+		&p.Account,
+		&p.AccountPrediction,
+		&p.Payee,
+		&p.PayeePrediction,
+		&p.Category,
+		&p.CategoryPrediction,
+		&p.HasUserCorrected,
+		&p.UserCorrectedPayee,
+		&p.UserCorrectedAccount,
+		&p.UserCorrectedCategory,
+		&p.CreatedAt,
+		&p.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
 // Create inserts a new Prediction record into the predictions table.
 // It sets prediction fields, initializes has_user_corrected to false, and user-corrected fields to nil.
 // Returns any error encountered during the database operation.
@@ -156,10 +226,12 @@ func (r *predictionRepo) Create(ctx context.Context, prediction model.Prediction
 // Update modifies an existing Prediction record in the predictions table.
 // It updates all fields except for created_at, setting updated_at to the current time.
 // Returns any error encountered during the database operation.
-func (r *predictionRepo) Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, prediction model.Prediction) error {
-	cmdTag, err := r.db.Exec(
-		ctx,
-		`UPDATE predictions SET
+// Note: Since update is tied to transactions, passing a pgx.Tx object for rollback purposes
+func (r *predictionRepo) Update(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID, prediction model.Prediction) error {
+	log.Printf("Inside predictionRepo.Update: %v %v %+v", id, budgetId, prediction)
+	cmdTag, err := tx.Exec(
+		ctx, `
+		  UPDATE predictions SET
 				transaction_id = $1,
 				email_text = $2,
 				amount = $3,
@@ -174,7 +246,7 @@ func (r *predictionRepo) Update(ctx context.Context, budgetId uuid.UUID, id uuid
 				user_corrected_payee = $12,
 				user_corrected_category = $13,
 				updated_at = NOW()
-		WHERE budget_id = $14 AND id = $15`,
+		  WHERE budget_id = $14 AND id = $15`,
 		prediction.TransactionID,
 		prediction.EmailText,
 		prediction.Amount,
@@ -191,12 +263,12 @@ func (r *predictionRepo) Update(ctx context.Context, budgetId uuid.UUID, id uuid
 		budgetId,
 		id,
 	)
-	log.Printf("%v, %v", cmdTag, err)
+	log.Printf("after tx.Exec: %v, %v", cmdTag, err)
 	if err != nil {
 		return err
 	}
 	if cmdTag.RowsAffected() == 0 {
-		return errors.New("Provide a valid id")
+		return fmt.Errorf("No active prediction found with the given id: %v", id)
 	}
 
 	return nil

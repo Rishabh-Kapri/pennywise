@@ -3,7 +3,6 @@ import { Action, Selector, State, StateContext, Store } from '@ngxs/store';
 import { ConfigActions } from './config.action';
 import { AccountsActions } from '../accounts/accounts.action';
 import { CategoryGroupsActions } from '../categoryGroups/categoryGroups.action';
-import { TransactionsActions } from '../transactions/transaction.action';
 import { CategoriesActions } from '../categories/categories.action';
 import { SelectedComponent } from 'src/app/models/state.model';
 
@@ -40,9 +39,9 @@ export class ConfigState {
     });
     if (!payload) {
       // if state has been loaded
-      this.ngxsStore.dispatch(new AccountsActions.SetBalanceForAccounts());
-      this.ngxsStore.dispatch(new CategoriesActions.SetInflowCategoryBalance());
-      this.ngxsStore.dispatch(new CategoryGroupsActions.SetCategoryGroupData());
+      // this.ngxsStore.dispatch(new AccountsActions.SetBalanceForAccounts());
+      // this.ngxsStore.dispatch(new CategoriesActions.SetInflowCategoryBalance());
+      // this.ngxsStore.dispatch(new CategoryGroupsActions.SetCategoryGroupData());
     }
   }
 

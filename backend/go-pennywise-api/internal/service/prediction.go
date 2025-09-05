@@ -12,7 +12,7 @@ import (
 type PredictionService interface {
 	GetAll(ctx context.Context) ([]model.Prediction, error)
 	Create(ctx context.Context, prediction model.Prediction) ([]model.Prediction, error)
-  Update(ctx context.Context, id uuid.UUID, prediction model.Prediction) error
+	Update(ctx context.Context, id uuid.UUID, prediction model.Prediction) error
 	DeleteById(ctx context.Context, id uuid.UUID) error
 }
 
@@ -36,11 +36,13 @@ func (s *predictionService) Create(ctx context.Context, prediction model.Predict
 }
 
 func (s *predictionService) Update(ctx context.Context, id uuid.UUID, prediction model.Prediction) error {
-   budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
-   return s.repo.Update(ctx, budgetId, id, prediction)
+	// budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	// INFO: prediction update for now will only be done through transactions update
+	// return s.repo.Update(ctx, budgetId, id, prediction)
+	return nil
 }
 
 func (s *predictionService) DeleteById(ctx context.Context, id uuid.UUID) error {
-   budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
-   return s.repo.DeleteById(ctx, budgetId, id)
+	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	return s.repo.DeleteById(ctx, budgetId, id)
 }

@@ -23,19 +23,19 @@ export class AccountsMobileComponent implements OnInit {
   ngOnInit(): void {
     this.budgetAccountData$ = this.ngxsStore.select(AccountsState.getBudgetAccounts).pipe(
       map(accounts => ({
-        totalAmount: Number(accounts.reduce((a, b) => a + b.balance, 0).toFixed(2)),
+        totalAmount: Number(accounts.reduce((a, b) => a + (b.balance ?? 0), 0).toFixed(2)),
         accounts
       }))
     );
     this.trackingAccountData$ = this.ngxsStore.select(AccountsState.getTrackingAccounts).pipe(
       map(accounts => ({
-        totalAmount: Number(accounts.reduce((a, b) => a + b.balance, 0).toFixed(2)),
+        totalAmount: Number(accounts.reduce((a, b) => a + (b.balance ?? 0), 0).toFixed(2)),
         accounts
       }))
     );
     this.closedAccountData$ = this.ngxsStore.select(AccountsState.getClosedAccounts).pipe(
       map(accounts => ({
-        totalAmount: Number(accounts.reduce((a, b) => a + b.balance, 0).toFixed(2)),
+        totalAmount: Number(accounts.reduce((a, b) => a + (b.balance ?? 0), 0).toFixed(2)),
         accounts
       }))
     );
