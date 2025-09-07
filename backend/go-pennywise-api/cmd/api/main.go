@@ -60,9 +60,8 @@ func main() {
 	predictionHandler := handler.NewPredictionHandler(predictionService)
 
 	transactionRepo := repository.NewTransactionRepository(dbConn)
-	transactionService := service.NewTransactionService(transactionRepo, predictionRepo, accountRepo, payeeRepo, categoryRepo)
+	transactionService := service.NewTransactionService(transactionRepo, predictionRepo, accountRepo, payeeRepo, categoryRepo, monthlyBudgetRepo)
 	transactionHandler := handler.NewTransactionHandler(transactionService)
-
 
 	embeddingRepo := repository.NewEmbeddingRepository(dbConn)
 	embeddingService := service.NewEmbeddingService(embeddingRepo)

@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -21,7 +22,7 @@ type MonthlyBudgetRepository interface {
 	GetByCatIdAndMonth(ctx context.Context, budgetId uuid.UUID, categoryId uuid.UUID, month string) (*model.MonthlyBudget, error)
 	Create(ctx context.Context, budgetId uuid.UUID, monthlyBudget model.MonthlyBudget) error
 	UpdateBudgetedByCatIdAndMonth(ctx context.Context, budgetId uuid.UUID, categoryId uuid.UUID, month string, newBudgeted float64) error
-	UpdateCarryoverByCatIdAndMonth(ctx context.Context, budgetId uuid.UUID, categoryId uuid.UUID, month string, amount float64) error
+	UpdateCarryoverByCatIdAndMonth(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categoryId uuid.UUID, month string, amount float64) error
 }
 
 type monthlyBudgetRepo struct {
@@ -73,10 +74,23 @@ func (r *monthlyBudgetRepo) Create(ctx context.Context, budgetId uuid.UUID, mont
 	}
 	defer tx.Rollback(ctx)
 
+	cmdTag, err := tx.Exec(
+		ctx, `
+			SELECT * FROM monthly_budgets
+			WHERE budget_id = $1 AND category_id = $2 AND month = $3
+		`, budgetId, monthlyBudget.CategoryID, monthlyBudget.Month,
+	)
+	if err != nil {
+		return nil
+	}
+	if cmdTag.RowsAffected() > 0 {
+		return fmt.Errorf("monthly budget already exists for month :%v and category: %v", monthlyBudget.Month, monthlyBudget.CategoryID)
+	}
+
 	var prevCarryover float64
 	err = tx.QueryRow(ctx, `
-		SELECT budgeted FROM monthly_budgets
-		WHERE budget_id = $1 AND category_id = $2 AND month < $4
+		SELECT carryover_balance FROM monthly_budgets
+		WHERE budget_id = $1 AND category_id = $2 AND month < $3
 		ORDER BY month DESC LIMIT 1
 	`, budgetId, monthlyBudget.CategoryID, monthlyBudget.Month).Scan(&prevCarryover)
 	if err != nil && err != pgx.ErrNoRows {
@@ -84,7 +98,7 @@ func (r *monthlyBudgetRepo) Create(ctx context.Context, budgetId uuid.UUID, mont
 	}
 
 	initialCarryover := prevCarryover + monthlyBudget.Budgeted
-	
+
 	_, err = tx.Exec(
 		ctx, `
 			INSERT INTO monthly_budgets (
@@ -159,20 +173,20 @@ func (r *monthlyBudgetRepo) UpdateBudgetedByCatIdAndMonth(ctx context.Context, b
 }
 
 // updates the carryover for current and further months
-func (r *monthlyBudgetRepo) UpdateCarryoverByCatIdAndMonth(ctx context.Context, budgetId uuid.UUID, categoryId uuid.UUID, month string, amount float64) error {
-	// tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
-	// if err != nil {
-	// 	return err
-	// }
-	// defer tx.Rollback(ctx)
-
-	cmdTag, err := r.db.Exec(
-		ctx, `
+func (r *monthlyBudgetRepo) UpdateCarryoverByCatIdAndMonth(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categoryId uuid.UUID, month string, amount float64) error {
+	sql := `
 		UPDATE monthly_budgets
 		SET carryover_balance = carryover_balance + $1
 		WHERE TO_DATE(month, 'YYYY-MM') >= TO_DATE($2, 'YYYY-MM') AND category_id = $3
-		`, amount, month, categoryId,
-	)
+  `
+	var cmdTag pgconn.CommandTag
+	var err error
+	if tx != nil {
+		cmdTag, err = tx.Exec(ctx, sql, amount, month, categoryId)
+	} else {
+		cmdTag, err = r.db.Exec(ctx, sql, amount, month, categoryId)
+	}
+
 	if err != nil {
 		return err
 	}
