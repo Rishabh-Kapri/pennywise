@@ -22,7 +22,7 @@ type TransactionRepository interface {
 	GetByIdTx(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID) (*model.Transaction, error)
 	GetAllNormalized(ctx context.Context, budgetId uuid.UUID, accountId *uuid.UUID) ([]model.Transaction, error)
 	Update(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID, txn model.Transaction) error
-	Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error)
+	Create(ctx context.Context, tx pgx.Tx, txn model.Transaction) ([]model.Transaction, error)
 	DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error
 }
 
@@ -280,18 +280,9 @@ func (r *transactionRepo) GetAllNormalized(ctx context.Context, budgetId uuid.UU
 	return txns, nil
 }
 
-func (r *transactionRepo) Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error) {
-	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		if err != nil {
-			tx.Rollback(ctx)
-		}
-	}()
+func (r *transactionRepo) Create(ctx context.Context, tx pgx.Tx, txn model.Transaction) ([]model.Transaction, error) {
 	var createdTxn model.Transaction
-	err = tx.QueryRow(
+	err := tx.QueryRow(
 		ctx,
 		`INSERT INTO transactions (
 			budget_id,
@@ -322,23 +313,11 @@ func (r *transactionRepo) Create(ctx context.Context, txn model.Transaction) ([]
 	if err != nil {
 		return nil, err
 	}
-	// only update when categoryId is present
-	// TODO: move the Inflow category check to utils
-	if txn.CategoryID != nil && txn.CategoryID.String() != "02fc5abc-94b7-4b03-9077-5d153011fd3f" {
-		monthKey := utils.GetMonthKey(txn.Date)
-		if err := utils.UpdateCarryover(ctx, tx, txn.BudgetID, *txn.CategoryID, txn.Amount, monthKey); err != nil {
-			return nil, err
-		}
-	}
-	if err = tx.Commit(ctx); err != nil {
-		return nil, err
-	}
 	txns := make([]model.Transaction, 0)
 	return append(txns, createdTxn), nil
 }
 
 func (r *transactionRepo) Update(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID, txn model.Transaction) error {
-	log.Printf("Inside transactionRepo.Update: %v %v %+v", id, budgetId, txn)
 	cmdTag, err := tx.Exec(
 		ctx, `
 		  UPDATE transactions SET
@@ -363,7 +342,6 @@ func (r *transactionRepo) Update(ctx context.Context, tx pgx.Tx, budgetId uuid.U
 		budgetId,
 		id,
 	)
-	log.Printf("after tx.Exec: %v, %v", cmdTag, err)
 	if err != nil {
 		return err
 	}
