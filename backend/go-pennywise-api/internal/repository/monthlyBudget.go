@@ -8,7 +8,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -22,7 +21,7 @@ type MonthlyBudgetRepository interface {
 	GetByCatIdAndMonth(ctx context.Context, budgetId uuid.UUID, categoryId uuid.UUID, month string) (*model.MonthlyBudget, error)
 	Create(ctx context.Context, budgetId uuid.UUID, monthlyBudget model.MonthlyBudget) error
 	UpdateBudgetedByCatIdAndMonth(ctx context.Context, budgetId uuid.UUID, categoryId uuid.UUID, month string, newBudgeted float64) error
-	UpdateCarryoverByCatIdAndMonth(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categoryId uuid.UUID, month string, amount float64) error
+	UpdateCarryoverByCatIdAndMonth(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categoryId uuid.UUID, month string, newCarryover float64) error
 }
 
 type monthlyBudgetRepo struct {
@@ -173,25 +172,42 @@ func (r *monthlyBudgetRepo) UpdateBudgetedByCatIdAndMonth(ctx context.Context, b
 }
 
 // updates the carryover for current and further months
-func (r *monthlyBudgetRepo) UpdateCarryoverByCatIdAndMonth(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categoryId uuid.UUID, month string, amount float64) error {
-	sql := `
+// amount should be the the diff of old and new
+func (r *monthlyBudgetRepo) UpdateCarryoverByCatIdAndMonth(
+	ctx context.Context,
+	tx pgx.Tx,
+	budgetId uuid.UUID,
+	categoryId uuid.UUID,
+	month string,
+	newCarryover float64,
+) error {
+	var id uuid.UUID
+	var oldCarryover float64
+	err := tx.QueryRow(ctx, `
+		SELECT id, carryover_balance FROM monthly_budgets
+		WHERE budget_id = $1 AND category_id = $2 AND month = $3
+	`, budgetId, categoryId, month).Scan(&id, &oldCarryover)
+	if err != nil {
+		return fmt.Errorf("Error finding monthly budget for categoryId %v and month %v: %w", categoryId, month, err)
+	}
+
+	if id == uuid.Nil {
+		return fmt.Errorf("Cannot find monthly budget for categoryId %v and month %v: %w", categoryId, month, pgx.ErrNoRows)
+	}
+
+	diff := newCarryover - oldCarryover
+
+	cmdTag, err := tx.Exec(ctx, `
 		UPDATE monthly_budgets
 		SET carryover_balance = carryover_balance + $1
 		WHERE TO_DATE(month, 'YYYY-MM') >= TO_DATE($2, 'YYYY-MM') AND category_id = $3
-  `
-	var cmdTag pgconn.CommandTag
-	var err error
-	if tx != nil {
-		cmdTag, err = tx.Exec(ctx, sql, amount, month, categoryId)
-	} else {
-		cmdTag, err = r.db.Exec(ctx, sql, amount, month, categoryId)
-	}
-
+		`, diff, month, categoryId,
+	)
 	if err != nil {
-		return err
+		return fmt.Errorf("Error updating monthly budget for categoryId %v and month %v: %w", categoryId, month, err)
 	}
 	if cmdTag.RowsAffected() == 0 {
-		return fmt.Errorf("Cannot find monthly budget for categoryId %v and month %v", categoryId, month)
+		return fmt.Errorf("Cannot find monthly budget for categoryId %v and month %v: %w", categoryId, month, pgx.ErrNoRows)
 	}
 	return nil
 }

@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"log"
 	"testing"
 
 	"pennywise-api/internal/model"
@@ -30,6 +31,9 @@ type testSuite struct {
 func getTestDbConn(ctx context.Context) (*pgxpool.Pool, error) {
 	testDbUrl := "postgres://admin:admin@192.168.1.34:5433/testdb?sslmode=disable"
 	dbpool, err := pgxpool.New(ctx, testDbUrl)
+	if err == nil {
+		log.Printf("Database connection opened on: %v", testDbUrl)
+	}
 	return dbpool, err
 }
 
@@ -61,6 +65,7 @@ func (ts *testSuite) cleanupTestData() {
 func (ts *testSuite) createTableIfNotExists(t *testing.T) {
 	_, err := ts.dbpool.Exec(ts.ctx, `
 		CREATE TABLE IF NOT EXISTS monthly_budgets (
+		  id UUID,
 			budget_id UUID,
 			category_id UUID,
 			month TEXT,
@@ -76,17 +81,17 @@ func (ts *testSuite) insertDummyData(t *testing.T) {
 	ts.createTableIfNotExists(t)
 
 	dummyRows := [][]any{
-		{"2025-05", ts.budgetID, ts.catID, 1000.00, 0.00},     // activity: -1000
-		{"2025-06", ts.budgetID, ts.catID, 2500.00, 0.00},     // activity: -2500
-		{"2025-07", ts.budgetID, ts.catID, 2000.00, -5000.00}, // activity: -7000
-		{"2025-08", ts.budgetID, ts.catID, 1000.00, 500.00},   // activity: 4500
+		{uuid.New(), "2025-05", ts.budgetID, ts.catID, 1000.00, 0.00},     // activity: -1000
+		{uuid.New(), "2025-06", ts.budgetID, ts.catID, 2500.00, 0.00},     // activity: -2500
+		{uuid.New(), "2025-07", ts.budgetID, ts.catID, 2000.00, -5000.00}, // activity: -7000
+		{uuid.New(), "2025-08", ts.budgetID, ts.catID, 1000.00, 500.00},   // activity: 4500
 	}
 
 	for _, row := range dummyRows {
 		_, err := ts.dbpool.Exec(ts.ctx, `
-			INSERT INTO monthly_budgets (budget_id, category_id, month, budgeted, carryover_balance, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
-		`, row[1], row[2], row[0], row[3], row[4])
+			INSERT INTO monthly_budgets (id, budget_id, category_id, month, budgeted, carryover_balance, created_at, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+		`, row[0], row[2], row[3], row[1], row[4], row[5])
 		require.NoError(t, err)
 	}
 }
@@ -150,7 +155,7 @@ type createTestCase struct {
 type updateTestCase struct {
 	name                string
 	month               string
-	newBudgeted         float64
+	amount              float64
 	expectError         bool
 	expectSpecificError bool
 	expectedData        map[string]budgetData
@@ -243,7 +248,7 @@ func TestUpdateBudgetedByCatIdAndMonth(t *testing.T) {
 		{
 			name:        "ValidUpdate",
 			month:       "2025-07",
-			newBudgeted: 5000.00,
+			amount:      5000.00,
 			expectError: false,
 			expectedData: map[string]budgetData{
 				"2025-05": {Budgeted: 1000.00, CarryoverBalance: 0.00},
@@ -256,7 +261,7 @@ func TestUpdateBudgetedByCatIdAndMonth(t *testing.T) {
 		{
 			name:                "NonexistentMonth",
 			month:               "2025-09",
-			newBudgeted:         5000.00,
+			amount:              5000.00,
 			expectError:         true,
 			expectSpecificError: true,
 			description:         "Update non-existent month should fail",
@@ -273,7 +278,7 @@ func TestUpdateBudgetedByCatIdAndMonth(t *testing.T) {
 			ts.insertDummyData(t)
 
 			// Execute operation
-			err := ts.repo.UpdateBudgetedByCatIdAndMonth(ts.ctx, ts.budgetID, ts.catID, tc.month, tc.newBudgeted)
+			err := ts.repo.UpdateBudgetedByCatIdAndMonth(ts.ctx, ts.budgetID, ts.catID, tc.month, tc.amount)
 
 			if tc.expectError {
 				require.Error(t, err, tc.description)
@@ -283,6 +288,60 @@ func TestUpdateBudgetedByCatIdAndMonth(t *testing.T) {
 			} else {
 				require.NoError(t, err, tc.description)
 				// Verify results only if no error expected
+				monthlyBudgets := ts.getMonthlyBudgets(t, "2025-05")
+				ts.assertMonthlyBudgets(t, monthlyBudgets, tc.expectedData)
+			}
+		})
+	}
+}
+
+func TestUpdateCarryoverByCatIdAndMonth(t *testing.T) {
+	testCases := []updateTestCase{
+		{
+			name:                "ValidMonthUpdateWithTx",
+			description:         "Uses pgx.Tx",
+			month:               "2025-07",
+			amount:              0.00, // newCarryover
+			expectError:         false,
+			expectSpecificError: false,
+			expectedData: map[string]budgetData{
+				"2025-05": {Budgeted: 1000.00, CarryoverBalance: 0.00},
+				"2025-06": {Budgeted: 2500.00, CarryoverBalance: 0.00},
+				"2025-07": {Budgeted: 2000.00, CarryoverBalance: 0.00},
+				"2025-08": {Budgeted: 1000.00, CarryoverBalance: 5500.00},
+			},
+		},
+		{
+			name:                "MonthDoesNotExists",
+			description:         "",
+			month:               "2025-09",
+			amount:              1000.00, // newCarryover
+			expectError:         true,
+			expectSpecificError: true,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ts := setupTestSuite(t)
+			defer ts.tearDown()
+			defer ts.cleanupTestData()
+
+			ts.insertDummyData(t)
+
+			var err error
+			var tx pgx.Tx
+			tx, err = ts.repo.GetPgxTx(ts.ctx)
+			err = ts.repo.UpdateCarryoverByCatIdAndMonth(ts.ctx, tx, ts.budgetID, ts.catID, tc.month, tc.amount)
+			commitErr := tx.Commit(ts.ctx)
+			require.NoError(t, commitErr)
+
+			if tc.expectError {
+				require.Error(t, err, tc.description)
+				if tc.expectSpecificError {
+					require.ErrorIs(t, err, pgx.ErrNoRows, "Cannot find monthly budget for categoryId %v and month %v", ts.catID, tc.month)
+				}
+			} else {
+				require.NoError(t, err, tc.description)
 				monthlyBudgets := ts.getMonthlyBudgets(t, "2025-05")
 				ts.assertMonthlyBudgets(t, monthlyBudgets, tc.expectedData)
 			}

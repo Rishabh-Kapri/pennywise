@@ -54,7 +54,7 @@ func NewTransactionService(
 // internal method
 func (s *transactionService) updatePrediction(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, txnId uuid.UUID, txn model.Transaction) error {
 	prediction, err := s.predictionRepo.GetByTxnIdTx(ctx, tx, budgetId, txnId)
-	log.Printf("Prediction:%+v", prediction)
+	log.Printf("%v, %v", prediction, err)
 	if err != nil {
 		return fmt.Errorf("Error getting prediction: %v", err)
 	}
@@ -62,7 +62,9 @@ func (s *transactionService) updatePrediction(ctx context.Context, tx pgx.Tx, bu
 		log.Printf("Prediction not found for txn %v", txnId)
 		return nil
 	}
+	log.Printf("%v", prediction.String())
 
+	log.Printf("%v", txn.String())
 	// Use transaction context for all repository calls to avoid deadlocks
 	account, err := s.accountRepo.GetByIdTx(ctx, tx, budgetId, *txn.AccountID)
 	if err != nil {
@@ -83,19 +85,24 @@ func (s *transactionService) updatePrediction(ctx context.Context, tx pgx.Tx, bu
 	trueVal := true
 	falseVal := false
 	needsUpdate := false
+
 	prediction.HasUserCorrected = &falseVal
 
-	if prediction.Account != &account.Name {
+	accountName := &account.Name
+	payeeName := &payee.Name
+	catName := &category.Name
+
+	if *prediction.Account != *accountName {
 		prediction.HasUserCorrected = &trueVal
 		prediction.UserCorrectedAccount = &account.Name
 		needsUpdate = true
 	}
-	if prediction.Payee != &payee.Name {
+	if *prediction.Payee != *payeeName {
 		prediction.HasUserCorrected = &trueVal
 		prediction.UserCorrectedPayee = &payee.Name
 		needsUpdate = true
 	}
-	if prediction.Category != &category.Name {
+	if *prediction.Category != *catName {
 		prediction.HasUserCorrected = &trueVal
 		prediction.UserCorrectedCategory = &category.Name
 		needsUpdate = true
@@ -104,7 +111,6 @@ func (s *transactionService) updatePrediction(ctx context.Context, tx pgx.Tx, bu
 	if needsUpdate {
 		log.Printf("Entering PredictionRepo Update for id: %v", txnId)
 		err = s.predictionRepo.Update(ctx, tx, budgetId, prediction.ID, *prediction)
-		log.Printf("Exited PredictionRepo Update for id: %v, err: %v", txnId, err)
 		if err != nil {
 			return fmt.Errorf("failed to update prediction: %v", err)
 		}
@@ -112,19 +118,21 @@ func (s *transactionService) updatePrediction(ctx context.Context, tx pgx.Tx, bu
 	return nil
 }
 
-func (s *transactionService) updateCarryovers(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, foundTxn *model.Transaction, txn model.Transaction, monthKey string) error {
+func (s *transactionService) updateCarryovers(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, foundTxn *model.Transaction, txn model.Transaction) error {
 	// Handle old category carryover reversal
-	if foundTxn.CategoryID != txn.CategoryID && foundTxn.CategoryID != nil {
-		log.Printf("Updating carryover for old category: %v for month: %v", foundTxn.CategoryID, monthKey)
-		if err := s.mbRepo.UpdateCarryoverByCatIdAndMonth(ctx, tx, budgetId, *foundTxn.CategoryID, monthKey, -txn.Amount); err != nil {
+	if foundTxn.CategoryID != nil && foundTxn.CategoryID != txn.CategoryID {
+		existingTxnMonthKey := utils.GetMonthKey(foundTxn.Date)
+		log.Printf("Updating carryover for old category: %v for month: %v with amount: %v", foundTxn.CategoryID, existingTxnMonthKey, -foundTxn.Amount)
+		if err := s.mbRepo.UpdateCarryoverByCatIdAndMonth(ctx, tx, budgetId, *foundTxn.CategoryID, existingTxnMonthKey, -foundTxn.Amount); err != nil {
 			return fmt.Errorf("failed to update old category: %v carryover: %v", *foundTxn.CategoryID, err)
 		}
 	}
 
 	// Handle new category carryover
 	if txn.CategoryID != nil {
-		log.Printf("Updating carryover for new category %v for month: %v", txn.CategoryID, monthKey)
-		if err := s.mbRepo.UpdateCarryoverByCatIdAndMonth(ctx, tx, budgetId, *txn.CategoryID, monthKey, txn.Amount); err != nil {
+		newTxnMonthKey := utils.GetMonthKey(txn.Date)
+		log.Printf("Updating carryover for new category %v for month: %v", txn.CategoryID, newTxnMonthKey)
+		if err := s.mbRepo.UpdateCarryoverByCatIdAndMonth(ctx, tx, budgetId, *txn.CategoryID, newTxnMonthKey, txn.Amount); err != nil {
 			return fmt.Errorf("failed to update new category: %v carryover: %v", *txn.CategoryID, err)
 		}
 	}
@@ -205,9 +213,7 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 		return fmt.Errorf("Error updating transaction: %v", err)
 	}
 
-	monthKey := utils.GetMonthKey(txn.Date)
-
-	if err = s.updateCarryovers(txCtx, tx, budgetId, foundTxn, txn, monthKey); err != nil {
+	if err = s.updateCarryovers(txCtx, tx, budgetId, foundTxn, txn); err != nil {
 		return fmt.Errorf("Error updating carryovers: %v", err)
 	}
 

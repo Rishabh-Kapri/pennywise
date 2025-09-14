@@ -285,7 +285,7 @@ func (r *transactionRepo) Create(ctx context.Context, tx pgx.Tx, txn model.Trans
 	err := tx.QueryRow(
 		ctx,
 		`INSERT INTO transactions (
-			budget_id,
+		  budget_id,
 		  date,
 		  payee_id,
 		  category_id,
