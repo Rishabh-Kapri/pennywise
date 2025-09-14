@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"fmt"
 
 	"pennywise-api/internal/model"
 	"pennywise-api/internal/repository"
@@ -66,36 +65,9 @@ func (s *categoryService) Update(ctx context.Context, id uuid.UUID, category mod
 func (s *categoryService) UpdateMonthlyBudget(ctx context.Context, categoryId uuid.UUID, newBudgeted float64, month string) error {
 	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
 
-	foundMonthlyBudget, err := s.monthlyBudgetRepo.GetByCatIdAndMonth(ctx, budgetId, categoryId, month)
+	err := s.monthlyBudgetRepo.UpdateBudgetedByCatIdAndMonth(ctx, budgetId, categoryId, month, newBudgeted)
 	if err != nil {
 		return err
-		// if errors.Is(err, pgx.ErrNoRows) {
-		// 	log.Printf("Monthly budget not found for month: %v: %v", month, err.Error())
-		// 	// create monthly budget for month
-		// 	// find previous month budget
-		// 	monthlyBudget := model.MonthlyBudget{
-		// 		Month:            month,
-		// 		BudgetID:         budgetId,
-		// 		CategoryID:       categoryId,
-		// 		Budgeted:         0,
-		// 		CarryoverBalance: newBudgeted,
-		// 	}
-		// 	err = s.monthlyBudgetRepo.Create(ctx, budgetId, monthlyBudget)
-		// 	if err != nil {
-		// 		return err
-		// 	}
-		// } else {
-		// 	return err
-		// }
-	}
-	// if monthly budget is found, update it
-	if foundMonthlyBudget != nil {
-		err = s.monthlyBudgetRepo.UpdateBudgetedByCatIdAndMonth(ctx, budgetId, categoryId, month, newBudgeted)
-		if err != nil {
-			return err
-		}
-	} else {
-		return fmt.Errorf("No monthly budget found for category %v and month %v", categoryId, month)
 	}
 	return nil
 }
