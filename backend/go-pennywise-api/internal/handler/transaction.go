@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"log"
 	"net/http"
+	"strings"
 
 	"pennywise-api/internal/model"
 	"pennywise-api/internal/service"
@@ -53,7 +55,19 @@ func (h *transactionHandler) ListNormalized(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	transactions, err := h.service.GetAllNormalized(ctx)
+	accountIdParam := strings.TrimSpace(c.Query("accountId"))
+
+	log.Printf("accountIdParam: %v", accountIdParam)
+	var accountId *uuid.UUID
+	if accountIdParam != "" {
+		parsedId, err := uuid.Parse(accountIdParam)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing accountId"})
+			return
+		}
+		accountId = &parsedId
+	}
+	transactions, err := h.service.GetAllNormalized(ctx, accountId)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

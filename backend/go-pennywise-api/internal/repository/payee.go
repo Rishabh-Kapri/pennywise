@@ -8,6 +8,7 @@ import (
 	"pennywise-api/internal/model"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -15,6 +16,7 @@ type PayeesRepository interface {
 	GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Payee, error)
 	Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.Payee, error)
 	GetById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Payee, error)
+	GetByIdTx(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID) (*model.Payee, error)
 	Create(ctx context.Context, payee model.Payee) error
 	DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error
 	Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, payee model.Payee) error
@@ -30,8 +32,9 @@ func NewPayeesRepository(db *pgxpool.Pool) PayeesRepository {
 
 func (r *payeeRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Payee, error) {
 	rows, err := r.db.Query(
-		ctx,
-		`SELECT * FROM payees WHERE budgetId = $1 AND deleted = FALSE`,
+		ctx, `
+		SELECT id, name, budget_id, transfer_account_id, created_at, updated_at
+		FROM payees WHERE budget_id = $1 AND deleted = FALSE`,
 		budgetId,
 	)
 	if err != nil {
@@ -80,10 +83,31 @@ func (r *payeeRepo) Search(ctx context.Context, budgetId uuid.UUID, query string
 func (r *payeeRepo) GetById(ctx context.Context, budgetId, id uuid.UUID) (*model.Payee, error) {
 	var payee model.Payee
 	err := r.db.QueryRow(
-		ctx,
-		"SELECT * FROM payees WHERE id = $1 AND budget_id = $2",
-		id,
-		budgetId,
+		ctx, `
+		  SELECT id, name, budget_id, transfer_account_id
+		  FROM payees
+		  WHERE id = $1 AND budget_id = $2 AND deleted = FALSE
+		`, id, budgetId,
+	).Scan(
+		&payee.ID,
+		&payee.Name,
+		&payee.BudgetID,
+		&payee.TransferAccountID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &payee, nil
+}
+
+func (r *payeeRepo) GetByIdTx(ctx context.Context, tx pgx.Tx, budgetId, id uuid.UUID) (*model.Payee, error) {
+	var payee model.Payee
+	err := tx.QueryRow(
+		ctx, `
+		  SELECT id, name, budget_id, transfer_account_id
+		  FROM payees
+		  WHERE id = $1 AND budget_id = $2 AND deleted = FALSE
+		`, id, budgetId,
 	).Scan(
 		&payee.ID,
 		&payee.Name,
