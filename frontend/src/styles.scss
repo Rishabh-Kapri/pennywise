@@ -7,11 +7,18 @@
 html, body { height: 100%; }
 body {
   margin: 0;
-  /* font-family: Roboto, "Helvetica Neue", sans-serif;  */
   font-family: "Nunito Sans", sans-serif;
   font-weight: 400;
-  background-color: #a8bbbf;
+  @apply bg-pw-bg-light text-pw-text-primary-light;
+  transition-property: color, background-color;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
 }
+
+body.dark {
+  @apply bg-pw-bg-dark text-pw-text-primary-dark;
+}
+
 .popover-class {
   margin-top: 14px;
 }

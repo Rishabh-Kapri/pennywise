@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 import numpy as np
 
 from mlp import PennywiseMLP
+import utils
 
 HOST = "0.0.0.0"
 PORT = 8000
@@ -62,6 +63,24 @@ class MLPHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 error_res = {"error": str(e)}
                 self.wfile.write(json.dumps(error_res).encode())
+
+        elif parsed_path.path == "/embeddings":
+            try:
+                content_length = int(self.headers["Content-Length"])
+                post_data = self.rfile.read(content_length)
+                data = json.loads(post_data.decode("utf-8"))
+                content = data.get("content")
+                embedding = utils.create_embedding(content)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps(embedding).encode())
+            except Exception as e:
+                self.send_response(400)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                error_res = {"error": str(e)}
+                self.wfile.write(json.dumps(error_res).encode())
         else:
             self.send_response(404)
             self.end_headers()
@@ -80,5 +99,6 @@ class MLPHandler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     server = HTTPServer((HOST, PORT), MLPHandler)
     print("Server running on http://localhost:8000")
-    print("POST to /predict with JSON: {}")
+    print("POST to /predict with JSON: {type: account|payee|category, email_text: <parsed_email>, amount: <parsed_amount>, account: <account_name (when type is payee)>, payee: <payee_name (when type is category)>}")
+    print("POST to /embed with JSON: {content: <content_to_embed>}")
     server.serve_forever()

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 
 	"pennywise-api/internal/model"
@@ -15,11 +16,13 @@ import (
 )
 
 type TransactionRepository interface {
+	GetPgxTx(ctx context.Context) (pgx.Tx, error)
 	GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Transaction, error)
-	GetAllNormalized(ctx context.Context, budgetId uuid.UUID) ([]model.Transaction, error)
-	// GetById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Transaction, error)
-	Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, txn model.Transaction) error
-	Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error)
+	GetById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Transaction, error)
+	GetByIdTx(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID) (*model.Transaction, error)
+	GetAllNormalized(ctx context.Context, budgetId uuid.UUID, accountId *uuid.UUID) ([]model.Transaction, error)
+	Update(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID, txn model.Transaction) error
+	Create(ctx context.Context, tx pgx.Tx, txn model.Transaction) ([]model.Transaction, error)
 	DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error
 }
 
@@ -29,6 +32,10 @@ type transactionRepo struct {
 
 func NewTransactionRepository(db *pgxpool.Pool) TransactionRepository {
 	return &transactionRepo{db: db}
+}
+
+func (r *transactionRepo) GetPgxTx(ctx context.Context) (pgx.Tx, error) {
+	return r.db.BeginTx(ctx, pgx.TxOptions{})
 }
 
 func (r *transactionRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Transaction, error) {
@@ -57,23 +64,183 @@ func (r *transactionRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]mod
 	return transactions, nil
 }
 
-func (r *transactionRepo) GetAllNormalized(ctx context.Context, budgetId uuid.UUID) ([]model.Transaction, error) {
-	rows, err := r.db.Query(
-		ctx,
-		`SELECT
-				transactions.id, transactions.budget_id, transactions.date, transactions.payee_id, transactions.category_id, transactions.account_id, transactions.note, transactions.amount, transactions.transfer_account_id, transactions.transfer_transaction_id, transactions.created_at, transactions.updated_at,
+func (r *transactionRepo) GetById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Transaction, error) {
+	var txn model.Transaction
+	err := r.db.QueryRow(
+		ctx, `
+		  SELECT
+		    transactions.id,
+				transactions.budget_id,
+				transactions.date,
+				transactions.payee_id,
+				transactions.category_id,
+				transactions.account_id,
+				transactions.note,
+				transactions.amount,
+				transactions.source,
+				transactions.transfer_account_id,
+				transactions.transfer_transaction_id,
+				transactions.created_at,
+				transactions.updated_at,
 				accounts.name AS account_name,
 				payees.name AS payee_name,
 				categories.name AS category_name
-			FROM
-				transactions
-			LEFT JOIN accounts   ON transactions.account_id  = accounts.id
-			LEFT JOIN payees     ON transactions.payee_id    = payees.id
-			LEFT JOIN categories ON transactions.category_id = categories.id
-			WHERE transactions.budget_id = $1 AND transactions.deleted = FALSE
-			ORDER BY date DESC, updated_at DESC;`,
-		budgetId,
+		  FROM transactions
+		  LEFT JOIN accounts    ON transactions.account_id = accounts.id
+		  LEFT JOIN payees     ON transactions.payee_id = payees.id
+		  LEFT JOIN categories ON transactions.category_id = categories.id
+		  WHERE transactions.budget_id = $1 AND transactions.id = $2 AND transactions.deleted = FALSE
+		`, budgetId, id,
+	).Scan(
+		&txn.ID,
+		&txn.BudgetID,
+		&txn.Date,
+		&txn.PayeeID,
+		&txn.CategoryID,
+		&txn.AccountID,
+		&txn.Note,
+		&txn.Amount,
+		&txn.Source,
+		&txn.TransferAccountID,
+		&txn.TransferTransactionID,
+		&txn.CreatedAt,
+		&txn.UpdatedAt,
+		&txn.AccountName,
+		&txn.PayeeName,
+		&txn.CategoryName,
 	)
+	if err != nil {
+		return nil, err
+	}
+	return &txn, nil
+}
+
+func (r *transactionRepo) GetByIdTx(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID) (*model.Transaction, error) {
+	var txn model.Transaction
+	err := tx.QueryRow(
+		ctx, `
+		  SELECT
+		    transactions.id,
+				transactions.budget_id,
+				transactions.date,
+				transactions.payee_id,
+				transactions.category_id,
+				transactions.account_id,
+				transactions.note,
+				transactions.amount,
+				transactions.source,
+				transactions.transfer_account_id,
+				transactions.transfer_transaction_id,
+				transactions.created_at,
+				transactions.updated_at,
+				accounts.name AS account_name,
+				payees.name AS payee_name,
+				categories.name AS category_name
+		  FROM transactions
+		  LEFT JOIN accounts    ON transactions.account_id = accounts.id
+		  LEFT JOIN payees     ON transactions.payee_id = payees.id
+		  LEFT JOIN categories ON transactions.category_id = categories.id
+		  WHERE transactions.budget_id = $1 AND transactions.id = $2 AND transactions.deleted = FALSE
+		`, budgetId, id,
+	).Scan(
+		&txn.ID,
+		&txn.BudgetID,
+		&txn.Date,
+		&txn.PayeeID,
+		&txn.CategoryID,
+		&txn.AccountID,
+		&txn.Note,
+		&txn.Amount,
+		&txn.Source,
+		&txn.TransferAccountID,
+		&txn.TransferTransactionID,
+		&txn.CreatedAt,
+		&txn.UpdatedAt,
+		&txn.AccountName,
+		&txn.PayeeName,
+		&txn.CategoryName,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &txn, nil
+}
+
+func (r *transactionRepo) GetAllNormalized(ctx context.Context, budgetId uuid.UUID, accountId *uuid.UUID) ([]model.Transaction, error) {
+	var rows pgx.Rows
+	var err error
+	log.Printf("%v", accountId)
+	if accountId != nil {
+		rows, err = r.db.Query(
+			ctx, `
+				SELECT
+					transactions.id,
+			    transactions.budget_id,
+			    transactions.date,
+			    transactions.payee_id,
+			    transactions.category_id,
+			    transactions.account_id,
+			    transactions.note,
+			    transactions.amount,
+			    transactions.transfer_account_id,
+			    transactions.transfer_transaction_id,
+			    transactions.created_at,
+			    transactions.updated_at,
+					accounts.name AS account_name,
+					payees.name AS payee_name,
+					categories.name AS category_name,
+					CASE WHEN transactions.amount >= 0 THEN transactions.amount ELSE 0 END AS inflow,
+					CASE WHEN transactions.amount < 0 THEN ABS(transactions.amount) ELSE 0 END AS outflow,
+			    SUM(transactions.amount) OVER (
+			        ORDER BY transactions.date ASC, transactions.updated_at ASC
+			        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+			    ) AS balance
+				FROM
+					transactions
+				LEFT JOIN accounts   ON transactions.account_id  = accounts.id
+				LEFT JOIN payees     ON transactions.payee_id    = payees.id
+				LEFT JOIN categories ON transactions.category_id = categories.id
+				WHERE
+			    transactions.budget_id = $1
+			    AND transactions.account_id = $2
+			    AND transactions.deleted = FALSE
+				ORDER BY 
+			    transactions.date DESC, 
+			    transactions.updated_at DESC;
+			`, budgetId, accountId,
+		)
+	} else {
+		rows, err = r.db.Query(
+			ctx, `
+				SELECT
+					transactions.id,
+			    transactions.budget_id,
+			    transactions.date,
+			    transactions.payee_id,
+			    transactions.category_id,
+			    transactions.account_id,
+			    transactions.note,
+			    transactions.amount,
+			    transactions.transfer_account_id,
+			    transactions.transfer_transaction_id,
+			    transactions.created_at,
+			    transactions.updated_at,
+					accounts.name AS account_name,
+					payees.name AS payee_name,
+					categories.name AS category_name,
+					CASE WHEN transactions.amount >= 0 THEN transactions.amount ELSE 0 END AS inflow,
+					CASE WHEN transactions.amount < 0 THEN ABS(transactions.amount) ELSE 0 END AS outflow,
+			    0 AS balance
+				FROM
+					transactions
+				LEFT JOIN accounts   ON transactions.account_id  = accounts.id
+				LEFT JOIN payees     ON transactions.payee_id    = payees.id
+				LEFT JOIN categories ON transactions.category_id = categories.id
+				WHERE transactions.budget_id = $1 AND transactions.deleted = FALSE
+				ORDER BY transactions.date DESC, transactions.updated_at DESC;`,
+			budgetId,
+		)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -98,6 +265,9 @@ func (r *transactionRepo) GetAllNormalized(ctx context.Context, budgetId uuid.UU
 			&txn.AccountName,
 			&txn.PayeeName,
 			&txn.CategoryName,
+			&txn.Inflow,
+			&txn.Outflow,
+			&txn.Balance,
 		)
 		if err != nil {
 			return nil, err
@@ -110,21 +280,12 @@ func (r *transactionRepo) GetAllNormalized(ctx context.Context, budgetId uuid.UU
 	return txns, nil
 }
 
-func (r *transactionRepo) Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error) {
-	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		if err != nil {
-			tx.Rollback(ctx)
-		}
-	}()
+func (r *transactionRepo) Create(ctx context.Context, tx pgx.Tx, txn model.Transaction) ([]model.Transaction, error) {
 	var createdTxn model.Transaction
-	err = tx.QueryRow(
+	err := tx.QueryRow(
 		ctx,
 		`INSERT INTO transactions (
-			budget_id,
+		  budget_id,
 		  date,
 		  payee_id,
 		  category_id,
@@ -152,46 +313,25 @@ func (r *transactionRepo) Create(ctx context.Context, txn model.Transaction) ([]
 	if err != nil {
 		return nil, err
 	}
-	// only update when categoryId is present
-	// TODO: move the Inflow category check to utils
-	if txn.CategoryID != nil && txn.CategoryID.String() != "02fc5abc-94b7-4b03-9077-5d153011fd3f" {
-		monthKey := utils.GetMonthKey(txn.Date)
-		if err := utils.UpdateCarryover(ctx, tx, txn.BudgetID, *txn.CategoryID, txn.Amount, monthKey); err != nil {
-			return nil, err
-		}
-	}
-	if err = tx.Commit(ctx); err != nil {
-		return nil, err
-	}
 	txns := make([]model.Transaction, 0)
 	return append(txns, createdTxn), nil
 }
 
-func (r *transactionRepo) Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, txn model.Transaction) error {
-	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil {
-			tx.Rollback(ctx)
-		}
-	}()
-
+func (r *transactionRepo) Update(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID, txn model.Transaction) error {
 	cmdTag, err := tx.Exec(
-		ctx,
-		`UPDATE transactions SET 
+		ctx, `
+		  UPDATE transactions SET
 				date = $1,
 				payee_id = $2,
 				category_id = $3,
 				account_id = $4,
 				note = $5,
-				amount = $6, 
+				amount = $6,
 				transfer_account_id = $7,
 				transfer_transaction_id = $8,
 				updated_at = NOW()
-		 WHERE budget_id = $9 AND id = $10`,
-		txn.Date,
+		  WHERE budget_id = $9 AND id = $10
+		`, txn.Date,
 		txn.PayeeID,
 		txn.CategoryID,
 		txn.AccountID,
@@ -206,15 +346,8 @@ func (r *transactionRepo) Update(ctx context.Context, budgetId uuid.UUID, id uui
 		return err
 	}
 	if cmdTag.RowsAffected() == 0 {
-		return errors.New("Provide a valid id")
+		return fmt.Errorf("Transaction not found for id: %v", id)
 	}
-	if txn.CategoryID != nil {
-		monthKey := utils.GetMonthKey(txn.Date)
-		if err = utils.UpdateCarryover(ctx, tx, budgetId, *txn.CategoryID, txn.Amount, monthKey); err != nil {
-			return err
-		}
-	}
-
 	return nil
 }
 

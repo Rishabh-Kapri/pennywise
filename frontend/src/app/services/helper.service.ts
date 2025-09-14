@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { Transaction } from '../models/transaction.model';
+import { NormalizedTransaction, Transaction } from '../models/transaction.model';
 import { Category } from '../models/category.model';
 import { Dropdown, DropdownOptions } from 'flowbite';
 import { CategoryGroupData } from '../models/state.model';
@@ -45,20 +45,26 @@ export class HelperService {
   getPreviousMonthKey(currentKey: string): string {
     const { year, month } = this.splitKeyIntoMonthYear(currentKey);
     const date = new Date(year, month - 1);
-    const previousKey = `${date.getFullYear()}-${date.getMonth()}`;
+    const previousKey = `${date.getFullYear()}-${date.getMonth().toString().padStart(2, '0')}`;
     return previousKey;
   }
   
   getSelectedMonthInHumanFormat(key: string): string {
     const [year, month] = key.split('-');
     const date = new Date(Number(year), Number(month));
-    return `${year}-${Number(month) + 1}`;
+    return `${year}-${(Number(month) + 1).toString().padStart(2, '0')}`;
   }
 
-  splitKeyIntoMonthYear(key: string) {
+  /**
+  * Splits the key (format: YYYY-MM) into month and year format
+  * Since the key is in human month format (1 is January) it returns month - 1
+  * @param key key in format YYYY-MM
+  * @returns {year: number, month: number}
+  */
+  splitKeyIntoMonthYear(key: string): { year: number, month: number } {
     const selectedDate = key.split('-');
     const year = parseInt(selectedDate[0], 10);
-    const month = parseInt(selectedDate[1], 10);
+    const month = parseInt(selectedDate[1], 10) - 1;
     return { year, month };
   }
 
@@ -67,7 +73,7 @@ export class HelperService {
    */
   getCurrentMonthKey(): string {
     const date = new Date();
-    return `${date.getFullYear()}-${date.getMonth()}`;
+    return `${date.getFullYear()}-${date.getMonth().toString().padStart(2, '0')}`;
   }
 
   /**
@@ -168,17 +174,16 @@ export class HelperService {
    * Filters out transactions for specified category ids
    * @param {Transaction[]} transactions the transactions from which to filter
    * @param {string[]} categoryIds the ids of the categories
-   * @returns {Transaction[]} filtered transactions
+   * @returns {Transaction[] | NormalizedTransaction[]} filtered transactions
    */
-  getTransactionsForCategory(transactions: Transaction[], categoryIds: string[]): Transaction[] {
-    return transactions.filter((transaction) => categoryIds.includes(transaction.categoryId ?? ''));
+  getTransactionsForCategory(transactions: Transaction[], categoryIds: string[]): Transaction[];
+  getTransactionsForCategory(transactions: NormalizedTransaction[], categoryIds: string[]): NormalizedTransaction[];
+  getTransactionsForCategory(transactions: (Transaction | NormalizedTransaction)[], categoryIds: string[]): (Transaction | NormalizedTransaction)[] {
+    const filteredTxns = transactions.filter((transaction) => categoryIds.includes(transaction.categoryId ?? ''));
+    return filteredTxns;
   }
 
-  getTransactionsForAccount(transactions: Transaction[], accountIds: string[], shouldConsole: boolean = false) {
-    if (shouldConsole) {
-      console.log('getTransactionsForAccount:', transactions, accountIds);
-      console.log(transactions.filter((txn) => accountIds.includes(txn.accountId ?? '')));
-    }
+  getTransactionsForAccount(transactions: Transaction[] | NormalizedTransaction[], accountIds: string[], shouldConsole: boolean = false) {
     return transactions.filter((transaction) => accountIds.includes(transaction.accountId ?? ''));
   }
 
@@ -212,7 +217,7 @@ export class HelperService {
       // if category is credit card then fetch accountId
       const ccAccount = accounts.find((acc) => acc.name.toLowerCase().includes('credit'));
       if (ccAccount) {
-        filteredTransactions = this.getTransactionsForAccount(transactions, [ccAccount.id!]);
+        filteredTransactions = this.getTransactionsForAccount(transactions, [ccAccount.id!]) as Transaction[];
       }
     } else {
       filteredTransactions = this.getTransactionsForCategory(transactions, [category.id!]);
@@ -230,7 +235,9 @@ export class HelperService {
    * @param {string} monthKey the selected month key
    * @returns Transaction[] the filtered transaction for the provided month
    */
-  filterTransactionsBasedOnMonth(transactions: Transaction[], monthKey: string, categoryId?: string): Transaction[] {
+  filterTransactionsBasedOnMonth(transactions: Transaction[], monthKey: string, categoryId?: string): Transaction[];
+  filterTransactionsBasedOnMonth(transactions: NormalizedTransaction[], monthKey: string, categoryId?: string): NormalizedTransaction[];
+  filterTransactionsBasedOnMonth(transactions: (Transaction | NormalizedTransaction)[], monthKey: string, categoryId?: string): (Transaction | NormalizedTransaction)[] {
     const { year, month } = this.splitKeyIntoMonthYear(monthKey);
     const startDate = new Date(year, month);
     const endDate = new Date(year, month + 1);
@@ -293,7 +300,7 @@ export class HelperService {
         if (isCategoryCreditCard) {
           catPreviousMonthTransactions = this.getTransactionsForAccount(previousMonthKeyTransactions, [
             ...ccAccounts.map((acc) => acc.id!),
-          ]);
+          ]) as Transaction[];
         } else {
           catPreviousMonthTransactions = this.getTransactionsForCategory(previousMonthKeyTransactions, [category.id!]);
         }

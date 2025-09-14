@@ -8,6 +8,7 @@ import (
 	"pennywise-api/internal/model"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -15,6 +16,8 @@ type CategoryRepository interface {
 	GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Category, error)
 	Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.Category, error)
 	GetById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Category, error)
+	GetByIdSimplified(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Category, error)
+	GetByIdSimplifiedTx(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID) (*model.Category, error)
 	Create(ctx context.Context, category model.Category) error
 	DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error
 	Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, category model.Category) error
@@ -232,6 +235,36 @@ func (r *categoryRepo) GetById(ctx context.Context, budgetId uuid.UUID, id uuid.
 	return &c, nil
 }
 
+func (r *categoryRepo) GetByIdSimplified(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Category, error) {
+	var c model.Category
+	err := r.db.QueryRow(
+		ctx, `
+		  SELECT id, name, budget_id, category_group_id, hidden, note, is_system, created_at, updated_at
+		  FROM categories
+		  WHERE id = $1 AND budget_id = $2
+		`, id, budgetId,
+	).Scan(&c.ID, &c.Name, &c.BudgetID, &c.CategoryGroupID, &c.Hidden, &c.Note, &c.IsSystem, &c.CreatedAt, &c.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+func (r *categoryRepo) GetByIdSimplifiedTx(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID) (*model.Category, error) {
+	var c model.Category
+	err := tx.QueryRow(
+		ctx, `
+		  SELECT id, name, budget_id, category_group_id, hidden, note, is_system, created_at, updated_at
+		  FROM categories
+		  WHERE id = $1 AND budget_id = $2
+		`, id, budgetId,
+	).Scan(&c.ID, &c.Name, &c.BudgetID, &c.CategoryGroupID, &c.Hidden, &c.Note, &c.IsSystem, &c.CreatedAt, &c.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
 func (r *categoryRepo) Create(ctx context.Context, category model.Category) error {
 	_, err := r.db.Exec(
 		ctx,
@@ -282,3 +315,8 @@ func (r *categoryRepo) Update(ctx context.Context, budgetId uuid.UUID, id uuid.U
 
 	return err
 }
+
+// Charit Bhatt
+// 405 Philip Blvd Apt 302
+// Lawrenceville, GA
+// 30046

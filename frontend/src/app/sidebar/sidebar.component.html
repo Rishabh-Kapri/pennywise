@@ -117,7 +117,7 @@
               <ng-icon name="heroPencilSolid" class="edit-btn" (click)="editAccount(account)"></ng-icon>
               <div class="mr-4 ml-4 w-full flex justify-between">
                 <div class="w-21 truncate" [title]="account.name">{{ account.name }}</div>
-                <div class="truncate">{{ account.balance | currency : 'INR' }}</div>
+                <div class="truncate">{{ (account.balance ?? 0) | currency : 'INR' }}</div>
               </div>
             </li>
           }
@@ -145,7 +145,7 @@
               <ng-icon name="heroPencilSolid" class="edit-btn" (click)="editAccount(account)"></ng-icon>
               <div class="mr-4 ml-4 w-full flex justify-between">
                 <div class="w-21 truncate" [title]="account.name">{{ account.name }}</div>
-                <div class="truncate">{{ account.balance | currency : 'INR' }}</div>
+                <div class="truncate">{{ (account.balance ?? 0) | currency : 'INR' }}</div>
               </div>
             </li>
           }
