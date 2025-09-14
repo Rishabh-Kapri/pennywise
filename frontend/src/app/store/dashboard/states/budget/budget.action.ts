@@ -12,5 +12,8 @@ export namespace BudgetsActions {
     static readonly type = '[Budgets] SetSelectedBudget';
     constructor(readonly payload: Budget) {}
   }
+  export class BudgetsFetched {
+    static readonly type = '[Budgets] BudgetsFetched';
+  }
 
 }

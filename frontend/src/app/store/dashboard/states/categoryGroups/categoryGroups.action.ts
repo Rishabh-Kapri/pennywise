@@ -2,6 +2,10 @@ import { Category } from 'src/app/models/category.model';
 import { CategoryGroupData } from 'src/app/models/state.model';
 
 export namespace CategoryGroupsActions {
+  export class GetCategoryGroups {
+    static readonly type = '[CategoryGroups] GetCategoryGroups';
+    constructor(readonly month: string)  {}
+  }
   export class GetAllCategoryGroups {
     static readonly type = '[CategoryGroups] GetAllCategoryGroups';
     constructor(readonly budgetId: string) {}

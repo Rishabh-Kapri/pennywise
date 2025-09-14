@@ -44,6 +44,8 @@ import { CalculateTotalPipe } from './pipes/calculateTotal.pipe';
 import { AddZeroPrefixToDate } from './pipes/addZeroPrefixDate.pipe';
 import { AccountsMobileComponent } from './accounts/accounts-mobile.component';
 import { TransactionsMobileComponent } from './transactions/mobile/transactions-mobile.component';
+import { HTTP_INTERCEPTORS, HttpClientModule } from '@angular/common/http';
+import { HeadersInterceptor } from './services/headers-interceptor.service';
 
 @NgModule({
   declarations: [
@@ -73,6 +75,7 @@ import { TransactionsMobileComponent } from './transactions/mobile/transactions-
     FormsModule,
     ReactiveFormsModule,
     OverlayModule,
+    HttpClientModule,
     provideFirebaseApp(() => initializeApp(environment.firebase)),
     provideFirestore(() => getFirestore()),
     NgIconsModule.withIcons({
@@ -96,7 +99,9 @@ import { TransactionsMobileComponent } from './transactions/mobile/transactions-
     NgxsStoreModule,
     HighchartsChartModule,
   ],
-  providers: [],
+  providers: [
+    { provide: HTTP_INTERCEPTORS, useClass: HeadersInterceptor, multi: true },
+  ],
   bootstrap: [AppComponent],
 })
 export class AppModule {}

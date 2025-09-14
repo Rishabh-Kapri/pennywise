@@ -233,7 +233,7 @@ export class StoreService {
                   if (this.helperService.isCategoryCreditCard(category)) {
                     currMonthCatTransactions = this.helperService.getTransactionsForAccount(currentMonthTransactions, [
                       ...ccAccounts.map((acc) => acc.id!),
-                    ]);
+                    ]) as Transaction[];
                   } else {
                     currMonthCatTransactions = this.helperService.getTransactionsForCategory(currentMonthTransactions, [
                       category.id!,
@@ -315,7 +315,7 @@ export class StoreService {
               if (this.helperService.isCategoryCreditCard(category)) {
                 currMonthCatTransactions = this.helperService.getTransactionsForAccount(currentMonthTransactions, [
                   ...ccAccounts.map((acc) => acc.id!),
-                ]);
+                ]) as Transaction[];
               } else {
                 currMonthCatTransactions = this.helperService.getTransactionsForCategory(currentMonthTransactions, [
                   category.id!,
@@ -444,7 +444,7 @@ export class StoreService {
         if (isCategoryCreditCard) {
           catPreviousMonthTransactions = this.helperService.getTransactionsForAccount(previousMonthKeyTransactions, [
             ...ccAccounts.map((acc) => acc.id!),
-          ]);
+          ]) as Transaction[];
         } else {
           catPreviousMonthTransactions = this.helperService.getTransactionsForCategory(previousMonthKeyTransactions, [
             category.id!,
@@ -514,7 +514,7 @@ export class StoreService {
       if (this.helperService.isCategoryCreditCard(category)) {
         currMonthCatTransactions = this.helperService.getTransactionsForAccount(currentMonthTransactions, [
           ccAccount?.id!,
-        ]);
+        ]) as Transaction[];
       } else {
         currMonthCatTransactions = this.helperService.getTransactionsForCategory(currentMonthTransactions, [
           category.id!,

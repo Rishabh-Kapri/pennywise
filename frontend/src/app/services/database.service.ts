@@ -20,7 +20,7 @@ import { Budget } from '../models/budget.model';
 import { Category, CategoryDTO, InflowCategory } from '../models/category.model';
 import { CategoryGroup } from '../models/catergoryGroup';
 import { Payee } from '../models/payee.model';
-import { Transaction } from '../models/transaction.model';
+import { Transaction, TransactionSource } from '../models/transaction.model';
 import { INFLOW_CATEGORY_NAME, MASTER_CATEGORY_GROUP_NAME, STARTING_BALANCE_PAYEE } from '../constants/general';
 import { HelperService } from './helper.service';
 import { accounts, categories, categoryGroups, payees, transactions } from 'src/assets/mock-data';
@@ -185,10 +185,10 @@ export class DatabaseService {
       accountId: createdAccount.id,
       categoryId: categoryId,
       budgetId: account.budgetId,
-      amount: account.balance,
+      amount: account.balance ?? 0,
       payeeId: startingPayee.id!,
       date: this.helperService.getDateInDbFormat(),
-      source: 'pennywise',
+      source: TransactionSource.PENNYWISE,
       deleted: false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -199,7 +199,7 @@ export class DatabaseService {
     if (!isTrackingAcc) {
       const editInflow: Partial<InflowCategory> = {
         id: inflowCategory.id!,
-        budgeted: inflowCategory.budgeted + account.balance,
+        budgeted: inflowCategory.budgeted + (account.balance ?? 0),
       };
       await this.editCategory(editInflow);
     }
@@ -235,34 +235,34 @@ export class DatabaseService {
       ...category,
       updatedAt: new Date().toISOString(),
     });
-    this.ngxsStore.dispatch(new CategoryGroupsActions.SetCategoryGroupData());
+    // this.ngxsStore.dispatch(new CategoryGroupsActions.SetCategoryGroupData());
     return editedCategory;
   }
 
   async createTransaction(transaction: Transaction) {
-    const createdTxn = await addDoc(this.transactionCollection, transaction);
-    console.log('createTransaction', transaction, createdTxn);
-    this.ngxsStore.dispatch(new TransactionsActions.ProcessNormalisedTransaction());
-    this.ngxsStore.dispatch(new AccountsActions.SetBalanceForAccounts());
-    return createdTxn;
+    // const createdTxn = await addDoc(this.transactionCollection, transaction);
+    // console.log('createTransaction', transaction, createdTxn);
+    // this.ngxsStore.dispatch(new TransactionsActions.ProcessNormalisedTransaction());
+    // this.ngxsStore.dispatch(new AccountsActions.SetBalanceForAccounts());
+    // return createdTxn;
   }
 
   async editTransaction(transaction: Partial<Transaction>) {
-    console.log('Editing transaction', transaction.id);
-    const transactionRef = doc(this.transactionCollection, transaction.id);
-    const editedTxn = await updateDoc(transactionRef, {
-      ...transaction,
-      updatedAt: new Date().toISOString(),
-    });
-    this.ngxsStore.dispatch(new TransactionsActions.ProcessNormalisedTransaction());
-    this.ngxsStore.dispatch(new AccountsActions.SetBalanceForAccounts());
-    return editedTxn;
+    // console.log('Editing transaction', transaction.id);
+    // const transactionRef = doc(this.transactionCollection, transaction.id);
+    // const editedTxn = await updateDoc(transactionRef, {
+    //   ...transaction,
+    //   updatedAt: new Date().toISOString(),
+    // });
+    // this.ngxsStore.dispatch(new TransactionsActions.ProcessNormalisedTransaction());
+    // this.ngxsStore.dispatch(new AccountsActions.SetBalanceForAccounts());
+    // return editedTxn;
   }
 
   async deleteTransaction(transactionId: string) {
-    const transactionRef = doc(this.transactionCollection, transactionId);
-    await deleteDoc(transactionRef);
-    this.ngxsStore.dispatch(new TransactionsActions.ProcessNormalisedTransaction());
+    // const transactionRef = doc(this.transactionCollection, transactionId);
+    // await deleteDoc(transactionRef);
+    // this.ngxsStore.dispatch(new TransactionsActions.ProcessNormalisedTransaction());
   }
 
   getBudgetsStream() {

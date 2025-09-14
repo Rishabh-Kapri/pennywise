@@ -6,6 +6,7 @@ import { BudgetsFirestore } from 'src/app/services/databases/budgets.firestore';
 import { BudgetsActions } from './budget.action';
 import { HelperService } from 'src/app/services/helper.service';
 import { CategoryGroupsActions } from '../categoryGroups/categoryGroups.action';
+import { HttpService } from 'src/app/services/http.service';
 
 export interface BudgetsStateModel {
   allBudgets: Budget[];
@@ -50,29 +51,48 @@ export class BudgetsState implements NgxsOnInit {
     private ngxsFirestoreConnect: NgxsFirestoreConnect,
     private budgetsFs: BudgetsFirestore,
     private helperService: HelperService,
+    private httpService: HttpService,
   ) {}
 
   ngxsOnInit(): void {
-    this.ngxsFirestoreConnect.connect(BudgetsActions.GetAllBudgets, {
-      to: () => this.budgetsFs.collection$(),
-      connectedActionFinishesOn: 'FirstEmit',
-    });
+    // this.ngxsFirestoreConnect.connect(BudgetsActions.GetAllBudgets, {
+    //   to: () => this.budgetsFs.collection$(),
+    //   connectedActionFinishesOn: 'FirstEmit',
+    // });
   }
 
-  @Action(StreamEmitted(BudgetsActions.GetAllBudgets))
-  getAllBudgets(ctx: StateContext<BudgetsStateModel>, { payload }: Emitted<BudgetsActions.GetAllBudgets, Budget[]>) {
-    console.log("BUDGETS:::", payload);
-    const selectedBudget = payload.find((budget) => budget.isSelected === true) ?? null;
-    const selectedMonth = this.helperService.getCurrentMonthKey();
-    ctx.setState({
-      allBudgets: payload,
-      selectedBudget,
-      selectedMonth: selectedMonth,
-      selectedHumanMonth: this.helperService.getSelectedMonthInHumanFormat(selectedMonth),
-    });
-    if (!selectedBudget) {
-      // @TODO: dispatch an error message
-    }
+  // @Action(StreamEmitted(BudgetsActions.GetAllBudgets))
+  // getAllBudgets(ctx: StateContext<BudgetsStateModel>, { payload }: Emitted<BudgetsActions.GetAllBudgets, Budget[]>) {
+  //   console.log("BUDGETS:::", payload);
+  //   const selectedBudget = payload.find((budget) => budget.isSelected === true) ?? null;
+  //   const selectedMonth = this.helperService.getCurrentMonthKey();
+  //   ctx.setState({
+  //     allBudgets: payload,
+  //     selectedBudget,
+  //     selectedMonth: selectedMonth,
+  //     selectedHumanMonth: this.helperService.getSelectedMonthInHumanFormat(selectedMonth),
+  //   });
+  //   if (!selectedBudget) {
+  //     // @TODO: dispatch an error message
+  //   }
+  // }
+
+  @Action(BudgetsActions.GetAllBudgets)
+  getAllBudgets(ctx: StateContext<BudgetsStateModel>) {
+    this.httpService.get<Budget[]>('budgets').subscribe({
+      next: (budgets) => {
+        console.log(budgets);
+        const selectedBudget = budgets.find((budget) => budget.isSelected === true) ?? null;
+        const selectedMonth = this.helperService.getCurrentMonthKey();
+        ctx.setState({
+          allBudgets: budgets,
+          selectedBudget,
+          selectedMonth: this.helperService.getSelectedMonthInHumanFormat(selectedMonth),
+          selectedHumanMonth: this.helperService.getSelectedMonthInHumanFormat(selectedMonth),
+        });
+        this.ngxsStore.dispatch(new BudgetsActions.BudgetsFetched());
+      }
+    })
   }
 
   @Action(BudgetsActions.SetSelectedMonth)
@@ -81,7 +101,7 @@ export class BudgetsState implements NgxsOnInit {
       selectedMonth: payload,
       selectedHumanMonth: this.helperService.getSelectedMonthInHumanFormat(payload),
     });
-    this.ngxsStore.dispatch(new CategoryGroupsActions.SetCategoryGroupData());
+    // this.ngxsStore.dispatch(new CategoryGroupsActions.SetCategoryGroupData());
   }
 
   @Action(BudgetsActions.SetSelectedBudget)

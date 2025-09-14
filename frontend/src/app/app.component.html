@@ -1,2 +1,12 @@
 <app-dashboard></app-dashboard>
+
+<button (click)="toggleTheme()" 
+        class="fixed bottom-5 right-5 z-[999] p-3 rounded-full shadow-lg 
+               bg-pw-surface-light dark:bg-pw-surface-dark 
+               text-pw-text-primary-light dark:text-pw-text-primary-dark
+               border border-gray-200 dark:border-gray-700">
+  <span *ngIf="!isDarkMode">🌙</span>
+  <span *ngIf="isDarkMode">☀️</span>
+</button>
+
 <router-outlet></router-outlet>

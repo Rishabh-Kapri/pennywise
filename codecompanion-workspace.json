@@ -1,0 +1,258 @@
+{
+  "name": "pennywise-workspace",
+  "version": "1.1.0",
+  "system_prompt": "You are an expert codebase assistant. Provide helpful and accurate answers about this project based on the relevant context from files and code organization.",
+  "groups": [
+    {
+      "name": "Email Parser",
+      "system_prompt": "Focus on Go code responsible for parsing emails, running predictions, and handling related transaction types. Help with logic in backend/go-gmail/pkg/parser/email.go, MLP integrations in backend/go-gmail/pkg/prediction/service.go, and type definitions in backend/go-gmail/pkg/pennywise-api/service.go.",
+      "data": [
+        "email_parser_core",
+        "email_prediction_service",
+        "pennywise_api_types"
+      ]
+    },
+    {
+      "name": "Frontend",
+      "system_prompt": "You are a frontend specialist. Provide help with Angular module wiring, UI components, TailwindCSS configuration, NGXS state management, and mobile/shared components in src/app/. Offer insights for areas of improvement.",
+      "data": [
+        "frontend_entrypoint",
+        "frontend_ui_components",
+        "frontend_tailwind_config",
+        "frontend_ngxs_state",
+        "frontend_firestore_services",
+        "frontend_mobile_components",
+        "frontend_shared_components"
+      ]
+    },
+    {
+      "name": "MLP",
+      "system_prompt": "You are an expert in the project's Python MLP (Perceptron/Transformer) pipeline. Provide assistance with the model code, training loop, encoding logic, and evaluation. Anticipate a RAG/LLM layer (likely to be a Langchain workflow) being added for context-aware notes soon.",
+      "data": [
+        "mlp_core"
+      ]
+    },
+    {
+      "name": "API",
+      "system_prompt": "You are an expert in the Go backend API. Provide assistance with the Gin entrypoint setup, handler/service/repository layers, database migrations (Firestore to Postgres), and common pkg utilities.",
+      "data": [
+        "go_api_entrypoint",
+        "go_api_account_handler",
+        "go_api_payee_handler",
+        "go_api_category_handler",
+        "go_api_categoryGroup_handler",
+        "go_api_prediction_handler",
+        "go_api_transaction_handler",
+        "go_api_account_service",
+        "go_api_payee_service",
+        "go_api_category_service",
+        "go_api_categoryGroup_service",
+        "go_api_prediction_service",
+        "go_api_transaction_service",
+        "go_api_account_repository",
+        "go_api_payee_repository",
+        "go_api_category_repository",
+        "go_api_categoryGroup_repository",
+        "go_api_prediction_repository",
+        "go_api_transaction_repository",
+        "go_api_migrations",
+        "go_api_pkg"
+      ]
+    },
+    {
+      "name": "Infrastructure/Automation",
+      "system_prompt": "You are a DevOps and automation expert. Assist with Docker Compose, CI via GitHub Actions or self-hosted runners, and general deployment and orchestration as defined in docker-compose.yml and workflows.",
+      "data": [
+        "infra_docker_compose",
+        "infra_github_actions"
+      ]
+    }
+  ],
+  "data": {
+    "email_parser_core": {
+      "type": "file",
+      "path": "backend/go-gmail/pkg/parser/email.go",
+      "description": "Core Go parsing logic for email parsing, including regex and email processing."
+    },
+    "email_prediction_service": {
+      "type": "file",
+      "path": "backend/go-gmail/pkg/prediction/service.go",
+      "description": "Integrates email parser outputs with the MLP (Machine Learning Pipeline), manages predictions, and includes prediction/transaction logic."
+    },
+    "pennywise_api_types": {
+      "type": "file",
+      "path": "backend/go-gmail/pkg/pennywise-api/service.go",
+      "description": "Contains type definitions and schemas for predictions and transactions."
+    },
+    "frontend_entrypoint": {
+      "type": "file",
+      "path": "frontend/src/app/app.module.ts",
+      "description": "The main Angular module entry point for the frontend."
+    },
+    "frontend_ui_components": {
+      "type": "symbols",
+      "path": "frontend/src/app/",
+      "description": "All UI components for the Angular frontend."
+    },
+    "frontend_tailwind_config": {
+      "type": "file",
+      "path": "frontend/tailwind.config.js",
+      "description": "TailwindCSS configuration for styling the Angular frontend."
+    },
+    "frontend_ngxs_state": {
+      "type": "symbols",
+      "path": "frontend/src/app/store/",
+      "description": "NGXS state management files for the Angular frontend."
+    },
+    "frontend_firestore_services": {
+      "type": "symbols",
+      "path": "frontend/src/app/services/databases/",
+      "description": "Firestore integration services for database operations in the frontend."
+    },
+    "frontend_mobile_components": {
+      "type": "symbols",
+      "path": "frontend/src/app/",
+      "description": "Mobile-specific Angular components, identified by *-mobile.component.* pattern."
+    },
+    "frontend_shared_components": {
+      "type": "symbols",
+      "path": "frontend/src/app/shared/",
+      "description": "Shared Angular UI components and modules (this is yet to be implementd)."
+    },
+    "mlp_core": {
+      "type": "file",
+      "path": "backend/python-mlp/mlp.py",
+      "description": "Python code for the MLP model, including perceptron, transformer-based encoding, training, and evaluation logic."
+    },
+    "go_api_entrypoint": {
+      "type": "file",
+      "path": "backend/go-pennywise-api/cmd/api/main.go",
+      "description": "Go API entrypoint setting up Gin web server and routes."
+    },
+    "go_api_account_handler": {
+      "type": "symbols",
+      "path": "backend/go-pennywise-api/internal/handler/account.go",
+      "description": "Go HTTP handlers for incoming accounts API requests."
+    },
+    "go_api_category_handler": {
+      "type": "symbols",
+      "path": "backend/go-pennywise-api/internal/handler/category.go",
+      "description": "Go HTTP handlers for incoming categories API requests."
+    },
+    "go_api_categoryGroup_handler": {
+      "type": "symbols",
+      "path": "backend/go-pennywise-api/internal/handler/categoryGroup.go",
+      "description": "Go HTTP handlers for incoming categoryGroups API requests."
+    },
+    "go_api_payee_handler": {
+      "type": "symbols",
+      "path": "backend/go-pennywise-api/internal/handler/payee.go",
+      "description": "Go HTTP handlers for incoming payees API requests."
+    },
+    "go_api_prediction_handler": {
+      "type": "symbols",
+      "path": "backend/go-pennywise-api/internal/handler/prediction.go",
+      "description": "Go HTTP handlers for incoming predictions API requests."
+    },
+    "go_api_user_handler": {
+      "type": "symbols",
+      "path": "backend/go-pennywise-api/internal/handler/user.go",
+      "description": "Go HTTP handlers for incoming users API requests."
+    },
+    "go_api_transaction_handler": {
+      "type": "symbols",
+      "path": "backend/go-pennywise-api/internal/handler/transaction.go",
+      "description": "Go HTTP handlers for incoming transactions API requests."
+    },
+    "go_api_account_service": {
+      "type": "symbols",
+      "path": "backend/go-pennywise-api/internal/service/account.go",
+      "description": "Business logic/services for the accounts API."
+    },
+    "go_api_category_service": {
+      "type": "symbols",
+      "path": "backend/go-pennywise-api/internal/service/category.go",
+      "description": "Business logic/services for the categories API."
+    },
+    "go_api_categoryGroup_service": {
+      "type": "symbols",
+      "path": "backend/go-pennywise-api/internal/service/categoryGroup.go",
+      "description": "Business logic/services for the categoryGroups API."
+    },
+    "go_api_payee_service": {
+      "type": "symbols",
+      "path": "backend/go-pennywise-api/internal/service/payee.go",
+      "description": "Business logic/services for the payees API."
+    },
+    "go_api_transaction_service": {
+      "type": "symbols",
+      "path": "backend/go-pennywise-api/internal/service/transaction.go",
+      "description": "Business logic/services for the transactions API."
+    },
+    "go_api_prediction_service": {
+      "type": "symbols",
+      "path": "backend/go-pennywise-api/internal/service/prediction.go",
+      "description": "Business logic/services for the predictions API."
+    },
+    "go_api_user_service": {
+      "type": "symbols",
+      "path": "backend/go-pennywise-api/internal/service/user.go",
+      "description": "Business logic/services for the users API."
+    },
+    "go_api_account_repository": {
+      "type": "symbols",
+      "path": "backend/go-pennywise-api/internal/repository/account.go",
+      "description": "Repository/data-access layer for accounts."
+    },
+    "go_api_category_repository": {
+      "type": "symbols",
+      "path": "backend/go-pennywise-api/internal/repository/category.go",
+      "description": "Repository/data-access layer for categories."
+    },
+    "go_api_categoryGroup_repository": {
+      "type": "symbols",
+      "path": "backend/go-pennywise-api/internal/repository/categoryGroup.go",
+      "description": "Repository/data-access layer for category groups."
+    },
+    "go_api_payee_repository": {
+      "type": "symbols",
+      "path": "backend/go-pennywise-api/internal/repository/payee.go",
+      "description": "Repository/data-access layer for payees."
+    },
+    "go_api_prediction_repository": {
+      "type": "symbols",
+      "path": "backend/go-pennywise-api/internal/repository/prediction.go",
+      "description": "Repository/data-access layer for predictions."
+    },
+    "go_api_user_repository": {
+      "type": "symbols",
+      "path": "backend/go-pennywise-api/internal/repository/user.go",
+      "description": "Repository/data-access layer for users."
+    },
+    "go_api_transaction_repository": {
+      "type": "symbols",
+      "path": "backend/go-pennywise-api/internal/repository/transaction.go",
+      "description": "Repository/data-access layer for transactions."
+    },
+    "go_api_migrations": {
+      "type": "file",
+      "path": "backend/go-pennywise-api/cmd/migrations/main.go",
+      "description": "Migration entrypoint for transitioning data from Firestore to Postgres."
+    },
+    "go_api_pkg": {
+      "type": "symbols",
+      "path": "backend/go-pennywise-api/pkg/utils.go",
+      "description": "Common utility and helper functions packaged for use across the Go API."
+    },
+    "infra_docker_compose": {
+      "type": "file",
+      "path": "backend/docker-compose.yml",
+      "description": "Main Docker Compose file for orchestrating multi-container infrastructure."
+    },
+    "infra_github_actions": {
+      "type": "file",
+      "path": ".github/workflows/workflow.yml",
+      "description": "GitHub Actions workflow for CI, CD, or automation. May include self-hosted runner configs if present."
+    }
+  }
+}

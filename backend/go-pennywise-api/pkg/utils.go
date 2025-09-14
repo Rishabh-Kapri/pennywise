@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -22,6 +23,28 @@ func GetMonthKey(date string) string {
 	key := strings.Split(date, "-")
 	monthKey := key[0] + "-" + key[1]
 	return monthKey
+}
+
+func getSortedMonths(values []string) []string {
+	sort.Strings(values)
+	return values
+}
+
+func FillCarryForward(values map[string]float32, month string) map[string]float32 {
+	_, exists := values[month]
+	if exists {
+		return values
+	}
+
+	var months []string
+	for k := range values {
+		months = append(months, k)
+	}
+	sortedMonths := getSortedMonths(months)
+
+	values[month] = values[sortedMonths[len(sortedMonths)-1]]
+
+	return values
 }
 
 // Updates the carryover_balance column in the monthly_budgets table.
@@ -47,10 +70,9 @@ func UpdateCarryover(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categor
 	if err != nil {
 		return fmt.Errorf("failed to update carryover: %v", err)
 	}
-	budgeted := 0.0
-
 	if cmdTag.RowsAffected() == 0 {
-    // @TODO: see if carryover_balance fetching can be done through pure sql
+	  budgeted := 0.0
+		// @TODO: see if carryover_balance fetching can be done through pure sql
 		log.Printf("Carryover not found for month: %v", monthKey)
 		newCmdTag, err := tx.Exec(
 			ctx, `
@@ -60,7 +82,7 @@ func UpdateCarryover(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categor
 			  $1, $2, $3, $4,
 			  COALESCE(
 			    (
-			      SELECT carryover_balance + $3 - $5
+			      SELECT carryover_balance + $3 + $5
 			      FROM monthly_budgets
 			      WHERE budget_id = $1 AND category_id = $2 AND month < $4
 			      ORDER BY month DESC
@@ -68,7 +90,7 @@ func UpdateCarryover(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categor
 			    ),
 			    $3 - $5
 			  ),
-			  $5, NOW(), NOW()
+		    NOW(), NOW()
 			)
 			`, budgetId, categoryId, budgeted, monthKey, amount,
 		)
@@ -84,7 +106,7 @@ func UpdateCarryover(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categor
 				) VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
 				`, budgetId, categoryId, budgeted, monthKey, amount,
 			)
-			if err != nil  {
+			if err != nil {
 				return err
 			}
 		}
@@ -107,4 +129,12 @@ func GetBudgetId(c *gin.Context) (context.Context, error) {
 	}
 	ctx := context.WithValue(c.Request.Context(), "budgetId", parsedBudgetId)
 	return ctx, nil
+}
+
+func Float64SliceToVectorString(vec []float64) string {
+	parts := make([]string, len(vec))
+	for i, v := range vec {
+		parts[i] = fmt.Sprintf("%.8f", v)
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
 }

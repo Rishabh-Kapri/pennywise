@@ -13,6 +13,8 @@ import (
 
 type AccountRepository interface {
 	GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Account, error)
+	GetById(ctx context.Context, budgetId uuid.UUID, accountId uuid.UUID) (*model.Account, error)
+	GetByIdTx(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, accountId uuid.UUID) (*model.Account, error)
 	Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.Account, error)
 	Create(ctx context.Context, account model.Account) (*model.Account, error)
 }
@@ -130,6 +132,56 @@ func (r *accountRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.A
 		accounts = append(accounts, a)
 	}
 	return accounts, nil
+}
+
+func (r *accountRepo) GetById(ctx context.Context, budgetId uuid.UUID, accountId uuid.UUID) (*model.Account, error) {
+	var a model.Account
+	err := r.db.QueryRow(
+		ctx, `
+		  SELECT id, name, budget_id, transfer_payee_id, type, closed, created_at, updated_at 
+		  FROM accounts 
+		  WHERE id = $1 AND budget_id = $2 AND deleted = FALSE
+		`,
+		accountId, budgetId,
+	).Scan(
+		&a.ID,
+		&a.Name,
+		&a.BudgetID,
+		&a.TransferPayeeID,
+		&a.Type,
+		&a.Closed,
+		&a.CreatedAt,
+		&a.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &a, nil
+}
+
+func (r *accountRepo) GetByIdTx(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, accountId uuid.UUID) (*model.Account, error) {
+	var a model.Account
+	err := tx.QueryRow(
+		ctx, `
+		  SELECT id, name, budget_id, transfer_payee_id, type, closed, created_at, updated_at 
+		  FROM accounts 
+		  WHERE id = $1 AND budget_id = $2 AND deleted = FALSE
+		`,
+		accountId, budgetId,
+	).Scan(
+		&a.ID,
+		&a.Name,
+		&a.BudgetID,
+		&a.TransferPayeeID,
+		&a.Type,
+		&a.Closed,
+		&a.CreatedAt,
+		&a.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &a, nil
 }
 
 func (r *accountRepo) Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.Account, error) {

@@ -96,7 +96,7 @@ export class BudgetMobileComponent implements OnInit {
       if (this.helperService.isCategoryCreditCard(category)) {
         categoryTransactions = this.helperService.getTransactionsForAccount(allTransactions, [
           ...ccAccounts.map((acc) => acc.id!),
-        ]);
+        ]) as Transaction[];
       } else {
         categoryTransactions = this.helperService.getTransactionsForCategory(allTransactions, [category.id!]);
       }
@@ -115,7 +115,7 @@ export class BudgetMobileComponent implements OnInit {
     if (this.helperService.isCategoryCreditCard(category)) {
       categoryTransactions = this.helperService.getTransactionsForAccount(allTransactions, [
         ...ccAccounts.map((acc) => acc.id!),
-      ]);
+      ]) as Transaction[];
     } else {
       categoryTransactions = this.helperService.getTransactionsForCategory(allTransactions, [category.id!]);
     }

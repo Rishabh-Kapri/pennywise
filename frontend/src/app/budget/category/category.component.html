@@ -3,6 +3,7 @@
     selectedMonth: selectedMonth$ | async,
     categoryGroupData: categoryGroups$ | async
   } as data">
+  {{ data.selectedMonth }}
   <div class="flex justify-between">
     <div class="flex flex-wrap w-full lg:flex-[0_0_75%]">
       <div class="p-1 text-sm hover-color border-b border-neutral-600 w-full">
@@ -40,15 +41,15 @@
             <ng-container *ngTemplateOutlet="addCategoryTemplate; context: { item: item, index: index }"></ng-container>
           </div>
           <div class="flex-20 text-right hidden sm:block" 
-               [ngClass]="{ 'text-neutral-500': item.budgeted[data.selectedMonth ?? ''] === 0 }">
+               [ngClass]="{ 'text-neutral-500': (item.budgeted?.[data.selectedMonth ?? ''] ?? 0) === 0 }">
             {{ item.budgeted?.[data.selectedMonth ?? ''] ?? 0 | currency : 'INR' }}
           </div>
           <div class="flex-20 text-right hidden sm:block" 
-               [ngClass]="{ 'text-neutral-500': item.activity[data.selectedMonth ?? ''] === 0 }">
-            {{ item.activity?.[data?.selectedMonth ?? ''] ?? 0 | currency : 'INR' }}
+               [ngClass]="{ 'text-neutral-500': (item.activity?.[data.selectedMonth ?? ''] ?? 0) === 0 }">
+            {{ item.activity?.[data.selectedMonth ?? ''] ?? 0 | currency : 'INR' }}
           </div>
           <div class="flex-[0_0_40%] sm:flex-20 text-right" 
-               [ngClass]="{ 'text-neutral-500': item.balance[data.selectedMonth ?? ''] === 0 }">
+               [ngClass]="{ 'text-neutral-500': (item.balance?.[data.selectedMonth ?? ''] ?? 0) === 0 }">
             {{ item.balance?.[data?.selectedMonth ?? ''] ?? 0 | currency : 'INR' }}
           </div>
         </div>

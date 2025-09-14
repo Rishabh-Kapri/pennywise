@@ -4,7 +4,7 @@ export interface Account {
   name: string;
   type: BudgetAccountType | TrackingAccountType;
   closed: boolean;
-  balance: number;
+  balance?: number;
   transferPayeeId?: string; // id of this account's payee
   createdAt?: string;
   updatedAt?: string;
