@@ -228,7 +228,7 @@ func (r *predictionRepo) Create(ctx context.Context, prediction model.Prediction
 // Returns any error encountered during the database operation.
 // Note: Since update is tied to transactions, passing a pgx.Tx object for rollback purposes
 func (r *predictionRepo) Update(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID, prediction model.Prediction) error {
-	log.Printf("Inside predictionRepo.Update: %v %v %+v", id, budgetId, prediction)
+	log.Printf("Inside predictionRepo.Update: %v", prediction.String())
 	cmdTag, err := tx.Exec(
 		ctx, `
 		  UPDATE predictions SET

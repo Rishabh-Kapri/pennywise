@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -120,7 +121,9 @@ func (s *transactionService) updatePrediction(ctx context.Context, tx pgx.Tx, bu
 
 func (s *transactionService) updateCarryovers(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, foundTxn *model.Transaction, txn model.Transaction) error {
 	// Handle old category carryover reversal
-	if foundTxn.CategoryID != nil && foundTxn.CategoryID != txn.CategoryID {
+	existingCatId := foundTxn.CategoryID
+	newCatId := txn.CategoryID
+	if *existingCatId != uuid.Nil && *existingCatId != *newCatId {
 		existingTxnMonthKey := utils.GetMonthKey(foundTxn.Date)
 		log.Printf("Updating carryover for old category: %v for month: %v with amount: %v", foundTxn.CategoryID, existingTxnMonthKey, -foundTxn.Amount)
 		if err := s.mbRepo.UpdateCarryoverByCatIdAndMonth(ctx, tx, budgetId, *foundTxn.CategoryID, existingTxnMonthKey, -foundTxn.Amount); err != nil {
@@ -129,7 +132,7 @@ func (s *transactionService) updateCarryovers(ctx context.Context, tx pgx.Tx, bu
 	}
 
 	// Handle new category carryover
-	if txn.CategoryID != nil {
+	if *newCatId != uuid.Nil {
 		newTxnMonthKey := utils.GetMonthKey(txn.Date)
 		log.Printf("Updating carryover for new category %v for month: %v", txn.CategoryID, newTxnMonthKey)
 		if err := s.mbRepo.UpdateCarryoverByCatIdAndMonth(ctx, tx, budgetId, *txn.CategoryID, newTxnMonthKey, txn.Amount); err != nil {
@@ -166,8 +169,25 @@ func (s *transactionService) Create(ctx context.Context, txn model.Transaction) 
 	// @TODO: Add better handling for inflow category and other system categories
 	if txn.CategoryID != nil && txn.CategoryID.String() != "02fc5abc-94b7-4b03-9077-5d153011fd3f" {
 		monthKey := utils.GetMonthKey(txn.Date)
-		if err = s.mbRepo.UpdateCarryoverByCatIdAndMonth(ctx, tx, budgetId, *txn.CategoryID, monthKey, txn.Amount); err != nil {
-			return nil, err
+		_, err := s.mbRepo.GetByCatIdAndMonth(ctx, tx, budgetId, *txn.CategoryID, monthKey)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				monthlyBudget := model.MonthlyBudget{
+					Month:      monthKey,
+					Budgeted:   0,
+					CarryoverBalance: txn.Amount,
+					CategoryID: *txn.CategoryID,
+				}
+				if err = s.mbRepo.Create(ctx, tx, budgetId, monthlyBudget); err != nil {
+					return nil, fmt.Errorf("error while creating new monthly budget for category %v and month %v: %w", monthlyBudget.CategoryID, monthKey, err)
+				}
+			} else {
+				return nil, fmt.Errorf("error while fetching monthly budget for category %v and month %v: %w", *txn.CategoryID, monthKey, err)
+			}
+		} else {
+			if err = s.mbRepo.UpdateCarryoverByCatIdAndMonth(ctx, tx, budgetId, *txn.CategoryID, monthKey, txn.Amount); err != nil {
+				return nil, err
+			}
 		}
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -178,7 +198,7 @@ func (s *transactionService) Create(ctx context.Context, txn model.Transaction) 
 
 func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model.Transaction) error {
 	// Create a shorter context for each individual transaction attempt
-	txCtx, txCancel := context.WithTimeout(ctx, 5*time.Second)
+	txCtx, txCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer txCancel()
 
 	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
