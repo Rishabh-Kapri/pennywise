@@ -25,6 +25,7 @@ type Prediction struct {
 	UserCorrectedCategory *string   `json:"userCorrectedCategory,omitempty"`
 	CreatedAt             time.Time `json:"createdAt"`
 	UpdatedAt             time.Time `json:"updatedAt"`
+	Deleted               bool      `json:"deleted"`
 }
 
 func (p *Prediction) String() string {
@@ -45,7 +46,8 @@ func (p *Prediction) String() string {
     UserCorrectedAccount: %s,
     UserCorrectedCategory: %s,
     CreatedAt: %v,
-    UpdatedAt: %v
+    UpdatedAt: %v,
+		Deleted: %v
 }`,
 		p.ID, p.BudgetID, p.TransactionID, p.EmailText, p.Amount,
 		ptrToString(p.Account), ptrToFloat64String(p.AccountPrediction),
@@ -53,5 +55,5 @@ func (p *Prediction) String() string {
 		ptrToString(p.Category), ptrToFloat64String(p.CategoryPrediction),
 		ptrToBoolString(p.HasUserCorrected),
 		ptrToString(p.UserCorrectedPayee), ptrToString(p.UserCorrectedAccount),
-		ptrToString(p.UserCorrectedCategory), p.CreatedAt, p.UpdatedAt)
+		ptrToString(p.UserCorrectedCategory), p.CreatedAt, p.UpdatedAt, p.Deleted)
 }
