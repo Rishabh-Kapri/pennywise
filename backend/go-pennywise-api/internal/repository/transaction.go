@@ -2,13 +2,10 @@ package repository
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log"
 
 	"pennywise-api/internal/model"
-
-	utils "pennywise-api/pkg"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -23,7 +20,7 @@ type TransactionRepository interface {
 	GetAllNormalized(ctx context.Context, budgetId uuid.UUID, accountId *uuid.UUID) ([]model.Transaction, error)
 	Update(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID, txn model.Transaction) error
 	Create(ctx context.Context, tx pgx.Tx, txn model.Transaction) ([]model.Transaction, error)
-	DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error
+	DeleteById(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID) error
 }
 
 type transactionRepo struct {
@@ -351,37 +348,20 @@ func (r *transactionRepo) Update(ctx context.Context, tx pgx.Tx, budgetId uuid.U
 	return nil
 }
 
-func (r *transactionRepo) DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error {
-	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
+func (r *transactionRepo) DeleteById(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID) error {
+	cmdTag, err := tx.Exec(
+		ctx, `
+			UPDATE transactions 
+			SET deleted = TRUE WHERE budget_id = $1 AND id = $2 
+			`, budgetId, id,
+	)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err != nil {
-			tx.Rollback(ctx)
-		}
-	}()
 
-	var updatedTxn model.Transaction
-	err = tx.QueryRow(
-		ctx,
-		`UPDATE transactions 
-		SET deleted = TRUE WHERE budget_id = $1 AND id = $2 
-		RETURNING id, budget_id, date, payee_id, category_id, account_id, amount`,
-		budgetId, id,
-	).Scan(&updatedTxn.ID, &updatedTxn.BudgetID, &updatedTxn.Date, &updatedTxn.PayeeID, &updatedTxn.CategoryID, &updatedTxn.AccountID, &updatedTxn.Amount)
-	if err != nil {
-		return err
-	}
-	if updatedTxn.ID == uuid.Nil {
-		return errors.New("Provide a valid id")
+	if cmdTag.RowsAffected() == 0 {
+		return fmt.Errorf("No active transactions found with the given id and budgetId")
 	}
 
-	// Reverse the amount for updation
-	monthKey := utils.GetMonthKey(updatedTxn.Date)
-	if err = utils.UpdateCarryover(ctx, tx, budgetId, *updatedTxn.CategoryID, -(updatedTxn.Amount), monthKey); err != nil {
-		return err
-	}
-	log.Printf("Soft deleted transaction with id: %v", id)
 	return nil
 }

@@ -43,6 +43,7 @@ func (s *predictionService) Update(ctx context.Context, id uuid.UUID, prediction
 }
 
 func (s *predictionService) DeleteById(ctx context.Context, id uuid.UUID) error {
-	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
-	return s.repo.DeleteById(ctx, budgetId, id)
+	// budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	// return s.repo.Delete(ctx, budgetId, id)
+	return nil
 }
