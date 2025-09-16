@@ -116,7 +116,7 @@ func (r *categoryGroupRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]m
 									TO_CHAR(date_trunc('month', t.date::date), 'YYYY-MM') AS month,
 									SUM(t.amount) AS sum
 								FROM transactions t
-								WHERE t.category_id = c.id
+								WHERE t.category_id = c.id AND t.deleted = FALSE
 								GROUP BY month
 							) tx
 						), '{}'
@@ -222,7 +222,7 @@ func (r *categoryGroupRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]m
 												TO_CHAR(date_trunc('month', t.date::date), 'YYYY-MM') AS month,
 												SUM(t.amount) AS sum
 											FROM transactions t
-											WHERE t.category_id = c.id
+											WHERE t.category_id = c.id AND t.deleted = FALSE
 											GROUP BY month
 										) tx
 									), '{}'

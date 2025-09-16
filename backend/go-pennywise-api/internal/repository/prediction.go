@@ -20,8 +20,8 @@ type PredictionRepository interface {
 	GetByTxnIdTx(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, txnId uuid.UUID) (*model.Prediction, error)
 	Create(ctx context.Context, prediction model.Prediction) ([]model.Prediction, error)
 	Update(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID, prediction model.Prediction) error
-	// DeleteById deletes a prediction by budget and prediction id.
-	DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error
+	// DeleteById deletes a prediction by budget and txn id.
+	DeleteByTxnId(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, txnId uuid.UUID) error
 }
 
 type predictionRepo struct {
@@ -132,7 +132,7 @@ func (r *predictionRepo) GetByTxnIdTx(ctx context.Context, tx pgx.Tx, budgetId u
 		ctx, `
 		  SELECT *
 		  FROM predictions
-		  WHERE budget_id = $1 AND transaction_id = $2
+		  WHERE budget_id = $1 AND transaction_id = $2 AND DELETED = FALSE
 		`, budgetId, txnId,
 	).Scan(
 		&p.ID,
@@ -152,6 +152,7 @@ func (r *predictionRepo) GetByTxnIdTx(ctx context.Context, tx pgx.Tx, budgetId u
 		&p.UserCorrectedCategory,
 		&p.CreatedAt,
 		&p.UpdatedAt,
+		&p.Deleted,
 	)
 	if err != nil {
 		return nil, err
@@ -275,12 +276,11 @@ func (r *predictionRepo) Update(ctx context.Context, tx pgx.Tx, budgetId uuid.UU
 }
 
 // DeleteById marks the prediction entry as deleted (soft delete) with the specified budgetId and id.
-func (r *predictionRepo) DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error {
-	cmdTag, err := r.db.Exec(
+func (r *predictionRepo) DeleteByTxnId(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, txnId uuid.UUID) error {
+	cmdTag, err := tx.Exec(
 		ctx,
-		`UPDATE predictions SET deleted = TRUE WHERE budget_id = $1 AND id = $2 AND deleted = FALSE`,
-		budgetId,
-		id,
+		`UPDATE predictions SET deleted = TRUE WHERE budget_id = $1 AND transaction_id = $2 AND deleted = FALSE`,
+		budgetId, txnId,
 	)
 	if err != nil {
 		return err
