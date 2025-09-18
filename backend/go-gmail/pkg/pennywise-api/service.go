@@ -30,7 +30,7 @@ type Transaction struct {
 	ID                    string  `json:"id,omitempty"`
 	Date                  string  `json:"date"`
 	PayeeId               string  `json:"payeeId"`
-	CategoryId            string  `json:"categoryId"`
+	CategoryId            *string  `json:"categoryId,omitempty"`
 	AccountId             string  `json:"accountId"`
 	Amount                float64 `json:"amount"`
 	Note                  string  `json:"note"`
@@ -119,7 +119,7 @@ func (s *Service) makePennywiseRequest(endpoint string, method string, queryData
 		log.Printf("Error while reading pennywise api response: %v", err.Error())
 		return nil, err
 	}
-	log.Printf("Response received from pennywise api for %v with data %v: %v", endpoint, data, string(body))
+	log.Printf("Response received from pennywise api for %v with data %+v: %v", endpoint, data, string(body))
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return nil, fmt.Errorf("API error %v: %s", endpoint, res.Status)
@@ -177,24 +177,30 @@ func (s *Service) CreateTransaction(parsedDetails *parser.EmailDetails, predicte
 	// log.Printf("Payee found: %v", payeeId)
 
 	// search for category
-	catQueryMap := map[string]string{"name": txnData.Category}
-	categories, err := s.makePennywiseRequest("/api/categories/search", http.MethodGet, catQueryMap, nil)
-	if err != nil {
-		log.Printf("Error while searching for category: %v", err)
-		return nil, err
+	var catIdPtr *string
+	if txnData.Category != "null" && txnData.Category != "" {
+		catQueryMap := map[string]string{"name": txnData.Category}
+		categories, err := s.makePennywiseRequest("/api/categories/search", http.MethodGet, catQueryMap, nil)
+		if err != nil {
+			log.Printf("Error while searching for category: %v", err)
+			return nil, err
+		}
+		if len(categories) == 0 {
+			return nil, fmt.Errorf("Category not found %s", txnData.Category)
+		}
+		catId := categories[0]["id"].(string)
+		catIdPtr = &catId
+		log.Printf("Category found: %v", catId)
+	} else {
+		log.Printf("Category is null")
 	}
-	if len(categories) == 0 {
-		return nil, fmt.Errorf("Category not found %s", txnData.Category)
-	}
-	catId := categories[0]["id"].(string)
-	// log.Printf("Category found: %v", catId)
 
 	newTxn := Transaction{
 		Date:       txnData.Date,
 		Amount:     txnData.Amount,
 		AccountId:  accountId,
 		PayeeId:    payeeId,
-		CategoryId: catId,
+		CategoryId: catIdPtr,
 		Source:     "MLP",
 		Note:       "",
 	}
