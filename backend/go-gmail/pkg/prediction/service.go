@@ -109,6 +109,7 @@ func (s *Service) GetPredictedFields(parsedDetails *parser.EmailDetails, fallbac
 	predicted.Payee.Confidence = payeePrediction.Confidence
 
 	if payeePrediction.Confidence < CONFIDENCE_THRESHOLD {
+		predicted.Payee.Label = "Unexpected"
 		return predicted, nil
 	}
 
@@ -123,6 +124,7 @@ func (s *Service) GetPredictedFields(parsedDetails *parser.EmailDetails, fallbac
 	predicted.Category.Confidence = categoryPrediction.Confidence
 
 	if categoryPrediction.Confidence < CONFIDENCE_THRESHOLD {
+		predicted.Payee.Label = "❗ Unexpected expenses"
 		return predicted, nil
 	}
 
