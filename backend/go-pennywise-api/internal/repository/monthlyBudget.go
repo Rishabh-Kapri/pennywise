@@ -20,7 +20,7 @@ type MonthlyBudgetRepository interface {
 	GetPgxTx(ctx context.Context) (pgx.Tx, error)
 	GetByCatIdAndMonth(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categoryId uuid.UUID, month string) (*model.MonthlyBudget, error)
 	Create(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, monthlyBudget model.MonthlyBudget) error
-	UpdateBudgetedByCatIdAndMonth(ctx context.Context, budgetId uuid.UUID, categoryId uuid.UUID, month string, newBudgeted float64) error
+	UpdateBudgetedByCatIdAndMonth(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categoryId uuid.UUID, month string, newBudgeted float64) error
 	UpdateCarryoverByCatIdAndMonth(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categoryId uuid.UUID, month string, amount float64) error
 }
 
@@ -135,16 +135,10 @@ func (r *monthlyBudgetRepo) Create(ctx context.Context, tx pgx.Tx, budgetId uuid
 
 // newBudgeted is the new budget amount, the query handles calculating the difference between old and new budgeted
 // handles updating carryover_balance for current and future months
-func (r *monthlyBudgetRepo) UpdateBudgetedByCatIdAndMonth(ctx context.Context, budgetId uuid.UUID, categoryId uuid.UUID, month string, newBudgeted float64) error {
-	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
+func (r *monthlyBudgetRepo) UpdateBudgetedByCatIdAndMonth(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categoryId uuid.UUID, month string, newBudgeted float64) error {
 	// 1. Get current budgeted for the month
 	var oldBudgeted float64
-	err = tx.QueryRow(ctx, `
+	err := tx.QueryRow(ctx, `
 		SELECT budgeted FROM monthly_budgets
 		WHERE budget_id = $1 AND category_id = $2 AND month = $3
 	`, budgetId, categoryId, month).Scan(&oldBudgeted)
@@ -180,7 +174,7 @@ func (r *monthlyBudgetRepo) UpdateBudgetedByCatIdAndMonth(ctx context.Context, b
 	if err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	return nil
 }
 
 // updates the carryover for current and further months

@@ -14,7 +14,7 @@ import (
 
 type TransactionRepository interface {
 	GetPgxTx(ctx context.Context) (pgx.Tx, error)
-	GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Transaction, error)
+	GetAll(ctx context.Context, budgetId uuid.UUID, filter *model.TransactionFilter) ([]model.Transaction, error)
 	GetById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Transaction, error)
 	GetByIdTx(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID) (*model.Transaction, error)
 	GetAllNormalized(ctx context.Context, budgetId uuid.UUID, accountId *uuid.UUID) ([]model.Transaction, error)
@@ -35,15 +35,22 @@ func (r *transactionRepo) GetPgxTx(ctx context.Context) (pgx.Tx, error) {
 	return r.db.BeginTx(ctx, pgx.TxOptions{})
 }
 
-func (r *transactionRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Transaction, error) {
-	rows, err := r.db.Query(
-		ctx,
-		`SELECT id, budget_id, date, payee_id, category_id, account_id, note, amount, transfer_account_id, transfer_transaction_id, created_at, updated_at
-		 FROM transactions 
-		 WHERE budget_id = $1 AND deleted = FALSE
-		 ORDER BY date DESC, updated_at DESC;`,
-		budgetId,
-	)
+func (r *transactionRepo) GetAll(ctx context.Context, budgetId uuid.UUID, filter *model.TransactionFilter) ([]model.Transaction, error) {
+	sql := `SELECT id, budget_id, date, payee_id, category_id, account_id, note, amount, transfer_account_id, transfer_transaction_id, created_at, updated_at
+		FROM transactions 
+		WHERE deleted = FALSE AND budget_id = $1`
+	args := []any{budgetId}
+	if filter != nil {
+		argsIndex := 2 // $1 is budgetId
+		if filter.CategoryID != nil {
+			sql += fmt.Sprintf(" AND category_id = $%d", argsIndex)
+			args = append(args, *filter.CategoryID)
+			argsIndex++
+		}
+	}
+	// add the order part at last
+	sql += "\nORDER BY date DESC, updated_at DESC"
+	rows, err := r.db.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, err
 	}

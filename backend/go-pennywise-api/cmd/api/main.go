@@ -52,8 +52,6 @@ func main() {
 
 	categoryRepo := repository.NewCategoryRepository(dbConn)
 	monthlyBudgetRepo := repository.NewMonthlyBudgetRepository(dbConn)
-	categoryService := service.NewCategoryService(categoryRepo, monthlyBudgetRepo)
-	categoryHandler := handler.NewCategoryHandler(categoryService)
 
 	predictionRepo := repository.NewPredictionRepository(dbConn)
 	predictionService := service.NewPredictionService(predictionRepo)
@@ -62,6 +60,9 @@ func main() {
 	transactionRepo := repository.NewTransactionRepository(dbConn)
 	transactionService := service.NewTransactionService(transactionRepo, predictionRepo, accountRepo, payeeRepo, categoryRepo, monthlyBudgetRepo)
 	transactionHandler := handler.NewTransactionHandler(transactionService)
+
+	categoryService := service.NewCategoryService(categoryRepo, monthlyBudgetRepo, transactionRepo)
+	categoryHandler := handler.NewCategoryHandler(categoryService)
 
 	embeddingRepo := repository.NewEmbeddingRepository(dbConn)
 	embeddingService := service.NewEmbeddingService(embeddingRepo)
@@ -96,6 +97,7 @@ func main() {
 			categoryGroup := router.Group("/api/categories")
 			categoryGroup.POST("", categoryHandler.Create)
 			categoryGroup.GET("", categoryHandler.List)
+			categoryGroup.GET("/inflow", categoryHandler.GetInflowBalance)
 			categoryGroup.PATCH("/:id/:month", categoryHandler.UpdateBudget)
 			categoryGroup.GET("/search", categoryHandler.Search)
 			categoryGroup.GET(":id", categoryHandler.GetById)
