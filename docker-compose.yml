@@ -3,15 +3,15 @@ version: '3.9'
 services:
   gmail-watch:
     build:
-      context: ./go-gmail
+      context: ./backend/go-gmail
     ports:
       - '5000:8080'
     env_file:
-      - ./go-gmail/.env
+      - ./backend/go-gmail/.env
     environment:
       - GOOGLE_APPLICATION_CREDENTIALS=/secrets/service-account.json
     volumes:
-      - ./go-gmail/pennywise-39654-c87f94721374.json:/secrets/service-account.json:ro
+      - ./backend/go-gmail/pennywise-39654-c87f94721374.json:/secrets/service-account.json:ro
     depends_on:
       - python-mlp
       - pennywise-api
@@ -19,14 +19,20 @@ services:
 
   python-mlp:
     build:
-      context: ./python-mlp
+      context: ./backend/python-mlp
     ports:
       - '5050:8000'
 
   pennywise-api:
     build:
-      context: ./go-pennywise-api
+      context: ./backend/go-pennywise-api
     ports:
       - '5151:5151'
     env_file:
-      - ./go-pennywise-api/.env
+      - ./backend/go-pennywise-api/.env
+
+  pennywise-app:
+    build:
+      context: ./frontend
+    ports:
+      - '5000:5000'

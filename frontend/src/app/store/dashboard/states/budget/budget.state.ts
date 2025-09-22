@@ -97,10 +97,13 @@ export class BudgetsState implements NgxsOnInit {
 
   @Action(BudgetsActions.SetSelectedMonth)
   setSelectedMonth(ctx: StateContext<BudgetsStateModel>, { payload }: BudgetsActions.SetSelectedMonth) {
+    console.log(ctx, payload);
     ctx.patchState({
       selectedMonth: payload,
       selectedHumanMonth: this.helperService.getSelectedMonthInHumanFormat(payload),
     });
+    this.ngxsStore.dispatch(new CategoryGroupsActions.GetCategoryGroups(payload))
+
     // this.ngxsStore.dispatch(new CategoryGroupsActions.SetCategoryGroupData());
   }
 

@@ -20,6 +20,12 @@ import { TransactionsState } from 'src/app/store/dashboard/states/transactions/t
 /**
  * Get category data
  */
+interface MoveData {
+  categoryId: string;
+  groupId: string;
+  amount?: number;
+  name?: string;
+}
 @Component({
   selector: 'app-category-item',
   templateUrl: './category-item.component.html',
@@ -45,7 +51,10 @@ export class CategoryItemComponent implements AfterViewInit {
   moveDropdown: Dropdown;
   categoryDropdown: Dropdown;
   parser = new Parser();
-  moveData = {
+  moveData: {
+    from: MoveData;
+    to: MoveData;
+  } = {
     from: { categoryId: '', groupId: '', amount: 0 },
     to: { categoryId: '', groupId: '', name: '' },
   };
@@ -61,7 +70,7 @@ export class CategoryItemComponent implements AfterViewInit {
     private ngxsStore: Store,
     public store: StoreService,
     public helperService: HelperService,
-  ) {}
+  ) { }
 
   ngOnInit(): void {
     this.accountObj$ = this.ngxsStore.select(AccountsState.getAllAccounts).pipe(
@@ -125,6 +134,7 @@ export class CategoryItemComponent implements AfterViewInit {
     // 3. handle editing of category in a more efficient way
     const categoryCopy = <Category>JSON.parse(JSON.stringify(category));
     const currentBudget = categoryCopy.budgeted[this.budgetKey];
+    let budgeted = 0;
     try {
       this.ngxsStore.dispatch(
         new CategoryGroupsActions.UpdateCategoryInGroup(category.categoryGroupId, category.id!, {
@@ -132,14 +142,15 @@ export class CategoryItemComponent implements AfterViewInit {
         }),
       );
       const expr = this.parser.parse(event.target.value);
-      categoryCopy.budgeted[this.budgetKey] = expr.evaluate();
+      budgeted = expr.evaluate();
+      categoryCopy.budgeted[this.budgetKey] = budgeted;
     } catch (err) {
       // do nothing
-      categoryCopy.budgeted[this.budgetKey] = categoryCopy.budgeted[this.budgetKey];
+      budgeted = categoryCopy.budgeted[this.budgetKey];
+      categoryCopy.budgeted[this.budgetKey] = budgeted;
     }
-    if (categoryCopy.budgeted[this.budgetKey] !== currentBudget) {
+    if (budgeted !== currentBudget) {
       // check if inflow has the amount that is being budgeted
-      const budgeted = categoryCopy.budgeted[this.budgetKey];
       const inflowCategory = JSON.parse(
         JSON.stringify(this.ngxsStore.selectSnapshot(CategoriesState.getInflowWithBalance)!),
       );
@@ -158,26 +169,40 @@ export class CategoryItemComponent implements AfterViewInit {
       inflowCategory.budgeted = Number(Number(inflowCategory.budgeted).toFixed(2));
 
       console.log(categoryCopy.budgeted[this.budgetKey], inflowCategory.budgeted);
-      this.editCategoryEvent.emit(categoryCopy);
-      this.editCategoryEvent.emit(inflowCategory);
+      console.log(
+        {
+          categoryId: categoryCopy.id!,
+          budgeted: budgeted,
+          month: this.budgetKey,
+        }
+      )
+      this.ngxsStore.dispatch(
+        new CategoriesActions.UpdateCategoryBudgeted({
+          categoryId: categoryCopy.id!,
+          budgeted: categoryCopy.budgeted[this.budgetKey],
+          month: this.budgetKey,
+        }),
+      );
+      // this.editCategoryEvent.emit(categoryCopy);
+      // this.editCategoryEvent.emit(inflowCategory);
       // check all other categories and assign zero to them if not assigned
-      this.store.assignZeroToUnassignedCategories();
+      // this.store.assignZeroToUnassignedCategories();
     }
   }
 
   editCategory(category: Category) {
-    this.editCategoryEvent.emit(category);
+    // this.editCategoryEvent.emit(category);
     this.menuDropdown.hide();
   }
 
   deleteCategory(category: Category) {
-    this.deleteCategoryEvent.emit(category);
+    // this.deleteCategoryEvent.emit(category);
     this.menuDropdown.hide();
   }
 
   hideUnhideCategory(category: Category) {
     // @TODO: only hide category when balance is zero
-    this.hideUnhideCategoryEvent.emit(category);
+    // this.hideUnhideCategoryEvent.emit(category);
     this.menuDropdown.hide();
   }
 
@@ -217,12 +242,12 @@ export class CategoryItemComponent implements AfterViewInit {
     console.log(category, allTransactions, ccAccounts);
     let categoryTransactions: NormalizedTransaction[] = [];
     if (this.helperService.isCategoryCreditCard(category)) {
-      categoryTransactions = <NormalizedTransaction[]>this.helperService.getTransactionsForAccount(allTransactions, [
-        ...ccAccounts.map((acc) => acc.id!),
-      ]);
+      categoryTransactions = <NormalizedTransaction[]>(
+        this.helperService.getTransactionsForAccount(allTransactions, [...ccAccounts.map((acc) => acc.id!)])
+      );
     } else {
       categoryTransactions = this.helperService.getTransactionsForCategory(allTransactions, [category.id!]);
-      console.log(categoryTransactions)
+      console.log(categoryTransactions);
     }
     this.categoryActivity = this.helperService.filterTransactionsBasedOnMonth(
       categoryTransactions,
@@ -261,7 +286,7 @@ export class CategoryItemComponent implements AfterViewInit {
   }
 
   moveBalance() {
-    if (this.moveData?.from?.amount === null || !this.moveData?.to?.categoryId) {
+    if (this.moveData?.from?.amount === null || !this.moveData?.from?.categoryId || !this.moveData?.to?.categoryId) {
       return;
     }
     const moveTo = this.ngxsStore.selectSnapshot(
@@ -271,23 +296,50 @@ export class CategoryItemComponent implements AfterViewInit {
     const moveFrom = this.ngxsStore.selectSnapshot(
       CategoryGroupsState.getCategory(this.moveData.from.categoryId, this.moveData.from.groupId),
     );
+    console.log(this.moveData);
+    console.log('moving from:', {
+      categoryId: moveFrom?.id!,
+      categoryName: moveFrom?.name,
+      budgeted: (moveFrom?.budgeted?.[this.budgetKey] ?? 0) - (this.moveData?.from?.amount ?? 0),
+      month: this.budgetKey,
+    });
+    console.log('moving to:', {
+      categoryId: moveTo?.id!,
+      categoryName: moveTo?.name,
+      budgeted: (moveTo?.budgeted?.[this.budgetKey] ?? 0) + (this.moveData?.from?.amount ?? 0),
+      month: this.budgetKey,
+    });
     if (moveTo) {
-      moveTo.budgeted[this.budgetKey] += this.moveData.from.amount;
-      if (moveTo.balance) {
-        moveTo.balance[this.budgetKey] += this.moveData.from.amount;
-      } else {
-        moveTo.balance = {
-          [this.budgetKey]: this.moveData.from.amount,
-        };
-      }
-      this.editCategoryEvent.emit(moveTo);
+      this.ngxsStore.dispatch(
+        new CategoriesActions.UpdateCategoryBudgeted({
+          categoryId: moveTo.id!,
+          budgeted: (moveTo?.budgeted?.[this.budgetKey] ?? 0) + (this.moveData?.from?.amount ?? 0),
+          month: this.budgetKey,
+        })
+      )
+      // moveTo.budgeted[this.budgetKey] += this.moveData.from.amount ?? 0;
+      // if (moveTo.balance) {
+      //   moveTo.balance[this.budgetKey] += this.moveData.from.amount ?? 0;
+      // } else {
+      //   moveTo.balance = {
+      //     [this.budgetKey]: this.moveData.from.amount ?? 0,
+      //   };
+      // }
+      // this.editCategoryEvent.emit(moveTo);
     }
     if (moveFrom) {
-      moveFrom.budgeted[this.budgetKey] -= this.moveData.from.amount;
-      if (moveFrom.balance) {
-        moveFrom.balance[this.budgetKey] -= this.moveData.from.amount;
-      }
-      this.editCategoryEvent.emit(moveFrom);
+      this.ngxsStore.dispatch(
+        new CategoriesActions.UpdateCategoryBudgeted({
+          categoryId: moveFrom.id!,
+          budgeted: (moveFrom?.budgeted?.[this.budgetKey] ?? 0) - (this.moveData?.from?.amount ?? 0),
+          month: this.budgetKey,
+        })
+      )
+      // moveFrom.budgeted[this.budgetKey] -= this.moveData.from.amount ?? 0;
+      // if (moveFrom.balance) {
+      //   moveFrom.balance[this.budgetKey] -= this.moveData.from.amount ?? 0;
+      // }
+      // this.editCategoryEvent.emit(moveFrom);
     }
   }
 }

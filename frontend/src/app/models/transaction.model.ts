@@ -17,7 +17,7 @@ export interface Transaction {
   source: TransactionSource;
   createdAt?: string;
   updatedAt?: string;
-  deleted: boolean;
+  deleted?: boolean;
 }
 
 export interface NormalizedTransaction {

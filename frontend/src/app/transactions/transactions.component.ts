@@ -492,7 +492,7 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
       if (this.selectedTransaction) {
         this.selectedTransaction[field] = expr.evaluate();
       }
-    } catch (err) {}
+    } catch (err) { }
   }
 
   async createNewPayee() {
@@ -566,10 +566,9 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
   }
 
   deleteTransaction(transaction: NormalizedTransaction) {
-    // this.dbService.deleteTransaction(transaction.id!);
-    // if (transaction.transferTransactionId) {
-    //   this.dbService.deleteTransaction(transaction.transferTransactionId);
-    // }
+    if (transaction.id) {
+      this.ngxsStore.dispatch(new TransactionsActions.DeleteTransaction(transaction.id));
+    }
   }
 
   cancelTransactionSave() {
@@ -586,10 +585,10 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
         this.selectedTransaction.accountName = this.selectedAccount.name;
       }
       let amount = 0;
-      if ((this.selectedTransaction?.outflow ?? 0) != 0)  {
-        amount  = -(this.selectedTransaction?.outflow ?? 0);
-      } else  {
-        amount  = this.selectedTransaction?.inflow ?? 0;
+      if ((this.selectedTransaction?.outflow ?? 0) != 0) {
+        amount = -(this.selectedTransaction?.outflow ?? 0);
+      } else {
+        amount = this.selectedTransaction?.inflow ?? 0;
       }
       switch (this.currentMode) {
         case Mode.CREATE:
@@ -641,7 +640,7 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
             };
             console.log('dispatching action', editData);
             // this.dbService.editTransaction(editData);
-            this.ngxsStore.dispatch(new TransactionsActions.EditTransaction(editData))
+            this.ngxsStore.dispatch(new TransactionsActions.EditTransaction(editData));
             if (existingTransaction?.transferTransactionId) {
               const transferTransaction = transactions.find(
                 (txn) => txn.id! === existingTransaction?.transferTransactionId,
@@ -698,17 +697,15 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
       categoryId: selectedTransaction.categoryId,
       note: selectedTransaction.note ?? '',
       source: TransactionSource.PENNYWISE,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      deleted: false,
     };
     // const createdTransac = await this.dbService.createTransaction(newTransaction);
     // selectedTransaction.id = createdTransac.id;
-    this.ngxsStore.dispatch(new TransactionsActions.CreateTransaction(newTransaction));
+
     if (selectedPayee?.transferAccountId) {
       // this is a transfer payee, create another transaction
       // this.handleTransferTransaction(-amount, selectedTransaction, selectedPayee, selectedAccount);
     }
+    this.ngxsStore.dispatch(new TransactionsActions.CreateTransaction(newTransaction));
   }
 
   /**

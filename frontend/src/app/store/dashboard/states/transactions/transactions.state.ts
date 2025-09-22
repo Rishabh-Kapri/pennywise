@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { Emitted, NgxsFirestoreConnect, NgxsFirestorePageService, StreamEmitted } from '@ngxs-labs/firestore-plugin';
 import { Action, NgxsOnInit, Selector, State, StateContext, Store } from '@ngxs/store';
-import { NormalizedTransaction } from 'src/app/models/transaction.model';
+import { NormalizedTransaction, TransactionSource } from 'src/app/models/transaction.model';
 import { TransactionsFirestore } from 'src/app/services/databases/transactions.firestore';
 import { TransactionsActions } from './transaction.action';
 import { Transaction } from 'src/app/models/transaction.model';
@@ -11,6 +11,7 @@ import { CategoriesState } from '../categories/categories.state';
 import { and, orderBy, query, where } from 'firebase/firestore';
 import { ConfigState } from '../config/config.state';
 import { HttpService } from 'src/app/services/http.service';
+import { AccountsActions } from '../accounts/accounts.action';
 
 export interface TransactionsStateModel {
   allTransactions: Transaction[];
@@ -103,6 +104,7 @@ export class TransactionsState implements NgxsOnInit {
       next: (res) => {
         console.log('transaction created', res);
         ctx.dispatch(new TransactionsActions.GetNormalisedTransaction(payload.accountId ?? ''));
+        ctx.dispatch(new AccountsActions.GetAccounts())
       },
     });
   }
@@ -115,6 +117,20 @@ export class TransactionsState implements NgxsOnInit {
       next: (res) => {
         console.log(res);
         ctx.dispatch(new TransactionsActions.GetNormalisedTransaction(data.accountId ?? ''));
+        ctx.dispatch(new AccountsActions.GetAccounts())
+      },
+    });
+  }
+
+  @Action(TransactionsActions.DeleteTransaction)
+  deleteTransaction(ctx: StateContext<TransactionsStateModel>, { txnId }: TransactionsActions.DeleteTransaction) {
+    const url = `${this.BASE_ENDPOINT}/${txnId}`;
+    console.log('Deleting transaction: ', url);
+    this.httpService.delete(url).subscribe({
+      next: (res) => {
+        console.log('Transaction deleted');
+        ctx.dispatch(new TransactionsActions.GetNormalisedTransaction(''));
+        ctx.dispatch(new AccountsActions.GetAccounts())
       },
     });
   }

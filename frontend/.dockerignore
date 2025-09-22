@@ -1,0 +1,26 @@
+# Node modules & dependencies
+node_modules
+npm-debug.log
+yarn.lock
+package-lock.json
+
+# Build output
+dist
+.tmp
+.cache
+
+# Logs
+*.log
+
+# Git & IDE
+.git
+.gitignore
+Dockerfile
+.dockerignore
+.vscode
+.idea
+*.swp
+
+# OS generated files
+.DS_Store
+Thumbs.db

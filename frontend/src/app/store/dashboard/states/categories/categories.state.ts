@@ -25,6 +25,7 @@ export interface CategoriesStateModel {
 })
 @Injectable()
 export class CategoriesState {
+  BASE_ENDPOINT = 'categories';
   @Selector()
   static categories(state: CategoriesStateModel) {
     return state;
@@ -81,11 +82,11 @@ export class CategoriesState {
 
   @Action(CategoriesActions.GetCategories)
   getCategories(ctx: StateContext<CategoriesStateModel>) {
-    this.httpService.get<Category[]>('categories').subscribe({
+    this.httpService.get<Category[]>(this.BASE_ENDPOINT).subscribe({
       next: (categories) => {
         ctx.setState({
           allCategories: categories,
-          inflowCategory: (categories.find((cat) => cat.name === INFLOW_CATEGORY_NAME) as unknown as InflowCategory)?? null,
+          inflowCategory: (categories.find((cat) => cat.name === INFLOW_CATEGORY_NAME) as unknown as InflowCategory) ?? null,
         })
       }
     });
@@ -102,29 +103,59 @@ export class CategoriesState {
     );
   }
 
+  @Action(CategoriesActions.UpdateCategoryBudgeted)
+  updateCategoryBudgeted(ctx: StateContext<CategoriesStateModel>, { payload }: CategoriesActions.UpdateCategoryBudgeted) {
+    this.httpService
+      .patch(`${this.BASE_ENDPOINT}/${payload.categoryId}/${payload.month}`, { budgeted: payload.budgeted })
+      .subscribe({
+        next: (res) => {
+          console.log('budget updated')
+          this.ngxsStore.dispatch(new CategoriesActions.SetInflowCategoryBalance())
+        },
+        error: (err: any) => {
+          console.log(err)
+        }
+      })
+  }
+
+  // @Action(CategoriesActions.SetInflowCategoryBalance)
+  // setInflowCategoryBalance(ctx: StateContext<CategoriesStateModel>) {
+  //   console.log('setInflowCategoryBalance', ctx);
+  //   const state = ctx.getState();
+  //   const inflowCategory = Object.assign({}, state.inflowCategory);
+  //   console.log(inflowCategory);
+  //   const transactions = this.ngxsStore.selectSnapshot(TransactionsState.getAllTransactions);
+  //   const categoriesWithoutInflow = state.allCategories.filter((cat) => cat.name !== INFLOW_CATEGORY_NAME);
+  //   console.log(categoriesWithoutInflow);
+  //   if (inflowCategory) {
+  //     const totalBudgeted = categoriesWithoutInflow.reduce((totalBudgeted, cat) => {
+  //       return totalBudgeted + Object.values(cat.budgeted).reduce((a, b) => a + b, 0);
+  //     }, 0);
+  //     console.log('totalBudgeted:', totalBudgeted);
+  //     const inflowAmount = this.helperService
+  //       .getTransactionsForCategory(transactions, [inflowCategory.id!])
+  //       .reduce((totalAmount, transaction) => totalAmount + transaction.amount, 0);
+  //     console.log('inflowAmount:', inflowAmount);
+  //     inflowCategory.budgeted = Number(Number(inflowAmount - totalBudgeted).toFixed(2));
+  //
+  //     ctx.patchState({
+  //       inflowCategory,
+  //     });
+  //   }
+  // }
+
   @Action(CategoriesActions.SetInflowCategoryBalance)
   setInflowCategoryBalance(ctx: StateContext<CategoriesStateModel>) {
-    console.log('setInflowCategoryBalance', ctx);
-    const state = ctx.getState();
-    const inflowCategory = Object.assign({}, state.inflowCategory);
-    console.log(inflowCategory);
-    const transactions = this.ngxsStore.selectSnapshot(TransactionsState.getAllTransactions);
-    const categoriesWithoutInflow = state.allCategories.filter((cat) => cat.name !== INFLOW_CATEGORY_NAME);
-    console.log(categoriesWithoutInflow);
-    if (inflowCategory) {
-      const totalBudgeted = categoriesWithoutInflow.reduce((totalBudgeted, cat) => {
-        return totalBudgeted + Object.values(cat.budgeted).reduce((a, b) => a + b, 0);
-      }, 0);
-      console.log('totalBudgeted:', totalBudgeted);
-      const inflowAmount = this.helperService
-        .getTransactionsForCategory(transactions, [inflowCategory.id!])
-        .reduce((totalAmount, transaction) => totalAmount + transaction.amount, 0);
-      console.log('inflowAmount:', inflowAmount);
-      inflowCategory.budgeted = Number(Number(inflowAmount - totalBudgeted).toFixed(2));
-
-      ctx.patchState({
-        inflowCategory,
-      });
-    }
+    this.httpService.get<number>(`${this.BASE_ENDPOINT}/inflow`).subscribe({
+      next: (balance) => {
+        const inflowCategory = Object.assign({}, ctx.getState().inflowCategory);
+        if (inflowCategory) {
+          inflowCategory.budgeted = balance;
+          ctx.patchState({
+            inflowCategory,
+          });
+        }
+      }
+    });
   }
 }

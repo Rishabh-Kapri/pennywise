@@ -62,8 +62,7 @@ jobs:
           folder_to_service["go-gmail"]="gmail-watch"
           folder_to_service["python-mlp"]="python-mlp"
           folder_to_service["go-pennywise-api"]="pennywise-api"
-          # @TODO: add frontend deployment is ready
-          # folder_to_service["src"]="pennywise-app"
+          folder_to_service["src"]="pennywise-app"
 
           changed_files="${{ steps.changes.outputs.CHANGED }}"
           echo "Changed files: ${changed_files}"
@@ -86,7 +85,7 @@ jobs:
           services="${{ steps.filter.outputs.SERVICES }}"
           echo "Services: ${services}"
           # docker handles only building relevant files
-          docker-compose -f ./backend/docker-compose.yml up --build -d
+          docker-compose -f ./docker-compose.yml up --build -d
 
       # - name: Stop existing container
       #   run: docker compose -f ./backend/docker-compose.yml down

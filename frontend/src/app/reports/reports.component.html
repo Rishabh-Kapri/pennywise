@@ -84,7 +84,8 @@
         <!-- </div> -->
 
         <!-- First column showing payees & category names -->
-        <div class="flex-[0_0_25%] flex flex-col border-r border-neutral-500">
+        <div class="flex-[0_0_25%] flex flex-col border-r border-neutral-500" 
+             id="category-col">
           <!-- Rows -->
 
           <!-- Months row -->
@@ -152,11 +153,12 @@
         </div>
 
         <!-- Second column showing months calculations -->
-        <div class="flex-[0_0_75%] flex flex-col overflow-scroll">
+        <div class="flex-[0_0_75%] flex flex-col overflow-scroll"
+             id="month-col">
           <!-- Rows -->
 
           <!-- Months row -->
-          <div class="h-[35px] w-full flex text-right font-bold">
+          <div class="h-[35px] w-full flex text-right font-bold" id="months-row">
             <ng-container *ngFor="let date of dateRange">
               <div class="flex-[0_0_20%] py-2 px-4 border-b border-neutral-500">
                 {{ date.startDate | date:'MMM YY' }}
@@ -165,6 +167,8 @@
             <div class="flex-[0_0_20%] py-2 px-4 border-b border-neutral-500">Average</div>
             <div class="flex-[0_0_20%] py-2 px-4 border-b border-neutral-500">Total</div>
           </div>
+
+          <div id="">
 
           <!-- Income collapsible row -->
           <div class="h-[45px] w-full flex">
@@ -259,6 +263,7 @@
               </div>
             </ng-container>
           </div>
+        </div>
         </div>
       </div>
     </div>
