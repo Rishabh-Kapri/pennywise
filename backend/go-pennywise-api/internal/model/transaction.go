@@ -30,6 +30,15 @@ type Transaction struct {
 	UpdatedAt             time.Time  `json:"updatedAt"`
 }
 
+type TransactionFilter struct {
+	AccountID  *uuid.UUID
+	PayeeID    *uuid.UUID
+	CategoryID *uuid.UUID
+	StartDate  *string
+	EndDate    *string
+	Note       *string
+}
+
 func (t *Transaction) String() string {
 	return fmt.Sprintf(`Transaction{
     ID: %v,

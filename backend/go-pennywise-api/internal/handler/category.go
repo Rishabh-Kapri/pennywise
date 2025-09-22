@@ -16,6 +16,7 @@ import (
 
 type CategoryHandler interface {
 	List(c *gin.Context)
+	GetInflowBalance(c *gin.Context)
 	Search(c *gin.Context)
 	Create(c *gin.Context)
 	Update(c *gin.Context)
@@ -45,6 +46,20 @@ func (h *categoryHandler) List(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, categories)
+}
+
+func (h *categoryHandler) GetInflowBalance(c *gin.Context) {
+	ctx, err := utils.GetBudgetId(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	balance, err := h.service.GetInflowBalance(ctx)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, balance)
 }
 
 func (h *categoryHandler) Create(c *gin.Context) {
@@ -142,27 +157,31 @@ func (h *categoryHandler) Update(c *gin.Context) {
 
 func (h *categoryHandler) UpdateBudget(c *gin.Context) {
 	ctx, err := utils.GetBudgetId(c)
-	if err!= nil  {
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	log.Printf("%v", ctx)
 	id, ok := c.Params.Get("id")
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})
 		return
 	}
+	log.Printf("%v", id)
 	categoryId, err := uuid.Parse(id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error":  "Error while parsing id"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error while parsing id"})
 		return
 	}
+	log.Printf("%v", categoryId)
 	month, ok := c.Params.Get("month")
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error":  "Month is needed"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Month is needed"})
 		return
 	}
+	log.Printf("%v", month)
 	var body model.MonthlyBudget
-	if err := c.ShouldBindJSON(&body); err!= nil  {
+	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

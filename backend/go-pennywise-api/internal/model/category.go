@@ -21,3 +21,10 @@ type Category struct {
 	CreatedAt       time.Time          `json:"createdAt"`
 	UpdatedAt       time.Time          `json:"updatedAt"`
 }
+
+type CategoryFilter struct {
+	ID              *uuid.UUID
+	Name            *string
+	CategoryGroupID *uuid.UUID
+	IsSystem        *bool
+}
