@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 
 	"pennywise-api/internal/model"
@@ -14,6 +15,8 @@ import (
 
 type CategoryRepository interface {
 	GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Category, error)
+	GetInflowBalance(ctx context.Context, budgetId uuid.UUID) (float64, error)
+	GetByFilter(ctx context.Context, budgetId uuid.UUID, filter model.CategoryFilter) ([]model.Category, error)
 	Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.Category, error)
 	GetById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Category, error)
 	GetByIdSimplified(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Category, error)
@@ -92,6 +95,73 @@ func (r *categoryRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.
 			&c.Budgeted,
 			&c.Activity,
 			&c.Balance,
+		)
+		if err != nil {
+			return nil, err
+		}
+		categories = append(categories, c)
+	}
+	return categories, nil
+}
+
+func (r *categoryRepo) GetInflowBalance(ctx context.Context, budgetId uuid.UUID) (float64, error) {
+	var balance float64
+
+	err := r.db.QueryRow(ctx, `
+			WITH inflow_cat AS (
+				SELECT id FROM categories
+				WHERE budget_id = $1 AND is_system = TRUE AND deleted = FALSE
+				LIMIT 1
+			),
+			total_txn AS (
+				SELECT COALESCE(SUM(amount), 0) AS transaction_amount
+				FROM transactions
+				WHERE category_id = (SELECT id FROM inflow_cat) AND deleted = FALSE
+			),
+			total_budgeted AS (
+				SELECT COALESCE(SUM(budgeted), 0) AS total_budgeted
+				FROM monthly_budgets
+			)
+			SELECT (total_txn.transaction_amount - total_budgeted.total_budgeted)
+			FROM total_txn, total_budgeted
+		`, budgetId).Scan(&balance)
+	if err != nil {
+		return 0, err
+	}
+	return balance, err
+}
+
+func (r *categoryRepo) GetByFilter(ctx context.Context, budgetId uuid.UUID, filter model.CategoryFilter) ([]model.Category, error) {
+	sql := `SELECT id, name, budget_id, category_group_id, hidden, note, is_system, created_at, updated_at FROM categories WHERE deleted = FALSE AND budget_id = $1`
+	args := []any{budgetId}
+	argIndex := 2 // $1 is budget_id
+	if filter.IsSystem != nil {
+		sql += fmt.Sprintf(" AND is_system = $%d", argIndex)
+		args = append(args, *filter.IsSystem)
+		argIndex++
+	}
+	log.Printf("%v", sql)
+	log.Printf("%v", args)
+
+	rows, err := r.db.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var categories []model.Category
+	for rows.Next() {
+		var c model.Category
+		err := rows.Scan(
+			&c.ID,
+			&c.Name,
+			&c.BudgetID,
+			&c.CategoryGroupID,
+			&c.Hidden,
+			&c.Note,
+			&c.IsSystem,
+			&c.CreatedAt,
+			&c.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
