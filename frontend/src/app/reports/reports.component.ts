@@ -20,7 +20,7 @@ import { HelperService } from '../services/helper.service';
 import * as Highcharts from 'highcharts';
 import 'highcharts/modules/drilldown';
 import { TransactionsState } from '../store/dashboard/states/transactions/transactions.state';
-import { Transaction } from '../models/transaction.model';
+import { NormalizedTransaction, Transaction } from '../models/transaction.model';
 import { CategoriesState } from '../store/dashboard/states/categories/categories.state';
 import { INFLOW_CATEGORY_NAME } from '../constants/general';
 import { PayeesState } from '../store/dashboard/states/payees/payees.state';
@@ -313,13 +313,13 @@ export class ReportsComponent implements AfterViewInit, OnDestroy {
           .subscribe(([categoryGroups, accountGroups]) => {
             console.log('categoryGroups:::', categoryGroups);
             if (!this.isFilterApplied) {
-              const startDate = this.helperService.getDateInStringFormat(new Date(), -5);
-              const endDate = this.helperService.getDateInStringFormat(new Date(), 1);
-              this.selectedDateRange = {
-                startDate,
-                endDate,
-              };
-              this.dateRange = this.helperService.getDateRange(startDate, endDate);
+              // const startDate = this.helperService.getDateInStringFormat(new Date(), -3);
+              // const endDate = this.helperService.getDateInStringFormat(new Date(), 1);
+              // this.selectedDateRange = {
+              //   startDate,
+              //   endDate,
+              // };
+              this.dateRange = this.helperService.getDateRange(this.selectedDateRange.startDate, this.selectedDateRange.endDate);
               this.getIncomeSources();
               this.getCategoriesExpense(categoryGroups);
               this.applyFilter(categoryGroups, accountGroups);
@@ -423,7 +423,7 @@ export class ReportsComponent implements AfterViewInit, OnDestroy {
       this.activeFilterOverlayRef.close();
     }
 
-    const allTransactions = this.ngxsStore.selectSnapshot(TransactionsState.getAllTransactions);
+    const allTransactions = this.ngxsStore.selectSnapshot(TransactionsState.getNormalizedTransaction);
     const accountIds = accountGroups.flatMap((group: any) =>
       group.accounts.filter((acc: any) => acc.isChecked).map((acc: any) => acc.id),
     );
@@ -497,7 +497,7 @@ export class ReportsComponent implements AfterViewInit, OnDestroy {
   getIncomeSources() {
     this.incomeData = [];
     const incomeSources: { [payeeId: string]: { [monthKey: string]: number } } = {};
-    const allTransactions = this.ngxsStore.selectSnapshot(TransactionsState.getAllTransactions);
+    const allTransactions = this.ngxsStore.selectSnapshot(TransactionsState.getNormalizedTransaction);
     // get all income transactions for the month range
     const dateMap = new Map();
 
@@ -543,10 +543,10 @@ export class ReportsComponent implements AfterViewInit, OnDestroy {
   }
 
   getCategoriesExpense(categoryGroups: CategoryGroups[]) {
-    const allTransactions = this.ngxsStore.selectSnapshot(TransactionsState.getAllTransactions);
+    const allTransactions = this.ngxsStore.selectSnapshot(TransactionsState.getNormalizedTransaction);
 
     // Pre-compute monthly transactions
-    const monthlyTxnsCache = new Map<string, Transaction[]>();
+    const monthlyTxnsCache = new Map<string, NormalizedTransaction[]>();
     for (const month of this.dateRange) {
       monthlyTxnsCache.set(
         month.monthKey,

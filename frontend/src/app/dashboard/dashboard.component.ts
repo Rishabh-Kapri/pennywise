@@ -42,6 +42,7 @@ export class DashboardComponent implements OnInit, AfterViewInit {
         new CategoriesActions.GetCategories(),
         new CategoryGroupsActions.GetCategoryGroups(month),
         new AccountsActions.GetAccounts(),
+        new CategoriesActions.SetInflowCategoryBalance(),
       ])
     });
   }

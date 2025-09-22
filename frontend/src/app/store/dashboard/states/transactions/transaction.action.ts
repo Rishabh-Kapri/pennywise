@@ -20,4 +20,8 @@ export namespace TransactionsActions {
     static readonly type = '[Transactions] EditTransaction';
     constructor(readonly data: Partial<Transaction>) { }
   }
+  export class DeleteTransaction {
+    static readonly type = '[Transaction] DeleteTransaction';
+    constructor(readonly txnId: string) { }
+  }
 }

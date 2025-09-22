@@ -122,7 +122,7 @@ export class HelperService {
       arr.push({
         startDate: startDateStr,
         endDate: dateStrIncrement,
-        monthKey: `${startDateObj.getFullYear()}-${startDateObj.getMonth()-1}`,
+        monthKey: `${startDateObj.getFullYear()}-${startDateObj.getMonth()}`,
       });
       startDateStr = dateStrIncrement;
       startDateObj = new Date(startDateStr);
@@ -188,7 +188,7 @@ export class HelperService {
   }
 
   filterTransactionsReport(
-    transactions: Transaction[],
+    transactions: NormalizedTransaction[],
     categoryIds: string[],
     accountIds: string[],
     startDateStr: string,
@@ -268,8 +268,8 @@ export class HelperService {
     return dropdown;
   }
 
-  sumTransaction(transactions: Transaction[]) {
-    return transactions.reduce((acc, curr) => acc + curr.amount, 0);
+  sumTransaction(transactions: Transaction[] | NormalizedTransaction[]) {
+    return transactions.reduce((acc, curr) => acc + (curr?.amount ?? 0), 0);
   }
 
   /**

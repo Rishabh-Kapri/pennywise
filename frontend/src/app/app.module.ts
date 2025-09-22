@@ -46,6 +46,7 @@ import { AccountsMobileComponent } from './accounts/accounts-mobile.component';
 import { TransactionsMobileComponent } from './transactions/mobile/transactions-mobile.component';
 import { HTTP_INTERCEPTORS, HttpClientModule } from '@angular/common/http';
 import { HeadersInterceptor } from './services/headers-interceptor.service';
+import { TransactionCountPipe } from './pipes/transactionCount.pipe';
 
 @NgModule({
   declarations: [
@@ -65,6 +66,7 @@ import { HeadersInterceptor } from './services/headers-interceptor.service';
     CalculateAveragePipe,
     CalculateTotalPipe,
     AddZeroPrefixToDate,
+    TransactionCountPipe,
     AccountsMobileComponent,
     TransactionsMobileComponent,
   ],
