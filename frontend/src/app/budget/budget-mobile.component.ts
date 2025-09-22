@@ -38,7 +38,7 @@ export class BudgetMobileComponent implements OnInit {
   isMoveModalOpen = false;
   showCategorySelector = false;
   selectedCategory: Category | InflowCategory | null = null;
-  categoryTransactions: Transaction[] = [];
+  categoryTransactions: NormalizedTransaction[] = [];
 
   // Move money data
   moveData = {
@@ -86,17 +86,17 @@ export class BudgetMobileComponent implements OnInit {
 
   loadCategoryTransactions(category: Category | InflowCategory) {
     const selectedMonth = this.ngxsStore.selectSnapshot(BudgetsState.getSelectedMonth);
-    const allTransactions = this.ngxsStore.selectSnapshot(TransactionsState.getAllTransactions);
+    const allTransactions = this.ngxsStore.selectSnapshot(TransactionsState.getNormalizedTransaction);
     const ccAccounts = this.ngxsStore.selectSnapshot(AccountsState.getCreditCardAccounts);
 
-    let categoryTransactions: Transaction[] = [];
+    let categoryTransactions: NormalizedTransaction[] = [];
 
     if ('balance' in category) {
       // Regular Category
       if (this.helperService.isCategoryCreditCard(category)) {
         categoryTransactions = this.helperService.getTransactionsForAccount(allTransactions, [
           ...ccAccounts.map((acc) => acc.id!),
-        ]) as Transaction[];
+        ]) as NormalizedTransaction[];
       } else {
         categoryTransactions = this.helperService.getTransactionsForCategory(allTransactions, [category.id!]);
       }
@@ -107,20 +107,30 @@ export class BudgetMobileComponent implements OnInit {
 
   getTransactionCount(category: Category): number {
     const selectedMonth = this.ngxsStore.selectSnapshot(BudgetsState.getSelectedMonth);
-    const allTransactions = this.ngxsStore.selectSnapshot(TransactionsState.getAllTransactions);
+    const allTransactions = this.ngxsStore.selectSnapshot(TransactionsState.getNormalizedTransaction);
     const ccAccounts = this.ngxsStore.selectSnapshot(AccountsState.getCreditCardAccounts);
+    if (category.id === '404f1661-caee-496a-9f53-a7981f74397d') {
+      console.log(category);
+      console.log(selectedMonth, allTransactions);
+    }
 
-    let categoryTransactions: Transaction[] = [];
+    let categoryTransactions: NormalizedTransaction[] = [];
 
     if (this.helperService.isCategoryCreditCard(category)) {
       categoryTransactions = this.helperService.getTransactionsForAccount(allTransactions, [
         ...ccAccounts.map((acc) => acc.id!),
-      ]) as Transaction[];
+      ]) as NormalizedTransaction[];
     } else {
+      if (category.id === '404f1661-caee-496a-9f53-a7981f74397d')
+        console.log('fetching transactions for category');
       categoryTransactions = this.helperService.getTransactionsForCategory(allTransactions, [category.id!]);
+      if (category.id === '404f1661-caee-496a-9f53-a7981f74397d')
+        console.log(categoryTransactions);
     }
 
     const filteredTransactions = this.helperService.filterTransactionsBasedOnMonth(categoryTransactions, selectedMonth);
+    if (category.id === '404f1661-caee-496a-9f53-a7981f74397d')
+      console.log(filteredTransactions);
 
     return filteredTransactions.length;
   }
@@ -269,7 +279,7 @@ export class BudgetMobileComponent implements OnInit {
     return category.id || index.toString();
   }
 
-  trackByTransaction(index: number, transaction: Transaction): string {
+  trackByTransaction(index: number, transaction: NormalizedTransaction): string {
     return transaction.id || index.toString();
   }
 
