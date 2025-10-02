@@ -79,8 +79,7 @@ func (s *categoryService) GetById(ctx context.Context, id uuid.UUID) (*model.Cat
 
 func (s *categoryService) Create(ctx context.Context, category model.Category) error {
 	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
-	category.BudgetID = budgetId
-	return s.repo.Create(ctx, category)
+	return s.repo.Create(ctx, budgetId, category)
 }
 
 func (s *categoryService) DeleteById(ctx context.Context, id uuid.UUID) error {

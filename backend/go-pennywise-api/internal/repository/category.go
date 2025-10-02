@@ -21,7 +21,7 @@ type CategoryRepository interface {
 	GetById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Category, error)
 	GetByIdSimplified(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Category, error)
 	GetByIdSimplifiedTx(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID) (*model.Category, error)
-	Create(ctx context.Context, category model.Category) error
+	Create(ctx context.Context, budgetId uuid.UUID, category model.Category) error
 	DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error
 	Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, category model.Category) error
 }
@@ -335,13 +335,13 @@ func (r *categoryRepo) GetByIdSimplifiedTx(ctx context.Context, tx pgx.Tx, budge
 	return &c, nil
 }
 
-func (r *categoryRepo) Create(ctx context.Context, category model.Category) error {
+func (r *categoryRepo) Create(ctx context.Context, budgetId uuid.UUID, category model.Category) error {
 	_, err := r.db.Exec(
 		ctx,
 		`INSERT INTO categories (
 			budget_id, name, category_group_id, note, hidden, is_system, deleted, created_at, updated_at
 		) VALUES ($1, $2, $3, $4, FALSE, FALSE, NOW(), NOW())`,
-		category.BudgetID, category.Name, category.CategoryGroupID, category.Note,
+		budgetId, category.Name, category.CategoryGroupID, category.Note,
 	)
 	return err
 }

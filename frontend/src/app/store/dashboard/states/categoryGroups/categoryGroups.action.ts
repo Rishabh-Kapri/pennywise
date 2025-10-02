@@ -1,4 +1,5 @@
 import { Category } from 'src/app/models/category.model';
+import { CategoryGroup } from 'src/app/models/catergoryGroup';
 import { CategoryGroupData } from 'src/app/models/state.model';
 
 export namespace CategoryGroupsActions {
@@ -21,11 +22,15 @@ export namespace CategoryGroupsActions {
     constructor(readonly payload: CategoryGroupData) {}
   }
   export class UpdateCategoryInGroup {
-    static readonly type = '[CategoryGroups]UpdateCategoryInGroup';
+    static readonly type = '[CategoryGroups] UpdateCategoryInGroup';
     constructor(
       readonly groupId: string,
       readonly categoryId: string,
       readonly data: Partial<Category>,
     ) {}
+  }
+  export class CreateCategoryGroup {
+    static readonly type = '[CategoryGroups] CreateCategoryGroup';
+    constructor(readonly payload: CategoryGroup) {}
   }
 }

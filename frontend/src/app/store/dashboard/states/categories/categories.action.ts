@@ -11,6 +11,10 @@ export namespace CategoriesActions {
   export class SetInflowCategoryBalance {
     static readonly type = '[Category] SetInflowCategoryBalance';
   }
+  export class CreateCategory {
+    static readonly type = '[Category] CreateCategory';
+    constructor(readonly payload: Category) {}
+  }
   export class UpdateCategory {
     static readonly type = '[Category] UpdateCategory';
     constructor(readonly payload: Category) { }
