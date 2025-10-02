@@ -56,7 +56,7 @@ export class SidebarComponent implements OnInit, AfterViewInit {
 
   isLoading = false;
   newBudgetName = '';
-  
+
   // Mobile sidebar state
   isMobileSidebarOpen = false;
 
@@ -79,7 +79,7 @@ export class SidebarComponent implements OnInit, AfterViewInit {
     private dbService: DatabaseService,
     private ngxsStore: Store,
     public store: StoreService,
-  ) {}
+  ) { }
 
   ngOnInit(): void {
     this.accountForm = new FormGroup<AccountForm>({
@@ -182,7 +182,7 @@ export class SidebarComponent implements OnInit, AfterViewInit {
       name: this.newBudgetName,
       isSelected: false,
     };
-    await this.dbService.createBudget(budget);
+    this.ngxsStore.dispatch(new BudgetsActions.CreateBudget(this.newBudgetName));
   }
 
   async selectBudget(budget: Budget) {
@@ -191,10 +191,14 @@ export class SidebarComponent implements OnInit, AfterViewInit {
     if (selectedBudget) {
       selectedBudget.isSelected = false;
       // update selected to unselected
-      await this.dbService.editBudget(selectedBudget);
+      this.ngxsStore.dispatch(
+        new BudgetsActions.UpdateBudget({ id: selectedBudget.id!, name: selectedBudget.name, isSelected: false }),
+      );
     }
     // update to selected
-    await this.dbService.editBudget(budget);
+    this.ngxsStore.dispatch(
+      new BudgetsActions.UpdateBudget({ id: budget.id!, name: budget.name, isSelected: true }),
+    );
     this.ngxsStore.dispatch(new BudgetsActions.SetSelectedBudget(budget));
   }
 

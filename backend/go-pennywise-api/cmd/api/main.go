@@ -74,6 +74,8 @@ func main() {
 		{
 			budgetGroup := router.Group("/api/budgets")
 			budgetGroup.GET("", budgetHandler.List)
+			budgetGroup.POST("", budgetHandler.Create)
+			budgetGroup.PATCH(":id", budgetHandler.UpdateById)
 		}
 		{
 			accountGroup := router.Group("/api/accounts")
