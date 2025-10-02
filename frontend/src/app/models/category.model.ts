@@ -13,7 +13,7 @@ export interface CategoryDTO {
   note?: string | null;
   goal?: Goal;
   showBudgetInput?: boolean;
-  budgeted?: Record<string, number> | number;
+  budgeted: Record<string, number> | number;
 }
 
 /**
@@ -22,7 +22,7 @@ export interface CategoryDTO {
 export interface Category extends CategoryDTO {
   activity?: Record<string, number>;
   balance?: Record<string, number>;
-  budgeted?: Record<string, number>;
+  budgeted: Record<string, number>;
 }
 
 export interface InflowCategory extends CategoryDTO {

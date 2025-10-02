@@ -13,7 +13,7 @@ export namespace CategoriesActions {
   }
   export class CreateCategory {
     static readonly type = '[Category] CreateCategory';
-    constructor(readonly payload: Category) {}
+    constructor(readonly payload: Partial<Category>) {}
   }
   export class UpdateCategory {
     static readonly type = '[Category] UpdateCategory';
