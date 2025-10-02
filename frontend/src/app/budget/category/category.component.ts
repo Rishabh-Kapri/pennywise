@@ -105,7 +105,7 @@ export class CategoryComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
     const key = this.ngxsStore.selectSnapshot(BudgetsState.getSelectedMonth);
-    const category: Category = {
+    const category: Partial<Category> = {
       budgetId: this.ngxsStore.selectSnapshot(BudgetsState.getSelectedBudget)?.id ?? '',
       name: this.categoryName,
       categoryGroupId: groupId,
