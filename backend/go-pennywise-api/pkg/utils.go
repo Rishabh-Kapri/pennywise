@@ -40,6 +40,9 @@ func FillCarryForward(values map[string]float32, month string) map[string]float3
 	for k := range values {
 		months = append(months, k)
 	}
+	if len(months) == 0 {
+		return values
+	}
 	sortedMonths := getSortedMonths(months)
 
 	values[month] = values[sortedMonths[len(sortedMonths)-1]]

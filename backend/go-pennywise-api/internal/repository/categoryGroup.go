@@ -154,7 +154,7 @@ func (r *categoryGroupRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]m
 								SELECT mb.month, SUM(mb.budgeted) AS sum_budgeted
 						FROM monthly_budgets mb
 						JOIN categories c ON c.id = mb.category_id
-						WHERE c.hidden = TRUE AND c.deleted = FALSE 
+						WHERE c.budget_id = $1 AND c.hidden = TRUE AND c.deleted = FALSE
 						GROUP BY mb.month
 							) t
 						),
@@ -171,7 +171,7 @@ func (r *categoryGroupRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]m
 								SUM(t.amount) AS sum_activity
 							FROM transactions t
 							JOIN categories c ON c.id = t.category_id
-							WHERE c.hidden = TRUE AND c.deleted = FALSE
+							WHERE c.budget_id = $1 AND c.hidden = TRUE AND c.deleted = FALSE
 							GROUP BY month
 						) a
 					),
@@ -186,7 +186,7 @@ func (r *categoryGroupRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]m
 							SELECT mb2.month, SUM(mb2.carryover_balance) AS sum_balance
 							FROM monthly_budgets mb2
 							JOIN categories c ON c.id = mb2.category_id
-							WHERE c.hidden = TRUE AND c.deleted = FALSE
+							WHERE c.budget_id = $1 AND c.hidden = TRUE AND c.deleted = FALSE
 							GROUP BY mb2.month
 						) b
 					),
@@ -222,7 +222,7 @@ func (r *categoryGroupRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]m
 												TO_CHAR(date_trunc('month', t.date::date), 'YYYY-MM') AS month,
 												SUM(t.amount) AS sum
 											FROM transactions t
-											WHERE t.category_id = c.id AND t.deleted = FALSE
+											WHERE t.budget_id = $1 AND t.category_id = c.id AND t.deleted = FALSE
 											GROUP BY month
 										) tx
 									), '{}'
@@ -230,7 +230,7 @@ func (r *categoryGroupRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]m
 								'balance', COALESCE(
 									(SELECT json_object_agg(mb2.month, mb2.carryover_balance)
 										FROM monthly_budgets mb2
-										WHERE mb2.category_id = c.id
+										WHERE mb2.budget_id = $1 AND mb2.category_id = c.id
 									), '{}'
 								)
 								)::jsonb AS category_json
