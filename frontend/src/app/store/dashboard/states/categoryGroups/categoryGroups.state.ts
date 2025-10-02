@@ -100,6 +100,17 @@ export class CategoryGroupsState implements NgxsOnInit {
   //   });
   // }
 
+  @Action(CategoryGroupsActions.CreateCategoryGroup)
+  createCategoryGroup(ctx: StateContext<CategoryGroupsStateModel>, { payload }: CategoryGroupsActions.CreateCategoryGroup) {
+    this.httpService.post<CategoryGroup>(`category-groups`, payload).subscribe({
+      next: (res) => {
+        const month = this.ngxsStore.selectSnapshot(BudgetsState.getSelectedMonth);
+        this.ngxsStore.dispatch(new CategoryGroupsActions.GetCategoryGroups(month));
+      },
+      error: (err) => {},
+    })
+  }
+
   @Action(CategoryGroupsActions.GetCategoryGroups)
   getCategoryGroups(ctx: StateContext<CategoryGroupsStateModel>, { month }: CategoryGroupsActions.GetCategoryGroups) {
     const url = month ? `category-groups?month=${month}` : 'category-groups';

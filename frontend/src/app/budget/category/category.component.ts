@@ -9,6 +9,7 @@ import { DatabaseService } from 'src/app/services/database.service';
 import { HelperService } from 'src/app/services/helper.service';
 import { StoreService } from 'src/app/services/store.service';
 import { BudgetsState } from 'src/app/store/dashboard/states/budget/budget.state';
+import { CategoriesActions } from 'src/app/store/dashboard/states/categories/categories.action';
 import { CategoryGroupsActions } from 'src/app/store/dashboard/states/categoryGroups/categoryGroups.action';
 import { CategoryGroupsState } from 'src/app/store/dashboard/states/categoryGroups/categoryGroups.state';
 
@@ -78,7 +79,7 @@ export class CategoryComponent implements OnInit, AfterViewInit, OnDestroy {
       deleted: false,
       createdAt: new Date().toISOString(),
     };
-    await this.dbService.createCategoryGroup(data);
+    this.ngxsStore.dispatch(new CategoryGroupsActions.CreateCategoryGroup(data))
     this.groupDropdown.hide();
   }
 
@@ -104,17 +105,15 @@ export class CategoryComponent implements OnInit, AfterViewInit, OnDestroy {
       return;
     }
     const key = this.ngxsStore.selectSnapshot(BudgetsState.getSelectedMonth);
-    const category: CategoryDTO = {
+    const category: Category = {
       budgetId: this.ngxsStore.selectSnapshot(BudgetsState.getSelectedBudget)?.id ?? '',
       name: this.categoryName,
       categoryGroupId: groupId,
       hidden: false,
       deleted: false,
-      createdAt: new Date().toISOString(),
-      budgeted: { [key]: 0 },
       note: null,
     };
-    await this.dbService.createCategory(category);
+    this.ngxsStore.dispatch(new CategoriesActions.CreateCategory(category))
     this.groupDropdowns[groupId].hide();
   }
 

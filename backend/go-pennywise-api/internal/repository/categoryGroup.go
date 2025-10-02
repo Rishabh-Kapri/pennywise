@@ -235,7 +235,7 @@ func (r *categoryGroupRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]m
 								)
 								)::jsonb AS category_json
 							FROM categories c
-							WHERE c.hidden = TRUE AND c.deleted = FALSE
+							WHERE c.budget_id = $1 AND c.hidden = TRUE AND c.deleted = FALSE
 						) hidden_categories
 					), 
 					'[]'

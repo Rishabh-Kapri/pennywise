@@ -92,6 +92,14 @@ export class CategoriesState {
     });
   }
 
+  @Action(CategoriesActions.CreateCategory)
+  createCategory(ctx: StateContext<CategoriesStateModel>, { payload }: CategoriesActions.CreateCategory) {
+    this.httpService.post<Category>(this.BASE_ENDPOINT, payload).subscribe({
+      next: (res) => {},
+      error: (err) => {},
+    })
+  }
+
   @Action(CategoriesActions.UpdateCategory)
   updateCategory(ctx: StateContext<CategoriesStateModel>, { payload }: CategoriesActions.UpdateCategory) {
     ctx.setState(
