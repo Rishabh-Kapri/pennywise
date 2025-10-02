@@ -77,6 +77,24 @@ export class BudgetsState implements NgxsOnInit {
   //   }
   // }
 
+  @Action(BudgetsActions.CreateBudget)
+  createBudget(ctx: StateContext<BudgetsStateModel>, { payload }: BudgetsActions.CreateBudget) {
+    this.httpService.post<Budget>('budgets', { name: payload }).subscribe({
+      next: (res) => {
+        this.ngxsStore.dispatch(new BudgetsActions.GetAllBudgets())
+      },
+      error: (err) => {},
+    })
+  }
+
+  @Action(BudgetsActions.UpdateBudget)
+  UpdateBudget(ctx: StateContext<BudgetsStateModel>, { payload }: BudgetsActions.UpdateBudget) {
+    this.httpService.patch<Partial<Budget>>(`budgets/${payload.id}`, payload).subscribe({
+      next: (res) => {},
+      error: (err) => {},
+    })
+  }
+
   @Action(BudgetsActions.GetAllBudgets)
   getAllBudgets(ctx: StateContext<BudgetsStateModel>) {
     this.httpService.get<Budget[]>('budgets').subscribe({
