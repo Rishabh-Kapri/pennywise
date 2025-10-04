@@ -14,6 +14,7 @@ import (
 )
 
 type CategoryRepository interface {
+	BaseRepository
 	GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Category, error)
 	GetInflowBalance(ctx context.Context, budgetId uuid.UUID) (float64, error)
 	GetByFilter(ctx context.Context, budgetId uuid.UUID, filter model.CategoryFilter) ([]model.Category, error)
@@ -21,21 +22,21 @@ type CategoryRepository interface {
 	GetById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Category, error)
 	GetByIdSimplified(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Category, error)
 	GetByIdSimplifiedTx(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID) (*model.Category, error)
-	Create(ctx context.Context, budgetId uuid.UUID, category model.Category) error
+	Create(ctx context.Context, tx pgx.Tx, category model.Category) (*model.Category, error)
 	DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error
 	Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, category model.Category) error
 }
 
 type categoryRepo struct {
-	db *pgxpool.Pool
+	baseRepository
 }
 
 func NewCategoryRepository(db *pgxpool.Pool) CategoryRepository {
-	return &categoryRepo{db: db}
+	return &categoryRepo{baseRepository: NewBaseRepository(db)}
 }
 
 func (r *categoryRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Category, error) {
-	rows, err := r.db.Query(
+	rows, err := r.Executor(nil).Query(
 		ctx, `
 			SELECT 
 				categories.id, 
@@ -107,7 +108,8 @@ func (r *categoryRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.
 func (r *categoryRepo) GetInflowBalance(ctx context.Context, budgetId uuid.UUID) (float64, error) {
 	var balance float64
 
-	err := r.db.QueryRow(ctx, `
+	log.Printf("%v", budgetId)
+	err := r.Executor(nil).QueryRow(ctx, `
 			WITH inflow_cat AS (
 				SELECT id FROM categories
 				WHERE budget_id = $1 AND is_system = TRUE AND deleted = FALSE
@@ -116,11 +118,12 @@ func (r *categoryRepo) GetInflowBalance(ctx context.Context, budgetId uuid.UUID)
 			total_txn AS (
 				SELECT COALESCE(SUM(amount), 0) AS transaction_amount
 				FROM transactions
-				WHERE category_id = (SELECT id FROM inflow_cat) AND deleted = FALSE
+				WHERE category_id = (SELECT id FROM inflow_cat) AND budget_id = $1 AND deleted = FALSE
 			),
 			total_budgeted AS (
 				SELECT COALESCE(SUM(budgeted), 0) AS total_budgeted
 				FROM monthly_budgets
+		    WHERE budget_id = $1
 			)
 			SELECT (total_txn.transaction_amount - total_budgeted.total_budgeted)
 			FROM total_txn, total_budgeted
@@ -143,7 +146,7 @@ func (r *categoryRepo) GetByFilter(ctx context.Context, budgetId uuid.UUID, filt
 	log.Printf("%v", sql)
 	log.Printf("%v", args)
 
-	rows, err := r.db.Query(ctx, sql, args...)
+	rows, err := r.Executor(nil).Query(ctx, sql, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +176,7 @@ func (r *categoryRepo) GetByFilter(ctx context.Context, budgetId uuid.UUID, filt
 
 func (r *categoryRepo) Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.Category, error) {
 	log.Printf("%v %v", budgetId, query)
-	rows, err := r.db.Query(
+	rows, err := r.Executor(nil).Query(
 		ctx, `
 			SELECT 
 				categories.id,
@@ -243,7 +246,7 @@ func (r *categoryRepo) Search(ctx context.Context, budgetId uuid.UUID, query str
 }
 
 func (r *categoryRepo) GetById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Category, error) {
-	row := r.db.QueryRow(
+	row := r.Executor(nil).QueryRow(
 		ctx, `
 			SELECT 
 				categories.id,
@@ -307,7 +310,7 @@ func (r *categoryRepo) GetById(ctx context.Context, budgetId uuid.UUID, id uuid.
 
 func (r *categoryRepo) GetByIdSimplified(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Category, error) {
 	var c model.Category
-	err := r.db.QueryRow(
+	err := r.Executor(nil).QueryRow(
 		ctx, `
 		  SELECT id, name, budget_id, category_group_id, hidden, note, is_system, created_at, updated_at
 		  FROM categories
@@ -335,19 +338,31 @@ func (r *categoryRepo) GetByIdSimplifiedTx(ctx context.Context, tx pgx.Tx, budge
 	return &c, nil
 }
 
-func (r *categoryRepo) Create(ctx context.Context, budgetId uuid.UUID, category model.Category) error {
-	_, err := r.db.Exec(
+func (r *categoryRepo) Create(ctx context.Context, tx pgx.Tx, category model.Category) (*model.Category, error) {
+	sql := `INSERT INTO categories (
+			budget_id, name, category_group_id, note, is_system, hidden, deleted, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, FALSE, FALSE, NOW(), NOW())
+	  RETURNING id, name, category_group_id, is_system`
+
+	var createdCat model.Category
+
+	err := r.Executor(tx).QueryRow(
 		ctx,
-		`INSERT INTO categories (
-			budget_id, name, category_group_id, note, hidden, is_system, deleted, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, FALSE, FALSE, NOW(), NOW())`,
-		budgetId, category.Name, category.CategoryGroupID, category.Note,
-	)
-	return err
+		sql,
+		category.BudgetID,
+		category.Name,
+		category.CategoryGroupID,
+		category.Note,
+		category.IsSystem,
+	).Scan(&createdCat.ID, &createdCat.Name, &createdCat.CategoryGroupID, &createdCat.IsSystem)
+	if err != nil {
+		return nil, err
+	}
+	return &createdCat, nil
 }
 
 func (r *categoryRepo) DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error {
-	cmdTag, err := r.db.Exec(
+	cmdTag, err := r.Executor(nil).Exec(
 		ctx,
 		`UPDATE categories SET 
 	    deleted = TRUE
@@ -364,7 +379,7 @@ func (r *categoryRepo) DeleteById(ctx context.Context, budgetId uuid.UUID, id uu
 }
 
 func (r *categoryRepo) Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, category model.Category) error {
-	_, err := r.db.Exec(
+	_, err := r.Executor(nil).Exec(
 		ctx,
 		`UPDATE categories SET 
 		    name = $1,

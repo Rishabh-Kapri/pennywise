@@ -70,12 +70,12 @@ func (h *payeeHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	err = h.service.Create(ctx, body)
+	createdPayee, err := h.service.Create(ctx, body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusCreated, body)
+	c.JSON(http.StatusCreated, createdPayee)
 }
 
 func (h *payeeHandler) GetById(c *gin.Context) {

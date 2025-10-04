@@ -25,6 +25,10 @@ import { AccountsActions } from '../store/dashboard/states/accounts/accounts.act
 import { BudgetsActions } from '../store/dashboard/states/budget/budget.action';
 import { ConfigActions } from '../store/dashboard/states/config/config.action';
 import { ConfigState } from '../store/dashboard/states/config/config.state';
+import { TransactionsActions } from '../store/dashboard/states/transactions/transaction.action';
+import { PayeesActions } from '../store/dashboard/states/payees/payees.action';
+import { CategoriesActions } from '../store/dashboard/states/categories/categories.action';
+import { CategoryGroupsActions } from '../store/dashboard/states/categoryGroups/categoryGroups.action';
 
 interface AccountForm {
   name: FormControl<string | null>;
@@ -186,20 +190,36 @@ export class SidebarComponent implements OnInit, AfterViewInit {
   }
 
   async selectBudget(budget: Budget) {
-    budget.isSelected = true;
     const selectedBudget = this.ngxsStore.selectSnapshot(BudgetsState.getSelectedBudget);
     if (selectedBudget) {
-      selectedBudget.isSelected = false;
       // update selected to unselected
       this.ngxsStore.dispatch(
-        new BudgetsActions.UpdateBudget({ id: selectedBudget.id!, name: selectedBudget.name, isSelected: false }),
+        new BudgetsActions.UpdateBudget({
+          id: selectedBudget.id!,
+          name: selectedBudget.name,
+          isSelected: false,
+          metadata: selectedBudget.metadata ?? {},
+        }),
       );
     }
     // update to selected
     this.ngxsStore.dispatch(
-      new BudgetsActions.UpdateBudget({ id: budget.id!, name: budget.name, isSelected: true }),
+      new BudgetsActions.UpdateBudget({
+        id: budget.id!,
+        name: budget.name,
+        isSelected: true,
+        metadata: budget.metadata ?? {},
+      }),
     );
     this.ngxsStore.dispatch(new BudgetsActions.SetSelectedBudget(budget));
+    const month = this.ngxsStore.selectSnapshot(BudgetsState.getSelectedMonth);
+    this.ngxsStore.dispatch([
+      new TransactionsActions.GetNormalisedTransaction(),
+      new PayeesActions.GetPayees(),
+      new CategoriesActions.GetCategories(),
+      new CategoryGroupsActions.GetCategoryGroups(month),
+      new AccountsActions.GetAccounts(),
+    ]);
   }
 
   selectAccount(account: Account) {

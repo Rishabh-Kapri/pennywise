@@ -55,12 +55,12 @@ func (h *categoryGroupHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	err = h.service.Create(ctx, body)
+	createdGroup, err := h.service.Create(ctx, body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusCreated, body)
+	c.JSON(http.StatusCreated, createdGroup)
 }
 
 func (h *categoryGroupHandler) Update(c *gin.Context) {

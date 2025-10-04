@@ -84,10 +84,12 @@ export class CategoriesState {
   getCategories(ctx: StateContext<CategoriesStateModel>) {
     this.httpService.get<Category[]>(this.BASE_ENDPOINT).subscribe({
       next: (categories) => {
+        console.log('setting categories');
         ctx.setState({
-          allCategories: categories,
-          inflowCategory: (categories.find((cat) => cat.name === INFLOW_CATEGORY_NAME) as unknown as InflowCategory) ?? null,
+          allCategories: categories ?? [],
+          inflowCategory: (categories?.find((cat) => cat.name === INFLOW_CATEGORY_NAME) as unknown as InflowCategory) ?? null,
         })
+        this.ngxsStore.dispatch(new CategoriesActions.SetInflowCategoryBalance());
       }
     });
   }
@@ -117,7 +119,6 @@ export class CategoriesState {
       .patch(`${this.BASE_ENDPOINT}/${payload.categoryId}/${payload.month}`, { budgeted: payload.budgeted })
       .subscribe({
         next: (res) => {
-          console.log('budget updated')
           this.ngxsStore.dispatch(new CategoriesActions.SetInflowCategoryBalance())
         },
         error: (err: any) => {
@@ -156,6 +157,7 @@ export class CategoriesState {
   setInflowCategoryBalance(ctx: StateContext<CategoriesStateModel>) {
     this.httpService.get<number>(`${this.BASE_ENDPOINT}/inflow`).subscribe({
       next: (balance) => {
+        console.log('setting inflow category balance:', balance);
         const inflowCategory = Object.assign({}, ctx.getState().inflowCategory);
         if (inflowCategory) {
           inflowCategory.budgeted = balance;

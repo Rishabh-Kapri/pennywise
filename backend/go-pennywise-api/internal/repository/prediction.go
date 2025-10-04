@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	"pennywise-api/internal/model"
@@ -15,6 +14,7 @@ import (
 )
 
 type PredictionRepository interface {
+	BaseRepository
 	GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Prediction, error)
 	GetByTxnId(ctx context.Context, budgetId uuid.UUID, txnId uuid.UUID) (*model.Prediction, error)
 	GetByTxnIdTx(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, txnId uuid.UUID) (*model.Prediction, error)
@@ -25,16 +25,16 @@ type PredictionRepository interface {
 }
 
 type predictionRepo struct {
-	db *pgxpool.Pool
+	baseRepository
 }
 
 func NewPredictionRepository(db *pgxpool.Pool) PredictionRepository {
-	return &predictionRepo{db: db}
+	return &predictionRepo{baseRepository: NewBaseRepository(db)}
 }
 
 // @TODO: add support for search query
 func (r *predictionRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Prediction, error) {
-	rows, err := r.db.Query(
+	rows, err := r.Executor(nil).Query(
 		ctx,
 		`SELECT 
 				id,
@@ -95,7 +95,7 @@ func (r *predictionRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]mode
 
 func (r *predictionRepo) GetByTxnId(ctx context.Context, budgetId uuid.UUID, txnId uuid.UUID) (*model.Prediction, error) {
 	var p model.Prediction
-	err := r.db.QueryRow(
+	err := r.Executor(nil).QueryRow(
 		ctx, `
 		  SELECT *
 		  FROM predictions
@@ -128,7 +128,7 @@ func (r *predictionRepo) GetByTxnId(ctx context.Context, budgetId uuid.UUID, txn
 
 func (r *predictionRepo) GetByTxnIdTx(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, txnId uuid.UUID) (*model.Prediction, error) {
 	var p model.Prediction
-	err := tx.QueryRow(
+	err := r.Executor(tx).QueryRow(
 		ctx, `
 		  SELECT *
 		  FROM predictions
@@ -165,7 +165,7 @@ func (r *predictionRepo) GetByTxnIdTx(ctx context.Context, tx pgx.Tx, budgetId u
 // Returns any error encountered during the database operation.
 func (r *predictionRepo) Create(ctx context.Context, prediction model.Prediction) ([]model.Prediction, error) {
 	var createdPrediction model.Prediction
-	err := r.db.QueryRow(
+	err := r.Executor(nil).QueryRow(
 		ctx,
 		`INSERT INTO predictions (
 				budget_id,
@@ -229,8 +229,7 @@ func (r *predictionRepo) Create(ctx context.Context, prediction model.Prediction
 // Returns any error encountered during the database operation.
 // Note: Since update is tied to transactions, passing a pgx.Tx object for rollback purposes
 func (r *predictionRepo) Update(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID, prediction model.Prediction) error {
-	log.Printf("Inside predictionRepo.Update: %v", prediction.String())
-	cmdTag, err := tx.Exec(
+	cmdTag, err := r.Executor(tx).Exec(
 		ctx, `
 		  UPDATE predictions SET
 				transaction_id = $1,
@@ -264,7 +263,6 @@ func (r *predictionRepo) Update(ctx context.Context, tx pgx.Tx, budgetId uuid.UU
 		budgetId,
 		id,
 	)
-	log.Printf("after tx.Exec: %v, %v", cmdTag, err)
 	if err != nil {
 		return err
 	}
@@ -277,7 +275,7 @@ func (r *predictionRepo) Update(ctx context.Context, tx pgx.Tx, budgetId uuid.UU
 
 // DeleteById marks the prediction entry as deleted (soft delete) with the specified budgetId and id.
 func (r *predictionRepo) DeleteByTxnId(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, txnId uuid.UUID) error {
-	cmdTag, err := tx.Exec(
+	cmdTag, err := r.Executor(tx).Exec(
 		ctx,
 		`UPDATE predictions SET deleted = TRUE WHERE budget_id = $1 AND transaction_id = $2 AND deleted = FALSE`,
 		budgetId, txnId,

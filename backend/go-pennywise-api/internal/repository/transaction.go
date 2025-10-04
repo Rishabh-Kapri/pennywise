@@ -3,7 +3,6 @@ package repository
 import (
 	"context"
 	"fmt"
-	"log"
 
 	"pennywise-api/internal/model"
 
@@ -13,7 +12,7 @@ import (
 )
 
 type TransactionRepository interface {
-	GetPgxTx(ctx context.Context) (pgx.Tx, error)
+	BaseRepository
 	GetAll(ctx context.Context, budgetId uuid.UUID, filter *model.TransactionFilter) ([]model.Transaction, error)
 	GetById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Transaction, error)
 	GetByIdTx(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID) (*model.Transaction, error)
@@ -24,15 +23,11 @@ type TransactionRepository interface {
 }
 
 type transactionRepo struct {
-	db *pgxpool.Pool
+	baseRepository
 }
 
 func NewTransactionRepository(db *pgxpool.Pool) TransactionRepository {
-	return &transactionRepo{db: db}
-}
-
-func (r *transactionRepo) GetPgxTx(ctx context.Context) (pgx.Tx, error) {
-	return r.db.BeginTx(ctx, pgx.TxOptions{})
+	return &transactionRepo{baseRepository: NewBaseRepository(db)}
 }
 
 func (r *transactionRepo) GetAll(ctx context.Context, budgetId uuid.UUID, filter *model.TransactionFilter) ([]model.Transaction, error) {
@@ -50,7 +45,7 @@ func (r *transactionRepo) GetAll(ctx context.Context, budgetId uuid.UUID, filter
 	}
 	// add the order part at last
 	sql += "\nORDER BY date DESC, updated_at DESC"
-	rows, err := r.db.Query(ctx, sql, args...)
+	rows, err := r.Executor(nil).Query(ctx, sql, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +65,7 @@ func (r *transactionRepo) GetAll(ctx context.Context, budgetId uuid.UUID, filter
 
 func (r *transactionRepo) GetById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Transaction, error) {
 	var txn model.Transaction
-	err := r.db.QueryRow(
+	err := r.Executor(nil).QueryRow(
 		ctx, `
 		  SELECT
 		    transactions.id,
@@ -121,7 +116,7 @@ func (r *transactionRepo) GetById(ctx context.Context, budgetId uuid.UUID, id uu
 
 func (r *transactionRepo) GetByIdTx(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID) (*model.Transaction, error) {
 	var txn model.Transaction
-	err := tx.QueryRow(
+	err := r.Executor(tx).QueryRow(
 		ctx, `
 		  SELECT
 		    transactions.id,
@@ -173,9 +168,8 @@ func (r *transactionRepo) GetByIdTx(ctx context.Context, tx pgx.Tx, budgetId uui
 func (r *transactionRepo) GetAllNormalized(ctx context.Context, budgetId uuid.UUID, accountId *uuid.UUID) ([]model.Transaction, error) {
 	var rows pgx.Rows
 	var err error
-	log.Printf("%v", accountId)
 	if accountId != nil {
-		rows, err = r.db.Query(
+		rows, err = r.Executor(nil).Query(
 			ctx, `
 				SELECT
 					transactions.id,
@@ -214,7 +208,7 @@ func (r *transactionRepo) GetAllNormalized(ctx context.Context, budgetId uuid.UU
 			`, budgetId, accountId,
 		)
 	} else {
-		rows, err = r.db.Query(
+		rows, err = r.Executor(nil).Query(
 			ctx, `
 				SELECT
 					transactions.id,
@@ -286,7 +280,7 @@ func (r *transactionRepo) GetAllNormalized(ctx context.Context, budgetId uuid.UU
 
 func (r *transactionRepo) Create(ctx context.Context, tx pgx.Tx, txn model.Transaction) ([]model.Transaction, error) {
 	var createdTxn model.Transaction
-	err := tx.QueryRow(
+	err := r.Executor(tx).QueryRow(
 		ctx,
 		`INSERT INTO transactions (
 		  budget_id,
@@ -322,7 +316,7 @@ func (r *transactionRepo) Create(ctx context.Context, tx pgx.Tx, txn model.Trans
 }
 
 func (r *transactionRepo) Update(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID, txn model.Transaction) error {
-	cmdTag, err := tx.Exec(
+	cmdTag, err := r.Executor(tx).Exec(
 		ctx, `
 		  UPDATE transactions SET
 				date = $1,
@@ -356,7 +350,7 @@ func (r *transactionRepo) Update(ctx context.Context, tx pgx.Tx, budgetId uuid.U
 }
 
 func (r *transactionRepo) DeleteById(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID) error {
-	cmdTag, err := tx.Exec(
+	cmdTag, err := r.Executor(tx).Exec(
 		ctx, `
 			UPDATE transactions 
 			SET deleted = TRUE WHERE budget_id = $1 AND id = $2 

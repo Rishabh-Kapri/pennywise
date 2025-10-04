@@ -89,9 +89,8 @@ export class TransactionsState implements NgxsOnInit {
     const url = accountId ? `transactions/normalized?accountId=${accountId}` : 'transactions/normalized';
     this.httpService.get<NormalizedTransaction[]>(url).subscribe({
       next: (txns) => {
-        console.log(txns);
         ctx.patchState({
-          normalizedTransactions: txns,
+          normalizedTransactions: txns ?? [],
         });
       },
     });
@@ -99,10 +98,8 @@ export class TransactionsState implements NgxsOnInit {
 
   @Action(TransactionsActions.CreateTransaction)
   createTransaction(ctx: StateContext<TransactionsStateModel>, { payload }: TransactionsActions.CreateTransaction) {
-    console.log('creating transaction', this.BASE_ENDPOINT, payload);
     this.httpService.post<Partial<Transaction>>(this.BASE_ENDPOINT, payload).subscribe({
       next: (res) => {
-        console.log('transaction created', res);
         ctx.dispatch(new TransactionsActions.GetNormalisedTransaction(payload.accountId ?? ''));
         ctx.dispatch(new AccountsActions.GetAccounts())
       },
@@ -112,10 +109,8 @@ export class TransactionsState implements NgxsOnInit {
   @Action(TransactionsActions.EditTransaction)
   editTransaction(ctx: StateContext<TransactionsStateModel>, { data }: TransactionsActions.EditTransaction) {
     const url = `${this.BASE_ENDPOINT}/${data.id}`;
-    console.log('updating transaction', url, data);
     this.httpService.patch<Partial<Transaction>>(url, data).subscribe({
       next: (res) => {
-        console.log(res);
         ctx.dispatch(new TransactionsActions.GetNormalisedTransaction(data.accountId ?? ''));
         ctx.dispatch(new AccountsActions.GetAccounts())
       },
@@ -125,10 +120,8 @@ export class TransactionsState implements NgxsOnInit {
   @Action(TransactionsActions.DeleteTransaction)
   deleteTransaction(ctx: StateContext<TransactionsStateModel>, { txnId }: TransactionsActions.DeleteTransaction) {
     const url = `${this.BASE_ENDPOINT}/${txnId}`;
-    console.log('Deleting transaction: ', url);
     this.httpService.delete(url).subscribe({
       next: (res) => {
-        console.log('Transaction deleted');
         ctx.dispatch(new TransactionsActions.GetNormalisedTransaction(''));
         ctx.dispatch(new AccountsActions.GetAccounts())
       },
@@ -180,7 +173,6 @@ export class TransactionsState implements NgxsOnInit {
       normalizedTransactions.push(normalizedTxn);
       prevTransacAmount = transaction.amount;
     }
-    console.log(normalizedTransactions);
     ctx.patchState({
       normalizedTransactions,
     });

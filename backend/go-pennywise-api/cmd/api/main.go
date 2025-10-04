@@ -29,42 +29,50 @@ func main() {
 	}))
 
 	defer dbConn.Close()
-
 	budgetRepo := repository.NewBudgetRepository(dbConn)
-	budgetService := service.NewBudgetService(budgetRepo)
+	payeeRepo := repository.NewPayeesRepository(dbConn)
+	categoryRepo := repository.NewCategoryRepository(dbConn)
+	categoryGroupRepo := repository.NewCategoryGroupRepository(dbConn)
+	predictionRepo := repository.NewPredictionRepository(dbConn)
+	accountRepo := repository.NewAccountRepository(dbConn)
+	userRepo := repository.NewUserRepository(dbConn)
+	transactionRepo := repository.NewTransactionRepository(dbConn)
+	embeddingRepo := repository.NewEmbeddingRepository(dbConn)
+
+	budgetService := service.NewBudgetService(budgetRepo, payeeRepo, categoryRepo, categoryGroupRepo)
 	budgetHandler := handler.NewBudgetHandler(budgetService)
 
-	accountRepo := repository.NewAccountRepository(dbConn)
 	accountService := service.NewAccountService(accountRepo)
 	accountHandler := handler.NewAccountHandler(accountService)
 
-	userRepo := repository.NewUserRepository(dbConn)
 	userService := service.NewUserService(userRepo)
 	userHandler := handler.NewUserHandler(userService)
 
-	payeeRepo := repository.NewPayeesRepository(dbConn)
 	payeeService := service.NewPayeeService(payeeRepo)
 	payeeHandler := handler.NewPayeeHandler(payeeService)
 
-	categoryGroupRepo := repository.NewCategoryGroupRepository(dbConn)
 	categoryGroupService := service.NewCategoryGroupService(categoryGroupRepo)
 	categoryGroupHandler := handler.NewCategoryGroupHandler(categoryGroupService)
 
-	categoryRepo := repository.NewCategoryRepository(dbConn)
 	monthlyBudgetRepo := repository.NewMonthlyBudgetRepository(dbConn)
 
-	predictionRepo := repository.NewPredictionRepository(dbConn)
 	predictionService := service.NewPredictionService(predictionRepo)
 	predictionHandler := handler.NewPredictionHandler(predictionService)
 
-	transactionRepo := repository.NewTransactionRepository(dbConn)
-	transactionService := service.NewTransactionService(transactionRepo, predictionRepo, accountRepo, payeeRepo, categoryRepo, monthlyBudgetRepo)
+	transactionService := service.NewTransactionService(
+		transactionRepo,
+		budgetRepo,
+		predictionRepo,
+		accountRepo,
+		payeeRepo,
+		categoryRepo,
+		monthlyBudgetRepo,
+	)
 	transactionHandler := handler.NewTransactionHandler(transactionService)
 
 	categoryService := service.NewCategoryService(categoryRepo, monthlyBudgetRepo, transactionRepo)
 	categoryHandler := handler.NewCategoryHandler(categoryService)
 
-	embeddingRepo := repository.NewEmbeddingRepository(dbConn)
 	embeddingService := service.NewEmbeddingService(embeddingRepo)
 	embeddingHandler := handler.NewEmbeddingHandler(embeddingService)
 

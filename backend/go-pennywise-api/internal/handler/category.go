@@ -74,12 +74,12 @@ func (h *categoryHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	err = h.service.Create(ctx, body)
+	createdCat, err := h.service.Create(ctx, body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusCreated, body)
+	c.JSON(http.StatusCreated, createdCat)
 }
 
 func (h *categoryHandler) Search(c *gin.Context) {

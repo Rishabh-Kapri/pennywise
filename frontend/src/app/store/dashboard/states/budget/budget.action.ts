@@ -26,6 +26,7 @@ export namespace BudgetsActions {
         id: string;
         name: string;
         isSelected: boolean;
+        metadata: object;
       },
     ) { }
   }

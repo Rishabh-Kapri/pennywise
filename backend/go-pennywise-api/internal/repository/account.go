@@ -20,13 +20,14 @@ type AccountRepository interface {
 }
 
 type accountRepo struct {
-	db *pgxpool.Pool
+	baseRepository
 }
 
 func NewAccountRepository(db *pgxpool.Pool) AccountRepository {
-	return &accountRepo{db: db}
+	return &accountRepo{baseRepository: NewBaseRepository(db)}
 }
 
+// @TODO: move this to service
 // createAccountWithPayee creates an account with a payee
 // first creates an account,
 // then creates a payee using the accountId as transferAccountId
@@ -86,7 +87,7 @@ func createAccountWithPayee(ctx context.Context, db *pgxpool.Pool, account model
 }
 
 func (r *accountRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Account, error) {
-	rows, err := r.db.Query(
+	rows, err := r.Executor(nil).Query(
 		ctx, `
 		SELECT 
 		  accounts.id,
@@ -136,7 +137,7 @@ func (r *accountRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.A
 
 func (r *accountRepo) GetById(ctx context.Context, budgetId uuid.UUID, accountId uuid.UUID) (*model.Account, error) {
 	var a model.Account
-	err := r.db.QueryRow(
+	err := r.Executor(nil).QueryRow(
 		ctx, `
 		  SELECT id, name, budget_id, transfer_payee_id, type, closed, created_at, updated_at 
 		  FROM accounts 
@@ -161,7 +162,7 @@ func (r *accountRepo) GetById(ctx context.Context, budgetId uuid.UUID, accountId
 
 func (r *accountRepo) GetByIdTx(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, accountId uuid.UUID) (*model.Account, error) {
 	var a model.Account
-	err := tx.QueryRow(
+	err := r.Executor(tx).QueryRow(
 		ctx, `
 		  SELECT id, name, budget_id, transfer_payee_id, type, closed, created_at, updated_at 
 		  FROM accounts 
@@ -185,7 +186,7 @@ func (r *accountRepo) GetByIdTx(ctx context.Context, tx pgx.Tx, budgetId uuid.UU
 }
 
 func (r *accountRepo) Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.Account, error) {
-	rows, err := r.db.Query(
+	rows, err := r.Executor(nil).Query(
 		ctx, `
 			SELECT 
 				accounts.id,
