@@ -13,25 +13,26 @@ import (
 )
 
 type PayeesRepository interface {
+	BaseRepository
 	GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Payee, error)
 	Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.Payee, error)
 	GetById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Payee, error)
 	GetByIdTx(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID) (*model.Payee, error)
-	Create(ctx context.Context, payee model.Payee) error
+	Create(ctx context.Context, tx pgx.Tx, payee model.Payee) (*model.Payee, error)
 	DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error
 	Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, payee model.Payee) error
 }
 
 type payeeRepo struct {
-	db *pgxpool.Pool
+	baseRepository
 }
 
 func NewPayeesRepository(db *pgxpool.Pool) PayeesRepository {
-	return &payeeRepo{db: db}
+	return &payeeRepo{baseRepository: NewBaseRepository(db)}
 }
 
 func (r *payeeRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Payee, error) {
-	rows, err := r.db.Query(
+	rows, err := r.Executor(nil).Query(
 		ctx, `
 		SELECT id, name, budget_id, transfer_account_id, created_at, updated_at
 		FROM payees WHERE budget_id = $1 AND deleted = FALSE`,
@@ -56,7 +57,7 @@ func (r *payeeRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Pay
 
 func (r *payeeRepo) Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.Payee, error) {
 	log.Printf("%v %v", budgetId, query)
-	rows, err := r.db.Query(
+	rows, err := r.Executor(nil).Query(
 		ctx,
 		`SELECT id, name, budget_id, transfer_account_id, created_at, updated_at FROM payees 
 		   WHERE budget_id = $1 AND deleted = FALSE AND name = $2`,
@@ -82,7 +83,7 @@ func (r *payeeRepo) Search(ctx context.Context, budgetId uuid.UUID, query string
 
 func (r *payeeRepo) GetById(ctx context.Context, budgetId, id uuid.UUID) (*model.Payee, error) {
 	var payee model.Payee
-	err := r.db.QueryRow(
+	err := r.Executor(nil).QueryRow(
 		ctx, `
 		  SELECT id, name, budget_id, transfer_account_id
 		  FROM payees
@@ -120,21 +121,27 @@ func (r *payeeRepo) GetByIdTx(ctx context.Context, tx pgx.Tx, budgetId, id uuid.
 	return &payee, nil
 }
 
-func (r *payeeRepo) Create(ctx context.Context, payee model.Payee) error {
-	_, err := r.db.Exec(
-		ctx,
-		`INSERT INTO payees (
-		  name, budget_id, transfer_account_id, deleted, created_at, updated_at
-		) VALUES ($1, $2, $3, FALSE, NOW(), NOW())`,
-		payee.Name,
+func (r *payeeRepo) Create(ctx context.Context, tx pgx.Tx, payee model.Payee) (*model.Payee, error) {
+	var createdPayee model.Payee
+
+	err := r.Executor(tx).QueryRow(
+		ctx, `
+				INSERT INTO payees (
+				name, budget_id, transfer_account_id, deleted, created_at, updated_at
+				) VALUES ($1, $2, $3, FALSE, NOW(), NOW())
+				RETURNING id, name, transfer_account_id
+			`, payee.Name,
 		payee.BudgetID,
 		payee.TransferAccountID,
-	)
-	return err
+	).Scan(&createdPayee.ID, &createdPayee.Name, &createdPayee.TransferAccountID)
+	if err != nil {
+		return nil, err
+	}
+	return &createdPayee, nil
 }
 
 func (r *payeeRepo) DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error {
-	cmdTag, err := r.db.Exec(
+	cmdTag, err := r.Executor(nil).Exec(
 		ctx,
 		`UPDATE payees SET
 		   deleted = TRUE,
@@ -151,7 +158,7 @@ func (r *payeeRepo) DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.
 }
 
 func (r *payeeRepo) Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, payee model.Payee) error {
-	cmdTag, err := r.db.Exec(
+	cmdTag, err := r.Executor(nil).Exec(
 		ctx,
 		`UPDATE payees SET
 		   name = $1,

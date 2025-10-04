@@ -9,26 +9,28 @@ import (
 	"pennywise-api/internal/model"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type CategoryGroupRepository interface {
+	BaseRepository
 	GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.CategoryGroup, error)
-	Create(ctx context.Context, categoryGroup model.CategoryGroup) error
+	Create(ctx context.Context, tx pgx.Tx, categoryGroup model.CategoryGroup) (*model.CategoryGroup, error)
 	Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, categoryGroup model.CategoryGroup) error
 	DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error
 }
 
 type categoryGroupRepo struct {
-	db *pgxpool.Pool
+	baseRepository
 }
 
 func NewCategoryGroupRepository(db *pgxpool.Pool) CategoryGroupRepository {
-	return &categoryGroupRepo{db: db}
+	return &categoryGroupRepo{baseRepository: NewBaseRepository(db)}
 }
 
 func (r *categoryGroupRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.CategoryGroup, error) {
-	rows, err := r.db.Query(
+	rows, err := r.Executor(nil).Query(
 		ctx, `
 			SELECT
 				cg.id,
@@ -280,25 +282,29 @@ func (r *categoryGroupRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]m
 	return groups, nil
 }
 
-func (r *categoryGroupRepo) Create(ctx context.Context, categoryGroup model.CategoryGroup) error {
-	_, err := r.db.Exec(
+func (r *categoryGroupRepo) Create(ctx context.Context, tx pgx.Tx, categoryGroup model.CategoryGroup) (*model.CategoryGroup, error) {
+	sql := `INSERT INTO category_groups (name, budget_id, hidden, is_system, deleted, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, FALSE, NOW(), NOW())
+	  RETURNING id, name, is_system`
+
+	var createdGroup model.CategoryGroup
+
+	err := r.Executor(tx).QueryRow(
 		ctx,
-		`INSERT INTO category_groups (id, name, budget_id, hidden, is_system, deleted, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		categoryGroup.ID,
+		sql,
 		categoryGroup.Name,
 		categoryGroup.BudgetID,
 		categoryGroup.Hidden,
 		categoryGroup.IsSystem,
-		categoryGroup.Deleted,
-		categoryGroup.CreatedAt,
-		categoryGroup.UpdatedAt,
-	)
-	return err
+	).Scan(&createdGroup.ID, &createdGroup.Name, &createdGroup.IsSystem)
+	if err != nil {
+		return nil, err
+	}
+	return &createdGroup, nil
 }
 
 func (r *categoryGroupRepo) Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, categoryGroup model.CategoryGroup) error {
-	_, err := r.db.Exec(
+	_, err := r.Executor(nil).Exec(
 		ctx,
 		`UPDATE category_groups SET name = $1, hidden = $2, is_system = $3, updated_at = $4 WHERE id = $5 AND budget_id = $6`,
 		categoryGroup.Name,
@@ -312,7 +318,7 @@ func (r *categoryGroupRepo) Update(ctx context.Context, budgetId uuid.UUID, id u
 }
 
 func (r *categoryGroupRepo) DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error {
-	cmdTag, err := r.db.Exec(
+	cmdTag, err := r.Executor(nil).Exec(
 		ctx,
 		`UPDATE category_groups SET deleted = TRUE WHERE id = $1 AND budget_id = $2`,
 		id,

@@ -102,16 +102,16 @@ export class AccountsState {
   getAllAccount(ctx: StateContext<AccountStateModel>) {
     this.httpService.get<Account[]>('accounts').subscribe({
       next: (accounts) => {
-        const allAccounts = accounts.map((acc) => {
+        const allAccounts = accounts?.map((acc) => {
           return {
             ...acc,
             balance: acc.balance ?? 0,
           } as Account;
-        });
+        }) ?? [];
         ctx.patchState({
           allAccounts: allAccounts,
-          budgetAccounts: this.filterBudgetAccounts(accounts),
-          trackingAccounts: this.filterTrackingAccounts(accounts),
+          budgetAccounts: this.filterBudgetAccounts(accounts ?? []),
+          trackingAccounts: this.filterTrackingAccounts(accounts ?? []),
         });
       },
     });

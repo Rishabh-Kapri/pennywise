@@ -116,10 +116,9 @@ export class CategoryGroupsState implements NgxsOnInit {
     const url = month ? `category-groups?month=${month}` : 'category-groups';
     this.httpService.get<CategoryGroupData[]>(url).subscribe({
       next: (groups) => {
-        console.log(groups);
         ctx.patchState({
           // allCategoryGroups: groups,
-          categoryGroups: groups,
+          categoryGroups: groups ?? [],
         });
       },
     });

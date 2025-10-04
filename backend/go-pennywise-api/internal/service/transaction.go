@@ -27,6 +27,7 @@ type TransactionService interface {
 
 type transactionService struct {
 	repo           repository.TransactionRepository
+	budgetRepo     repository.BudgetRepository
 	predictionRepo repository.PredictionRepository
 	accountRepo    repository.AccountRepository
 	payeeRepo      repository.PayeesRepository
@@ -36,6 +37,7 @@ type transactionService struct {
 
 func NewTransactionService(
 	r repository.TransactionRepository,
+	budgetRepo repository.BudgetRepository,
 	predictionRepo repository.PredictionRepository,
 	accountRepo repository.AccountRepository,
 	payeeRepo repository.PayeesRepository,
@@ -44,6 +46,7 @@ func NewTransactionService(
 ) TransactionService {
 	return &transactionService{
 		repo:           r,
+		budgetRepo:     budgetRepo,
 		predictionRepo: predictionRepo,
 		accountRepo:    accountRepo,
 		payeeRepo:      payeeRepo,
@@ -76,9 +79,12 @@ func (s *transactionService) updatePrediction(ctx context.Context, tx pgx.Tx, bu
 		return fmt.Errorf("Error getting payee: %v", err)
 	}
 
-	category, err := s.categoryRepo.GetByIdSimplifiedTx(ctx, tx, budgetId, *txn.CategoryID)
-	if err != nil {
-		return fmt.Errorf("Error getting category: %v", err)
+	var category *model.Category
+	if txn.CategoryID != nil {
+		category, err = s.categoryRepo.GetByIdSimplifiedTx(ctx, tx, budgetId, *txn.CategoryID)
+		if err != nil {
+			return fmt.Errorf("Error getting category: %v", err)
+		}
 	}
 
 	// if the prediction is not the same as the existing one, update it
@@ -90,7 +96,10 @@ func (s *transactionService) updatePrediction(ctx context.Context, tx pgx.Tx, bu
 
 	accountName := &account.Name
 	payeeName := &payee.Name
-	catName := &category.Name
+	var catName *string
+	if category != nil {
+		catName = &category.Name
+	}
 
 	if prediction.Account != nil && *prediction.Account != *accountName {
 		prediction.HasUserCorrected = &trueVal
@@ -102,7 +111,7 @@ func (s *transactionService) updatePrediction(ctx context.Context, tx pgx.Tx, bu
 		prediction.UserCorrectedPayee = &payee.Name
 		needsUpdate = true
 	}
-	if prediction.Category != nil && *prediction.Category != *catName {
+	if prediction.Category != nil && catName != nil && *prediction.Category != *catName {
 		prediction.HasUserCorrected = &trueVal
 		prediction.UserCorrectedCategory = &category.Name
 		needsUpdate = true
@@ -253,8 +262,12 @@ func (s *transactionService) Create(ctx context.Context, txn model.Transaction) 
 			return nil, fmt.Errorf("error while updating TransferTransactionID for transaction %v: %w", createdTxnId, err)
 		}
 	}
-	// @TODO: Add better handling for inflow category and other system categories
-	if txn.CategoryID != nil && txn.CategoryID.String() != "02fc5abc-94b7-4b03-9077-5d153011fd3f" {
+	budget, err := s.budgetRepo.GetById(ctx, tx, budgetId)
+	if err != nil {
+		return nil, fmt.Errorf("error while fetching budget with id %v: %v", budgetId, err)
+	}
+	if err != nil {}
+	if txn.CategoryID != nil && txn.CategoryID.String() != budget.Metadata.InflowCategoryID.String() {
 		monthKey := utils.GetMonthKey(txn.Date)
 		foundMb, err := s.mbRepo.GetByCatIdAndMonth(ctx, tx, budgetId, *txn.CategoryID, monthKey)
 		log.Printf("Found existing monthly budget: %+v", foundMb)
@@ -341,14 +354,14 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 				TransferAccountID:     txn.AccountID,
 				TransferTransactionID: &foundTxnId,
 			}
-		  createdTransferTxn, err := s.repo.Create(ctx, tx, transferTxn)
+			createdTransferTxn, err := s.repo.Create(ctx, tx, transferTxn)
 			if err != nil {
-			  return fmt.Errorf("error while creating transfer transaction: %v", err)
+				return fmt.Errorf("error while creating transfer transaction: %v", err)
 			}
 			if len(createdTransferTxn) == 0 {
 				return fmt.Errorf("no transfer transaction was created")
 			}
-		  createdTransferTxnId := createdTransferTxn[0].ID
+			createdTransferTxnId := createdTransferTxn[0].ID
 			// update existing transaction
 			updateTxn := model.Transaction{
 				BudgetID:              budgetId,
@@ -435,6 +448,7 @@ func (s *transactionService) DeleteById(ctx context.Context, id uuid.UUID) error
 	// delete any present prediction
 	if foundTxn.Source == "MLP" {
 		if err = s.predictionRepo.DeleteByTxnId(txCtx, tx, budgetId, id); err != nil {
+			// @TODO: find prediction fo transfer transaction id if it exists then only throw error
 			return fmt.Errorf("error while deleting prediction for transaction %v: %w", id, err)
 		}
 	}

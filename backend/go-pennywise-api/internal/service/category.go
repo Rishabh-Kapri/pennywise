@@ -18,7 +18,7 @@ type CategoryService interface {
 	GetInflowBalance(ctx context.Context) (float64, error)
 	Search(ctx context.Context, query string) ([]model.Category, error)
 	GetById(ctx context.Context, id uuid.UUID) (*model.Category, error)
-	Create(ctx context.Context, category model.Category) error
+	Create(ctx context.Context, category model.Category) (*model.Category, error)
 	DeleteById(ctx context.Context, id uuid.UUID) error
 	Update(ctx context.Context, id uuid.UUID, category model.Category) error
 	UpdateMonthlyBudget(ctx context.Context, categoryId uuid.UUID, newBudgeted float64, month string) error
@@ -77,9 +77,10 @@ func (s *categoryService) GetById(ctx context.Context, id uuid.UUID) (*model.Cat
 	return s.repo.GetById(ctx, budgetId, id)
 }
 
-func (s *categoryService) Create(ctx context.Context, category model.Category) error {
+func (s *categoryService) Create(ctx context.Context, category model.Category) (*model.Category, error) {
 	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
-	return s.repo.Create(ctx, budgetId, category)
+	category.BudgetID = budgetId
+	return s.repo.Create(ctx, nil, category)
 }
 
 func (s *categoryService) DeleteById(ctx context.Context, id uuid.UUID) error {

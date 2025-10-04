@@ -72,7 +72,7 @@ export class PayeesState implements NgxsOnInit {
     this.httpService.get<Payee[]>(this.ENDPOINT).subscribe({
       next: (payees) => {
         ctx.patchState({
-          allPayees: payees,
+          allPayees: payees ?? [],
         });
       },
     });
@@ -82,7 +82,6 @@ export class PayeesState implements NgxsOnInit {
   createPayee(ctx: StateContext<PayeesStateModel>, { payload }: PayeesActions.CreatePayee) {
     this.httpService.post<Partial<Payee>>(this.ENDPOINT, payload).subscribe({
       next: (res) => {
-        console.log('Payee created: ', res);
         ctx.dispatch(new PayeesActions.GetPayees());
       },
     });
