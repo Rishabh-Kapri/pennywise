@@ -9,16 +9,17 @@ import (
 )
 
 type EmbeddingRepository interface {
+	BaseRepository
 	Get(ctx context.Context, docType string, embeddingStr string, limit int64) ([]model.Embedding, error)
 	Create(ctx context.Context, data model.Embedding, embeddingStr string) error
 }
 
 type embeddingRepository struct {
-	db *pgxpool.Pool
+	baseRepository
 }
 
 func NewEmbeddingRepository(db *pgxpool.Pool) EmbeddingRepository {
-	return &embeddingRepository{db}
+	return &embeddingRepository{baseRepository: NewBaseRepository(db)}
 }
 
 func (er *embeddingRepository) Get(ctx context.Context, docType string, embeddingStr string, limit int64) ([]model.Embedding, error) {
@@ -42,7 +43,7 @@ func (er *embeddingRepository) Get(ctx context.Context, docType string, embeddin
 	// 		LIMIT $3;
 	//   `, docType, embeddingStr, limit,
 	// )
-	rows, err := er.db.Query(
+	rows, err := er.Executor(nil).Query(
 		ctx, `
 			SELECT
 				content,
@@ -86,7 +87,7 @@ func (er *embeddingRepository) Get(ctx context.Context, docType string, embeddin
 }
 
 func (er *embeddingRepository) Create(ctx context.Context, data model.Embedding, embeddingStr string) error {
-	_, err := er.db.Exec(
+	_, err := er.Executor(nil).Exec(
 		ctx, `
 	  INSERT INTO embeddings (
 		  content,

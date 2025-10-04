@@ -4,4 +4,5 @@ export interface Budget {
   createdAt?: string;
   updatedAt?: string;
   isSelected?: boolean;
+  metadata?: object;
 }

@@ -97,7 +97,6 @@ export class CategoryItemComponent implements AfterViewInit {
         }, {});
       }),
     );
-    console.log(this.categories);
   }
 
   ngAfterViewInit(): void {
@@ -239,7 +238,6 @@ export class CategoryItemComponent implements AfterViewInit {
     // filter category activity transactions
     const allTransactions = this.ngxsStore.selectSnapshot(TransactionsState.getNormalizedTransaction);
     const ccAccounts = this.ngxsStore.selectSnapshot(AccountsState.getCreditCardAccounts);
-    console.log(category, allTransactions, ccAccounts);
     let categoryTransactions: NormalizedTransaction[] = [];
     if (this.helperService.isCategoryCreditCard(category)) {
       categoryTransactions = <NormalizedTransaction[]>(
@@ -247,13 +245,11 @@ export class CategoryItemComponent implements AfterViewInit {
       );
     } else {
       categoryTransactions = this.helperService.getTransactionsForCategory(allTransactions, [category.id!]);
-      console.log(categoryTransactions);
     }
     this.categoryActivity = this.helperService.filterTransactionsBasedOnMonth(
       categoryTransactions,
       this.ngxsStore.selectSnapshot(BudgetsState.getSelectedMonth),
     );
-    console.log(this.categoryActivity, this.ngxsStore.selectSnapshot(BudgetsState.getSelectedMonth));
     if (this.categoryActivity.length) {
       const activityMenuDropdown = this.helperService.getDropdownInstance(
         category.id!,

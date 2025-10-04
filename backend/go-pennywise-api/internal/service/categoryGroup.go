@@ -14,7 +14,7 @@ import (
 
 type CategoryGroupService interface {
 	GetAll(ctx context.Context, month string) ([]model.CategoryGroup, error)
-	Create(ctx context.Context, categoryGroup model.CategoryGroup) error
+	Create(ctx context.Context, categoryGroup model.CategoryGroup) (*model.CategoryGroup, error)
 	Update(ctx context.Context, id uuid.UUID, categoryGroup model.CategoryGroup) error
 	DeleteById(ctx context.Context, id uuid.UUID) error
 }
@@ -45,10 +45,10 @@ func (s *categoryGroupService) GetAll(ctx context.Context, month string) ([]mode
 	return groups, nil
 }
 
-func (s *categoryGroupService) Create(ctx context.Context, categoryGroup model.CategoryGroup) error {
+func (s *categoryGroupService) Create(ctx context.Context, categoryGroup model.CategoryGroup) (*model.CategoryGroup, error) {
 	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
 	categoryGroup.BudgetID = budgetId
-	return s.repo.Create(ctx, categoryGroup)
+	return s.repo.Create(ctx, nil, categoryGroup)
 }
 
 func (s *categoryGroupService) Update(ctx context.Context, id uuid.UUID, categoryGroup model.CategoryGroup) error {
