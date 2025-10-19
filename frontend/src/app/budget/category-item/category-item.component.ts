@@ -1,13 +1,15 @@
-import { AfterViewInit, ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, EventEmitter, Input, Output, TemplateRef, ViewContainerRef } from '@angular/core';
 import { Store } from '@ngxs/store';
 import { Parser } from 'expr-eval';
 import { Dropdown, DropdownOptions } from 'flowbite';
-import { Observable, map, take } from 'rxjs';
+import { BehaviorSubject, Observable, map, take } from 'rxjs';
 import { Account, BudgetAccountType } from 'src/app/models/account.model';
 import { Category, InflowCategory } from 'src/app/models/category.model';
 import { Payee } from 'src/app/models/payee.model';
 import { NormalizedTransaction, Transaction } from 'src/app/models/transaction.model';
 import { HelperService } from 'src/app/services/helper.service';
+import { PopoverRef } from 'src/app/services/popover-ref';
+import { PopoverService } from 'src/app/services/popover.service';
 import { StoreService } from 'src/app/services/store.service';
 import { AccountsState } from 'src/app/store/dashboard/states/accounts/accounts.state';
 import { BudgetsState } from 'src/app/store/dashboard/states/budget/budget.state';
@@ -21,10 +23,8 @@ import { TransactionsState } from 'src/app/store/dashboard/states/transactions/t
  * Get category data
  */
 interface MoveData {
-  categoryId: string;
-  groupId: string;
+  category?: Category | null;
   amount?: number;
-  name?: string;
 }
 @Component({
   selector: 'app-category-item',
@@ -41,11 +41,22 @@ export class CategoryItemComponent implements AfterViewInit {
   @Output() hideUnhideCategoryEvent = new EventEmitter<Category>();
   @Output() showDetailsEvent = new EventEmitter<Category>();
 
+  private activityMenuOverlayRef: PopoverRef;
+  private moveMenuOverlayRef: PopoverRef;
+  private categoryDropdownOverlayRef: PopoverRef;
+
   accountObj$: Observable<Record<string, Account>>;
   categoryObj$: Observable<Record<string, Category>>;
   payeeObj$: Observable<Record<string, Payee>>;
   categoryGroupData$ = this.ngxsStore.select(CategoryGroupsState.getCategoryGroupData);
-  categoryActivity: NormalizedTransaction[];
+  categoryActivity$ = new BehaviorSubject<{ name: string; transactions: NormalizedTransaction[]} | null>(null);
+  moveData$ = new BehaviorSubject<{
+    from: MoveData;
+    to: MoveData;
+  }>({
+     from: { category: null, amount: 0 },
+     to: { category: null },
+  });
 
   menuDropdown: Dropdown;
   moveDropdown: Dropdown;
@@ -55,8 +66,8 @@ export class CategoryItemComponent implements AfterViewInit {
     from: MoveData;
     to: MoveData;
   } = {
-    from: { categoryId: '', groupId: '', amount: 0 },
-    to: { categoryId: '', groupId: '', name: '' },
+    from: { category: null, amount: 0 },
+    to: { category: null },
   };
   defaultOptions: DropdownOptions = {
     placement: 'bottom',
@@ -68,6 +79,8 @@ export class CategoryItemComponent implements AfterViewInit {
   };
   constructor(
     private ngxsStore: Store,
+    private popper: PopoverService,
+    private viewContainerRef: ViewContainerRef,
     public store: StoreService,
     public helperService: HelperService,
   ) { }
@@ -205,37 +218,52 @@ export class CategoryItemComponent implements AfterViewInit {
     this.menuDropdown.hide();
   }
 
-  showMoveMenu(category: Category) {
-    const options = { ...this.defaultOptions };
-    options.placement = 'left';
-    this.moveDropdown = this.helperService.getDropdownInstance(category.id!, 'moveDropdown', 'moveBtn', options);
+  showMoveMenu(category: Category, content: TemplateRef<any>, origin: HTMLElement) {
+    console.log(category);
+    if (this.moveMenuOverlayRef?.isOpen) {
+      return;
+    }
+    // const options = { ...this.defaultOptions };
+    // options.placement = 'left';
+    // this.moveDropdown = this.helperService.getDropdownInstance(category.id!, 'moveDropdown', 'moveBtn', options);
     this.moveData = {
       from: {
-        categoryId: category.id!,
-        groupId: category.categoryGroupId,
+        category,
         amount: category.balance?.[this.budgetKey]!,
       },
       to: {
-        categoryId: '',
-        groupId: '',
-        name: '',
+        category: null,
       },
     };
-    this.moveDropdown.toggle();
+    this.moveData$.next(this.moveData);
+    this.moveMenuOverlayRef = this.popper.open({
+      origin,
+      content,
+      viewContainerRef: this.viewContainerRef,
+    })
+    // this.moveDropdown.toggle();
   }
 
-  showCategoryMenu(category: Category) {
-    this.categoryDropdown = this.helperService.getDropdownInstance(
-      category.id!,
-      'moveCategoriesDropdown',
-      'moveCategoriesBtn',
-      this.defaultOptions,
-    );
-    this.categoryDropdown.toggle();
+  showCategoryMenu(category: Category, content: TemplateRef<any>, origin: HTMLElement) {
+    // this.categoryDropdown = this.helperService.getDropdownInstance(
+    //   category.id!,
+    //   'moveCategoriesDropdown',
+    //   'moveCategoriesBtn',
+    //   this.defaultOptions,
+    // );
+    // this.categoryDropdown.toggle();
+    this.categoryDropdownOverlayRef = this.popper.open({
+      origin,
+      content,
+      viewContainerRef: this.viewContainerRef,
+    });
   }
 
-  showActivityMenu(category: Category) {
+  showActivityMenu(category: Category, content: TemplateRef<any>, origin: HTMLElement) {
     // filter category activity transactions
+    if (this.activityMenuOverlayRef?.isOpen) {
+      return;
+    }
     const allTransactions = this.ngxsStore.selectSnapshot(TransactionsState.getNormalizedTransaction);
     const ccAccounts = this.ngxsStore.selectSnapshot(AccountsState.getCreditCardAccounts);
     let categoryTransactions: NormalizedTransaction[] = [];
@@ -246,53 +274,73 @@ export class CategoryItemComponent implements AfterViewInit {
     } else {
       categoryTransactions = this.helperService.getTransactionsForCategory(allTransactions, [category.id!]);
     }
-    this.categoryActivity = this.helperService.filterTransactionsBasedOnMonth(
+    const categoryActivity = this.helperService.filterTransactionsBasedOnMonth(
       categoryTransactions,
       this.ngxsStore.selectSnapshot(BudgetsState.getSelectedMonth),
     );
-    if (this.categoryActivity.length) {
-      const activityMenuDropdown = this.helperService.getDropdownInstance(
-        category.id!,
-        'activityMenu',
-        'activityMenuBtn',
-        this.defaultOptions,
-      );
-      activityMenuDropdown.toggle();
+    if (categoryActivity.length) {
+      this.categoryActivity$.next({ name: category.name, transactions: categoryActivity });
+      this.activityMenuOverlayRef = this.popper.open({
+        origin,
+        content,
+        viewContainerRef: this.viewContainerRef,
+      });
     }
+  }
+
+  private getElementById<T>(id: string): T | null {
+    return document.getElementById(id) as T;
   }
 
   selectMoveCategory(category: Category) {
-    this.moveData.to.name = category.name;
-    this.moveData.to.categoryId = category.id!;
-    this.moveData.to.groupId = category.categoryGroupId;
-    this.categoryDropdown.toggle();
+    const prevMoveData = this.moveData$.value;
+    this.moveData$.next({
+      ...prevMoveData,
+      to: {
+        category: category,
+        amount: 0,
+      },
+    });
+    if (this.categoryDropdownOverlayRef?.isOpen) {
+      this.categoryDropdownOverlayRef.close();
+    }
+    // this.categoryDropdown.toggle();
   }
 
-  changeMoveData(value: number, category: Category) {
+  changeMoveData(value: number) {
+    const moveData = this.moveData$.value;
+    const category = moveData.from.category;
+    if (!category) {
+      return;
+    }
     if (value === null || value < 0) {
-      this.moveData.from.amount = 0;
+      moveData.from.amount = 0;
     } else {
       if (value > category.balance?.[this.budgetKey]!) {
         console.error("Can't assign more than category's balance");
-        this.moveData.from.amount = category.balance?.[this.budgetKey]!;
+        moveData.from.amount = category.balance?.[this.budgetKey]!;
       } else {
-        this.moveData.from.amount = value;
+        moveData.from.amount = value;
       }
     }
+    console.log('changeMoveData:', moveData);
+    this.moveData$.next({ ...moveData });
   }
 
   moveBalance() {
-    if (this.moveData?.from?.amount === null || !this.moveData?.from?.categoryId || !this.moveData?.to?.categoryId) {
+    const moveData = this.moveData$.value;
+    if (moveData?.from?.amount === null || !moveData?.from?.category?.id || !moveData?.to?.category?.id) {
       return;
     }
     const moveTo = this.ngxsStore.selectSnapshot(
-      CategoryGroupsState.getCategory(this.moveData.to.categoryId, this.moveData.to.groupId),
+      CategoryGroupsState.getCategory(moveData.to.category?.id, moveData.to.category?.categoryGroupId),
     );
 
     const moveFrom = this.ngxsStore.selectSnapshot(
-      CategoryGroupsState.getCategory(this.moveData.from.categoryId, this.moveData.from.groupId),
+      CategoryGroupsState.getCategory(moveData.from.category.id, moveData.from.category.categoryGroupId),
     );
-    console.log(this.moveData);
+    let refetchMonthBudget = false;
+    console.log(moveData);
     console.log('moving from:', {
       categoryId: moveFrom?.id!,
       categoryName: moveFrom?.name,
@@ -312,16 +360,8 @@ export class CategoryItemComponent implements AfterViewInit {
           budgeted: (moveTo?.budgeted?.[this.budgetKey] ?? 0) + (this.moveData?.from?.amount ?? 0),
           month: this.budgetKey,
         })
-      )
-      // moveTo.budgeted[this.budgetKey] += this.moveData.from.amount ?? 0;
-      // if (moveTo.balance) {
-      //   moveTo.balance[this.budgetKey] += this.moveData.from.amount ?? 0;
-      // } else {
-      //   moveTo.balance = {
-      //     [this.budgetKey]: this.moveData.from.amount ?? 0,
-      //   };
-      // }
-      // this.editCategoryEvent.emit(moveTo);
+      );
+      refetchMonthBudget = true;
     }
     if (moveFrom) {
       this.ngxsStore.dispatch(
@@ -330,12 +370,12 @@ export class CategoryItemComponent implements AfterViewInit {
           budgeted: (moveFrom?.budgeted?.[this.budgetKey] ?? 0) - (this.moveData?.from?.amount ?? 0),
           month: this.budgetKey,
         })
-      )
-      // moveFrom.budgeted[this.budgetKey] -= this.moveData.from.amount ?? 0;
-      // if (moveFrom.balance) {
-      //   moveFrom.balance[this.budgetKey] -= this.moveData.from.amount ?? 0;
-      // }
-      // this.editCategoryEvent.emit(moveFrom);
+      );
+      refetchMonthBudget = true;
     }
+    if (refetchMonthBudget)  {
+      this.ngxsStore.dispatch(new CategoryGroupsActions.GetCategoryGroups(this.budgetKey))
+    }
+    this.moveMenuOverlayRef.close();
   }
 }
