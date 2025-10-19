@@ -42,6 +42,11 @@ body.dark {
   background-color: #a8bbbf;
 }
 
+button:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 /* Custom animations for mobile components */
 @keyframes fadeIn {
   from {

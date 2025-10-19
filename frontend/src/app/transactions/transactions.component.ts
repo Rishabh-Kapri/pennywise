@@ -453,6 +453,7 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
       return;
     }
     this.payeeOverlayRef = this.popper.open({ origin, content, viewContainerRef: this.viewContainerRef });
+    console.log(this.payeeOverlayRef);
   }
 
   closePayeeSelectMenu() {

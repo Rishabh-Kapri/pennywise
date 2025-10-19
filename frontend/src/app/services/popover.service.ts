@@ -4,7 +4,7 @@
  */
 
 import { ConnectionPositionPair, Overlay, OverlayConfig, PositionStrategy } from '@angular/cdk/overlay';
-import { Injectable, Injector, ViewContainerRef } from '@angular/core';
+import { Injectable, Injector } from '@angular/core';
 import { PopoverParams, PopoverRef } from './popover-ref';
 import { TemplatePortal } from '@angular/cdk/portal';
 
@@ -29,12 +29,12 @@ export class PopoverService {
         overlayX: 'center',
         overlayY: 'top',
       },
-      // {
-      //   originX: 'center',
-      //   originY: 'bottom',
-      //   overlayX: 'center',
-      //   overlayY: 'top',
-      // },
+      {
+        originX: 'center',
+        originY: 'top',
+        overlayX: 'center',
+        overlayY: 'bottom',
+      },
     ];
   }
 
