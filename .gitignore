@@ -58,3 +58,8 @@ data-bkp
 .env
 process_data.py
 test.go
+
+conjure-school.fnl
+.nrepl-port
+.lsp
+.clj-kondo
