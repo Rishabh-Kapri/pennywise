@@ -266,7 +266,8 @@ func (s *transactionService) Create(ctx context.Context, txn model.Transaction) 
 	if err != nil {
 		return nil, fmt.Errorf("error while fetching budget with id %v: %v", budgetId, err)
 	}
-	if err != nil {}
+	if err != nil {
+	}
 	if txn.CategoryID != nil && txn.CategoryID.String() != budget.Metadata.InflowCategoryID.String() {
 		monthKey := utils.GetMonthKey(txn.Date)
 		foundMb, err := s.mbRepo.GetByCatIdAndMonth(ctx, tx, budgetId, *txn.CategoryID, monthKey)
@@ -449,14 +450,24 @@ func (s *transactionService) DeleteById(ctx context.Context, id uuid.UUID) error
 	if foundTxn.Source == "MLP" {
 		if err = s.predictionRepo.DeleteByTxnId(txCtx, tx, budgetId, id); err != nil {
 			// @TODO: find prediction fo transfer transaction id if it exists then only throw error
-			return fmt.Errorf("error while deleting prediction for transaction %v: %w", id, err)
+			if foundTxn.TransferTransactionID != nil {
+				if err = s.predictionRepo.DeleteByTxnId(txCtx, tx, budgetId, *foundTxn.TransferTransactionID); err != nil {
+					return fmt.Errorf("error while deleting prediction for transfer transaction %v: %w", *foundTxn.TransferTransactionID, err)
+				}
+			} else {
+				return fmt.Errorf("error while deleting prediction for transaction %v: %w", id, err)
+			}
 		}
 	}
 
 	// reverse carryover
 	monthKey := utils.GetMonthKey(foundTxn.Date)
-	if err = s.mbRepo.UpdateCarryoverByCatIdAndMonth(txCtx, tx, budgetId, *foundTxn.CategoryID, monthKey, -foundTxn.Amount); err != nil {
-		return fmt.Errorf("error while reversing carryover for transaction category %v and month %v: %w", foundTxn.CategoryID, monthKey, err)
+
+	log.Printf("%v", foundTxn.String())
+	if foundTxn.CategoryID != nil {
+		if err = s.mbRepo.UpdateCarryoverByCatIdAndMonth(txCtx, tx, budgetId, *foundTxn.CategoryID, monthKey, -foundTxn.Amount); err != nil {
+			return fmt.Errorf("error while reversing carryover for transaction category %v and month %v: %w", foundTxn.CategoryID, monthKey, err)
+		}
 	}
 
 	if err = s.repo.DeleteById(txCtx, tx, budgetId, id); err != nil {
