@@ -1,0 +1,71 @@
+.categoryItem {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 2rem;
+  padding-bottom: 1rem;
+  cursor: pointer;
+  transition: background 0.3s ease;
+  border-radius: 0.5rem;
+}
+
+.categoryItem.selected {
+  background: var(--color-primary);
+  border-radius: 0.5rem;
+}
+
+.categoryDivider {
+  border: none;
+  margin: 0 2rem;
+  border-bottom: 2px dashed var(--color-border);
+}
+
+.borderNone {
+  border: none;
+  border-bottom: 2px dashed transparent;
+}
+
+.categoryName {
+  display: flex;
+  flex: 3;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.editCategory {
+  visibility: hidden;
+  background: var(--color-surface-secondary);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.editCategory:hover {
+  background: var(--color-surface-tertiary);
+}
+
+.editCategory > svg {
+  color: var(--color-text-secondary);
+}
+
+.categoryName:hover > .editCategory {
+  visibility: visible;
+}
+
+.amountContainer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.amountItem {
+  flex: 1;
+  text-align: right;
+}
+

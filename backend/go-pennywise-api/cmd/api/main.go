@@ -19,6 +19,14 @@ func main() {
 	dbConn := db.Connect()
 	router := gin.Default()
 
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:5000", "http://localhost:5173", "http://192.168.1.34:5100", "https://pennywise-fe-production.up.railway.app"},
+		AllowMethods:     []string{"GET", "POST", "PATCH", "PUT", "DELETE"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "X-Budget-ID"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+	}))
+
 	defer dbConn.Close()
 
 	accountRepo := repository.NewAccountRepository(dbConn)
