@@ -3,9 +3,10 @@ import type { Transaction } from '../types/transaction.types';
 import { AccountDropdown } from './popovers/AccountPopover';
 import { PayeeDropdown } from './popovers/PayeePopover';
 import { CategoryDropdown } from './popovers/CategoryPopover';
+import { DateDropdown } from './popovers/DatePopover';
 import styles from './Transaction.module.css';
 
-type DropdownColKey = 'accountName' | 'payeeName' | 'categoryName';
+type DropdownColKey = 'accountName' | 'payeeName' | 'categoryName' | 'date';
 
 const DROPDOWN_CONFIG: Record<
   DropdownColKey,
@@ -13,19 +14,21 @@ const DROPDOWN_CONFIG: Record<
     component:
     | typeof AccountDropdown
     | typeof PayeeDropdown
-    | typeof CategoryDropdown;
+    | typeof CategoryDropdown
+    | typeof DateDropdown;
     idKey: keyof Transaction;
   }
 > = {
   accountName: { component: AccountDropdown, idKey: 'accountId' },
   payeeName: { component: PayeeDropdown, idKey: 'payeeId' },
   categoryName: { component: CategoryDropdown, idKey: 'categoryId' },
+  date: { component: DateDropdown, idKey: 'date' },
 };
 
 const INPUT_TYPES: Partial<Record<keyof Transaction, string>> = {
   date: 'date',
-  outflow: 'number',
-  inflow: 'number',
+  outflow: 'text',
+  inflow: 'text',
   note: 'text',
 };
 
@@ -42,10 +45,11 @@ interface Props {
     idKey: keyof Transaction,
     nameKey: keyof Transaction,
   ) => (id: string, name: string) => void;
+  onBlur?: (key: keyof Transaction, value: string | number) => void;
 }
 
 /**
- * TransactionCell component is used to render individual transaction column cell, 
+ * TransactionCell component is used to render individual transaction column cell,
  */
 export function TransactionCell({
   col,
@@ -53,6 +57,7 @@ export function TransactionCell({
   selectedTxn,
   onFieldChange,
   onSelectChange,
+  onBlur,
 }: Props) {
   const isEditable = col.key !== 'balance';
   const isSelected = selectedTxn?.id === txn.id;
@@ -80,6 +85,7 @@ export function TransactionCell({
       value={value}
       placeholder={col.label}
       onChange={(e) => onFieldChange(col.key, e.target.value)}
+      onBlur={(e) => onBlur?.(col.key, e.target.value)}
       className={styles.input}
     />
   );

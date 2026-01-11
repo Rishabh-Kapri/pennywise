@@ -16,6 +16,7 @@ export interface Transaction {
   inflow: number | null;
   balance: number;
   note?: string;
+  source: TransactionSource;
   transferTransactionId: string | null,
   transferAccountId: string | null,
   accountName: string;
@@ -24,6 +25,18 @@ export interface Transaction {
   payeeId: string;
   categoryName: string | null;
   categoryId: string | null;
+}
+
+export interface TransactionDTO {
+  id?: string;
+  budgetId: string;
+  accountId: string;
+  payeeId: string;
+  categoryId: string | null;
+  date: string;
+  amount: number;
+  note?: string;
+  source: TransactionSource;
 }
 
 export interface TransactionState {

@@ -15,8 +15,8 @@ export function useDropdown<T>(
   }, [value]);
 
   const filterValues = (value: string) => {
+    setFilterQuery(value);
     const normalized = value.trim().toLowerCase();
-    setFilterQuery(normalized);
     setFilteredItems(filterFn(allItems, normalized));
   };
 

@@ -1,5 +1,9 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
-import type { Transaction, TransactionState } from '../types/transaction.types';
+import type {
+  Transaction,
+  TransactionDTO,
+  TransactionState,
+} from '../types/transaction.types';
 import { apiClient, LoadingState } from '@/utils';
 
 const initialState: TransactionState = {
@@ -20,12 +24,28 @@ export const fetchAllTransaction = createAsyncThunk<Transaction[], string>(
 );
 
 export const deleteTransactionById = createAsyncThunk<Transaction[], string>(
-  'transaction/deleteTransaction',
+  'transactions/deleteTransaction',
   async (transactionId: string) => {
     const url = `transactions/${transactionId}`;
     return await apiClient.delete(url);
   },
 );
+
+export const createTransaction = createAsyncThunk<
+  TransactionDTO,
+  TransactionDTO
+>('transactions/createTransaction', async (transaction: TransactionDTO) => {
+  const url = `transactions`;
+  return await apiClient.post(url, transaction);
+});
+
+export const updateTransaction = createAsyncThunk<
+  TransactionDTO,
+  TransactionDTO
+>('transactions/updateTransaction', async (transaction: TransactionDTO) => {
+  const url = `transactions/${transaction.id}`;
+  return await apiClient.patch(url, transaction);
+});
 
 const transactionSlice = createSlice({
   name: 'transactions',
@@ -46,9 +66,37 @@ const transactionSlice = createSlice({
         state.loading = LoadingState.ERROR;
         state.error = action.error.message ?? 'Failed to load transactions';
       })
+      .addCase(deleteTransactionById.pending, (state) => {
+        state.loading = LoadingState.PENDING;
+        state.error = null;
+      })
       .addCase(deleteTransactionById.fulfilled, (state, action) => {
         state.loading = LoadingState.SUCCESS;
         console.log('transaction deleted', state, action);
+      })
+      .addCase(createTransaction.pending, (state) => {
+        state.loading = LoadingState.PENDING;
+        state.error = null;
+      })
+      .addCase(createTransaction.fulfilled, (state, action) => {
+        state.loading = LoadingState.SUCCESS;
+        state.error = null;
+      })
+      .addCase(createTransaction.rejected, (state, action) => {
+        state.loading = LoadingState.ERROR;
+        state.error = action.error.message ?? 'Failed to create transaction';
+      })
+      .addCase(updateTransaction.pending, (state) => {
+        state.loading = LoadingState.PENDING;
+        state.error = null;
+      })
+      .addCase(updateTransaction.fulfilled, (state, action) => {
+        state.loading = LoadingState.SUCCESS;
+        state.error = null;
+      })
+      .addCase(updateTransaction.rejected, (state, action) => {
+        state.loading = LoadingState.ERROR;
+        state.error = action.error.message ?? 'Failed to update transaction';
       });
   },
 });

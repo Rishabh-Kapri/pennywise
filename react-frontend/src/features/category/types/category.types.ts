@@ -30,16 +30,11 @@ export interface CategoryGroup {
 
 export interface CategoryState {
   allCategories: Category[];
-  inflowAmount: number;
-  loading: LoadingState;
-  error: string | null;
-}
-
-export interface CategoryGroupState {
   allCategoryGroups: CategoryGroup[];
   collapseAllGroups: boolean;
-  inflow: number;
+  inflowAmount: number;
   loading: LoadingState;
+  inflowLoading: LoadingState;
   error: string | null;
 }
 
