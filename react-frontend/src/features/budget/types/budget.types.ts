@@ -6,7 +6,11 @@ export interface Budget {
   createdAt?: string;
   updatedAt?: string;
   isSelected?: boolean;
-  metadata?: object;
+  metadata?: {
+    inflowCategoryId: string;
+    startingBalPayeeId: string;
+    ccGroupId: string;
+  };
 }
 
 export interface BudgetState {

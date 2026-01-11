@@ -1,2 +1,2 @@
-export { default } from './categoryGroupSlice.ts';
-export * from './categoryGroupSlice.ts';
+export * from './categorySlice';
+export { default as categorySlice } from './categorySlice';

@@ -30,14 +30,23 @@ class ApiClient {
     return headers;
   }
 
+  private async handleResponse<T>(res: Response): Promise<T> {
+    const text = await res.text();
+    try {
+      return text ? JSON.parse(text) : ({} as T);
+    } catch (error) {
+      console.error('Failed to parse response:', text);
+      throw error;
+    }
+  }
+
   async get<T>(endpoint: string): Promise<T> {
-    console.log('fetching from', endpoint)
-    console.log('headers', this.getHeaders(endpoint))
+    console.log('fetching from', endpoint);
     const res = await fetch(`${this.baseUrl}/${endpoint}`, {
       method: 'GET',
       headers: this.getHeaders(endpoint),
     });
-    return res.json();
+    return this.handleResponse<T>(res);
   }
 
   async post<T>(endpoint: string, data: Partial<T>): Promise<T> {
@@ -46,7 +55,7 @@ class ApiClient {
       headers: this.getHeaders(endpoint),
       body: JSON.stringify(data),
     });
-    return res.json();
+    return this.handleResponse<T>(res);
   }
 
   async delete<T>(endpoint: string): Promise<T> {
@@ -54,16 +63,21 @@ class ApiClient {
       method: 'DELETE',
       headers: this.getHeaders(endpoint),
     });
-    return res.json();
+    return this.handleResponse<T>(res);
   }
 
   async patch<T>(endpoint: string, data: Partial<T>): Promise<T> {
-    const res = await fetch(`${this.baseUrl}/${endpoint}`, {
-      method: 'PATCH',
-      headers: this.getHeaders(endpoint),
-      body: JSON.stringify(data),
-    });
-    return res.json();
+    try {
+      const res = await fetch(`${this.baseUrl}/${endpoint}`, {
+        method: 'PATCH',
+        headers: this.getHeaders(endpoint),
+        body: JSON.stringify(data),
+      });
+      return this.handleResponse<T>(res);
+    } catch (error) {
+      console.error(error);
+      throw error;
+    }
   }
 }
 

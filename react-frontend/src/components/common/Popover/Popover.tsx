@@ -11,6 +11,9 @@ interface PopoverProps {
   width?: number;
   zIndex?: number;
   onClose?: () => void;
+  placement?: 'top' | 'bottom' | 'left' | 'right';
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
 }
 
 export function Popover({
@@ -21,6 +24,9 @@ export function Popover({
   width,
   zIndex,
   onClose,
+  placement = 'bottom',
+  onMouseEnter,
+  onMouseLeave,
 }: PopoverProps) {
   const popoverRef = useRef<HTMLDivElement | null>(null); // Reference to the popover element
   const [elWidth, setElWidth] = useState(width ?? 0);
@@ -69,34 +75,64 @@ export function Popover({
         const triggerRect = triggerRef.current.getBoundingClientRect();
         const popover = popoverRef.current;
         const popoverHeight = popover.offsetHeight;
+        const popoverWidth = popover.offsetWidth;
         const viewportHeight = window.innerHeight;
-        const gap = 4;
+        const viewportWidth = window.innerWidth;
+        const gap = 8;
 
-        // Check if there's enough space below the trigger
-        const spaceBelow = viewportHeight - triggerRect.bottom - gap;
-        const spaceAbove = triggerRect.top - gap;
+        let top = 0;
+        let left = 0;
 
-        let top: number;
-        if (spaceBelow >= popoverHeight || spaceBelow >= spaceAbove) {
-          // Open below (default)
-          top = triggerRect.bottom + gap;
-        } else {
-          // Open above (flip)
-          top = triggerRect.top - popoverHeight - gap;
+        switch (placement) {
+          case 'right':
+            left = triggerRect.right + gap;
+            top = triggerRect.top;
+            // Check overflow right (basic)
+            if (left + popoverWidth > viewportWidth) {
+              left = triggerRect.left - popoverWidth - gap; // Flip to left
+            }
+            break;
+          case 'left':
+            left = triggerRect.left - popoverWidth - gap;
+            top = triggerRect.top;
+            break;
+          case 'top':
+            top = triggerRect.top - popoverHeight - gap;
+            left = triggerRect.left;
+            break;
+          case 'bottom':
+          default:
+            // Check space below
+            const spaceBelow = viewportHeight - triggerRect.bottom - gap;
+            const spaceAbove = triggerRect.top - gap;
+            if (spaceBelow >= popoverHeight || spaceBelow >= spaceAbove) {
+               top = triggerRect.bottom + gap;
+            } else {
+               top = triggerRect.top - popoverHeight - gap;
+            }
+            left = triggerRect.left;
+            break;
+        }
+        
+        // Basic vertical overflow adjustment for side placements
+        if ((placement === 'left' || placement === 'right') && top + popoverHeight > viewportHeight) {
+            top = Math.max(gap, viewportHeight - popoverHeight - gap);
         }
 
-        const left = triggerRect.left;
         popover.style.transform = `translate(${left}px, ${top}px)`;
 
         if (event === 'resize') {
           if (width) {
             return;
           }
-          setElWidth(triggerRef.current.offsetWidth);
+           // Only match width for top/bottom unless forced
+          if (placement === 'top' || placement === 'bottom') {
+              setElWidth(triggerRef.current.offsetWidth);
+          }
         }
       }
     },
-    [isOpen, triggerRef, width],
+    [isOpen, triggerRef, width, placement],
   );
 
   const updateWidth = useCallback(() => {
@@ -104,10 +140,10 @@ export function Popover({
     if (width) {
       return;
     }
-    if (triggerRef.current) {
+    if (triggerRef.current && (placement === 'top' || placement === 'bottom')) {
       setElWidth(triggerRef.current.offsetWidth);
     }
-  }, [triggerRef, width]);
+  }, [triggerRef, width, placement]);
 
   useEffect(() => {
     updatePosition('scroll');
@@ -154,13 +190,16 @@ export function Popover({
       role="dialog"
       aria-modal="true"
       className={`${styles.overlay} ${isOpen ? styles.open : styles.closed}`}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
       style={{
         position: 'fixed',
         top: 0,
         left: 0,
         zIndex: zIndex ?? 1000,
+        width: typeof width === 'number' ? `${width}px` : undefined
       }}>
-      <div className={styles.container} style={{ width: `${elWidth}px` }}>
+      <div className={styles.container} style={{ width: width ? `${width}px` : (elWidth ? `${elWidth}px` : 'auto') }}>
         {children}
       </div>
     </div>,
