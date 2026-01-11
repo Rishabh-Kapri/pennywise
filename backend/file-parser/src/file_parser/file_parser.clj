@@ -21,3 +21,30 @@
 (comment
   (double 5))
 
+(defn messenger
+  ([] (messenger "Hello world!"))
+  ([msg] (println msg)))
+
+(messenger)
+
+(defn plotxy [shape x y]
+  (println shape)
+  (println "x: " x " y: " y))
+
+(defn plot [shape coords]
+  (apply plotxy  shape coords))
+
+(plot "circle" [1 2])
+
+(defn messenger-builder [greeting]
+  (fn [who] (println greeting who)))
+
+(def hello-er (messenger-builder "Hello"))
+
+(hello-er "world!")
+
+(def scores {"Fred" 1000, "Alice" 200})
+
+(assoc scores "Alice" 1000) ;; {"Fred" 1000, "Alice" 1000} returns a new map
+(assoc scores "Sue" 100)
+print scores ;; {"Fred" 1000, "ALice" 200} the original map is not mutated
