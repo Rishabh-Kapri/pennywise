@@ -10,7 +10,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@heroui/autocomplete": "^2.3.31",
+    "@heroui/calendar": "^2.2.29",
+    "@heroui/popover": "^2.3.29",
+    "@heroui/tooltip": "^2.2.26",
+    "@internationalized/date": "^3.10.1",
     "@reduxjs/toolkit": "^2.10.1",
+    "expr-eval": "^2.0.2",
     "lucide-react": "^0.553.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",

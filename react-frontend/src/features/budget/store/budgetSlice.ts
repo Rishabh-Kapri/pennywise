@@ -65,7 +65,6 @@ export default budgetSlice.reducer;
 // Selectors
 // const selectBudgetState = (state: RootState) => state.budget;
 // const selectAllBudget = (state: RootState) => state.budget.allBudgets;
-// const selectSelectedBudget = (state: RootState) => state.budget.selectedBudget;
 export const selectSelectedMonth = (state: RootState) => state.budgets.selectedMonth;
 export const selectSelectedBudget = (state: RootState) => state.budgets.selectedBudget;
 

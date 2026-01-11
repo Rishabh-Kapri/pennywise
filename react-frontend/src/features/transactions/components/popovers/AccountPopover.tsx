@@ -1,9 +1,8 @@
 import { useAppSelector } from '@/app/hooks';
 import { useDropdown } from '../../hooks/useDropdown';
 import type { Account } from '@/features/accounts/types/account.types';
-import { useRef } from 'react';
 import styles from './Popover.module.css';
-import { Popover } from '@/components/common/Popover/Popover';
+import { Autocomplete, AutocompleteItem } from '@heroui/autocomplete';
 
 interface Props {
   value: string;
@@ -18,66 +17,60 @@ export function AccountDropdown({ value, onClick }: Props) {
     );
   };
 
-  const {
-    isOpen,
-    setIsOpen,
-    filterQuery,
-    setFilterQuery,
-    filteredItems,
-    filterValues,
-  } = useDropdown(value, budgetAccounts, filterFn);
-
-  const triggerRef = useRef<HTMLInputElement | null>(null);
-
-  const handleOnBlur = () => {
-    setIsOpen(false);
-  };
+  const { filterQuery, setFilterQuery, filteredItems, filterValues } =
+    useDropdown(value, budgetAccounts, filterFn);
 
   const handleOnClick = (account: Account) => {
-    setIsOpen(false);
     setFilterQuery(account.name);
     onClick(account.id!, account.name);
   };
 
   return (
     <div className={styles.popoverContainer}>
-      <input
-        ref={triggerRef}
-        onFocus={() => setIsOpen(true)}
-        onBlur={handleOnBlur}
-        className={`${styles.input} ${styles.trigger}`}
-        onChange={(e) => filterValues(e.target.value)}
-        value={filterQuery}
+      <Autocomplete
+        inputProps={{
+          classNames: {
+            input: styles.input,
+          }
+        }}
+        classNames={{
+          selectorButton: styles.selectorButton,
+          clearButton: styles.clearButton,
+        }}
         placeholder="Select Account"
-        aria-haspopup="true"
-        aria-expanded={isOpen}
-        aria-controls="popover-content"
-      />
-      <Popover id={'popover-content'} isOpen={isOpen} triggerRef={triggerRef}>
-        {filteredItems.length > 0 &&
-          filteredItems.map((item) => (
-            <div
-              key={item.id}
-              className={styles.item}
-              tabIndex={0}
-              role="option"
-              onMouseDown={(e) => {
-                e.preventDefault(); // Prevents blur from firing
-                handleOnClick(item);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  handleOnClick(item);
-                }
-              }}>
-              {item.name}
-            </div>
-          ))}
-        {filteredItems.length === 0 && (
-          <div className={styles.item}>No accounts found</div>
+        value={filterQuery}
+        popoverProps={{
+          classNames: {
+            base: styles.popoverBase,
+            content: styles.popoverContent,
+          },
+          placement: 'bottom-start', // Optional: control placement
+        }}
+        onInputChange={(value) => filterValues(value)}
+        onSelectionChange={(key) => {
+          const account = budgetAccounts.find((acc) => acc.id === key);
+          if (account) {
+            handleOnClick(account);
+          }
+        }}
+        items={filteredItems}
+        listboxProps={{
+          emptyContent: 'No accounts found',
+          classNames: {
+            base: styles.listboxBase,
+            list: styles.listboxList,
+          },
+          itemClasses: {
+            base: styles.item,
+            selectedIcon: styles.hideIcon,
+          },
+        }}>
+        {(item) => (
+          <AutocompleteItem key={item.id} className={styles.item}>
+            {item.name}
+          </AutocompleteItem>
         )}
-      </Popover>
+      </Autocomplete>
     </div>
   );
 }

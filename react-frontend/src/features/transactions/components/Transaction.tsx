@@ -8,7 +8,7 @@ import { useHeader } from '@/context/HeaderContext';
 import { Banknote, Plus, Search } from 'lucide-react';
 import { getCurrencyLocaleString, getTodaysDate } from '@/utils/date.utils';
 import { selectAccountInfoFromId } from '@/features/accounts/store/accountSlice';
-import type { Transaction } from '../types/transaction.types';
+import { TransactionSource, type Transaction } from '../types/transaction.types';
 import { TransactionSkeleton } from './TransactionSkeleton';
 import {
   allAccountTxnCols,
@@ -18,12 +18,15 @@ import type { TransactionColumns } from '@/types/common.types';
 import { List, useDynamicRowHeight } from 'react-window';
 import { TransactionRow } from './TransactionRow';
 import { selectSelectedBudget } from '@/features/budget';
+import { Parser } from 'expr-eval';
 
 interface TransactionHeaderProps {
   name: string;
   balance: number;
   onTxnAdd: () => void;
 }
+
+const parser = new Parser();
 
 const TransactionHeaderContent = ({
   name,
@@ -123,7 +126,7 @@ export function Transaction() {
   };
 
   const handleSelectedTxnChange = useCallback(
-    (key: keyof Transaction, value: string | number) => {
+    (key: keyof Transaction, value: string | number | null) => {
       return setSelectedTxn((prev) => {
         if (!prev) {
           return null;
@@ -137,8 +140,35 @@ export function Transaction() {
     [setSelectedTxn],
   );
 
+  const handleInputBlur = useCallback(
+    (key: keyof Transaction, value: string | number) => {
+      if (selectedTxn && value) {
+        try {
+          const expr = parser.parse(value as string);
+          const result = expr.evaluate();
+          return setSelectedTxn((prev) => {
+            if (!prev) {
+              return null;
+            }
+            if (key === 'outflow') {
+              handleSelectedTxnChange('inflow', null);
+            } else if (key === 'inflow') {
+              handleSelectedTxnChange('outflow', null);
+            }
+            return {
+              ...prev,
+              [key]: result,
+            };
+          });
+        } catch (err) {
+          console.log('handleInputBlur:', err);
+        }
+      }
+    },
+    [selectedTxn, setSelectedTxn, handleSelectedTxnChange],
+  );
+
   const addTransaction = () => {
-    console.log('Adding Transaction');
     setIsAddingNew(true);
   };
 
@@ -153,11 +183,12 @@ export function Transaction() {
         balance: transactions[0].balance,
         note: '',
         accountName: '',
-        accountId: '',
+        accountId: paramId,
         payeeName: '',
         payeeId: '',
         categoryName: '',
         categoryId: '',
+        source: TransactionSource.PENNYWISE,
         transferAccountId: null,
         transferTransactionId: null,
       };
@@ -166,26 +197,30 @@ export function Transaction() {
       return [emptyTransaction, ...transactions];
     }
     return transactions;
-  }, [isAddingNew, transactions, selectedBudgetId]);
+  }, [isAddingNew, transactions, selectedBudgetId, paramId]);
 
   const rowProps = useMemo(
     () => ({
       paramId,
       transactions: displayTransactions,
       cols,
+      isAddingNew,
       selectedTxn,
       selectedTxnIdx,
       handleTxnSelect,
       handleSelectedTxnChange,
+      handleInputBlur,
     }),
     [
       paramId,
       displayTransactions,
       cols,
+      isAddingNew,
       selectedTxn,
       selectedTxnIdx,
       handleTxnSelect,
       handleSelectedTxnChange,
+      handleInputBlur,
     ],
   );
 

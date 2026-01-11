@@ -18,7 +18,12 @@ export const allAccountTxnCols: TransactionColumns[] = [
       gridColumn: '2 / 3',
       textAlign: 'left',
     },
-    render: (txn) => getLocaleDate(txn.date, ['en-GB']),
+    render: (txn) =>
+      getLocaleDate(
+        txn.date,
+        { month: 'short', day: 'numeric', year: 'numeric' },
+        ['en-GB'],
+      ),
   },
   {
     key: 'payeeName',
@@ -91,7 +96,12 @@ export const specificAccountTxnCols: TransactionColumns[] = [
       gridColumn: '1 / 2',
       textAlign: 'left',
     },
-    render: (txn) => getLocaleDate(txn.date, ['en-GB']),
+    render: (txn) =>
+      getLocaleDate(
+        txn.date,
+        { month: 'short', day: 'numeric', year: 'numeric' },
+        ['en-GB'],
+      ),
   },
   {
     key: 'payeeName',

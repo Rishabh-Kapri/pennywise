@@ -4,6 +4,10 @@ import type { Middleware } from '@reduxjs/toolkit';
 import { fetchAllCategoryGroups, fetchInflowAmount } from '@/features';
 import type { AppDispatch, RootState } from '.';
 import { fetchAllPayees } from '@/features/payees/store/payeeSlice';
+import {
+  fetchCategoryById,
+  updateCategoryBudget,
+} from '@/features/category/store/categorySlice';
 
 /*
  * Fetch all data on app start
@@ -21,13 +25,18 @@ export const dataFetchMiddleware: Middleware =
       dispatch(fetchAllCategoryGroups(month));
       dispatch(fetchInflowAmount());
       dispatch(fetchAllPayees());
-      // dispatch(fetchAllAccounts());
+      // fetch inflow category from selected budget metadata
+      const selectedBudget = (store.getState() as RootState).budgets
+        .selectedBudget;
+      if (selectedBudget?.metadata?.inflowCategoryId) {
+        dispatch(fetchCategoryById(selectedBudget.metadata.inflowCategoryId));
+      }
     }
     return result;
   };
 
 /**
- * Listen toe the date change and fetch the category budget data
+ * Listen to the date change and fetch the category budget data
  */
 export const dateChangeMiddleware: Middleware =
   (store) => (next) => (action) => {
@@ -36,8 +45,22 @@ export const dateChangeMiddleware: Middleware =
     const dispatch = store.dispatch as AppDispatch;
 
     if (setSelectedMonth.match(action)) {
-      console.log('Received state:', action);
       dispatch(fetchAllCategoryGroups(action.payload));
+    }
+
+    return result;
+  };
+
+/**
+ * Listen to the budget change and fetch the inflow amount
+ */
+export const budgetUpdateMiddleware: Middleware =
+  (store) => (next) => (action) => {
+    const result = next(action);
+    const dispatch = store.dispatch as AppDispatch;
+
+    if (updateCategoryBudget.fulfilled.match(action)) {
+      dispatch(fetchInflowAmount());
     }
 
     return result;

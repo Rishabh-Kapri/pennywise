@@ -1,8 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Category } from '../types/category.types';
 import styles from './CategoryItemList.module.css';
 import { MovePopover } from './popovers/MovePopover';
 import { AmountCell } from './AmountCell';
+import { useAppDispatch } from '@/app/hooks';
+import { updateCategoryBudget } from '../store/categorySlice';
+import { Parser } from 'expr-eval';
 
 interface Props {
   month: string;
@@ -26,6 +29,8 @@ interface CategoryItemProps {
   onPopoverClose: () => void;
 }
 
+const parser = new Parser();
+
 export function CategoryItem({
   month,
   category,
@@ -39,6 +44,53 @@ export function CategoryItem({
 }: CategoryItemProps) {
   const triggerRef = useRef<HTMLDivElement | null>(null);
   const isPopoverOpen = openPopoverId === category.id;
+  const [budgeted, setBudgeted] = useState<string>(
+    String(category?.budgeted?.[month] ?? 0),
+  );
+  const [isEditingBudget, setIsEditingBudget] = useState(false);
+
+  const dispatch = useAppDispatch();
+
+  const handleBudgetBlur = useCallback(() => {
+    setIsEditingBudget(false);
+    const currentBudgeted = category?.budgeted?.[month] ?? 0;
+    if (isEditingBudget && selectedCategoryId) {
+      const budgetedNum = Number(budgeted);
+      if (budgetedNum !== currentBudgeted) {
+        const expr = parser.parse(budgeted);
+        const result = expr.evaluate();
+        setBudgeted(result.toString());
+        dispatch(
+          updateCategoryBudget({
+            budgeted: result,
+            categoryId: selectedCategoryId!,
+            month,
+          }),
+        );
+      }
+    }
+  }, [
+    isEditingBudget,
+    budgeted,
+    month,
+    category,
+    selectedCategoryId,
+    dispatch,
+    setBudgeted,
+  ]);
+
+  const onBudgetChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (isEditingBudget) {
+        if (e.target.value === '') {
+          setBudgeted('0');
+          return;
+        }
+        setBudgeted(e.target.value);
+      }
+    },
+    [isEditingBudget],
+  );
 
   return (
     <>
@@ -51,7 +103,13 @@ export function CategoryItem({
         </div>
         {/* Budgeted */}
         <div className={styles.amountItem}>
-          <AmountCell value={category?.budgeted?.[month] ?? 0} />
+          <AmountCell
+            value={budgeted}
+            isEditing={isEditingBudget}
+            onClick={() => setIsEditingBudget(true)}
+            onBlur={handleBudgetBlur}
+            onChange={onBudgetChange}
+          />
         </div>
         {/* Activity */}
         <div className={styles.amountItem}>
@@ -106,7 +164,6 @@ export default function CategoryItemList({
       return;
     }
     const handleEscapeKey = (event: KeyboardEvent) => {
-      console.log('handling esacape:', event.key);
       if (event.key === 'Escape') {
         setSelectedCategoryIdx(-1);
         onSelectCategory(null);

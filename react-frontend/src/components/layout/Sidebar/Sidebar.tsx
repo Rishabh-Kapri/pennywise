@@ -8,6 +8,7 @@ import {
   PiggyBank,
   WalletCards,
   Lock,
+  PanelLeftClose,
 } from 'lucide-react';
 import { useAppSelector } from '@/app/hooks';
 import {
@@ -19,6 +20,8 @@ import {
   type JSX,
 } from 'react';
 import { getCurrencyLocaleString } from '@/utils/date.utils';
+import { Tooltip } from '@heroui/tooltip';
+import { Popover, PopoverContent, PopoverTrigger } from '@heroui/popover';
 
 interface NavItem {
   path: string;
@@ -35,29 +38,36 @@ interface NavItem {
 export default function Sidebar() {
   const navItems: NavItem[] = useMemo(
     () => [
-      { path: '/', key: 'home', label: 'Overview', icon: <ChartPie /> },
+      {
+        path: '/',
+        key: 'home',
+        label: 'Overview',
+        icon: <ChartPie strokeWidth={1.5} />,
+      },
       {
         path: '/budget',
         key: 'budget',
         label: 'Budget',
-        icon: <WalletCards />,
+        icon: <WalletCards strokeWidth={1.5} />,
       },
       {
         path: '/reports',
         key: 'reports',
         label: 'Reports',
-        icon: <FileText />,
+        icon: <FileText strokeWidth={1.5} />,
       },
       {
         path: '/transactions',
         key: 'all-transactions',
         label: 'All Accounts',
-        icon: <Landmark />,
+        icon: <Landmark strokeWidth={1.5} />,
       },
     ],
     [],
   );
   const [dynamicNavItems, setDynamicNavItems] = useState<NavItem[]>([]);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [hoveredItemKey, setHoveredItemKey] = useState<string | null>(null);
 
   const { trackingAccounts, budgetAccounts, allAccounts } = useAppSelector(
     (state) => state.accounts,
@@ -97,7 +107,11 @@ export default function Sidebar() {
           ),
         },
         false,
-        <CircleDollarSign />,
+        <CircleDollarSign
+          strokeWidth={1.5}
+          height={isCollapsed ? 24 : 30}
+          width={isCollapsed ? 24 : 30}
+        />,
       );
       navItem.children = budgetAccounts.map((acc) => ({
         path: '/transactions/' + acc.id,
@@ -128,7 +142,11 @@ export default function Sidebar() {
           ),
         },
         false,
-        <PiggyBank />,
+        <PiggyBank
+          strokeWidth={1.5}
+          height={isCollapsed ? 24 : 30}
+          width={isCollapsed ? 24 : 30}
+        />,
       );
       navItem.children = trackingAccounts.map((acc) =>
         getNavItem(
@@ -147,7 +165,7 @@ export default function Sidebar() {
         'Closed Accounts',
         { balance: getCurrencyLocaleString(0) },
         true,
-        <Lock />,
+        <Lock strokeWidth={1.5} size={24} />,
       );
       navItem.children = allAccounts
         .filter((acc) => acc.closed)
@@ -162,9 +180,22 @@ export default function Sidebar() {
       newNavItems.push(navItem);
     }
     setDynamicNavItems([...newNavItems]);
-  }, [trackingAccounts, budgetAccounts, allAccounts, getNavItem]);
+  }, [trackingAccounts, budgetAccounts, allAccounts, isCollapsed, getNavItem]);
 
   const handleCollapse = (key: string) => {
+    if (isCollapsed) {
+      setIsCollapsed(false);
+      setTimeout(() => {
+        setDynamicNavItems((prev) =>
+          prev.map((item) =>
+            item.key === key
+              ? { ...item, isCollapsed: !item.isCollapsed }
+              : { ...item },
+          ),
+        );
+      }, 100);
+      return;
+    }
     setDynamicNavItems((prev) =>
       prev.map((item) =>
         item.key === key
@@ -175,54 +206,137 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className={styles.sidebar}>
+    <aside
+      className={`${styles.sidebar} ${isCollapsed ? styles.collapsed : ''}`}>
       <div className={styles.logo}>
         <h2>Pennywise</h2>
+        <PanelLeftClose
+          className={styles.toggleBtn}
+          size={isCollapsed ? 24 : 20}
+          strokeWidth={1.5}
+          style={{
+            transform: isCollapsed ? 'rotate(180deg)' : 'none',
+            transition: 'transform 0.5s',
+          }}
+          onClick={() => setIsCollapsed(!isCollapsed)}
+        />
       </div>
 
       <nav className={styles.nav}>
         {navItems.map((item) => (
-          <NavLink
+          <Tooltip
             key={item.key}
-            to={item.path}
-            className={({ isActive }) =>
-              isActive ? `${styles.active} ${styles.navItem}` : styles.navItem
-            }>
-            {item.icon && item.icon}
-            <span className={styles.label}>{item.label}</span>
-            {item.meta && (
-              <span className={styles.meta}>{item.meta.balance}</span>
-            )}
-          </NavLink>
+            content={item.label}
+            placement="right"
+            isDisabled={!isCollapsed}
+            classNames={{
+              content: styles.tooltipContent,
+            }}>
+            <NavLink
+              to={item.path}
+              className={({ isActive }) =>
+                isActive ? `${styles.active} ${styles.navItem}` : styles.navItem
+              }>
+              {item.icon && item.icon}
+              <span className={styles.label}>{item.label}</span>
+              {item.meta && (
+                <span className={styles.meta}>{item.meta.balance}</span>
+              )}
+            </NavLink>
+          </Tooltip>
         ))}
         {dynamicNavItems.map((item) => (
           <Fragment key={item.key}>
-            <div
-              className={styles.dynamicItem}
-              onClick={() => handleCollapse(item.key)}>
-              {item?.icon && item?.icon}
-              <span>{item.label}</span>
-              {item?.meta && (
-                <span className={styles.meta}>{item.meta.balance}</span>
-              )}
-            </div>
-            {!item.isCollapsed && (
+            {isCollapsed && item.children ? (
+              <Popover
+                placement="right"
+                isOpen={hoveredItemKey === item.key}
+                onOpenChange={(open) =>
+                  setHoveredItemKey(open ? item.key : null)
+                }>
+                <PopoverTrigger>
+                  <div
+                    className={styles.dynamicItem}
+                    onMouseEnter={() => setHoveredItemKey(item.key)}
+                    onMouseLeave={() => setHoveredItemKey(null)}>
+                    {item?.icon && item?.icon}
+                    <span>{item.label}</span>
+                  </div>
+                </PopoverTrigger>
+                <PopoverContent
+                  className={styles.popoverContent}
+                  onMouseEnter={() => setHoveredItemKey(item.key)}>
+                  <div className={styles.popoverHeader}>{item.label}</div>
+                  {item.children.map((child) => (
+                    <NavLink
+                      key={child.key}
+                      to={child.path}
+                      className={({ isActive }) =>
+                        isActive
+                          ? `${styles.navItem} ${styles.active}`
+                          : styles.navItem
+                      }>
+                      <span className={`${styles.label} ${styles.truncate}`}>
+                        {child.label}
+                      </span>
+                      {child.meta && (
+                        <span className={`${styles.meta} ${styles.truncate}`}>
+                          {child.meta.balance}
+                        </span>
+                      )}
+                    </NavLink>
+                  ))}
+                </PopoverContent>
+              </Popover>
+            ) : (
+              <Tooltip
+                content={item.label}
+                placement="right"
+                isDisabled={!isCollapsed}
+                classNames={{
+                  content: styles.tooltipContent,
+                }}>
+                <div
+                  className={styles.dynamicItem}
+                  onClick={() => handleCollapse(item.key)}>
+                  {item?.icon && item?.icon}
+                  <span>{item.label}</span>
+                  {item?.meta && (
+                    <span className={styles.meta}>{item.meta.balance}</span>
+                  )}
+                </div>
+              </Tooltip>
+            )}
+
+            {!item.isCollapsed && !isCollapsed && (
               <div className={styles.childContainer}>
                 {item?.children?.map((child) => (
-                  <NavLink
+                  <Tooltip
                     key={child.key}
-                    to={child.path}
-                    className={({ isActive }) =>
-                      isActive
-                        ? `${styles.navItem} ${styles.active}`
-                        : styles.navItem
-                    }>
-                    {child.icon && child.icon}
-                    <span className={styles.label}>{child.label}</span>
-                    {child.meta && (
-                      <span className={styles.meta}>{child.meta.balance}</span>
-                    )}
-                  </NavLink>
+                    content={child.label}
+                    placement="right"
+                    isDisabled={!isCollapsed}
+                    classNames={{
+                      content: styles.tooltipContent,
+                    }}>
+                    <NavLink
+                      to={child.path}
+                      className={({ isActive }) =>
+                        isActive
+                          ? `${styles.navItem} ${styles.active}`
+                          : styles.navItem
+                      }>
+                      {child.icon && child.icon}
+                      <span className={`${styles.label} ${styles.truncate}`}>
+                        {child.label}
+                      </span>
+                      {child.meta && (
+                        <span className={`${styles.meta} ${styles.truncate}`}>
+                          {child.meta.balance}
+                        </span>
+                      )}
+                    </NavLink>
+                  </Tooltip>
                 ))}
               </div>
             )}

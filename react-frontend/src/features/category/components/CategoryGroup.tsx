@@ -22,8 +22,6 @@ export default function CategoryGroup({ groups, month }: CategoryGroupProps) {
   const [openPopoverId, setOpenPopoverId] = useState<string | null>(null);
   const dispatch = useAppDispatch();
 
-  console.trace(openDropdownId);
-
   const handlePopoverOpen = useCallback((id: string) => {
     setOpenPopoverId(id);
   }, []);
@@ -40,12 +38,10 @@ export default function CategoryGroup({ groups, month }: CategoryGroupProps) {
   }, []);
 
   const handleAddCategory = (category: Category) => {
-    console.log('Adding category:', category);
     setOpenDropdownId(null);
   };
 
   const handleGroupClose = (group: CategoryGroup) => {
-    console.log('Closing group:', group);
     if (group.id) {
       dispatch(toggleGroupCollapse(group.id));
     }
@@ -86,7 +82,6 @@ export default function CategoryGroup({ groups, month }: CategoryGroupProps) {
                           onSave={handleAddCategory}
                           isOpen={openDropdownId === group.id}
                           onOpenChange={(open) => {
-                            console.log('onOpenChange', open);
                             return setOpenDropdownId(open ? group.id! : null);
                           }}
                         />

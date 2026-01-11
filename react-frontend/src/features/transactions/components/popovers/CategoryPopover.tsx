@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import styles from './Popover.module.css';
 import { useAppSelector } from '@/app/hooks';
 import { selectCategoryGroups } from '@/features/category';
@@ -10,6 +10,7 @@ import type {
 import { selectSelectedMonth } from '@/features/budget';
 import { getCurrencyLocaleString } from '@/utils/date.utils';
 import { useDropdown } from '../../hooks/useDropdown';
+import { selectInflowCategory } from '@/features/category/store/categorySlice';
 
 interface Props {
   value: string;
@@ -22,8 +23,29 @@ const transformGroups = (groups: CategoryGroup[]) => {
 
 export function CategoryDropdown({ value, onClick }: Props) {
   const { allCategoryGroups } = useAppSelector(selectCategoryGroups);
+  const inflowCategory = useAppSelector(selectInflowCategory);
+
   const transformedGroups = transformGroups(allCategoryGroups);
+
+  const groupsWithInflow = useMemo(() => {
+    if (inflowCategory) {
+      const inflowGroup: CategoryGroup = {
+        id: 'inflow-group',
+        name: 'Inflow',
+        isSystem: false,
+        collapsed: false,
+        balance: {},
+        budgeted: {},
+        activity: {},
+        categories: [inflowCategory], // <--- The inflow category itself
+      };
+      return [inflowGroup, ...transformedGroups];
+    }
+    return transformedGroups;
+  }, [inflowCategory, transformedGroups]);
+
   const selectedMonth = useAppSelector(selectSelectedMonth);
+
   const filterFn = (groups: CategoryGroup[], filterQuery: string) => {
     return groups.filter(
       (group) =>
@@ -41,7 +63,7 @@ export function CategoryDropdown({ value, onClick }: Props) {
     setFilterQuery,
     filteredItems,
     filterValues,
-  } = useDropdown(value, transformedGroups, filterFn);
+  } = useDropdown(value, groupsWithInflow, filterFn);
 
   const triggerRef = useRef<HTMLInputElement | null>(null);
 
