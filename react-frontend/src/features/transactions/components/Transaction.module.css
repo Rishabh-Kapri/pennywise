@@ -1,0 +1,240 @@
+.container {
+  display: flex;
+  flex-direction: column;
+}
+
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.title > svg {
+  color: var(--color-budget-positive);
+}
+
+.amount {
+  color: var(--color-budget-positive);
+}
+
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.headerContainer {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 1rem;
+  padding: 0 1.5rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.txnContainer {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border-radius: 0.75rem;
+  height: calc(100vh - 11.35rem);
+  transition: all 0.3s ease;
+  overflow-y: auto;
+  padding-bottom: 0.25rem;
+}
+
+/* Custom scrollbar */
+.txnContainer::-webkit-scrollbar {
+  width: 0.5rem;
+  margin-right: 0.25rem;
+}
+
+.txnContainer::-webkit-scrollbar-track {
+  background: transparent;
+  margin-right: 0.25rem;
+}
+
+.txnContainer::-webkit-scrollbar-thumb {
+  background: var(--color-surface-tertiary);
+  border-radius: 0.25rem;
+  margin-right: 0.25rem;
+}
+
+.txnContainer::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-secondary);
+}
+
+.txnRow {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 1rem;
+  font-size: 0.9725rem;
+  padding: 1.25rem 1.5rem;
+  background: var(--color-surface);
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.borderNone {
+  border: none;
+  border-bottom: 2px dashed transparent;
+}
+
+.divider {
+  border: none;
+  margin: 0 1.5rem;
+  border-bottom: 2px dashed var(--color-border);
+}
+
+.txnRow:hover {
+  background: var(--color-surface-secondary);
+}
+
+.selected {
+  background: var(--color-primary);
+}
+
+.selected:hover {
+  background: var(--color-primary);
+}
+
+.note {
+  color: var(--color-text-secondary);
+}
+
+.amount {
+  padding: 0.25rem 0.75rem;
+  border-radius: 1.5rem;
+  box-shadow: var(--shadow-sm);
+  transition: filter 0.2s ease;
+}
+
+.outflow {
+  background: var(--color-budget-negative-fg);
+  color: var(--color-budget-negative-bg);
+}
+
+.inflow {
+  background: var(--color-budget-positive-fg);
+  color: var(--color-budget-positive-bg);
+}
+
+.input {
+  border: 1px solid var(--color-primary);
+  width: 100%;
+  height: 100%;
+  border: 1px solid transparent;
+  padding: 0.5rem;
+  border-radius: 1rem;
+  background: var(--color-surface-secondary);
+  box-shadow: var(--shadow-sm);
+  font-size: 0.95rem;
+}
+
+input[type=date]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+}
+
+.txnWrapper {
+  display: flex;
+  flex-direction: column;
+}
+
+.btnContainer {
+  display: flex;
+  gap: 0.5rem;
+  align-self: flex-end;
+  padding-right: 1rem;
+  padding-bottom: 0.5rem;
+}
+
+.btnContainer > button {
+  outline: none;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.cancelBtn {
+  background: var(--color-surface-secondary);
+  color: var(--color-text-secondary);
+  box-shadow: var(--shadow-md);
+}
+
+.cancelBtn:hover {
+  border: 1px solid transparent;
+  background: var(--color-surface-tertiary);
+  color: var(--color-text);
+}
+
+.deleteBtn {
+  border: 1px solid var(--color-budget-negative-fg);
+  background: var(--color-surface-secondary);
+  color: var(--color-budget-negative-bg);
+}
+
+.deleteBtn:hover {
+  border: 1px solid transparent;
+  filter: brightness(1.1);
+  background: var(--color-budget-negative-fg);
+}
+
+.actionContainer {
+  margin: 1rem 0;
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+}
+
+.addButton {
+  width: fit-content;
+  background: var(--color-surface-secondary);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.addButton:hover {
+  background: var(--color-surface-tertiary);
+}
+
+.addButton > svg {
+  color: var(--color-text-secondary);
+}
+
+.searchContainer {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+
+  border: 1px solid var(--color-primary);
+  border: 1px solid transparent;
+  padding: 0.5rem;
+  border-radius: 1rem;
+  background: var(--color-surface-secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.searchContainer:focus-within {
+  border-color: var(--color-primary);
+  border-width: 2px;
+}
+
+.searchInput {
+  outline: none;
+  border: none;
+  background: var(--color-surface-secondary);
+  font-size: 1rem;
+}
+.searchContainer > svg {
+  color: var(--color-text-secondary);
+}

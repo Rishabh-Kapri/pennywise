@@ -1,0 +1,56 @@
+.groupContainer {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.container {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.amountContainer {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  /* background: var(--color-primary); */
+  background: var(--color-budget-positive-fg);
+  color: var(--color-budget-positive-bg);
+  border-radius: 0.5rem;
+  padding: 0.5rem 1rem;
+  transition: all 0.2 ease;
+}
+
+.allAssigned {
+  background: #37474f;
+  color: var(--color-text);
+}
+
+.assignAmount {
+  display: flex;
+  flex-direction: column;
+}
+
+.assignAmount > .title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  align-self: center;
+}
+
+.assignAmount > .subtitle {
+  font-size: 0.9rem;
+}
+
+.allAssignedIcon {
+  padding: 0.25rem;
+  border-radius: 50%;
+  background: var(--color-surface);
+}
+
+/* .groupContainer { */
+/*   background: var(--color-surface); */
+/*   border-radius: 1rem; */
+/*   padding: 1rem; */
+/* } */

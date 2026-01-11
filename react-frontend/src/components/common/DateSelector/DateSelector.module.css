@@ -1,0 +1,50 @@
+.container {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.dateContainer {
+  color: var(--color-text);
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  width: fit-content;
+  background: var(--color-surface);
+  padding: 0.5rem 0.75rem;
+  border-radius: 10px;
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.dateContainer:hover {
+  background: var(--color-surface-secondary);
+}
+
+.icon {
+  color: var(--color-text-secondary);
+  transition: color 0.2s ease;
+  cursor: pointer;
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+.icon:hover {
+  color: var(--color-text);
+}
+
+.dateContainer:hover .icon {
+  color: var(--color-text);
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

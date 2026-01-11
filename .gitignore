@@ -2,6 +2,7 @@
 
 # Compiled output
 **dist/
+**/dist/
 /tmp
 /out-tsc
 /bazel-out
@@ -63,3 +64,8 @@ conjure-school.fnl
 .nrepl-port
 .lsp
 .clj-kondo
+# Clojure
+**/.clj-kondo/
+**/.lsp/
+**/.cpcache/
+conjure-school.fnl
