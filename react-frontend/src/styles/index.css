@@ -87,6 +87,43 @@ html, body, #root {
   /* Skeleton */
   --skeleton-base: rgba(128, 128, 128, 0.2);
   --skeleton-highlight: rgba(128, 128, 128, 0.1);
+
+  /* Responsive breakpoints */
+  --breakpoint-mobile: 480px;
+  --breakpoint-tablet: 768px;
+  --breakpoint-desktop: 1024px;
+  --breakpoint-wide: 1280px;
+
+  /* Responsive spacing */
+  --spacing-layout: 2rem;
+  --spacing-container: 1.5rem;
+
+  /* Sidebar width */
+  --sidebar-width: 300px;
+  --sidebar-collapsed-width: 65px;
+
+  /* Touch targets */
+  --touch-target-min: 44px;
+}
+
+/* Tablet breakpoint */
+@media (max-width: 1024px) {
+  :root {
+    --spacing-layout: 1.5rem;
+    --spacing-container: 1rem;
+  }
+}
+
+/* Mobile breakpoint */
+@media (max-width: 768px) {
+  :root {
+    --spacing-layout: 1rem;
+    --spacing-container: 0.75rem;
+  }
+
+  html, body, #root {
+    overflow: auto;
+  }
 }
 
 [data-theme="dark"] {
