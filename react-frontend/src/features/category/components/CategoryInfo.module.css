@@ -108,3 +108,37 @@
   outline: none;
   border: 1px solid var(--color-primary);
 }
+
+/* Tablet breakpoint */
+@media (max-width: 1024px) {
+  .wrapper {
+    flex: 0.6;
+  }
+
+  .infoContainer {
+    padding: 1rem;
+  }
+}
+
+/* Mobile breakpoint */
+@media (max-width: 768px) {
+  .wrapper {
+    flex: none;
+    height: auto;
+    width: 100%;
+    margin-top: 1rem;
+  }
+
+  .infoContainer {
+    height: auto;
+    border-radius: 0.75rem;
+  }
+
+  .spacer {
+    height: 1rem;
+  }
+
+  .note>textarea {
+    max-width: 100%;
+  }
+}

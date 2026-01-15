@@ -49,8 +49,37 @@
   background: var(--color-surface);
 }
 
-/* .groupContainer { */
-/*   background: var(--color-surface); */
-/*   border-radius: 1rem; */
-/*   padding: 1rem; */
-/* } */
+/* Mobile breakpoint */
+@media (max-width: 768px) {
+  .container {
+    flex-direction: column;
+    gap: 0.75rem;
+    align-items: flex-start;
+  }
+
+  .amountContainer {
+    padding: 0.5rem 0.75rem;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .assignAmount>.title {
+    font-size: 1rem;
+  }
+
+  .assignAmount>.subtitle {
+    font-size: 0.85rem;
+    text-align: center;
+  }
+}
+
+/* Small mobile breakpoint */
+@media (max-width: 480px) {
+  .amountContainer {
+    padding: 0.5rem;
+  }
+
+  .assignAmount>.title {
+    font-size: 0.95rem;
+  }
+}

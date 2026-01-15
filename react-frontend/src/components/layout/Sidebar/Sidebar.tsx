@@ -35,7 +35,12 @@ interface NavItem {
   isCollapsed?: boolean;
 }
 
-export default function Sidebar() {
+interface SidebarProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const navItems: NavItem[] = useMemo(
     () => [
       {
@@ -68,6 +73,18 @@ export default function Sidebar() {
   const [dynamicNavItems, setDynamicNavItems] = useState<NavItem[]>([]);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [hoveredItemKey, setHoveredItemKey] = useState<string | null>(null);
+
+  // Force expand sidebar on mobile viewport
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth <= 768) {
+        setIsCollapsed(false);
+      }
+    };
+    handleResize(); // Initial check
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const { trackingAccounts, budgetAccounts, allAccounts } = useAppSelector(
     (state) => state.accounts,
@@ -207,7 +224,7 @@ export default function Sidebar() {
 
   return (
     <aside
-      className={`${styles.sidebar} ${isCollapsed ? styles.collapsed : ''}`}>
+      className={`${styles.sidebar} ${isCollapsed ? styles.collapsed : ''} ${isOpen ? styles.mobileOpen : ''}`}>
       <div className={styles.logo}>
         <h2>Pennywise</h2>
         <PanelLeftClose
@@ -234,6 +251,7 @@ export default function Sidebar() {
             }}>
             <NavLink
               to={item.path}
+              onClick={onClose}
               className={({ isActive }) =>
                 isActive ? `${styles.active} ${styles.navItem}` : styles.navItem
               }>
@@ -271,6 +289,7 @@ export default function Sidebar() {
                     <NavLink
                       key={child.key}
                       to={child.path}
+                      onClick={onClose}
                       className={({ isActive }) =>
                         isActive
                           ? `${styles.navItem} ${styles.active}`
@@ -321,6 +340,7 @@ export default function Sidebar() {
                     }}>
                     <NavLink
                       to={child.path}
+                      onClick={onClose}
                       className={({ isActive }) =>
                         isActive
                           ? `${styles.navItem} ${styles.active}`

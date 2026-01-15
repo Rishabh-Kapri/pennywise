@@ -125,13 +125,47 @@
 
 @media (max-width: 768px) {
   .sidebar {
+    position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      width: 280px;
+      border-radius: 0;
     transform: translateX(-100%);
     transition: transform 0.3s ease;
+    z-index: 1000;
   }
 
-  .sidebar.open {
+    .sidebar.mobileOpen {
     transform: translateX(0);
   }
+.sidebar.collapsed {
+  width: 280px;
+}
+
+.sidebar.collapsed .label,
+.sidebar.collapsed .meta {
+  display: inline;
+}
+
+.sidebar.collapsed .navItem,
+.sidebar.collapsed .dynamicItem {
+  justify-content: flex-start;
+  padding: 0.7rem 0.75rem;
+}
+
+.sidebar.collapsed .logo {
+  padding: 0 2rem 1rem;
+  justify-content: space-between;
+}
+
+.sidebar.collapsed .logo h2 {
+  display: block;
+}
+
+.toggleBtn {
+  display: none;
+}
 }
 
 .tooltipContent {
