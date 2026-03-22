@@ -35,14 +35,25 @@ func (h *authHandler) LoginWithGoogle(c *gin.Context) {
 		return
 	}
 
-	response, err := h.service.LoginWithGoogle(c.Request.Context(), req.Credential)
+	user, accessToken, refreshToken, err := h.service.LoginWithGoogle(c.Request.Context(), req.Credential)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.SetCookie("token", response, 3600, "/", h.config.Domain, false, true)
-	c.JSON(http.StatusOK, response)
+	c.SetCookie("access_token", accessToken, 3600, "/", h.config.Domain, false, true)
+	c.SetCookie("refresh_token", refreshToken, 3600*24*7, "/", h.config.Domain, false, true)
+	c.JSON(http.StatusOK, model.LoginResponse{
+		User: model.AuthUserResponse{
+			ID:      user.ID,
+			Email:   user.Email,
+			Name:    user.Name,
+			Picture: user.Picture,
+		},
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		ExpiresIn:    900, // 15 minutes in seconds
+	})
 }
 
 // RefreshToken handles POST /api/auth/refresh

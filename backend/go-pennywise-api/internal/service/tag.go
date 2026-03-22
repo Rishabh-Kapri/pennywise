@@ -5,6 +5,7 @@ import (
 
 	"pennywise-api/internal/model"
 	"pennywise-api/internal/repository"
+	utils "pennywise-api/pkg"
 
 	"github.com/google/uuid"
 )
@@ -27,32 +28,32 @@ func NewTagService(repo repository.TagRepository) TagService {
 }
 
 func (s *tagService) GetAll(ctx context.Context) ([]model.Tag, error) {
-	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	budgetId := utils.MustBudgetID(ctx)
 	return s.repo.GetAll(ctx, budgetId)
 }
 
 func (s *tagService) Search(ctx context.Context, query string) ([]model.Tag, error) {
-	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	budgetId := utils.MustBudgetID(ctx)
 	return s.repo.Search(ctx, budgetId, query)
 }
 
 func (s *tagService) GetById(ctx context.Context, id uuid.UUID) (*model.Tag, error) {
-	budgetId := ctx.Value("budgetId").(uuid.UUID)
+	budgetId := utils.MustBudgetID(ctx)
 	return s.repo.GetById(ctx, budgetId, id)
 }
 
 func (s *tagService) Create(ctx context.Context, tag model.Tag) (*model.Tag, error) {
-	budgetId := ctx.Value("budgetId").(uuid.UUID)
+	budgetId := utils.MustBudgetID(ctx)
 	tag.BudgetID = budgetId
 	return s.repo.Create(ctx, nil, tag)
 }
 
 func (s *tagService) DeleteById(ctx context.Context, id uuid.UUID) error {
-	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	budgetId := utils.MustBudgetID(ctx)
 	return s.repo.DeleteById(ctx, budgetId, id)
 }
 
 func (s *tagService) Update(ctx context.Context, id uuid.UUID, tag model.Tag) error {
-	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	budgetId := utils.MustBudgetID(ctx)
 	return s.repo.Update(ctx, budgetId, id, tag)
 }

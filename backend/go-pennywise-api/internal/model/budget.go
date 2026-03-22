@@ -20,4 +20,3 @@ type Budget struct {
 	UpdatedAt  time.Time      `json:"updatedAt"`
 	Metadata   BudgetMetadata `json:"metadata"`
 }
-

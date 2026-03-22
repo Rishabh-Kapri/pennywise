@@ -8,14 +8,38 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
-const (
-	BUDGET_ID_HEADER = "X-Budget-ID"
-)
+type contextKey string
+
+const budgetIDKey contextKey = "budgetId"
+
+// WithBudgetID returns a new context with the budget ID set.
+func WithBudgetID(ctx context.Context, id uuid.UUID) context.Context {
+	return context.WithValue(ctx, budgetIDKey, id)
+}
+
+// BudgetIDFromContext extracts the budget ID from the context.
+// Returns an error if the budget ID is missing — indicates a middleware misconfiguration.
+func BudgetIDFromContext(ctx context.Context) (uuid.UUID, error) {
+	id, ok := ctx.Value(budgetIDKey).(uuid.UUID)
+	if !ok {
+		return uuid.Nil, errors.New("budget ID not found in context")
+	}
+	return id, nil
+}
+
+// MustBudgetID extracts the budget ID or panics.
+// Only use in code paths guaranteed to run behind BudgetIdMiddleware.
+func MustBudgetID(ctx context.Context) uuid.UUID {
+	id, err := BudgetIDFromContext(ctx)
+	if err != nil {
+		panic("BudgetIdMiddleware not configured: " + err.Error())
+	}
+	return id
+}
 
 // @TODO: add more validations
 // Returns the month key from date (YYYY-MM-DD) in the format YYYY-MM.
@@ -74,7 +98,7 @@ func UpdateCarryover(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categor
 		return fmt.Errorf("failed to update carryover: %v", err)
 	}
 	if cmdTag.RowsAffected() == 0 {
-	  budgeted := 0.0
+		budgeted := 0.0
 		// @TODO: see if carryover_balance fetching can be done through pure sql
 		log.Printf("Carryover not found for month: %v", monthKey)
 		newCmdTag, err := tx.Exec(
@@ -115,23 +139,6 @@ func UpdateCarryover(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categor
 		}
 	}
 	return nil
-}
-
-// Take gin context and return the budgetId embedded in context, checks for error and returns it in context
-func GetBudgetId(c *gin.Context) (context.Context, error) {
-	budgetId := c.GetHeader(BUDGET_ID_HEADER)
-	if budgetId == "" {
-		return nil, errors.New("Missing budgetId in context")
-	}
-	if err := uuid.Validate(budgetId); err != nil {
-		return nil, errors.New("Please enter a valid budgetId")
-	}
-	parsedBudgetId, err := uuid.Parse(budgetId)
-	if err != nil {
-		return nil, errors.New("Error while parsing budgetId to UUID")
-	}
-	ctx := context.WithValue(c.Request.Context(), "budgetId", parsedBudgetId)
-	return ctx, nil
 }
 
 func Float64SliceToVectorString(vec []float64) string {

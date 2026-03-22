@@ -5,6 +5,7 @@ import (
 
 	"pennywise-api/internal/model"
 	"pennywise-api/internal/repository"
+	utils "pennywise-api/pkg"
 
 	"github.com/google/uuid"
 )
@@ -25,25 +26,25 @@ func NewPredictionService(r repository.PredictionRepository) PredictionService {
 }
 
 func (s *predictionService) GetAll(ctx context.Context) ([]model.Prediction, error) {
-	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	budgetId := utils.MustBudgetID(ctx)
 	return s.repo.GetAll(ctx, budgetId)
 }
 
 func (s *predictionService) Create(ctx context.Context, prediction model.Prediction) ([]model.Prediction, error) {
-	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	budgetId := utils.MustBudgetID(ctx)
 	prediction.BudgetID = budgetId
 	return s.repo.Create(ctx, prediction)
 }
 
 func (s *predictionService) Update(ctx context.Context, id uuid.UUID, prediction model.Prediction) error {
-	// budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	// budgetId := utils.MustBudgetID(ctx)
 	// INFO: prediction update for now will only be done through transactions update
 	// return s.repo.Update(ctx, budgetId, id, prediction)
 	return nil
 }
 
 func (s *predictionService) DeleteById(ctx context.Context, id uuid.UUID) error {
-	// budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	// budgetId := utils.MustBudgetID(ctx)
 	// return s.repo.Delete(ctx, budgetId, id)
 	return nil
 }
