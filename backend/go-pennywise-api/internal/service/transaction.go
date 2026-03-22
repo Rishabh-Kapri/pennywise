@@ -189,12 +189,12 @@ func (s *transactionService) updateCarryovers(ctx context.Context, tx pgx.Tx, bu
 }
 
 func (s *transactionService) GetAll(ctx context.Context) ([]model.Transaction, error) {
-	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	budgetId := utils.MustBudgetID(ctx)
 	return s.repo.GetAll(ctx, budgetId, nil)
 }
 
 func (s *transactionService) GetAllNormalized(ctx context.Context, accountId *uuid.UUID) ([]model.Transaction, error) {
-	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	budgetId := utils.MustBudgetID(ctx)
 	return s.repo.GetAllNormalized(ctx, budgetId, accountId)
 }
 
@@ -205,7 +205,7 @@ func (s *transactionService) Create(ctx context.Context, txn model.Transaction) 
 	}
 	defer tx.Rollback(ctx)
 
-	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	budgetId := utils.MustBudgetID(ctx)
 	txn.BudgetID = budgetId
 	createdTxn, err := s.repo.Create(ctx, tx, txn)
 	if err != nil {
@@ -304,7 +304,7 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 	txCtx, txCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer txCancel()
 
-	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	budgetId := utils.MustBudgetID(ctx)
 	log.Printf("UPDATING TXN :%v", txn.String())
 
 	tx, err := s.repo.GetPgxTx(txCtx)
@@ -417,7 +417,7 @@ func (s *transactionService) DeleteById(ctx context.Context, id uuid.UUID) error
 	txCtx, txCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer txCancel()
 
-	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	budgetId := utils.MustBudgetID(ctx)
 	log.Printf("DELETING TXN :%v", id)
 
 	tx, err := s.repo.GetPgxTx(txCtx)

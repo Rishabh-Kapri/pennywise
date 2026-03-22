@@ -114,5 +114,3 @@ func (s *budgetService) Create(ctx context.Context, name string) error {
 func (s *budgetService) UpdateById(ctx context.Context, id uuid.UUID, budget model.Budget) error {
 	return s.repo.UpdateById(ctx, nil, id, budget)
 }
-
-

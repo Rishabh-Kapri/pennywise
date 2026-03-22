@@ -59,7 +59,7 @@ func (er *embeddingRepository) Get(ctx context.Context, docType string, embeddin
 			ORDER BY embedding <=> $2 ASC
 			LIMIT $3;
 		`, docType, embeddingStr, limit,
-		)
+	)
 	if err != nil {
 		return nil, err
 	}

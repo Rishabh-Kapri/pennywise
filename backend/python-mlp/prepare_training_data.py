@@ -630,7 +630,7 @@ def cmd_augment(args):
     # 4. Generate synthetic data from non-prediction transactions
     augmented = augment_from_transactions(
         transactions=transactions,
-        prediction_txn_ ids=prediction_txn_ids,
+        prediction_txn_ids=prediction_txn_ids,
         upi_payees=upi_payees,
         account_config=account_config,
         samples_per_upi_txn=args.upi_samples,

@@ -7,8 +7,6 @@ import (
 	"pennywise-api/internal/model"
 	"pennywise-api/internal/service"
 
-	utils "pennywise-api/pkg"
-
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -30,11 +28,7 @@ func NewTagHandler(service service.TagService) TagHandler {
 }
 
 func (h *tagHandler) List(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 	tags, err := h.service.GetAll(ctx)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -44,11 +38,7 @@ func (h *tagHandler) List(c *gin.Context) {
 }
 
 func (h *tagHandler) Search(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 	name := strings.TrimSpace(c.Query("name"))
 	tags, err := h.service.Search(ctx, name)
 	if err != nil {
@@ -59,11 +49,7 @@ func (h *tagHandler) Search(c *gin.Context) {
 }
 
 func (h *tagHandler) Create(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 	var body model.Tag
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -78,11 +64,7 @@ func (h *tagHandler) Create(c *gin.Context) {
 }
 
 func (h *tagHandler) Update(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 	id, ok := c.Params.Get("id")
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})
@@ -107,11 +89,7 @@ func (h *tagHandler) Update(c *gin.Context) {
 }
 
 func (h *tagHandler) DeleteById(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 	id, ok := c.Params.Get("id")
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})

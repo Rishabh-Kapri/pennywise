@@ -7,8 +7,6 @@ import (
 	"pennywise-api/internal/model"
 	"pennywise-api/internal/service"
 
-	utils "pennywise-api/pkg"
-
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -29,11 +27,7 @@ func NewCategoryGroupHandler(service service.CategoryGroupService) CategoryGroup
 }
 
 func (h *categoryGroupHandler) List(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 	month := strings.TrimSpace(c.Query("month"))
 	groups, err := h.service.GetAll(ctx, month)
 	if err != nil {
@@ -44,11 +38,7 @@ func (h *categoryGroupHandler) List(c *gin.Context) {
 }
 
 func (h *categoryGroupHandler) Create(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 
 	var body model.CategoryGroup
 	if err := c.ShouldBindJSON(&body); err != nil {
@@ -64,18 +54,14 @@ func (h *categoryGroupHandler) Create(c *gin.Context) {
 }
 
 func (h *categoryGroupHandler) Update(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 	id, ok := c.Params.Get("id")
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is required"})
 		return
 	}
 	parsedId, err := uuid.Parse(id)
-	if err!= nil {
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -93,23 +79,19 @@ func (h *categoryGroupHandler) Update(c *gin.Context) {
 }
 
 func (h *categoryGroupHandler) DeleteById(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 	id, ok := c.Params.Get("id")
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "id is required"})
 		return
 	}
 	parsedId, err := uuid.Parse(id)
-	if err!= nil {
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	err = h.service.DeleteById(ctx, parsedId)
-	if err!= nil {
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

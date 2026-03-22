@@ -5,7 +5,8 @@ import (
 
 	"pennywise-api/internal/db"
 	"pennywise-api/internal/handler"
-	// "pennywise-api/internal/middleware"
+
+	"pennywise-api/internal/middleware"
 	"pennywise-api/internal/repository"
 	"pennywise-api/internal/service"
 
@@ -40,7 +41,7 @@ func main() {
 	transactionRepo := repository.NewTransactionRepository(dbConn)
 	embeddingRepo := repository.NewEmbeddingRepository(dbConn)
 	tagRepo := repository.NewTagRepository(dbConn)
-	// authRepo := repository.NewAuthRepository(dbConn)
+	authRepo := repository.NewAuthRepository(dbConn)
 
 	budgetService := service.NewBudgetService(budgetRepo, payeeRepo, categoryRepo, categoryGroupRepo)
 	budgetHandler := handler.NewBudgetHandler(budgetService)
@@ -82,27 +83,28 @@ func main() {
 	tagService := service.NewTagService(tagRepo)
 	tagHandler := handler.NewTagHandler(tagService)
 
-	// authService := service.NewAuthService(authRepo)
-	// authHandler := handler.NewAuthHandler(authService)
+	authService := service.NewAuthService(authRepo)
+	authHandler := handler.NewAuthHandler(authService)
 
 	loanMetadataRepo := repository.NewLoanMetadataRepository(dbConn)
 	loanMetadataService := service.NewLoanMetadataService(loanMetadataRepo)
 	loanMetadataHandler := handler.NewLoanMetadataHandler(loanMetadataService)
 
 	// Auth middleware
-	// authMiddleware := middleware.AuthMiddleware(authService)
+	authMiddleware := middleware.AuthMiddleware(authService)
+	budgetMiddleware := middleware.BudgetIdMiddleware()
 
 	{
 		api := router.Group("/api")
 		api.GET("", healthPage) // simple health check
 
 		// Public auth routes (no auth required)
-		// {
-		// 	authGroup := router.Group("/api/auth")
-		// 	authGroup.POST("/google", authHandler.LoginWithGoogle)
-		// 	authGroup.POST("/refresh", authHandler.RefreshToken)
-		// 	authGroup.POST("/logout", authHandler.Logout)
-		// }
+		{
+			authGroup := router.Group("/api/auth")
+			authGroup.POST("/google", authHandler.LoginWithGoogle)
+			// authGroup.POST("/refresh", authHandler.RefreshToken)
+			// authGroup.POST("/logout", authHandler.Logout)
+		}
 
 		// Protected auth routes
 		// {
@@ -115,27 +117,27 @@ func main() {
 		// Protected routes - all require authentication
 		{
 			budgetGroup := router.Group("/api/budgets")
-			// budgetGroup.Use(authMiddleware)
+			budgetGroup.Use(authMiddleware)
 			budgetGroup.GET("", budgetHandler.List)
 			budgetGroup.POST("", budgetHandler.Create)
 			budgetGroup.PATCH(":id", budgetHandler.UpdateById)
 		}
 		{
 			accountGroup := router.Group("/api/accounts")
-			// accountGroup.Use(authMiddleware)
+			accountGroup.Use(authMiddleware, budgetMiddleware)
 			accountGroup.GET("/search", accountHandler.Search)
 			accountGroup.GET("", accountHandler.List)
 			accountGroup.POST("", accountHandler.Create)
 		}
 		{
 			userGroup := router.Group("/api/users")
-			// userGroup.Use(authMiddleware)
+			userGroup.Use(authMiddleware, budgetMiddleware)
 			userGroup.GET("/search", userHandler.Search)
 			userGroup.PATCH("", userHandler.Update)
 		}
 		{
 			groupGroup := router.Group("/api/category-groups")
-			// groupGroup.Use(authMiddleware)
+			groupGroup.Use(authMiddleware, budgetMiddleware)
 			groupGroup.GET("", categoryGroupHandler.List)
 			groupGroup.POST("", categoryGroupHandler.Create)
 			groupGroup.PUT(":id", categoryGroupHandler.Update)
@@ -143,7 +145,7 @@ func main() {
 		}
 		{
 			categoryGroup := router.Group("/api/categories")
-			// categoryGroup.Use(authMiddleware)
+			categoryGroup.Use(authMiddleware, budgetMiddleware)
 			categoryGroup.POST("", categoryHandler.Create)
 			categoryGroup.GET("", categoryHandler.List)
 			categoryGroup.GET("/inflow", categoryHandler.GetInflowBalance)
@@ -155,7 +157,7 @@ func main() {
 		}
 		{
 			transactionGroup := router.Group("/api/transactions")
-			// transactionGroup.Use(authMiddleware)
+			transactionGroup.Use(authMiddleware, budgetMiddleware)
 			transactionGroup.GET("", transactionHandler.List)
 			transactionGroup.GET("/normalized", transactionHandler.ListNormalized)
 			transactionGroup.POST("", transactionHandler.Create)
@@ -164,7 +166,7 @@ func main() {
 		}
 		{
 			payeeGroup := router.Group("/api/payees")
-			// payeeGroup.Use(authMiddleware)
+			payeeGroup.Use(authMiddleware, budgetMiddleware)
 			payeeGroup.GET("", payeeHandler.List)
 			payeeGroup.GET("/search", payeeHandler.Search)
 			payeeGroup.POST("", payeeHandler.Create)
@@ -173,7 +175,7 @@ func main() {
 		}
 		{
 			tagGroup := router.Group("/api/tags")
-			// tagGroup.Use(authMiddleware)
+			tagGroup.Use(authMiddleware, budgetMiddleware)
 			tagGroup.GET("", tagHandler.List)
 			tagGroup.GET("/search", tagHandler.Search)
 			tagGroup.POST("", tagHandler.Create)
@@ -182,7 +184,7 @@ func main() {
 		}
 		{
 			predictionGroup := router.Group("/api/predictions")
-			// predictionGroup.Use(authMiddleware)
+			predictionGroup.Use(authMiddleware, budgetMiddleware)
 			predictionGroup.GET("", predictionHandler.List)
 			predictionGroup.POST("", predictionHandler.Create)
 			predictionGroup.PATCH(":id", predictionHandler.Update)
@@ -190,13 +192,13 @@ func main() {
 		}
 		{
 			embeddingGroup := router.Group("/api/embeddings")
-			// embeddingGroup.Use(authMiddleware)
+			embeddingGroup.Use(authMiddleware)
 			embeddingGroup.POST("", embeddingHandler.Create)
 			embeddingGroup.GET("/search", embeddingHandler.Search)
 		}
 		{
 			loanMetadataGroup := router.Group("/api/loan-metadata")
-			// loanMetadataGroup.Use(authMiddleware)
+			loanMetadataGroup.Use(authMiddleware, budgetMiddleware)
 			loanMetadataGroup.GET("", loanMetadataHandler.List)
 			loanMetadataGroup.GET(":accountId", loanMetadataHandler.GetByAccountId)
 			loanMetadataGroup.POST("", loanMetadataHandler.Create)
