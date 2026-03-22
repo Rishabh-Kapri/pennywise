@@ -3,7 +3,9 @@ import type { Category } from '../types/category.types';
 import styles from './CategoryItemList.module.css';
 import { MovePopover } from './popovers/MovePopover';
 import { AmountCell } from './AmountCell';
+import { ActivityPopover } from './ActivityModal';
 import { useAppDispatch } from '@/app/hooks';
+import { toast } from '@/utils';
 import { updateCategoryBudget } from '../store/categorySlice';
 import { Parser } from 'expr-eval';
 
@@ -43,11 +45,13 @@ export function CategoryItem({
   onPopoverClose,
 }: CategoryItemProps) {
   const triggerRef = useRef<HTMLDivElement | null>(null);
+  const activityTriggerRef = useRef<HTMLSpanElement | null>(null);
   const isPopoverOpen = openPopoverId === category.id;
   const [budgeted, setBudgeted] = useState<string>(
     String(category?.budgeted?.[month] ?? 0),
   );
   const [isEditingBudget, setIsEditingBudget] = useState(false);
+  const [showActivityModal, setShowActivityModal] = useState(false);
 
   const dispatch = useAppDispatch();
 
@@ -66,7 +70,9 @@ export function CategoryItem({
             categoryId: selectedCategoryId!,
             month,
           }),
-        );
+        ).unwrap()
+          .then(() => toast.success('Budget updated'))
+          .catch(() => toast.error('Failed to update budget'));
       }
     }
   }, [
@@ -113,7 +119,23 @@ export function CategoryItem({
         </div>
         {/* Activity */}
         <div className={styles.amountItem}>
-          <AmountCell value={category?.activity?.[month] ?? 0} />
+          <AmountCell
+            ref={activityTriggerRef}
+            value={category?.activity?.[month] ?? 0}
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowActivityModal(true);
+            }}
+          />
+          <ActivityPopover
+            isOpen={showActivityModal}
+            onClose={() => setShowActivityModal(false)}
+            triggerRef={activityTriggerRef}
+            categoryId={category.id ?? ''}
+            categoryName={category.name}
+            month={month}
+            activityAmount={category?.activity?.[month] ?? 0}
+          />
         </div>
         {/* Balance */}
         <div className={styles.amountItem}>

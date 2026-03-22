@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import styles from './Sidebar.module.css';
 import {
+  Banknote,
   ChartPie,
   CircleDollarSign,
   FileText,
@@ -69,7 +70,7 @@ export default function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [hoveredItemKey, setHoveredItemKey] = useState<string | null>(null);
 
-  const { trackingAccounts, budgetAccounts, allAccounts } = useAppSelector(
+  const { trackingAccounts, budgetAccounts, loanAccounts, allAccounts } = useAppSelector(
     (state) => state.accounts,
   );
 
@@ -158,6 +159,33 @@ export default function Sidebar() {
       );
       newNavItems.push(navItem);
     }
+    if (loanAccounts.length > 0) {
+      const navItem = getNavItem(
+        '/loans',
+        'loan-accounts',
+        'Loan Accounts',
+        {
+          balance: getCurrencyLocaleString(
+            loanAccounts.reduce((a, b) => a + Math.abs(b?.balance ?? 0), 0),
+          ),
+        },
+        false,
+        <Banknote
+          strokeWidth={1.5}
+          height={isCollapsed ? 24 : 30}
+          width={isCollapsed ? 24 : 30}
+        />,
+      );
+      navItem.children = loanAccounts.map((acc) =>
+        getNavItem(
+          `/loans/${acc.id}`,
+          `loan-account-${acc.id}`,
+          acc.name,
+          { balance: getCurrencyLocaleString(Math.abs(acc.balance ?? 0)) },
+        ),
+      );
+      newNavItems.push(navItem);
+    }
     if (allAccounts.length) {
       const navItem: NavItem = getNavItem(
         '',
@@ -180,7 +208,7 @@ export default function Sidebar() {
       newNavItems.push(navItem);
     }
     setDynamicNavItems([...newNavItems]);
-  }, [trackingAccounts, budgetAccounts, allAccounts, isCollapsed, getNavItem]);
+  }, [trackingAccounts, budgetAccounts, loanAccounts, allAccounts, isCollapsed, getNavItem]);
 
   const handleCollapse = (key: string) => {
     if (isCollapsed) {

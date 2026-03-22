@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	"gmail-transactions/pkg/config"
@@ -42,7 +42,7 @@ func (s *Service) SetupWatch(email string, token *oauth2.Token, oauthConfig *oau
 }
 
 func (s *Service) GetMessageHistory(email string, historyId uint64, token *oauth2.Token, oauthConfig *oauth2.Config) ([]EmailData, error) {
-	log.Printf("GetMessageHistory: %v %v", email, historyId)
+	slog.Info("GetMessageHistory", "email", email, "historyId", historyId)
 	ctx := context.Background()
 	gmailService, err := gmail.NewService(ctx, option.WithTokenSource(oauthConfig.TokenSource(ctx, token)))
 	if err != nil {
@@ -65,7 +65,7 @@ func (s *Service) GetMessageHistory(email string, historyId uint64, token *oauth
 			seen[id] = true
 			msgRes, err := gmailService.Users.Messages.Get(email, id).Do()
 			if err != nil {
-				log.Printf("Error while fetching message with id: %s %v", id, err.Error())
+				slog.Error("error fetching message", "id", id, "error", err)
 				return nil, err
 			}
 			// body, err := base64.URLEncoding.DecodeString(msgRes.Payload.Body.Data)
@@ -77,14 +77,14 @@ func (s *Service) GetMessageHistory(email string, historyId uint64, token *oauth
 				if part.MimeType == "text/html" {
 					partData, err := base64.URLEncoding.DecodeString(part.Body.Data)
 					if err != nil {
-						log.Printf("Error while decoding part: %v", err.Error())
+						slog.Error("error decoding part", "error", err)
 					}
 					bodyData.Write(partData)
 				}
 			}
 			headers := msgRes.Payload.Headers
 			// parts := msgRes.Payload.Parts
-			msgData = append(msgData, EmailData{Headers: headers, Body: bodyData.String()})
+			msgData = append(msgData, EmailData{MessageId: id, Headers: headers, Body: bodyData.String()})
 		}
 	}
 	return msgData, nil
@@ -98,7 +98,7 @@ func (s *Service) IsTransactionEmail(emailHeader []*gmail.MessagePartHeader) (bo
 			continue
 		}
 		valueLower := strings.ToLower(header.Value)
-		log.Print(valueLower)
+		slog.Debug("checking header value", "value", valueLower)
 		if strings.Contains(valueLower, "txn") ||
 			strings.Contains(valueLower, "alert : update") ||
 			strings.Contains(valueLower, "alert :  update") ||

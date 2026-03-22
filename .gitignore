@@ -43,7 +43,6 @@ testem.log
 .DS_Store
 Thumbs.db
 
-
 # Firebase
 firebase.json
 firestore.*
@@ -69,3 +68,9 @@ conjure-school.fnl
 **/.lsp/
 **/.cpcache/
 conjure-school.fnl
+
+# Credentials and secrets
+google-creds.json
+
+# Dummy files for testing
+*dump.sql

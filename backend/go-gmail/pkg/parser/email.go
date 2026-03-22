@@ -105,6 +105,9 @@ func (s *EmailParser) extractText(emailDetails *EmailDetails, html string) error
 	return nil
 }
 
+// ParseEmail parses an HTML bank transaction email and extracts structured details.
+// NOTE: Extraction order matters — extractType must run before extractAmount
+// because the amount sign (positive/negative) depends on the transaction type (credited/debited).
 func (s *EmailParser) ParseEmail(html string) (*EmailDetails, error) {
 	emailDetails := &EmailDetails{
 		Text:            "",

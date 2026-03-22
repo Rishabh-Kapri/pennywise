@@ -1,6 +1,8 @@
 import { Pencil } from 'lucide-react';
 import type { Category } from '../types/category.types';
 import styles from './CategoryInfo.module.css';
+import { Activity } from '@/features/budget/components/Activity';
+import { ActivityPopover } from './ActivityModal';
 import type React from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -31,7 +33,9 @@ export function CategoryInfo({ category }: CategoryInfoProps) {
   const month = useAppSelector(selectSelectedMonth);
   const localeMonth = getLocaleDate(month, { month: 'long' });
   const previousMonth = getPreviousMonthKey(month);
-  console.log(month, previousMonth, localeMonth);
+  const [showActivityModal, setShowActivityModal] = useState(false);
+  const activityTriggerRef = useRef<HTMLDivElement | null>(null);
+  console.log('CategoryInfo', month, previousMonth, localeMonth);
 
   const debouncedNote = useDebounce(note);
 
@@ -77,7 +81,7 @@ export function CategoryInfo({ category }: CategoryInfoProps) {
     <div className={styles.wrapper}>
       <div className={styles.spacer}></div>
       <div className={styles.infoContainer}>
-        {!category && <div>Please select a category</div>}
+        {!category && <Activity />}
         {category && (
           <div className={styles.info}>
             <div className={styles.title}>
@@ -103,13 +107,29 @@ export function CategoryInfo({ category }: CategoryInfoProps) {
                   category.budgeted?.[month] ?? 0,
                 )}
               />
-              <ActivityInfoItem
-                title="Activity"
-                amount={getCurrencyLocaleString(
-                  category.activity?.[month] ?? 0,
-                )}
-              />
+              <div
+                ref={activityTriggerRef}
+                className={styles.infoItem}
+                style={{ cursor: 'pointer' }}
+                onClick={() => setShowActivityModal(true)}
+              >
+                <div className={styles.activityItemTitle}>Activity</div>
+                <div className={styles.activityItemAmount}>
+                  {getCurrencyLocaleString(
+                    category.activity?.[month] ?? 0,
+                  )}
+                </div>
+              </div>
             </div>
+            <ActivityPopover
+              isOpen={showActivityModal}
+              onClose={() => setShowActivityModal(false)}
+              triggerRef={activityTriggerRef}
+              categoryId={category.id ?? ''}
+              categoryName={category.name}
+              month={month}
+              activityAmount={category?.activity?.[month] ?? 0}
+            />
             <div className={styles.note}>
               <div className={styles.header}>Note</div>
               <textarea

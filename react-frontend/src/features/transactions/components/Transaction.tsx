@@ -191,6 +191,7 @@ export function Transaction() {
         source: TransactionSource.PENNYWISE,
         transferAccountId: null,
         transferTransactionId: null,
+        tagIds: [],
       };
       setSelectedTxn(emptyTransaction);
       setSelectedTxnIdx(0);

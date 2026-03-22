@@ -111,3 +111,11 @@
 .overspent {
   color: var(--color-budget-negative);
 }
+
+/* Date popover styles */
+.datePopoverContent {
+  background: var(--color-surface);
+  border-radius: 12px;
+  padding: 0.5rem;
+  box-shadow: var(--shadow-lg);
+}

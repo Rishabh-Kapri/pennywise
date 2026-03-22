@@ -23,11 +23,12 @@ type Transaction struct {
 	Outflow               float64    `json:"outflow"`
 	Balance               float64    `json:"balance"`
 	Source                string     `json:"source"`
-	TransferAccountID     *uuid.UUID `json:"transferAccountId,omitempty"`
-	TransferTransactionID *uuid.UUID `json:"transferTransactionId,omitempty"`
-	Deleted               bool       `json:"deleted"`
-	CreatedAt             time.Time  `json:"createdAt"`
-	UpdatedAt             time.Time  `json:"updatedAt"`
+	TransferAccountID     *uuid.UUID  `json:"transferAccountId,omitempty"`
+	TransferTransactionID *uuid.UUID  `json:"transferTransactionId,omitempty"`
+	TagIDs                []uuid.UUID `json:"tagIds"`
+	Deleted               bool        `json:"deleted"`
+	CreatedAt             time.Time   `json:"createdAt"`
+	UpdatedAt             time.Time   `json:"updatedAt"`
 }
 
 type TransactionFilter struct {

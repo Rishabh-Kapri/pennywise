@@ -55,7 +55,7 @@ func (r *predictionRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]mode
 				created_at,
 				updated_at
 		 FROM predictions
-		 WHERE budget_id = $1;`,
+		 WHERE budget_id = $1 AND deleted = FALSE;`,
 		budgetId,
 	)
 	if err != nil {
@@ -99,7 +99,7 @@ func (r *predictionRepo) GetByTxnId(ctx context.Context, budgetId uuid.UUID, txn
 		ctx, `
 		  SELECT *
 		  FROM predictions
-		  WHERE budget_id = $1 AND transaction_id = $2
+		  WHERE budget_id = $1 AND transaction_id = $2 AND deleted = FALSE
 		`, budgetId, txnId,
 	).Scan(
 		&p.ID,
@@ -132,7 +132,7 @@ func (r *predictionRepo) GetByTxnIdTx(ctx context.Context, tx pgx.Tx, budgetId u
 		ctx, `
 		  SELECT *
 		  FROM predictions
-		  WHERE budget_id = $1 AND transaction_id = $2 AND DELETED = FALSE
+		  WHERE budget_id = $1 AND transaction_id = $2 AND deleted = FALSE
 		`, budgetId, txnId,
 	).Scan(
 		&p.ID,

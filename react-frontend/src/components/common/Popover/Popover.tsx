@@ -12,6 +12,7 @@ interface PopoverProps {
   zIndex?: number;
   onClose?: () => void;
   placement?: 'top' | 'bottom' | 'left' | 'right';
+  alignment?: 'start' | 'center';
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
 }
@@ -25,6 +26,7 @@ export function Popover({
   zIndex,
   onClose,
   placement = 'bottom',
+  alignment = 'start',
   onMouseEnter,
   onMouseLeave,
 }: PopoverProps) {
@@ -48,22 +50,22 @@ export function Popover({
   }, [isOpen, onClose]);
 
   // Handle outside click to close popover
-  // useEffect(() => {
-  //   if (!isOpen || !onClose) return;
+  useEffect(() => {
+    if (!isOpen || !onClose) return;
 
-  //   const handleOutsideClick = (e: MouseEvent) => {
-  //     const target = e.target as Node;
-  //     const isInsidePopover = popoverRef.current?.contains(target);
-  //     const isInsideTrigger = triggerRef.current?.contains(target);
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as Node;
+      const isInsidePopover = popoverRef.current?.contains(target);
+      const isInsideTrigger = triggerRef.current?.contains(target);
 
-  //     if (!isInsidePopover && !isInsideTrigger) {
-  //       onClose();
-  //     }
-  //   };
+      if (!isInsidePopover && !isInsideTrigger) {
+        onClose();
+      }
+    };
 
-  //   document.addEventListener('mousedown', handleOutsideClick);
-  //   return () => document.removeEventListener('mousedown', handleOutsideClick);
-  // }, [isOpen, onClose, triggerRef]);
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [isOpen, onClose, triggerRef]);
 
   /*
    * Handle rendering the popover relative to the triggerRef element
@@ -110,7 +112,11 @@ export function Popover({
             } else {
                top = triggerRect.top - popoverHeight - gap;
             }
-            left = triggerRect.left;
+            if (alignment === 'center') {
+              left = triggerRect.left + (triggerRect.width / 2) - (popoverWidth / 2);
+            } else {
+              left = triggerRect.left;
+            }
             break;
         }
         
@@ -132,7 +138,7 @@ export function Popover({
         }
       }
     },
-    [isOpen, triggerRef, width, placement],
+    [isOpen, triggerRef, width, placement, alignment],
   );
 
   const updateWidth = useCallback(() => {

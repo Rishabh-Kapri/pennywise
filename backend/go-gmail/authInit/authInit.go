@@ -1,9 +1,11 @@
 package authInit
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
+
+	"gmail-transactions/pkg/logger"
 
 	"github.com/GoogleCloudPlatform/functions-framework-go/functions"
 	"github.com/joho/godotenv"
@@ -26,13 +28,13 @@ func init() {
 	functions.HTTP("AuthInit", AuthInit)
 	err := godotenv.Load(".env")
 	if err != nil {
-		log.Fatalf("Error while loading .env: %v", err.Error())
+		logger.Fatal("error loading .env", "error", err)
 	}
 }
 
 // Redirect to the auth url
 func AuthInit(w http.ResponseWriter, r *http.Request) {
 	authUrl := getOauth2Config().AuthCodeURL("state", oauth2.AccessTypeOffline)
-	log.Printf("Redirecting to url: %v", authUrl)
+	slog.Info("redirecting to url", "url", authUrl)
 	http.Redirect(w, r, authUrl, http.StatusTemporaryRedirect)
 }

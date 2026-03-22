@@ -108,3 +108,11 @@
   outline: none;
   border: 1px solid var(--color-primary);
 }
+
+.activityItemTitle {
+  color: var(--color-text-secondary);
+}
+
+.activityItemAmount {
+  color: var(--color-text);
+}

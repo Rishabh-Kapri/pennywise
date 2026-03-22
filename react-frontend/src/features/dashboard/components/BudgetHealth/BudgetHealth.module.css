@@ -1,0 +1,149 @@
+.container {
+  background: linear-gradient(135deg, var(--color-surface) 0%, var(--color-surface-secondary) 100%);
+  border-radius: 16px;
+  padding: 1.5rem;
+  border: 1px solid var(--color-border);
+}
+
+.header {
+  margin-bottom: 1rem;
+}
+
+.title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.titleIcon {
+  color: var(--color-primary);
+}
+
+.summaryCards {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.summaryCard {
+  flex: 1;
+  padding: 1rem;
+  border-radius: 12px;
+  text-align: center;
+}
+
+.summaryCard.healthy {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.summaryCard.warning {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.summaryCard.danger {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.summaryCount {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+}
+
+.summaryCard.healthy .summaryCount {
+  color: var(--color-success);
+}
+
+.summaryCard.warning .summaryCount {
+  color: var(--color-warning);
+}
+
+.summaryCard.danger .summaryCount {
+  color: var(--color-error);
+}
+
+.summaryLabel {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.categoryList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.categoryItem {
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  background: var(--color-surface-secondary);
+}
+
+.statusIndicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 0.75rem;
+}
+
+.statusIndicator.healthy {
+  background: var(--color-success);
+  box-shadow: 0 0 6px var(--color-success);
+}
+
+.statusIndicator.warning {
+  background: var(--color-warning);
+  box-shadow: 0 0 6px var(--color-warning);
+}
+
+.statusIndicator.danger {
+  background: var(--color-error);
+  box-shadow: 0 0 6px var(--color-error);
+}
+
+.categoryName {
+  flex: 1;
+  font-size: 0.875rem;
+  color: var(--color-text);
+}
+
+.categoryRemaining {
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.categoryRemaining.positive {
+  color: var(--color-success);
+}
+
+.categoryRemaining.negative {
+  color: var(--color-error);
+}
+
+.emptyState {
+  text-align: center;
+  padding: 2rem;
+  color: var(--color-text-secondary);
+}
+
+@media (max-width: 480px) {
+  .summaryCards {
+    flex-wrap: wrap;
+  }
+  
+  .summaryCard {
+    flex-basis: calc(50% - 0.5rem);
+  }
+  
+  .summaryCard:nth-child(3) {
+    flex-basis: 100%;
+  }
+}

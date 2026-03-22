@@ -49,10 +49,18 @@ export const allAccountTxnCols: TransactionColumns[] = [
     key: 'note',
     label: 'Note',
     layout: {
-      gridColumn: '7 / 9',
+      gridColumn: '7 / 8',
       textAlign: 'left',
     },
     className: ['note'],
+  },
+  {
+    key: 'tagIds',
+    label: 'Tags',
+    layout: {
+      gridColumn: '8 / 9',
+      textAlign: 'left',
+    },
   },
   {
     key: 'outflow',
@@ -127,10 +135,18 @@ export const specificAccountTxnCols: TransactionColumns[] = [
     key: 'note',
     label: 'Note',
     layout: {
-      gridColumn: '6 / 8',
+      gridColumn: '6 / 7',
       textAlign: 'left',
     },
     className: ['note'],
+  },
+  {
+    key: 'tagIds',
+    label: 'Tags',
+    layout: {
+      gridColumn: '7 / 8',
+      textAlign: 'left',
+    },
   },
   {
     key: 'outflow',

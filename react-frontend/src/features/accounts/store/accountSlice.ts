@@ -5,6 +5,7 @@ import {
 } from '@reduxjs/toolkit';
 import {
   BudgetAccountType,
+  LoanAccountType,
   TrackingAccountType,
   type Account,
   type AccountState,
@@ -17,6 +18,7 @@ const initialState: AccountState = {
   allAccounts: [],
   trackingAccounts: [],
   budgetAccounts: [],
+  loanAccounts: [],
   loading: LoadingState.IDLE,
   error: null,
 };
@@ -41,6 +43,15 @@ function filterBudgetAccounts(accounts: Account[]) {
   );
 }
 
+function filterLoanAccounts(accounts: Account[]) {
+  return accounts.filter(
+    (acc) =>
+      Object.values(LoanAccountType).includes(
+        acc.type as LoanAccountType,
+      ) && !acc.closed,
+  );
+}
+
 export const fetchAllAccounts = createAsyncThunk<Account[]>(
   'accounts/fetchAllAccounts',
   async () => {
@@ -61,6 +72,9 @@ const accountSlice = createSlice({
     setTrackingAccounts: (state) => {
       state.trackingAccounts = filterTrackingAccounts(state.allAccounts);
     },
+    setLoanAccounts: (state) => {
+      state.loanAccounts = filterLoanAccounts(state.allAccounts);
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -73,6 +87,7 @@ const accountSlice = createSlice({
         state.allAccounts = action.payload;
         state.budgetAccounts = filterBudgetAccounts(action.payload);
         state.trackingAccounts = filterTrackingAccounts(action.payload);
+        state.loanAccounts = filterLoanAccounts(action.payload);
         state.error = null;
       })
       .addCase(fetchAllAccounts.rejected, (state, action) => {
@@ -81,12 +96,17 @@ const accountSlice = createSlice({
         state.allAccounts = [];
         state.trackingAccounts = [];
         state.budgetAccounts = [];
+        state.loanAccounts = [];
       });
   },
 });
 
-export const { setSelectedAccount, setBudgetAccounts, setTrackingAccounts } =
-  accountSlice.actions;
+export const {
+  setSelectedAccount,
+  setBudgetAccounts,
+  setTrackingAccounts,
+  setLoanAccounts,
+} = accountSlice.actions;
 
 export default accountSlice.reducer;
 
@@ -109,3 +129,7 @@ export const selectAccountInfoFromId = (state: RootState, id: string) => {
     };
   }
 };
+
+export const selectLoanAccounts = (state: RootState) =>
+  state.accounts.loanAccounts;
+

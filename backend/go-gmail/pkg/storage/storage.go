@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"gmail-transactions/pkg/config"
+	"gmail-transactions/pkg/logger"
 
 	"cloud.google.com/go/firestore"
 	"google.golang.org/api/iterator"
@@ -21,13 +22,12 @@ type Service struct {
 
 func getFirestoreClient(config *config.Config) *firestore.Client {
 	projectId := config.ProjectID
-	log.Printf("Setting up firestore client %v", projectId)
+	slog.Info("setting up firestore client", "projectId", projectId)
 	ctx := context.Background()
-	credsFile := config.GoogleCloudSecretsFile
-	opt := option.WithCredentialsFile(credsFile)
+	opt := option.WithCredentialsJSON([]byte(config.GoogleApplicationCredentialsJson))
 	firestoreClient, err := firestore.NewClient(ctx, projectId, opt)
 	if err != nil {
-		log.Fatalf("Error while setting up firestore client: %v", err.Error())
+		logger.Fatal("error setting up firestore client", "error", err)
 	}
 	return firestoreClient
 }
@@ -58,7 +58,7 @@ func (s *Service) GetRefreshToken(email string) (string, error) {
 func (s *Service) GetPrevHistoryId(email string) (uint64, error) {
 	ctx := context.Background()
 
-	log.Printf("GetPrevHistoryId: %v", email)
+	slog.Info("GetPrevHistoryId", "email", email)
 	collection := s.firestoreClient.Collection("gmailHistoryIds")
 	query := collection.Where("email", "==", email)
 	iter := query.Documents(ctx)

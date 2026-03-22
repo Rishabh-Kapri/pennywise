@@ -23,7 +23,7 @@ interface BudgetProps {
 
 const BudgetHeaderContent = ({ inflowAmount, inflowLoading }: BudgetProps) => (
   <div className={styles.container}>
-    <DateSelector />
+    <DateSelector monthYearOnly />
     {inflowLoading === LoadingState.PENDING && <div>
       <Skeleton width={130} height={64} />
     </div>}

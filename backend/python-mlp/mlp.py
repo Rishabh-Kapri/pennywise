@@ -1,20 +1,12 @@
 import json
 import pickle
-import time
-from datetime import datetime
-from timeit import timeit
 from typing import TypedDict
 
 import matplotlib.pyplot as plt
 import numpy as np
 from sentence_transformers import SentenceTransformer
-from sklearn.metrics import PredictionErrorDisplay
 from sklearn.model_selection import KFold
-from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.utils.multiclass import unique_labels
-
-# model = SentenceTransformer("all-MiniLM-L6-v2")
-# model = SentenceTransformer("all-mpnet-base-v2")
+from sklearn.preprocessing import LabelEncoder
 
 
 # Row major implementation of MLP
@@ -34,12 +26,8 @@ class MLP:
 
         learning_rate: the rate at which the network learns (used in gradient descent)
         """
-        # for reproducibility
-        # np.random.seed(42)
-
         self.scaling_factor = 0.01
         self.layers = layers
-        # print("Inside __init__", layers, learning_rate)
 
         self.learning_rate = learning_rate
         self.current_learning_rate = learning_rate
@@ -52,38 +40,27 @@ class MLP:
         self.weights = {}
         self.biases = {}
         self.activations = {}
-        # moment vectors
+        # Adam optimiser moment vectors
         self.mv1_weights = {}
         self.mv2_weights = {}
         self.mv1_biases = {}
         self.mv2_biases = {}
         self.beta1 = 0.9
-        # self.beta2 = 0.999
         self.beta2 = 0.999
         self.epsilon = 1e-8
         self.time_step = 0
         self.z = {}
 
         for i in range(1, len(layers)):
-            # print(f"layer-{i}", "neurons:", layers[i], "previous:", layers[i - 1])
             self.weights[i] = (
                 np.random.randn(layers[i - 1], layers[i])
                 * np.sqrt(2 / layers[i])
-                # np.random.randn(layers[i], layers[i - 1]) * self.scaling_factor
             )
             self.biases[i] = np.zeros((1, layers[i]))
             self.mv1_weights[i] = np.zeros_like(self.weights[i])
             self.mv2_weights[i] = np.zeros_like(self.weights[i])
             self.mv1_biases[i] = np.zeros_like(self.biases[i])
             self.mv2_biases[i] = np.zeros_like(self.biases[i])
-            # print(
-            #     "Shapes ->",
-            #     "Weights:",
-            #     self.weights[i].shape,
-            #     "Biases:",
-            #     self.biases[i].shape,
-            # )
-        # print("Weights:", self.weights, "\nBiases:", self.biases)
 
     def set_parameters(self, data):
         self.layers = data["layer_sizes"]
@@ -103,11 +80,7 @@ class MLP:
 
     def softmax(self, X):
         # subtract the max value to bound the exponentiation between 0 and 1
-        # since max value will be 0 and all other values will be negative, exponentiation of 0 is 1, so bounded values will be between 0 and 1
         # https://youtu.be/omz_NdFgWyU?feature=shared&t=1408
-
-        # print("Using softmax for:", X)
-        # axis=1 tells numpy to only max/sum along the row instead of the whole matrix, axis=0 is column wise
         exp_x = np.exp(X - np.max(X, axis=1, keepdims=True))
         return exp_x / np.sum(exp_x, axis=1, keepdims=True)
 
@@ -127,44 +100,29 @@ class MLP:
                     self.activations[i].shape,
                 )
 
-    def feedforward(self, X, isPredict=False):
+    def feedforward(self, X):
         """Forward pass through the network
         x shape: (number_of_samples, input_size/features)
         number_of_samples is the total number of training data
         input_size is number of neurons
         """
-
-        # print("feedforward", X, X.shape)
-        # for input layer activation is the input vector provided
+        # For input layer, activation is the input vector provided
         self.activations[0] = X
-        # output_activated will have the final output after softmax
         output_activated = X
 
         for i in range(1, len(self.layers)):
-            # weight and bias matrices of current layer
             W = self.weights[i]
             b = self.biases[i]
-            # print(W.shape, b.shape)
 
+            # Output of the layer without activation (weighted sum + bias)
             Z = np.dot(output_activated, W) + b
-            # output matrix of the layer without activation
             self.z[i] = Z
 
-            # print(
-            #     "dot product:",
-            #     output,
-            #     np.shape(output),
-            # )
+            # Apply softmax on output layer, ReLU on hidden layers
             output_activated = (
                 self.softmax(Z) if i == len(self.layers) - 1 else self.relu(Z)
             )
-            # output matrix of the layer after activation
             self.activations[i] = output_activated
-        # if isPredict:
-        # print("TEST Weights:", self.weights)
-        # print("TEST Biases:", self.biases)
-        # print("TEST Z:", self.z)
-        # print("TEST Activations:", self.activations)
 
         return output_activated
 
@@ -174,26 +132,18 @@ class MLP:
         y_pred: the predicted values, shape: (number_of_samples, output_size)
         y_true: the true labels, shape: (number_of_samples, output_size)
         """
-        # n is the total number of sample and since our y_true has the shape (number_of_samples, output_size) we take the first element of y_true.shape
         n = y_true.shape[0]
-        # print("binary_cross_entropy_loss:", n)
-
-        # clipping by 1e-8 to y_pred because if loss comes out to be 0 then log(0) = infinite causing average loss to be infinite
+        # Clip to avoid log(0) = -inf
         y_pred_clipped = np.clip(y_pred, 1e-8, 1 - 1e-8)
-        # axis=1 tells numpy to only sum along the row instead of the whole matrix, axis=0 is column wise
-        # bce = -1/n * np.sum(y_true * np.log(y_pred_clipped) + (1 - y_true) * np.log(1 - y_pred_clipped), axis=1, keepdims=True)
         bce = -np.mean(
             y_true * np.log(y_pred_clipped) + (1 - y_true) * np.log(1 - y_pred_clipped)
         )
-        # print(bce, bce_sum)
         return bce
 
     def compute_loss(self, y_pred, y_true):
         m = y_true.shape[0]
-        # axis=1 tells numpy to only sum along the row instead of the whole matrix, axis=0 is column wise
         loss = -np.sum(y_true * np.log(y_pred + 1e-8)) / m
 
-        # regularization
         regularization_loss = 0
         for i in range(len(self.layers)):
             if self.l1_weight_lambda > 0:
@@ -221,43 +171,29 @@ class MLP:
     def backpropagate(self, X, y_pred, y_true):
         """Backward pass through the network
         X shape: (number_of_samples, input_size)
-        y: the expected labels
-
-        dA = derivative of the next layer
-        dZ = derivative of the weighted sum
-        dW = derivative of the
         """
-
-        # print("Inside backpropagate:", "\nX:", X, "\nOutput:", y_pred, "\nY:", y_true)
         m = X.shape[0]
         weight_gradients = {}
         bias_gradients = {}
 
-        # Derivative of sigmoid + cross entropy loss
+        # Derivative of softmax + cross entropy loss
         # See: https://www.python-unleashed.com/post/derivation-of-the-binary-cross-entropy-loss-gradient
-        # This is the output layers derivate
         dA = y_pred - y_true
 
-        # We need to find the gradients for each layer as we move backwards
+        # Find gradients for each layer moving backwards
         for i in reversed(range(1, len(self.layers))):
-            # print("Layer weights & biases", i)
             if i == len(self.layers) - 1:
-                # We already created the derivative of the output layer
+                # Output layer derivative is already computed above
                 dZ = dA
             else:
-                # derivative of other layers is the multiplication of derivative of activation function with the derivative of the next layer (dA)
+                # Hidden layer: chain rule with activation function derivative
                 dZ = dA * self.relu_derivative(self.z[i])
 
-            # Derivative of f(x) = x.y => y
-            # Derivative of multiplication w.r.t. inputs of a single neuron is the input to that neuron from previous layer (which is the self.activations[i-1])
-            #  multipled by the next layer derivative (dZ)
-            # We are transposing to match the shape
+            # Gradient w.r.t. weights: previous layer activations transposed * current dZ
             dW = np.dot(self.activations[i - 1].T, dZ)
-            # @TODO: understand this
             db = np.mean(dZ, axis=0, keepdims=True)
 
-            # We are calculating the derivative for the current layer now and updating it to dA to use in previous layers
-            # This is the derivative of multiplication w.r.t. weights
+            # Gradient w.r.t. previous layer activations (for propagating further back)
             dA = np.dot(dZ, self.weights[i].T)
 
             weight_gradients[i] = dW
@@ -272,8 +208,8 @@ class MLP:
             )
 
     def update_params(self, weight_gradients, bias_gradients):
+        """Update using stochastic gradient descent"""
         for i in reversed(range(1, len(self.layers))):
-            # Update using the stochastic gradient descent
             self.weights[i] += -self.current_learning_rate * weight_gradients[i]
             self.biases[i] += -self.current_learning_rate * bias_gradients[i]
 
@@ -336,7 +272,6 @@ class MLP:
 
     def calculate_accuracy(self, y_pred, y_true):
         predictions = np.argmax(y_pred, axis=1)
-        # print("Predictions", predictions, y_pred)
         true_classes = np.argmax(y_true, axis=1)
         return np.mean(predictions == true_classes)
 
@@ -390,61 +325,17 @@ class MLP:
         return precision, recall, f1, accuracy
 
     def train(self, X, y_true, epochs=1000):
-        # lowest_loss = 999999
-        # self.best_weights = {}
-        # self.best_biases = {}
         self.losses = []
         for epoch in range(1, epochs + 1):
-            # loss = self.compute_loss(y_pred, y_true)
-
-            # Very crude implementation to make the network learn
-            # for i in range(1, len(self.layers)):
-            #     self.weights[i] += self.learning_rate * (
-            #         np.random.randn(self.layers[i - 1], self.layers[i])
-            #     )
-            #     self.biases[i] += self.learning_rate * np.random.randn(
-            #         1, self.layers[i]
-            #     )
-            #
-            # y_pred = self.feedforward(X)
-            #
-            # loss = self.binary_cross_entropy_loss(y_pred, y_true)
-            # # loss = self.compute_loss(y_pred, y_true)
-            # accuracy = self.calculate_binary_accuracy(y_pred, y_true)
-            # # accuracy = self.calculate_accuracy(y_pred, y_true)
-            #
-            # if loss < lowest_loss:
-            #     # print("binary_loss:", binary_loss, "accuracy:", accuracy)
-            #     for i in range(1, len(self.layers)):
-            #         self.best_weights[i] = self.weights[i].copy()
-            #         self.best_biases[i] = self.biases[i].copy()
-            #     lowest_loss = loss
-            # else:
-            #     for i in range(1, len(self.layers)):
-            #         self.weights[i] = self.best_weights[i].copy()
-            #         self.biases[i] = self.best_biases[i].copy()
-            #
-            # if epoch % 100 == 0:
-            #     print(f"Epoch {epoch}, Loss: {loss:.4f}, Accuracy: {accuracy}")
-            # if epoch == epochs:
-            #     print(f"Epoch {epoch}, Loss: {loss:.4f}, Accuracy: {accuracy}")
-            #     print("Weights:", self.weights)
-            #     print("Biases:", self.biases)
-            #     print("Z:", self.z)
-            #     print("Activations:", self.activations)
-
             y_pred = self.feedforward(X)
-            # loss = self.binary_cross_entropy_loss(y_pred, y_true)
             loss = self.compute_loss(y_pred, y_true)
             self.losses.append(loss)
             accuracy = self.calculate_accuracy(y_pred, y_true)
             weight_gradients, bias_gradients = self.backpropagate(X, y_pred, y_true)
             self.pre_update()
-            # self.update_params(weight_gradients, bias_gradients)
             self.adam_optimiser(weight_gradients, bias_gradients)
             self.iterations += 1
 
-            # print("Gradients:", weight_gradients, bias_gradients)
             if epoch % 100 == 0:
                 print(
                     f"epoch {epoch}, "
@@ -455,32 +346,11 @@ class MLP:
             if epoch == epochs - 1:
                 plt.plot(self.losses)
                 plt.title("Losses Curve")
-                # plt.show()
 
     def predict(self, X):
         output = self.feedforward(X)
-        # print("Inside predict:", X.shape, output.shape)
-        # print("Predicted:", output)
-        # print(
-        #     "Argmax1:",
-        #     np.argmax(output, axis=1, keepdims=True),
-        #     np.argmax(output, axis=1).shape,
-        # )
         predicted_indices = np.argmax(output, axis=1)
-
-        # return (output > 0.5).astype(int)
         return output, predicted_indices
-
-
-# two neurons in input because for XOR we have two binary inputs
-# neurons = [2, 4, 4, 1]
-# X = np.array([[0, 0], [0, 1], [1, 0], [1, 1]])
-# expected = np.array([[0], [1], [1], [0]])  # shape (4, 1)
-# mlp = MLP(neurons, 0.1)
-# mlp.print_shapes()
-# mlp.train(X, expected, 5000)
-# predictions = mlp.predict(X)
-# print("Predictions:", predictions)
 
 
 class HyperParameters(TypedDict):
@@ -492,8 +362,7 @@ class HyperParameters(TypedDict):
 
 
 class PennywiseMLP:
-    def __init__(self, type, is_new=True, model="all-MiniLM-L6-v2"):
-        # Only initialise the labels and extra params when training a new model
+    def __init__(self, type, is_new=True, model="all-MiniLM-L6-v2", data_path=None):
         # load_model method will handle loading these params for existing model
         self.type = type
         self.model = SentenceTransformer(model, trust_remote_code=True)
@@ -507,11 +376,11 @@ class PennywiseMLP:
                 unique_accounts,
                 amounts,
                 unique_labels,
-            ) = self.get_labels_and_email(type)
+            ) = self.get_labels_and_email(type, data_path=data_path)
             self.account_to_index = {
                 account: i for i, account in enumerate(unique_accounts)
             }
-            # Email embeddings using SBERT: shape (num_samples, 384)
+            # Email embeddings using SBERT + signed log-scaled amounts
             signed_logs = []
             for amount in amounts:
                 signed_logs.append(np.sign(amount) * np.log1p(abs(amount)))
@@ -521,10 +390,6 @@ class PennywiseMLP:
 
             inputs = []
             for i in range(len(emails)):
-                # print("email:", emails[i])
-                # print("label", labels[i])
-                # print("account_label:", account_labels[i])
-                # print("amount:", amounts[i])
                 email_vector = self.model.encode(emails[i])
                 payee_vector = self.model.encode(payee_labels[i])
                 account_vector = self.one_hot_encode_account(account_labels[i])
@@ -534,15 +399,10 @@ class PennywiseMLP:
                     / (self.max_signed_log - self.min_signed_log)
                     - 1
                 )
-                transaction_type = "outflow"
-                if amounts[i] > 0:
-                    transaction_type = "inflow"
                 if self.type == "payee":
                     input_vector = np.concatenate(
                         [email_vector, [amount_normalized], account_vector]
                     )
-                    # input_vector = model.encode(f"Email text: {emails[i]}, Account: {account_labels[i]}, Amount: ₹{amounts[i]}")
-                    # input_vector = model.encode(f"email={emails[i]},account={account_labels[i]},type={transaction_type}")
                 elif self.type == "category":
                     input_vector = np.concatenate(
                         [
@@ -552,16 +412,11 @@ class PennywiseMLP:
                             account_vector,
                         ]
                     )
-                    # input_vector = model.encode(f"Email text: {emails[i]}, Payee: {payee_labels[i]}, Account: {account_labels[i]}, Amount: ₹{amounts[i]}")
-                    # input_vector = model.encode(f"email={emails[i]},payee={payee_labels[i]},account={account_labels[i]},type={transaction_type}")
                 elif self.type == "account":
                     input_vector = np.concatenate([email_vector, [amount_normalized]])
-                    # input_vector = model.encode(f"Email text: {emails[i]}, Amount: ₹{amounts[i]}")
                 else:
                     raise Exception("Wrong type")
-                # print("Amount:", amount_normalized)
                 inputs.append(input_vector)
-                # breakpoint += 1
 
             self.X = np.array(inputs)
             self.Y = self.one_hot_encode_labels(labels)
@@ -573,7 +428,7 @@ class PennywiseMLP:
             vec[self.account_to_index[account]] = 1.0
         return vec
 
-    def get_labels_and_email(self, label_type: str) -> tuple[
+    def get_labels_and_email(self, label_type: str, data_path: str | None = None) -> tuple[
         list[str],
         list[str],
         list[str],
@@ -588,6 +443,7 @@ class PennywiseMLP:
 
         Args:
             label_type: The type of label to extract from the data
+            data_path: Path to the training data JSON file (default: ./data/normalized_with_email.json)
 
         Returns:
             Tuple containing:
@@ -613,13 +469,14 @@ class PennywiseMLP:
         unique_accounts = set()
 
         # Load and process data
+        resolved_path = data_path or "./data/normalized_with_email.json"
         try:
-            with open("./data/normalized_with_email.json", "r") as file:
+            with open(resolved_path, "r") as file:
                 email_data = json.load(file)
         except FileNotFoundError:
-            raise FileNotFoundError("normalized_with_email.json not found")
+            raise FileNotFoundError(f"{resolved_path} not found")
         except json.JSONDecodeError:
-            raise ValueError("Invalid JSON format in normalized_with_email.json")
+            raise ValueError(f"Invalid JSON format in {resolved_path}")
 
         # Process each record
         for data in email_data:
@@ -720,7 +577,6 @@ class PennywiseMLP:
         kf = KFold(n_splits=cv_folds, shuffle=True, random_state=42)
         all_results = []
 
-        # self.mlp = MLP(neurons, learning_rate, decay, l1_l2_lambdas=l1_l2_lambdas)
         print(
             f"Evaluating {len(hyper_parameters)} hyper parameters with {cv_folds}-fold cross-validation"
         )
@@ -843,10 +699,7 @@ class PennywiseMLP:
     def test(self, test_data, key):
         print(":::::TEST:::::", self.Y.shape)
         X_test = []
-        breakpoint = 0
         for data in test_data:
-            if breakpoint > 1:
-                break
             email_vec = self.model.encode(data[key])
             payee_vec = self.model.encode(data["payee"])
             account_vec = self.one_hot_encode_account(data["account"])
@@ -857,29 +710,20 @@ class PennywiseMLP:
                 / (self.max_signed_log - self.min_signed_log)
                 - 1
             )
-            transaction_type = "outflow"
-            if data["amount"] > 0:
-                transaction_type = "inflow"
 
             if self.type == "payee":
                 input_vector = np.concatenate(
                     [email_vec, [amount_normalized], account_vec]
                 )
-                # input_vector = self.model.encode(f"Email text: {data[key]}, Account: {data["account"]}, Amount: ₹{data["amount"]}")
-                # input_vector = self.model.encode(f"email={data[key]},account={data["account"]},type={transaction_type}")
             elif self.type == "category":
                 input_vector = np.concatenate(
                     [email_vec, payee_vec, [amount_normalized], account_vec]
                 )
-                # input_vector = self.model.encode(f"Email text: {data[key]}, Payee: {data["payee"]}, Account: {data["account"]}, Amount: ₹{data["amount"]}")
-                # input_vector = self.model.encode(f"email={data[key]},payee={data["payee"]},account={data["account"]},type={transaction_type}")
             elif self.type == "account":
                 input_vector = np.concatenate([email_vec, [amount_normalized]])
-                # input_vector = self.model.encode(f"Email text: {data[key]}, Amount: ₹{data["amount"]}")
             else:
                 raise Exception("Wrong type")
             X_test.append(input_vector)
-            # breakpoint += 1
 
         X_test = np.array(X_test)
         print(X_test.shape)
@@ -893,23 +737,7 @@ class PennywiseMLP:
         print("raw_output:", raw_output.shape, predicted_indices.shape)
 
         confidences = np.max(raw_output, axis=1)
-        print("Confidences", confidences, confidences.shape)
-        for i in range(raw_output.shape[0]):
-            probs = raw_output[i]
-            # print("probs:", probs)
-            top_k = probs.argsort()[::-1][:3]
-            # print("top_k:", top_k)
-            # for idx in top_k:
-            #     label = self.label_encoder.inverse_transform([idx])[0]
-            #     print(f"{label}: Confidence {probs[idx]:.2f}")
-            # print()
-            # predicted_index = predicted_indices[i]
-            # confidence = confidences[i]
-            # print("Index:", predicted_index, "Confidence:", confidence)
-            # predicted_label = self.label_encoder.inverse_transform([top_idx])[0]
-            # print(f"Transaction {i}: {predicted_label} (confidence: {confidence:.2f})")
 
-        predicted = 0
         confident_predictions = 0
         correct = 0
         for i, label in enumerate(predicted_labels):
@@ -924,238 +752,190 @@ class PennywiseMLP:
 
         coverage = confident_predictions / len(test_data)
         accuracy = correct / len(test_data)
-        # print(f"Accuracy {self.type}: {predicted/len(test_data)*100:.2f}")
         print(f"Coverage: {coverage*100:.2f}%")
         print(f"High-confidence Accuracy:{accuracy*100:.2f}%")
 
-        # true_indices = np.argmax(self.Y, axis=1)
-        # pred_indices = np.argmax(raw_output, axis=1)
-        # cm = self.mlp.confusion_matrix(pred_indices, true_indices, num_classes=62)
-        # print("Confusion matrix", cm)
-        # metrics = self.mlp.classification_metrics(cm)
-        # precision, recall, f1, accuracy = self.mlp.compute_metrics(cm)
-        # print(metrics)
-        # print(np.unique(pred_indices, return_counts=True))
-        # print(f"Accuracy: {accuracy:.4f}")
-        # print(f"Macro Precision: {np.mean(precision):.4f}")
-        # print(f"Macro Recall: {np.mean(recall):.4f}")
-        # print(f"Macro F1: {np.mean(f1):.4f}")
 
 
-# file = open("./normalized_with_email.json")
-# test_emails = json.load(file)
+PARAMS: dict[str, list[HyperParameters]] = {
+    "payee": [
+        {
+            "hidden_layers": [1024],
+            "learning_rate": 0.001,
+            "decay": 0.0001,
+            "l1_l2_lambdas": {"l2w": 0.0005, "l2b": 0.0005},
+            "epochs": 1000,
+        },
+        {
+            "hidden_layers": [1536, 1024, 512],
+            "learning_rate": 5e-4,
+            "decay": 0.00001,
+            "l1_l2_lambdas": {"l2w": 1e-5, "l2b": 1e-5},
+            "epochs": 500,
+        },
+        {
+            "hidden_layers": [1024, 1024, 512],
+            "learning_rate": 5e-4,
+            "decay": 0.001,
+            "l1_l2_lambdas": {"l2w": 1e-5, "l2b": 1e-5},
+            "epochs": 500,
+        },
+    ],
+    "category": [
+        {
+            "hidden_layers": [1024, 512],
+            "learning_rate": 0.01,
+            "decay": 0.001,
+            "l1_l2_lambdas": {"l2w": 0.0005, "l2b": 0.0005},
+            "epochs": 1000,
+        },
+        {
+            "hidden_layers": [1536, 1024, 512, 256],
+            "learning_rate": 5e-4,
+            "decay": 0.0001,
+            "l1_l2_lambdas": {"l2w": 1e-5, "l2b": 1e-5},
+            "epochs": 1000,
+        },
+        {
+            "hidden_layers": [1024, 1024, 512],
+            "learning_rate": 5e-3,
+            "decay": 0.0001,
+            "l1_l2_lambdas": {"l2w": 1e-5, "l2b": 1e-5},
+            "epochs": 500,
+        },
+    ],
+    "account": [
+        {
+            "hidden_layers": [256],
+            "learning_rate": 0.01,
+            "decay": 0.001,
+            "l1_l2_lambdas": {"l2w": 0.00005, "l2b": 0.00005},
+            "epochs": 500,
+        }
+    ],
+}
 
-# payee_mlp = PennywiseMLP("payee", [128, 80, 40], learning_rate=0.00011)
-# payee_mlp = PennywiseMLP("payee", [512, 256], learning_rate=0.01, decay=0.001, l1_l2_lambdas={"l2w": 0.0005, "l2b": 0.0005})
-# payee_mlp.train(500)
-# payee_mlp.test(test_emails, "email_text")
+MODEL_PATHS: dict[str, str] = {
+    "payee": "pennywise_payee_mlp.parms",
+    "category": "pennywise_category_mlp.parms",
+    "account": "pennywise_account_mlp.parms",
+}
 
-payee_params: list[HyperParameters] = [
-    # {
-    #     "hidden_layers": [512],
-    #     "learning_rate": 0.01,
-    #     "decay": 0.001,
-    #     "l1_l2_lambdas": {"l2w": 0.0005, "l2b": 0.0005},
-    #     "epochs": 500,
-    # },
-    # {
-    #     "hidden_layers": [512],
-    #     "learning_rate": 0.001,
-    #     "decay": 0.0001,
-    #     "l1_l2_lambdas": {"l2w": 0.0005, "l2b": 0.0005},
-    #     "epochs": 1000,
-    # },
-    {
-        "hidden_layers": [1024],
-        "learning_rate": 0.001,
-        "decay": 0.0001,
-        "l1_l2_lambdas": {"l2w": 0.0005, "l2b": 0.0005},
-        "epochs": 1000,
-    },
-    # {
-    #     "hidden_layers": [1024, 512],
-    #     "learning_rate": 0.01,
-    #     "decay": 0.001,
-    #     "l1_l2_lambdas": {"l2w": 0.0005, "l2b": 0.0005},
-    #     "epochs": 500,
-    # },
-    # {
-    #     "hidden_layers": [1024, 512, 256],
-    #     "learning_rate": 0.01,
-    #     "decay": 0.001,
-    #     "l1_l2_lambdas": {"l2w": 0.0005, "l2b": 0.0005},
-    #     "epochs": 500,
-    # },
-    {
-        "hidden_layers": [1536, 1024, 512],
-        "learning_rate": 5e-4,
-        "decay": 0.00001,
-        "l1_l2_lambdas": {"l2w": 1e-5, "l2b": 1e-5},
-        "epochs": 500,
-    },
-    {
-        "hidden_layers": [1024, 1024, 512],
-        "learning_rate": 5e-4,
-        "decay": 0.001,
-        "l1_l2_lambdas": {"l2w": 1e-5, "l2b": 1e-5},
-        "epochs": 500,
-    },
-]
-
-category_params: list[HyperParameters] = [
-    # {
-    #     "hidden_layers": [512, 256],
-    #     "learning_rate": 0.01,
-    #     "decay": 0.001,
-    #     "l1_l2_lambdas": {"l2w": 0.00005, "l2b": 0.00005},
-    #     "epochs": 1000,
-    # },
-    # {
-    #     "hidden_layers": [512, 256],
-    #     "learning_rate": 0.001,
-    #     "decay": 0.0001,
-    #     "l1_l2_lambdas": {"l2w": 0.0005, "l2b": 0.0005},
-    #     "epochs": 1000,
-    # },
-    {
-        "hidden_layers": [1024, 512],
-        "learning_rate": 0.01,
-        "decay": 0.001,
-        "l1_l2_lambdas": {"l2w": 0.0005, "l2b": 0.0005},
-        "epochs": 1000,
-    },
-    # {
-    #     "hidden_layers": [1024, 512],
-    #     "learning_rate": 0.001,
-    #     "decay": 0.0001,
-    #     "l1_l2_lambdas": {"l2w": 0.0005, "l2b": 0.0005},
-    #     "epochs": 500,
-    # },
-    # {
-    #     "hidden_layers": [1024, 512, 256],
-    #     "learning_rate": 0.01,
-    #     "decay": 0.001,
-    #     "l1_l2_lambdas": {"l2w": 0.0005, "l2b": 0.0005},
-    #     "epochs": 1000,
-    # },
-    {
-        "hidden_layers": [1536, 1024, 512, 256],
-        "learning_rate": 5e-4,
-        "decay": 0.0001,
-        "l1_l2_lambdas": {"l2w": 1e-5, "l2b": 1e-5},
-        "epochs": 1000,
-    },
-    {
-        "hidden_layers": [1024, 1024, 512],
-        "learning_rate": 5e-3,
-        "decay": 0.0001,
-        "l1_l2_lambdas": {"l2w": 1e-5, "l2b": 1e-5},
-        "epochs": 500,
-    },
-]
+DEFAULT_MODELS: dict[str, str] = {
+    "payee": "all-mpnet-base-v2",
+    "category": "all-MiniLM-L6-v2",
+    "account": "all-MiniLM-L6-v2",
+}
 
 
-def predict_payee():
-    file = open("./data/test_data.json")
-    test_emails = json.load(file)
-
-    payee_mlp = PennywiseMLP(type="payee", is_new=False, model="all-mpnet-base-v2")
-    # payee_mlp.train(hyper_parameters=payee_params[2])
-    # payee_mlp.save_model(path="pennywise_payee_mlp.parms")
-    payee_mlp.load_model(path="pennywise_payee_mlp.parms")
-    # prediction = payee_mlp.predict(
-    #     type="payee",
-    #     email_text="Dear Customer, Rs.5979.00 has been debited from account 8936 to VPA 0790187A0169637.bqr@kotak ALLIANCE AIR AVIATION LIMITED on 12-07-25.",
-    #     amount=-5979,
-    #     account="HDFC (Salary)"
-    # )
-    # prediction = payee_mlp.predict(
-    #     type="payee",
-    #     email_text="Dear Customer, Rs. 3000.00 is successfully credited to your account **8936 by VPA 9997167687@ybl RISHABH KAPRI S O GOKUL CHANDRA KAP on 12-07-25.",
-    #     amount="3000",
-    #     account="HDFC"
-    # )
-    # print(prediction)
-    payee_mlp.test(test_data=test_emails, key="email_text")
-    # results = payee_mlp.k_fold_train_validate(payee_params, cv_folds=5)
+def load_test_data(path="./data/test_data.json"):
+    with open(path) as f:
+        return json.load(f)
 
 
-def predict_category():
-    file = open("./data/test_data.json")
-    test_emails = json.load(file)
+def run_train(mlp_type: str, params_index: int, model: str | None, save: bool):
+    """Train a new model from scratch and optionally save it."""
+    params_list = PARAMS[mlp_type]
+    if params_index < 0 or params_index >= len(params_list):
+        print(f"Invalid --params-index {params_index}. Available: 0-{len(params_list) - 1}")
+        print("Configurations:")
+        for i, p in enumerate(params_list):
+            print(f"  [{i}] layers={p['hidden_layers']}, lr={p['learning_rate']}, epochs={p['epochs']}")
+        return
 
-    category_mlp = PennywiseMLP("category", is_new=False)
-    category_mlp.load_model(path="pennywise_category_mlp.parms")
-    # prediction = category_mlp.predict(
-    #     type="category",
-    #     payee="Petrol Pump",
-    #     email_text="Dear Customer, Rs.1000.00 has been debited from account 8936 to VPA Q536830324@ybl OM DIESELS on 12-07-25.",
-    #     amount=-1000,
-    #     account="HDFC (Salary)"
-    # )
-    # print(prediction)
-    category_mlp.test(test_data=test_emails, key="email_text")
+    sbert_model = model or DEFAULT_MODELS[mlp_type]
+    mlp = PennywiseMLP(type=mlp_type, is_new=True, model=sbert_model)
+    mlp.train(hyper_parameters=params_list[params_index])
+
+    test_data = load_test_data()
+    mlp.test(test_data=test_data, key="email_text")
+
+    if save:
+        mlp.save_model(path=MODEL_PATHS[mlp_type])
+        print(f"Model saved to {MODEL_PATHS[mlp_type]}")
 
 
-def predict_account():
-    file = open("./data/test_data.json")
-    test_emails = json.load(file)
+def run_test(mlp_type: str, model: str | None):
+    """Load an existing model and run test evaluation."""
+    sbert_model = model or DEFAULT_MODELS[mlp_type]
+    mlp = PennywiseMLP(type=mlp_type, is_new=False, model=sbert_model)
+    mlp.load_model(path=MODEL_PATHS[mlp_type])
 
-    account_mlp = PennywiseMLP("account", is_new=False)
-    account_mlp.load_model(path="pennywise_account_mlp.parms")
-    # prediction = account_mlp.predict(
-    #     type="account",
-    #     email_text="Dear Customer, Rs.15000.00 is successfully credited to your account **8936 by VPA 9458306660@ybl SHEELA KAPRI on 02-07-25.",
-    #     amount=15000
-    # )
-    # @TODO: add training data for this
-    prediction = account_mlp.predict(
-        type="account",
-        email_text="Dear Customer, Rs. 1.00 is successfully credited to your account **8936 by VPA 9997167687@ybl RISHABH KAPRI S O GOKUL CHANDRA KAP on 12-07-25.",
-        amount=3000,
+    test_data = load_test_data()
+    mlp.test(test_data=test_data, key="email_text")
+
+
+def run_predict(mlp_type: str, email_text: str, amount: float, model: str | None,
+                account: str | None = None, payee: str | None = None):
+    """Load an existing model and predict on a single input."""
+    sbert_model = model or DEFAULT_MODELS[mlp_type]
+    mlp = PennywiseMLP(type=mlp_type, is_new=False, model=sbert_model)
+    mlp.load_model(path=MODEL_PATHS[mlp_type])
+
+    prediction = mlp.predict(
+        type=mlp_type,
+        email_text=email_text,
+        amount=amount,
+        account=account,
+        payee=payee,
     )
     print(prediction)
 
 
-def train_payee():
-    file = open("./data/test_data.json")
-    test_emails = json.load(file)
-
-    mlp = PennywiseMLP(type="payee", is_new=True, model="nomic-ai/nomic-embed-text-v1.5")
-    # mlp.load_model(path="pennywise_payee_mlp.parms")
-    # results = mlp.k_fold_train_validate(hyper_parameters=payee_params, cv_folds=5)
-    # mlp.train(hyper_parameters=results["best_params"])
-    mlp.train(hyper_parameters=payee_params[2]) # best params with all-mpnet-base-v2
-    mlp.test(test_data=test_emails, key="email_text")
-    # mlp.save_model(path="pennywise_payee_mlp.parms")
+def run_kfold(mlp_type: str, model: str | None, folds: int):
+    """Run K-fold cross-validation across all param configs for a type."""
+    sbert_model = model or DEFAULT_MODELS[mlp_type]
+    mlp = PennywiseMLP(type=mlp_type, is_new=True, model=sbert_model)
+    results = mlp.k_fold_train_validate(hyper_parameters=PARAMS[mlp_type], cv_folds=folds)
+    return results
 
 
-def train_category():
-    file = open("./data/test_data.json")
-    test_emails = json.load(file)
+if __name__ == "__main__":
+    import argparse
 
-    # mlp = PennywiseMLP(type="category", is_new=True, model="nomic-ai/nomic-embed-text-v1.5")
-    mlp = PennywiseMLP(type="category", is_new=False)
-    mlp.load_model(path="pennywise_category_mlp.parms")
-    # results = mlp.k_fold_train_validate(hyper_parameters=category_params, cv_folds=5)
-    # mlp.train(hyper_parameters=results["best_params"])
-    # mlp.train(hyper_parameters=category_params[1]) # best with all-mpnet-base-v2 and sbert + onehot
-    mlp.test(test_data=test_emails, key="email_text")
-    # mlp.save_model(path="pennywise_category_mlp.parms")
+    parser = argparse.ArgumentParser(description="Pennywise MLP training and prediction CLI")
+    subparsers = parser.add_subparsers(dest="action", required=True)
 
+    # Common args
+    type_choices = ["payee", "category", "account"]
 
-# predict_payee()
-# predict_category()
-# predict_account()
-# train_payee()
-# train_category()
+    # --- train ---
+    train_parser = subparsers.add_parser("train", help="Train a new model from scratch")
+    train_parser.add_argument("type", choices=type_choices)
+    train_parser.add_argument("--params-index", type=int, default=0,
+                              help="Index into the params list for this type (default: 0)")
+    train_parser.add_argument("--model", type=str, default=None,
+                              help="Sentence transformer model name (default: per-type default)")
+    train_parser.add_argument("--save", action="store_true",
+                              help="Save the trained model to disk")
 
-account_params: list[HyperParameters] = [
-    {
-        "hidden_layers": [256],
-        "learning_rate": 0.01,
-        "decay": 0.001,
-        "l1_l2_lambdas": {"l2w": 0.00005, "l2b": 0.00005},
-        "epochs": 500,
-    }
-]
+    # --- test ---
+    test_parser = subparsers.add_parser("test", help="Test an existing saved model")
+    test_parser.add_argument("type", choices=type_choices)
+    test_parser.add_argument("--model", type=str, default=None)
+
+    # --- predict ---
+    predict_parser = subparsers.add_parser("predict", help="Predict on a single email input")
+    predict_parser.add_argument("type", choices=type_choices)
+    predict_parser.add_argument("--email", type=str, required=True, help="Email text")
+    predict_parser.add_argument("--amount", type=float, required=True, help="Transaction amount")
+    predict_parser.add_argument("--account", type=str, default=None, help="Account name")
+    predict_parser.add_argument("--payee", type=str, default=None, help="Payee name (for category prediction)")
+    predict_parser.add_argument("--model", type=str, default=None)
+
+    # --- kfold ---
+    kfold_parser = subparsers.add_parser("kfold", help="Run K-fold cross-validation on all param configs")
+    kfold_parser.add_argument("type", choices=type_choices)
+    kfold_parser.add_argument("--folds", type=int, default=5, help="Number of CV folds (default: 5)")
+    kfold_parser.add_argument("--model", type=str, default=None)
+
+    args = parser.parse_args()
+
+    if args.action == "train":
+        run_train(args.type, args.params_index, args.model, args.save)
+    elif args.action == "test":
+        run_test(args.type, args.model)
+    elif args.action == "predict":
+        run_predict(args.type, args.email, args.amount, args.model, args.account, args.payee)
+    elif args.action == "kfold":
+        run_kfold(args.type, args.model, args.folds)

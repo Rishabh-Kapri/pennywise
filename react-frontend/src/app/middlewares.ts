@@ -8,6 +8,9 @@ import {
   fetchCategoryById,
   updateCategoryBudget,
 } from '@/features/category/store/categorySlice';
+import { fetchAllLoanMetadata } from '@/features/loans/store/loanSlice';
+import { fetchAllTransaction } from '@/features/transactions/store/transactionSlice';
+import { fetchAllTags } from '@/features/tags/store/tagSlice';
 
 /*
  * Fetch all data on app start
@@ -22,9 +25,12 @@ export const dataFetchMiddleware: Middleware =
     const month = (store.getState() as RootState).budgets.selectedMonth;
     if (fetchAllBudgets.fulfilled.match(action)) {
       dispatch(fetchAllAccounts());
+      dispatch(fetchAllTransaction(''));
       dispatch(fetchAllCategoryGroups(month));
       dispatch(fetchInflowAmount());
       dispatch(fetchAllPayees());
+      dispatch(fetchAllLoanMetadata());
+      dispatch(fetchAllTags());
       // fetch inflow category from selected budget metadata
       const selectedBudget = (store.getState() as RootState).budgets
         .selectedBudget;
