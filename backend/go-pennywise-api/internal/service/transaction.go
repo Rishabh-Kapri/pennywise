@@ -69,7 +69,7 @@ func (s *transactionService) updatePrediction(ctx context.Context, tx pgx.Tx, bu
 
 	log.Printf("%v", txn.String())
 	// Use transaction context for all repository calls to avoid deadlocks
-	account, err := s.accountRepo.GetByIdTx(ctx, tx, budgetId, *txn.AccountID)
+	account, err := s.accountRepo.GetById(ctx, tx, budgetId, *txn.AccountID)
 	if err != nil {
 		return fmt.Errorf("Error getting account: %v", err)
 	}
@@ -218,7 +218,7 @@ func (s *transactionService) Create(ctx context.Context, txn model.Transaction) 
 	if err != nil {
 		return nil, fmt.Errorf("error getting payee: %v", err)
 	}
-	account, err := s.accountRepo.GetByIdTx(ctx, tx, budgetId, *txn.AccountID)
+	account, err := s.accountRepo.GetById(ctx, tx, budgetId, *txn.AccountID)
 	if err != nil {
 		return nil, fmt.Errorf("error getting account: %v", err)
 	}
@@ -332,7 +332,7 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 	}
 
 	// fetch updated txn account
-	account, err := s.accountRepo.GetByIdTx(ctx, tx, budgetId, *txn.AccountID)
+	account, err := s.accountRepo.GetById(ctx, tx, budgetId, *txn.AccountID)
 	if err != nil {
 		return fmt.Errorf("error getting account: %v", err)
 	}

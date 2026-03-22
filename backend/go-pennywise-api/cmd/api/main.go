@@ -46,7 +46,7 @@ func main() {
 	budgetService := service.NewBudgetService(budgetRepo, payeeRepo, categoryRepo, categoryGroupRepo)
 	budgetHandler := handler.NewBudgetHandler(budgetService)
 
-	accountService := service.NewAccountService(accountRepo)
+	accountService := service.NewAccountService(accountRepo, payeeRepo)
 	accountHandler := handler.NewAccountHandler(accountService)
 
 	userService := service.NewUserService(userRepo)
