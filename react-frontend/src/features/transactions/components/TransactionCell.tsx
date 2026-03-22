@@ -4,7 +4,10 @@ import { AccountDropdown } from './popovers/AccountPopover';
 import { PayeeDropdown } from './popovers/PayeePopover';
 import { CategoryDropdown } from './popovers/CategoryPopover';
 import { DateDropdown } from './popovers/DatePopover';
+import { TagDropdown } from './popovers/TagPopover';
+import { useAppSelector } from '@/app/hooks';
 import styles from './Transaction.module.css';
+import tagStyles from './popovers/TagPopover.module.css';
 
 type DropdownColKey = 'accountName' | 'payeeName' | 'categoryName' | 'date';
 
@@ -45,6 +48,7 @@ interface Props {
     idKey: keyof Transaction,
     nameKey: keyof Transaction,
   ) => (id: string, name: string) => void;
+  onTagsChange?: (tagIds: string[]) => void;
   onBlur?: (key: keyof Transaction, value: string | number) => void;
 }
 
@@ -57,14 +61,46 @@ export function TransactionCell({
   selectedTxn,
   onFieldChange,
   onSelectChange,
+  onTagsChange,
   onBlur,
 }: Props) {
+  const { allTags } = useAppSelector((state) => state.tags);
   const isEditable = col.key !== 'balance';
   const isSelected = selectedTxn?.id === txn.id;
 
-  if (!isEditable || !isSelected) {
-    return col.render ? col.render(txn) : txn[col.key];
+  // Tags column — needs special handling (array, not a primitive)
+  if (col.key === 'tagIds') {
+    if (isSelected) {
+      return (
+        <TagDropdown
+          selectedTagIds={selectedTxn?.tagIds ?? []}
+          onChange={(tagIds) => onTagsChange?.(tagIds)}
+        />
+      );
+    }
+    // Read-only: resolve tag IDs to tag objects for display
+    const txnTagIds = txn.tagIds ?? [];
+    if (txnTagIds.length === 0) return null;
+    const resolvedTags = allTags.filter((t) => txnTagIds.includes(t.id));
+    return (
+      <div className={tagStyles.tagsContainer}>
+        {resolvedTags.map((tag) => (
+          <span
+            key={tag.id}
+            className={tagStyles.tagBadge}
+            style={{ backgroundColor: tag.color || '#6366f1' }}>
+            {tag.name}
+          </span>
+        ))}
+      </div>
+    );
   }
+
+  if (!isEditable || !isSelected) {
+    if (col.render) return col.render(txn);
+    return txn[col.key];
+  }
+
   // transaction is selected
   const value = selectedTxn?.[col.key] ?? '';
 

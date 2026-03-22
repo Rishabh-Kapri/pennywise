@@ -4,6 +4,10 @@ import budgets from '../features/budget/store/budgetSlice';
 import { categorySlice } from '@/features/category/store';
 import payees from '@/features/payees/store';
 import transactions from '@/features/transactions/store';
+import authSlice from '@/features/auth/store';
+import { dashboardSlice } from '@/features/dashboard/store';
+import loans from '@/features/loans/store/loanSlice';
+import tags from '@/features/tags/store';
 import { apiClient } from '@/utils';
 import {
   budgetUpdateMiddleware,
@@ -13,12 +17,15 @@ import {
 
 export const store = configureStore({
   reducer: {
+    auth: authSlice,
     accounts: accounts,
     budgets: budgets,
     payees: payees,
-
+    dashboard: dashboardSlice,
     categories: categorySlice,
     transactions: transactions,
+    loans: loans,
+    tags: tags,
   },
   middleware: (getDefaultMiddleWare) =>
     getDefaultMiddleWare({

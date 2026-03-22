@@ -1,0 +1,43 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.title {
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.budgetInfo {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface-secondary);
+  padding: 1rem;
+  padding-top: 1.5rem;
+  border-radius: 0.5rem;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 1.05rem;
+  font-weight: 700;
+  align-items: center;
+}
+
+.divider {
+  border-bottom: 1px solid var(--color-border);
+  margin: 1rem 0;
+}
+
+.infoItem {
+  margin: 0.35rem 0;
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9rem;
+}
+
+.activityItemTitle {
+  color: var(--color-text-secondary);
+}

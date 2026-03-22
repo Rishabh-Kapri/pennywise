@@ -5,9 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"gmail-transactions/pkg/config"
 	"gmail-transactions/pkg/parser"
@@ -16,6 +17,7 @@ import (
 
 type Service struct {
 	config *config.Config
+	client *http.Client
 }
 
 type ParsedTransaction struct {
@@ -52,14 +54,18 @@ type PredictionReq struct {
 }
 
 func NewService(config *config.Config) *Service {
-	return &Service{config: config}
+	return &Service{config: config, client: &http.Client{}}
 }
 
 // add query params to url
 func (s *Service) getEncodedURL(path string, queryData map[string]string) (string, error) {
-	baseUrl, err := url.Parse(s.config.PennywiseApi)
+	pennywiseUrl := s.config.PennywiseApi
+	if !strings.HasPrefix(pennywiseUrl, "http://") && !strings.HasPrefix(pennywiseUrl, "https://") {
+		pennywiseUrl = "http://" + pennywiseUrl
+	}
+	baseUrl, err := url.Parse(pennywiseUrl)
 	if err != nil {
-		log.Printf("Error while parsing Pennywise API URL: %v", err)
+		slog.Error("error parsing pennywise API URL", "error", err)
 		return "", err
 	}
 	baseUrl.Path += path
@@ -75,9 +81,9 @@ func (s *Service) getEncodedURL(path string, queryData map[string]string) (strin
 // makePennywiseApiRequest makes a request to Pennywise API
 func (s *Service) makePennywiseRequest(endpoint string, method string, queryData map[string]string, data any) ([]map[string]any, error) {
 	url, err := s.getEncodedURL(endpoint, queryData)
-	log.Printf("Making request to %v", url)
+	slog.Info("making request", "url", url)
 	if err != nil {
-		log.Printf("Error while encoding url for %v: %v", endpoint, err)
+		slog.Error("error encoding url", "endpoint", endpoint, "error", err)
 		return nil, err
 	}
 
@@ -86,7 +92,7 @@ func (s *Service) makePennywiseRequest(endpoint string, method string, queryData
 		var err error
 		requestBodyBytes, err = json.Marshal(data)
 		if err != nil {
-			log.Printf("Error marshaling JSON for %v: %v", endpoint, err)
+			slog.Error("error marshaling JSON", "endpoint", endpoint, "error", err)
 			return nil, err
 		}
 	} else {
@@ -96,7 +102,7 @@ func (s *Service) makePennywiseRequest(endpoint string, method string, queryData
 	requestBody := bytes.NewBuffer(requestBodyBytes)
 	req, err := http.NewRequest(method, url, requestBody)
 	if err != nil {
-		log.Printf("Error while creating pennywise api request for %v: %v", endpoint, err.Error())
+		slog.Error("error creating pennywise api request", "endpoint", endpoint, "error", err)
 		return nil, err
 	}
 
@@ -106,20 +112,19 @@ func (s *Service) makePennywiseRequest(endpoint string, method string, queryData
 
 	// dump, _ := httputil.DumpRequestOut(req, true)
 	// log.Printf("FINAL REQUEST:\n%s", dump)
-	client := &http.Client{}
-	res, err := client.Do(req)
+	res, err := s.client.Do(req)
 	if err != nil {
-		log.Printf("Error while sending pennywise api request for %v: %v", endpoint, err.Error())
+		slog.Error("error sending pennywise api request", "endpoint", endpoint, "error", err)
 		return nil, err
 	}
 	defer res.Body.Close()
 
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
-		log.Printf("Error while reading pennywise api response: %v", err.Error())
+		slog.Error("error reading pennywise api response", "error", err)
 		return nil, err
 	}
-	log.Printf("Response received from pennywise api for %v with data %+v: %v", endpoint, data, string(body))
+	slog.Info("response received from pennywise api", "endpoint", endpoint, "data", data, "body", string(body))
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return nil, fmt.Errorf("API error %v: %s", endpoint, res.Status)
@@ -148,13 +153,13 @@ func (s *Service) CreateTransaction(parsedDetails *parser.EmailDetails, predicte
 		Account:  predictedFields.Account.Label,
 		Category: predictedFields.Category.Label,
 	}
-	log.Printf("Creating transaction: %+v", txnData)
-	log.Printf("Predicted fields: %+v", predictedFields)
+	slog.Info("creating transaction", "txnData", txnData)
+	slog.Info("predicted fields", "fields", predictedFields)
 
 	accQueryMap := map[string]string{"name": txnData.Account}
 	accounts, err := s.makePennywiseRequest("/api/accounts/search", http.MethodGet, accQueryMap, nil)
 	if err != nil {
-		log.Printf("Error while searching for account: %v", err)
+		slog.Error("error searching for account", "error", err)
 		return nil, err
 	}
 	if len(accounts) == 0 {
@@ -167,7 +172,7 @@ func (s *Service) CreateTransaction(parsedDetails *parser.EmailDetails, predicte
 	payeeQueryMap := map[string]string{"name": txnData.Payee}
 	payees, err := s.makePennywiseRequest("/api/payees/search", http.MethodGet, payeeQueryMap, nil)
 	if err != nil {
-		log.Printf("Error while searching for payee: %v", err)
+		slog.Error("error searching for payee", "error", err)
 		return nil, err
 	}
 	if len(payees) == 0 {
@@ -182,7 +187,7 @@ func (s *Service) CreateTransaction(parsedDetails *parser.EmailDetails, predicte
 		catQueryMap := map[string]string{"name": txnData.Category}
 		categories, err := s.makePennywiseRequest("/api/categories/search", http.MethodGet, catQueryMap, nil)
 		if err != nil {
-			log.Printf("Error while searching for category: %v", err)
+			slog.Error("error searching for category", "error", err)
 			return nil, err
 		}
 		if len(categories) == 0 {
@@ -190,9 +195,9 @@ func (s *Service) CreateTransaction(parsedDetails *parser.EmailDetails, predicte
 		}
 		catId := categories[0]["id"].(string)
 		catIdPtr = &catId
-		log.Printf("Category found: %v", catId)
+		slog.Info("category found", "categoryId", catId)
 	} else {
-		log.Printf("Category is null")
+		slog.Info("category is null")
 	}
 
 	newTxn := Transaction{
@@ -209,7 +214,7 @@ func (s *Service) CreateTransaction(parsedDetails *parser.EmailDetails, predicte
 	if err != nil {
 		return nil, fmt.Errorf("Error while creating new transaction %s", err.Error())
 	}
-	log.Printf("Transaction created: %v", res)
+	slog.Info("transaction created", "response", res)
 	var txns []Transaction
 	resBytes, err := json.Marshal(res)
 	if err != nil {
@@ -246,16 +251,16 @@ func (s *Service) CreatePrediction(parsedDetails *parser.EmailDetails, predicted
 	if err != nil {
 		return fmt.Errorf("Error while creating prediction %s", err.Error())
 	}
-	log.Printf("Prediction created %v", res)
+	slog.Info("prediction created", "response", res)
 	return nil
 }
 
 func (s *Service) GetUserHistoryId(email string) (uint64, error) {
 	userQueryMap := map[string]string{"email": email}
-	log.Printf("Getting user history id for email %s", email)
+	slog.Info("getting user history id", "email", email)
 	res, err := s.makePennywiseRequest("/api/users/search", "GET", userQueryMap, nil)
 	if err != nil {
-		log.Printf("Error while getting user history id %v", err)
+		slog.Error("error getting user history id", "error", err)
 		return 0, err
 	}
 	if len(res) == 0 {
@@ -278,6 +283,25 @@ func (s *Service) UpdateUserHistoryId(email string, historyId uint64) error {
 	if err != nil {
 		return err
 	}
-	log.Printf("User historyId updated: %v", res)
+	slog.Info("user historyId updated", "response", res)
 	return nil
+}
+
+func (s *Service) GetUserRefreshToken(email string) (string, error) {
+	userQueryMap := map[string]string{"email": email}
+	slog.Info("getting user refresh token", "email", email)
+	res, err := s.makePennywiseRequest("/api/users/search", "GET", userQueryMap, nil)
+	if err != nil {
+		slog.Error("error getting user refresh token", "error", err)
+		return "", err
+	}
+	if len(res) == 0 {
+		return "", fmt.Errorf("No user found with email %s", email)
+	}
+	refreshToken, ok := res[0]["gmailRefreshToken"].(string)
+	if !ok {
+		return "", fmt.Errorf("Unexpected type for gmailRefreshToken")
+	}
+
+	return refreshToken, nil
 }

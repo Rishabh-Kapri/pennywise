@@ -1,0 +1,199 @@
+.container {
+  width: 100vw;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0a0a0a;
+}
+
+.card {
+  background: #141414;
+  border-radius: 16px;
+  padding: 2.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  max-width: 400px;
+  width: 90%;
+}
+
+.logoContainer {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  margin-bottom: 0.5rem;
+}
+
+.logoIcon {
+  width: 32px;
+  height: 32px;
+  color: #4fd1c5;
+}
+
+.logoText {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: -0.01em;
+}
+
+.welcome {
+  margin-top: 2rem;
+}
+
+.welcomeTitle {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #fff;
+  margin: 0 0 0.375rem 0;
+}
+
+.welcomeSubtitle {
+  font-size: 0.875rem;
+  color: #737373;
+  margin: 0;
+}
+
+.googleButtonContainer {
+  margin-top: 2rem;
+}
+
+.googleButton {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: #1f1f1f;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.googleButton:hover {
+  background: #262626;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.googleButton:active {
+  transform: scale(0.99);
+}
+
+.googleIcon {
+  width: 18px;
+  height: 18px;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.dividerLine {
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.dividerText {
+  font-size: 0.75rem;
+  color: #525252;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.error {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.15);
+  border-radius: 8px;
+  color: #f87171;
+  font-size: 0.8125rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem;
+  color: #737373;
+  font-size: 0.875rem;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 2px solid #262626;
+  border-top-color: #4fd1c5;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.features {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.featuresTitle {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: #525252;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 1rem;
+}
+
+.featuresList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.featureItem {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: #a3a3a3;
+  font-size: 0.8125rem;
+}
+
+.featureIcon {
+  width: 18px;
+  height: 18px;
+  color: #4fd1c5;
+  flex-shrink: 0;
+}
+
+.footer {
+  margin-top: 2rem;
+  text-align: center;
+  font-size: 0.6875rem;
+  color: #525252;
+  line-height: 1.5;
+}
+
+.footer a {
+  color: #737373;
+  text-decoration: none;
+}
+
+.footer a:hover {
+  color: #4fd1c5;
+}

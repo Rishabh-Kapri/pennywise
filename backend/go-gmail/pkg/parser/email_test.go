@@ -1,7 +1,7 @@
 package parser
 
 import (
-	"log"
+	"log/slog"
 	"os"
 	"testing"
 )
@@ -85,7 +85,7 @@ func TestExtractType(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			email := &EmailDetails{Text: testCase.text}
 			err := parser.extractType(email)
-			log.Printf("%v", email.TransactionType)
+			slog.Info("transaction type", "type", email.TransactionType)
 
 			if email.TransactionType != testCase.want {
 				t.Errorf("Expected %v, got %v (err %v)", testCase.want, email.TransactionType, err)

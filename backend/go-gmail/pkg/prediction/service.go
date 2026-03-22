@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"gmail-transactions/pkg/config"
@@ -90,7 +90,7 @@ func (s *Service) GetPredictedFields(parsedDetails *parser.EmailDetails, fallbac
 	if err != nil {
 		return predicted, err
 	}
-	log.Printf("Predicted account: %v\n", accountPrediction)
+	slog.Info("predicted account", "prediction", accountPrediction)
 	predicted.Account.Label = accountPrediction.Label
 	predicted.Account.Confidence = accountPrediction.Confidence
 
@@ -104,7 +104,7 @@ func (s *Service) GetPredictedFields(parsedDetails *parser.EmailDetails, fallbac
 	if err != nil {
 		return predicted, err
 	}
-	log.Printf("Predicted payee: %v\n", payeePrediction)
+	slog.Info("predicted payee", "prediction", payeePrediction)
 	predicted.Payee.Label = payeePrediction.Label
 	predicted.Payee.Confidence = payeePrediction.Confidence
 
@@ -119,7 +119,7 @@ func (s *Service) GetPredictedFields(parsedDetails *parser.EmailDetails, fallbac
 	if err != nil {
 		return predicted, err
 	}
-	log.Printf("Predicted category: %v\n", categoryPrediction)
+	slog.Info("predicted category", "prediction", categoryPrediction)
 	predicted.Category.Label = categoryPrediction.Label
 	predicted.Category.Confidence = categoryPrediction.Confidence
 

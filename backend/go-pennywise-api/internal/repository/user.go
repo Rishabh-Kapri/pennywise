@@ -27,7 +27,7 @@ func NewUserRepository(db *pgxpool.Pool) UserRepository {
 func (r *userRepo) Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.User, error) {
 	rows, err := r.Executor(nil).Query(
 		ctx,
-		`SELECT id, budget_id, email, history_id, created_at, updated_at FROM users WHERE budget_id = $1 AND email LIKE $2`,
+		`SELECT id, budget_id, email, history_id, gmail_refresh_token, created_at, updated_at FROM users WHERE budget_id = $1 AND email LIKE $2`,
 		budgetId,
 		"%"+query+"%",
 	)
@@ -39,7 +39,7 @@ func (r *userRepo) Search(ctx context.Context, budgetId uuid.UUID, query string)
 	var users []model.User
 	for rows.Next() {
 		var user model.User
-		err := rows.Scan(&user.ID, &user.BudgetID, &user.Email, &user.HistoryID, &user.CreatedAt, &user.UpdatedAt)
+		err := rows.Scan(&user.ID, &user.BudgetID, &user.Email, &user.HistoryID, &user.GmailRefreshToken, &user.CreatedAt, &user.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -56,11 +56,11 @@ func (r *userRepo) Update(ctx context.Context, budgetId uuid.UUID, user model.Us
 		  history_id=$1,
 		  updated_at=NOW()
 		WHERE budget_id = $2 AND email = $3
-		RETURNING id, budget_id, email, history_id, created_at, updated_at`,
+		RETURNING id, budget_id, email, history_id, gmail_refresh_token, created_at, updated_at`,
 		user.HistoryID,
 		budgetId,
 		user.Email,
-	).Scan(&updatedUser.ID, &updatedUser.BudgetID, &updatedUser.Email, &updatedUser.HistoryID, &updatedUser.CreatedAt, &updatedUser.UpdatedAt)
+	).Scan(&updatedUser.ID, &updatedUser.BudgetID, &updatedUser.Email, &updatedUser.HistoryID, &updatedUser.GmailRefreshToken, &updatedUser.CreatedAt, &updatedUser.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
