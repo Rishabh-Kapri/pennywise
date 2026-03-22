@@ -16,5 +16,5 @@ type Embedding struct {
 	Email           string    `json:"email"`
 	CreatedAt       time.Time `json:"createdAt"`
 	UpdatedAt       time.Time `json:"updatedAt"`
-	SimilarityScore *float64   `json:"similarityScore"`
+	SimilarityScore *float64  `json:"similarityScore"`
 }

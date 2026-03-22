@@ -28,7 +28,7 @@ func NewCategoryGroupService(r repository.CategoryGroupRepository) CategoryGroup
 }
 
 func (s *categoryGroupService) GetAll(ctx context.Context, month string) ([]model.CategoryGroup, error) {
-	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	budgetId := utils.MustBudgetID(ctx)
 	groups, err := s.repo.GetAll(ctx, budgetId)
 	if err != nil {
 		return nil, err
@@ -46,17 +46,17 @@ func (s *categoryGroupService) GetAll(ctx context.Context, month string) ([]mode
 }
 
 func (s *categoryGroupService) Create(ctx context.Context, categoryGroup model.CategoryGroup) (*model.CategoryGroup, error) {
-	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	budgetId := utils.MustBudgetID(ctx)
 	categoryGroup.BudgetID = budgetId
 	return s.repo.Create(ctx, nil, categoryGroup)
 }
 
 func (s *categoryGroupService) Update(ctx context.Context, id uuid.UUID, categoryGroup model.CategoryGroup) error {
-	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	budgetId := utils.MustBudgetID(ctx)
 	return s.repo.Update(ctx, budgetId, id, categoryGroup)
 }
 
 func (s *categoryGroupService) DeleteById(ctx context.Context, id uuid.UUID) error {
-	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	budgetId := utils.MustBudgetID(ctx)
 	return s.repo.DeleteById(ctx, budgetId, id)
 }

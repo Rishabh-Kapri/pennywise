@@ -1,4 +1,5 @@
 package service
+
 //
 // import (
 // 	"context"
@@ -234,7 +235,7 @@ package service
 // 	if len(parts) < 1 {
 // 		return nil, ErrInvalidToken
 // 	}
-// 	
+//
 // 	// This is a simplified implementation
 // 	// In production, you'd store refresh tokens in DB and look them up
 // 	return nil, ErrInvalidToken

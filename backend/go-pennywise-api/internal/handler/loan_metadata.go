@@ -6,8 +6,6 @@ import (
 	"pennywise-api/internal/model"
 	"pennywise-api/internal/service"
 
-	utils "pennywise-api/pkg"
-
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -29,11 +27,7 @@ func NewLoanMetadataHandler(service service.LoanMetadataService) LoanMetadataHan
 }
 
 func (h *loanMetadataHandler) List(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 
 	loans, err := h.service.GetAll(ctx)
 	if err != nil {
@@ -44,12 +38,6 @@ func (h *loanMetadataHandler) List(c *gin.Context) {
 }
 
 func (h *loanMetadataHandler) GetByAccountId(c *gin.Context) {
-	_, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
 	accountId, err := uuid.Parse(c.Param("accountId"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid account ID"})
@@ -65,12 +53,6 @@ func (h *loanMetadataHandler) GetByAccountId(c *gin.Context) {
 }
 
 func (h *loanMetadataHandler) Create(c *gin.Context) {
-	_, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
 	var body model.LoanMetadata
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -86,12 +68,6 @@ func (h *loanMetadataHandler) Create(c *gin.Context) {
 }
 
 func (h *loanMetadataHandler) Update(c *gin.Context) {
-	_, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
 	accountId, err := uuid.Parse(c.Param("accountId"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid account ID"})
@@ -113,12 +89,6 @@ func (h *loanMetadataHandler) Update(c *gin.Context) {
 }
 
 func (h *loanMetadataHandler) Delete(c *gin.Context) {
-	_, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
 	accountId, err := uuid.Parse(c.Param("accountId"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid account ID"})
