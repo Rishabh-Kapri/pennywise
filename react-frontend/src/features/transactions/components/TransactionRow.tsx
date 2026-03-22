@@ -5,6 +5,7 @@ import styles from './Transaction.module.css';
 import { TransactionCell } from './TransactionCell';
 import type { RowComponentProps } from 'react-window';
 import { useAppDispatch } from '@/app/hooks';
+import { toast } from '@/utils';
 import {
   createTransaction,
   deleteTransactionById,
@@ -58,14 +59,19 @@ export function TransactionRow({
     if (!selectedTxn || !selectedTxn.id) {
       return;
     }
-    await dispatch(deleteTransactionById(selectedTxn.id));
-    // if paramId is present dipatch fetch transaction for specific account
-    if (paramId) {
-      dispatch(fetchAllTransaction(selectedTxn.accountId));
-    } else {
-      dispatch(fetchAllTransaction(''));
+    try {
+      await dispatch(deleteTransactionById(selectedTxn.id)).unwrap();
+      // if paramId is present dipatch fetch transaction for specific account
+      if (paramId) {
+        dispatch(fetchAllTransaction(selectedTxn.accountId));
+      } else {
+        dispatch(fetchAllTransaction(''));
+      }
+      resetSelectedTxn();
+      toast.success('Transaction deleted');
+    } catch {
+      toast.error('Failed to delete transaction');
     }
-    resetSelectedTxn();
   };
 
   const saveTransaction = async () => {
@@ -84,15 +90,22 @@ export function TransactionRow({
         amount,
         note: selectedTxn.note ?? '',
         source: TransactionSource.PENNYWISE,
+        tagIds: selectedTxn.tagIds ?? [],
       };
       console.log('payload:', payload);
 
-      if (isAddingNew) {
-        dispatch(createTransaction(payload));
-      } else {
-        // this is an existing transaction
-        payload.id = selectedTxn.id;
-        dispatch(updateTransaction(payload));
+      try {
+        if (isAddingNew) {
+          await dispatch(createTransaction(payload)).unwrap();
+          toast.success('Transaction created');
+        } else {
+          // this is an existing transaction
+          payload.id = selectedTxn.id;
+          await dispatch(updateTransaction(payload)).unwrap();
+          toast.success('Transaction updated');
+        }
+      } catch {
+        toast.error('Failed to save transaction');
       }
       resetSelectedTxn();
     }
@@ -124,6 +137,13 @@ export function TransactionRow({
     [handleSelectedTxnChange],
   );
 
+  const handleTagsChange = useCallback(
+    (tagIds: string[]) => {
+      handleSelectedTxnChange('tagIds' as keyof Transaction, tagIds as unknown as string | number);
+    },
+    [handleSelectedTxnChange],
+  );
+
   return (
     <div style={style}>
       {' '}
@@ -145,6 +165,7 @@ export function TransactionRow({
                 selectedTxn={selectedTxn}
                 onFieldChange={handleInputChange}
                 onSelectChange={createSelectHandler}
+                onTagsChange={handleTagsChange}
                 onBlur={handleInputBlur}
               />
             </div>

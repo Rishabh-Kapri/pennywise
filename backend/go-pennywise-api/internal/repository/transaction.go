@@ -31,7 +31,7 @@ func NewTransactionRepository(db *pgxpool.Pool) TransactionRepository {
 }
 
 func (r *transactionRepo) GetAll(ctx context.Context, budgetId uuid.UUID, filter *model.TransactionFilter) ([]model.Transaction, error) {
-	sql := `SELECT id, budget_id, date, payee_id, category_id, account_id, note, amount, transfer_account_id, transfer_transaction_id, created_at, updated_at
+	sql := `SELECT id, budget_id, date, payee_id, category_id, account_id, note, amount, transfer_account_id, transfer_transaction_id, tag_ids, created_at, updated_at
 		FROM transactions 
 		WHERE deleted = FALSE AND budget_id = $1`
 	args := []any{budgetId}
@@ -54,7 +54,7 @@ func (r *transactionRepo) GetAll(ctx context.Context, budgetId uuid.UUID, filter
 	var transactions []model.Transaction
 	for rows.Next() {
 		var txn model.Transaction
-		err := rows.Scan(&txn.ID, &txn.BudgetID, &txn.Date, &txn.PayeeID, &txn.CategoryID, &txn.AccountID, &txn.Note, &txn.Amount, &txn.TransferAccountID, &txn.TransferTransactionID, &txn.CreatedAt, &txn.UpdatedAt)
+		err := rows.Scan(&txn.ID, &txn.BudgetID, &txn.Date, &txn.PayeeID, &txn.CategoryID, &txn.AccountID, &txn.Note, &txn.Amount, &txn.TransferAccountID, &txn.TransferTransactionID, &txn.TagIDs, &txn.CreatedAt, &txn.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -79,6 +79,7 @@ func (r *transactionRepo) GetById(ctx context.Context, budgetId uuid.UUID, id uu
 				transactions.source,
 				transactions.transfer_account_id,
 				transactions.transfer_transaction_id,
+				transactions.tag_ids,
 				transactions.created_at,
 				transactions.updated_at,
 				accounts.name AS account_name,
@@ -102,6 +103,7 @@ func (r *transactionRepo) GetById(ctx context.Context, budgetId uuid.UUID, id uu
 		&txn.Source,
 		&txn.TransferAccountID,
 		&txn.TransferTransactionID,
+		&txn.TagIDs,
 		&txn.CreatedAt,
 		&txn.UpdatedAt,
 		&txn.AccountName,
@@ -130,6 +132,7 @@ func (r *transactionRepo) GetByIdTx(ctx context.Context, tx pgx.Tx, budgetId uui
 				transactions.source,
 				transactions.transfer_account_id,
 				transactions.transfer_transaction_id,
+				transactions.tag_ids,
 				transactions.created_at,
 				transactions.updated_at,
 				accounts.name AS account_name,
@@ -153,6 +156,7 @@ func (r *transactionRepo) GetByIdTx(ctx context.Context, tx pgx.Tx, budgetId uui
 		&txn.Source,
 		&txn.TransferAccountID,
 		&txn.TransferTransactionID,
+		&txn.TagIDs,
 		&txn.CreatedAt,
 		&txn.UpdatedAt,
 		&txn.AccountName,
@@ -182,6 +186,7 @@ func (r *transactionRepo) GetAllNormalized(ctx context.Context, budgetId uuid.UU
 			    transactions.amount,
 			    transactions.transfer_account_id,
 			    transactions.transfer_transaction_id,
+			    transactions.tag_ids,
 			    transactions.created_at,
 			    transactions.updated_at,
 					accounts.name AS account_name,
@@ -221,6 +226,7 @@ func (r *transactionRepo) GetAllNormalized(ctx context.Context, budgetId uuid.UU
 			    transactions.amount,
 			    transactions.transfer_account_id,
 			    transactions.transfer_transaction_id,
+			    transactions.tag_ids,
 			    transactions.created_at,
 			    transactions.updated_at,
 					accounts.name AS account_name,
@@ -258,6 +264,7 @@ func (r *transactionRepo) GetAllNormalized(ctx context.Context, budgetId uuid.UU
 			&txn.Amount,
 			&txn.TransferAccountID,
 			&txn.TransferTransactionID,
+			&txn.TagIDs,
 			&txn.CreatedAt,
 			&txn.UpdatedAt,
 			&txn.AccountName,
@@ -293,9 +300,10 @@ func (r *transactionRepo) Create(ctx context.Context, tx pgx.Tx, txn model.Trans
 		  amount,
 		  transfer_account_id,
 		  transfer_transaction_id,
+		  tag_ids,
 		  created_at,
 		  updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
 		RETURNING id, amount, budget_id`,
 		txn.BudgetID,
 		txn.Date,
@@ -307,6 +315,7 @@ func (r *transactionRepo) Create(ctx context.Context, tx pgx.Tx, txn model.Trans
 		txn.Amount,
 		txn.TransferAccountID,
 		txn.TransferTransactionID,
+		txn.TagIDs,
 	).Scan(&createdTxn.ID, &createdTxn.Amount, &createdTxn.BudgetID)
 	if err != nil {
 		return nil, err
@@ -327,8 +336,9 @@ func (r *transactionRepo) Update(ctx context.Context, tx pgx.Tx, budgetId uuid.U
 				amount = $6,
 				transfer_account_id = $7,
 				transfer_transaction_id = $8,
+				tag_ids = $9,
 				updated_at = NOW()
-		  WHERE budget_id = $9 AND id = $10
+		  WHERE budget_id = $10 AND id = $11
 		`, txn.Date,
 		txn.PayeeID,
 		txn.CategoryID,
@@ -337,6 +347,7 @@ func (r *transactionRepo) Update(ctx context.Context, tx pgx.Tx, budgetId uuid.U
 		txn.Amount,
 		txn.TransferAccountID,
 		txn.TransferTransactionID,
+		txn.TagIDs,
 		budgetId,
 		id,
 	)

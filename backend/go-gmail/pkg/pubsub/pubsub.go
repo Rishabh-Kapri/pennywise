@@ -3,20 +3,21 @@ package pubsub
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
 	"gmail-transactions/pkg/auth"
 	"gmail-transactions/pkg/config"
 	"gmail-transactions/pkg/gmail"
+	"gmail-transactions/pkg/logger"
 	"gmail-transactions/pkg/parser"
 	"gmail-transactions/pkg/pennywise-api"
 	"gmail-transactions/pkg/prediction"
 	"gmail-transactions/pkg/runner"
-	"gmail-transactions/pkg/storage"
 
 	"cloud.google.com/go/pubsub"
+	"google.golang.org/api/option"
 )
 
 type GmailPushPayload struct {
@@ -50,7 +51,7 @@ func (p *EventProcessor) startProcessing(ctx context.Context) {
 		case event := <-p.pendingEvents:
 			p.processMessage(event)
 		case <-ctx.Done():
-			log.Printf("channel done!")
+			slog.Info("channel done")
 			return
 		}
 	}
@@ -63,20 +64,21 @@ func (p *EventProcessor) processMessage(event *pubsub.Message) {
 	var m runner.EventData
 	err := json.Unmarshal(event.Data, &m)
 	if err != nil {
-		log.Printf("Failed to unmarshal pubsub msg data :%v", err.Error())
+		slog.Error("failed to unmarshal pubsub msg data", "error", err)
+		p.mu.Unlock()
 		event.Nack()
 		return
 	}
 
 	if p.processed[m.HistoryId] {
 		p.mu.Unlock()
-		log.Printf("Duplicate historyId %v detected, skipping!\n", m.HistoryId)
+		slog.Info("duplicate historyId detected, skipping", "historyId", m.HistoryId)
 		event.Ack()
 		return
 	}
 	if m.HistoryId < p.lastProcessed {
 		p.mu.Unlock()
-		log.Printf("Outdated historyId %v detected, skipping! \n", m.HistoryId)
+		slog.Info("outdated historyId detected, skipping", "historyId", m.HistoryId)
 		event.Ack()
 		return
 	}
@@ -86,12 +88,12 @@ func (p *EventProcessor) processMessage(event *pubsub.Message) {
 
 	defer func() {
 		p.mu.Lock()
-		log.Printf("Inside defer func %v", p.lastProcessed)
+		slog.Debug("defer func", "lastProcessed", p.lastProcessed)
 		delete(p.processingQueue, m.HistoryId)
 		if m.HistoryId > p.lastProcessed {
 			p.lastProcessed = m.HistoryId
 		}
-		log.Printf("Inside defer func after %v", p.lastProcessed)
+		slog.Debug("defer func after", "lastProcessed", p.lastProcessed)
 		p.mu.Unlock()
 
 		event.Ack()
@@ -99,7 +101,7 @@ func (p *EventProcessor) processMessage(event *pubsub.Message) {
 
 	err = p.runner.ProcessGmailHistoryId(m)
 	if err != nil {
-		log.Printf("Error while processing gmail historyId %v: %v", m.HistoryId, err.Error())
+		slog.Error("error processing gmail historyId", "historyId", m.HistoryId, "error", err)
 		event.Nack()
 		return
 	}
@@ -112,7 +114,7 @@ func (p *EventProcessor) addEventDataToQueue(event *pubsub.Message) {
 }
 
 func FakeProcessHistoryId(event runner.EventData) {
-	log.Printf("Fake Processing History ID: %v", event)
+	slog.Info("fake processing history ID", "event", event)
 	time.Sleep(3 * time.Second)
 }
 
@@ -163,53 +165,35 @@ func PullMessages() {
 		gmail.NewService(config),
 		parser.NewEmailParser(),
 		prediction.NewService(config),
-		storage.NewService(config),
 		pennywise.NewService(config),
 	)
-
-	defer func() {
-		if err := runnerInstance.Close(); err != nil {
-			log.Fatalf("Failed to close runner: %v", err)
-		}
-	}()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	projectId := config.ProjectID
 	subName := config.SubscriptionName
-	client, err := pubsub.NewClient(ctx, projectId)
+	client, err := pubsub.NewClient(ctx, projectId, option.WithCredentialsJSON([]byte(config.GoogleApplicationCredentialsJson)))
 	if err != nil {
-		log.Fatalf("Failed to create client: %v", err)
+		logger.Fatal("failed to create pubsub client", "error", err)
 	}
 	defer client.Close()
 
 	sub := client.Subscription(subName)
 	ok, err := sub.Exists(ctx)
 	if err != nil {
-		log.Fatalf("Failed to check if sub exists: %v", err)
+		logger.Fatal("failed to check if sub exists", "error", err)
 	}
 	if !ok {
-		log.Fatalf("Sub %s does not exists", subName)
+		logger.Fatal("sub does not exist", "sub", subName)
 	}
 
-	// processor := NewEventProcessor(runner)
-	// // start a goroutine to process events
-	// go processor.startProcessing(ctx)
+	processor := NewEventProcessor(runnerInstance)
+	// start a goroutine to process events
+	go processor.startProcessing(ctx)
 
 	err = sub.Receive(ctx, func(ctx context.Context, msg *pubsub.Message) {
-		log.Printf("Received event data: %+v", msg)
-		// processor.addEventDataToQueue(msg)
-		var m runner.EventData
-		if err := json.Unmarshal(msg.Data, &m); err != nil {
-			log.Printf("Failed to unmarshal message: %v", err)
-			return
-		}
-		err = runnerInstance.ProcessGmailHistoryId(m)
-		if err != nil {
-			log.Printf("Failed to process message: %v", err)
-			return
-		}
-		msg.Ack()
+		slog.Info("received event data", "msg", msg)
+		processor.addEventDataToQueue(msg)
 	})
 }

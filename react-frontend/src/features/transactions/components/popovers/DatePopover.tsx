@@ -1,7 +1,7 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { Calendar } from '@heroui/calendar';
 import { parseDate, type DateValue } from '@internationalized/date';
-import { Popover } from '@/components/common/Popover/Popover';
+import { Popover, PopoverTrigger, PopoverContent } from '@heroui/popover';
 import styles from './Popover.module.css';
 
 interface Props {
@@ -11,7 +11,6 @@ interface Props {
 
 export function DateDropdown({ value, onClick }: Props) {
   const [isOpen, setIsOpen] = useState(false);
-  const triggerRef = useRef<HTMLInputElement | null>(null);
 
   const handleDateChange = (newDate: DateValue) => {
     const dateString = newDate.toString();
@@ -26,38 +25,41 @@ export function DateDropdown({ value, onClick }: Props) {
     dateValue = undefined;
   }
 
+  // Format the date for display
+  const displayValue = value
+    ? new Date(value).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })
+    : '';
+
   return (
     <div className={styles.popoverContainer}>
-      <input
-        ref={triggerRef}
-        onFocus={() => setIsOpen(true)}
-        onBlur={(e) => {
-          const popoverContent = document.getElementById('popover-content');
-          if (
-            popoverContent &&
-            popoverContent.contains(e.relatedTarget as Node)
-          ) {
-            return;
-          }
-          setIsOpen(false);
-        }}
-        className={`${styles.input} ${styles.trigger}`}
-        value={value}
-        readOnly
-        placeholder="Select Date"
-        aria-haspopup="true"
-        aria-expanded={isOpen}
-      />
-      <Popover id="popover-content" isOpen={isOpen} triggerRef={triggerRef}>
-        <div
-          onMouseDown={(e) => e.preventDefault()}
-        >
+      <Popover
+        isOpen={isOpen}
+        onOpenChange={setIsOpen}
+        placement="bottom-start"
+        showArrow
+      >
+        <PopoverTrigger>
+          <input
+            className={`${styles.input} ${styles.trigger}`}
+            value={displayValue}
+            readOnly
+            placeholder="Select Date"
+            aria-haspopup="true"
+            aria-expanded={isOpen}
+          />
+        </PopoverTrigger>
+        <PopoverContent className={styles.datePopoverContent}>
           <Calendar
             aria-label="Date Picker"
             value={dateValue}
             onChange={handleDateChange}
+            showMonthAndYearPickers
           />
-        </div>
+        </PopoverContent>
       </Popover>
     </div>
   );

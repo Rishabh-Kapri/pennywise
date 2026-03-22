@@ -1,0 +1,103 @@
+.backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 999;
+}
+
+.popoverContainer {
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 1rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.totalAmount {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.txnTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  table-layout: fixed;
+}
+
+.txnTable thead th {
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  color: var(--color-text-secondary);
+  font-weight: 600;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.txnTable thead th:nth-child(1) { width: 18%; }
+.txnTable thead th:nth-child(2) { width: 30%; }
+.txnTable thead th:nth-child(3) { width: 30%; }
+.txnTable thead th:nth-child(4) { width: 22%; }
+
+.txnTable tbody tr {
+  transition: background 0.15s ease;
+}
+
+.txnTable tbody tr:hover {
+  background: var(--color-surface-tertiary);
+}
+
+.txnTable td {
+  padding: 0.45rem 0.6rem;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.amountCol {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.amountInflow {
+  color: var(--color-success, #22c55e);
+}
+
+.amountOutflow {
+  color: var(--color-danger, #ef4444);
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem 1rem;
+  gap: 0.5rem;
+  color: var(--color-text-secondary);
+}
+
+.emptyIcon {
+  opacity: 0.4;
+}
+
+.emptyText {
+  font-size: 0.8rem;
+}

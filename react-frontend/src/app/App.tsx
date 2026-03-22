@@ -4,6 +4,7 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import '../styles/index.css';
 import { Layout } from '@/components/layout';
 import { lazy, Suspense } from 'react';
+import { Login, ProtectedRoute } from '@/features/auth';
 
 const Dashboard = lazy(() => import('@/components/layout/Dashboard/Dashboard'));
 const Budget = lazy(() => import('@/features/budget/components/Budget'));
@@ -12,55 +13,69 @@ const Transaction = lazy(() =>
     default: module.Transaction,
   })),
 );
+const LoanOverview = lazy(() =>
+  import('@/features/loans/components/LoanOverview'),
+);
+
 function App() {
   return (
     <Provider store={store}>
       <BrowserRouter>
         <Routes>
-          <Route element={<Layout />}>
+          {/* Public route - Login */}
+          <Route
+            path="/login"
+            element={
+              <Suspense fallback={<div>Loading...</div>}>
+                <Login />
+              </Suspense>
+            }
+          />
+
+          {/* Protected routes - require authentication */}
+          <Route
+            element={
+              <ProtectedRoute>
+                <Layout />
+              </ProtectedRoute>
+            }>
             <Route
               path="/"
               element={
                 <Suspense fallback={<div>Loading...</div>}>
                   <Dashboard />
                 </Suspense>
-              }></Route>
+              }
+            />
             <Route
               path="/budget"
               element={
-                <Suspense fallback={<div>This is loading...</div>}>
+                <Suspense fallback={<div>Loading...</div>}>
                   <Budget />
                 </Suspense>
-              }></Route>
+              }
+            />
             <Route
               path="/transactions/:id?"
               element={
-                <Suspense fallback={<div>Something is happening...</div>}>
+                <Suspense fallback={<div>Loading...</div>}>
                   <Transaction />
                 </Suspense>
-              }></Route>
+              }
+            />
+            <Route
+              path="/loans/:id?"
+              element={
+                <Suspense fallback={<div>Loading...</div>}>
+                  <LoanOverview />
+                </Suspense>
+              }
+            />
           </Route>
         </Routes>
       </BrowserRouter>
     </Provider>
   );
-  // return (
-  //   <Provider store={store}>
-  //     <BrowserRouter>
-  //       <Suspense fallback={<div>This is loading...</div>}>
-  //         <Routes>
-  //           <Route element={<Layout />}>
-  //             <Route path="/" element={<Dashboard />}></Route>
-  //             <Route path="/budget" element={<Budget />}></Route>
-  //             <Route
-  //               path="/transactions/:id?"
-  //               element={<Transaction />}></Route>
-  //           </Route>
-  //         </Routes>
-  //       </Suspense>
-  //     </BrowserRouter>
-  //   </Provider>
-  // );
 }
 
 export default App;

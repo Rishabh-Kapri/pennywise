@@ -44,6 +44,7 @@ type EmailMessageData struct {
 type EmailData struct {
 	Headers []*gmail.MessagePartHeader
 	Body    string
+	MessageId string
 }
 
 type ParsedTransactionData struct {

@@ -1,0 +1,350 @@
+.container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 1.5rem 2rem;
+  gap: 1.5rem;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.header h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid var(--color-surface-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.tab {
+  background: none;
+  border: none;
+  padding: 0.5rem 1.5rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  position: relative;
+  transition: color 0.15s;
+}
+
+.tab:hover {
+  color: var(--color-text);
+}
+
+.tabActive {
+  composes: tab;
+  color: var(--color-primary);
+}
+
+.tabActive::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--color-primary);
+  border-radius: 1px;
+}
+
+/* Overview Grid */
+.overviewGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+}
+
+@media (max-width: 768px) {
+  .overviewGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Card base */
+.card {
+  background: var(--color-surface);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  border: 1px solid var(--color-border);
+}
+
+/* Progress Card */
+.progressCard {
+  composes: card;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.progressRing {
+  position: relative;
+  width: 140px;
+  height: 140px;
+}
+
+.progressRing svg {
+  transform: rotate(-90deg);
+  width: 100%;
+  height: 100%;
+}
+
+.progressBg {
+  fill: none;
+  stroke: var(--color-surface-secondary);
+  stroke-width: 10;
+}
+
+.progressFill {
+  fill: none;
+  stroke: var(--color-primary);
+  stroke-width: 10;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.6s ease;
+}
+
+.progressPercent {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.progressLabel {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Balance Card */
+.balanceCard {
+  composes: card;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.balanceRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.balanceLabel {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.balanceValue {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.balanceNegative {
+  color: var(--color-budget-negative);
+}
+
+.balancePositive {
+  color: var(--color-budget-positive);
+}
+
+/* Insight Card */
+.insightCard {
+  composes: card;
+  grid-column: 1 / -1;
+  background: linear-gradient(135deg, var(--color-surface), var(--color-surface-secondary));
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.insightTitle {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+  font-weight: 600;
+}
+
+.insightBody {
+  font-size: 0.95rem;
+  color: var(--color-text);
+  line-height: 1.6;
+}
+
+.insightHighlight {
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+.insightActions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.editBtn {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: var(--color-surface-secondary);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.editBtn:hover {
+  background: var(--color-border);
+}
+
+.simulatorBtn {
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: 0.5rem;
+  padding: 0.6rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.simulatorBtn:hover {
+  opacity: 0.9;
+}
+
+/* Details Row */
+.detailsCard {
+  composes: card;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1rem;
+}
+
+.detailItem {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.detailLabel {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+}
+
+.detailValue {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+/* Empty state */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  height: 60vh;
+  color: var(--color-text-secondary);
+}
+
+.emptyState h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.emptyState p {
+  font-size: 0.95rem;
+  max-width: 400px;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.addBtn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: 0.5rem;
+  padding: 0.6rem 1.5rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.addBtn:hover {
+  opacity: 0.9;
+}
+
+/* Activity Tab */
+.activitySection {
+  overflow-x: auto;
+}
+
+.txnTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.txnTable th {
+  text-align: left;
+  padding: 0.75rem 1rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border);
+  font-weight: 600;
+}
+
+.txnTable td {
+  padding: 0.75rem 1rem;
+  color: var(--color-text);
+  border-bottom: 1px solid var(--color-surface-secondary);
+}
+
+.txnTable tbody tr:hover {
+  background: var(--color-surface-secondary);
+}
+
+.txnAmountCol {
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}

@@ -19,6 +19,7 @@ export interface Transaction {
   source: TransactionSource;
   transferTransactionId: string | null,
   transferAccountId: string | null,
+  tagIds: string[];
   accountName: string;
   accountId: string;
   payeeName: string;
@@ -37,6 +38,7 @@ export interface TransactionDTO {
   amount: number;
   note?: string;
   source: TransactionSource;
+  tagIds?: string[];
 }
 
 export interface TransactionState {
