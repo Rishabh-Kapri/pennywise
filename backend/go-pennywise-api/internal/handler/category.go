@@ -1,12 +1,12 @@
 package handler
 
 import (
-	"log"
 	"net/http"
 	"strings"
 
 	"pennywise-api/internal/model"
 	"pennywise-api/internal/service"
+	utils "pennywise-api/pkg"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -71,13 +71,13 @@ func (h *categoryHandler) Create(c *gin.Context) {
 func (h *categoryHandler) Search(c *gin.Context) {
 	ctx := c.Request.Context()
 	name := strings.TrimSpace(c.Query("name"))
-	log.Printf("%v", c.Query("name"))
+	utils.Logger(ctx).Debug("category search", "name", c.Query("name"))
 	// if name == "" {
 	// 	c.JSON(http.StatusBadRequest, gin.H{"error": "Name is needed"})
 	// 	return
 	// }
 	categories, err := h.service.Search(ctx, name)
-	log.Printf("%v", err)
+	utils.Logger(ctx).Debug("category search result", "error", err)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -131,25 +131,23 @@ func (h *categoryHandler) Update(c *gin.Context) {
 
 func (h *categoryHandler) UpdateBudget(c *gin.Context) {
 	ctx := c.Request.Context()
-	log.Printf("%v", ctx)
+	utils.Logger(ctx).Info("updating monthly budget")
 	id, ok := c.Params.Get("id")
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})
 		return
 	}
-	log.Printf("%v", id)
 	categoryId, err := uuid.Parse(id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error while parsing id"})
 		return
 	}
-	log.Printf("%v", categoryId)
 	month, ok := c.Params.Get("month")
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Month is needed"})
 		return
 	}
-	log.Printf("%v", month)
+	utils.Logger(ctx).Info("updating monthly budget", "categoryId", categoryId, "month", month)
 	var body model.MonthlyBudget
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

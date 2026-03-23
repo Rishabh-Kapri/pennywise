@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"pennywise-api/internal/config"
@@ -17,7 +18,7 @@ import (
 
 type AuthService interface {
 	LoginWithGoogle(ctx context.Context, tokenString string) (*model.AuthUser, string, string, error)
-	GenerateAccessToken(ctx context.Context, userID uuid.UUID, name string, email string) (string, error)
+	GenerateAccessToken(ctx context.Context, userID uuid.UUID, name string, email string, version int) (string, error)
 	GenerateRefreshToken(ctx context.Context, userID uuid.UUID) (string, error)
 	ValidateToken(ctx context.Context, tokenString string) (*jwt.Token, error)
 	GetUserById(ctx context.Context, userID uuid.UUID) (*model.AuthUser, error)
@@ -60,7 +61,7 @@ func (s *authService) LoginWithGoogle(ctx context.Context, tokenString string) (
 	}
 
 	// generate access token
-	accessToken, err := s.GenerateAccessToken(ctx, user.ID, user.Name, user.Email)
+	accessToken, err := s.GenerateAccessToken(ctx, user.ID, user.Name, user.Email, user.TokenVersion)
 	if err != nil {
 		return nil, "", "", fmt.Errorf("failed to generate access token: %w", err)
 	}
@@ -74,13 +75,13 @@ func (s *authService) LoginWithGoogle(ctx context.Context, tokenString string) (
 	return user, accessToken, refreshToken, nil
 }
 
-func (s *authService) GenerateAccessToken(ctx context.Context, userID uuid.UUID, name string, email string) (string, error) {
+func (s *authService) GenerateAccessToken(ctx context.Context, userID uuid.UUID, name string, email string, version int) (string, error) {
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":   userID.String(),                         // subject (user ID)
-		"email": email,                                   // custom claim for user email
 		"iss":   "pennywise",                             // issuer
-		"aud":   name,                                    // audience (username)
+		"aud":   email,                                    // audience (email)
 		"exp":   time.Now().Add(time.Minute * 15).Unix(), // expire in 15 minutes
+		"version": version,                               // token version for invalidation
 		"iat":   time.Now().Unix(),                       // issued at
 	})
 
@@ -111,6 +112,7 @@ func (s *authService) ValidateToken(ctx context.Context, tokenString string) (*j
 		return []byte(s.config.JWTSecret), nil
 	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 
+	slog.DebugContext(ctx, "token parsed", "valid", token.Valid, "error", err)
 	if err != nil {
 		return nil, err
 	}

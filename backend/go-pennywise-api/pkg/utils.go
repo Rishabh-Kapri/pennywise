@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"sort"
 	"strings"
 
@@ -16,6 +15,7 @@ import (
 type contextKey string
 
 const budgetIDKey contextKey = "budgetId"
+const userIDKey contextKey = "authUserID"
 
 // WithBudgetID returns a new context with the budget ID set.
 func WithBudgetID(ctx context.Context, id uuid.UUID) context.Context {
@@ -40,6 +40,20 @@ func MustBudgetID(ctx context.Context) uuid.UUID {
 		panic("BudgetIdMiddleware not configured: " + err.Error())
 	}
 	return id
+}
+
+// WithUserID returns a new context with the authenticated user's ID set.
+func WithUserID(ctx context.Context, id uuid.UUID) context.Context {
+	return context.WithValue(ctx, userIDKey, id)
+}
+
+// UserIDFromContext extracts the authenticated user's ID from the context.
+func UserIDFromContext(ctx context.Context) (uuid.UUID, error) {
+	id, ok := ctx.Value(userIDKey).(uuid.UUID)
+	if !ok {
+		return uuid.Nil, errors.New("user ID not found in context")
+	}
+	return id, nil
 }
 
 // @TODO: add more validations
@@ -82,7 +96,7 @@ func UpdateCarryover(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categor
 		return fmt.Errorf("categoryId cannot be nil")
 	}
 	if amount == 0 {
-		log.Printf("Skipping carryover update for 0 amount")
+		Logger(ctx).Info("skipping carryover update for 0 amount")
 		return nil
 	}
 	if monthKey == "" {
@@ -101,7 +115,7 @@ func UpdateCarryover(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categor
 	if cmdTag.RowsAffected() == 0 {
 		budgeted := 0.0
 		// @TODO: see if carryover_balance fetching can be done through pure sql
-		log.Printf("Carryover not found for month: %v", monthKey)
+		Logger(ctx).Info("carryover not found for month, creating", "month", monthKey)
 		newCmdTag, err := tx.Exec(
 			ctx, `
 			INSERT INTO monthly_budgets (
@@ -126,7 +140,7 @@ func UpdateCarryover(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categor
 			return err
 		}
 		if newCmdTag.RowsAffected() == 0 {
-			log.Printf("No entry found for previous months when creating new monthly_budget, creating with using previous carryover_balance as activity amount")
+			Logger(ctx).Info("no previous months found, creating with activity amount as carryover")
 			_, err := tx.Exec(
 				ctx, `
 				INSERT INTO monthly_budgets (

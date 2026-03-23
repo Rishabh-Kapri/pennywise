@@ -14,6 +14,7 @@ type BudgetMetadata struct {
 
 type Budget struct {
 	ID         uuid.UUID      `json:"id"`
+	UserID     uuid.UUID      `json:"userId"`
 	Name       string         `json:"name"`
 	IsSelected bool           `json:"isSelected"`
 	CreatedAt  time.Time      `json:"createdAt"`

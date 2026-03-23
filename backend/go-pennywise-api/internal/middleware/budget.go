@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 
+	"pennywise-api/internal/repository"
 	utils "pennywise-api/pkg"
 
 	"github.com/gin-gonic/gin"
@@ -11,11 +12,13 @@ import (
 
 const budgetIDHeader = "X-Budget-ID"
 
-func BudgetIdMiddleware() gin.HandlerFunc {
+func BudgetIdMiddleware(budgetRepo repository.BudgetRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		_, exists := c.Get("userID")
-		if !exists {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "userID not found in context"})
+		ctx := c.Request.Context()
+
+		userID, err := utils.UserIDFromContext(ctx)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
 			c.Abort()
 			return
 		}
@@ -34,7 +37,20 @@ func BudgetIdMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		ctx := utils.WithBudgetID(c.Request.Context(), parsedBudgetId)
+		// Verify the budget belongs to the authenticated user
+		owned, err := budgetRepo.IsOwnedByUser(ctx, parsedBudgetId, userID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to verify budget ownership"})
+			c.Abort()
+			return
+		}
+		if !owned {
+			c.JSON(http.StatusForbidden, gin.H{"error": "access denied to this budget"})
+			c.Abort()
+			return
+		}
+
+		ctx = utils.WithBudgetID(ctx, parsedBudgetId)
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()
 	}

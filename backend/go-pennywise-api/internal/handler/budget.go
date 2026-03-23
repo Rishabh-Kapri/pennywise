@@ -1,11 +1,11 @@
 package handler
 
 import (
-	"context"
 	"net/http"
 
 	"pennywise-api/internal/model"
 	"pennywise-api/internal/service"
+	utils "pennywise-api/pkg"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -26,9 +26,15 @@ func NewBudgetHandler(service service.BudgetService) BudgetHandler {
 }
 
 func (h *budgetHandler) List(c *gin.Context) {
-	ctx := context.Background()
+	ctx := c.Request.Context()
 
-	budgets, err := h.service.GetAll(ctx)
+	userID, err := utils.UserIDFromContext(ctx)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+		return
+	}
+
+	budgets, err := h.service.GetAll(ctx, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -37,15 +43,21 @@ func (h *budgetHandler) List(c *gin.Context) {
 }
 
 func (h *budgetHandler) Create(c *gin.Context) {
-	ctx := context.Background()
+	ctx := c.Request.Context()
 
-	var body model.Budget
-	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	userID, err := utils.UserIDFromContext(ctx)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
 		return
 	}
 
-	if err := h.service.Create(ctx, body.Name); err != nil {
+	var body model.Budget
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.service.Create(ctx, body.Name, userID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -54,7 +66,7 @@ func (h *budgetHandler) Create(c *gin.Context) {
 }
 
 func (h *budgetHandler) UpdateById(c *gin.Context) {
-	ctx := context.Background()
+	ctx := c.Request.Context()
 
 	id, ok := c.Params.Get("id")
 	if !ok {
@@ -63,12 +75,12 @@ func (h *budgetHandler) UpdateById(c *gin.Context) {
 	}
 	parsedId, err := uuid.Parse(id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "error while parsing ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "error while parsing ID"})
 		return
 	}
 	var body model.Budget
 	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	err = h.service.UpdateById(ctx, parsedId, body)

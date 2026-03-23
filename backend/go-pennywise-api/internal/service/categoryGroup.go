@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"log"
 
 	"pennywise-api/internal/model"
 	"pennywise-api/internal/repository"
@@ -33,7 +32,7 @@ func (s *categoryGroupService) GetAll(ctx context.Context, month string) ([]mode
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("%v", month)
+	utils.Logger(ctx).Debug("listing category groups", "month", month)
 	if month != "" {
 		for _, group := range groups {
 			group.Balance = utils.FillCarryForward(group.Balance, month)

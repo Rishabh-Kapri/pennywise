@@ -1,12 +1,12 @@
 package handler
 
 import (
-	"log"
 	"net/http"
 	"strings"
 
 	"pennywise-api/internal/model"
 	"pennywise-api/internal/service"
+	utils "pennywise-api/pkg"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -47,7 +47,7 @@ func (h *transactionHandler) ListNormalized(c *gin.Context) {
 	ctx := c.Request.Context()
 	accountIdParam := strings.TrimSpace(c.Query("accountId"))
 
-	log.Printf("accountIdParam: %v", accountIdParam)
+	utils.Logger(ctx).Info("listing normalized transactions", "accountIdParam", accountIdParam)
 	var accountId *uuid.UUID
 	if accountIdParam != "" {
 		parsedId, err := uuid.Parse(accountIdParam)
