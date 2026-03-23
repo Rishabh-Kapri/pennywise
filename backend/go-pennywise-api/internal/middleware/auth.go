@@ -5,9 +5,11 @@ import (
 	"strings"
 
 	"pennywise-api/internal/service"
+	utils "pennywise-api/pkg"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 func AuthMiddleware(authService service.AuthService) gin.HandlerFunc {
@@ -37,8 +39,8 @@ func AuthMiddleware(authService service.AuthService) gin.HandlerFunc {
 			return
 		}
 		claims := token.Claims.(jwt.MapClaims)
-		email := claims["email"].(string)
-		if email == "" {
+		_, err = claims.GetAudience()
+		if err != nil {
 			c.JSON(401, gin.H{"error": "email claim missing in token"})
 			c.Abort()
 			return
@@ -51,25 +53,34 @@ func AuthMiddleware(authService service.AuthService) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		// userUuid, err := uuid.Parse(userID)
-		// if err != nil {
-		// 	c.JSON(401, gin.H{"error": "invalid user ID in token"})
-		// 	c.Abort()
-		// 	return
-		// }
+		userUuid, err := uuid.Parse(userID)
+		if err != nil {
+			c.JSON(401, gin.H{"error": "invalid user ID in token"})
+			c.Abort()
+			return
+		}
 
-		ctx = context.WithValue(c.Request.Context(), "userID", userID)
-		ctx = context.WithValue(ctx, "userEmail", email)
-		c.Request = c.Request.WithContext(ctx)
+		ctx = utils.WithUserID(ctx, userUuid)
 
 		// Optionally, you can fetch the full user info and set it in the context
-		// user, err := authService.GetUserById(ctx, userUuid)
-		// if err != nil {
-		// 	c.JSON(401, gin.H{"error": "failed to fetch user"})
-		// 	c.Abort()
-		// 	return
-		// }
-		// c.Set("user", user)
+		user, err := authService.GetUserById(ctx, userUuid)
+		if err != nil {
+			c.JSON(401, gin.H{"error": "failed to fetch user"})
+			c.Abort()
+			return
+		}
+		ctx = context.WithValue(ctx, "user", user)
+
+		// Check token version matches
+		// This is used to invalidate tokens when user logs out from all devices
+		jwtVersion, ok := claims["version"].(float64) // JWT stores numbers as float64
+		if !ok || int(jwtVersion) != user.TokenVersion {
+			c.JSON(401, gin.H{"error": "token revoked, please login again"})
+			c.Abort()
+			return
+		}
+
+		c.Request = c.Request.WithContext(ctx)
 
 		c.Next()
 	}
