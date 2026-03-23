@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"fmt"
-	"log"
 
 	"pennywise-api/internal/model"
 	"pennywise-api/internal/repository"
@@ -14,8 +13,8 @@ import (
 )
 
 type BudgetService interface {
-	GetAll(ctx context.Context) ([]model.Budget, error)
-	Create(ctx context.Context, name string) error
+	GetAll(ctx context.Context, userID uuid.UUID) ([]model.Budget, error)
+	Create(ctx context.Context, name string, userID uuid.UUID) error
 	UpdateById(ctx context.Context, id uuid.UUID, budget model.Budget) error
 }
 
@@ -35,14 +34,14 @@ func NewBudgetService(
 	return &budgetService{repo, payeeRepo, catRepo, catGroupRepo}
 }
 
-func (s *budgetService) GetAll(ctx context.Context) ([]model.Budget, error) {
-	return s.repo.GetAll(ctx)
+func (s *budgetService) GetAll(ctx context.Context, userID uuid.UUID) ([]model.Budget, error) {
+	return s.repo.GetAll(ctx, userID)
 }
 
-func (s *budgetService) Create(ctx context.Context, name string) error {
+func (s *budgetService) Create(ctx context.Context, name string, userID uuid.UUID) error {
 	return utils.WithTx(ctx, s.repo.GetDB(), func(tx pgx.Tx) error {
 		// 1. create budget
-		createdBudget, err := s.repo.Create(ctx, tx, name)
+		createdBudget, err := s.repo.Create(ctx, tx, name, userID)
 		if err != nil {
 			return fmt.Errorf("budgetService.Create; error creating budget: %v", err)
 		}
@@ -54,7 +53,7 @@ func (s *budgetService) Create(ctx context.Context, name string) error {
 			IsSystem: true,
 		}
 		createdGroup, err := s.catGroupRepo.Create(ctx, tx, catGroup)
-		log.Printf("%+v", createdGroup)
+		utils.Logger(ctx).Debug("created internal master category group", "group", createdGroup)
 		if err != nil {
 			return fmt.Errorf("budgetService.Create; error creating internal master category group: %v", err)
 		}
@@ -85,7 +84,7 @@ func (s *budgetService) Create(ctx context.Context, name string) error {
 			Hidden:          false,
 			IsSystem:        true,
 		}
-		log.Printf("%+v", cat)
+		utils.Logger(ctx).Debug("created inflow category", "category", cat)
 		_, err = s.catRepo.Create(ctx, tx, cat)
 		if err != nil {
 			return fmt.Errorf("budgetService.Create; error creating internal master category: %v", err)

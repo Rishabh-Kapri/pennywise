@@ -5,10 +5,10 @@ import (
 
 	"pennywise-api/internal/db"
 	"pennywise-api/internal/handler"
-
 	"pennywise-api/internal/middleware"
 	"pennywise-api/internal/repository"
 	"pennywise-api/internal/service"
+	utils "pennywise-api/pkg"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -19,11 +19,15 @@ func healthPage(c *gin.Context) {
 }
 
 func main() {
+	utils.SetupLogger()
+
 	dbConn := db.Connect()
-	router := gin.Default()
+	router := gin.New()
+	router.Use(gin.Recovery())
+	router.Use(middleware.RequestLogger())
 
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5000", "http://localhost:5173", "http://192.168.1.34:5100", "https://pennywise-fe-production.up.railway.app", "https://react-fe-production-8fe5.up.railway.app", "https://pennywise.nastydomain.space"},
+		AllowOrigins:     []string{"http://localhost:5000", "http://localhost:5173", "http://192.168.1.34:5100", "https://pennywise-fe-production.up.railway.app", "https://react-fe-production-8fe5.up.railway.app", "https://pennywise.nastydomain.space", "https://react-fe-dev.up.railway.app"},
 		AllowMethods:     []string{"GET", "POST", "PATCH", "PUT", "DELETE"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "X-Budget-ID"},
 		ExposeHeaders:    []string{"Content-Length"},
@@ -92,7 +96,7 @@ func main() {
 
 	// Auth middleware
 	authMiddleware := middleware.AuthMiddleware(authService)
-	budgetMiddleware := middleware.BudgetIdMiddleware()
+	budgetMiddleware := middleware.BudgetIdMiddleware(budgetRepo)
 
 	{
 		api := router.Group("/api")

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 
 	"pennywise-api/internal/model"
 	"pennywise-api/internal/repository"
@@ -98,45 +97,38 @@ func (s *categoryService) Update(ctx context.Context, id uuid.UUID, category mod
 // create a new record if it doesn't exist
 // gets the carryover from the previous month
 func (s *categoryService) UpdateMonthlyBudget(ctx context.Context, categoryId uuid.UUID, newBudgeted float64, month string) error {
-	tx, err := s.monthlyBudgetRepo.GetPgxTx(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
-
 	budgetId := utils.MustBudgetID(ctx)
 
-	exists, err := s.monthlyBudgetRepo.GetByCatIdAndMonth(ctx, tx, budgetId, categoryId, month)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			log.Printf("Budget for month %v and category %v doesn't exists, creating new one", month, categoryId)
-			// no budget exists for this category
-			monthyBudget := model.MonthlyBudget{
-				BudgetID:         budgetId,
-				CategoryID:       categoryId,
-				Month:            month,
-				Budgeted:         newBudgeted,
-				CarryoverBalance: 0.0,
-			}
-			err = s.monthlyBudgetRepo.Create(ctx, tx, budgetId, monthyBudget)
-			if err != nil {
-				return fmt.Errorf("error while creating monthly budget: %w", err)
+	return utils.WithTx(ctx, s.monthlyBudgetRepo.GetDB(), func(tx pgx.Tx) error {
+		exists, err := s.monthlyBudgetRepo.GetByCatIdAndMonth(ctx, tx, budgetId, categoryId, month)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				utils.Logger(ctx).Info("monthly budget not found, creating", "month", month, "categoryId", categoryId)
+				// no budget exists for this category
+				monthyBudget := model.MonthlyBudget{
+					BudgetID:         budgetId,
+					CategoryID:       categoryId,
+					Month:            month,
+					Budgeted:         newBudgeted,
+					CarryoverBalance: 0.0,
+				}
+				err = s.monthlyBudgetRepo.Create(ctx, tx, budgetId, monthyBudget)
+				if err != nil {
+					return fmt.Errorf("error while creating monthly budget: %w", err)
+				}
+			} else {
+				return fmt.Errorf("error while fetching existing budget: %w", err)
 			}
 		} else {
-			return fmt.Errorf("error while fetching existing budget: %w", err)
+			if exists.Budgeted == newBudgeted {
+				utils.Logger(ctx).Debug("budgeted unchanged, skipping")
+				return nil
+			}
+			err = s.monthlyBudgetRepo.UpdateBudgetedByCatIdAndMonth(ctx, tx, budgetId, categoryId, month, newBudgeted)
+			if err != nil {
+				return err
+			}
 		}
-	} else {
-		if exists.Budgeted == newBudgeted {
-			log.Printf("New and old budgeted same, skipping.")
-			return nil
-		}
-		err = s.monthlyBudgetRepo.UpdateBudgetedByCatIdAndMonth(ctx, tx, budgetId, categoryId, month, newBudgeted)
-		if err != nil {
-			return err
-		}
-	}
-	if err = tx.Commit(ctx); err != nil {
-		return err
-	}
-	return nil
+		return nil
+	})
 }

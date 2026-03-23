@@ -1,11 +1,11 @@
 package handler
 
 import (
-	"log"
 	"net/http"
 
 	"pennywise-api/internal/model"
 	"pennywise-api/internal/service"
+	utils "pennywise-api/pkg"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -45,7 +45,7 @@ func (h *predictionHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	log.Println(body)
+	utils.Logger(ctx).Info("creating prediction")
 	createdPredictions, err := h.service.Create(ctx, body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
