@@ -17,11 +17,11 @@ const loadAuthFromStorage = (): { user: User | null; tokens: AuthTokens | null }
     const stored = localStorage.getItem(AUTH_STORAGE_KEY);
     if (stored) {
       const data = JSON.parse(stored);
-      // Check if token is expired
-      if (data.tokens && data.tokens.expiresAt > Date.now()) {
+      // Keep auth if we have tokens — the interceptor will handle
+      // refreshing an expired access token via the refresh token
+      if (data.tokens?.refreshToken) {
         return data;
       }
-      // Clear expired auth
       localStorage.removeItem(AUTH_STORAGE_KEY);
     }
   } catch (e) {
@@ -140,6 +140,7 @@ const authSlice = createSlice({
         state.error = null;
       })
       .addCase(loginWithGoogle.fulfilled, (state, action: PayloadAction<LoginResponse>) => {
+        console.log('Login successful:', action.payload);
         const { user, accessToken, refreshToken, expiresIn } = action.payload;
         const tokens: AuthTokens = {
           accessToken,

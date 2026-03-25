@@ -2,13 +2,14 @@ package prediction
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 
 	"gmail-transactions/pkg/config"
+	"gmail-transactions/pkg/logger"
 	"gmail-transactions/pkg/parser"
 )
 
@@ -37,7 +38,7 @@ func NewService(config *config.Config) *Service {
 	}
 }
 
-func (s *Service) CallPredictApi(emailDetails *parser.EmailDetails, fieldType string) (*PredictionResult, error) {
+func (s *Service) CallPredictApi(ctx context.Context, emailDetails *parser.EmailDetails, fieldType string) (*PredictionResult, error) {
 	emailDetails.Type = fieldType
 	url := s.config.MLPApi + "/predict"
 
@@ -52,6 +53,11 @@ func (s *Service) CallPredictApi(emailDetails *parser.EmailDetails, fieldType st
 		return nil, fmt.Errorf("CallPredictApi:Error creating request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+
+	// Forward correlation ID to python-mlp
+	if cid := logger.CorrelationIDFromContext(ctx); cid != "" {
+		req.Header.Set("X-Correlation-ID", cid)
+	}
 
 	res, err := s.client.Do(req)
 	if err != nil {
@@ -70,7 +76,8 @@ func (s *Service) CallPredictApi(emailDetails *parser.EmailDetails, fieldType st
 	return &prediction, nil
 }
 
-func (s *Service) GetPredictedFields(parsedDetails *parser.EmailDetails, fallbackAccount string) (*PredictedFields, error) {
+func (s *Service) GetPredictedFields(ctx context.Context, parsedDetails *parser.EmailDetails, fallbackAccount string) (*PredictedFields, error) {
+	log := logger.Logger(ctx)
 	predicted := &PredictedFields{
 		Account: PredictionResult{
 			Label:      fallbackAccount,
@@ -86,11 +93,11 @@ func (s *Service) GetPredictedFields(parsedDetails *parser.EmailDetails, fallbac
 		},
 	}
 
-	accountPrediction, err := s.CallPredictApi(parsedDetails, "account")
+	accountPrediction, err := s.CallPredictApi(ctx, parsedDetails, "account")
 	if err != nil {
 		return predicted, err
 	}
-	slog.Info("predicted account", "prediction", accountPrediction)
+	log.Info("predicted account", "prediction", accountPrediction)
 	predicted.Account.Label = accountPrediction.Label
 	predicted.Account.Confidence = accountPrediction.Confidence
 
@@ -100,11 +107,11 @@ func (s *Service) GetPredictedFields(parsedDetails *parser.EmailDetails, fallbac
 
 	parsedDetails.Account = accountPrediction.Label
 
-	payeePrediction, err := s.CallPredictApi(parsedDetails, "payee")
+	payeePrediction, err := s.CallPredictApi(ctx, parsedDetails, "payee")
 	if err != nil {
 		return predicted, err
 	}
-	slog.Info("predicted payee", "prediction", payeePrediction)
+	log.Info("predicted payee", "prediction", payeePrediction)
 	predicted.Payee.Label = payeePrediction.Label
 	predicted.Payee.Confidence = payeePrediction.Confidence
 
@@ -115,11 +122,11 @@ func (s *Service) GetPredictedFields(parsedDetails *parser.EmailDetails, fallbac
 
 	parsedDetails.Payee = payeePrediction.Label
 
-	categoryPrediction, err := s.CallPredictApi(parsedDetails, "category")
+	categoryPrediction, err := s.CallPredictApi(ctx, parsedDetails, "category")
 	if err != nil {
 		return predicted, err
 	}
-	slog.Info("predicted category", "prediction", categoryPrediction)
+	log.Info("predicted category", "prediction", categoryPrediction)
 	predicted.Category.Label = categoryPrediction.Label
 	predicted.Category.Confidence = categoryPrediction.Confidence
 

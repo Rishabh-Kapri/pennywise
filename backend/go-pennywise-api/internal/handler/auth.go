@@ -12,7 +12,7 @@ import (
 
 type AuthHandler interface {
 	LoginWithGoogle(c *gin.Context)
-	// RefreshToken(c *gin.Context)
+	RefreshToken(c *gin.Context)
 	// Logout(c *gin.Context)
 	// LogoutAll(c *gin.Context)
 	// GetCurrentUser(c *gin.Context)
@@ -57,21 +57,21 @@ func (h *authHandler) LoginWithGoogle(c *gin.Context) {
 }
 
 // RefreshToken handles POST /api/auth/refresh
-// func (h *authHandler) RefreshToken(c *gin.Context) {
-// 	var req model.RefreshTokenRequest
-// 	if err := c.ShouldBindJSON(&req); err != nil {
-// 		c.JSON(http.StatusBadRequest, gin.H{"error": "refreshToken is required"})
-// 		return
-// 	}
-//
-// 	response, err := h.service.RefreshToken(c.Request.Context(), req.RefreshToken)
-// 	if err != nil {
-// 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid refresh token"})
-// 		return
-// 	}
-//
-// 	c.JSON(http.StatusOK, response)
-// }
+func (h *authHandler) RefreshToken(c *gin.Context) {
+	var req model.RefreshTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "refreshToken is required"})
+		return
+	}
+
+	response, err := h.service.RefreshToken(c.Request.Context(), req.RefreshToken)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid refresh token"})
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
+}
 //
 // // Logout handles POST /api/auth/logout
 // func (h *authHandler) Logout(c *gin.Context) {

@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -22,6 +24,7 @@ type AuthService interface {
 	GenerateRefreshToken(ctx context.Context, userID uuid.UUID) (string, error)
 	ValidateToken(ctx context.Context, tokenString string) (*jwt.Token, error)
 	GetUserById(ctx context.Context, userID uuid.UUID) (*model.AuthUser, error)
+	RefreshToken(ctx context.Context, refreshToken string) (*model.RefreshTokenResponse, error)
 }
 
 type authService struct {
@@ -31,6 +34,11 @@ type authService struct {
 
 func NewAuthService(r repository.AuthRepository) AuthService {
 	return &authService{repo: r, config: config.Load()}
+}
+
+func hashToken(token string) string {
+	h := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(h[:])
 }
 
 func (s *authService) LoginWithGoogle(ctx context.Context, tokenString string) (*model.AuthUser, string, string, error) {
@@ -72,6 +80,12 @@ func (s *authService) LoginWithGoogle(ctx context.Context, tokenString string) (
 		return nil, "", "", fmt.Errorf("failed to generate refresh token: %w", err)
 	}
 
+	// store refresh token hash on user record
+	tokenHash := hashToken(refreshToken)
+	if err := s.repo.SaveRefreshTokenHash(ctx, user.ID, tokenHash); err != nil {
+		return nil, "", "", fmt.Errorf("failed to save refresh token: %w", err)
+	}
+
 	return user, accessToken, refreshToken, nil
 }
 
@@ -96,7 +110,7 @@ func (s *authService) GenerateRefreshToken(ctx context.Context, userID uuid.UUID
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub": userID.String(),                           // subject (user ID)
 		"iss": "pennywise",                               // issuer
-		"exp": time.Now().Add(time.Hour * 24 * 7).Unix(), // expire in 7 days
+		"exp": time.Now().Add(time.Hour * 24 * 30).Unix(), // expire in 30 days
 		"iat": time.Now().Unix(),                         // issued at
 	})
 
@@ -128,4 +142,45 @@ func (s *authService) GetUserById(ctx context.Context, userID uuid.UUID) (*model
 		return nil, fmt.Errorf("failed to get user by ID: %w", err)
 	}
 	return user, nil
+}
+
+func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*model.RefreshTokenResponse, error) {
+	// Validate the refresh token JWT
+	token, err := s.ValidateToken(ctx, refreshToken)
+	if err != nil {
+		return nil, fmt.Errorf("invalid refresh token: %w", err)
+	}
+
+	userId, err := token.Claims.GetSubject()
+	if err != nil {
+		return nil, fmt.Errorf("invalid refresh token claims: %w", err)
+	}
+	userUuid, err := uuid.Parse(userId)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user ID in refresh token: %w", err)
+	}
+
+	// Fetch the user and verify the refresh token hash matches
+	user, err := s.GetUserById(ctx, userUuid)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch user for refresh token: %w", err)
+	}
+
+	storedHash, err := s.repo.GetRefreshTokenHash(ctx, userUuid)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check refresh token: %w", err)
+	}
+	if storedHash == "" || storedHash != hashToken(refreshToken) {
+		return nil, fmt.Errorf("refresh token has been revoked")
+	}
+
+	// Generate new access token with the same version
+	newAccessToken, err := s.GenerateAccessToken(ctx, user.ID, user.Name, user.Email, user.TokenVersion)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate new access token: %w", err)
+	}
+	return &model.RefreshTokenResponse{
+		AccessToken: newAccessToken,
+		ExpiresIn:   900, // 15 minutes
+	}, nil
 }

@@ -70,15 +70,19 @@ func (p *EventProcessor) processMessage(event *pubsub.Message) {
 		return
 	}
 
+	// Create a context with a correlation ID for this message
+	ctx := logger.WithCorrelationID(context.Background(), logger.NewCorrelationID())
+	log := logger.Logger(ctx)
+
 	if p.processed[m.HistoryId] {
 		p.mu.Unlock()
-		slog.Info("duplicate historyId detected, skipping", "historyId", m.HistoryId)
+		log.Info("duplicate historyId detected, skipping", "historyId", m.HistoryId)
 		event.Ack()
 		return
 	}
 	if m.HistoryId < p.lastProcessed {
 		p.mu.Unlock()
-		slog.Info("outdated historyId detected, skipping", "historyId", m.HistoryId)
+		log.Info("outdated historyId detected, skipping", "historyId", m.HistoryId)
 		event.Ack()
 		return
 	}
@@ -99,9 +103,9 @@ func (p *EventProcessor) processMessage(event *pubsub.Message) {
 		event.Ack()
 	}()
 
-	err = p.runner.ProcessGmailHistoryId(m)
+	err = p.runner.ProcessGmailHistoryId(ctx, m)
 	if err != nil {
-		slog.Error("error processing gmail historyId", "historyId", m.HistoryId, "error", err)
+		log.Error("error processing gmail historyId", "historyId", m.HistoryId, "error", err)
 		event.Nack()
 		return
 	}
