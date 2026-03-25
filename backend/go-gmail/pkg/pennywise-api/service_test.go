@@ -1,6 +1,7 @@
 package pennywise
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -175,7 +176,7 @@ func TestCreateTransaction(t *testing.T) {
 			defer server.Close()
 
 			service := NewService(&config.Config{PennywiseApi: server.URL})
-			res, err := service.CreateTransaction(tt.parsedDetails, tt.predictedFields)
+			res, err := service.CreateTransaction(context.Background(), tt.parsedDetails, tt.predictedFields)
 
 			if tt.expectError {
 				if err == nil {

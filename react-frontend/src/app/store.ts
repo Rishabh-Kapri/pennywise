@@ -41,6 +41,7 @@ export const store = configureStore({
 });
 
 apiClient.setGetState(store.getState);
+apiClient.setDispatch(store.dispatch);
 
 export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;
