@@ -1,4 +1,5 @@
 import json
+import logging
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse
 import shutil
@@ -12,6 +13,36 @@ import os
 from mlp import PennywiseMLP
 from prepare_training_data import fetch_predictions, predictions_to_training_data, save_json
 import utils
+
+class JsonFormatter(logging.Formatter):
+    """JSON log formatter that includes correlation_id when available."""
+    def format(self, record):
+        log_entry = {
+            "time": self.formatTime(record),
+            "level": record.levelname,
+            "msg": record.getMessage(),
+        }
+        if hasattr(record, "correlation_id") and record.correlation_id:
+            log_entry["correlation_id"] = record.correlation_id
+        if record.exc_info and record.exc_info[0]:
+            log_entry["error"] = self.formatException(record.exc_info)
+        # Include any extra fields
+        for key in ("endpoint", "method", "status", "duration_ms", "type", "prediction"):
+            if hasattr(record, key):
+                log_entry[key] = getattr(record, key)
+        return json.dumps(log_entry)
+
+
+def setup_logging():
+    handler = logging.StreamHandler()
+    handler.setFormatter(JsonFormatter())
+    root = logging.getLogger()
+    root.handlers.clear()
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
+
+
+log = logging.getLogger(__name__)
 
 # Use /data volume on Railway (persistent), fall back to local paths for dev
 VOLUME_DIR = os.environ.get("VOLUME_DIR", "/data" if os.path.isdir("/data") else ".")
@@ -92,9 +123,9 @@ def run_retrain(job_id: str, types: list[str], data_path: str, hyperparams_overr
 
             backup_path = backup_model(model_type)
             if backup_path:
-                print(f"[retrain] Backed up {config['path']} -> {backup_path}")
+                log.info("backed up model", extra={"correlation_id": "", "type": model_type, "backup": backup_path})
 
-            print(f"[retrain] Training {model_type} model...")
+            log.info("training model", extra={"correlation_id": "", "type": model_type})
             mlp = PennywiseMLP(
                 model_type,
                 is_new=True,
@@ -103,7 +134,7 @@ def run_retrain(job_id: str, types: list[str], data_path: str, hyperparams_overr
             )
             mlp.train(hp)
             mlp.save_model(config["path"])
-            print(f"[retrain] Saved {model_type} model to {config['path']}")
+            log.info("saved model", extra={"correlation_id": "", "type": model_type, "path": config["path"]})
 
             results[model_type] = {
                 "status": "success",
@@ -112,7 +143,7 @@ def run_retrain(job_id: str, types: list[str], data_path: str, hyperparams_overr
                 "classes": int(mlp.Y.shape[1]),
             }
         except Exception as e:
-            print(f"[retrain] Error training {model_type}: {e}")
+            log.error("retrain error", extra={"correlation_id": "", "type": model_type, "error": str(e)})
             results[model_type] = {"status": "error", "error": str(e)}
 
     job["status"] = "completed"
@@ -124,8 +155,21 @@ def run_retrain(job_id: str, types: list[str], data_path: str, hyperparams_overr
 class MLPHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format, *args):
-        """Write request logs to stdout instead of stderr so Railway doesn't flag them as errors."""
-        print(f"{self.address_string()} - - [{self.log_date_time_string()}] {format % args}")
+        """Suppress default BaseHTTPRequestHandler logging — we handle it ourselves."""
+        pass
+
+    def _get_correlation_id(self):
+        """Extract correlation ID from request header, or generate a new one."""
+        cid = self.headers.get("X-Correlation-ID", "")
+        if not cid:
+            cid = str(uuid_mod.uuid4())
+        return cid
+
+    def _log(self, level, msg, **kwargs):
+        """Log with correlation ID attached."""
+        cid = getattr(self, "_correlation_id", "")
+        extra = {"correlation_id": cid, **kwargs}
+        getattr(log, level)(msg, extra=extra)
 
     def _read_body(self):
         content_length = int(self.headers["Content-Length"])
@@ -134,16 +178,21 @@ class MLPHandler(BaseHTTPRequestHandler):
     def _json_response(self, status, data):
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
+        cid = getattr(self, "_correlation_id", "")
+        if cid:
+            self.send_header("X-Correlation-ID", cid)
         self.end_headers()
         self.wfile.write(json.dumps(data).encode())
 
     def do_POST(self):
+        self._correlation_id = self._get_correlation_id()
         parsed_path = urlparse(self.path)
+        start = datetime.now()
 
         if parsed_path.path == "/predict":
             try:
                 data = self._read_body()
-                print(data)
+                self._log("info", "predict request received", type=data.get("type"))
                 type = data.get("type")
                 email_text = data.get("email_text")
                 amount = data.get("amount")
@@ -154,7 +203,6 @@ class MLPHandler(BaseHTTPRequestHandler):
                     raise Exception("Wrong type")
 
                 config = MODEL_CONFIG[type]
-                print("inside predict", config["path"])
                 mlp = PennywiseMLP(type, is_new=False, model=config["embedding_model"])
                 mlp.load_model(path=config["path"])
                 prediction = mlp.predict(
@@ -164,11 +212,12 @@ class MLPHandler(BaseHTTPRequestHandler):
                     account=account,
                     payee=payee,
                 )
-                print(prediction)
+                duration_ms = (datetime.now() - start).total_seconds() * 1000
+                self._log("info", "predict completed", type=type, prediction=prediction, duration_ms=round(duration_ms, 1))
                 self._json_response(200, prediction)
 
             except Exception as e:
-                print(str(e))
+                self._log("error", f"predict error: {e}")
                 self._json_response(400, {"error": str(e)})
 
         elif parsed_path.path == "/retrain":
@@ -205,6 +254,7 @@ class MLPHandler(BaseHTTPRequestHandler):
                 )
                 thread.start()
 
+                self._log("info", "retrain started", job_id=job_id)
                 self._json_response(202, {
                     "job_id": job_id,
                     "status": "queued",
@@ -213,7 +263,7 @@ class MLPHandler(BaseHTTPRequestHandler):
                 })
 
             except Exception as e:
-                print(str(e))
+                self._log("error", f"retrain error: {e}")
                 self._json_response(400, {"error": str(e)})
 
         elif parsed_path.path == "/rollback":
@@ -235,13 +285,14 @@ class MLPHandler(BaseHTTPRequestHandler):
 
                 dest = MODEL_CONFIG[model_type]["path"]
                 shutil.copy2(backup_path, dest)
+                self._log("info", f"rollback completed for {model_type}")
                 self._json_response(200, {
                     "message": f"Rolled back {model_type} to {backup_file}",
                     "model_path": dest,
                 })
 
             except Exception as e:
-                print(str(e))
+                self._log("error", f"rollback error: {e}")
                 self._json_response(400, {"error": str(e)})
 
         elif parsed_path.path == "/fetch":
@@ -255,12 +306,12 @@ class MLPHandler(BaseHTTPRequestHandler):
 
                 output_path = data.get("output", DEFAULT_DATA_PATH)
 
-                print(f"[fetch] Fetching predictions from {api_url} (budget: {budget_id})...")
+                self._log("info", f"fetching predictions from {api_url} (budget: {budget_id})")
                 predictions = fetch_predictions(api_url, budget_id)
-                print(f"[fetch] Received {len(predictions)} predictions")
+                self._log("info", f"received {len(predictions)} predictions")
 
                 training_data = predictions_to_training_data(predictions)
-                print(f"[fetch] Converted {len(training_data)} records")
+                self._log("info", f"converted {len(training_data)} records")
 
                 save_json(training_data, output_path)
 
@@ -279,7 +330,7 @@ class MLPHandler(BaseHTTPRequestHandler):
                 })
 
             except Exception as e:
-                print(f"[fetch] Error: {e}")
+                self._log("error", f"fetch error: {e}")
                 self._json_response(400, {"error": str(e)})
 
         elif parsed_path.path == "/embeddings":
@@ -295,6 +346,7 @@ class MLPHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
     def do_GET(self):
+        self._correlation_id = self._get_correlation_id()
         parsed_path = urlparse(self.path)
 
         if parsed_path.path == "/health":
@@ -326,14 +378,8 @@ class MLPHandler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    setup_logging()
     server = HTTPServer((HOST, PORT), MLPHandler)
-    print("Server running on http://" + HOST + ":" + str(PORT))
-    print("Endpoints:")
-    print("  POST /predict      - Predict payee/category/account")
-    print("  POST /fetch        - Fetch predictions from API and save as training data")
-    print("  POST /retrain      - Start retraining (background)")
-    print("  GET  /retrain/:id  - Check retraining job status")
-    print("  POST /rollback     - Restore a backed-up model")
-    print("  GET  /backups      - List available model backups")
-    print("  GET  /health       - Health check")
+    log.info("server starting", extra={"correlation_id": "", "host": HOST, "port": PORT})
+    log.info("endpoints: POST /predict, POST /fetch, POST /retrain, GET /retrain/:id, POST /rollback, GET /backups, GET /health", extra={"correlation_id": ""})
     server.serve_forever()

@@ -106,7 +106,7 @@ func main() {
 		{
 			authGroup := router.Group("/api/auth")
 			authGroup.POST("/google", authHandler.LoginWithGoogle)
-			// authGroup.POST("/refresh", authHandler.RefreshToken)
+			authGroup.POST("/refresh", authHandler.RefreshToken)
 			// authGroup.POST("/logout", authHandler.Logout)
 		}
 

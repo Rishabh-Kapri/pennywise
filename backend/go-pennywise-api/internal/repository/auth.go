@@ -13,7 +13,6 @@ import (
 )
 
 var ErrUserNotFound = errors.New("user not found")
-
 type AuthRepository interface {
 	BaseRepository
 	FindByGoogleID(ctx context.Context, googleID string) (*model.AuthUser, error)
@@ -22,6 +21,9 @@ type AuthRepository interface {
 	Create(ctx context.Context, user model.AuthUser) (*model.AuthUser, error)
 	UpdateTokenVersion(ctx context.Context, id uuid.UUID) error
 	GetTokenVersion(ctx context.Context, id uuid.UUID) (int, error)
+	SaveRefreshTokenHash(ctx context.Context, userID uuid.UUID, tokenHash string) error
+	GetRefreshTokenHash(ctx context.Context, userID uuid.UUID) (string, error)
+	ClearRefreshTokenHash(ctx context.Context, userID uuid.UUID) error
 }
 
 type authRepo struct {
@@ -129,4 +131,38 @@ func (r *authRepo) GetTokenVersion(ctx context.Context, id uuid.UUID) (int, erro
 		return 0, err
 	}
 	return tokenVersion, nil
+}
+
+func (r *authRepo) SaveRefreshTokenHash(ctx context.Context, userID uuid.UUID, tokenHash string) error {
+	_, err := r.Executor(nil).Exec(
+		ctx,
+		`UPDATE auth_users SET refresh_token_hash = $1, updated_at = NOW() WHERE id = $2 AND deleted = false`,
+		tokenHash, userID,
+	)
+	return err
+}
+
+func (r *authRepo) GetRefreshTokenHash(ctx context.Context, userID uuid.UUID) (string, error) {
+	var hash sql.NullString
+	err := r.Executor(nil).QueryRow(
+		ctx,
+		`SELECT refresh_token_hash FROM auth_users WHERE id = $1 AND deleted = false`,
+		userID,
+	).Scan(&hash)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", ErrUserNotFound
+		}
+		return "", err
+	}
+	return hash.String, nil
+}
+
+func (r *authRepo) ClearRefreshTokenHash(ctx context.Context, userID uuid.UUID) error {
+	_, err := r.Executor(nil).Exec(
+		ctx,
+		`UPDATE auth_users SET refresh_token_hash = NULL, updated_at = NOW() WHERE id = $1 AND deleted = false`,
+		userID,
+	)
+	return err
 }

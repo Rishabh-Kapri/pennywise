@@ -107,6 +107,7 @@ func createSchema(ctx context.Context, pool *pgxpool.Pool) error {
 				name TEXT NOT NULL,
 				picture TEXT,
 				token_version INTEGER NOT NULL DEFAULT 1,
+				refresh_token_hash TEXT,
 				created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 				updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 				deleted BOOLEAN DEFAULT false
