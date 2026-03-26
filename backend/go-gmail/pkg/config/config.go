@@ -7,33 +7,37 @@ import (
 )
 
 type Config struct {
-	GoogleClientId                  string
-	GoogleClientSecret              string
+	GoogleClientId                   string
+	GoogleClientSecret               string
 	GoogleApplicationCredentialsJson string
-	CallbackUrl                     string
-	ProjectID                       string
-	PubsubTopic                     string
-	SubscriptionName                string
-	DatabaseURL                     string
-	MLPApi                          string
-	PennywiseApi                    string
-	NtfyTopic                       string
+	CallbackUrl                      string
+	ProjectID                        string
+	PubsubTopic                      string
+	SubscriptionName                 string
+	DatabaseURL                      string
+	MLPApi                           string
+	PennywiseApi                     string
+	NtfyTopic                        string
+	TemporalServerHost               string
+	TemporalServerPort               string
 }
 
 func LoadConfig() *Config {
 	_ = godotenv.Load(".env")
 
 	return &Config{
-		GoogleClientId:                  os.Getenv("GOOGLE_CLIENT_ID"),
-		GoogleClientSecret:              os.Getenv("GOOGLE_CLIENT_SECRET"),
+		GoogleClientId:                   os.Getenv("GOOGLE_CLIENT_ID"),
+		GoogleClientSecret:               os.Getenv("GOOGLE_CLIENT_SECRET"),
 		GoogleApplicationCredentialsJson: os.Getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON"),
-		CallbackUrl:                     os.Getenv("CALLBACK_URL"),
-		ProjectID:                       os.Getenv("PROJECT_ID"),
-		PubsubTopic:                     os.Getenv("PUBSUB_TOPIC"),
-		SubscriptionName:                os.Getenv("SUB_NAME"),
-		DatabaseURL:                     os.Getenv("DATABASE_URL"),
-		MLPApi:                          os.Getenv("MLP_API"),
-		PennywiseApi:                    os.Getenv("PENNYWISE_API"),
-		NtfyTopic:                       os.Getenv("NTFY_TOPIC"),
+		CallbackUrl:                      os.Getenv("CALLBACK_URL"),
+		ProjectID:                        os.Getenv("PROJECT_ID"),
+		PubsubTopic:                      os.Getenv("PUBSUB_TOPIC"),
+		SubscriptionName:                 os.Getenv("SUB_NAME"),
+		DatabaseURL:                      os.Getenv("DATABASE_URL"),
+		MLPApi:                           os.Getenv("MLP_API"),
+		PennywiseApi:                     os.Getenv("PENNYWISE_API"),
+		NtfyTopic:                        os.Getenv("NTFY_TOPIC"),
+		TemporalServerHost:               os.Getenv("TEMPORAL_SERVER_HOST"),
+		TemporalServerPort:               os.Getenv("TEMPORAL_SERVER_PORT"),
 	}
 }

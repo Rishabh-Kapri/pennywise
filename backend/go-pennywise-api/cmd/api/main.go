@@ -3,12 +3,12 @@ package main
 import (
 	"net/http"
 
-	"pennywise-api/internal/db"
-	"pennywise-api/internal/handler"
-	"pennywise-api/internal/middleware"
-	"pennywise-api/internal/repository"
-	"pennywise-api/internal/service"
-	utils "pennywise-api/pkg"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/db"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/handler"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/middleware"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/repository"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
+	utils "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/pkg"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"

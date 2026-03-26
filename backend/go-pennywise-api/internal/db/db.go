@@ -4,7 +4,7 @@ import (
 	"context"
 	"log"
 
-	"pennywise-api/internal/config"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/config"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
