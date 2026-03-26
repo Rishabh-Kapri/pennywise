@@ -12,8 +12,8 @@ import (
 	"strconv"
 	"strings"
 
-	"pennywise-api/internal/db"
-	"pennywise-api/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/db"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"

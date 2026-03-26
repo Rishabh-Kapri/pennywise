@@ -13,6 +13,9 @@ require (
 	google.golang.org/api v0.227.0
 )
 
+require github.com/Rishabh-Kapri/pennywise/backend/workflows v0.0.0
+replace github.com/Rishabh-Kapri/pennywise/backend/workflows => ../workflows
+
 require (
 	cloud.google.com/go/auth v0.15.0 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.2.7 // indirect

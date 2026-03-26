@@ -3,10 +3,10 @@ package service
 import (
 	"context"
 
-	"pennywise-api/internal/model"
-	"pennywise-api/internal/repository"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/repository"
 
-	utils "pennywise-api/pkg"
+	utils "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/pkg"
 
 	"github.com/google/uuid"
 )
