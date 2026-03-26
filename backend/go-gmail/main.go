@@ -11,10 +11,18 @@ import (
 	"syscall"
 	"time"
 
+	"gmail-transactions/pkg/auth"
 	"gmail-transactions/pkg/config"
 	"gmail-transactions/pkg/gmail"
 	"gmail-transactions/pkg/logger"
+	"gmail-transactions/pkg/parser"
+	"gmail-transactions/pkg/pennywise-api"
 	"gmail-transactions/pkg/pubsub"
+	"gmail-transactions/pkg/temporal"
+
+	"github.com/Rishabh-Kapri/pennywise/backend/workflows"
+	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/worker"
 )
 
 func checkHealth(name string, url string) {
@@ -46,9 +54,30 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	w.Write(requestBody)
 }
 
+func getTemporalClient(config *config.Config) client.Client {
+	c, err := client.Dial(client.Options{
+		HostPort: config.TemporalServerHost + ":" + config.TemporalServerPort,
+	})
+	if err != nil {
+		logger.Fatal("Unable to create Temporal client", "error", err)
+	}
+	defer c.Close()
+
+	return c
+}
+
 func main() {
 	logger.Setup()
 	cfg := config.LoadConfig()
+
+	w := worker.New(getTemporalClient(cfg), "gmail-tasks", worker.Options{})
+	w.RegisterWorkflow(workflows.EmailToTransactionWorkflow)
+	w.RegisterActivity(&temporal.GmailActivities{
+		Auth:      auth.NewService(cfg),
+		Gmail:     gmail.NewService(cfg),
+		Parser:    parser.NewEmailParser(),
+		Pennywise: pennywise.NewService(cfg),
+	})
 
 	// Health check dependent services before starting
 	checkHealth("pennywise-api", cfg.PennywiseApi+"/api")

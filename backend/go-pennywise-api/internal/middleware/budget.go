@@ -3,8 +3,8 @@ package middleware
 import (
 	"net/http"
 
-	"pennywise-api/internal/repository"
-	utils "pennywise-api/pkg"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/repository"
+	utils "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/pkg"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"

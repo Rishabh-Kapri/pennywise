@@ -4,9 +4,9 @@ import (
 	"net/http"
 	"strings"
 
-	"pennywise-api/internal/model"
-	"pennywise-api/internal/service"
-	utils "pennywise-api/pkg"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
+	utils "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/pkg"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
