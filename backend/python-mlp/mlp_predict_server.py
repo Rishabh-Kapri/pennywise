@@ -11,7 +11,11 @@ import numpy as np
 import os
 
 from mlp import PennywiseMLP
-from prepare_training_data import fetch_predictions, predictions_to_training_data, save_json
+from prepare_training_data import (
+    fetch_predictions, fetch_transactions, predictions_to_training_data,
+    save_json, load_account_config, detect_upi_payees, augment_from_transactions,
+    merge_datasets,
+)
 import utils
 
 class JsonFormatter(logging.Formatter):
@@ -333,6 +337,74 @@ class MLPHandler(BaseHTTPRequestHandler):
                 self._log("error", f"fetch error: {e}")
                 self._json_response(400, {"error": str(e)})
 
+        elif parsed_path.path == "/augment":
+            try:
+                data = self._read_body()
+                api_url = data.get("api_url")
+                budget_id = data.get("budget_id")
+
+                if not api_url or not budget_id:
+                    raise Exception("api_url and budget_id are required")
+
+                output_path = data.get("output", DEFAULT_DATA_PATH)
+                upi_samples = int(data.get("upi_samples", 3))
+                accounts_config_path = data.get("accounts_config", "accounts_config.json")
+
+                # 1. Fetch predictions -> real email training data
+                self._log("info", f"fetching predictions from {api_url} (budget: {budget_id})")
+                predictions = fetch_predictions(api_url, budget_id)
+                self._log("info", f"received {len(predictions)} predictions")
+
+                prediction_data = predictions_to_training_data(predictions)
+                self._log("info", f"converted {len(prediction_data)} prediction records")
+
+                prediction_txn_ids = {
+                    p.get("transactionId", "") for p in predictions if p.get("transactionId")
+                }
+
+                # 2. Fetch all transactions for augmentation
+                self._log("info", "fetching all normalized transactions")
+                transactions = fetch_transactions(api_url, budget_id)
+                self._log("info", f"fetched {len(transactions)} transactions")
+
+                # 3. Detect UPI payees from real prediction emails
+                upi_payees = detect_upi_payees(prediction_data)
+                self._log("info", f"detected {len(upi_payees)} UPI payees")
+
+                # 4. Generate synthetic emails for non-prediction transactions
+                account_config = load_account_config(accounts_config_path)
+                augmented = augment_from_transactions(
+                    transactions=transactions,
+                    prediction_txn_ids=prediction_txn_ids,
+                    upi_payees=upi_payees,
+                    account_config=account_config,
+                    samples_per_upi_txn=upi_samples,
+                )
+                self._log("info", f"generated {len(augmented)} augmented records")
+
+                # 5. Merge: real prediction emails take priority
+                merged = merge_datasets(prediction_data, augmented)
+                save_json(merged, output_path)
+
+                total_predictions = len(predictions)
+                corrected = sum(1 for p in predictions if p.get("hasUserCorrected"))
+
+                self._json_response(200, {
+                    "message": f"Augmented and saved {len(merged)} training records to {output_path}",
+                    "total_predictions": total_predictions,
+                    "correct_predictions": total_predictions - corrected,
+                    "user_corrected": corrected,
+                    "prediction_records": len(prediction_data),
+                    "augmented_records": len(augmented),
+                    "merged_records": len(merged),
+                    "upi_payees": sorted(upi_payees),
+                    "output_path": output_path,
+                })
+
+            except Exception as e:
+                self._log("error", f"augment error: {e}")
+                self._json_response(400, {"error": str(e)})
+
         elif parsed_path.path == "/embeddings":
             try:
                 data = self._read_body()
@@ -381,5 +453,5 @@ if __name__ == "__main__":
     setup_logging()
     server = HTTPServer((HOST, PORT), MLPHandler)
     log.info("server starting", extra={"correlation_id": "", "host": HOST, "port": PORT})
-    log.info("endpoints: POST /predict, POST /fetch, POST /retrain, GET /retrain/:id, POST /rollback, GET /backups, GET /health", extra={"correlation_id": ""})
+    log.info("endpoints: POST /predict, POST /fetch, POST /augment, POST /retrain, GET /retrain/:id, POST /rollback, GET /backups, GET /health", extra={"correlation_id": ""})
     server.serve_forever()
