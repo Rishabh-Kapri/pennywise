@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"bytes"
+	"io"
 	"log/slog"
 	"time"
 
@@ -9,7 +11,25 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const correlationIDHeader = "X-Correlation-ID"
+const (
+	correlationIDHeader = "X-Correlation-ID"
+	maxLoggedBodyBytes  = 8 * 1024
+)
+
+type responseBodyWriter struct {
+	gin.ResponseWriter
+	body *bytes.Buffer
+}
+
+func (w *responseBodyWriter) Write(data []byte) (int, error) {
+	_, _ = w.body.Write(data)
+	return w.ResponseWriter.Write(data)
+}
+
+func (w *responseBodyWriter) WriteString(s string) (int, error) {
+	_, _ = w.body.WriteString(s)
+	return w.ResponseWriter.WriteString(s)
+}
 
 // RequestLogger is a Gin middleware that:
 // 1. Assigns a correlation ID to each request (from header or auto-generated)
@@ -29,6 +49,20 @@ func RequestLogger() gin.HandlerFunc {
 		ctx := utils.WithCorrelationID(c.Request.Context(), correlationID)
 		c.Request = c.Request.WithContext(ctx)
 		c.Header(correlationIDHeader, correlationID)
+
+		logger := slog.Default()
+		debugLogging := logger.Enabled(c.Request.Context(), slog.LevelDebug)
+
+		var requestBody string
+		var responseWriter *responseBodyWriter
+		if debugLogging {
+			requestBody = captureRequestBody(c)
+			responseWriter = &responseBodyWriter{
+				ResponseWriter: c.Writer,
+				body:           bytes.NewBuffer(nil),
+			}
+			c.Writer = responseWriter
+		}
 
 		// Process request
 		c.Next()
@@ -50,6 +84,15 @@ func RequestLogger() gin.HandlerFunc {
 			attrs = append(attrs, slog.String("error", c.Errors.String()))
 		}
 
+		if debugLogging {
+			if requestBody != "" {
+				attrs = append(attrs, slog.String("request_body", requestBody))
+			}
+			if responseWriter != nil && responseWriter.body.Len() > 0 {
+				attrs = append(attrs, slog.String("response_body", truncateBody(responseWriter.body.Bytes())))
+			}
+		}
+
 		level := slog.LevelInfo
 		if status >= 500 {
 			level = slog.LevelError
@@ -57,7 +100,28 @@ func RequestLogger() gin.HandlerFunc {
 			level = slog.LevelWarn
 		}
 
-		logger := slog.Default()
 		logger.LogAttrs(c.Request.Context(), level, "request completed", attrs...)
 	}
+}
+
+func captureRequestBody(c *gin.Context) string {
+	if c.Request == nil || c.Request.Body == nil {
+		return ""
+	}
+
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		return "<error reading body: " + err.Error() + ">"
+	}
+
+	c.Request.Body = io.NopCloser(bytes.NewBuffer(body))
+	return truncateBody(body)
+}
+
+func truncateBody(body []byte) string {
+	if len(body) <= maxLoggedBodyBytes {
+		return string(body)
+	}
+
+	return string(body[:maxLoggedBodyBytes]) + "...(truncated)"
 }
