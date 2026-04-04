@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -13,9 +14,18 @@ const correlationIDKey contextKey = "correlationId"
 // SetupLogger initializes a structured JSON logger as the default slog logger.
 func SetupLogger() {
 	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
+		Level: logLevelFromEnv(),
 	})
 	slog.SetDefault(slog.New(handler))
+}
+
+func logLevelFromEnv() slog.Level {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("RAILWAY_ENVIRONMENT_NAME"))) {
+	case "dev", "development":
+		return slog.LevelDebug
+	default:
+		return slog.LevelInfo
+	}
 }
 
 // WithCorrelationID returns a new context with the correlation ID set.
