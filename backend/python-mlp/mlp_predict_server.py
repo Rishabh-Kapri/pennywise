@@ -193,27 +193,27 @@ class MLPHandler(BaseHTTPRequestHandler):
             try:
                 data = self._read_body()
                 self._log("info", "predict request received", type=data.get("type"))
-                type = data.get("type")
+                mlp_type = data.get("type")
                 email_text = data.get("email_text")
                 amount = data.get("amount")
                 account = data.get("account")
                 payee = data.get("payee")
 
-                if type not in MODEL_CONFIG:
+                if mlp_type not in MODEL_CONFIG:
                     raise Exception("Wrong type")
 
-                config = MODEL_CONFIG[type]
-                mlp = PennywiseMLP(type, is_new=False, model=config["embedding_model"])
+                config = MODEL_CONFIG[mlp_type]
+                mlp = PennywiseMLP(mlp_type, is_new=False, model=config["embedding_model"])
                 mlp.load_model(path=config["path"])
                 prediction = mlp.predict(
-                    type=type,
+                    mlp_type=mlp_type,
                     email_text=email_text,
                     amount=amount,
                     account=account,
                     payee=payee,
                 )
                 duration_ms = (datetime.now() - start).total_seconds() * 1000
-                self._log("info", "predict completed", type=type, prediction=prediction, duration_ms=round(duration_ms, 1))
+                self._log("info", "predict completed", type=mlp_type, prediction=prediction, duration_ms=round(duration_ms, 1))
                 self._json_response(200, prediction)
 
             except Exception as e:
