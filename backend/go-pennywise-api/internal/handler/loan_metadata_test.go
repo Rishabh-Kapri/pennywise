@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"pennywise-api/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"

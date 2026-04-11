@@ -5,8 +5,7 @@ import (
 	"testing"
 	"time"
 
-	errs "pennywise-api/internal/errors"
-	"pennywise-api/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"

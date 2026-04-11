@@ -9,9 +9,9 @@ import (
 	"log/slog"
 	"time"
 
-	"pennywise-api/internal/config"
-	"pennywise-api/internal/model"
-	"pennywise-api/internal/repository"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/config"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/repository"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"

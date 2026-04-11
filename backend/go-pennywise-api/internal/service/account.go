@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"pennywise-api/internal/model"
-	"pennywise-api/internal/repository"
-	utils "pennywise-api/pkg"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/repository"
+	utils "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/pkg"
 
 	"github.com/jackc/pgx/v5"
 )
