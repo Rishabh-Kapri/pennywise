@@ -9,6 +9,7 @@ import (
 	"pennywise-api/internal/model"
 	"pennywise-api/internal/repository"
 
+	errs "pennywise-api/internal/errors"
 	utils "pennywise-api/pkg"
 
 	"github.com/google/uuid"
@@ -32,6 +33,27 @@ type transactionService struct {
 	payeeRepo      repository.PayeesRepository
 	categoryRepo   repository.CategoryRepository
 	mbRepo         repository.MonthlyBudgetRepository
+}
+
+type txnDiff struct {
+	oldCatId    *uuid.UUID
+	newCatId    *uuid.UUID
+	oldMonthKey string
+	newMonthKey string
+	oldAmount   float64
+	newAmount   float64
+}
+
+// carryoverCase is a helper struct for carryover logic
+type carryoverCase struct {
+	sameCategory bool
+	sameMonth    bool
+}
+
+type carryoverOp struct {
+	categoryId  uuid.UUID
+	monthKey    string
+	amountDelta float64
 }
 
 func NewTransactionService(
@@ -126,64 +148,230 @@ func (s *transactionService) updatePrediction(ctx context.Context, tx pgx.Tx, bu
 	return nil
 }
 
-func (s *transactionService) updateCarryovers(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, foundTxn *model.Transaction, txn model.Transaction) error {
-	// Handle old category carryover reversal
-	existingCatId := foundTxn.CategoryID
-	newCatId := txn.CategoryID
-	if existingCatId != nil && newCatId != nil && *existingCatId != *newCatId {
-		existingTxnMonthKey := utils.GetMonthKey(foundTxn.Date)
-		utils.Logger(ctx).Info("updating carryover for old category", "categoryId", foundTxn.CategoryID, "month", existingTxnMonthKey, "amount", -foundTxn.Amount)
-		if err := s.mbRepo.UpdateCarryoverByCatIdAndMonth(
-			ctx,
-			tx,
-			budgetId,
-			*foundTxn.CategoryID,
-			existingTxnMonthKey,
-			-foundTxn.Amount, // reverse the amount
-		); err != nil {
-			return fmt.Errorf("failed to update old category: %v carryover: %v", *foundTxn.CategoryID, err)
+// returns a list of carryover operations to be performed
+func (s *transactionService) getCarryoverOps(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, txnDiff *txnDiff, carryoverCase carryoverCase) []carryoverOp {
+	var carryoverOps []carryoverOp
+	diff := txnDiff.newAmount - txnDiff.oldAmount
+
+	switch {
+	// same category and month
+	case carryoverCase.sameCategory && carryoverCase.sameMonth:
+		{
+			// check if amount has changed
+			if diff == 0 {
+				return carryoverOps
+			}
+			// amount has changed
+			carryoverOps = append(carryoverOps, carryoverOp{
+				categoryId:  *txnDiff.newCatId,   // categoryId is the same as oldCatId
+				monthKey:    txnDiff.newMonthKey, // monthKey is the same as oldMonthKey
+				amountDelta: diff,
+			})
+			return carryoverOps
+		}
+	// same category and different month
+	case carryoverCase.sameCategory && !carryoverCase.sameMonth:
+		// catA, 2025-11, amount is 100,
+		// txn updated to 2025-12 with amount of 150
+		// catA, 2025-12, amount is 100
+		{
+			carryoverOps = append(carryoverOps, carryoverOp{
+				categoryId:  *txnDiff.oldCatId, // categoryId is the same as oldCatId
+				monthKey:    txnDiff.oldMonthKey,
+				amountDelta: -txnDiff.oldAmount, // reverse the amount from old month
+			})
+			carryoverOps = append(carryoverOps, carryoverOp{
+				categoryId:  *txnDiff.newCatId,
+				monthKey:    txnDiff.newMonthKey,
+				amountDelta: txnDiff.newAmount,
+			})
+			return carryoverOps
+		}
+	// different category and same month
+	case !carryoverCase.sameCategory && carryoverCase.sameMonth:
+		{
+			carryoverOps = append(carryoverOps, carryoverOp{
+				categoryId:  *txnDiff.oldCatId,
+				monthKey:    txnDiff.oldMonthKey,
+				amountDelta: -txnDiff.oldAmount,
+			})
+			carryoverOps = append(carryoverOps, carryoverOp{
+				categoryId:  *txnDiff.newCatId,
+				monthKey:    txnDiff.newMonthKey,
+				amountDelta: txnDiff.newAmount,
+			})
+			return carryoverOps
+		}
+	// different category and different month
+	case !carryoverCase.sameCategory && !carryoverCase.sameMonth:
+		{
+			carryoverOps = append(carryoverOps, carryoverOp{
+				categoryId:  *txnDiff.oldCatId,
+				monthKey:    txnDiff.oldMonthKey,
+				amountDelta: -txnDiff.oldAmount,
+			})
+			carryoverOps = append(carryoverOps, carryoverOp{
+				categoryId:  *txnDiff.newCatId,
+				monthKey:    txnDiff.newMonthKey,
+				amountDelta: txnDiff.newAmount,
+			})
+			return carryoverOps
 		}
 	}
 
-	// Handle new category carryover
-	if newCatId != nil {
-		if existingCatId != nil && *newCatId == *existingCatId && foundTxn.Amount == txn.Amount {
-			utils.Logger(ctx).Debug("same amount and category, skipping carryover")
-			return nil
-		}
-		newTxnMonthKey := utils.GetMonthKey(txn.Date)
-		foundMb, err := s.mbRepo.GetByCatIdAndMonth(ctx, tx, budgetId, *txn.CategoryID, newTxnMonthKey)
-		utils.Logger(ctx).Debug("found existing monthly budget", "monthlyBudget", foundMb)
+	return carryoverOps
+}
+
+func (s *transactionService) applyCarryoverOps(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, txnDiff *txnDiff, carryoverCase carryoverCase) error {
+	carryoverOps := s.getCarryoverOps(ctx, tx, budgetId, txnDiff, carryoverCase)
+	for _, op := range carryoverOps {
+		_, err := s.mbRepo.GetByCatIdAndMonth(ctx, tx, budgetId, op.categoryId, op.monthKey)
 		if err != nil {
-			// if monthly budget doesn't exists, create a new one
 			if errors.Is(err, pgx.ErrNoRows) {
+				// if monthly budget doesn't exists, create a new one
 				monthlyBudget := model.MonthlyBudget{
-					Month:            newTxnMonthKey,
+					Month:            op.monthKey,
 					BudgetID:         budgetId,
-					Budgeted:         0.0,
-					CarryoverBalance: txn.Amount,
-					CategoryID:       *newCatId,
+					Budgeted:         0,
+					CarryoverBalance: op.amountDelta,
+					CategoryID:       op.categoryId,
 				}
-				utils.Logger(ctx).Info("creating carryover", "monthlyBudget", monthlyBudget)
 				if err = s.mbRepo.Create(ctx, tx, budgetId, monthlyBudget); err != nil {
-					return fmt.Errorf("error while creating new monthly budget for category %v and month %v: %w", monthlyBudget.CategoryID, newTxnMonthKey, err)
+					return errs.Wrap(errs.CodeMonthlyBudgetCreateFailed, "error while creating monthly budget", err)
 				}
 			} else {
-				return fmt.Errorf("error while fetching monthly budget for category %v and month %v: %w", newCatId, newTxnMonthKey, err)
+				return errs.Wrap(errs.CodeMonthlyBudgetLookupFailed, "error while fetching monthly budget", err)
 			}
 		} else {
-			diff := txn.Amount
-			if *newCatId == *existingCatId {
-				// calculate diff only when updating amount for the same category
-				diff = txn.Amount - foundTxn.Amount
-			}
-			utils.Logger(ctx).Info("updating carryover for new category", "categoryId", txn.CategoryID, "month", newTxnMonthKey, "amount", diff)
-			if err := s.mbRepo.UpdateCarryoverByCatIdAndMonth(ctx, tx, budgetId, *txn.CategoryID, newTxnMonthKey, diff); err != nil {
-				return fmt.Errorf("failed to update new category: %v carryover: %v", *txn.CategoryID, err)
+			// monthly budget exists, update carryover
+			if err = s.mbRepo.UpdateCarryoverByCatIdAndMonth(ctx, tx, budgetId, op.categoryId, op.monthKey, op.amountDelta); err != nil {
+				return err
 			}
 		}
 	}
 
+	return nil
+}
+
+// validateTransactionPayload validates the payload of a transaction
+func (s *transactionService) validateTransactionPayload(txn model.Transaction) error {
+	if txn.AccountID == nil {
+		return errs.New(errs.CodeInvalidArgument, "account_id is required")
+	}
+	if txn.PayeeID == nil {
+		return errs.New(errs.CodeInvalidArgument, "payee_id is required")
+	}
+	if err := txn.Date.Valid(); err != nil {
+		return err
+	}
+	if txn.Amount <= 0 {
+		return errs.New(errs.CodeInvalidArgument, "amount must be greater than 0")
+	}
+
+	return nil
+}
+
+// loadDependencies loads the budget, account, and payee for the transaction
+func (s *transactionService) loadDependencies(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, txn model.Transaction) (*model.Budget, *model.Account, *model.Payee, error) {
+	budget, err := s.budgetRepo.GetById(ctx, tx, budgetId)
+	if err != nil {
+		return nil, nil, nil, errs.Wrap(errs.CodeBudgetLookupFailed, "error while fetching budget with id %v", err)
+	}
+
+	account, err := s.accountRepo.GetById(ctx, tx, budgetId, *txn.AccountID)
+	if err != nil {
+		return nil, nil, nil, errs.Wrap(errs.CodeAccountLookupFailed, "error getting account", err)
+	}
+
+	payee, err := s.payeeRepo.GetByIdTx(ctx, tx, budgetId, *txn.PayeeID)
+	if err != nil {
+		return nil, nil, nil, errs.Wrap(errs.CodePayeeLookupFailed, "error getting payee", err)
+	}
+
+	return budget, account, payee, nil
+}
+
+// validate the category of the transaction
+// for budget transfers, the category should be nil
+func (s *transactionService) validateCategory(categoryID *uuid.UUID, account model.Account, payee model.Payee) error {
+	// budget -> budget transfers don't have a category
+	if payee.TransferAccountID != nil {
+		if account.Type == "savings" || account.Type == "checking" || account.Type == "creditCard" {
+			if categoryID != nil {
+				return errs.New(errs.CodeInvalidArgument, "category is not allowed for budget transfers")
+			}
+		}
+	}
+	return nil
+}
+
+func (s *transactionService) createTransferTxnIfNeeded(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, txnPayload model.Transaction, account model.Account, payee model.Payee) (*uuid.UUID, error) {
+	if payee.TransferAccountID != nil {
+		// this is a transfer transaction
+		transferTxn := model.Transaction{
+			BudgetID:              budgetId,
+			AccountID:             payee.TransferAccountID,
+			PayeeID:               account.TransferPayeeID,
+			CategoryID:            nil,
+			Amount:                -txnPayload.Amount,
+			Date:                  txnPayload.Date,
+			Note:                  txnPayload.Note,
+			Source:                txnPayload.Source,
+			TransferAccountID:     txnPayload.AccountID,
+			TransferTransactionID: &txnPayload.ID,
+		}
+		createdTransferTxn, err := s.repo.Create(ctx, tx, transferTxn)
+		if err != nil {
+			return nil, errs.Wrap(errs.CodeTransferCreateFailed, "error while creating transfer transaction", err)
+		}
+		if len(createdTransferTxn) == 0 {
+			return nil, errs.New(errs.CodeTransferNotCreated, "no transfer transaction was created")
+		}
+		transferTxnId := createdTransferTxn[0].ID
+		txnPayload.TransferTransactionID = &transferTxnId
+		err = s.repo.Update(ctx, tx, budgetId, txnPayload.ID, txnPayload)
+		if err != nil {
+			return nil, errs.Wrap(errs.CodeTransactionUpdateFailed, "error while updating transaction", err)
+		}
+		return &createdTransferTxn[0].ID, nil
+	}
+
+	// not a transfer transaction
+	return nil, nil
+}
+
+// applySideEffects applies any side effects to the transaction
+// such as carryovers, predictions, etc.
+func (s *transactionService) applySideEffects(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, txn model.Transaction, budget model.Budget) error {
+	if txn.CategoryID != nil && txn.CategoryID.String() != budget.Metadata.InflowCategoryID.String() {
+		monthKey := utils.GetMonthKey(txn.Date.String())
+		foundMb, err := s.mbRepo.GetByCatIdAndMonth(ctx, tx, budgetId, *txn.CategoryID, monthKey)
+
+		utils.Logger(ctx).Debug("found existing monthly budget", "monthlyBudget", foundMb)
+
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				// if monthly budget doesn't exists, create a new one
+				monthlyBudget := model.MonthlyBudget{
+					Month:            monthKey,
+					BudgetID:         budgetId,
+					Budgeted:         0,
+					CarryoverBalance: txn.Amount,
+					CategoryID:       *txn.CategoryID,
+				}
+				if err = s.mbRepo.Create(ctx, tx, budgetId, monthlyBudget); err != nil {
+					return errs.Wrap(errs.CodeMonthlyBudgetCreateFailed, "error while creating monthly budget", err)
+				}
+			} else {
+				return errs.Wrap(errs.CodeMonthlyBudgetLookupFailed, "error while fetching monthly budget", err)
+			}
+		} else {
+			// monthly budget exists, update carryover
+			if err = s.mbRepo.UpdateCarryoverByCatIdAndMonth(ctx, tx, budgetId, *txn.CategoryID, monthKey, txn.Amount); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
@@ -198,96 +386,53 @@ func (s *transactionService) GetAllNormalized(ctx context.Context, accountId *uu
 }
 
 func (s *transactionService) Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error) {
+	txCtx, txCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer txCancel()
+
 	budgetId := utils.MustBudgetID(ctx)
 	txn.BudgetID = budgetId
 
+	if err := s.validateTransactionPayload(txn); err != nil {
+		return nil, err
+	}
+
 	var createdTxn []model.Transaction
-	err := utils.WithTx(ctx, s.repo.GetDB(), func(tx pgx.Tx) error {
+	err := utils.WithTx(txCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
 		var err error
-		createdTxn, err = s.repo.Create(ctx, tx, txn)
+
+		budget, account, payee, err := s.loadDependencies(ctx, tx, budgetId, txn)
 		if err != nil {
 			return err
 		}
+
+		if err = s.validateCategory(txn.CategoryID, *account, *payee); err != nil {
+			return err
+		}
+
+		// clear transfer fields in case they are set
+		txn.TransferAccountID = nil
+		txn.TransferTransactionID = nil
+
+		createdTxn, err = s.repo.Create(ctx, tx, txn)
+		if err != nil {
+			return errs.Wrap(errs.CodeTransactionCreateFailed, "failed to create transaction", err)
+		}
 		if len(createdTxn) == 0 {
-			return fmt.Errorf("no transaction was created")
+			return errs.New(errs.CodeTransactionNotCreated, "no transaction was created")
 		}
-		payee, err := s.payeeRepo.GetByIdTx(ctx, tx, budgetId, *txn.PayeeID)
+
+		txn.ID = createdTxn[0].ID
+
+		// create transfer transaction if needed
+		_, err = s.createTransferTxnIfNeeded(ctx, tx, budgetId, txn, *account, *payee)
 		if err != nil {
-			return fmt.Errorf("error getting payee: %v", err)
+			return err
 		}
-		account, err := s.accountRepo.GetById(ctx, tx, budgetId, *txn.AccountID)
-		if err != nil {
-			return fmt.Errorf("error getting account: %v", err)
+
+		if err = s.applySideEffects(ctx, tx, budgetId, txn, *budget); err != nil {
+			return err
 		}
-		if payee.TransferAccountID != nil {
-			// this is a transfer transaction
-			createdTxnId := createdTxn[0].ID
-			transferTxn := model.Transaction{
-				BudgetID:              budgetId,
-				AccountID:             payee.TransferAccountID,
-				PayeeID:               account.TransferPayeeID,
-				CategoryID:            nil,
-				Amount:                -txn.Amount,
-				Date:                  txn.Date,
-				Note:                  txn.Note,
-				Source:                txn.Source,
-				TransferAccountID:     txn.AccountID,
-				TransferTransactionID: &createdTxnId,
-			}
-			createdTransferTxn, err := s.repo.Create(ctx, tx, transferTxn)
-			if err != nil {
-				return fmt.Errorf("error while creating transfer transaction: %v", err)
-			}
-			if len(createdTransferTxn) == 0 {
-				return fmt.Errorf("no transfer transaction was created")
-			}
-			createdTransferTxnId := createdTransferTxn[0].ID
-			updateTxn := model.Transaction{
-				BudgetID:              budgetId,
-				AccountID:             txn.AccountID,
-				PayeeID:               txn.PayeeID,
-				CategoryID:            txn.CategoryID,
-				Amount:                txn.Amount,
-				Date:                  txn.Date,
-				Note:                  txn.Note,
-				Source:                txn.Source,
-				TransferAccountID:     transferTxn.AccountID,
-				TransferTransactionID: &createdTransferTxnId,
-			}
-			err = s.repo.Update(ctx, tx, budgetId, createdTxnId, updateTxn)
-			if err != nil {
-				return fmt.Errorf("error while updating TransferTransactionID for transaction %v: %w", createdTxnId, err)
-			}
-		}
-		budget, err := s.budgetRepo.GetById(ctx, tx, budgetId)
-		if err != nil {
-			return fmt.Errorf("error while fetching budget with id %v: %v", budgetId, err)
-		}
-		if txn.CategoryID != nil && txn.CategoryID.String() != budget.Metadata.InflowCategoryID.String() {
-			monthKey := utils.GetMonthKey(txn.Date)
-			foundMb, err := s.mbRepo.GetByCatIdAndMonth(ctx, tx, budgetId, *txn.CategoryID, monthKey)
-		utils.Logger(ctx).Debug("found existing monthly budget", "monthlyBudget", foundMb)
-			if err != nil {
-				if errors.Is(err, pgx.ErrNoRows) {
-					monthlyBudget := model.MonthlyBudget{
-						Month:            monthKey,
-						BudgetID:         budgetId,
-						Budgeted:         0,
-						CarryoverBalance: txn.Amount,
-						CategoryID:       *txn.CategoryID,
-					}
-					if err = s.mbRepo.Create(ctx, tx, budgetId, monthlyBudget); err != nil {
-						return fmt.Errorf("error while creating new monthly budget for category %v and month %v: %w", monthlyBudget.CategoryID, monthKey, err)
-					}
-				} else {
-					return fmt.Errorf("error while fetching monthly budget for category %v and month %v: %w", *txn.CategoryID, monthKey, err)
-				}
-			} else {
-				if err = s.mbRepo.UpdateCarryoverByCatIdAndMonth(ctx, tx, budgetId, *txn.CategoryID, monthKey, txn.Amount); err != nil {
-					return err
-				}
-			}
-		}
+
 		return nil
 	})
 	if err != nil {
@@ -304,31 +449,71 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 	budgetId := utils.MustBudgetID(ctx)
 	utils.Logger(ctx).Info("updating transaction", "id", id)
 
+	if err := s.validateTransactionPayload(txn); err != nil {
+		return err
+	}
+
 	return utils.WithTx(txCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
 		foundTxn, err := s.repo.GetByIdTx(txCtx, tx, budgetId, id)
 		if err != nil {
-			return fmt.Errorf("Error getting transaction: %v", err)
+			return errs.Wrap(errs.CodeTransactionLookupFailed, "error getting transaction", err)
 		}
 		if foundTxn == nil {
-			return fmt.Errorf("Transaction not found for id %v", id)
+			return errs.New(errs.CodeTransactionLookupFailed, "transaction not found for id %v", id)
 		}
 
-		// fetch updated txn payee
-		payee, err := s.payeeRepo.GetByIdTx(txCtx, tx, budgetId, *txn.PayeeID)
+		same := foundTxn.Compare(&txn)
+		if same {
+			utils.Logger(txCtx).Info("transaction is the same as the existing transaction, skipping update")
+			return nil
+		}
+
+		// fetch existing txn account and payee
+		// _, existingAccount, existingPayee, err := s.loadDependencies(txCtx, tx, budgetId, foundTxn)
+		// if err != nil {
+		// 	return err
+		// }
+
+		// fetch updated txn account and payee
+		_, account, payee, err := s.loadDependencies(txCtx, tx, budgetId, txn)
 		if err != nil {
-			return fmt.Errorf("error getting payee: %v", err)
+			return err
 		}
 
-		// fetch updated txn account
-		account, err := s.accountRepo.GetById(txCtx, tx, budgetId, *txn.AccountID)
+		err = s.validateCategory(txn.CategoryID, *account, *payee)
 		if err != nil {
-			return fmt.Errorf("error getting account: %v", err)
+			return err
 		}
-		hasUpdated := false
 
-		if payee.TransferAccountID != nil {
-			if foundTxn.TransferTransactionID == nil {
+		txnDiff := &txnDiff{
+			oldCatId:    foundTxn.CategoryID,
+			newCatId:    txn.CategoryID,
+			oldMonthKey: utils.GetMonthKey(foundTxn.Date.String()),
+			newMonthKey: utils.GetMonthKey(txn.Date.String()),
+			oldAmount:   foundTxn.Amount,
+			newAmount:   txn.Amount,
+		}
+		carryoverCase := carryoverCase{
+			sameCategory: foundTxn.CategoryID != nil && txn.CategoryID != nil && *foundTxn.CategoryID == *txn.CategoryID,
+			sameMonth:    foundTxn.Date.String() == txn.Date.String(),
+		}
+		err = s.applyCarryoverOps(ctx, tx, budgetId, txnDiff, carryoverCase)
+		if err != nil {
+			return err
+		}
+
+		// transfer txn cases
+		// case 1: creating a new transfer transaction
+		//    -
+		// case 2: updating an existing transfer transaction
+		// case 3: converting a transfer transaction to a regular transaction
+
+		switch {
+		case foundTxn.TransferTransactionID == nil && payee.TransferAccountID != nil:
+			{
+				// case 1: creating a new transfer transaction
 				utils.Logger(txCtx).Info("creating new transfer transaction")
+
 				// we are creating a new transfer transaction
 				foundTxnId := foundTxn.ID
 				transferTxn := model.Transaction{
@@ -366,16 +551,47 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 				}
 				err = s.repo.Update(txCtx, tx, budgetId, foundTxnId, updateTxn)
 				if err != nil {
-					return fmt.Errorf("error while updating TransferTransactionID for transaction %v: %w", foundTxnId, err)
+					return errs.Wrap(errs.CodeTransactionUpdateFailed, fmt.Sprintf("error while updating TransferTransactionID for transaction %v", foundTxnId), err)
 				}
-				hasUpdated = true
-			} else {
-				if *txn.PayeeID != *foundTxn.PayeeID || *txn.AccountID != *foundTxn.AccountID {
-					utils.Logger(txCtx).Info("updating existing transfer transaction", "transferTxnId", foundTxn.TransferTransactionID)
-					// @TODO: fetch existing transfer txn
+			}
+		case foundTxn.TransferTransactionID != nil:
+			{
+				// case 2: updating an existing transfer transaction
+				utils.Logger(txCtx).Info("updating existing transfer transaction", "transferTxnId", foundTxn.TransferTransactionID)
+
+				// fetch existing transfer transaction
+				existingTransferTxn, err := s.repo.GetByIdTx(txCtx, tx, budgetId, *foundTxn.TransferTransactionID)
+				if err != nil {
+					return errs.Wrap(errs.CodeTransactionLookupFailed, fmt.Sprintf("error fetching existing transfer transaction %v", *foundTxn.TransferTransactionID), err)
+				}
+				if existingTransferTxn == nil {
+					return errs.New(errs.CodeTransactionLookupFailed, fmt.Sprintf("transfer transaction %v not found", *foundTxn.TransferTransactionID))
+				}
+				// check if the payee or account has changed
+				if existingTransferTxn.PayeeID != account.TransferPayeeID || existingTransferTxn.AccountID != payee.TransferAccountID || existingTransferTxn.Amount != -txn.Amount {
+					// update the transfer transaction to reflect changes
+					updatedTransferTxn := model.Transaction{
+						BudgetID:              budgetId,
+						AccountID:             payee.TransferAccountID,
+						PayeeID:               account.TransferPayeeID,
+						CategoryID:            nil,
+						Amount:                -txn.Amount,
+						Date:                  txn.Date,
+						Note:                  txn.Note,
+						Source:                txn.Source,
+						TransferAccountID:     txn.AccountID,
+						TransferTransactionID: &foundTxn.ID,
+					}
+					err = s.repo.Update(txCtx, tx, budgetId, *foundTxn.TransferTransactionID, updatedTransferTxn)
+					if err != nil {
+						return errs.Wrap(errs.CodeTransactionUpdateFailed, fmt.Sprintf("error while updating TransferTransactionID for transaction %v", foundTxn.ID), err)
+					}
 				}
 			}
 		}
+
+		// check if
+		hasUpdated := false
 
 		// update prediction if needed
 		if foundTxn.Source == "MLP" {
@@ -388,10 +604,6 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 			if err = s.repo.Update(txCtx, tx, budgetId, id, txn); err != nil {
 				return fmt.Errorf("error updating transaction: %v", err)
 			}
-		}
-
-		if err = s.updateCarryovers(txCtx, tx, budgetId, foundTxn, txn); err != nil {
-			return fmt.Errorf("error updating carryovers: %v", err)
 		}
 
 		return nil
@@ -408,46 +620,49 @@ func (s *transactionService) DeleteById(ctx context.Context, id uuid.UUID) error
 	return utils.WithTx(txCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
 		foundTxn, err := s.repo.GetByIdTx(txCtx, tx, budgetId, id)
 		utils.Logger(txCtx).Debug("found transaction for delete", "txn", foundTxn.String())
+
 		if err != nil {
-			return fmt.Errorf("Error getting transaction: %v", err)
+			return errs.Wrap(errs.CodeTransactionLookupFailed, "error getting transaction", err)
 		}
 		if foundTxn == nil {
-			return fmt.Errorf("Transaction not found for id %v", id)
+			return errs.New(errs.CodeTransactionLookupFailed, "transaction not found for id %v", id)
 		}
 
 		if foundTxn.TransferTransactionID != nil {
 			// delete transfer txn
 			if err = s.repo.DeleteById(txCtx, tx, budgetId, *foundTxn.TransferTransactionID); err != nil {
-				return fmt.Errorf("error deleting transfer transaction: %v", err)
+				return errs.Wrap(errs.CodeTransactionDeleteFailed, "error deleting transfer transaction", err)
 			}
+			utils.Logger(txCtx).Debug("deleted transfer transaction", "transferTxnId", *foundTxn.TransferTransactionID)
 		}
 
 		// delete any present prediction
-		if foundTxn.Source == "MLP" {
+		foundPrediction, err := s.predictionRepo.GetByTxnIdTx(txCtx, tx, budgetId, id)
+		if err != nil {
+			return errs.Wrap(errs.CodeTransactionLookupFailed, "error getting prediction", err)
+		}
+		utils.Logger(txCtx).Debug("found prediction", "prediction", foundPrediction.String())
+
+		if foundPrediction != nil {
 			if err = s.predictionRepo.DeleteByTxnId(txCtx, tx, budgetId, id); err != nil {
-				// @TODO: find prediction fo transfer transaction id if it exists then only throw error
-				if foundTxn.TransferTransactionID != nil {
-					if err = s.predictionRepo.DeleteByTxnId(txCtx, tx, budgetId, *foundTxn.TransferTransactionID); err != nil {
-						return fmt.Errorf("error while deleting prediction for transfer transaction %v: %w", *foundTxn.TransferTransactionID, err)
-					}
-				} else {
-					return fmt.Errorf("error while deleting prediction for transaction %v: %w", id, err)
-				}
+				return errs.Wrap(errs.CodeTransactionDeleteFailed, "error while deleting prediction for transaction %v", err)
 			}
+			utils.Logger(txCtx).Debug("deleted prediction", "prediction", foundPrediction.ID.String())
 		}
 
 		// reverse carryover
-		monthKey := utils.GetMonthKey(foundTxn.Date)
+		monthKey := utils.GetMonthKey(foundTxn.Date.String())
 
 		utils.Logger(txCtx).Debug("reversing carryover for delete", "txn", foundTxn.String())
+
 		if foundTxn.CategoryID != nil {
 			if err = s.mbRepo.UpdateCarryoverByCatIdAndMonth(txCtx, tx, budgetId, *foundTxn.CategoryID, monthKey, -foundTxn.Amount); err != nil {
-				return fmt.Errorf("error while reversing carryover for transaction category %v and month %v: %w", foundTxn.CategoryID, monthKey, err)
+				return errs.Wrap(errs.CodeTransactionDeleteFailed, "error while reversing carryover for transaction category %v and month %v", err)
 			}
 		}
 
 		if err = s.repo.DeleteById(txCtx, tx, budgetId, id); err != nil {
-			return fmt.Errorf("error deleting transaction: %v", err)
+			return errs.Wrap(errs.CodeTransactionDeleteFailed, "error deleting transaction", err)
 		}
 
 		return nil
