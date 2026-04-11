@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"time"
 
-	"pennywise-api/internal/model"
-	"pennywise-api/internal/repository"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/repository"
 
-	errs "pennywise-api/internal/errors"
-	utils "pennywise-api/pkg"
+	errs "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/errors"
+	utils "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/pkg"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"pennywise-api/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
