@@ -99,9 +99,23 @@ func createSchema(ctx context.Context, pool *pgxpool.Pool) error {
 				name TEXT NOT NULL,
 				applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
 			)`},
+		{"auth_users", `
+			CREATE TABLE IF NOT EXISTS auth_users (
+				id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+				google_id TEXT NOT NULL UNIQUE,
+				email TEXT NOT NULL UNIQUE,
+				name TEXT NOT NULL,
+				picture TEXT,
+				token_version INTEGER NOT NULL DEFAULT 1,
+				refresh_token_hash TEXT,
+				created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+				deleted BOOLEAN DEFAULT false
+			)`},
 		{"budgets", `
 			CREATE TABLE IF NOT EXISTS budgets (
 				id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+				user_id UUID REFERENCES auth_users(id),
 				name TEXT NOT NULL,
 				is_selected BOOLEAN,
 				created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -140,18 +154,6 @@ func createSchema(ctx context.Context, pool *pgxpool.Pool) error {
 				deleted BOOLEAN DEFAULT false,
 				created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 				updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-			)`},
-		{"auth_users", `
-			CREATE TABLE IF NOT EXISTS auth_users (
-				id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-				google_id TEXT NOT NULL UNIQUE,
-				email TEXT NOT NULL UNIQUE,
-				name TEXT NOT NULL,
-				picture TEXT,
-				token_version INTEGER NOT NULL DEFAULT 1,
-				created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-				updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-				deleted BOOLEAN DEFAULT false
 			)`},
 		{"category_groups", `
 			CREATE TABLE IF NOT EXISTS category_groups (
@@ -319,6 +321,29 @@ func createSchema(ctx context.Context, pool *pgxpool.Pool) error {
 	indexes := []string{
 		`CREATE INDEX IF NOT EXISTS idx_auth_users_google_id ON auth_users(google_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_auth_users_email ON auth_users(email)`,
+		`CREATE INDEX IF NOT EXISTS idx_budgets_user_id ON budgets(user_id)`,
+
+		// transactions: covers GetAll, GetAllNormalized sorted listing
+		`CREATE INDEX IF NOT EXISTS idx_transactions_budget_date ON transactions(budget_id, date DESC, updated_at DESC) WHERE deleted = FALSE`,
+		// transactions: covers account balance subquery in accounts.GetAll
+		`CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id, budget_id) WHERE deleted = FALSE`,
+		// transactions: covers category activity subquery in categories.GetAll
+		`CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id, budget_id) WHERE deleted = FALSE`,
+
+		// monthly_budgets: covers GetByCatIdAndMonth and carryover cascading
+		`CREATE INDEX IF NOT EXISTS idx_monthly_budgets_lookup ON monthly_budgets(budget_id, category_id, month)`,
+
+		// predictions: covers GetByTxnId lookup during transaction updates
+		`CREATE INDEX IF NOT EXISTS idx_predictions_txn ON predictions(budget_id, transaction_id) WHERE deleted = FALSE`,
+
+		// payees: covers GetAll and Search by name
+		`CREATE INDEX IF NOT EXISTS idx_payees_budget ON payees(budget_id) WHERE deleted = FALSE`,
+
+		// accounts: covers GetAll listing
+		`CREATE INDEX IF NOT EXISTS idx_accounts_budget ON accounts(budget_id) WHERE deleted = FALSE`,
+
+		// categories: covers GetAll, GetByFilter listing
+		`CREATE INDEX IF NOT EXISTS idx_categories_budget ON categories(budget_id) WHERE deleted = FALSE`,
 	}
 
 	for _, idx := range indexes {

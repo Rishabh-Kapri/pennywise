@@ -1,13 +1,11 @@
 package handler
 
 import (
-	"log"
 	"net/http"
 	"strings"
 
 	"pennywise-api/internal/model"
 	"pennywise-api/internal/service"
-
 	utils "pennywise-api/pkg"
 
 	"github.com/gin-gonic/gin"
@@ -35,11 +33,7 @@ func NewTransactionHandler(service service.TransactionService) TransactionHandle
 }
 
 func (h *transactionHandler) List(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 
 	transactions, err := h.service.GetAll(ctx)
 	if err != nil {
@@ -50,14 +44,10 @@ func (h *transactionHandler) List(c *gin.Context) {
 }
 
 func (h *transactionHandler) ListNormalized(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 	accountIdParam := strings.TrimSpace(c.Query("accountId"))
 
-	log.Printf("accountIdParam: %v", accountIdParam)
+	utils.Logger(ctx).Info("listing normalized transactions", "accountIdParam", accountIdParam)
 	var accountId *uuid.UUID
 	if accountIdParam != "" {
 		parsedId, err := uuid.Parse(accountIdParam)
@@ -76,11 +66,7 @@ func (h *transactionHandler) ListNormalized(c *gin.Context) {
 }
 
 func (h *transactionHandler) Create(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 
 	var body model.Transaction
 	if err := c.ShouldBindJSON(&body); err != nil {
@@ -96,11 +82,7 @@ func (h *transactionHandler) Create(c *gin.Context) {
 }
 
 func (h *transactionHandler) Update(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 	id, ok := c.Params.Get("id")
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})
@@ -126,11 +108,7 @@ func (h *transactionHandler) Update(c *gin.Context) {
 }
 
 func (h *transactionHandler) DeleteById(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 
 	id, ok := c.Params.Get("id")
 	if !ok {

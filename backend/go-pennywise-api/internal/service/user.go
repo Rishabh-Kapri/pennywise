@@ -5,8 +5,7 @@ import (
 
 	"pennywise-api/internal/model"
 	"pennywise-api/internal/repository"
-
-	"github.com/google/uuid"
+	utils "pennywise-api/pkg"
 )
 
 type UserService interface {
@@ -23,11 +22,11 @@ func NewUserService(r repository.UserRepository) UserService {
 }
 
 func (s *userService) Search(ctx context.Context, query string) ([]model.User, error) {
-	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	budgetId := utils.MustBudgetID(ctx)
 	return s.repo.Search(ctx, budgetId, query)
 }
 
 func (s *userService) Update(ctx context.Context, user model.User) (*model.User, error) {
-	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	budgetId := utils.MustBudgetID(ctx)
 	return s.repo.Update(ctx, budgetId, user)
 }

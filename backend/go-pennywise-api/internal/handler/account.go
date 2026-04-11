@@ -7,8 +7,6 @@ import (
 	"pennywise-api/internal/model"
 	"pennywise-api/internal/service"
 
-	utils "pennywise-api/pkg"
-
 	"github.com/gin-gonic/gin"
 )
 
@@ -27,11 +25,7 @@ func NewAccountHandler(service service.AccountService) AccountHandler {
 }
 
 func (h *accountHandler) List(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 
 	accounts, err := h.service.GetAll(ctx)
 	if err != nil {
@@ -42,11 +36,7 @@ func (h *accountHandler) List(c *gin.Context) {
 }
 
 func (h *accountHandler) Search(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 	name := strings.TrimSpace(c.Query("name"))
 	accounts, err := h.service.Search(ctx, name)
 	if err != nil {
@@ -57,11 +47,7 @@ func (h *accountHandler) Search(c *gin.Context) {
 }
 
 func (h *accountHandler) Create(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 
 	var body model.Account
 	if err := c.ShouldBindJSON(&body); err != nil {

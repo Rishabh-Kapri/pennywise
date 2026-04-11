@@ -18,6 +18,7 @@ type DBTX interface {
 // provides common database operations for all repositories
 type BaseRepository interface {
 	GetPgxTx(ctx context.Context) (pgx.Tx, error)
+	GetDB() *pgxpool.Pool
 }
 
 type baseRepository struct {

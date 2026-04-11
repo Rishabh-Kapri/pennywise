@@ -1,42 +1,31 @@
-package logger
+package utils
 
 import (
 	"context"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/google/uuid"
 )
 
-type contextKey string
-
 const correlationIDKey contextKey = "correlationId"
 
-// Setup initializes the default slog logger with a JSON handler writing to stdout.
-// Info-level logs go to stdout (Railway treats as info), errors go to stderr (Railway treats as error).
-func Setup() {
+// SetupLogger initializes a structured JSON logger as the default slog logger.
+func SetupLogger() {
 	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
+		Level: logLevelFromEnv(),
 	})
 	slog.SetDefault(slog.New(handler))
 }
 
-// Fatal logs at error level and exits with code 1.
-// Use this as a replacement for log.Fatalf.
-func Fatal(msg string, args ...any) {
-	slog.Error(msg, args...)
-	os.Exit(1)
-}
-
-// FatalContext logs at error level with context and exits with code 1.
-func FatalContext(ctx context.Context, msg string, args ...any) {
-	slog.ErrorContext(ctx, msg, args...)
-	os.Exit(1)
-}
-
-// NewCorrelationID generates a new correlation ID.
-func NewCorrelationID() string {
-	return uuid.New().String()
+func logLevelFromEnv() slog.Level {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("RAILWAY_ENVIRONMENT_NAME"))) {
+	case "dev", "development":
+		return slog.LevelDebug
+	default:
+		return slog.LevelInfo
+	}
 }
 
 // WithCorrelationID returns a new context with the correlation ID set.
@@ -53,11 +42,23 @@ func CorrelationIDFromContext(ctx context.Context) string {
 	return id
 }
 
+// NewCorrelationID generates a new correlation ID.
+func NewCorrelationID() string {
+	return uuid.New().String()
+}
+
 // Logger returns an slog.Logger enriched with the correlation ID from context.
+// Use this in handlers and services to get request-scoped logging.
 func Logger(ctx context.Context) *slog.Logger {
 	logger := slog.Default()
 	if cid := CorrelationIDFromContext(ctx); cid != "" {
 		logger = logger.With("correlation_id", cid)
+	}
+	if bid, err := BudgetIDFromContext(ctx); err == nil {
+		logger = logger.With("budget_id", bid.String())
+	}
+	if uid, err := UserIDFromContext(ctx); err == nil {
+		logger = logger.With("user_id", uid.String())
 	}
 	return logger
 }

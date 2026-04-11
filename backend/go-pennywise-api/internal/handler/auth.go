@@ -12,7 +12,7 @@ import (
 
 type AuthHandler interface {
 	LoginWithGoogle(c *gin.Context)
-	// RefreshToken(c *gin.Context)
+	RefreshToken(c *gin.Context)
 	// Logout(c *gin.Context)
 	// LogoutAll(c *gin.Context)
 	// GetCurrentUser(c *gin.Context)
@@ -35,32 +35,43 @@ func (h *authHandler) LoginWithGoogle(c *gin.Context) {
 		return
 	}
 
-	response, err := h.service.LoginWithGoogle(c.Request.Context(), req.Credential)
+	user, accessToken, refreshToken, err := h.service.LoginWithGoogle(c.Request.Context(), req.Credential)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.SetCookie("token", response, 3600, "/", h.config.Domain, false, true)
-	c.JSON(http.StatusOK, response)
+	c.SetCookie("access_token", accessToken, 3600, "/", h.config.Domain, false, true)
+	c.SetCookie("refresh_token", refreshToken, 3600*24*7, "/", h.config.Domain, false, true)
+	c.JSON(http.StatusOK, model.LoginResponse{
+		User: model.AuthUserResponse{
+			ID:      user.ID,
+			Email:   user.Email,
+			Name:    user.Name,
+			Picture: user.Picture,
+		},
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		ExpiresIn:    900, // 15 minutes in seconds
+	})
 }
 
 // RefreshToken handles POST /api/auth/refresh
-// func (h *authHandler) RefreshToken(c *gin.Context) {
-// 	var req model.RefreshTokenRequest
-// 	if err := c.ShouldBindJSON(&req); err != nil {
-// 		c.JSON(http.StatusBadRequest, gin.H{"error": "refreshToken is required"})
-// 		return
-// 	}
-//
-// 	response, err := h.service.RefreshToken(c.Request.Context(), req.RefreshToken)
-// 	if err != nil {
-// 		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid refresh token"})
-// 		return
-// 	}
-//
-// 	c.JSON(http.StatusOK, response)
-// }
+func (h *authHandler) RefreshToken(c *gin.Context) {
+	var req model.RefreshTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "refreshToken is required"})
+		return
+	}
+
+	response, err := h.service.RefreshToken(c.Request.Context(), req.RefreshToken)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid refresh token"})
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
+}
 //
 // // Logout handles POST /api/auth/logout
 // func (h *authHandler) Logout(c *gin.Context) {

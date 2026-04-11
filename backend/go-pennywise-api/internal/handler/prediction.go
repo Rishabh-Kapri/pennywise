@@ -1,12 +1,10 @@
 package handler
 
 import (
-	"log"
 	"net/http"
 
 	"pennywise-api/internal/model"
 	"pennywise-api/internal/service"
-
 	utils "pennywise-api/pkg"
 
 	"github.com/gin-gonic/gin"
@@ -29,11 +27,7 @@ func NewPredictionHandler(service service.PredictionService) PredictionHandler {
 }
 
 func (h *predictionHandler) List(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 
 	categories, err := h.service.GetAll(ctx)
 	if err != nil {
@@ -44,18 +38,14 @@ func (h *predictionHandler) List(c *gin.Context) {
 }
 
 func (h *predictionHandler) Create(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 
 	var body model.Prediction
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	log.Println(body)
+	utils.Logger(ctx).Info("creating prediction")
 	createdPredictions, err := h.service.Create(ctx, body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -65,11 +55,7 @@ func (h *predictionHandler) Create(c *gin.Context) {
 }
 
 func (h *predictionHandler) Update(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 	id, ok := c.Params.Get("id")
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})
@@ -95,11 +81,7 @@ func (h *predictionHandler) Update(c *gin.Context) {
 }
 
 func (h *predictionHandler) DeleteById(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 
 	id, ok := c.Params.Get("id")
 	if !ok {

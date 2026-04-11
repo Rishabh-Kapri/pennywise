@@ -5,6 +5,7 @@ import (
 
 	"pennywise-api/internal/model"
 	"pennywise-api/internal/repository"
+	utils "pennywise-api/pkg"
 
 	"github.com/google/uuid"
 )
@@ -26,7 +27,7 @@ func NewLoanMetadataService(r repository.LoanMetadataRepository) LoanMetadataSer
 }
 
 func (s *loanMetadataService) GetAll(ctx context.Context) ([]model.LoanMetadata, error) {
-	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	budgetId := utils.MustBudgetID(ctx)
 	return s.repo.GetAllByBudgetId(ctx, budgetId)
 }
 

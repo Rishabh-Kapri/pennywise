@@ -1,12 +1,13 @@
 package runner
 
 import (
+	"context"
 	"fmt"
-	"log/slog"
 	"sync"
 
 	"gmail-transactions/pkg/auth"
 	"gmail-transactions/pkg/gmail"
+	"gmail-transactions/pkg/logger"
 	"gmail-transactions/pkg/parser"
 	"gmail-transactions/pkg/pennywise-api"
 	"gmail-transactions/pkg/prediction"
@@ -65,10 +66,11 @@ func (s *Runner) isProcessed(messageId string) bool {
 	return false
 }
 
-func (s *Runner) ProcessGmailHistoryId(eventData EventData) error {
-	slog.Info("processing event", "eventData", eventData)
+func (s *Runner) ProcessGmailHistoryId(ctx context.Context, eventData EventData) error {
+	log := logger.Logger(ctx)
+	log.Info("processing event", "eventData", eventData)
 
-	refreshToken, err := s.pennywise.GetUserRefreshToken(eventData.Email)
+	refreshToken, err := s.pennywise.GetUserRefreshToken(ctx, eventData.Email)
 	if err != nil {
 		return fmt.Errorf("Failed to get refresh token: %w", err)
 	}
@@ -79,13 +81,13 @@ func (s *Runner) ProcessGmailHistoryId(eventData EventData) error {
 		return fmt.Errorf("Failed to get access token: %w", err)
 	}
 
-	prevHistoryId, err := s.pennywise.GetUserHistoryId(eventData.Email)
+	prevHistoryId, err := s.pennywise.GetUserHistoryId(ctx, eventData.Email)
 	if err != nil {
 		return fmt.Errorf("Failed to get prev history id: %w", err)
 	}
-	slog.Info("received history id", "prevHistoryId", prevHistoryId)
+	log.Info("received history id", "prevHistoryId", prevHistoryId)
 
-	if err := s.pennywise.UpdateUserHistoryId(eventData.Email, eventData.HistoryId); err != nil {
+	if err := s.pennywise.UpdateUserHistoryId(ctx, eventData.Email, eventData.HistoryId); err != nil {
 		return fmt.Errorf("Failed to update history id: %w", err)
 	}
 
@@ -94,42 +96,42 @@ func (s *Runner) ProcessGmailHistoryId(eventData EventData) error {
 		return fmt.Errorf("Failed to get message history: %w", err)
 	}
 
-	slog.Info("email data fetched", "count", len(emailData))
+	log.Info("email data fetched", "count", len(emailData))
 	for _, data := range emailData {
 		// Skip already processed Gmail messages (cross-call dedup)
 		if s.isProcessed(data.MessageId) {
-			slog.Info("duplicate message ID detected, skipping", "messageId", data.MessageId)
+			log.Info("duplicate message ID detected, skipping", "messageId", data.MessageId)
 			continue
 		}
 
 		isTransaction, defaultAccount := s.gmail.IsTransactionEmail(data.Headers)
 		if !isTransaction {
-			slog.Info("not a transaction, skipping")
+			log.Info("not a transaction, skipping")
 			continue
 		}
 		parsedDetails, err := s.parser.ParseEmail(data.Body)
 		if err != nil {
-			slog.Error("failed to parse email", "error", err)
+			log.Error("failed to parse email", "error", err)
 			continue
 		}
-		slog.Info("parsed email details", "details", parsedDetails)
+		log.Info("parsed email details", "details", parsedDetails)
 		if parsedDetails.Amount == 0 {
-			slog.Info("amount is 0, skipping")
+			log.Info("amount is 0, skipping")
 			continue
 		}
-		predictedFields, err := s.prediction.GetPredictedFields(parsedDetails, defaultAccount)
+		predictedFields, err := s.prediction.GetPredictedFields(ctx, parsedDetails, defaultAccount)
 		if err != nil {
-			slog.Error("error getting predicted fields", "error", err)
+			log.Error("error getting predicted fields", "error", err)
 			return err
 		}
-		createdTxn, err := s.pennywise.CreateTransaction(parsedDetails, predictedFields)
+		createdTxn, err := s.pennywise.CreateTransaction(ctx, parsedDetails, predictedFields)
 		if err != nil {
-			slog.Error("error creating transaction", "error", err)
+			log.Error("error creating transaction", "error", err)
 			return err
 		}
-		err = s.pennywise.CreatePrediction(parsedDetails, predictedFields, createdTxn)
+		err = s.pennywise.CreatePrediction(ctx, parsedDetails, predictedFields, createdTxn)
 		if err != nil {
-			slog.Error("error creating prediction", "error", err)
+			log.Error("error creating prediction", "error", err)
 			return err
 		}
 	}

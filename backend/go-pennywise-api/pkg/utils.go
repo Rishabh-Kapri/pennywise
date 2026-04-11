@@ -4,18 +4,57 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"sort"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const (
-	BUDGET_ID_HEADER = "X-Budget-ID"
-)
+type contextKey string
+
+const budgetIDKey contextKey = "budgetId"
+const userIDKey contextKey = "authUserID"
+
+// WithBudgetID returns a new context with the budget ID set.
+func WithBudgetID(ctx context.Context, id uuid.UUID) context.Context {
+	return context.WithValue(ctx, budgetIDKey, id)
+}
+
+// BudgetIDFromContext extracts the budget ID from the context.
+// Returns an error if the budget ID is missing — indicates a middleware misconfiguration.
+func BudgetIDFromContext(ctx context.Context) (uuid.UUID, error) {
+	id, ok := ctx.Value(budgetIDKey).(uuid.UUID)
+	if !ok {
+		return uuid.Nil, errors.New("budget ID not found in context")
+	}
+	return id, nil
+}
+
+// MustBudgetID extracts the budget ID or panics.
+// Only use in code paths guaranteed to run behind BudgetIdMiddleware.
+func MustBudgetID(ctx context.Context) uuid.UUID {
+	id, err := BudgetIDFromContext(ctx)
+	if err != nil {
+		panic("BudgetIdMiddleware not configured: " + err.Error())
+	}
+	return id
+}
+
+// WithUserID returns a new context with the authenticated user's ID set.
+func WithUserID(ctx context.Context, id uuid.UUID) context.Context {
+	return context.WithValue(ctx, userIDKey, id)
+}
+
+// UserIDFromContext extracts the authenticated user's ID from the context.
+func UserIDFromContext(ctx context.Context) (uuid.UUID, error) {
+	id, ok := ctx.Value(userIDKey).(uuid.UUID)
+	if !ok {
+		return uuid.Nil, errors.New("user ID not found in context")
+	}
+	return id, nil
+}
 
 // @TODO: add more validations
 // Returns the month key from date (YYYY-MM-DD) in the format YYYY-MM.
@@ -57,7 +96,7 @@ func UpdateCarryover(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categor
 		return fmt.Errorf("categoryId cannot be nil")
 	}
 	if amount == 0 {
-		log.Printf("Skipping carryover update for 0 amount")
+		Logger(ctx).Info("skipping carryover update for 0 amount")
 		return nil
 	}
 	if monthKey == "" {
@@ -74,9 +113,9 @@ func UpdateCarryover(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categor
 		return fmt.Errorf("failed to update carryover: %v", err)
 	}
 	if cmdTag.RowsAffected() == 0 {
-	  budgeted := 0.0
+		budgeted := 0.0
 		// @TODO: see if carryover_balance fetching can be done through pure sql
-		log.Printf("Carryover not found for month: %v", monthKey)
+		Logger(ctx).Info("carryover not found for month, creating", "month", monthKey)
 		newCmdTag, err := tx.Exec(
 			ctx, `
 			INSERT INTO monthly_budgets (
@@ -101,7 +140,7 @@ func UpdateCarryover(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categor
 			return err
 		}
 		if newCmdTag.RowsAffected() == 0 {
-			log.Printf("No entry found for previous months when creating new monthly_budget, creating with using previous carryover_balance as activity amount")
+			Logger(ctx).Info("no previous months found, creating with activity amount as carryover")
 			_, err := tx.Exec(
 				ctx, `
 				INSERT INTO monthly_budgets (
@@ -117,27 +156,41 @@ func UpdateCarryover(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categor
 	return nil
 }
 
-// Take gin context and return the budgetId embedded in context, checks for error and returns it in context
-func GetBudgetId(c *gin.Context) (context.Context, error) {
-	budgetId := c.GetHeader(BUDGET_ID_HEADER)
-	if budgetId == "" {
-		return nil, errors.New("Missing budgetId in context")
-	}
-	if err := uuid.Validate(budgetId); err != nil {
-		return nil, errors.New("Please enter a valid budgetId")
-	}
-	parsedBudgetId, err := uuid.Parse(budgetId)
-	if err != nil {
-		return nil, errors.New("Error while parsing budgetId to UUID")
-	}
-	ctx := context.WithValue(c.Request.Context(), "budgetId", parsedBudgetId)
-	return ctx, nil
-}
-
 func Float64SliceToVectorString(vec []float64) string {
 	parts := make([]string, len(vec))
 	for i, v := range vec {
 		parts[i] = fmt.Sprintf("%.8f", v)
 	}
 	return "[" + strings.Join(parts, ", ") + "]"
+}
+
+// Helper method to execute a function within a transaction. It will commit if the function returns nil error, otherwise it will rollback.
+// This is useful to avoid repeating the same transaction handling code in multiple places. Just pass the function that contains the logic that needs to be executed within the transaction.
+// This also ensures that the transaction is properly rolled back in case of any error, preventing potential data inconsistencies.
+//
+// Example usage:
+// err := WithTx(ctx, pool, func(tx pgx.Tx) error {
+//     // Your transactional code here, using the provided tx
+//     // For example:
+//     err := repo.Create(ctx, tx, data)
+//     if err != nil {
+//         return err
+//     }
+//     return nil
+// })
+// if err != nil {
+//     // Handle error
+// }
+func WithTx(ctx context.Context, pool *pgxpool.Pool, fn func(tx pgx.Tx) error) error {
+	tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	// Pass the transaction to the function and execute it
+	// This function is passed from the service layer and contains the actual logic that needs to be executed within the transaction
+	if err := fn(tx); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
