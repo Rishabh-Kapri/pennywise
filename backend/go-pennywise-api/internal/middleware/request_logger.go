@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	utils "pennywise-api/pkg"
+	utils "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/pkg"
 
 	"github.com/gin-gonic/gin"
 )
