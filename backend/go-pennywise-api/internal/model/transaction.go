@@ -4,13 +4,33 @@ import (
 	"fmt"
 	"time"
 
+	errs "pennywise-api/internal/errors"
+
 	"github.com/google/uuid"
 )
+
+type Date string
+
+// check if date is valid and is in the format YYYY-MM-DD
+func (d Date) Valid() error {
+	if d == "" {
+		return errs.New(errs.CodeInvalidArgument, "date is required")
+	}
+	_, err := time.Parse("2006-01-02", string(d))
+	if err != nil {
+		return errs.Wrap(errs.CodeInvalidArgument, "invalid date format", err)
+	}
+	return nil
+}
+
+func (d Date) String() string {
+	return string(d)
+}
 
 type Transaction struct {
 	ID                    uuid.UUID   `json:"id"`
 	BudgetID              uuid.UUID   `json:"budgetId"`
-	Date                  string      `json:"date"`
+	Date                  Date        `json:"date"`
 	PayeeID               *uuid.UUID  `json:"payeeId,omitempty"`
 	CategoryID            *uuid.UUID  `json:"categoryId,omitempty"`
 	AccountID             *uuid.UUID  `json:"accountId,omitempty"`
@@ -40,6 +60,7 @@ type TransactionFilter struct {
 	Note       *string
 }
 
+// Helper method to help log the transaction object
 func (t *Transaction) String() string {
 	return fmt.Sprintf(`Transaction{
     ID: %v,
@@ -69,4 +90,42 @@ func (t *Transaction) String() string {
 		t.Note, t.Amount, t.Inflow, t.Outflow, t.Balance, t.Source,
 		ptrToUUIDString(t.TransferAccountID), ptrToUUIDString(t.TransferTransactionID),
 		t.Deleted, t.CreatedAt, t.UpdatedAt)
+}
+
+// Compare returns true if the transactions are the same for update purposes
+func (t *Transaction) Compare(other *Transaction) bool {
+	if t.ID.String() != other.ID.String() {
+		return false
+	}
+	if t.Date != other.Date {
+		return false
+	}
+	if t.PayeeID.String() != other.PayeeID.String() {
+		return false
+	}
+	if t.CategoryID.String() != other.CategoryID.String() {
+		return false
+	}
+	if t.AccountID.String() != other.AccountID.String() {
+		return false
+	}
+	if t.Note != other.Note {
+		return false
+	}
+	if t.Amount != other.Amount {
+		return false
+	}
+	// handle tagIds
+	if len(t.TagIDs) != len(other.TagIDs) {
+		return false
+	}
+
+	// @TODO: handle tagIds
+	for i, tagId := range t.TagIDs {
+		if tagId != other.TagIDs[i] {
+			return false
+		}
+	}
+
+	return true
 }
