@@ -98,8 +98,8 @@
                                                             </tr>
                                                             <tr>
                                                                 <td align="left" valign="middle" style="font-family:Arial; font-size:16px; line-height:22px; color:#000; font-weight: normal; text-align: left" class="td esd-text">Dear Customer,
-Rs.500.00 has been debited from account 8936 to VPA 9997167687@ybl RISHABH KAPRI S O GOKUL CHANDRA KAP on 14-07-25.
-Your UPI transaction reference number is 519527171609.
+Rs.500.00 has been debited from account 4567 to VPA 9876543210@ybl JOHN DOE S O JAMES DOE on 14-07-25.
+Your UPI transaction reference number is 123456789012.
 If you did not authorize this transaction, please report it immediately by calling 18002586161 Or SMS BLOCK UPI to 7308080808.
 Warm Regards,
 HDFC Bank

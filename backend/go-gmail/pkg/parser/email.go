@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -33,7 +34,7 @@ type EmailDetails struct {
 func NewEmailParser() *EmailParser {
 	return &EmailParser{
 		patterns: &Patterns{
-			EmailRegex:   regexp.MustCompile(`(?i)(Dear\s+(Customer|Card Member|Card Holder).*?)\,*(\s|\S)+(\d{2}-\d{2}-\d{4}|\d{2}-\d{2}-\d{2}|\d{2}\/\d{2}\/\d+|\d{2}\s*\w+,\s*\d+)`),
+			EmailRegex:   regexp.MustCompile(`(?i)(Dear\s+(Customer|Card Member|Card Holder).*?)\,*(\s|\S)+?(\d{2}-\d{2}-\d{4}|\d{2}-\d{2}-\d{2}|\d{2}\/\d{2}\/\d+|\d{2}\s*\w+,\s*\d+)`),
 			AmountRegex:  regexp.MustCompile(`(?i)(Rs\.?\s?|INR\s?)([\d,]+\.\d+)`),
 			TypeRegex:    regexp.MustCompile(`(?i)(credited|debited)`),
 			DateRegex:    regexp.MustCompile(`\d{2}-\d{2}-\d{4}|\d{2}-\d{2}-\d{2}|\d{2}\/\d{2}\/\d+|\d{2}\s*\w+,\s*\d+`),
@@ -97,11 +98,25 @@ func (s *EmailParser) extractType(emailDetails *EmailDetails) error {
 }
 
 func (s *EmailParser) extractText(emailDetails *EmailDetails, html string) error {
-	match := s.patterns.EmailRegex.FindStringSubmatch(html)
-	if len(match) == 0 {
+	matches := s.patterns.EmailRegex.FindAllString(html, -1)
+	if len(matches) == 0 {
 		return errors.New("No transaction text pattern found")
 	}
-	emailDetails.Text = s.patterns.NewlineRegex.ReplaceAllString(match[0], " ") + "."
+	// Prefer non-mandate match when multiple matches exist
+	selected := matches[0]
+	foundNonMandate := false
+	for _, m := range matches {
+		if !strings.Contains(strings.ToLower(m), "e-mandate") {
+			selected = m
+			foundNonMandate = true
+			break
+		}
+	}
+	// Reject standalone mandate/auto-payment notification emails
+	if !foundNonMandate {
+		return errors.New("E-mandate notification email, not a transaction")
+	}
+	emailDetails.Text = s.patterns.NewlineRegex.ReplaceAllString(selected, " ") + "."
 	return nil
 }
 
