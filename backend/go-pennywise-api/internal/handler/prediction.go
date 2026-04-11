@@ -29,12 +29,12 @@ func NewPredictionHandler(service service.PredictionService) PredictionHandler {
 func (h *predictionHandler) List(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	categories, err := h.service.GetAll(ctx)
+	predictions, err := h.service.GetAll(ctx)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, categories)
+	c.JSON(http.StatusOK, predictions)
 }
 
 func (h *predictionHandler) Create(c *gin.Context) {

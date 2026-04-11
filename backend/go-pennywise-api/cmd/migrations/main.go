@@ -581,6 +581,48 @@ func addTagIdsColumn(ctx context.Context, pool *pgxpool.Pool, _ []struct{}) erro
 	return nil
 }
 
+// createTransactionEmbeddingsTable creates the transaction_embeddings table for pgvector-based prediction.
+func createTransactionEmbeddingsTable(ctx context.Context, pool *pgxpool.Pool, _ []struct{}) error {
+	_, err := pool.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS transaction_embeddings (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			budget_id UUID NOT NULL,
+			embedding_text TEXT NOT NULL,
+			embedding vector(1024) NOT NULL,
+			payee TEXT NOT NULL,
+			category TEXT NOT NULL,
+			account TEXT NOT NULL,
+			amount FLOAT NOT NULL,
+			transaction_id UUID,
+			source VARCHAR(20) NOT NULL DEFAULT 'prediction',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`)
+	if err != nil {
+		return fmt.Errorf("error creating transaction_embeddings table: %w", err)
+	}
+
+	indexes := []string{
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_txn_embed_txn_id_unique
+			ON transaction_embeddings(transaction_id)
+			WHERE transaction_id IS NOT NULL`,
+		`CREATE INDEX IF NOT EXISTS idx_txn_embed_cosine
+			ON transaction_embeddings
+			USING ivfflat (embedding vector_cosine_ops)
+			WITH (lists = 20)`,
+		`CREATE INDEX IF NOT EXISTS idx_txn_embed_budget
+			ON transaction_embeddings(budget_id)`,
+	}
+	for _, idx := range indexes {
+		if _, err := pool.Exec(ctx, idx); err != nil {
+			log.Printf("Warning: could not create index: %v", err)
+		}
+	}
+
+	log.Printf("Created transaction_embeddings table with indexes")
+	return nil
+}
+
 // cityMonthYearRe matches patterns like "Nagpur Apr 2025", "New York Jan 2024"
 var cityMonthYearRe = regexp.MustCompile(`(?i)^[a-z][\w\s]+ (jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+\d{4}$`)
 
@@ -710,6 +752,7 @@ func run(dbConn *pgxpool.Pool, targetName string) {
 		{8, "transactions", "data/transactions.json", genericMigrator[model.Transaction]{TableName: "transactions", InsertFn: insertTransactions}},
 		{9, "add_tag_ids_to_transactions", "", genericMigrator[struct{}]{TableName: "transactions", InsertFn: addTagIdsColumn}},
 		{10, "migrate_notes_to_tags", "", genericMigrator[struct{}]{TableName: "tags", InsertFn: migrateNotesToTags}},
+		{11, "create_transaction_embeddings", "", genericMigrator[struct{}]{TableName: "transaction_embeddings", InsertFn: createTransactionEmbeddingsTable}},
 	}
 
 	// If a specific migration is targeted, find and run only that one
@@ -727,7 +770,7 @@ func run(dbConn *pgxpool.Pool, targetName string) {
 				return
 			}
 		}
-		log.Fatalf("Unknown migration name: %q. Available: budgets, accounts, users, category_groups, categories, inflow_category, payees, transactions, add_tag_ids_to_transactions, migrate_notes_to_tags", targetName)
+		log.Fatalf("Unknown migration name: %q. Available: budgets, accounts, users, category_groups, categories, inflow_category, payees, transactions, add_tag_ids_to_transactions, migrate_notes_to_tags, create_transaction_embeddings", targetName)
 	}
 
 	// Run all pending migrations in order
