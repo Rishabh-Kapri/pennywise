@@ -22,6 +22,8 @@ type MonthlyBudgetRepository interface {
 	GetByCatIdAndMonth(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categoryId uuid.UUID, month string) (*model.MonthlyBudget, error)
 	Create(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, monthlyBudget model.MonthlyBudget) error
 	UpdateBudgetedByCatIdAndMonth(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categoryId uuid.UUID, month string, newBudgeted float64) error
+	// updates the carryover for current and further months
+	// amount should be the value the carryvover needs to be updated with
 	UpdateCarryoverByCatIdAndMonth(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categoryId uuid.UUID, month string, amount float64) error
 }
 
@@ -162,8 +164,6 @@ func (r *monthlyBudgetRepo) UpdateBudgetedByCatIdAndMonth(ctx context.Context, t
 	return nil
 }
 
-// updates the carryover for current and further months
-// amount should be the value the carryvover needs to be updated with
 func (r *monthlyBudgetRepo) UpdateCarryoverByCatIdAndMonth(
 	ctx context.Context,
 	tx pgx.Tx,
