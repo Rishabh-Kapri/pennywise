@@ -5,12 +5,16 @@ RUN apk add --no-cache git tzdata
 
 WORKDIR /app
 
+# Copy shared module (required by replace directive in go.mod)
+COPY shared/ ./shared/
+
 # Copy go mod and download dependencies
-COPY go.mod go.sum ./
+COPY go-pennywise-api/go.mod go-pennywise-api/go.sum ./go-pennywise-api/
+WORKDIR /app/go-pennywise-api
 RUN go mod download
 
 # Copy source
-COPY . .
+COPY go-pennywise-api/ /app/go-pennywise-api/
 
 # Build
 RUN go build -o api ./cmd/api
@@ -24,7 +28,7 @@ RUN apk update --no-cache && apk add --no-cache ca-certificates tzdata
 WORKDIR /root/
 
 # Copy binary from build-stage
-COPY --from=build-stage /app .
+COPY --from=build-stage /app/go-pennywise-api/api .
 
 # Set timezone for logs and time library
 ENV TZ=Asia/Kolkata
