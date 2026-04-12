@@ -6,7 +6,8 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/repository"
 
-	utils "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/pkg"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
+	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 )
 
 type EmbeddingService interface {
@@ -27,7 +28,7 @@ func (s *embeddingService) Get(ctx context.Context, docType string, queryStr str
 	postData := map[string]string{
 		"content": queryStr,
 	}
-	embedding, err := utils.Post[[]float64](url, postData)
+	embedding, err := httpclient.Post[[]float64](ctx, url, postData)
 	if err != nil {
 		return nil, err
 	}
@@ -40,11 +41,10 @@ func (s *embeddingService) Create(ctx context.Context, data model.Embedding) err
 	postData := map[string]string{
 		"content": data.Content,
 	}
-	embedding, err := utils.Post[[]float64](url, postData)
+	embedding, err := httpclient.Post[[]float64](ctx, url, postData)
 	if err != nil {
 		return err
 	}
-	// log.Print(data)
 	embeddingStr := utils.Float64SliceToVectorString(embedding)
 	return s.repo.Create(ctx, data, embeddingStr)
 }

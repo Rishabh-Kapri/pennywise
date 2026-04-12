@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"orchestrator/internal/service"
+	"github.com/Rishabh-Kapri/pennywise/backend/orchestrator/internal/service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"

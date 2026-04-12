@@ -6,7 +6,8 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/repository"
 
-	utils "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/pkg"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
 )
@@ -32,7 +33,7 @@ func (s *categoryGroupService) GetAll(ctx context.Context, month string) ([]mode
 	if err != nil {
 		return nil, err
 	}
-	utils.Logger(ctx).Debug("listing category groups", "month", month)
+	logger.Logger(ctx).Debug("listing category groups", "month", month)
 	if month != "" {
 		for _, group := range groups {
 			group.Balance = utils.FillCarryForward(group.Balance, month)

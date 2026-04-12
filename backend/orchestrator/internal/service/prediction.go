@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-
-	"orchestrator/internal/client"
-	"orchestrator/internal/model"
-	"orchestrator/internal/repository"
-
 	"pennywise-shared/db"
+	"pennywise-shared/utils"
+
+	"github.com/Rishabh-Kapri/pennywise/backend/orchestrator/internal/client"
+	"github.com/Rishabh-Kapri/pennywise/backend/orchestrator/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/orchestrator/internal/repository"
 
 	"github.com/google/uuid"
 )
@@ -77,42 +77,48 @@ func (s *predictionService) Predict(ctx context.Context, budgetID uuid.UUID, req
 	log := slog.Default().With("budgetId", budgetID.String())
 
 	// Step 1: Generate embedding via Ollama
-	embedding, err := s.ollama.Embed(ctx, EmbeddingModel, req.EmailText)
+	cleanedEmailText := utils.CleanEmailText(req.EmailText, "debit")
+	log.Info("cleaned email text", "text", cleanedEmailText)
+	embedding, err := s.ollama.Embed(ctx, EmbeddingModel, cleanedEmailText)
 	if err != nil {
 		log.Warn("ollama embed failed, falling back to MLP", "error", err)
-		return s.mlpFallback(ctx, req, log)
+		// return s.mlpFallback(ctx, req, log)
+		return nil, nil
 	}
 
 	embeddingStr := db.VectorToString(embedding)
 
 	// Step 2: pgvector similarity search
 	matches, err := s.embeddingRepo.SearchSimilar(ctx, budgetID, embeddingStr, 3)
+	log.Info("pgvector search", "matches", matches)
 	if err != nil {
 		log.Warn("pgvector search failed, falling back to MLP", "error", err)
-		return s.mlpFallback(ctx, req, log)
+		// return s.mlpFallback(ctx, req, log)
+		return nil, nil
 	}
 
 	if result := s.resolveMatches(matches); result != nil {
 		log.Info("pgvector match found", "payee", result.Payee, "similarity", result.Confidence)
 
 		// Store prediction embedding for future lookups
-		s.storeEmbedding(ctx, budgetID, req, result, SourcePrediction, embeddingStr)
+		// s.storeEmbedding(ctx, budgetID, req, result, SourcePrediction, embeddingStr)
 
 		return result, nil
 	}
 
 	// Step 3: MLP fallback
-	mlpResult, err := s.mlpFallback(ctx, req, log)
-	if err != nil {
-		return s.defaultFallback(req), nil
-	}
+	// mlpResult, err := s.mlpFallback(ctx, req, log)
+	// if err != nil {
+	// 	return s.defaultFallback(req), nil
+	// }
+	//
+	// // Store MLP result embedding if confident
+	// if mlpResult.Source == SourceMLP {
+	// 	s.storeEmbedding(ctx, budgetID, req, mlpResult, SourcePrediction, embeddingStr)
+	// }
 
-	// Store MLP result embedding if confident
-	if mlpResult.Source == SourceMLP {
-		s.storeEmbedding(ctx, budgetID, req, mlpResult, SourcePrediction, embeddingStr)
-	}
-
-	return mlpResult, nil
+	// return mlpResult, nil
+	return nil, nil
 }
 
 func (s *predictionService) HandleCorrection(ctx context.Context, req CorrectionRequest) error {

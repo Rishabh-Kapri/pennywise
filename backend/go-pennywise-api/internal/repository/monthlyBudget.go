@@ -75,11 +75,11 @@ func (r *monthlyBudgetRepo) Create(ctx context.Context, tx pgx.Tx, budgetId uuid
 			WHERE budget_id = $1 AND category_id = $2 AND month = $3
 		`, budgetId, monthlyBudget.CategoryID, monthlyBudget.Month,
 	)
+	if err != nil {
+		return err
+	}
 	if cmdTag.RowsAffected() > 0 {
 		return fmt.Errorf("monthly budget already exists for month :%v and category: %v", monthlyBudget.Month, monthlyBudget.CategoryID)
-	}
-	if err != nil {
-		return nil
 	}
 
 	// 2. get previous month carryover, use default 0
