@@ -25,11 +25,12 @@ services:
 
   pennywise-api:
     build:
-      context: ./backend/go-pennywise-api
+      context: ./backend
+      dockerfile: go-pennywise-api/Dockerfile
     ports:
       - '5151:5151'
-    env_file:
-      - ./backend/go-pennywise-api/.env
+    # env_file:
+    #   - ./backend/go-pennywise-api/.env
 
   pennywise-app:
     build:
