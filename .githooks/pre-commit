@@ -1,0 +1,16 @@
+#!/bin/sh
+# Re-vendor go-pennywise-api whenever go.mod or shared/ changes
+
+STAGED=$(git diff --cached --name-only)
+
+NEEDS_VENDOR=false
+
+# Check if go.mod/go.sum or shared module files changed
+echo "$STAGED" | grep -qE "^backend/go-pennywise-api/go\.(mod|sum)$" && NEEDS_VENDOR=true
+echo "$STAGED" | grep -qE "^backend/shared/" && NEEDS_VENDOR=true
+
+if [ "$NEEDS_VENDOR" = "true" ]; then
+  echo "go.mod or shared/ changed — running go mod vendor..."
+  (cd backend/go-pennywise-api && GOWORK=off go mod vendor)
+  git add backend/go-pennywise-api/vendor/
+fi
