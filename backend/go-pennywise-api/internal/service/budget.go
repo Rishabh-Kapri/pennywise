@@ -6,7 +6,9 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/repository"
-	utils "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/pkg"
+
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -53,7 +55,7 @@ func (s *budgetService) Create(ctx context.Context, name string, userID uuid.UUI
 			IsSystem: true,
 		}
 		createdGroup, err := s.catGroupRepo.Create(ctx, tx, catGroup)
-		utils.Logger(ctx).Debug("created internal master category group", "group", createdGroup)
+		logger.Logger(ctx).Debug("created internal master category group", "group", createdGroup)
 		if err != nil {
 			return fmt.Errorf("budgetService.Create; error creating internal master category group: %v", err)
 		}
@@ -84,7 +86,7 @@ func (s *budgetService) Create(ctx context.Context, name string, userID uuid.UUI
 			Hidden:          false,
 			IsSystem:        true,
 		}
-		utils.Logger(ctx).Debug("created inflow category", "category", cat)
+		logger.Logger(ctx).Debug("created inflow category", "category", cat)
 		_, err = s.catRepo.Create(ctx, tx, cat)
 		if err != nil {
 			return fmt.Errorf("budgetService.Create; error creating internal master category: %v", err)

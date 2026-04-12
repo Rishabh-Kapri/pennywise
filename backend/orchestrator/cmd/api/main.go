@@ -2,27 +2,23 @@ package main
 
 import (
 	"log"
-	"log/slog"
 	"net/http"
-	"os"
 
-	"orchestrator/internal/client"
-	"orchestrator/internal/config"
-	"orchestrator/internal/handler"
-	"orchestrator/internal/repository"
-	"orchestrator/internal/service"
+	"github.com/Rishabh-Kapri/pennywise/backend/orchestrator/internal/client"
+	"github.com/Rishabh-Kapri/pennywise/backend/orchestrator/internal/config"
+	"github.com/Rishabh-Kapri/pennywise/backend/orchestrator/internal/handler"
+	"github.com/Rishabh-Kapri/pennywise/backend/orchestrator/internal/repository"
+	"github.com/Rishabh-Kapri/pennywise/backend/orchestrator/internal/service"
 
-	"pennywise-shared/db"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
 func setupLogger() {
-	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	})
-	slog.SetDefault(slog.New(handler))
+	logger.Setup("orchestrator")
 }
 
 func healthPage(c *gin.Context) {
@@ -35,7 +31,10 @@ func main() {
 	cfg := config.Load()
 
 	// Database connection via shared module
-	dbConn := db.ConnectWithURL(cfg.DatabaseURL)
+	dbConn, err := db.ConnectWithURL(cfg.DatabaseURL)
+	if err != nil {
+		logger.Fatal(err.Error())
+	}
 	defer dbConn.Close()
 
 	// Clients

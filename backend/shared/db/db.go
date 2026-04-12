@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 )
@@ -32,22 +33,21 @@ func Connect() *pgxpool.Pool {
 	return dbpool
 }
 
-func ConnectWithURL(databaseURL string) *pgxpool.Pool {
+func ConnectWithURL(databaseURL string) (*pgxpool.Pool, error) {
 	if databaseURL == "" {
-		log.Fatal("database URL cannot be empty")
+		return nil, errs.New(errs.CodeInvalidArgument, "database URL cannot be empty")
 	}
 
 	dbpool, err := pgxpool.New(context.Background(), databaseURL)
 	if err != nil {
-		log.Fatalf("Unable to connect to database: %v\n", err)
+		return nil, errs.New(errs.CodeHTTPClientError, "Unable to connect to database", err)
 	}
 
 	if err := dbpool.Ping(context.Background()); err != nil {
-		log.Fatalf("Unable to ping database: %v\n", err)
+		return nil, errs.New(errs.CodeHTTPClientError, "Unable to ping database", err)
 	}
 
-	log.Printf("Database connection opened\n")
-	return dbpool
+	return dbpool, nil
 }
 
 func VectorToString(vec []float64) string {

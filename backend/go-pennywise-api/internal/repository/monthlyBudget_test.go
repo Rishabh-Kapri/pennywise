@@ -40,6 +40,9 @@ func getTestDbConn(ctx context.Context) (*pgxpool.Pool, error) {
 func setupTestSuite(t *testing.T) *testSuite {
 	ctx := context.Background()
 	dbpool, err := getTestDbConn(ctx)
+	if err != nil {
+		t.Skip("Skipping tests because active DB connection failed.")
+	}
 	require.NoError(t, err)
 
 	budgetID := uuid.New()
@@ -140,6 +143,50 @@ func (ts *testSuite) assertMonthlyBudgets(t *testing.T, monthlyBudgets []model.M
 	}
 }
 
+// Tests
+
+func TestNewMonthlyBudgetRepository(t *testing.T) {
+	ctx := context.Background()
+	dbpool, err := getTestDbConn(ctx)
+	if err != nil {
+		t.Skip("Ignoring due to DB connection failure")
+	}
+	defer dbpool.Close()
+	repo := NewMonthlyBudgetRepository(dbpool)
+	require.NotNil(t, repo)
+}
+
+func TestGetByCatIdAndMonth(t *testing.T) {
+	ts := setupTestSuite(t)
+	defer ts.tearDown()
+	defer ts.cleanupTestData()
+
+	ts.insertDummyData(t)
+
+	t.Run("ValidRetrieval", func(t *testing.T) {
+		mb, err := ts.repo.GetByCatIdAndMonth(ts.ctx, nil, ts.budgetID, ts.catID, "2025-06")
+		require.NoError(t, err)
+		require.NotNil(t, mb)
+		require.Equal(t, 2500.0, mb.Budgeted)
+		require.Equal(t, 0.0, mb.CarryoverBalance)
+		require.Equal(t, "2025-06", mb.Month)
+	})
+
+	t.Run("NotFound", func(t *testing.T) {
+		mb, err := ts.repo.GetByCatIdAndMonth(ts.ctx, nil, ts.budgetID, ts.catID, "2020-01")
+		require.ErrorIs(t, err, pgx.ErrNoRows)
+		require.Nil(t, mb)
+	})
+
+	t.Run("ContextCanceled", func(t *testing.T) {
+		canceledCtx, cancel := context.WithCancel(ts.ctx)
+		cancel()
+		mb, err := ts.repo.GetByCatIdAndMonth(canceledCtx, nil, ts.budgetID, ts.catID, "2025-06")
+		require.Error(t, err)
+		require.Nil(t, mb)
+	})
+}
+
 // Table-driven test helper functions
 type createTestCase struct {
 	name              string
@@ -150,16 +197,7 @@ type createTestCase struct {
 	verifyAllMonths   bool
 	expectedAllMonths map[string]budgetData
 	description       string
-}
-
-type updateTestCase struct {
-	name                string
-	month               string
-	amount              float64
-	expectError         bool
-	expectSpecificError bool
-	expectedData        map[string]budgetData
-	description         string
+	useCanceledCtx    bool // NEW: To trigger db errors
 }
 
 // TestCreateTableDriven demonstrates table-driven testing approach
@@ -204,6 +242,34 @@ func TestCreate(t *testing.T) {
 			expectError: true,
 			description: "Attempt to create budget for existing month should fail",
 		},
+		{
+			name: "NumericOverflow",
+			monthlyBudget: model.MonthlyBudget{
+				Month:    "2025-09",
+				Budgeted: 1e16, // Will fail on insert step due to NUMERIC(12,2)
+			},
+			expectError: true,
+			description: "Insert fails due to numeric overflow catching the INSERT err",
+		},
+		{
+			name: "InvalidDateString",
+			monthlyBudget: model.MonthlyBudget{
+				Month:    "invalid-date",
+				Budgeted: 500.00,
+			},
+			expectError: true,
+			description: "Fails on step 4 update carryover due to pg date conversion failing",
+		},
+		{
+			name: "ContextCanceled",
+			monthlyBudget: model.MonthlyBudget{
+				Month:    "2025-09",
+				Budgeted: 100.00,
+			},
+			useCanceledCtx: true,
+			expectError:    true,
+			description:    "Fails early due to context cancellation from SELECT",
+		},
 	}
 
 	for _, tc := range testCases {
@@ -219,8 +285,15 @@ func TestCreate(t *testing.T) {
 			tc.monthlyBudget.BudgetID = ts.budgetID
 			tc.monthlyBudget.CategoryID = ts.catID
 
+			reqCtx := ts.ctx
+			if tc.useCanceledCtx {
+				canceled, cancel := context.WithCancel(reqCtx)
+				cancel()
+				reqCtx = canceled
+			}
+
 			// Execute operation
-			err := ts.repo.Create(ts.ctx, ts.budgetID, tc.monthlyBudget)
+			err := ts.repo.Create(reqCtx, nil, ts.budgetID, tc.monthlyBudget)
 
 			if tc.expectError {
 				require.Error(t, err, tc.description)
@@ -240,6 +313,17 @@ func TestCreate(t *testing.T) {
 			}
 		})
 	}
+}
+
+type updateTestCase struct {
+	name                string
+	month               string
+	amount              float64
+	expectError         bool
+	expectSpecificError bool
+	expectedData        map[string]budgetData
+	description         string
+	useCanceledCtx      bool
 }
 
 // TestUpdateBudgetedByCatIdAndMonth demonstrates table-driven testing for updates
@@ -263,8 +347,16 @@ func TestUpdateBudgetedByCatIdAndMonth(t *testing.T) {
 			month:               "2025-09",
 			amount:              5000.00,
 			expectError:         true,
-			expectSpecificError: true,
-			description:         "Update non-existent month should fail",
+			expectSpecificError: true, // expect pgx.ErrNoRows in step 1 `QueryRow`
+			description:         "Update non-existent month should fail on SELECT",
+		},
+		{
+			name:           "ContextCanceled",
+			month:          "2025-07",
+			amount:         1000.00,
+			expectError:    true,
+			useCanceledCtx: true,
+			description:    "Context cancelled before update query",
 		},
 	}
 
@@ -277,8 +369,15 @@ func TestUpdateBudgetedByCatIdAndMonth(t *testing.T) {
 			// Setup test data
 			ts.insertDummyData(t)
 
+			reqCtx := ts.ctx
+			if tc.useCanceledCtx {
+				canceled, cancel := context.WithCancel(reqCtx)
+				cancel()
+				reqCtx = canceled
+			}
+
 			// Execute operation
-			err := ts.repo.UpdateBudgetedByCatIdAndMonth(ts.ctx, ts.budgetID, ts.catID, tc.month, tc.amount)
+			err := ts.repo.UpdateBudgetedByCatIdAndMonth(reqCtx, nil, ts.budgetID, ts.catID, tc.month, tc.amount)
 
 			if tc.expectError {
 				require.Error(t, err, tc.description)
@@ -301,7 +400,7 @@ func TestUpdateCarryoverByCatIdAndMonth(t *testing.T) {
 			name:                "ValidMonthUpdateWithTx",
 			description:         "Uses pgx.Tx",
 			month:               "2025-07",
-			amount:              0.00, // newCarryover
+			amount:              0.00, // newCarryover offset
 			expectError:         false,
 			expectSpecificError: false,
 			expectedData: map[string]budgetData{
@@ -313,11 +412,19 @@ func TestUpdateCarryoverByCatIdAndMonth(t *testing.T) {
 		},
 		{
 			name:                "MonthDoesNotExists",
-			description:         "",
+			description:         "Should hit ErrNoRows",
 			month:               "2025-09",
-			amount:              1000.00, // newCarryover
+			amount:              1000.00,
 			expectError:         true,
 			expectSpecificError: true,
+		},
+		{
+			name:           "ContextCanceled",
+			description:    "Context cancelled before select row",
+			month:          "2025-07",
+			amount:         1000.00,
+			expectError:    true,
+			useCanceledCtx: true,
 		},
 	}
 	for _, tc := range testCases {
@@ -328,17 +435,33 @@ func TestUpdateCarryoverByCatIdAndMonth(t *testing.T) {
 
 			ts.insertDummyData(t)
 
+			reqCtx := ts.ctx
+			if tc.useCanceledCtx {
+				canceled, cancel := context.WithCancel(reqCtx)
+				cancel()
+				reqCtx = canceled
+			}
+
 			var err error
 			var tx pgx.Tx
-			tx, err = ts.repo.GetPgxTx(ts.ctx)
-			err = ts.repo.UpdateCarryoverByCatIdAndMonth(ts.ctx, tx, ts.budgetID, ts.catID, tc.month, tc.amount)
-			commitErr := tx.Commit(ts.ctx)
-			require.NoError(t, commitErr)
+			
+			if !tc.useCanceledCtx {
+				tx, err = ts.repo.GetPgxTx(ts.ctx)
+				require.NoError(t, err)
+				defer tx.Rollback(ts.ctx)
+			}
+
+			err = ts.repo.UpdateCarryoverByCatIdAndMonth(reqCtx, tx, ts.budgetID, ts.catID, tc.month, tc.amount)
+			
+			if !tc.useCanceledCtx {
+				commitErr := tx.Commit(ts.ctx)
+				require.NoError(t, commitErr)
+			}
 
 			if tc.expectError {
 				require.Error(t, err, tc.description)
 				if tc.expectSpecificError {
-					require.ErrorIs(t, err, pgx.ErrNoRows, "Cannot find monthly budget for categoryId %v and month %v", ts.catID, tc.month)
+					require.ErrorIs(t, err, pgx.ErrNoRows, "Error message should contain pgx no rows")
 				}
 			} else {
 				require.NoError(t, err, tc.description)

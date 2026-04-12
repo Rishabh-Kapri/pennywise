@@ -7,7 +7,8 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/repository"
-	utils "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/pkg"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -103,7 +104,7 @@ func (s *categoryService) UpdateMonthlyBudget(ctx context.Context, categoryId uu
 		exists, err := s.monthlyBudgetRepo.GetByCatIdAndMonth(ctx, tx, budgetId, categoryId, month)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				utils.Logger(ctx).Info("monthly budget not found, creating", "month", month, "categoryId", categoryId)
+				logger.Logger(ctx).Info("monthly budget not found, creating", "month", month, "categoryId", categoryId)
 				// no budget exists for this category
 				monthyBudget := model.MonthlyBudget{
 					BudgetID:         budgetId,
@@ -121,7 +122,7 @@ func (s *categoryService) UpdateMonthlyBudget(ctx context.Context, categoryId uu
 			}
 		} else {
 			if exists.Budgeted == newBudgeted {
-				utils.Logger(ctx).Debug("budgeted unchanged, skipping")
+				logger.Logger(ctx).Debug("budgeted unchanged, skipping")
 				return nil
 			}
 			err = s.monthlyBudgetRepo.UpdateBudgetedByCatIdAndMonth(ctx, tx, budgetId, categoryId, month, newBudgeted)

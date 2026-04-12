@@ -2,11 +2,12 @@ package service
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/repository"
-	utils "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/pkg"
+
+	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
+	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -45,7 +46,7 @@ func (s *accountService) Create(ctx context.Context, account model.Account) (*mo
 		// 1. create account
 		acc, err := s.repo.Create(ctx, tx, account)
 		if err != nil {
-			return fmt.Errorf("accountService.Create; error creating account: %v", err)
+			return errs.Wrap(errs.CodeAccountCreateFailed, "error creating account", err)
 		}
 		createdAcc = acc
 
@@ -57,13 +58,13 @@ func (s *accountService) Create(ctx context.Context, account model.Account) (*mo
 		}
 		createdPayee, err := s.payeeRepo.Create(ctx, tx, transferPayee)
 		if err != nil {
-			return fmt.Errorf("accountService.Create; error creating transfer payee: %v", err)
+			return errs.Wrap(errs.CodeAccountCreateFailed, "error creating transfer payee", err)
 		}
 
 		// 3. update account with transfer payee id
 		err = s.repo.UpdateTransferPayee(ctx, tx, createdAcc.ID, createdPayee.ID)
 		if err != nil {
-			return fmt.Errorf("accountService.Create; error updating transfer payee: %v", err)
+			return errs.Wrap(errs.CodeAccountCreateFailed, "error updating transfer payee", err)
 		}
 
 		return nil

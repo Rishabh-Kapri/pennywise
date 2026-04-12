@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
+	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -42,27 +43,44 @@ func (m *mockTransactionRepo) Create(ctx context.Context, tx pgx.Tx, txn model.T
 
 // DeleteById implements repository.TransactionRepository.
 func (m *mockTransactionRepo) DeleteById(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID) error {
-	panic("unimplemented")
+	args := m.Called(ctx, tx, budgetId, id)
+	return args.Error(0)
 }
 
 // GetAll implements repository.TransactionRepository.
 func (m *mockTransactionRepo) GetAll(ctx context.Context, budgetId uuid.UUID, filter *model.TransactionFilter) ([]model.Transaction, error) {
-	panic("unimplemented")
+	args := m.Called(ctx, budgetId, filter)
+	if obj := args.Get(0); obj != nil {
+		return obj.([]model.Transaction), args.Error(1)
+	}
+	return nil, args.Error(1)
 }
 
 // GetAllNormalized implements repository.TransactionRepository.
 func (m *mockTransactionRepo) GetAllNormalized(ctx context.Context, budgetId uuid.UUID, accountId *uuid.UUID) ([]model.Transaction, error) {
-	panic("unimplemented")
+	args := m.Called(ctx, budgetId, accountId)
+	if obj := args.Get(0); obj != nil {
+		return obj.([]model.Transaction), args.Error(1)
+	}
+	return nil, args.Error(1)
 }
 
 // GetById implements repository.TransactionRepository.
 func (m *mockTransactionRepo) GetById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Transaction, error) {
-	panic("unimplemented")
+	args := m.Called(ctx, budgetId, id)
+	if obj := args.Get(0); obj != nil {
+		return obj.(*model.Transaction), args.Error(1)
+	}
+	return nil, args.Error(1)
 }
 
 // GetByIdTx implements repository.TransactionRepository.
 func (m *mockTransactionRepo) GetByIdTx(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID) (*model.Transaction, error) {
-	panic("unimplemented")
+	args := m.Called(ctx, tx, budgetId, id)
+	if obj := args.Get(0); obj != nil {
+		return obj.(*model.Transaction), args.Error(1)
+	}
+	return nil, args.Error(1)
 }
 
 // GetPgxTx implements repository.TransactionRepository.
@@ -117,7 +135,8 @@ func (m *mockPredictionRepo) Create(ctx context.Context, prediction model.Predic
 
 // DeleteByTxnId implements repository.PredictionRepository.
 func (m *mockPredictionRepo) DeleteByTxnId(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, txnId uuid.UUID) error {
-	panic("unimplemented")
+	args := m.Called(ctx, tx, budgetId, txnId)
+	return args.Error(0)
 }
 
 // GetAll implements repository.PredictionRepository.
@@ -427,59 +446,19 @@ func newTestTransactionService(
 		mockAccount,
 		mockPayees,
 		mockCategory,
-		mockMonthlyBudget,
+		NewMonthlyBudgetService(mockMonthlyBudget),
 	)
 
 	return service.(*transactionService)
 }
 
-// func TestUpdatePrediction_EdgeCases(t *testing.T) {
-// 	t.Run("nil_account_id", func(t *testing.T) {
-// 		// Test case where AccountID is nil
-// 		mockPrediction := &mockPredictionRepo{}
-// 		mockAccount := &mockAccountRepo{}
-// 		mockPayees := &mockPayeesRepo{}
-// 		mockCategory := &mockCategoryRepo{}
-//
-// 		service := setupTransactionTestableService(mockPrediction, mockAccount, mockPayees, mockCategory)
-//
-// 		budgetId, txnId, _, _, _, predictionId := createTestUUIDs()
-// 		prediction := createTestPrediction(predictionId, budgetId, txnId)
-//
-// 		txn := model.Transaction{
-// 			AccountID: nil, // This should cause the test to fail or handle gracefully
-// 		}
-//
-// 		mockPrediction.On("GetByTxnIdTx", mock.Anything, mock.Anything, budgetId, txnId).Return(prediction, nil)
-//
-// 		ctx := context.Background()
-// 		var mockTx pgx.Tx
-//
-// 		err := service.updatePrediction(ctx, mockTx, budgetId, txnId, txn)
-//
-// 		// This should either handle the nil gracefully or return an error
-// 		// Adjust the assertion based on your expected behavior
-// 		assert.Error(t, err) // or assert.NoError(t, err) if it should handle gracefully
-//
-// 		mockPrediction.AssertExpectations(t)
-// 	})
-
-// 	t.Run("nil_payee_id", func(t *testing.T) {
-// 		// Similar test for nil PayeeID
-// 		// Implementation similar to above
-// 	})
-//
-// 	t.Run("nil_category_id", func(t *testing.T) {
-// 		// Similar test for nil CategoryID
-// 		// Implementation similar to above
-// 	})
-// }
-
 func TestUpdatePrediction(t *testing.T) {
 	budgetId, txnId, accountId, payeeId, categoryId, predictionId := createTestUUIDs()
 	tests := []struct {
 		name              string
-		setupMocks        func(*mockPredictionRepo, *mockAccountRepo, *mockPayeesRepo, *mockCategoryRepo)
+		account           model.Account
+		payee             model.Payee
+		setupMocks        func(*mockPredictionRepo, *mockCategoryRepo)
 		expectError       bool
 		expectUpdate      bool
 		predictionExists  bool
@@ -487,45 +466,43 @@ func TestUpdatePrediction(t *testing.T) {
 	}{
 		{
 			name:             "prediction_not_found_returns_nil",
+			account:          *createTestAccount(accountId, budgetId, "Test Account"),
+			payee:            *createTestPayee(payeeId, budgetId, "Test Payee"),
 			predictionExists: false,
 			expectError:      false,
 			expectUpdate:     false,
-			setupMocks: func(mp *mockPredictionRepo, ma *mockAccountRepo, mpy *mockPayeesRepo, mc *mockCategoryRepo) {
+			setupMocks: func(mp *mockPredictionRepo, mc *mockCategoryRepo) {
 				mp.On("GetByTxnIdTx", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 			},
 		},
 		{
 			name:             "prediction_found_no_changes_needed",
+			account:          *createTestAccount(accountId, budgetId, "Test Account"),
+			payee:            *createTestPayee(payeeId, budgetId, "Test Payee"),
 			predictionExists: true,
 			expectError:      false,
 			expectUpdate:     false,
-			setupMocks: func(mp *mockPredictionRepo, ma *mockAccountRepo, mpy *mockPayeesRepo, mc *mockCategoryRepo) {
+			setupMocks: func(mp *mockPredictionRepo, mc *mockCategoryRepo) {
 				prediction := createTestPrediction(predictionId, budgetId, txnId)
-				account := createTestAccount(accountId, budgetId, "Test Account")
-				payee := createTestPayee(payeeId, budgetId, "Test Payee")
 				category := createTestCategory(categoryId, budgetId, "Test Category")
 
 				mp.On("GetByTxnIdTx", mock.Anything, mock.Anything, budgetId, txnId).Return(prediction, nil)
-				ma.On("GetById", mock.Anything, mock.Anything, budgetId, accountId).Return(account, nil)
-				mpy.On("GetByIdTx", mock.Anything, mock.Anything, budgetId, payeeId).Return(payee, nil)
 				mc.On("GetByIdSimplifiedTx", mock.Anything, mock.Anything, budgetId, categoryId).Return(category, nil)
 			},
 		},
 		{
 			name:              "prediction_found_user_correction_needed",
+			account:           *createTestAccount(accountId, budgetId, "Different Account"),
+			payee:             *createTestPayee(payeeId, budgetId, "Different Payee"),
 			predictionExists:  true,
 			expectError:       false,
 			expectUpdate:      true,
 			userCorrectedData: true,
-			setupMocks: func(mp *mockPredictionRepo, ma *mockAccountRepo, mpy *mockPayeesRepo, mc *mockCategoryRepo) {
+			setupMocks: func(mp *mockPredictionRepo, mc *mockCategoryRepo) {
 				prediction := createTestPrediction(predictionId, budgetId, txnId)
-				account := createTestAccount(accountId, budgetId, "Different Account")
-				payee := createTestPayee(payeeId, budgetId, "Different Payee")
 				category := createTestCategory(categoryId, budgetId, "Different Category")
 
 				mp.On("GetByTxnIdTx", mock.Anything, mock.Anything, budgetId, txnId).Return(prediction, nil)
-				ma.On("GetById", mock.Anything, mock.Anything, budgetId, accountId).Return(account, nil)
-				mpy.On("GetByIdTx", mock.Anything, mock.Anything, budgetId, payeeId).Return(payee, nil)
 				mc.On("GetByIdSimplifiedTx", mock.Anything, mock.Anything, budgetId, categoryId).Return(category, nil)
 				mp.On("Update", mock.Anything, mock.Anything, budgetId, predictionId, mock.MatchedBy(func(p model.Prediction) bool {
 					return p.HasUserCorrected != nil && *p.HasUserCorrected &&
@@ -537,23 +514,13 @@ func TestUpdatePrediction(t *testing.T) {
 		},
 		{
 			name:             "prediction_repo_error",
+			account:          *createTestAccount(accountId, budgetId, "Test Account"),
+			payee:            *createTestPayee(payeeId, budgetId, "Test Payee"),
 			predictionExists: false,
 			expectError:      true,
 			expectUpdate:     false,
-			setupMocks: func(mp *mockPredictionRepo, ma *mockAccountRepo, mpy *mockPayeesRepo, mc *mockCategoryRepo) {
+			setupMocks: func(mp *mockPredictionRepo, mc *mockCategoryRepo) {
 				mp.On("GetByTxnIdTx", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, assert.AnError)
-			},
-		},
-		{
-			name:             "account_repo_error",
-			predictionExists: true,
-			expectError:      true,
-			expectUpdate:     false,
-			setupMocks: func(mp *mockPredictionRepo, ma *mockAccountRepo, mpy *mockPayeesRepo, mc *mockCategoryRepo) {
-				prediction := createTestPrediction(predictionId, budgetId, txnId)
-
-				mp.On("GetByTxnIdTx", mock.Anything, mock.Anything, budgetId, txnId).Return(prediction, nil)
-				ma.On("GetById", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, assert.AnError)
 			},
 		},
 	}
@@ -562,12 +529,10 @@ func TestUpdatePrediction(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Arrange
 			mockPrediction := &mockPredictionRepo{}
-			mockAccount := &mockAccountRepo{}
-			mockPayees := &mockPayeesRepo{}
 			mockCategory := &mockCategoryRepo{}
 			mockMonthlyBudget := &mockMonthlyBudgetRepo{}
 
-			service := setupTransactionTestableService(mockPrediction, mockAccount, mockPayees, mockCategory, mockMonthlyBudget)
+			service := setupTransactionTestableService(mockPrediction, nil, nil, mockCategory, mockMonthlyBudget)
 
 			txn := model.Transaction{
 				AccountID:  &accountId,
@@ -578,10 +543,10 @@ func TestUpdatePrediction(t *testing.T) {
 			ctx := context.Background()
 			var mockTx pgx.Tx
 
-			tt.setupMocks(mockPrediction, mockAccount, mockPayees, mockCategory)
+			tt.setupMocks(mockPrediction, mockCategory)
 
 			// Act
-			err := service.updatePrediction(ctx, mockTx, budgetId, txnId, txn)
+			err := service.updatePrediction(ctx, mockTx, budgetId, txnId, txn, tt.account, tt.payee)
 
 			// Assert
 			if tt.expectError {
@@ -592,8 +557,6 @@ func TestUpdatePrediction(t *testing.T) {
 
 			// Verify all expectations were met
 			mockPrediction.AssertExpectations(t)
-			mockAccount.AssertExpectations(t)
-			mockPayees.AssertExpectations(t)
 			mockCategory.AssertExpectations(t)
 		})
 	}
@@ -614,6 +577,14 @@ func TestUpdateCarryovers(t *testing.T) {
 		{
 			name: "different_categories",
 			setupMocks: func(mb *mockMonthlyBudgetRepo) {
+				mb.On(
+					"GetByCatIdAndMonth",
+					mock.Anything,
+					mock.Anything,
+					budgetId,
+					categoryId,
+					"2025-01",
+				).Return(&model.MonthlyBudget{}, nil).Once()
 				mb.On(
 					"GetByCatIdAndMonth",
 					mock.Anything,
@@ -716,7 +687,7 @@ func TestUpdateCarryovers(t *testing.T) {
 
 			tt.setupMocks(mockMonthlyBudget)
 
-			err := service.updateCarryovers(ctx, mockTx, budgetId, tt.existingTxn, tt.newTxn)
+			err := service.mbService.UpdateCarryovers(ctx, mockTx, budgetId, tt.existingTxn, tt.newTxn)
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -727,19 +698,18 @@ func TestUpdateCarryovers(t *testing.T) {
 	}
 }
 
-func TestCreateTransferTxnIfNeeded(t *testing.T) {
+func TestCreateCounterpartTxn(t *testing.T) {
 	ctx := context.Background()
 	var mockTx pgx.Tx
 
 	budgetId := uuid.New()
-	txnId := uuid.New()
+	parentId := uuid.New()
 	accountId := uuid.New()
 	transferAccountID := uuid.New()
 	transferPayeeID := uuid.New()
 	transferTxnID := uuid.New()
 
-	txnPayload := model.Transaction{
-		ID:        txnId,
+	txn := model.Transaction{
 		AccountID: &accountId,
 		Amount:    -42.50,
 		Date:      "2025-01-15",
@@ -763,9 +733,9 @@ func TestCreateTransferTxnIfNeeded(t *testing.T) {
 			}),
 		).Return(nil, assert.AnError).Once()
 
-		createdTransferID, err := service.createTransferTxnIfNeeded(ctx, mockTx, budgetId, txnPayload, account, payee)
+		createdId, err := service.createCounterpartTxn(ctx, mockTx, budgetId, parentId, txn, account, payee)
 
-		require.Nil(t, createdTransferID)
+		assert.Equal(t, uuid.Nil, createdId)
 		require.Error(t, err)
 
 		var appErr *errs.Error
@@ -782,9 +752,9 @@ func TestCreateTransferTxnIfNeeded(t *testing.T) {
 
 		mockTransaction.On("Create", mock.Anything, mock.Anything, mock.Anything).Return([]model.Transaction{}, nil).Once()
 
-		createdTransferID, err := service.createTransferTxnIfNeeded(ctx, mockTx, budgetId, txnPayload, account, payee)
+		createdId, err := service.createCounterpartTxn(ctx, mockTx, budgetId, parentId, txn, account, payee)
 
-		require.Nil(t, createdTransferID)
+		assert.Equal(t, uuid.Nil, createdId)
 		require.Error(t, err)
 
 		var appErr *errs.Error
@@ -793,36 +763,28 @@ func TestCreateTransferTxnIfNeeded(t *testing.T) {
 		mockTransaction.AssertExpectations(t)
 	})
 
-	t.Run("currently allows missing transfer payee id", func(t *testing.T) {
+	t.Run("creates counterpart with correct fields", func(t *testing.T) {
 		mockTransaction := &mockTransactionRepo{}
 		service := newTestTransactionService(mockTransaction, nil, nil, nil, nil, nil, nil)
 
-		account := model.Account{}
+		account := model.Account{TransferPayeeID: &transferPayeeID}
 
 		mockTransaction.On(
 			"Create",
 			mock.Anything,
 			mock.Anything,
-			mock.MatchedBy(func(txn model.Transaction) bool {
-				return txn.AccountID != nil && *txn.AccountID == transferAccountID && txn.PayeeID == nil
+			mock.MatchedBy(func(created model.Transaction) bool {
+				return created.AccountID != nil && *created.AccountID == transferAccountID &&
+					created.PayeeID != nil && *created.PayeeID == transferPayeeID &&
+					created.TransferTransactionID != nil && *created.TransferTransactionID == parentId &&
+					created.Amount == 42.50
 			}),
 		).Return([]model.Transaction{{ID: transferTxnID}}, nil).Once()
-		mockTransaction.On(
-			"Update",
-			mock.Anything,
-			mock.Anything,
-			budgetId,
-			txnId,
-			mock.MatchedBy(func(txn model.Transaction) bool {
-				return txn.TransferTransactionID != nil && *txn.TransferTransactionID == transferTxnID
-			}),
-		).Return(nil).Once()
 
-		createdTransferID, err := service.createTransferTxnIfNeeded(ctx, mockTx, budgetId, txnPayload, account, payee)
+		createdId, err := service.createCounterpartTxn(ctx, mockTx, budgetId, parentId, txn, account, payee)
 
 		require.NoError(t, err)
-		require.NotNil(t, createdTransferID)
-		assert.Equal(t, transferTxnID, *createdTransferID)
+		assert.Equal(t, transferTxnID, createdId)
 		mockTransaction.AssertExpectations(t)
 	})
 }
@@ -839,20 +801,30 @@ func TestHandleCarryoversSkipsForNonCarryoverTransactions(t *testing.T) {
 	}
 
 	t.Run("nil category skips carryover work", func(t *testing.T) {
-		err := service.handleCarryovers(ctx, nil, budgetId, model.Transaction{
+		newTxn := model.Transaction{
 			Date:   "2025-01-01",
 			Amount: 100,
-		}, budget)
+		}
+		err := service.applySideEffects(ctx, nil, sideEffectInput{
+			budgetId: budgetId,
+			newTxn:   &newTxn,
+			budget:   &budget,
+		})
 
 		require.NoError(t, err)
 	})
 
 	t.Run("inflow category skips carryover work", func(t *testing.T) {
-		err := service.handleCarryovers(ctx, nil, budgetId, model.Transaction{
+		newTxn := model.Transaction{
 			Date:       "2025-01-01",
 			Amount:     100,
 			CategoryID: &inflowCategoryID,
-		}, budget)
+		}
+		err := service.applySideEffects(ctx, nil, sideEffectInput{
+			budgetId: budgetId,
+			newTxn:   &newTxn,
+			budget:   &budget,
+		})
 
 		require.NoError(t, err)
 	})
