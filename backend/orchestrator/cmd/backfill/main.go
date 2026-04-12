@@ -9,14 +9,16 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	db "pennywise-shared/db"
-	utils "pennywise-shared/utils"
 	"time"
 
-	"orchestrator/internal/client"
-	"orchestrator/internal/config"
-	"orchestrator/internal/model"
-	"orchestrator/internal/repository"
+	db "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
+
+	"github.com/Rishabh-Kapri/pennywise/backend/orchestrator/internal/client"
+	"github.com/Rishabh-Kapri/pennywise/backend/orchestrator/internal/config"
+	"github.com/Rishabh-Kapri/pennywise/backend/orchestrator/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/orchestrator/internal/repository"
 
 	"github.com/google/uuid"
 )
@@ -61,7 +63,10 @@ func main() {
 	// 	log.Fatal("AUTH_TOKEN environment variable is required")
 	// }
 
-	dbConn := db.ConnectWithURL(cfg.DatabaseURL)
+	dbConn, err := db.ConnectWithURL(cfg.DatabaseURL)
+	if err != nil {
+		logger.Fatal(err.Error())
+	}
 	defer dbConn.Close()
 
 	ollamaClient := client.NewOllamaClient(cfg.OllamaURL)
@@ -164,6 +169,7 @@ func fetchPredictions(apiURL string, budgetID string) ([]Prediction, error) {
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Set("authUserId", "fb7c7893-84f7-4344-a861-064985d442f7")
 	req.Header.Set("X-Budget-ID", budgetID)
 	// req.Header.Set("Authorization", "Bearer "+authToken)
 

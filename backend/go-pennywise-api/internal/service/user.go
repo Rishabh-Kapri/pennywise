@@ -5,7 +5,7 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/repository"
-	utils "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/pkg"
+	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 )
 
 type UserService interface {

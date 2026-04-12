@@ -5,7 +5,7 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
-	utils "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/pkg"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -45,7 +45,7 @@ func (h *predictionHandler) Create(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	utils.Logger(ctx).Info("creating prediction")
+	logger.Logger(ctx).Info("creating prediction")
 	createdPredictions, err := h.service.Create(ctx, body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

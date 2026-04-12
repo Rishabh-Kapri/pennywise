@@ -1,13 +1,11 @@
 package client
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"log/slog"
 	"net/http"
+
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
 )
 
 type OllamaClient struct {
@@ -48,14 +46,9 @@ func (c *OllamaClient) Embed(ctx context.Context, model string, text string) ([]
 		Input: text,
 	}
 
-	body, err := c.post(ctx, "/api/embed", reqBody)
+	resp, err := httpclient.Post[embedResponse](ctx, c.baseURL+"/api/embed", reqBody)
 	if err != nil {
 		return nil, fmt.Errorf("Embed: %w", err)
-	}
-
-	var resp embedResponse
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return nil, fmt.Errorf("Embed unmarshal: %w", err)
 	}
 
 	if len(resp.Embeddings) == 0 {
@@ -73,47 +66,10 @@ func (c *OllamaClient) Generate(ctx context.Context, model string, prompt string
 		Stream: false,
 	}
 
-	body, err := c.post(ctx, "/api/generate", reqBody)
+	resp, err := httpclient.Post[generateResponse](ctx, c.baseURL+"/api/generate", reqBody)
 	if err != nil {
 		return "", fmt.Errorf("Generate: %w", err)
 	}
 
-	var resp generateResponse
-	if err := json.Unmarshal(body, &resp); err != nil {
-		return "", fmt.Errorf("Generate unmarshal: %w", err)
-	}
-
 	return resp.Response, nil
-}
-
-func (c *OllamaClient) post(ctx context.Context, path string, data any) ([]byte, error) {
-	reqBytes, err := json.Marshal(data)
-	if err != nil {
-		return nil, fmt.Errorf("marshal: %w", err)
-	}
-
-	url := c.baseURL + path
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(reqBytes))
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request to %s: %w", url, err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
-	}
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		slog.Error("ollama request failed", "url", url, "status", resp.StatusCode, "body", string(body))
-		return nil, fmt.Errorf("request to %s failed with status %d", url, resp.StatusCode)
-	}
-
-	return body, nil
 }

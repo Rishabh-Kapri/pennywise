@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	errs "pennywise-api/internal/errors"
+	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 
 	"github.com/google/uuid"
 )
@@ -100,13 +100,13 @@ func (t *Transaction) Compare(other *Transaction) bool {
 	if t.Date != other.Date {
 		return false
 	}
-	if t.PayeeID.String() != other.PayeeID.String() {
+	if ptrToUUIDString(t.PayeeID) != ptrToUUIDString(other.PayeeID) {
 		return false
 	}
-	if t.CategoryID.String() != other.CategoryID.String() {
+	if ptrToUUIDString(t.CategoryID) != ptrToUUIDString(other.CategoryID) {
 		return false
 	}
-	if t.AccountID.String() != other.AccountID.String() {
+	if ptrToUUIDString(t.AccountID) != ptrToUUIDString(other.AccountID) {
 		return false
 	}
 	if t.Note != other.Note {

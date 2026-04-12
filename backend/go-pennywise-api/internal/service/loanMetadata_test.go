@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
+	utils "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/pkg"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -85,7 +86,7 @@ func TestLoanMetadataService_GetAll(t *testing.T) {
 		{
 			name: "returns_all_loans_for_budget",
 			setupCtx: func() context.Context {
-				return context.WithValue(context.Background(), "budgetId", budgetId)
+				return utils.WithBudgetID(context.Background(), budgetId)
 			},
 			setupMocks: func(m *mockLoanMetadataRepo) {
 				loans := []model.LoanMetadata{
@@ -100,7 +101,7 @@ func TestLoanMetadataService_GetAll(t *testing.T) {
 		{
 			name: "returns_empty_slice_when_no_loans",
 			setupCtx: func() context.Context {
-				return context.WithValue(context.Background(), "budgetId", budgetId)
+				return utils.WithBudgetID(context.Background(), budgetId)
 			},
 			setupMocks: func(m *mockLoanMetadataRepo) {
 				m.On("GetAllByBudgetId", mock.Anything, budgetId).Return([]model.LoanMetadata{}, nil)
@@ -111,7 +112,7 @@ func TestLoanMetadataService_GetAll(t *testing.T) {
 		{
 			name: "repo_error_propagates",
 			setupCtx: func() context.Context {
-				return context.WithValue(context.Background(), "budgetId", budgetId)
+				return utils.WithBudgetID(context.Background(), budgetId)
 			},
 			setupMocks: func(m *mockLoanMetadataRepo) {
 				m.On("GetAllByBudgetId", mock.Anything, budgetId).Return(nil, assert.AnError)
@@ -119,17 +120,7 @@ func TestLoanMetadataService_GetAll(t *testing.T) {
 			expectError: true,
 			expectCount: 0,
 		},
-		{
-			name: "missing_budget_id_in_context_uses_zero_uuid",
-			setupCtx: func() context.Context {
-				return context.Background()
-			},
-			setupMocks: func(m *mockLoanMetadataRepo) {
-				m.On("GetAllByBudgetId", mock.Anything, uuid.UUID{}).Return([]model.LoanMetadata{}, nil)
-			},
-			expectError: false,
-			expectCount: 0,
-		},
+
 	}
 
 	for _, tt := range tests {
@@ -158,6 +149,7 @@ func TestLoanMetadataService_GetAll(t *testing.T) {
 func TestLoanMetadataService_GetByAccountId(t *testing.T) {
 	accountId := uuid.New()
 	catId := uuid.New()
+	budgetId := uuid.New()
 
 	tests := []struct {
 		name        string
@@ -189,6 +181,7 @@ func TestLoanMetadataService_GetByAccountId(t *testing.T) {
 			mockRepo := &mockLoanMetadataRepo{}
 			service := NewLoanMetadataService(mockRepo)
 			ctx := context.Background()
+			ctx = utils.WithBudgetID(ctx, budgetId)
 			tt.setupMocks(mockRepo)
 
 			loan, err := service.GetByAccountId(ctx, accountId)

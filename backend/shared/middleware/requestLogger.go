@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	utils "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/pkg"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 
 	"github.com/gin-gonic/gin"
 )
@@ -31,10 +31,8 @@ func (w *responseBodyWriter) WriteString(s string) (int, error) {
 	return w.ResponseWriter.WriteString(s)
 }
 
-// RequestLogger is a Gin middleware that:
-// 1. Assigns a correlation ID to each request (from header or auto-generated)
-// 2. Stores it in the request context for downstream use
-// 3. Logs request and response details with the correlation ID
+// RequestLogger is a Gin middleware that logs request and response details.
+// It also generates/extracts a Correlation ID.
 func RequestLogger() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
@@ -42,16 +40,16 @@ func RequestLogger() gin.HandlerFunc {
 		// Extract or generate correlation ID
 		correlationID := c.GetHeader(correlationIDHeader)
 		if correlationID == "" {
-			correlationID = utils.NewCorrelationID()
+			correlationID = logger.NewCorrelationID()
 		}
 
 		// Store in context and set response header
-		ctx := utils.WithCorrelationID(c.Request.Context(), correlationID)
+		ctx := logger.WithCorrelationID(c.Request.Context(), correlationID)
 		c.Request = c.Request.WithContext(ctx)
 		c.Header(correlationIDHeader, correlationID)
 
-		logger := slog.Default()
-		debugLogging := logger.Enabled(c.Request.Context(), slog.LevelDebug)
+		log := slog.Default()
+		debugLogging := log.Enabled(c.Request.Context(), slog.LevelDebug)
 
 		var requestBody string
 		var responseWriter *responseBodyWriter
@@ -100,7 +98,7 @@ func RequestLogger() gin.HandlerFunc {
 			level = slog.LevelWarn
 		}
 
-		logger.LogAttrs(c.Request.Context(), level, "request completed", attrs...)
+		log.LogAttrs(c.Request.Context(), level, "request completed", attrs...)
 	}
 }
 

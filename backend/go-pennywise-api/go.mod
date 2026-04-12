@@ -11,6 +11,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/stretchr/testify v1.11.1
 	google.golang.org/api v0.260.0
+	github.com/Rishabh-Kapri/pennywise/backend/shared v0.0.0
 )
 
 require (
@@ -65,3 +66,5 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/Rishabh-Kapri/pennywise/backend/shared => ../shared

@@ -8,7 +8,9 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/middleware"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/repository"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
-	utils "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/pkg"
+
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	sharedMiddleware "github.com/Rishabh-Kapri/pennywise/backend/shared/middleware"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -19,12 +21,14 @@ func healthPage(c *gin.Context) {
 }
 
 func main() {
-	utils.SetupLogger()
+	logger.Setup("pennywise-api")
 
 	dbConn := db.Connect()
+	defer dbConn.Close()
+
 	router := gin.New()
 	router.Use(gin.Recovery())
-	router.Use(middleware.RequestLogger())
+	router.Use(sharedMiddleware.RequestLogger())
 
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"http://localhost:5000", "http://localhost:5173", "http://192.168.1.34:5100", "https://pennywise-fe-production.up.railway.app", "https://react-fe-production-8fe5.up.railway.app", "https://pennywise.nastydomain.space", "https://react-fe-dev.up.railway.app"},
@@ -34,7 +38,6 @@ func main() {
 		AllowCredentials: true,
 	}))
 
-	defer dbConn.Close()
 	budgetRepo := repository.NewBudgetRepository(dbConn)
 	payeeRepo := repository.NewPayeesRepository(dbConn)
 	categoryRepo := repository.NewCategoryRepository(dbConn)
@@ -63,6 +66,7 @@ func main() {
 	categoryGroupHandler := handler.NewCategoryGroupHandler(categoryGroupService)
 
 	monthlyBudgetRepo := repository.NewMonthlyBudgetRepository(dbConn)
+	monthlyBudgetService := service.NewMonthlyBudgetService(monthlyBudgetRepo)
 
 	predictionService := service.NewPredictionService(predictionRepo)
 	predictionHandler := handler.NewPredictionHandler(predictionService)
@@ -74,7 +78,7 @@ func main() {
 		accountRepo,
 		payeeRepo,
 		categoryRepo,
-		monthlyBudgetRepo,
+		monthlyBudgetService,
 	)
 	transactionHandler := handler.NewTransactionHandler(transactionService)
 

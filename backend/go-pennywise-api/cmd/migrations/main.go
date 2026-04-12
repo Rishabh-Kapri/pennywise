@@ -252,6 +252,28 @@ func createSchema(ctx context.Context, pool *pgxpool.Pool) error {
 				updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 				UNIQUE(name, budget_id)
 			)`},
+		{"api_keys", `
+			CREATE TABLE IF NOT EXISTS api_keys (
+				id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+				key_id TEXT NOT NULL,
+				hashed_key TEXT NOT NULL,
+				name TEXT NOT NULL,
+				description TEXT DEFAULT '',
+				user_id UUID NOT NULL REFERENCES users(id),
+				scopes TEXT[] NOT NULL,
+				allowed_ips TEXT[],
+				allowed_referrers TEXT[],
+				rate_limit INT NOT NULL DEFAULT 100,
+				created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+				expires_at TIMESTAMPTZ NOT NULL,
+				last_used_at TIMESTAMPTZ,
+				revoked_at TIMESTAMPTZ,
+				rotation_enabled BOOLEAN,
+				rotated_from_id UUID REFERENCES api_keys(id),
+				rotation_due_at TIMESTAMPTZ,
+				is_active BOOLEAN NOT NULL DEFAULT true,
+				UNIQUE(key_id)
+			)`},
 	}
 
 	for _, t := range tables {

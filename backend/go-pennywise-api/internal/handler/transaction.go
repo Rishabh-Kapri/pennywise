@@ -6,7 +6,7 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
-	utils "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/pkg"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -47,7 +47,7 @@ func (h *transactionHandler) ListNormalized(c *gin.Context) {
 	ctx := c.Request.Context()
 	accountIdParam := strings.TrimSpace(c.Query("accountId"))
 
-	utils.Logger(ctx).Info("listing normalized transactions", "accountIdParam", accountIdParam)
+	logger.Logger(ctx).Info("listing normalized transactions", "accountIdParam", accountIdParam)
 	var accountId *uuid.UUID
 	if accountIdParam != "" {
 		parsedId, err := uuid.Parse(accountIdParam)

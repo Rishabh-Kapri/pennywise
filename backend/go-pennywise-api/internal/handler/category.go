@@ -6,7 +6,7 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
-	utils "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/pkg"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -71,13 +71,13 @@ func (h *categoryHandler) Create(c *gin.Context) {
 func (h *categoryHandler) Search(c *gin.Context) {
 	ctx := c.Request.Context()
 	name := strings.TrimSpace(c.Query("name"))
-	utils.Logger(ctx).Debug("category search", "name", c.Query("name"))
+	logger.Logger(ctx).Debug("category search", "name", c.Query("name"))
 	// if name == "" {
 	// 	c.JSON(http.StatusBadRequest, gin.H{"error": "Name is needed"})
 	// 	return
 	// }
 	categories, err := h.service.Search(ctx, name)
-	utils.Logger(ctx).Debug("category search result", "error", err)
+	logger.Logger(ctx).Debug("category search result", "error", err)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -131,7 +131,7 @@ func (h *categoryHandler) Update(c *gin.Context) {
 
 func (h *categoryHandler) UpdateBudget(c *gin.Context) {
 	ctx := c.Request.Context()
-	utils.Logger(ctx).Info("updating monthly budget")
+	logger.Logger(ctx).Info("updating monthly budget")
 	id, ok := c.Params.Get("id")
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})
@@ -147,7 +147,7 @@ func (h *categoryHandler) UpdateBudget(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Month is needed"})
 		return
 	}
-	utils.Logger(ctx).Info("updating monthly budget", "categoryId", categoryId, "month", month)
+	logger.Logger(ctx).Info("updating monthly budget", "categoryId", categoryId, "month", month)
 	var body model.MonthlyBudget
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
