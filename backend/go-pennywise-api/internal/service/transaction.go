@@ -132,9 +132,6 @@ func (s *transactionService) validateTransactionPayload(txn model.Transaction) e
 	if err := txn.Date.Valid(); err != nil {
 		return err
 	}
-	if txn.Amount <= 0 {
-		return errs.New(errs.CodeInvalidArgument, "amount must be greater than 0")
-	}
 
 	return nil
 }
