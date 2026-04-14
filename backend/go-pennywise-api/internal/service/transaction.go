@@ -122,7 +122,10 @@ func (s *transactionService) updatePrediction(ctx context.Context, tx pgx.Tx, bu
 }
 
 // validateTransactionPayload validates the payload of a transaction
-func (s *transactionService) validateTransactionPayload(txn model.Transaction) error {
+func (s *transactionService) validateTransactionPayload(txn model.Transaction, budgetID uuid.UUID) error {
+	if txn.BudgetID != budgetID {
+		return errs.New(errs.CodeInvalidArgument, "transaction is not for this budget")
+	}
 	if txn.AccountID == nil {
 		return errs.New(errs.CodeInvalidArgument, "account_id is required")
 	}
@@ -137,18 +140,18 @@ func (s *transactionService) validateTransactionPayload(txn model.Transaction) e
 }
 
 // loadDependencies loads the budget, account, and payee for the transaction
-func (s *transactionService) loadDependencies(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, txn model.Transaction) (*model.Budget, *model.Account, *model.Payee, error) {
-	budget, err := s.budgetRepo.GetById(ctx, tx, budgetId)
+func (s *transactionService) loadDependencies(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, txn model.Transaction) (budget *model.Budget, account *model.Account, payee *model.Payee, err error) {
+	budget, err = s.budgetRepo.GetById(ctx, tx, budgetId)
 	if err != nil {
 		return nil, nil, nil, errs.Wrap(errs.CodeBudgetLookupFailed, "error fetching budget", err)
 	}
 
-	account, err := s.accountRepo.GetById(ctx, tx, budgetId, *txn.AccountID)
+	account, err = s.accountRepo.GetById(ctx, tx, budgetId, *txn.AccountID)
 	if err != nil {
 		return nil, nil, nil, errs.Wrap(errs.CodeAccountLookupFailed, "error getting account", err)
 	}
 
-	payee, err := s.payeeRepo.GetByIdTx(ctx, tx, budgetId, *txn.PayeeID)
+	payee, err = s.payeeRepo.GetByIdTx(ctx, tx, budgetId, *txn.PayeeID)
 	if err != nil {
 		return nil, nil, nil, errs.Wrap(errs.CodePayeeLookupFailed, "error getting payee", err)
 	}
@@ -158,7 +161,7 @@ func (s *transactionService) loadDependencies(ctx context.Context, tx pgx.Tx, bu
 
 // validate the category of the transaction
 // for budget transfers, the category should be nil
-func (s *transactionService) validateCategory(categoryID *uuid.UUID, account model.Account, payee model.Payee) error {
+func (s *transactionService) validateCategory(categoryID *uuid.UUID, inflowCategoryID uuid.UUID, account model.Account, payee model.Payee, amount float64) error {
 	// budget -> budget transfers don't have a category
 	if payee.TransferAccountID != nil {
 		if account.Type == "savings" || account.Type == "checking" || account.Type == "creditCard" {
@@ -166,6 +169,9 @@ func (s *transactionService) validateCategory(categoryID *uuid.UUID, account mod
 				return errs.New(errs.CodeInvalidArgument, "category is not allowed for budget transfers")
 			}
 		}
+	}
+	if categoryID != nil && *categoryID == inflowCategoryID && amount < 0 {
+		return errs.New(errs.CodeInvalidArgument, "negative inflow category amounts are not allowed")
 	}
 	return nil
 }
@@ -281,80 +287,6 @@ func (s *transactionService) applySideEffects(ctx context.Context, tx pgx.Tx, in
 	return nil
 }
 
-func (s *transactionService) GetAll(ctx context.Context) ([]model.Transaction, error) {
-	budgetId := utils.MustBudgetID(ctx)
-	return s.repo.GetAll(ctx, budgetId, nil)
-}
-
-func (s *transactionService) GetAllNormalized(ctx context.Context, accountId *uuid.UUID) ([]model.Transaction, error) {
-	budgetId := utils.MustBudgetID(ctx)
-	return s.repo.GetAllNormalized(ctx, budgetId, accountId)
-}
-
-func (s *transactionService) Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error) {
-	txCtx, txCancel := context.WithTimeout(ctx, 30*time.Second)
-	defer txCancel()
-
-	budgetId := utils.MustBudgetID(ctx)
-	txn.BudgetID = budgetId
-
-	if err := s.validateTransactionPayload(txn); err != nil {
-		return nil, err
-	}
-
-	var createdTxn []model.Transaction
-	err := withTx(txCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
-		var err error
-
-		budget, account, payee, err := s.loadDependencies(txCtx, tx, budgetId, txn)
-		if err != nil {
-			return err
-		}
-
-		if err = s.validateCategory(txn.CategoryID, *account, *payee); err != nil {
-			return err
-		}
-
-		// clear transfer fields in case they are set
-		txn.TransferAccountID = nil
-		txn.TransferTransactionID = nil
-
-		createdTxn, err = s.repo.Create(txCtx, tx, txn)
-		if err != nil {
-			return errs.Wrap(errs.CodeTransactionCreateFailed, "failed to create transaction", err)
-		}
-		if len(createdTxn) == 0 {
-			return errs.New(errs.CodeTransactionNotCreated, "no transaction was created")
-		}
-
-		txn.ID = createdTxn[0].ID
-
-		if err = s.applySideEffects(txCtx, tx, sideEffectInput{
-			budgetId: budgetId,
-			oldTxn:   nil,
-			newTxn:   &txn,
-			budget:   budget,
-			account:  account,
-			payee:    payee,
-		}); err != nil {
-			return err
-		}
-
-		// Reload to pick up any mutations from side effects (e.g., transfer linking)
-		final, err := s.repo.GetByIdTx(txCtx, tx, budgetId, txn.ID)
-		if err != nil {
-			return errs.Wrap(errs.CodeTransactionLookupFailed, "error reloading created transaction", err)
-		}
-		createdTxn[0] = *final
-
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return createdTxn, nil
-}
-
 func (s *transactionService) reconcileTransfer(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, foundTxn model.Transaction, newTxn *model.Transaction, account model.Account, payee model.Payee) error {
 	// reconcile transfer transactions
 	wasTransfer := foundTxn.TransferTransactionID != nil
@@ -418,6 +350,80 @@ func (s *transactionService) reconcileTransfer(ctx context.Context, tx pgx.Tx, b
 	return nil
 }
 
+func (s *transactionService) GetAll(ctx context.Context) ([]model.Transaction, error) {
+	budgetId := utils.MustBudgetID(ctx)
+	return s.repo.GetAll(ctx, budgetId, nil)
+}
+
+func (s *transactionService) GetAllNormalized(ctx context.Context, accountId *uuid.UUID) ([]model.Transaction, error) {
+	budgetId := utils.MustBudgetID(ctx)
+	return s.repo.GetAllNormalized(ctx, budgetId, accountId)
+}
+
+func (s *transactionService) Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error) {
+	txCtx, txCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer txCancel()
+
+	budgetID := utils.MustBudgetID(ctx)
+	txn.BudgetID = budgetID
+
+	if err := s.validateTransactionPayload(txn, budgetID); err != nil {
+		return nil, err
+	}
+
+	var createdTxn []model.Transaction
+	err := withTx(txCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
+		var err error
+
+		budget, account, payee, err := s.loadDependencies(txCtx, tx, budgetID, txn)
+		if err != nil {
+			return err
+		}
+
+		if err = s.validateCategory(txn.CategoryID, budget.Metadata.InflowCategoryID, *account, *payee, txn.Amount); err != nil {
+			return err
+		}
+
+		// clear transfer fields in case they are set
+		txn.TransferAccountID = nil
+		txn.TransferTransactionID = nil
+
+		createdTxn, err = s.repo.Create(txCtx, tx, txn)
+		if err != nil {
+			return errs.Wrap(errs.CodeTransactionCreateFailed, "failed to create transaction", err)
+		}
+		if len(createdTxn) == 0 {
+			return errs.New(errs.CodeTransactionNotCreated, "no transaction was created")
+		}
+
+		txn.ID = createdTxn[0].ID
+
+		if err = s.applySideEffects(txCtx, tx, sideEffectInput{
+			budgetId: budgetID,
+			oldTxn:   nil,
+			newTxn:   &txn,
+			budget:   budget,
+			account:  account,
+			payee:    payee,
+		}); err != nil {
+			return err
+		}
+
+		// Reload to pick up any mutations from side effects (e.g., transfer linking)
+		final, err := s.repo.GetByIdTx(txCtx, tx, budgetID, txn.ID)
+		if err != nil {
+			return errs.Wrap(errs.CodeTransactionLookupFailed, "error reloading created transaction", err)
+		}
+		createdTxn[0] = *final
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return createdTxn, nil
+}
+
 func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model.Transaction) error {
 	// Create a shorter context for each individual transaction attempt
 	txCtx, txCancel := context.WithTimeout(ctx, 30*time.Second)
@@ -426,7 +432,7 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 	budgetId := utils.MustBudgetID(ctx)
 	logger.Logger(ctx).Info("updating transaction", "id", id)
 
-	if err := s.validateTransactionPayload(txn); err != nil {
+	if err := s.validateTransactionPayload(txn, budgetId); err != nil {
 		return err
 	}
 
@@ -450,17 +456,9 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 		}
 
 		// fetch updated txn account and payee
-		account, err := s.accountRepo.GetById(txCtx, tx, budgetId, *txn.AccountID)
-		if err != nil {
-			return errs.Wrap(errs.CodeAccountLookupFailed, "error getting account", err)
-		}
+		budget, account, payee, err := s.loadDependencies(txCtx, tx, budgetId, txn)
 
-		payee, err := s.payeeRepo.GetByIdTx(txCtx, tx, budgetId, *txn.PayeeID)
-		if err != nil {
-			return errs.Wrap(errs.CodePayeeLookupFailed, "error getting payee", err)
-		}
-
-		err = s.validateCategory(txn.CategoryID, *account, *payee)
+		err = s.validateCategory(txn.CategoryID, budget.Metadata.InflowCategoryID, *account, *payee, txn.Amount)
 		if err != nil {
 			return err
 		}
