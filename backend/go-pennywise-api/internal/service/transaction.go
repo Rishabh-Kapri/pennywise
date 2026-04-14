@@ -228,7 +228,7 @@ func (s *transactionService) applySideEffects(ctx context.Context, tx pgx.Tx, in
 			}
 		}
 	case isUpdate:
-		if err := s.mbService.UpdateCarryovers(ctx, tx, input.budgetId, input.oldTxn, *input.newTxn, input.budget.Metadata.InflowCategoryID); err != nil {
+		if err := s.mbService.UpdateCarryovers(ctx, tx, input.budgetId, input.oldTxn, input.newTxn, input.budget.Metadata.InflowCategoryID); err != nil {
 			return err
 		}
 	case isDelete:
@@ -432,7 +432,10 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 	budgetId := utils.MustBudgetID(ctx)
 	logger.Logger(ctx).Info("updating transaction", "id", id)
 
-	if err := s.validateTransactionPayload(txn, budgetId); err != nil {
+	// Create a copy of the transaction to update
+	toUpdate := txn
+
+	if err := s.validateTransactionPayload(toUpdate, budgetId); err != nil {
 		return err
 	}
 
@@ -448,17 +451,17 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 			return errs.New(errs.CodeTransactionLookupFailed, "transaction id mismatch")
 		}
 
-		txn.ID = id
-		same := foundTxn.Compare(&txn)
+		toUpdate.ID = id
+		same := foundTxn.Compare(&toUpdate)
 		if same {
 			logger.Logger(txCtx).Info("transaction is the same as the existing transaction, skipping update")
 			return nil
 		}
 
 		// fetch updated txn account and payee
-		budget, account, payee, err := s.loadDependencies(txCtx, tx, budgetId, txn)
+		budget, account, payee, err := s.loadDependencies(txCtx, tx, budgetId, toUpdate)
 
-		err = s.validateCategory(txn.CategoryID, budget.Metadata.InflowCategoryID, *account, *payee, txn.Amount)
+		err = s.validateCategory(toUpdate.CategoryID, budget.Metadata.InflowCategoryID, *account, *payee, toUpdate.Amount)
 		if err != nil {
 			return err
 		}
@@ -466,14 +469,15 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 		if err = s.applySideEffects(txCtx, tx, sideEffectInput{
 			budgetId: budgetId,
 			oldTxn:   foundTxn,
-			newTxn:   &txn,
+			newTxn:   &toUpdate,
+			budget:   budget,
 			account:  account,
 			payee:    payee,
 		}); err != nil {
 			return err
 		}
 
-		if err = s.repo.Update(txCtx, tx, budgetId, id, txn); err != nil {
+		if err = s.repo.Update(txCtx, tx, budgetId, id, toUpdate); err != nil {
 			return errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating transaction", err)
 		}
 
