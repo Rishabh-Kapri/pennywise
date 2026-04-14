@@ -225,7 +225,7 @@ func (s *transactionService) applySideEffects(ctx context.Context, tx pgx.Tx, in
 			}
 		}
 	case isUpdate:
-		if err := s.mbService.UpdateCarryovers(ctx, tx, input.budgetId, input.oldTxn, *input.newTxn); err != nil {
+		if err := s.mbService.UpdateCarryovers(ctx, tx, input.budgetId, input.oldTxn, *input.newTxn, input.budget.Metadata.InflowCategoryID); err != nil {
 			return err
 		}
 	case isDelete:

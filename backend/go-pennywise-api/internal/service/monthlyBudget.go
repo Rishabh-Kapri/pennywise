@@ -15,7 +15,7 @@ import (
 type MonthlyBudgetService interface {
 	UpsertCarryover(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categoryId uuid.UUID, monthKey string, delta float64) error
 	ApplyCarryoverOps(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, txnDiff *txnDiff, carryoverCase carryoverCase) error
-	UpdateCarryovers(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, oldTxn *model.Transaction, newTxn model.Transaction) error
+	UpdateCarryovers(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, oldTxn *model.Transaction, newTxn model.Transaction, inflowCategoryID uuid.UUID) error
 }
 
 type monthlyBudgetService struct {
@@ -127,7 +127,7 @@ func (s *monthlyBudgetService) ApplyCarryoverOps(ctx context.Context, tx pgx.Tx,
 }
 
 // updateCarryovers computes and applies carryover adjustments when a transaction changes
-func (s *monthlyBudgetService) UpdateCarryovers(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, oldTxn *model.Transaction, newTxn model.Transaction) error {
+func (s *monthlyBudgetService) UpdateCarryovers(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, oldTxn *model.Transaction, newTxn model.Transaction, inflowCategoryID uuid.UUID) error {
 	diff := &txnDiff{
 		oldCatId:    oldTxn.CategoryID,
 		newCatId:    newTxn.CategoryID,
@@ -135,6 +135,13 @@ func (s *monthlyBudgetService) UpdateCarryovers(ctx context.Context, tx pgx.Tx, 
 		newMonthKey: utils.GetMonthKey(newTxn.Date.String()),
 		oldAmount:   oldTxn.Amount,
 		newAmount:   newTxn.Amount,
+	}
+	// don't add or update carryover for inflow category id
+	if diff.oldCatId != nil && *diff.oldCatId != inflowCategoryID {
+		diff.oldCatId = nil
+	}
+	if diff.newCatId != nil && *diff.newCatId != inflowCategoryID {
+		diff.newCatId = nil
 	}
 	cc := carryoverCase{
 		sameCategory: oldTxn.CategoryID != nil && newTxn.CategoryID != nil && *oldTxn.CategoryID == *newTxn.CategoryID,
