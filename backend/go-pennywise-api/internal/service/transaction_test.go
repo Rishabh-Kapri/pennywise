@@ -337,14 +337,15 @@ type testableTransactionService struct {
 }
 
 // Test helpers
-func createTestUUIDs() (budgetId, txnId, accountId, payeeId, categoryId, predictionId uuid.UUID) {
+func createTestUUIDs() (budgetId, txnId, accountId, payeeId, categoryId, predictionId, inflowCategoryID uuid.UUID) {
 	budgetId = uuid.New()
 	txnId = uuid.New()
 	accountId = uuid.New()
 	payeeId = uuid.New()
 	categoryId = uuid.New()
 	predictionId = uuid.New()
-	return budgetId, txnId, accountId, payeeId, categoryId, predictionId
+	inflowCategoryID = uuid.New()
+	return budgetId, txnId, accountId, payeeId, categoryId, predictionId, inflowCategoryID
 }
 
 func createTestPrediction(id, budgetId, txnId uuid.UUID) *model.Prediction {
@@ -453,7 +454,7 @@ func newTestTransactionService(
 }
 
 func TestUpdatePrediction(t *testing.T) {
-	budgetId, txnId, accountId, payeeId, categoryId, predictionId := createTestUUIDs()
+	budgetId, txnId, accountId, payeeId, categoryId, predictionId, _ := createTestUUIDs()
 	tests := []struct {
 		name              string
 		account           model.Account
@@ -563,8 +564,8 @@ func TestUpdatePrediction(t *testing.T) {
 }
 
 func TestUpdateCarryovers(t *testing.T) {
-	budgetId, txnId, accountId, payeeId, categoryId, _ := createTestUUIDs()
-	_, _, _, _, newCategoryId, _ := createTestUUIDs()
+	budgetId, txnId, accountId, payeeId, categoryId, _, inflowCategoryID := createTestUUIDs()
+	_, _, _, _, newCategoryId, _, _ := createTestUUIDs()
 
 	tests := []struct {
 		name         string
@@ -687,7 +688,7 @@ func TestUpdateCarryovers(t *testing.T) {
 
 			tt.setupMocks(mockMonthlyBudget)
 
-			err := service.mbService.UpdateCarryovers(ctx, mockTx, budgetId, tt.existingTxn, tt.newTxn)
+			err := service.mbService.UpdateCarryovers(ctx, mockTx, budgetId, tt.existingTxn, tt.newTxn, inflowCategoryID)
 
 			if tt.expectError {
 				require.Error(t, err)
