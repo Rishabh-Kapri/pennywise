@@ -2,7 +2,6 @@ package client
 
 import (
 	"context"
-	"fmt"
 
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
@@ -40,7 +39,7 @@ func (c *MLPClient) PredictAll(ctx context.Context, emailText string, amount flo
 		Type:      "account",
 	})
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("predict account: %w", err)
+		return nil, nil, nil, errs.Wrap(errs.CodeInternalError, "predict account", err)
 	}
 
 	payee, err = c.predict(ctx, PredictRequest{
@@ -50,7 +49,7 @@ func (c *MLPClient) PredictAll(ctx context.Context, emailText string, amount flo
 		Account:   account.Label,
 	})
 	if err != nil {
-		return account, nil, nil, fmt.Errorf("predict payee: %w", err)
+		return account, nil, nil, errs.Wrap(errs.CodeInternalError, "predict payee", err)
 	}
 
 	category, err = c.predict(ctx, PredictRequest{
@@ -61,7 +60,7 @@ func (c *MLPClient) PredictAll(ctx context.Context, emailText string, amount flo
 		Payee:     payee.Label,
 	})
 	if err != nil {
-		return account, payee, nil, fmt.Errorf("predict category: %w", err)
+		return account, payee, nil, errs.Wrap(errs.CodeInternalError, "predict category", err)
 	}
 
 	return account, payee, category, nil

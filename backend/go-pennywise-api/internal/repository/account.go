@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -12,7 +13,7 @@ import (
 )
 
 type AccountRepository interface {
-	BaseRepository
+	db.BaseRepositoryInterface
 	GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Account, error)
 	GetById(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, accountId uuid.UUID) (*model.Account, error)
 	Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.Account, error)
@@ -21,11 +22,11 @@ type AccountRepository interface {
 }
 
 type accountRepo struct {
-	baseRepository
+	db.BaseRepository
 }
 
-func NewAccountRepository(db *pgxpool.Pool) AccountRepository {
-	return &accountRepo{baseRepository: NewBaseRepository(db)}
+func NewAccountRepository(pool *pgxpool.Pool) AccountRepository {
+	return &accountRepo{BaseRepository: db.NewBaseRepository(pool)}
 }
 
 func (r *accountRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Account, error) {
