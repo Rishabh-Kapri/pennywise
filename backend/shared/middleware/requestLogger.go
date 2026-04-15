@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -40,11 +40,11 @@ func RequestLogger() gin.HandlerFunc {
 		// Extract or generate correlation ID
 		correlationID := c.GetHeader(correlationIDHeader)
 		if correlationID == "" {
-			correlationID = logger.NewCorrelationID()
+			correlationID = utils.NewCorrelationID()
 		}
 
 		// Store in context and set response header
-		ctx := logger.WithCorrelationID(c.Request.Context(), correlationID)
+		ctx := utils.WithCorrelationID(c.Request.Context(), correlationID)
 		c.Request = c.Request.WithContext(ctx)
 		c.Header(correlationIDHeader, correlationID)
 

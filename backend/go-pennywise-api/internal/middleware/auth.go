@@ -14,6 +14,11 @@ import (
 
 func AuthMiddleware(authService service.AuthService) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// check if this call is from an internal service
+		if c.GetHeader("X-Internal-Service") == "true" {
+			c.Next()
+			return
+		}
 		// get the auth token from the header
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
