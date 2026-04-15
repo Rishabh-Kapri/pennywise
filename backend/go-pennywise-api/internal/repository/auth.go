@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -13,8 +14,9 @@ import (
 )
 
 var ErrUserNotFound = errors.New("user not found")
+
 type AuthRepository interface {
-	BaseRepository
+	db.BaseRepositoryInterface
 	FindByGoogleID(ctx context.Context, googleID string) (*model.AuthUser, error)
 	FindByEmail(ctx context.Context, email string) (*model.AuthUser, error)
 	FindByID(ctx context.Context, id uuid.UUID) (*model.AuthUser, error)
@@ -27,11 +29,11 @@ type AuthRepository interface {
 }
 
 type authRepo struct {
-	baseRepository
+	db.BaseRepository
 }
 
-func NewAuthRepository(db *pgxpool.Pool) AuthRepository {
-	return &authRepo{baseRepository: NewBaseRepository(db)}
+func NewAuthRepository(pool *pgxpool.Pool) AuthRepository {
+	return &authRepo{BaseRepository: db.NewBaseRepository(pool)}
 }
 
 func (r *authRepo) FindByGoogleID(ctx context.Context, googleID string) (*model.AuthUser, error) {
@@ -42,7 +44,6 @@ func (r *authRepo) FindByGoogleID(ctx context.Context, googleID string) (*model.
 		 FROM auth_users WHERE google_id = $1 AND deleted = false`,
 		googleID,
 	).Scan(&user.ID, &user.GoogleID, &user.Email, &user.Name, &user.Picture, &user.TokenVersion, &user.CreatedAt, &user.UpdatedAt)
-
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrUserNotFound
@@ -60,7 +61,6 @@ func (r *authRepo) FindByEmail(ctx context.Context, email string) (*model.AuthUs
 		 FROM auth_users WHERE email = $1 AND deleted = false`,
 		email,
 	).Scan(&user.ID, &user.GoogleID, &user.Email, &user.Name, &user.Picture, &user.TokenVersion, &user.CreatedAt, &user.UpdatedAt)
-
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrUserNotFound
@@ -79,7 +79,6 @@ func (r *authRepo) FindByID(ctx context.Context, id uuid.UUID) (*model.AuthUser,
 		 FROM auth_users WHERE id = $1 AND deleted = false`,
 		id,
 	).Scan(&user.ID, &user.GoogleID, &user.Email, &user.Name, &picture, &user.TokenVersion, &user.CreatedAt, &user.UpdatedAt)
-
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrUserNotFound
@@ -100,7 +99,6 @@ func (r *authRepo) Create(ctx context.Context, user model.AuthUser) (*model.Auth
 		 RETURNING id, google_id, email, name, picture, token_version, created_at, updated_at`,
 		user.GoogleID, user.Email, user.Name, user.Picture,
 	).Scan(&createdUser.ID, &createdUser.GoogleID, &createdUser.Email, &createdUser.Name, &picture, &createdUser.TokenVersion, &createdUser.CreatedAt, &createdUser.UpdatedAt)
-
 	if err != nil {
 		return nil, err
 	}

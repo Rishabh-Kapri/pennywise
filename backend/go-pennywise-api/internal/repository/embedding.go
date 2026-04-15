@@ -4,22 +4,23 @@ import (
 	"context"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type EmbeddingRepository interface {
-	BaseRepository
+	db.BaseRepositoryInterface
 	Get(ctx context.Context, docType string, embeddingStr string, limit int64) ([]model.Embedding, error)
 	Create(ctx context.Context, data model.Embedding, embeddingStr string) error
 }
 
 type embeddingRepository struct {
-	baseRepository
+	db.BaseRepository
 }
 
-func NewEmbeddingRepository(db *pgxpool.Pool) EmbeddingRepository {
-	return &embeddingRepository{baseRepository: NewBaseRepository(db)}
+func NewEmbeddingRepository(pool *pgxpool.Pool) EmbeddingRepository {
+	return &embeddingRepository{BaseRepository: db.NewBaseRepository(pool)}
 }
 
 func (er *embeddingRepository) Get(ctx context.Context, docType string, embeddingStr string, limit int64) ([]model.Embedding, error) {

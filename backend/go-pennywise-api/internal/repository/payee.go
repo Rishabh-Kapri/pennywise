@@ -6,6 +6,7 @@ import (
 	"log"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -13,7 +14,7 @@ import (
 )
 
 type PayeesRepository interface {
-	BaseRepository
+	db.BaseRepositoryInterface
 	GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Payee, error)
 	Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.Payee, error)
 	GetById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Payee, error)
@@ -24,11 +25,11 @@ type PayeesRepository interface {
 }
 
 type payeeRepo struct {
-	baseRepository
+	db.BaseRepository
 }
 
-func NewPayeesRepository(db *pgxpool.Pool) PayeesRepository {
-	return &payeeRepo{baseRepository: NewBaseRepository(db)}
+func NewPayeesRepository(pool *pgxpool.Pool) PayeesRepository {
+	return &payeeRepo{BaseRepository: db.NewBaseRepository(pool)}
 }
 
 func (r *payeeRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Payee, error) {

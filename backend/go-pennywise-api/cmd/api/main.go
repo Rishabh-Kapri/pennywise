@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/db"
@@ -22,8 +23,9 @@ func healthPage(c *gin.Context) {
 
 func main() {
 	logger.Setup("pennywise-api")
+	ctx := context.Background()
 
-	dbConn := db.Connect()
+	dbConn := db.Connect(ctx)
 	defer dbConn.Close()
 
 	router := gin.New()
@@ -49,6 +51,7 @@ func main() {
 	embeddingRepo := repository.NewEmbeddingRepository(dbConn)
 	tagRepo := repository.NewTagRepository(dbConn)
 	authRepo := repository.NewAuthRepository(dbConn)
+	apiKeyRepo := repository.NewAPIKeyRepository(dbConn)
 
 	budgetService := service.NewBudgetService(budgetRepo, payeeRepo, categoryRepo, categoryGroupRepo)
 	budgetHandler := handler.NewBudgetHandler(budgetService)
@@ -94,12 +97,15 @@ func main() {
 	authService := service.NewAuthService(authRepo)
 	authHandler := handler.NewAuthHandler(authService)
 
+	apiKeyService := service.NewApiKeyService(apiKeyRepo)
+	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
+
 	loanMetadataRepo := repository.NewLoanMetadataRepository(dbConn)
 	loanMetadataService := service.NewLoanMetadataService(loanMetadataRepo)
 	loanMetadataHandler := handler.NewLoanMetadataHandler(loanMetadataService)
 
 	// Auth middleware
-	authMiddleware := middleware.AuthMiddleware(authService)
+	authMiddleware := middleware.AuthMiddleware(authService, apiKeyService)
 	budgetMiddleware := middleware.BudgetIdMiddleware(budgetRepo)
 
 	{
@@ -123,6 +129,12 @@ func main() {
 		// }
 
 		// Protected routes - all require authentication
+		{
+			apiKeyGroup := router.Group("/api/keys")
+			apiKeyGroup.Use(authMiddleware)
+			apiKeyGroup.GET("", apiKeyHandler.GetByKeyID)
+			apiKeyGroup.POST("", apiKeyHandler.Create)
+		}
 		{
 			budgetGroup := router.Group("/api/budgets")
 			budgetGroup.Use(authMiddleware)

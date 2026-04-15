@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -17,7 +18,7 @@ import (
 // }
 
 type MonthlyBudgetRepository interface {
-	BaseRepository
+	db.BaseRepositoryInterface
 	GetPgxTx(ctx context.Context) (pgx.Tx, error)
 	GetByCatIdAndMonth(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categoryId uuid.UUID, month string) (*model.MonthlyBudget, error)
 	Create(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, monthlyBudget model.MonthlyBudget) error
@@ -28,11 +29,11 @@ type MonthlyBudgetRepository interface {
 }
 
 type monthlyBudgetRepo struct {
-	baseRepository
+	db.BaseRepository
 }
 
-func NewMonthlyBudgetRepository(db *pgxpool.Pool) MonthlyBudgetRepository {
-	return &monthlyBudgetRepo{baseRepository: NewBaseRepository(db)}
+func NewMonthlyBudgetRepository(pool *pgxpool.Pool) MonthlyBudgetRepository {
+	return &monthlyBudgetRepo{BaseRepository: db.NewBaseRepository(pool)}
 }
 
 func (r *monthlyBudgetRepo) GetByCatIdAndMonth(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categoryId uuid.UUID, month string) (*model.MonthlyBudget, error) {

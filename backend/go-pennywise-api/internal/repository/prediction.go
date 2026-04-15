@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -14,7 +15,7 @@ import (
 )
 
 type PredictionRepository interface {
-	BaseRepository
+	db.BaseRepositoryInterface
 	GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Prediction, error)
 	GetByTxnId(ctx context.Context, budgetId uuid.UUID, txnId uuid.UUID) (*model.Prediction, error)
 	GetByTxnIdTx(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, txnId uuid.UUID) (*model.Prediction, error)
@@ -25,11 +26,11 @@ type PredictionRepository interface {
 }
 
 type predictionRepo struct {
-	baseRepository
+	db.BaseRepository
 }
 
-func NewPredictionRepository(db *pgxpool.Pool) PredictionRepository {
-	return &predictionRepo{baseRepository: NewBaseRepository(db)}
+func NewPredictionRepository(pool *pgxpool.Pool) PredictionRepository {
+	return &predictionRepo{BaseRepository: db.NewBaseRepository(pool)}
 }
 
 // @TODO: add support for search query

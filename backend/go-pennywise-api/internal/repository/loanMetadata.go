@@ -5,12 +5,14 @@ import (
 	"errors"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type LoanMetadataRepository interface {
+	db.BaseRepositoryInterface
 	GetAllByBudgetId(ctx context.Context, budgetId uuid.UUID) ([]model.LoanMetadata, error)
 	GetByAccountId(ctx context.Context, accountId uuid.UUID) (*model.LoanMetadata, error)
 	Create(ctx context.Context, loan model.LoanMetadata) (*model.LoanMetadata, error)
@@ -19,11 +21,11 @@ type LoanMetadataRepository interface {
 }
 
 type loanMetadataRepo struct {
-	baseRepository
+	db.BaseRepository
 }
 
-func NewLoanMetadataRepository(db *pgxpool.Pool) LoanMetadataRepository {
-	return &loanMetadataRepo{baseRepository: NewBaseRepository(db)}
+func NewLoanMetadataRepository(pool *pgxpool.Pool) LoanMetadataRepository {
+	return &loanMetadataRepo{BaseRepository: db.NewBaseRepository(pool)}
 }
 
 func (r *loanMetadataRepo) GetAllByBudgetId(ctx context.Context, budgetId uuid.UUID) ([]model.LoanMetadata, error) {

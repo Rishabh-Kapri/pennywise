@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"log"
 	"net/http"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/repository"
@@ -18,12 +17,10 @@ func BudgetIdMiddleware(budgetRepo repository.BudgetRepository) gin.HandlerFunc 
 		ctx := c.Request.Context()
 
 		userID, err := utils.UserIDFromContext(ctx)
-		log.Printf("userID: %v err: %v", userID, err)
 		if err != nil {
-			userID, err = uuid.Parse("fb7c7893-84f7-4344-a861-064985d442f7")
-			// c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
-			// c.Abort()
-			// return
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+			c.Abort()
+			return
 		}
 
 		budgetId := c.GetHeader(budgetIDHeader)

@@ -6,6 +6,8 @@ import (
 	"log/slog"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
+	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/orchestrator/internal/client"
@@ -42,7 +44,6 @@ type PredictResponse struct {
 }
 
 type CorrectionRequest struct {
-	BudgetID      uuid.UUID  `json:"budgetId"`
 	EmailText     string     `json:"emailText"`
 	Amount        float64    `json:"amount"`
 	TransactionID *uuid.UUID `json:"transactionId,omitempty"`
@@ -52,7 +53,7 @@ type CorrectionRequest struct {
 }
 
 type PredictionService interface {
-	Predict(ctx context.Context, budgetID uuid.UUID, req PredictRequest) (*PredictResponse, error)
+	Predict(ctx context.Context, req PredictRequest) (*PredictResponse, error)
 	HandleCorrection(ctx context.Context, req CorrectionRequest) error
 }
 
@@ -74,15 +75,16 @@ func NewPredictionService(
 	}
 }
 
-func (s *predictionService) Predict(ctx context.Context, budgetID uuid.UUID, req PredictRequest) (*PredictResponse, error) {
-	log := slog.Default().With("budgetId", budgetID.String())
+func (s *predictionService) Predict(ctx context.Context, req PredictRequest) (*PredictResponse, error) {
+	budgetID := utils.MustBudgetID(ctx)
+	logger := logger.Logger(ctx)
 
 	// Step 1: Generate embedding via Ollama
 	cleanedEmailText := utils.CleanEmailText(req.EmailText, "debit")
-	log.Info("cleaned email text", "text", cleanedEmailText)
+	logger.Info("cleaned email text", "text", cleanedEmailText)
 	embedding, err := s.ollama.Embed(ctx, EmbeddingModel, cleanedEmailText)
 	if err != nil {
-		log.Warn("ollama embed failed, falling back to MLP", "error", err)
+		logger.Warn("ollama embed failed, falling back to MLP", "error", err)
 		// return s.mlpFallback(ctx, req, log)
 		return nil, nil
 	}
@@ -91,15 +93,15 @@ func (s *predictionService) Predict(ctx context.Context, budgetID uuid.UUID, req
 
 	// Step 2: pgvector similarity search
 	matches, err := s.embeddingRepo.SearchSimilar(ctx, budgetID, embeddingStr, 3)
-	log.Info("pgvector search", "matches", matches)
+	logger.Info("pgvector search", "matches", matches)
 	if err != nil {
-		log.Warn("pgvector search failed, falling back to MLP", "error", err)
+		logger.Warn("pgvector search failed, falling back to MLP", "error", err)
 		// return s.mlpFallback(ctx, req, log)
 		return nil, nil
 	}
 
 	if result := s.resolveMatches(matches); result != nil {
-		log.Info("pgvector match found", "payee", result.Payee, "similarity", result.Confidence)
+		logger.Info("pgvector match found", "payee", result.Payee, "similarity", result.Confidence)
 
 		// Store prediction embedding for future lookups
 		// s.storeEmbedding(ctx, budgetID, req, result, SourcePrediction, embeddingStr)
@@ -123,18 +125,19 @@ func (s *predictionService) Predict(ctx context.Context, budgetID uuid.UUID, req
 }
 
 func (s *predictionService) HandleCorrection(ctx context.Context, req CorrectionRequest) error {
-	log := slog.Default().With("budgetId", req.BudgetID.String())
+	budgetID := utils.MustBudgetID(ctx)
+	logger := logger.Logger(ctx)
 
 	// Generate embedding for the corrected transaction
 	embedding, err := s.ollama.Embed(ctx, EmbeddingModel, req.EmailText)
 	if err != nil {
-		return fmt.Errorf("embed correction: %w", err)
+		return errs.Wrap(errs.CodeInternalError, "embed correction", err)
 	}
 
 	embeddingStr := db.VectorToString(embedding)
 
 	data := model.TransactionEmbedding{
-		BudgetID:      req.BudgetID,
+		BudgetID:      budgetID,
 		EmbeddingText: req.EmailText,
 		Payee:         req.Payee,
 		Category:      req.Category,
@@ -148,7 +151,7 @@ func (s *predictionService) HandleCorrection(ctx context.Context, req Correction
 		return fmt.Errorf("upsert correction embedding: %w", err)
 	}
 
-	log.Info("correction embedding stored",
+	logger.Info("correction embedding stored",
 		"payee", req.Payee,
 		"category", req.Category,
 		"transactionId", req.TransactionID,

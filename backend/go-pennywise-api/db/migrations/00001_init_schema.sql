@@ -162,7 +162,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
     hashed_key TEXT NOT NULL,
     name TEXT NOT NULL,
     description TEXT DEFAULT '',
-    user_id UUID NOT NULL REFERENCES users(id),
+    user_id UUID NOT NULL REFERENCES auth_users(id),
     scopes TEXT[] NOT NULL,
     allowed_ips TEXT[],
     allowed_referrers TEXT[],

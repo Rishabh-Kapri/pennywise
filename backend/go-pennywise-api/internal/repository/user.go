@@ -4,24 +4,25 @@ import (
 	"context"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type UserRepository interface {
-	BaseRepository
+	db.BaseRepositoryInterface
 	// Create(ctx context.Context, user model.User) (*model.User, error)
 	Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.User, error)
 	Update(ctx context.Context, budgetId uuid.UUID, user model.User) (*model.User, error)
 }
 
 type userRepo struct {
-	baseRepository
+	db.BaseRepository
 }
 
-func NewUserRepository(db *pgxpool.Pool) UserRepository {
-	return &userRepo{baseRepository: NewBaseRepository(db)}
+func NewUserRepository(pool *pgxpool.Pool) UserRepository {
+	return &userRepo{BaseRepository: db.NewBaseRepository(pool)}
 }
 
 func (r *userRepo) Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.User, error) {

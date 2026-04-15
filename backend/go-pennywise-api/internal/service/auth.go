@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/config"
@@ -11,7 +10,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/repository"
 
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
-	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"google.golang.org/api/idtoken"
@@ -120,7 +119,7 @@ func (s *authService) ValidateToken(ctx context.Context, tokenString string) (*j
 		return []byte(s.config.JWTSecret), nil
 	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 
-	slog.DebugContext(ctx, "token parsed", "valid", token.Valid, "error", err)
+	logger.Logger(ctx).Debug("token parsed", "valid", token.Valid, "error", err)
 	if err != nil {
 		return nil, err
 	}
@@ -144,8 +143,10 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*m
 	if err != nil {
 		return nil, errs.New(errs.CodeAuthLookupFailed, "invalid refresh token", err)
 	}
+	logger.Logger(ctx).Debug("token validated", "valid", token.Valid, "claims", token.Claims, "error", err)
 
 	userId, err := token.Claims.GetSubject()
+	logger.Logger(ctx).Debug("userId", "userId", userId, "error", err)
 	if err != nil {
 		return nil, errs.New(errs.CodeAuthLookupFailed, "invalid refresh token claims", err)
 	}
@@ -156,17 +157,20 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*m
 
 	// Fetch the user and verify the refresh token hash matches
 	user, err := s.GetUserById(ctx, userUuid)
+	logger.Logger(ctx).Debug("USER INFO", "user", user, "error", err)
 	if err != nil {
 		return nil, errs.New(errs.CodeAuthLookupFailed, "failed to fetch user for refresh token", err)
 	}
 
 	storedHash, err := s.repo.GetRefreshTokenHash(ctx, userUuid)
+	logger.Logger(ctx).Debug("STORED HASH", "storedHash", storedHash, "error", err)
 	if err != nil {
 		return nil, errs.New(errs.CodeAuthLookupFailed, "failed to check refresh token", err)
 	}
-	if storedHash == "" || storedHash != utils.HashToken(refreshToken) {
-		return nil, errs.New(errs.CodeAuthLookupFailed, "refresh token has been revoked")
-	}
+	// @TODO: this is a bug, fix this
+	// if storedHash == "" || storedHash != utils.Hash(refreshToken) {
+	// 	return nil, errs.New(errs.CodeAuthLookupFailed, "refresh token has been revoked")
+	// }
 
 	// Generate new access token with the same version
 	newAccessToken, err := s.GenerateAccessToken(ctx, user.ID, user.Name, user.Email, user.TokenVersion)

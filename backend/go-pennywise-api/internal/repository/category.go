@@ -7,6 +7,7 @@ import (
 	"log"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -14,7 +15,7 @@ import (
 )
 
 type CategoryRepository interface {
-	BaseRepository
+	db.BaseRepositoryInterface
 	GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Category, error)
 	GetInflowBalance(ctx context.Context, budgetId uuid.UUID) (float64, error)
 	GetByFilter(ctx context.Context, budgetId uuid.UUID, filter model.CategoryFilter) ([]model.Category, error)
@@ -28,11 +29,11 @@ type CategoryRepository interface {
 }
 
 type categoryRepo struct {
-	baseRepository
+	db.BaseRepository
 }
 
-func NewCategoryRepository(db *pgxpool.Pool) CategoryRepository {
-	return &categoryRepo{baseRepository: NewBaseRepository(db)}
+func NewCategoryRepository(pool *pgxpool.Pool) CategoryRepository {
+	return &categoryRepo{BaseRepository: db.NewBaseRepository(pool)}
 }
 
 func (r *categoryRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Category, error) {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -12,7 +13,7 @@ import (
 )
 
 type TransactionRepository interface {
-	BaseRepository
+	db.BaseRepositoryInterface
 	GetAll(ctx context.Context, budgetId uuid.UUID, filter *model.TransactionFilter) ([]model.Transaction, error)
 	GetById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Transaction, error)
 	GetByIdTx(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID) (*model.Transaction, error)
@@ -23,11 +24,11 @@ type TransactionRepository interface {
 }
 
 type transactionRepo struct {
-	baseRepository
+	db.BaseRepository
 }
 
-func NewTransactionRepository(db *pgxpool.Pool) TransactionRepository {
-	return &transactionRepo{baseRepository: NewBaseRepository(db)}
+func NewTransactionRepository(pool *pgxpool.Pool) TransactionRepository {
+	return &transactionRepo{BaseRepository: db.NewBaseRepository(pool)}
 }
 
 func (r *transactionRepo) GetAll(ctx context.Context, budgetId uuid.UUID, filter *model.TransactionFilter) ([]model.Transaction, error) {
