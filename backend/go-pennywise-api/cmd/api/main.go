@@ -14,6 +14,7 @@ import (
 	sharedMiddleware "github.com/Rishabh-Kapri/pennywise/backend/shared/middleware"
 
 	"github.com/gin-contrib/cors"
+	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 )
 
@@ -31,6 +32,7 @@ func main() {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(sharedMiddleware.RequestLogger())
+	router.Use(gzip.Gzip(gzip.DefaultCompression))
 
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"http://localhost:5000", "http://localhost:5173", "http://192.168.1.34:5100", "https://pennywise-fe-production.up.railway.app", "https://react-fe-production-8fe5.up.railway.app", "https://pennywise.nastydomain.space", "https://react-fe-dev.up.railway.app"},
