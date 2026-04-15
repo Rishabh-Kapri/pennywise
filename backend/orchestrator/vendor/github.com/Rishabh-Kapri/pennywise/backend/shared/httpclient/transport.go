@@ -70,14 +70,10 @@ func (h *httpTransport) do(ctx context.Context, req *http.Request) (transport.Re
 	var resp transport.Response
 	req.Header.Set("Content-Type", "application/json")
 
-	// Inject correlation ID if available
-	if correlationID := logger.CorrelationIDFromContext(ctx); correlationID != "" {
-		req.Header.Set("X-Correlation-ID", correlationID)
-	}
-
-	// Inject budget ID if available
-	if budgetID, err := utils.BudgetIDFromContext(ctx); err == nil {
-		req.Header.Set("X-Budget-ID", budgetID.String())
+	for _, header := range utils.GetHeaders(ctx) {
+		for k, v := range header {
+			req.Header[k] = v
+		}
 	}
 
 	res, err := h.client.Do(req)
