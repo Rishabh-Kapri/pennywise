@@ -31,6 +31,7 @@ github.com/Rishabh-Kapri/pennywise/backend/shared/errors
 github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient
 github.com/Rishabh-Kapri/pennywise/backend/shared/logger
 github.com/Rishabh-Kapri/pennywise/backend/shared/middleware
+github.com/Rishabh-Kapri/pennywise/backend/shared/transport
 github.com/Rishabh-Kapri/pennywise/backend/shared/utils
 # github.com/bytedance/sonic v1.13.3
 ## explicit; go 1.17
@@ -209,6 +210,9 @@ github.com/klauspost/cpuid/v2
 ## explicit; go 1.18
 github.com/leodido/go-urn
 github.com/leodido/go-urn/scim/schema
+# github.com/lmittmann/tint v1.1.3
+## explicit; go 1.21
+github.com/lmittmann/tint
 # github.com/mattn/go-isatty v0.0.20
 ## explicit; go 1.15
 github.com/mattn/go-isatty
