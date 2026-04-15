@@ -54,6 +54,14 @@ func UserIDFromContext(ctx context.Context) (uuid.UUID, error) {
 	return id, nil
 }
 
+func MustUserID(ctx context.Context) uuid.UUID {
+	id, err := UserIDFromContext(ctx)
+	if err != nil {
+		panic("UserIdMiddleware not configured: " + err.Error())
+	}
+	return id
+}
+
 // WithCorrelationID returns a new context with the correlation ID set.
 func WithCorrelationID(ctx context.Context, id string) context.Context {
 	return context.WithValue(ctx, correlationIDKey, id)

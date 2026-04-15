@@ -15,6 +15,11 @@ type DBTX interface {
 	QueryRow(ctx context.Context, sql string, arguments ...any) pgx.Row
 }
 
+type BaseRepositoryInterface interface {
+	GetPgxTx(ctx context.Context) (pgx.Tx, error)
+	GetDB() *pgxpool.Pool
+}
+
 // BaseRepository provides common database operations for all repositories.
 type BaseRepository struct {
 	DB *pgxpool.Pool
@@ -26,6 +31,10 @@ func NewBaseRepository(db *pgxpool.Pool) BaseRepository {
 
 func (r *BaseRepository) GetDB() *pgxpool.Pool {
 	return r.DB
+}
+
+func (r *BaseRepository) GetPgxTx(ctx context.Context) (pgx.Tx, error) {
+	return r.DB.Begin(ctx)
 }
 
 // Executor returns the transaction if non-nil, otherwise the pool.
