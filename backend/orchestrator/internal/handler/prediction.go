@@ -2,10 +2,10 @@ package handler
 
 import (
 	"fmt"
-	"log/slog"
 	"net/http"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/orchestrator/internal/service"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -25,11 +25,7 @@ func NewPredictionHandler(ps service.PredictionService) PredictionHandler {
 }
 
 func (h *predictionHandler) Predict(c *gin.Context) {
-	budgetID, err := extractBudgetID(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 
 	var req service.PredictRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -37,9 +33,9 @@ func (h *predictionHandler) Predict(c *gin.Context) {
 		return
 	}
 
-	result, err := h.predictionService.Predict(c.Request.Context(), budgetID, req)
+	result, err := h.predictionService.Predict(ctx, req)
 	if err != nil {
-		slog.Error("prediction failed", "error", err)
+		logger.Logger(ctx).Error("prediction failed", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "prediction failed"})
 		return
 	}
@@ -48,19 +44,16 @@ func (h *predictionHandler) Predict(c *gin.Context) {
 }
 
 func (h *predictionHandler) HandleCorrection(c *gin.Context) {
+	ctx := c.Request.Context()
+
 	var req service.CorrectionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	if req.BudgetID == uuid.Nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "budgetId is required"})
-		return
-	}
-
-	if err := h.predictionService.HandleCorrection(c.Request.Context(), req); err != nil {
-		slog.Error("correction handling failed", "error", err)
+	if err := h.predictionService.HandleCorrection(ctx, req); err != nil {
+		logger.Logger(ctx).Error("correction handling failed", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to process correction"})
 		return
 	}

@@ -6,6 +6,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/config"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 
 	"github.com/gin-gonic/gin"
 )
@@ -65,8 +66,9 @@ func (h *authHandler) RefreshToken(c *gin.Context) {
 	}
 
 	response, err := h.service.RefreshToken(c.Request.Context(), req.RefreshToken)
+	logger.Logger(c.Request.Context()).Debug("refresh token response", "response", response, "error", err)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid refresh token"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 

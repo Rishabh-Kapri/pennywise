@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -14,7 +15,7 @@ import (
 )
 
 type CategoryGroupRepository interface {
-	BaseRepository
+	db.BaseRepositoryInterface
 	GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.CategoryGroup, error)
 	Create(ctx context.Context, tx pgx.Tx, categoryGroup model.CategoryGroup) (*model.CategoryGroup, error)
 	Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, categoryGroup model.CategoryGroup) error
@@ -22,11 +23,11 @@ type CategoryGroupRepository interface {
 }
 
 type categoryGroupRepo struct {
-	baseRepository
+	db.BaseRepository
 }
 
-func NewCategoryGroupRepository(db *pgxpool.Pool) CategoryGroupRepository {
-	return &categoryGroupRepo{baseRepository: NewBaseRepository(db)}
+func NewCategoryGroupRepository(pool *pgxpool.Pool) CategoryGroupRepository {
+	return &categoryGroupRepo{BaseRepository: db.NewBaseRepository(pool)}
 }
 
 func (r *categoryGroupRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.CategoryGroup, error) {

@@ -62,8 +62,13 @@ func FatalContext(ctx context.Context, msg string, args ...any) {
 // Use this in handlers and services to get request-scoped logging.
 func Logger(ctx context.Context) *slog.Logger {
 	logger := slog.Default()
+
 	if cid := utils.CorrelationIDFromContext(ctx); cid != "" {
 		logger = logger.With("correlation_id", cid)
+	} else {
+		// Generate a new correlation ID if not found in context
+		newCID := utils.NewCorrelationID()
+		logger = logger.With("correlation_id", newCID)
 	}
 	if bid, err := utils.BudgetIDFromContext(ctx); err == nil {
 		logger = logger.With("budget_id", bid.String())

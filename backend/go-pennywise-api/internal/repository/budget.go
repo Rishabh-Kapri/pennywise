@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -12,7 +13,7 @@ import (
 )
 
 type BudgetRepository interface {
-	BaseRepository
+	db.BaseRepositoryInterface
 	GetAll(ctx context.Context, userID uuid.UUID) ([]model.Budget, error)
 	GetById(ctx context.Context, tx pgx.Tx, id uuid.UUID) (*model.Budget, error)
 	Create(ctx context.Context, tx pgx.Tx, name string, userID uuid.UUID) (*model.Budget, error)
@@ -21,11 +22,11 @@ type BudgetRepository interface {
 }
 
 type budgetRepo struct {
-	baseRepository
+	db.BaseRepository
 }
 
-func NewBudgetRepository(db *pgxpool.Pool) BudgetRepository {
-	return &budgetRepo{baseRepository: NewBaseRepository(db)}
+func NewBudgetRepository(pool *pgxpool.Pool) BudgetRepository {
+	return &budgetRepo{BaseRepository: db.NewBaseRepository(pool)}
 }
 
 func (r *budgetRepo) GetAll(ctx context.Context, userID uuid.UUID) ([]model.Budget, error) {

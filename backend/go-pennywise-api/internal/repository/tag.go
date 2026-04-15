@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -12,7 +13,7 @@ import (
 )
 
 type TagRepository interface {
-	BaseRepository
+	db.BaseRepositoryInterface
 	GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Tag, error)
 	Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.Tag, error)
 	GetById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Tag, error)
@@ -22,11 +23,11 @@ type TagRepository interface {
 }
 
 type tagRepo struct {
-	baseRepository
+	db.BaseRepository
 }
 
-func NewTagRepository(db *pgxpool.Pool) TagRepository {
-	return &tagRepo{baseRepository: NewBaseRepository(db)}
+func NewTagRepository(pool *pgxpool.Pool) TagRepository {
+	return &tagRepo{BaseRepository: db.NewBaseRepository(pool)}
 }
 
 func (r *tagRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Tag, error) {
