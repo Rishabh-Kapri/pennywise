@@ -3,12 +3,12 @@ module github.com/Rishabh-Kapri/pennywise/backend/orchestrator
 go 1.24.0
 
 require (
+	github.com/Rishabh-Kapri/pennywise/backend/shared v0.0.0
 	github.com/gin-contrib/cors v1.7.6
 	github.com/gin-gonic/gin v1.10.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.5
 	github.com/joho/godotenv v1.5.1
-	github.com/Rishabh-Kapri/pennywise/backend/shared v0.0.0
 )
 
 require (
@@ -27,6 +27,7 @@ require (
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
+	github.com/lmittmann/tint v1.1.3 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect

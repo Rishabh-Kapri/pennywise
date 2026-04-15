@@ -3,7 +3,7 @@ package repository
 import (
 	"context"
 	"fmt"
-	"pennywise-shared/db"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/orchestrator/internal/model"
 

@@ -2,15 +2,15 @@ package client
 
 import (
 	"context"
-	"fmt"
-	"net/http"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
+	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 )
 
 type OllamaClient struct {
-	baseURL string
-	client  *http.Client
+	// use abstract Transport client
+	client *transport.Client
 }
 
 type embedRequest struct {
@@ -33,11 +33,8 @@ type generateResponse struct {
 	Response string `json:"response"`
 }
 
-func NewOllamaClient(baseURL string) *OllamaClient {
-	return &OllamaClient{
-		baseURL: baseURL,
-		client:  &http.Client{},
-	}
+func NewOllamaClient(c *transport.Client) *OllamaClient {
+	return &OllamaClient{client: c}
 }
 
 func (c *OllamaClient) Embed(ctx context.Context, model string, text string) ([]float64, error) {
@@ -46,13 +43,14 @@ func (c *OllamaClient) Embed(ctx context.Context, model string, text string) ([]
 		Input: text,
 	}
 
-	resp, err := httpclient.Post[embedResponse](ctx, c.baseURL+"/api/embed", reqBody)
+	logger.Logger(ctx).Debug("ollama embed", "model", model, "text", text, "client", c.client)
+	resp, err := transport.Post[embedResponse](ctx, c.client, "/api/embed", reqBody)
 	if err != nil {
-		return nil, fmt.Errorf("Embed: %w", err)
+		return nil, errs.Wrap(errs.CodeInternalError, "error in ollama embed", err)
 	}
 
 	if len(resp.Embeddings) == 0 {
-		return nil, fmt.Errorf("Embed: no embeddings returned")
+		return nil, errs.New(errs.CodeInternalError, "ollama embed: no embeddings returned")
 	}
 
 	return resp.Embeddings[0], nil
@@ -66,9 +64,9 @@ func (c *OllamaClient) Generate(ctx context.Context, model string, prompt string
 		Stream: false,
 	}
 
-	resp, err := httpclient.Post[generateResponse](ctx, c.baseURL+"/api/generate", reqBody)
+	resp, err := transport.Post[generateResponse](ctx, c.client, "/api/generate", reqBody)
 	if err != nil {
-		return "", fmt.Errorf("Generate: %w", err)
+		return "", errs.Wrap(errs.CodeInternalError, "error in ollama generate", err)
 	}
 
 	return resp.Response, nil
