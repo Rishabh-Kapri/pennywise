@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/gin-gonic/gin"
@@ -48,11 +49,12 @@ func RequestLogger() gin.HandlerFunc {
 		c.Request = c.Request.WithContext(ctx)
 		c.Header(correlationIDHeader, correlationID)
 
-		log := slog.Default()
-		debugLogging := log.Enabled(c.Request.Context(), slog.LevelDebug)
+		logger := logger.Logger(ctx)
+		debugLogging := logger.Enabled(c.Request.Context(), slog.LevelDebug)
 
 		var requestBody string
 		var responseWriter *responseBodyWriter
+		// If debug logging is enabled, capture request body and response body
 		if debugLogging {
 			requestBody = captureRequestBody(c)
 			responseWriter = &responseBodyWriter{
@@ -98,7 +100,7 @@ func RequestLogger() gin.HandlerFunc {
 			level = slog.LevelWarn
 		}
 
-		log.LogAttrs(c.Request.Context(), level, "request completed", attrs...)
+		logger.LogAttrs(c.Request.Context(), level, "request completed", attrs...)
 	}
 }
 
