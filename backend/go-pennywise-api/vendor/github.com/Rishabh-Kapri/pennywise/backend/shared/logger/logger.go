@@ -8,6 +8,7 @@ import (
 
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 	"github.com/google/uuid"
+	"github.com/lmittmann/tint"
 )
 
 type contextKey string
@@ -17,17 +18,31 @@ const correlationIDKey contextKey = "correlationId"
 // Setup initializes a structured JSON logger as the default slog logger with the service name.
 // It reads the RAILWAY_ENVIRONMENT_NAME environment variable to determine the log level.
 func Setup(service string) {
-	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: logLevelFromEnv(),
-	})
-	slog.SetDefault(slog.New(handler).With("service", service))
-}
-
-func logLevelFromEnv() slog.Level {
 	env := os.Getenv("RAILWAY_ENVIRONMENT_NAME")
 	if env == "" {
 		env = "local"
 	}
+
+	logLevel := logLevelFromEnv(env)
+	var handler slog.Handler
+
+	if env == "local" {
+		handler = tint.NewHandler(os.Stdout, &tint.Options{
+			Level:      logLevel,
+			AddSource:  logLevel == slog.LevelDebug,
+			TimeFormat: "15:04:05",
+		})
+	} else {
+
+		handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+			Level:     logLevel,
+			AddSource: logLevel == slog.LevelDebug,
+		})
+	}
+	slog.SetDefault(slog.New(handler).With("service", service))
+}
+
+func logLevelFromEnv(env string) slog.Level {
 	switch strings.ToLower(env) {
 	case "local", "dev", "development":
 		return slog.LevelDebug

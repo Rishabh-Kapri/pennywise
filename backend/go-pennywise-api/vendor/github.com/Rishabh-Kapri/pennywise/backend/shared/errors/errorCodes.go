@@ -4,6 +4,7 @@ type Code string
 
 // Generic error codes
 const (
+	CodeInternalError   Code = "INTERNAL_ERROR"
 	CodeInvalidArgument Code = "INVALID_ARGUMENT"
 )
 
