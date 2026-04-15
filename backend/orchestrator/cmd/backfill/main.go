@@ -2,17 +2,15 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"io"
 	"log"
 	"log/slog"
-	"net/http"
 	"os"
 	"time"
 
 	db "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/orchestrator/internal/client"
@@ -69,13 +67,22 @@ func main() {
 	}
 	defer dbConn.Close()
 
-	ollamaClient := client.NewOllamaClient(cfg.OllamaURL)
+	// Ollama client via shared transport
+	ollamaEngine := httpclient.NewHttpTransport(cfg.OllamaURL)
+	ollamaTransport := transport.NewClient("ollama", ollamaEngine)
+	ollamaClient := client.NewOllamaClient(ollamaTransport)
+
+	// Pennywise API client via shared transport
+	pennywiseEngine := httpclient.NewHttpTransport(pennywiseAPI)
+	pennywiseClient := transport.NewClient("pennywise-api", pennywiseEngine)
+
 	embeddingRepo := repository.NewTransactionEmbeddingRepository(dbConn)
 
 	ctx := context.Background()
 
-	// Fetch predictions from go-pennywise-api
-	predictions, err := fetchPredictions(pennywiseAPI, budgetIDStr)
+	// Fetch predictions from go-pennywise-api via transport
+	ctx = utils.WithBudgetID(ctx, budgetID)
+	predictions, err := transport.Get[[]Prediction](ctx, pennywiseClient, "/api/predictions")
 	if err != nil {
 		log.Fatalf("Failed to fetch predictions: %v", err)
 	}
@@ -160,41 +167,6 @@ func main() {
 	}
 
 	slog.Info("backfill complete", "total", len(predictions), "success", success, "failed", failed)
-}
-
-func fetchPredictions(apiURL string, budgetID string) ([]Prediction, error) {
-	url := fmt.Sprintf("%s/api/predictions", apiURL)
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("authUserId", "fb7c7893-84f7-4344-a861-064985d442f7")
-	req.Header.Set("X-Budget-ID", budgetID)
-	// req.Header.Set("Authorization", "Bearer "+authToken)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API returned status %d: %s", resp.StatusCode, string(body))
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	var predictions []Prediction
-	if err := json.Unmarshal(body, &predictions); err != nil {
-		return nil, err
-	}
-
-	return predictions, nil
 }
 
 func deref(s *string) string {

@@ -4,16 +4,14 @@ RUN apk add --no-cache git tzdata
 
 WORKDIR /app
 
-# Copy shared module first
-COPY ../shared /shared
-
-# Copy orchestrator module
+# Copy go mod and vendor directory
 COPY go.mod go.sum ./
-RUN go mod download
+COPY vendor/ ./vendor/
 
+# Copy source
 COPY . .
 
-RUN go build -o orchestrator ./cmd/api
+RUN go build -mod=vendor -o orchestrator ./cmd/api
 
 FROM alpine:latest
 

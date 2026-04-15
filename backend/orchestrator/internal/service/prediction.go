@@ -4,8 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"pennywise-shared/db"
-	"pennywise-shared/utils"
+
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/orchestrator/internal/client"
 	"github.com/Rishabh-Kapri/pennywise/backend/orchestrator/internal/model"

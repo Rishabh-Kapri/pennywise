@@ -11,7 +11,9 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/orchestrator/internal/service"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -38,8 +40,14 @@ func main() {
 	defer dbConn.Close()
 
 	// Clients
-	ollamaClient := client.NewOllamaClient(cfg.OllamaURL)
-	mlpClient := client.NewMLPClient(cfg.MLPApiURL)
+	// currently we only have http transport
+	ollamaEngine := httpclient.NewHttpTransport(cfg.OllamaURL)
+	ollamaHttpTransport := transport.NewClient("ollama", ollamaEngine)
+	ollamaClient := client.NewOllamaClient(ollamaHttpTransport)
+
+	mlpEngine := httpclient.NewHttpTransport(cfg.MLPApiURL)
+	mlpHttpTransport := transport.NewClient("mlp", mlpEngine)
+	mlpClient := client.NewMLPClient(mlpHttpTransport)
 
 	// Repository
 	txnEmbeddingRepo := repository.NewTransactionEmbeddingRepository(dbConn)

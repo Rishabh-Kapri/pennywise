@@ -1,18 +1,15 @@
 package client
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"log/slog"
-	"net/http"
+
+	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 )
 
 type MLPClient struct {
-	baseURL string
-	client  *http.Client
+	client *transport.Client
 }
 
 type PredictRequest struct {
@@ -28,10 +25,9 @@ type PredictResponse struct {
 	Confidence float64 `json:"confidence"`
 }
 
-func NewMLPClient(baseURL string) *MLPClient {
+func NewMLPClient(transport *transport.Client) *MLPClient {
 	return &MLPClient{
-		baseURL: baseURL,
-		client:  &http.Client{},
+		client: transport,
 	}
 }
 
@@ -72,38 +68,10 @@ func (c *MLPClient) PredictAll(ctx context.Context, emailText string, amount flo
 }
 
 func (c *MLPClient) predict(ctx context.Context, req PredictRequest) (*PredictResponse, error) {
-	reqBytes, err := json.Marshal(req)
+	res, err := transport.Post[PredictResponse](ctx, c.client, "/predict", req)
 	if err != nil {
-		return nil, fmt.Errorf("marshal: %w", err)
+		return nil, errs.Wrap(errs.CodeInternalError, "error in mlp predict", err)
 	}
 
-	url := c.baseURL + "/predict"
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewBuffer(reqBytes))
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.client.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("request to %s: %w", url, err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
-	}
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		slog.Error("MLP predict failed", "url", url, "status", resp.StatusCode, "body", string(body))
-		return nil, fmt.Errorf("predict request failed with status %d", resp.StatusCode)
-	}
-
-	var result PredictResponse
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("unmarshal: %w", err)
-	}
-
-	return &result, nil
+	return &res, nil
 }
