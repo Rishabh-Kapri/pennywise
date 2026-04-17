@@ -2,10 +2,11 @@ package temporal
 
 import (
 	"context"
-	"gmail-transactions/pkg/auth"
-	"gmail-transactions/pkg/gmail"
-	"gmail-transactions/pkg/parser"
-	"gmail-transactions/pkg/pennywise-api"
+
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/auth"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/gmail"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/parser"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/pennywise-api"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/workflows"
 )
@@ -18,24 +19,20 @@ type GmailActivities struct {
 }
 
 func (a *GmailActivities) FetchAndParseEmails(ctx context.Context, input workflows.EmailWorflowInput) ([]workflows.ParsedEmail, error) {
-	// fetch refresh token
-	refreshToken, err := a.Pennywise.GetUserRefreshToken(ctx, input.Email)
+	// fetch user info (including refresh token and history id) by email
+	userInfo, err := a.Pennywise.GetUser(ctx, input.Email)
 	if err != nil {
 		return nil, err
 	}
 
 	// get access token from refresh token
 	oauthConfig := a.Auth.GetOauth2Config()
-	token, err := a.Auth.GetTokenFromRefresh(refreshToken)
+	token, err := a.Auth.GetTokenFromRefresh(userInfo.RefreshToken)
 	if err != nil {
 		return nil, err
 	}
 
-	// get saved history id for user
-	prevHistoryId, err := a.Pennywise.GetUserHistoryId(ctx, input.Email)
-	if err != nil {
-		return nil, err
-	}
+	prevHistoryId := uint64(userInfo.GmailHistoryID)
 
 	// update history id first
 	if err := a.Pennywise.UpdateUserHistoryId(ctx, input.Email, input.HistoryId); err != nil {
