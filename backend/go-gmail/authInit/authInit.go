@@ -5,12 +5,12 @@ import (
 	"net/http"
 	"os"
 
-	"gmail-transactions/pkg/logger"
-
 	"github.com/GoogleCloudPlatform/functions-framework-go/functions"
 	"github.com/joho/godotenv"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
+
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 )
 
 // Get the oauth2 config
