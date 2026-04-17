@@ -28,12 +28,14 @@ type GmailPushPayload struct {
 	HistoryID    uint64 `json:"historyId"`
 }
 
+type historyIDMap map[uint64]bool
+
 type EventProcessor struct {
 	mu              sync.Mutex
 	processingQueue map[uint64]bool
 	pendingEvents   chan *pubsub.Message
-	processed       map[uint64]bool
-	lastProcessed   uint64
+	processed       map[string]historyIDMap
+	lastProcessed   map[string]uint64
 	runner          *runner.Runner
 }
 
@@ -41,8 +43,8 @@ func NewEventProcessor(runner *runner.Runner) *EventProcessor {
 	return &EventProcessor{
 		processingQueue: make(map[uint64]bool),
 		pendingEvents:   make(chan *pubsub.Message, 1), // buffered channel for pending historyIds
-		processed:       make(map[uint64]bool),
-		lastProcessed:   0,
+		processed:       make(map[string]historyIDMap),
+		lastProcessed:   make(map[string]uint64),
 		runner:          runner,
 	}
 }
@@ -77,28 +79,31 @@ func (p *EventProcessor) processMessage(event *pubsub.Message) {
 	ctx := utils.WithCorrelationID(context.Background(), utils.NewCorrelationID())
 	log := logger.Logger(ctx)
 
-	if p.processed[m.HistoryId] {
+	email := m.Email
+	historyID := m.HistoryId
+	historyIDMap := p.processed[email]
+	if historyIDMap[historyID] {
 		p.mu.Unlock()
 		log.Info("duplicate historyId detected, skipping", "historyId", m.HistoryId)
 		event.Ack()
 		return
 	}
-	if m.HistoryId < p.lastProcessed {
+	if m.HistoryId < p.lastProcessed[email] {
 		p.mu.Unlock()
 		log.Info("outdated historyId detected, skipping", "historyId", m.HistoryId)
 		event.Ack()
 		return
 	}
 	p.processingQueue[m.HistoryId] = true
-	p.processed[m.HistoryId] = true
+	historyIDMap[historyID] = true
 	p.mu.Unlock()
 
 	defer func() {
 		p.mu.Lock()
 		slog.Debug("defer func", "lastProcessed", p.lastProcessed)
 		delete(p.processingQueue, m.HistoryId)
-		if m.HistoryId > p.lastProcessed {
-			p.lastProcessed = m.HistoryId
+		if m.HistoryId > p.lastProcessed[email] {
+			p.lastProcessed[email] = m.HistoryId
 		}
 		slog.Debug("defer func after", "lastProcessed", p.lastProcessed)
 		p.mu.Unlock()

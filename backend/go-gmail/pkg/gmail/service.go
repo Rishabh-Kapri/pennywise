@@ -62,9 +62,9 @@ func (s *Service) WatchHandler(ctx context.Context, payload GmailSyncRequest) (u
 		return 0, nil
 	}
 
-	historyID := uint64(1)
-	logger.Info("gmail setup done", "historyId", historyID)
-	// historyID, err := s.setupWatch(ctx, payload.Email, token, config)
+	// historyID := uint64(1)
+	historyID, err := s.setupWatch(ctx, payload.Email, token, config)
+	logger.Info("gmail setup done", "historyId", historyID, "err", err)
 
 	return historyID, nil
 }
