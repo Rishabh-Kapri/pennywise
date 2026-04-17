@@ -81,3 +81,24 @@ func Post[T any](ctx context.Context, c *Client, path string, headers map[string
 
 	return result, nil
 }
+
+func Patch[T any](ctx context.Context, c *Client, path string, headers map[string][]string, data any) (T, error) {
+	logger := logger.Logger(ctx)
+	logger.Debug("transport.Patch", "service", c.serviceName, "path", path, "data", data)
+	var result T
+
+	req := &Request{Method: "PATCH", Path: path, Headers: headers, Payload: data}
+
+	res, err := c.transport.Send(ctx, req)
+	if err != nil {
+		return result, err
+	}
+
+	if len(res.Body) > 0 {
+		if err := json.Unmarshal(res.Body, &result); err != nil {
+			return result, err
+		}
+	}
+
+	return result, nil
+}

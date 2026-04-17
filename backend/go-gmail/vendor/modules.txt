@@ -54,6 +54,7 @@ cloud.google.com/go/pubsub/internal/scheduler
 # github.com/Rishabh-Kapri/pennywise/backend/shared v0.0.0 => ../shared
 ## explicit; go 1.24.0
 github.com/Rishabh-Kapri/pennywise/backend/shared/errors
+github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient
 github.com/Rishabh-Kapri/pennywise/backend/shared/logger
 github.com/Rishabh-Kapri/pennywise/backend/shared/transport
 github.com/Rishabh-Kapri/pennywise/backend/shared/utils
