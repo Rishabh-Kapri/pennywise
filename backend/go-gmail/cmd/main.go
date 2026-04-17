@@ -11,7 +11,7 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/config"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/gmail"
-	// "github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/pubsub"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/pubsub"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
@@ -77,7 +77,7 @@ func main() {
 	http.HandleFunc("/api", healthPage)
 	http.HandleFunc("/api/watch", watchHandler)
 
-	// go pubsub.PullMessages(ctx)
+	go pubsub.PullMessages(ctx)
 
 	go func() {
 		log.Info("Server listening on port " + config.Port)
