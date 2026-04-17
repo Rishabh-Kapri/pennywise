@@ -5,11 +5,15 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 
-	"gmail-transactions/pkg/config"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/config"
+	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 
 	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
 	gmail "google.golang.org/api/gmail/v1"
 	"google.golang.org/api/option"
 )
@@ -18,12 +22,64 @@ type Service struct {
 	config *config.Config
 }
 
-func NewService(config *config.Config) *Service {
+func getOauth2Config() *oauth2.Config {
+	return &oauth2.Config{
+		ClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
+		ClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
+		// RedirectURL:  os.Getenv("CALLBACK_URL"),
+		RedirectURL: "postmessage",
+		Endpoint:    google.Endpoint,
+		Scopes:      []string{"https://mail.google.com/", "https://www.googleapis.com/auth/userinfo.email"},
+	}
+}
+
+func NewService() *Service {
+	config := config.LoadConfig()
 	return &Service{config: config}
 }
 
-func (s *Service) SetupWatch(email string, token *oauth2.Token, oauthConfig *oauth2.Config) (uint64, error) {
-	ctx := context.Background()
+// WatchHandler is the gmail watch handler
+func (s *Service) WatchHandler(ctx context.Context, payload GmailSyncRequest) (uint64, error) {
+	config := getOauth2Config()
+	logger := logger.Logger(ctx)
+	tokenSource := config.TokenSource(ctx, &oauth2.Token{
+		RefreshToken: payload.RefreshToken,
+	})
+	token, err := tokenSource.Token()
+	logger.Info("token", "token", token)
+	if err != nil {
+		logger.Error("Error while fetching token", "error", err)
+		return 0, errs.Wrap(errs.CodeInternalError, "Error while fetching token", err)
+	}
+
+	if payload.IsStop {
+		logger.Info("stopping gmail watch", "email", payload.Email)
+		err := s.stopWatch(ctx, token, config, payload.Email)
+		if err != nil {
+			return 0, err
+		}
+		logger.Info("stopped gmail watch", "email", payload.Email)
+		return 0, nil
+	}
+
+	historyID := uint64(1)
+	logger.Info("gmail setup done", "historyId", historyID)
+	// historyID, err := s.setupWatch(ctx, payload.Email, token, config)
+
+	return historyID, nil
+}
+
+
+func (s *Service) stopWatch(ctx context.Context, token *oauth2.Token, oauthConfig *oauth2.Config, email string) error {
+	gmailService, err := gmail.NewService(ctx, option.WithTokenSource(oauthConfig.TokenSource(ctx, token)))
+	if err != nil {
+		return err
+	}
+	gmailService.Users.Stop(email)
+	return nil
+}
+
+func (s *Service) setupWatch(ctx context.Context, email string, token *oauth2.Token, oauthConfig *oauth2.Config) (uint64, error) {
 	gmailService, err := gmail.NewService(ctx, option.WithTokenSource(oauthConfig.TokenSource(ctx, token)))
 	if err != nil {
 		return 0, err
@@ -102,9 +158,9 @@ func (s *Service) IsTransactionEmail(emailHeader []*gmail.MessagePartHeader) (bo
 		if strings.Contains(valueLower, "txn") ||
 			strings.Contains(valueLower, "alert : update") ||
 			strings.Contains(valueLower, "alert :  update") ||
-		  strings.Contains(valueLower, "credit card") ||
-		  strings.Contains(valueLower, "debited") ||
-		  strings.Contains(valueLower, "instaalert") ||
+			strings.Contains(valueLower, "credit card") ||
+			strings.Contains(valueLower, "debited") ||
+			strings.Contains(valueLower, "instaalert") ||
 			strings.Contains(valueLower, "view: account") {
 			isTransaction = true
 		}

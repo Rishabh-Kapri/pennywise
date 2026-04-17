@@ -1,6 +1,6 @@
 package database
 
-import "gmail-transactions/pkg/config"
+import "github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/config"
 
 type Service struct {
 	config config.Config
@@ -9,4 +9,3 @@ type Service struct {
 func NewService() *Service {
 	return &Service{}
 }
-

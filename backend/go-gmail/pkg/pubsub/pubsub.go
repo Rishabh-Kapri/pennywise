@@ -7,14 +7,17 @@ import (
 	"sync"
 	"time"
 
-	"gmail-transactions/pkg/auth"
-	"gmail-transactions/pkg/config"
-	"gmail-transactions/pkg/gmail"
-	"gmail-transactions/pkg/logger"
-	"gmail-transactions/pkg/parser"
-	"gmail-transactions/pkg/pennywise-api"
-	"gmail-transactions/pkg/prediction"
-	"gmail-transactions/pkg/runner"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/auth"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/config"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/gmail"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/parser"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/pennywise-api"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/prediction"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/runner"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"cloud.google.com/go/pubsub"
 	"google.golang.org/api/option"
@@ -71,7 +74,7 @@ func (p *EventProcessor) processMessage(event *pubsub.Message) {
 	}
 
 	// Create a context with a correlation ID for this message
-	ctx := logger.WithCorrelationID(context.Background(), logger.NewCorrelationID())
+	ctx := utils.WithCorrelationID(context.Background(), utils.NewCorrelationID())
 	log := logger.Logger(ctx)
 
 	if p.processed[m.HistoryId] {
@@ -161,15 +164,18 @@ func TestMessages() {
 	cancel()
 }
 
-func PullMessages() {
+func PullMessages(ctx context.Context) {
 	config := config.LoadConfig()
+
+	pennywiseTransport := httpclient.NewHttpTransport(config.PennywiseServiceURL)
+	pennywiseClient := transport.NewClient("pennywise-api", pennywiseTransport)
 
 	runnerInstance := runner.NewRunner(
 		auth.NewService(config),
-		gmail.NewService(config),
+		gmail.NewService(),
 		parser.NewEmailParser(),
 		prediction.NewService(config),
-		pennywise.NewService(config),
+		pennywise.NewService(pennywiseClient),
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())

@@ -31,6 +31,12 @@ type UserInfo struct {
 	Picture string `json:"picture"`
 }
 
+type GmailSyncRequest struct {
+	RefreshToken string `json:"refreshToken"`
+	Email        string `json:"email"`
+	IsStop       bool   `json:"isStop"`
+}
+
 type EventData struct {
 	Email     string `json:"emailAddress"`
 	HistoryId uint64 `json:"historyId"`
@@ -42,8 +48,8 @@ type EmailMessageData struct {
 }
 
 type EmailData struct {
-	Headers []*gmail.MessagePartHeader
-	Body    string
+	Headers   []*gmail.MessagePartHeader
+	Body      string
 	MessageId string
 }
 
@@ -244,9 +250,9 @@ func Init() *EmailDetails {
 	// text3 := `<div dir="ltr"><table align="center" width="550" border="0" cellspacing="0" cellpadding="0"><tbody><tr><td width="550" valign="top" align="center"><table align="center" width="100%" border="0" cellspacing="0" cellpadding="0" style="width:550px"><tbody><tr><td height=""></td></tr><tr><td align="left" valign="middle" style="font-family:Arial;font-size:16px;line-height:22px;color:rgb(0,0,0)"> Dear Customer, Rs.15000.00 is successfully credited to your account **8936 by VPA 9458306660@ybl SHEELA KAPRI on 02-07-25. Your UPI transaction reference number is 887393696385. Thank you for banking with us. Warm Regards, HDFC Bank </td></tr></tbody></table></td></tr></tbody></table></div>`
 	// text4 := `Dear Card Member, Thank you for using your HDFC Bank Credit Card ending 4432 for Rs 529.82 at Bharti Airtel Limited on 21-05-2025 13:01:46. Authorization code:- 062756 After the above transaction, the available balance on your card is Rs 401279.18 and the total outstanding is Rs 81720.82. For more details on this transaction please visit HDFC Bank MyCards. If you have not done this transaction, please immediately call on 18002586161 to report this transaction. Explore HDFC Bank MyCards: your one stop platform to manage Credit Card ON THE GO.`
 	// text5 := ``
-		// text6 := ``
+	// text6 := ``
 	// text7 := ``
-// 	text8 := "Dear Customer, Thank you for using HDFC Bank Card XX4432 for Rs. 1196.52 at Adobe Systems Software on 02-08-2025 15:55:53"
+	// 	text8 := "Dear Customer, Thank you for using HDFC Bank Card XX4432 for Rs. 1196.52 at Adobe Systems Software on 02-08-2025 15:55:53"
 	//
 	// parsedDetails1, _ := parseEmail(text1)
 	// parsedDetails1.Type = "account"

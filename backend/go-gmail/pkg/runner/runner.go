@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"sync"
 
-	"gmail-transactions/pkg/auth"
-	"gmail-transactions/pkg/gmail"
-	"gmail-transactions/pkg/logger"
-	"gmail-transactions/pkg/parser"
-	"gmail-transactions/pkg/pennywise-api"
-	"gmail-transactions/pkg/prediction"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/auth"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/gmail"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/parser"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/pennywise-api"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/prediction"
+
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
+	"github.com/google/uuid"
 )
 
 const maxProcessedMsgIds = 1000
@@ -47,7 +50,6 @@ func NewRunner(
 	}
 }
 
-
 // isProcessed checks if a Gmail message ID has already been processed.
 // Returns true if already seen, false otherwise (and marks it as seen).
 func (s *Runner) isProcessed(messageId string) bool {
@@ -59,6 +61,7 @@ func (s *Runner) isProcessed(messageId string) bool {
 	}
 
 	// Evict old entries if cache is too large
+	// @TODO: Evict based on LRU, not nuking the whole cache
 	if len(s.processedMsgIds) >= maxProcessedMsgIds {
 		s.processedMsgIds = make(map[string]bool)
 	}
@@ -70,21 +73,27 @@ func (s *Runner) ProcessGmailHistoryId(ctx context.Context, eventData EventData)
 	log := logger.Logger(ctx)
 	log.Info("processing event", "eventData", eventData)
 
-	refreshToken, err := s.pennywise.GetUserRefreshToken(ctx, eventData.Email)
+	// Fetch user info (including budgetId and refresh token) by email — no budget scoping needed
+	userInfo, err := s.pennywise.GetUser(ctx, eventData.Email)
 	if err != nil {
-		return fmt.Errorf("Failed to get refresh token: %w", err)
+		return fmt.Errorf("Failed to get user info: %w", err)
 	}
+	log.Info("fetched user info", "budgetId", userInfo.BudgetID, "historyId", userInfo.GmailHistoryID)
+
+	// Set budget ID in context so all subsequent transport calls auto-inject X-Budget-ID
+	budgetUUID, err := uuid.Parse(userInfo.BudgetID)
+	if err != nil {
+		return fmt.Errorf("Failed to parse budget ID: %w", err)
+	}
+	ctx = utils.WithBudgetID(ctx, budgetUUID)
 
 	oauthconfig := s.auth.GetOauth2Config()
-	token, err := s.auth.GetTokenFromRefresh(refreshToken)
+	token, err := s.auth.GetTokenFromRefresh(userInfo.RefreshToken)
 	if err != nil {
 		return fmt.Errorf("Failed to get access token: %w", err)
 	}
 
-	prevHistoryId, err := s.pennywise.GetUserHistoryId(ctx, eventData.Email)
-	if err != nil {
-		return fmt.Errorf("Failed to get prev history id: %w", err)
-	}
+	prevHistoryId := uint64(userInfo.GmailHistoryID)
 	log.Info("received history id", "prevHistoryId", prevHistoryId)
 
 	if err := s.pennywise.UpdateUserHistoryId(ctx, eventData.Email, eventData.HistoryId); err != nil {
@@ -119,6 +128,7 @@ func (s *Runner) ProcessGmailHistoryId(ctx context.Context, eventData EventData)
 			log.Info("amount is 0, skipping")
 			continue
 		}
+		// @TODO: call the cipher service here
 		predictedFields, err := s.prediction.GetPredictedFields(ctx, parsedDetails, defaultAccount)
 		if err != nil {
 			log.Error("error getting predicted fields", "error", err)

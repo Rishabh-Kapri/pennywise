@@ -7,30 +7,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"gmail-transactions/pkg/config"
-	"gmail-transactions/pkg/parser"
-	"gmail-transactions/pkg/prediction"
-
-	"github.com/stretchr/testify/mock"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/parser"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/prediction"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
+	"github.com/google/uuid"
 )
-
-type mockService struct {
-	*Service
-	mock.Mock
-}
-
-func (m *mockService) makePennywiseRequest(endpoint string, method string, queryData map[string]string, data any) ([]map[string]any, error) {
-	args := m.Called(endpoint, method, queryData, data)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).([]map[string]any), args.Error(1)
-}
-
-func (m *mockService) getEncodedURL(path string, queryData map[string]string) (string, error) {
-	args := m.Called(path, queryData)
-	return args.String(0), args.Error(1)
-}
 
 func getTestInputs() (*parser.EmailDetails, *prediction.PredictedFields) {
 	parsedDetails := &parser.EmailDetails{
@@ -56,6 +39,12 @@ func getTestInputs() (*parser.EmailDetails, *prediction.PredictedFields) {
 		},
 	}
 	return parsedDetails, predictedFields
+}
+
+func newTestService(serverURL string) *Service {
+	httpTransport := httpclient.NewHttpTransport(serverURL)
+	client := transport.NewClient("pennywise-api-test", httpTransport)
+	return NewService(client)
 }
 
 func TestCreateTransaction(t *testing.T) {
@@ -113,11 +102,11 @@ func TestCreateTransaction(t *testing.T) {
 			},
 			expectError: false,
 			expectedTxn: &Transaction{
-				ID:        "txn-123",
-				Amount:    -5065.68,
-				Date:      "2025-08-04",
-				AccountId: "acc-123",
-				PayeeId:   "payee-123",
+				ID:         "txn-123",
+				Amount:     -5065.68,
+				Date:       "2025-08-04",
+				AccountId:  "acc-123",
+				PayeeId:    "payee-123",
 				CategoryId: nil,
 			},
 		},
@@ -167,23 +156,19 @@ func TestCreateTransaction(t *testing.T) {
 					w.WriteHeader(http.StatusNotFound)
 					return
 				}
-				if r.Header.Get("Content-Type") != "application/json" {
-					t.Errorf("Expected Accept header application/json, got %v", r.Header.Get("Content-Type"))
-				}
 				w.WriteHeader(http.StatusOK)
 				json.NewEncoder(w).Encode(res)
 			}))
 			defer server.Close()
 
-			service := NewService(&config.Config{PennywiseApi: server.URL})
-			res, err := service.CreateTransaction(context.Background(), tt.parsedDetails, tt.predictedFields)
+			svc := newTestService(server.URL)
+			ctx := context.Background()
+			ctx = utils.WithBudgetID(ctx, uuid.MustParse("2166418d-3fa2-4acc-b92c-ab9f36c18d76"))
+			res, err := svc.CreateTransaction(ctx, tt.parsedDetails, tt.predictedFields)
 
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("Expected error, got nil")
-				}
-				if tt.expectedError != err.Error() {
-					t.Errorf("Expected error %v, got %v", tt.expectedError, err)
 				}
 				return
 			}

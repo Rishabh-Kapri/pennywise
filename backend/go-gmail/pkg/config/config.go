@@ -15,15 +15,22 @@ type Config struct {
 	PubsubTopic                      string
 	SubscriptionName                 string
 	DatabaseURL                      string
-	MLPApi                           string
-	PennywiseApi                     string
+	MLPServiceURL                    string
+	PennywiseServiceURL              string
+	CipherServiceURL                 string
 	NtfyTopic                        string
 	TemporalServerHost               string
 	TemporalServerPort               string
+	Port                             string
 }
 
 func LoadConfig() *Config {
 	_ = godotenv.Load(".env")
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "5170"
+	}
 
 	return &Config{
 		GoogleClientId:                   os.Getenv("GOOGLE_CLIENT_ID"),
@@ -34,10 +41,12 @@ func LoadConfig() *Config {
 		PubsubTopic:                      os.Getenv("PUBSUB_TOPIC"),
 		SubscriptionName:                 os.Getenv("SUB_NAME"),
 		DatabaseURL:                      os.Getenv("DATABASE_URL"),
-		MLPApi:                           os.Getenv("MLP_API"),
-		PennywiseApi:                     os.Getenv("PENNYWISE_API"),
+		MLPServiceURL:                    os.Getenv("MLP_SERVICE_URL"),
+		PennywiseServiceURL:              os.Getenv("PENNYWISE_SERVICE_URL"),
+		CipherServiceURL:                 os.Getenv("CIPHER_SERVICE_URL"),
 		NtfyTopic:                        os.Getenv("NTFY_TOPIC"),
 		TemporalServerHost:               os.Getenv("TEMPORAL_SERVER_HOST"),
 		TemporalServerPort:               os.Getenv("TEMPORAL_SERVER_PORT"),
+		Port:                             port,
 	}
 }

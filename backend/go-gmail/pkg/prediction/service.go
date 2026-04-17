@@ -8,9 +8,9 @@ import (
 	"io"
 	"net/http"
 
-	"gmail-transactions/pkg/config"
-	"gmail-transactions/pkg/logger"
-	"gmail-transactions/pkg/parser"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/config"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/parser"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 )
 
 const CONFIDENCE_THRESHOLD = 0.7
@@ -40,7 +40,7 @@ func NewService(config *config.Config) *Service {
 
 func (s *Service) CallPredictApi(ctx context.Context, emailDetails *parser.EmailDetails, fieldType string) (*PredictionResult, error) {
 	emailDetails.Type = fieldType
-	url := s.config.MLPApi + "/predict"
+	url := s.config.MLPServiceURL + "/predict"
 
 	requestBody, err := json.Marshal(emailDetails)
 	if err != nil {
@@ -55,9 +55,9 @@ func (s *Service) CallPredictApi(ctx context.Context, emailDetails *parser.Email
 	req.Header.Set("Content-Type", "application/json")
 
 	// Forward correlation ID to python-mlp
-	if cid := logger.CorrelationIDFromContext(ctx); cid != "" {
-		req.Header.Set("X-Correlation-ID", cid)
-	}
+	// if cid := logger.CorrelationIDFromContext(ctx); cid != "" {
+	// 	req.Header.Set("X-Correlation-ID", cid)
+	// }
 
 	res, err := s.client.Do(req)
 	if err != nil {

@@ -3,7 +3,7 @@ package auth
 import (
 	"context"
 
-	"gmail-transactions/pkg/config"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/config"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
