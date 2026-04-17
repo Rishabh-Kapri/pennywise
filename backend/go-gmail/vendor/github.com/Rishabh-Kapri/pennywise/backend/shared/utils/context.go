@@ -3,7 +3,6 @@ package utils
 import (
 	"context"
 	"errors"
-	"net/http"
 
 	"github.com/google/uuid"
 )
@@ -81,32 +80,37 @@ func CorrelationIDFromContext(ctx context.Context) string {
 	return id
 }
 
-func GetHeaders(ctx context.Context) []http.Header {
-	var headers []http.Header
+// GetHeaders returns a map of headers to be used in the request for internal services
+func GetHeaders(ctx context.Context) map[string][]string {
+	headers := make(map[string][]string)
 
 	// This is an internal service call, add the X-Internal-Service header
-	headers = append(headers, http.Header{
-		"X-Internal-Service": []string{"true"},
-	})
+	// headers = append(headers, http.Header{
+	// 	"X-Internal-Service": []string{"true"},
+	// })
+	headers["X-Internal-Service"] = []string{"true"}
 
 	// Inject correlation ID if available
 	if correlationID := CorrelationIDFromContext(ctx); correlationID != "" {
-		headers = append(headers, http.Header{
-			"X-Correlation-ID": []string{correlationID},
-		})
+		// headers = append(headers, http.Header{
+		// 	"X-Correlation-ID": []string{correlationID},
+		// })
+		headers["X-Correlation-ID"] = []string{correlationID}
 	}
 
 	// Inject budget ID if available
 	if budgetID, err := BudgetIDFromContext(ctx); err == nil {
-		headers = append(headers, http.Header{
-			"X-Budget-ID": []string{budgetID.String()},
-		})
+		// headers = append(headers, http.Header{
+		// 	"X-Budget-ID": []string{budgetID.String()},
+		// })
+		headers["X-Budget-ID"] = []string{budgetID.String()}
 	}
 
 	if uid, err := UserIDFromContext(ctx); err == nil {
-		headers = append(headers, http.Header{
-			"X-User-ID": []string{uid.String()},
-		})
+		// headers = append(headers, http.Header{
+		// 	"X-User-ID": []string{uid.String()},
+		// })
+		headers["X-User-ID"] = []string{uid.String()}
 	}
 
 	return headers
