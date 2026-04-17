@@ -82,6 +82,10 @@ func (p *EventProcessor) processMessage(event *pubsub.Message) {
 	email := m.Email
 	historyID := m.HistoryId
 	historyIDMap := p.processed[email]
+	if historyIDMap == nil {
+		historyIDMap = make(map[uint64]bool)
+		p.processed[email] = historyIDMap
+	}
 	if historyIDMap[historyID] {
 		p.mu.Unlock()
 		log.Info("duplicate historyId detected, skipping", "historyId", m.HistoryId)
