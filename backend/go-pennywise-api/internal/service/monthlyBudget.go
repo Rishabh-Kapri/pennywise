@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
-	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/repository"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/pkg"
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
+	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
+	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )

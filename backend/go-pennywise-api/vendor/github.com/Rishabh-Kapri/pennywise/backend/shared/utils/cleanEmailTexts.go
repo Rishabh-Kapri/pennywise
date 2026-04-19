@@ -7,8 +7,8 @@ import (
 
 var (
 	// Boilerplate removal
-	greetingRe     = regexp.MustCompile(`(?i)^Dear\s+(Customer|Card\s*Member|Card\s*Holder)\s*,?\s*`)
-	bankNameRe     = regexp.MustCompile(`(?i)(Greetings from\s+\w+\s+Bank!?\s*|Thank you for using\s+)`)
+	greetingRe       = regexp.MustCompile(`(?i)^Dear\s+(Customer|Card\s*Member|Card\s*Holder)\s*,?\s*`)
+	bankNameRe       = regexp.MustCompile(`(?i)(Greetings from\s+\w+\s+Bank!?\s*|Thank you for using\s+)`)
 	bankStandaloneRe = regexp.MustCompile(`(?i)\b[A-Za-z]+\s+Bank\b`)
 
 	// Amount/date/noise removal
@@ -17,7 +17,7 @@ var (
 	htmlTagRe = regexp.MustCompile(`<[^>]+>`)
 
 	// Account number masking
-	cardNumRe    = regexp.MustCompile(`(?i)(Credit\s+Card|account)\s*(ending\s+)?\**(\d{4})`)
+	cardNumRe    = regexp.MustCompile(`(?i)(Credit\s+Card|Card|account)\s*(ending\s+)?[*X]*\s*(\d{4})`)
 	accountNumRe = regexp.MustCompile(`(?i)(account)\s*\**(\d{4})`)
 
 	// Pattern 1: "Your {merchant} bill, set up through E-mandate"
@@ -45,6 +45,8 @@ var (
 	fillerWordsRe = regexp.MustCompile(`(?i)\b(at|for|Your)\b`)
 
 	multiSpaceRe = regexp.MustCompile(`\s{2,}`)
+
+	upiRegex = regexp.MustCompile(`(?i)[a-zA-Z0-9.\-_]+@[a-zA-Z0-9]+`)
 )
 
 // CleanEmailText strips boilerplate, amounts, dates, and filler phrases from
@@ -123,6 +125,37 @@ func CleanEmailText(text string, transactionType string) string {
 		prefix += " " + accountId
 	}
 	return prefix + " " + cleaned
+}
+
+func ExtractUPIText(raw string) string {
+	return upiRegex.FindString(raw)
+}
+
+func CleanUPIText(raw string) (upiText, cleaned string) {
+	// 1. Try to remove the UPI ID completely
+	upiText = upiRegex.FindString(raw)
+	cleaned = upiRegex.ReplaceAllString(raw, "")
+
+	// Clean up any double spaces left behind
+	cleaned = strings.Join(strings.Fields(cleaned), " ")
+	cleaned = strings.TrimSpace(cleaned)
+
+	// 2. Safety Check: Did removing the UPI ID leave us with nothing?
+	if cleaned == "" {
+		// This means the raw string was JUST a UPI ID (e.g., "rahul.sharma@upi")
+		// We need to keep the handle before the "@" so the system has something to read.
+		parts := strings.Split(raw, "@")
+		if len(parts) > 0 {
+			handle := parts[0]
+			// Replace dots and hyphens with spaces so the LLM reads them as natural words
+			handle = strings.ReplaceAll(handle, ".", " ")
+			handle = strings.ReplaceAll(handle, "-", " ")
+			return upiText, strings.TrimSpace(handle)
+		}
+	}
+
+	// 3. Return the successfully extracted name
+	return upiText, cleaned
 }
 
 func replaceInsensitive(s, old, replacement string) string {

@@ -40,11 +40,11 @@ func ConnectWithURL(databaseURL string) (*pgxpool.Pool, error) {
 
 	dbpool, err := pgxpool.New(context.Background(), databaseURL)
 	if err != nil {
-		return nil, errs.New(errs.CodeHTTPClientError, "Unable to connect to database", err)
+		return nil, errs.Wrap(errs.CodeHTTPClientError, "Unable to connect to database", err)
 	}
 
 	if err := dbpool.Ping(context.Background()); err != nil {
-		return nil, errs.New(errs.CodeHTTPClientError, "Unable to ping database", err)
+		return nil, errs.Wrap(errs.CodeHTTPClientError, "Unable to ping database", err)
 	}
 
 	return dbpool, nil

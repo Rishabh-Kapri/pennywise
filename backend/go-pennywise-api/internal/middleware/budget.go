@@ -3,7 +3,8 @@ package middleware
 import (
 	"net/http"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/repository"
+	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/gin-gonic/gin"
@@ -16,14 +17,8 @@ func BudgetIdMiddleware(budgetRepo repository.BudgetRepository) gin.HandlerFunc 
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 
-		userID, err := utils.UserIDFromContext(ctx)
-		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
-			c.Abort()
-			return
-		}
-
 		budgetId := c.GetHeader(budgetIDHeader)
+		logger.Logger(ctx).Debug("checking budget ownership", budgetIDHeader, budgetId)
 		if budgetId == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "missing X-Budget-ID header"})
 			c.Abort()
@@ -33,6 +28,20 @@ func BudgetIdMiddleware(budgetRepo repository.BudgetRepository) gin.HandlerFunc 
 		parsedBudgetId, err := uuid.Parse(budgetId)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid budget ID"})
+			c.Abort()
+			return
+		}
+
+		if c.GetHeader("X-Internal-Service") == "true" {
+			ctx = utils.WithBudgetID(ctx, parsedBudgetId)
+			c.Request = c.Request.WithContext(ctx)
+			c.Next()
+			return
+		}
+
+		userID, err := utils.UserIDFromContext(ctx)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
 			c.Abort()
 			return
 		}

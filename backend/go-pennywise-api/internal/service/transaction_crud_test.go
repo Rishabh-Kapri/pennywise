@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 
