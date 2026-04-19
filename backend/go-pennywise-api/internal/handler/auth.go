@@ -2,11 +2,12 @@ package handler
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/config"
-	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	"github.com/gin-gonic/gin"
 )
@@ -14,6 +15,8 @@ import (
 type AuthHandler interface {
 	LoginWithGoogle(c *gin.Context)
 	RefreshToken(c *gin.Context)
+	GetProviderUser(c *gin.Context)
+	UpdateProviderUser(c *gin.Context)
 	// Logout(c *gin.Context)
 	// LogoutAll(c *gin.Context)
 	// GetCurrentUser(c *gin.Context)
@@ -32,11 +35,11 @@ func NewAuthHandler(service service.AuthService) AuthHandler {
 func (h *authHandler) LoginWithGoogle(c *gin.Context) {
 	var req model.GoogleLoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "credential is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "code is required"})
 		return
 	}
 
-	user, accessToken, refreshToken, err := h.service.LoginWithGoogle(c.Request.Context(), req.Credential)
+	user, accessToken, refreshToken, err := h.service.LoginWithGoogle(c.Request.Context(), req.Code)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
@@ -65,15 +68,18 @@ func (h *authHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	response, err := h.service.RefreshToken(c.Request.Context(), req.RefreshToken)
-	logger.Logger(c.Request.Context()).Debug("refresh token response", "response", response, "error", err)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-		return
-	}
+	// response, err := h.service.RefreshToken(c.Request.Context(), req.RefreshToken)
+	// logger.Logger(c.Request.Context()).Debug("refresh token response", "response", response, "error", err)
+	logger.Logger(c.Request.Context()).Warn("not implemented")
+	// if err != nil {
+	// 	c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+	// 	return
+	// }
 
-	c.JSON(http.StatusOK, response)
+	// c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusOK, "ok")
 }
+
 //
 // // Logout handles POST /api/auth/logout
 // func (h *authHandler) Logout(c *gin.Context) {
@@ -110,3 +116,48 @@ func (h *authHandler) RefreshToken(c *gin.Context) {
 //
 // 	c.JSON(http.StatusOK, user)
 // }
+
+// GetProviderUser handles GET /api/auth/:provider/users?email=...
+func (h *authHandler) GetProviderUser(c *gin.Context) {
+	ctx := c.Request.Context()
+	provider := c.Param("provider")
+
+	switch provider {
+	case "google":
+		email := strings.TrimSpace(c.Query("email"))
+		if email == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "email query parameter is required"})
+			return
+		}
+		user, err := h.service.GetGoogleUserByEmail(ctx, email)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, user)
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported provider: " + provider})
+	}
+}
+
+// UpdateProviderUser handles PATCH /api/auth/:provider/users
+func (h *authHandler) UpdateProviderUser(c *gin.Context) {
+	ctx := c.Request.Context()
+	provider := c.Param("provider")
+
+	switch provider {
+	case "google":
+		var req model.UpdateGmailHistoryRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		if err := h.service.UpdateGmailHistoryID(ctx, req.Email, req.GmailHistoryID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "history ID updated"})
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported provider: " + provider})
+	}
+}

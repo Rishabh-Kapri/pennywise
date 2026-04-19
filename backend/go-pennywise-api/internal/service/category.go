@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
-	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/repository"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 

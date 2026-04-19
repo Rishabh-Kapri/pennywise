@@ -14,7 +14,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/client"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/handler"
-	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/repository"
+	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/service"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
@@ -52,7 +52,7 @@ func main() {
 	ollamaHttpTransport := transport.NewClient("ollama", ollamaEngine)
 	ollamaClient := client.NewOllamaClient(ollamaHttpTransport)
 
-	mlpEngine := httpclient.NewHttpTransport(cfg.MLPApiURL)
+	mlpEngine := httpclient.NewHttpTransport(cfg.MLPServiceURL)
 	mlpHttpTransport := transport.NewClient("mlp", mlpEngine)
 	mlpClient := client.NewMLPClient(mlpHttpTransport)
 
