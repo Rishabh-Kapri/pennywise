@@ -40,8 +40,8 @@ func (h *httpTransport) get(ctx context.Context, path string) (transport.Respons
 	return h.do(ctx, req)
 }
 
-func (h *httpTransport) post(ctx context.Context, path string, headers map[string][]string, data any) (transport.Response, error) {
-	logger.Logger(ctx).Debug("httpTransport.post", "url", h.baseUrl, "path", path, "data", data)
+func (h *httpTransport) requestWithBody(ctx context.Context, method string, path string, headers map[string][]string, data any) (transport.Response, error) {
+	logger.Logger(ctx).Debug("httpTransport."+method, "url", h.baseUrl, "path", path, "data", data)
 	var url string
 	if strings.HasPrefix(path, "https://") {
 		url = path
@@ -54,23 +54,22 @@ func (h *httpTransport) post(ctx context.Context, path string, headers map[strin
 	if data != nil {
 		b, err := json.Marshal(data)
 		if err != nil {
-			logger.Logger(ctx).Error("error marshaling POST request body", "url", url, "error", err)
+			logger.Logger(ctx).Error("error marshaling request body", "method", method, "url", url, "error", err)
 			resp.StatusCode = http.StatusInternalServerError
 			return resp, err
 		}
 		reqBody = bytes.NewBuffer(b)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, reqBody)
+	req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
+	if err != nil {
+		logger.Logger(ctx).Error("error creating request", "method", method, "url", url, "error", err)
+		resp.StatusCode = http.StatusInternalServerError
+		return resp, errs.Wrap(errs.CodeHTTPClientError, "error creating request", err)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	for k, v := range headers {
 		req.Header[k] = v
-	}
-
-	if err != nil {
-		logger.Logger(ctx).Error("error creating POST request", "url", url, "error", err)
-		resp.StatusCode = http.StatusInternalServerError
-		return resp, errs.Wrap(errs.CodeHTTPClientError, "error creating POST request", err)
 	}
 
 	return h.do(ctx, req)
@@ -80,10 +79,8 @@ func (h *httpTransport) do(ctx context.Context, req *http.Request) (transport.Re
 	log := logger.Logger(ctx)
 	var resp transport.Response
 
-	for _, header := range utils.GetHeaders(ctx) {
-		for k, v := range header {
-			req.Header[k] = v
-		}
+	for k, v := range utils.GetHeaders(ctx) {
+		req.Header[k] = v
 	}
 
 	res, err := h.client.Do(req)
@@ -117,8 +114,8 @@ func (h *httpTransport) Send(ctx context.Context, req *transport.Request) (trans
 	switch req.Method {
 	case http.MethodGet:
 		return h.get(ctx, req.Path)
-	case http.MethodPost:
-		return h.post(ctx, req.Path, req.Headers, req.Payload)
+	case http.MethodPost, http.MethodPatch, http.MethodPut:
+		return h.requestWithBody(ctx, req.Method, req.Path, req.Headers, req.Payload)
 	default:
 		return transport.Response{}, errs.New(errs.CodeInvalidArgument, "unsupported request method")
 	}

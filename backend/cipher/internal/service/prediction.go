@@ -13,8 +13,8 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/client"
-	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/model"
-	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/repository"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 
 	"github.com/google/uuid"
 )

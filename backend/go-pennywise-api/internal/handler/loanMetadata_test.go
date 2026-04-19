@@ -9,7 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -155,6 +156,9 @@ func TestLoanMetadataHandler_List(t *testing.T) {
 			w, c := setupGinTestContext("GET", "/api/loan-metadata", nil)
 			if tt.budgetIdHeader != "" {
 				c.Request.Header.Set(budgetIdHeader, tt.budgetIdHeader)
+				if bid, err := uuid.Parse(tt.budgetIdHeader); err == nil {
+					c.Request = c.Request.WithContext(utils.WithBudgetID(c.Request.Context(), bid))
+				}
 			}
 
 			tt.setupMocks(mockService)
@@ -224,6 +228,9 @@ func TestLoanMetadataHandler_GetByAccountId(t *testing.T) {
 			w, c := setupGinTestContext("GET", "/api/loan-metadata/"+tt.accountIdParam, nil)
 			if tt.budgetIdHeader != "" {
 				c.Request.Header.Set(budgetIdHeader, tt.budgetIdHeader)
+				if bid, err := uuid.Parse(tt.budgetIdHeader); err == nil {
+					c.Request = c.Request.WithContext(utils.WithBudgetID(c.Request.Context(), bid))
+				}
 			}
 			c.Params = gin.Params{{Key: "accountId", Value: tt.accountIdParam}}
 
@@ -310,6 +317,9 @@ func TestLoanMetadataHandler_Create(t *testing.T) {
 			w, c := setupGinTestContext("POST", "/api/loan-metadata", tt.body)
 			if tt.budgetIdHeader != "" {
 				c.Request.Header.Set(budgetIdHeader, tt.budgetIdHeader)
+				if bid, err := uuid.Parse(tt.budgetIdHeader); err == nil {
+					c.Request = c.Request.WithContext(utils.WithBudgetID(c.Request.Context(), bid))
+				}
 			}
 
 			tt.setupMocks(mockService)
@@ -403,6 +413,9 @@ func TestLoanMetadataHandler_Update(t *testing.T) {
 			w, c := setupGinTestContext("PATCH", "/api/loan-metadata/"+tt.accountIdParam, tt.body)
 			if tt.budgetIdHeader != "" {
 				c.Request.Header.Set(budgetIdHeader, tt.budgetIdHeader)
+				if bid, err := uuid.Parse(tt.budgetIdHeader); err == nil {
+					c.Request = c.Request.WithContext(utils.WithBudgetID(c.Request.Context(), bid))
+				}
 			}
 			c.Params = gin.Params{{Key: "accountId", Value: tt.accountIdParam}}
 
@@ -471,6 +484,9 @@ func TestLoanMetadataHandler_Delete(t *testing.T) {
 			w, c := setupGinTestContext("DELETE", "/api/loan-metadata/"+tt.accountIdParam, nil)
 			if tt.budgetIdHeader != "" {
 				c.Request.Header.Set(budgetIdHeader, tt.budgetIdHeader)
+				if bid, err := uuid.Parse(tt.budgetIdHeader); err == nil {
+					c.Request = c.Request.WithContext(utils.WithBudgetID(c.Request.Context(), bid))
+				}
 			}
 			c.Params = gin.Params{{Key: "accountId", Value: tt.accountIdParam}}
 
@@ -500,6 +516,7 @@ func TestLoanMetadataHandler_List_ResponseBody(t *testing.T) {
 
 	w, c := setupGinTestContext("GET", "/api/loan-metadata", nil)
 	c.Request.Header.Set(budgetIdHeader, budgetId.String())
+	c.Request = c.Request.WithContext(utils.WithBudgetID(c.Request.Context(), budgetId))
 
 	handler.List(c)
 
@@ -540,6 +557,7 @@ func TestLoanMetadataHandler_Create_ResponseBody(t *testing.T) {
 
 	w, c := setupGinTestContext("POST", "/api/loan-metadata", body)
 	c.Request.Header.Set(budgetIdHeader, budgetId.String())
+	c.Request = c.Request.WithContext(utils.WithBudgetID(c.Request.Context(), budgetId))
 
 	handler.Create(c)
 
@@ -566,6 +584,7 @@ func TestLoanMetadataHandler_Delete_ResponseBody(t *testing.T) {
 
 	w, c := setupGinTestContext("DELETE", "/api/loan-metadata/"+accountId.String(), nil)
 	c.Request.Header.Set(budgetIdHeader, budgetId.String())
+	c.Request = c.Request.WithContext(utils.WithBudgetID(c.Request.Context(), budgetId))
 	c.Params = gin.Params{{Key: "accountId", Value: accountId.String()}}
 
 	handler.Delete(c)

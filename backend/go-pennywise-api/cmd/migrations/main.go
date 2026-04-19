@@ -71,7 +71,7 @@ func main() {
 	}
 
 	if command == "help" {
-		log.Println(`
+		log.Print(`
 Pennywise Database Migrations (via pressly/goose)
 
 Commands:

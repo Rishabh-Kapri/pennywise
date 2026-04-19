@@ -3,6 +3,7 @@ package transport
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 )
@@ -30,6 +31,11 @@ type Transport interface {
 type Client struct {
 	serviceName string
 	transport   Transport
+}
+
+// debug helper
+func (c *Client) Print() string {
+	return fmt.Sprintf("service: %s, transport: %s", c.serviceName, c.transport)
 }
 
 func NewClient(serviceName string, transport Transport) *Client {
@@ -73,6 +79,27 @@ func Post[T any](ctx context.Context, c *Client, path string, headers map[string
 	}
 
 	// Unmarshal raw bytes to generic type T
+	if len(res.Body) > 0 {
+		if err := json.Unmarshal(res.Body, &result); err != nil {
+			return result, err
+		}
+	}
+
+	return result, nil
+}
+
+func Patch[T any](ctx context.Context, c *Client, path string, headers map[string][]string, data any) (T, error) {
+	logger := logger.Logger(ctx)
+	logger.Debug("transport.Patch", "service", c.serviceName, "path", path, "data", data)
+	var result T
+
+	req := &Request{Method: "PATCH", Path: path, Headers: headers, Payload: data}
+
+	res, err := c.transport.Send(ctx, req)
+	if err != nil {
+		return result, err
+	}
+
 	if len(res.Body) > 0 {
 		if err := json.Unmarshal(res.Body, &result); err != nil {
 			return result, err

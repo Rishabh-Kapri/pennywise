@@ -1,11 +1,71 @@
 -- +goose Up
 -- +goose StatementBegin
+-- Global MCC tags
+CREATE TYPE global_mcc_tag AS ENUM (
+    -- 🍔 Food & Dining
+    'FOOD_DELIVERY', 'FAST_FOOD', 'DINING_OUT', 'COFFEE_SHOP',
+
+    -- 🛒 Groceries & Daily Needs
+    'GROCERIES', 'QUICK_COMMERCE', 'PHARMACY',
+
+    -- 🛍️ Shopping & Retail
+    'E_COMMERCE', 'SHOPPING_CLOTHING', 'SHOPPING_ELECTRONICS', 'SHOPPING_FURNITURE', 'SHOPPING_GENERAL',
+
+    -- 🏡 Housing & Utilities
+    'RENT_MORTGAGE', 'UTILITY_ELECTRICITY', 'UTILITY_WATER', 'UTILITY_GAS', 'UTILITY_BROADBAND', 'TELECOM_MOBILE', 'HOME_MAINTENANCE',
+
+    -- 🚗 Transit & Travel
+    'TRANSPORT_LOCAL',     -- Cabs, Autos, Uber, Rapido
+    'TRANSIT_PUBLIC',      -- Metro, City Buses
+    'TRAVEL_FLIGHTS', 'TRAVEL_TRAINS', 'TRAVEL_HOTELS',
+
+    -- 🍿 Subscriptions & Entertainment
+    'SUBSCRIPTION_VIDEO',  -- Netflix, Prime
+    'SUBSCRIPTION_AUDIO',  -- Spotify, Apple Music
+    'SUBSCRIPTION_SOFTWARE', -- Canva, OpenAI, GitHub
+    'SUBSCRIPTION_DIGITAL',  -- Google Play, App Store
+    'ENTERTAINMENT_MOVIES',  -- BookMyShow
+    'ENTERTAINMENT_EVENTS',
+    'GAMING',
+
+    -- 🧘🏽 Health & Wellness
+    'MEDICAL_HOSPITAL', 'FITNESS_GYM', 'SPORTS', 'GROOMING_SALON',
+
+    -- 💳 Financial & Obligations
+    'BILL_CREDIT_CARD', 'BILL_EMI', 'TAX', 'INSURANCE_LIFE', 'INSURANCE_HEALTH', 'INSURANCE_VEHICLE',
+
+    -- 📈 Wealth & Investments
+    'INVESTMENT_MUTUAL_FUND', 'INVESTMENT_STOCKS', 'INVESTMENT_CRYPTO', 'INVESTMENT_GOLD', 'INVESTMENT_FD_RD', 'INVESTMENT_NPS_PPF',
+
+    -- 👪 Life & Family
+    'EDUCATION_FEES', 'PET_CARE', 'CHILDREN', 'CHARITY_DONATION', 'GIFTS',
+
+    -- 💵 Income
+    'INCOME_SALARY', 'INCOME_FREELANCE', 'INCOME_BUSINESS', 'INCOME_REWARD_CASHBACK', 'INCOME_REFUND', 'INCOME_INTEREST_DIVIDEND',
+
+    -- 🔄 System & Transfers
+    'TRANSFER_SELF', 'TRANSFER_P2P', 'CASH_WITHDRAWAL',
+    'WALLET_TOPUP',        -- Paytm Wallet, Amazon Pay Top-up
+    'CHARGES_FEES'         -- Late fees, AMC charges, convenience fees
+);-- Merchants Source of Truth
+CREATE TABLE global_merchants (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    canonical_name VARCHAR(255) NOT NULL UNIQUE,
+    mcc_tag global_mcc_tag NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+-- Mapping of merchants to raw text (eg, PYU*Swiggy, RSP*Swiggy -> FOOD_DELIVERY)
+CREATE TABLE global_merchant_mappings (
+    -- Making cleaned_raw_text the PK ensures we never have duplicate string mappings
+    cleaned_raw_text VARCHAR(255) PRIMARY KEY, -- eg, debit PYU*Swiggy (no invoice number, upi id)
+    merchant_id UUID NOT NULL REFERENCES global_merchants(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_global_merchants_mcc ON global_merchants(mcc_tag);
+
 CREATE TABLE IF NOT EXISTS auth_users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    google_id TEXT NOT NULL UNIQUE,
-    email TEXT NOT NULL UNIQUE,
-    name TEXT NOT NULL,
-    picture TEXT,
     token_version INTEGER NOT NULL DEFAULT 1,
     refresh_token_hash TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -40,24 +100,31 @@ CREATE TABLE IF NOT EXISTS payees (
     name TEXT NOT NULL,
     budget_id UUID NOT NULL REFERENCES budgets(id),
     transfer_account_id UUID REFERENCES accounts(id),
+    canonical_merchant_id UUID REFERENCES global_merchants(id) ON DELETE SET NULL, -- references the internal global_merchants table (source of truth)
+    default_category_id UUID REFERENCES categories(id),
     deleted BOOLEAN DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Lookup by Global Business
+CREATE INDEX idx_payees_budget_canonical ON payees(budget_id, canonical_merchant_id) 
+WHERE deleted = false;
 
 -- Adding this constraint directly. accounts had transfer_payee_id as a UUID.
 ALTER TABLE accounts ADD CONSTRAINT fk_transfer_payee_id FOREIGN KEY (transfer_payee_id) REFERENCES payees(id);
 
-CREATE TABLE IF NOT EXISTS users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    budget_id UUID NOT NULL REFERENCES budgets(id),
-    email TEXT NOT NULL,
-    history_id NUMERIC(10, 0) NOT NULL,
-    gmail_refresh_token TEXT NOT NULL,
-    deleted BOOLEAN DEFAULT false,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+CREATE TABLE IF NOT EXISTS payee_matches (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  budget_id UUID NOT NULL REFERENCES budgets(id) ON DELETE CASCADE,
+  payee_id UUID NOT NULL REFERENCES payees(id) ON DELETE CASCADE,
+  match_string TEXT NOT NULL, -- upi handle or bank string
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  deleted BOOLEAN DEFAULT false,
+  -- A user cannot map the exact same string to two different payees in their budget.
+  UNIQUE (budget_id, match_string)
 );
+CREATE INDEX idx_payee_matches_lookup ON payee_matches(budget_id, match_string);
 
 CREATE TABLE IF NOT EXISTS category_groups (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -178,8 +245,6 @@ CREATE TABLE IF NOT EXISTS api_keys (
     UNIQUE(key_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_auth_users_google_id ON auth_users(google_id);
-CREATE INDEX IF NOT EXISTS idx_auth_users_email ON auth_users(email);
 CREATE INDEX IF NOT EXISTS idx_budgets_user_id ON budgets(user_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_budget_date ON transactions(budget_id, date DESC, updated_at DESC) WHERE deleted = FALSE;
 CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id, budget_id) WHERE deleted = FALSE;
@@ -201,11 +266,14 @@ DROP TABLE IF EXISTS transactions;
 DROP TABLE IF EXISTS monthly_budgets;
 DROP TABLE IF EXISTS categories;
 DROP TABLE IF EXISTS category_groups;
-DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS payee_matches;
 -- Drop constraints to safely drop items
 ALTER TABLE accounts DROP CONSTRAINT IF EXISTS fk_transfer_payee_id;
 DROP TABLE IF EXISTS payees;
 DROP TABLE IF EXISTS accounts;
 DROP TABLE IF EXISTS budgets;
 DROP TABLE IF EXISTS auth_users;
+DROP TABLE IF EXISTS global_merchant_mappings;
+DROP TABLE IF EXISTS global_merchants;
+DROP TYPE IF EXISTS global_mcc_tag;
 -- +goose StatementEnd

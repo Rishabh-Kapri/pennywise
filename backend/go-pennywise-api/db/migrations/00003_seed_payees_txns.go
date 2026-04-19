@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"log"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/pressly/goose/v3"
 )
 

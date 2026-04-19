@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 
 	"github.com/google/uuid"
@@ -688,7 +688,7 @@ func TestUpdateCarryovers(t *testing.T) {
 
 			tt.setupMocks(mockMonthlyBudget)
 
-			err := service.mbService.UpdateCarryovers(ctx, mockTx, budgetId, tt.existingTxn, tt.newTxn, inflowCategoryID)
+			err := service.mbService.UpdateCarryovers(ctx, mockTx, budgetId, tt.existingTxn, &tt.newTxn, inflowCategoryID)
 
 			if tt.expectError {
 				require.Error(t, err)

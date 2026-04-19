@@ -8,10 +8,9 @@ import (
 	"io"
 	"log"
 	"os"
-	"strconv"
-	"strings"
+	"time"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/google/uuid"
 	"github.com/pressly/goose/v3"
 )
@@ -74,17 +73,17 @@ func upSeedData(ctx context.Context, tx *sql.Tx) error {
 	}
 
 	// Users
-	if users, err := loadFileData[model.User]("data/users.json"); err == nil {
-		for _, d := range users {
-			_, err = tx.ExecContext(ctx, `INSERT INTO users (id, budget_id, email, history_id, deleted, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING`,
-				d.ID, d.BudgetID, d.Email, d.HistoryID, d.Deleted, d.CreatedAt, d.UpdatedAt)
-			if err != nil {
-				return err
-			}
-		}
-	} else {
-		log.Printf("Skipping users seed: %v", err)
-	}
+	// if users, err := loadFileData[model.User]("data/users.json"); err == nil {
+	// 	for _, d := range users {
+	// 		_, err = tx.ExecContext(ctx, `INSERT INTO users (id, budget_id, email, history_id, deleted, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING`,
+	// 			d.ID, d.BudgetID, d.Email, d.HistoryID, d.Deleted, d.CreatedAt, d.UpdatedAt)
+	// 		if err != nil {
+	// 			return err
+	// 		}
+	// 	}
+	// } else {
+	// 	log.Printf("Skipping users seed: %v", err)
+	// }
 
 	// Category Groups
 	if groups, err := loadFileData[model.CategoryGroup]("data/categoryGroups.json"); err == nil {
@@ -106,10 +105,13 @@ func upSeedData(ctx context.Context, tx *sql.Tx) error {
 			isSystem := d.Name == "Inflow: Ready to Assign"
 			if !isSystem {
 				for month, budgeted := range d.Budgeted {
-					key := strings.Split(month, "-")
-					keyFloat, _ := strconv.ParseFloat(key[1], 10)
-					keyInt := int(keyFloat) + 1
-					newKey := key[0] + "-" + fmt.Sprintf("%02d", keyInt)
+					t, err := time.Parse("2006-01", month)
+					if err != nil {
+						log.Printf("Error parsing month %s for category %s: %v", month, d.Name, err)
+						continue
+					}
+					// Increment by 1 month to match the expected format (shifting if needed)
+					newKey := t.AddDate(0, 1, 0).Format("2006-01")
 
 					_, err = tx.ExecContext(ctx, `INSERT INTO monthly_budgets (budget_id, category_id, month, budgeted, carryover_balance, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, NOW(), NOW()) ON CONFLICT DO NOTHING`,
 						d.BudgetID, d.ID, newKey, budgeted, 0)

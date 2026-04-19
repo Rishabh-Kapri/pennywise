@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -15,6 +16,11 @@ type OllamaClient struct {
 	// use abstract Transport client
 	client *transport.Client
 	config cfg.Config
+}
+
+type PromptReq struct {
+	Model  string `json:"model"`
+	Prompt string `json:"prompt"`
 }
 
 type embedRequest struct {
@@ -154,4 +160,64 @@ func (c *OllamaClient) Generate(ctx context.Context, model string, prompt string
 	}
 
 	return resp.Response, nil
+}
+
+func GenericLLMCall[T any](ctx context.Context, c *OllamaClient, req PromptReq) (T, error) {
+	log := logger.Logger(ctx)
+	var res T
+	var generatedJSONString string
+	var headers map[string][]string
+	// if strings.HasPrefix("ollama") {
+	// }
+	isOpenAI := strings.HasPrefix(req.Model, "openai")
+	if isOpenAI {
+		headers = map[string][]string{
+			"Authorization": {fmt.Sprintf("Bearer %s", c.config.OpenAIAPIKey)},
+		}
+		openAIModel := strings.ReplaceAll(req.Model, "openai/", "")
+		req := openaiGenerateRequest{
+			Model: openAIModel,
+			Messages: []Message{
+				{
+					Role:    "user",
+					Content: req.Prompt,
+				},
+			},
+			ResponseFormat: ResponseFormat{
+				Type: "json_object",
+			},
+		}
+		resp, err := transport.Post[openaiGenerateResponse](ctx, c.client, "https://api.openai.com/v1/chat/completions", headers, req)
+		log.Debug("openai generate", "resp", resp, "err", err)
+		if err != nil {
+			return res, errs.Wrap(errs.CodeInternalError, "error in openai generate", err)
+		}
+		generatedJSONString = resp.Choices[0].Message.Content
+		return unmarshalResponse[T]([]byte(generatedJSONString))
+	}
+
+	reqBody := generateRequest{
+		Model:  req.Model,
+		Prompt: req.Prompt,
+		Format: "json",
+		Stream: false,
+		Options: map[string]any{
+			"temperature": 0.0, // 0.0 = deterministic
+			"top_p":       1.0, // 1.0 = strictly follow the prompt
+		},
+	}
+	ollamaRes, err := transport.Post[generateResponse](ctx, c.client, "/api/generate", headers, reqBody)
+	generatedJSONString = ollamaRes.Response
+	if err != nil {
+		return res, errs.Wrap(errs.CodeInternalError, "error in ollama generate", err)
+	}
+	return unmarshalResponse[T]([]byte(generatedJSONString))
+}
+
+func unmarshalResponse[T any](res []byte) (T, error) {
+	var result T
+	if err := json.Unmarshal(res, &result); err != nil {
+		return result, errs.Wrap(errs.CodeInternalError, "error in unmarshalling", err)
+	}
+	return result, nil
 }

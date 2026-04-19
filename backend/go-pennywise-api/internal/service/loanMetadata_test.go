@@ -5,16 +5,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
-	utils "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/pkg"
+	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
-// Mock repository
 type mockLoanMetadataRepo struct {
+	mockBaseRepo
 	mock.Mock
 }
 
@@ -120,7 +120,6 @@ func TestLoanMetadataService_GetAll(t *testing.T) {
 			expectError: true,
 			expectCount: 0,
 		},
-
 	}
 
 	for _, tt := range tests {

@@ -4,14 +4,17 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/config"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/handler"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/middleware"
-	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/repository"
+	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedMiddleware "github.com/Rishabh-Kapri/pennywise/backend/shared/middleware"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/gzip"
@@ -24,6 +27,7 @@ func healthPage(c *gin.Context) {
 
 func main() {
 	logger.Setup("pennywise-api")
+	config := config.Load()
 	ctx := context.Background()
 
 	dbConn := db.Connect(ctx)
@@ -53,6 +57,7 @@ func main() {
 	embeddingRepo := repository.NewEmbeddingRepository(dbConn)
 	tagRepo := repository.NewTagRepository(dbConn)
 	authRepo := repository.NewAuthRepository(dbConn)
+	googleProviderRepo := repository.NewGoogleProviderRepository(dbConn)
 	apiKeyRepo := repository.NewAPIKeyRepository(dbConn)
 
 	budgetService := service.NewBudgetService(budgetRepo, payeeRepo, categoryRepo, categoryGroupRepo)
@@ -96,7 +101,9 @@ func main() {
 	tagService := service.NewTagService(tagRepo)
 	tagHandler := handler.NewTagHandler(tagService)
 
-	authService := service.NewAuthService(authRepo)
+	gmailHttpTransport := httpclient.NewHttpTransport(config.GmailServiceURL)
+	gmailClient := transport.NewClient(config.GmailServiceName, gmailHttpTransport)
+	authService := service.NewAuthService(authRepo, googleProviderRepo, gmailClient)
 	authHandler := handler.NewAuthHandler(authService)
 
 	apiKeyService := service.NewApiKeyService(apiKeyRepo)
@@ -143,6 +150,13 @@ func main() {
 			budgetGroup.GET("", budgetHandler.List)
 			budgetGroup.POST("", budgetHandler.Create)
 			budgetGroup.PATCH(":id", budgetHandler.UpdateById)
+		}
+		// Auth-only provider user routes (no budget middleware) — used by internal services
+		{
+			providerUserGroup := router.Group("/api/auth/:provider/users")
+			providerUserGroup.Use(authMiddleware)
+			providerUserGroup.GET("", authHandler.GetProviderUser)
+			providerUserGroup.PATCH("", authHandler.UpdateProviderUser)
 		}
 		{
 			accountGroup := router.Group("/api/accounts")

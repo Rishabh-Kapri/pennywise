@@ -3,7 +3,7 @@ package service
 import (
 	"testing"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
@@ -65,6 +65,7 @@ func TestValidateTransactionPayload(t *testing.T) {
 		{
 			name: "valid_payload",
 			txn: model.Transaction{
+				BudgetID:  uuid.MustParse("00000000-0000-0000-0000-000000000001"),
 				AccountID: &validAccountID,
 				PayeeID:   &validPayeeID,
 				Date:      "2023-10-10",
@@ -74,9 +75,10 @@ func TestValidateTransactionPayload(t *testing.T) {
 		},
 	}
 
+	budgetId := uuid.MustParse("00000000-0000-0000-0000-000000000001")
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := service.validateTransactionPayload(tt.txn)
+			err := service.validateTransactionPayload(tt.txn, budgetId)
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
@@ -90,12 +92,14 @@ func TestValidateCategory(t *testing.T) {
 	service := &transactionService{}
 	transferAccountID := uuid.New()
 	categoryID := uuid.New()
+	inflowCategoryID := uuid.New()
 
 	tests := []struct {
 		name       string
 		categoryID *uuid.UUID
 		account    model.Account
 		payee      model.Payee
+		amount     float64
 		wantErr    bool
 	}{
 		{
@@ -103,6 +107,7 @@ func TestValidateCategory(t *testing.T) {
 			categoryID: &categoryID,
 			account:    model.Account{Type: "savings"},
 			payee:      model.Payee{TransferAccountID: nil},
+			amount:     -100,
 			wantErr:    false,
 		},
 		{
@@ -110,6 +115,7 @@ func TestValidateCategory(t *testing.T) {
 			categoryID: nil,
 			account:    model.Account{Type: "savings"},
 			payee:      model.Payee{TransferAccountID: &transferAccountID},
+			amount:     -100,
 			wantErr:    false,
 		},
 		{
@@ -117,6 +123,7 @@ func TestValidateCategory(t *testing.T) {
 			categoryID: &categoryID,
 			account:    model.Account{Type: "savings"},
 			payee:      model.Payee{TransferAccountID: &transferAccountID},
+			amount:     -100,
 			wantErr:    true,
 		},
 		{
@@ -124,6 +131,7 @@ func TestValidateCategory(t *testing.T) {
 			categoryID: &categoryID,
 			account:    model.Account{Type: "checking"},
 			payee:      model.Payee{TransferAccountID: &transferAccountID},
+			amount:     -100,
 			wantErr:    true,
 		},
 		{
@@ -131,6 +139,7 @@ func TestValidateCategory(t *testing.T) {
 			categoryID: &categoryID,
 			account:    model.Account{Type: "creditCard"},
 			payee:      model.Payee{TransferAccountID: &transferAccountID},
+			amount:     -100,
 			wantErr:    true,
 		},
 		{
@@ -138,13 +147,22 @@ func TestValidateCategory(t *testing.T) {
 			categoryID: &categoryID,
 			account:    model.Account{Type: "loan"},
 			payee:      model.Payee{TransferAccountID: &transferAccountID},
+			amount:     -100,
 			wantErr:    false, // Only savings, checking, creditCard are restricted
+		},
+		{
+			name:       "negative_inflow_amount",
+			categoryID: &inflowCategoryID,
+			account:    model.Account{Type: "savings"},
+			payee:      model.Payee{TransferAccountID: nil},
+			amount:     -100,
+			wantErr:    true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := service.validateCategory(tt.categoryID, tt.account, tt.payee)
+			err := service.validateCategory(tt.categoryID, inflowCategoryID, tt.account, tt.payee, tt.amount)
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {

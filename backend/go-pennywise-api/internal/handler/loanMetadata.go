@@ -3,8 +3,9 @@ package handler
 import (
 	"net/http"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -28,6 +29,7 @@ func NewLoanMetadataHandler(service service.LoanMetadataService) LoanMetadataHan
 
 func (h *loanMetadataHandler) List(c *gin.Context) {
 	ctx := c.Request.Context()
+	utils.MustBudgetID(ctx)
 
 	loans, err := h.service.GetAll(ctx)
 	if err != nil {
@@ -38,13 +40,16 @@ func (h *loanMetadataHandler) List(c *gin.Context) {
 }
 
 func (h *loanMetadataHandler) GetByAccountId(c *gin.Context) {
+	ctx := c.Request.Context()
+	utils.MustBudgetID(ctx)
+
 	accountId, err := uuid.Parse(c.Param("accountId"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid account ID"})
 		return
 	}
 
-	loan, err := h.service.GetByAccountId(c.Request.Context(), accountId)
+	loan, err := h.service.GetByAccountId(ctx, accountId)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "loan metadata not found"})
 		return
@@ -53,13 +58,16 @@ func (h *loanMetadataHandler) GetByAccountId(c *gin.Context) {
 }
 
 func (h *loanMetadataHandler) Create(c *gin.Context) {
+	ctx := c.Request.Context()
+	utils.MustBudgetID(ctx)
+
 	var body model.LoanMetadata
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	created, err := h.service.Create(c.Request.Context(), body)
+	created, err := h.service.Create(ctx, body)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -68,6 +76,9 @@ func (h *loanMetadataHandler) Create(c *gin.Context) {
 }
 
 func (h *loanMetadataHandler) Update(c *gin.Context) {
+	ctx := c.Request.Context()
+	utils.MustBudgetID(ctx)
+
 	accountId, err := uuid.Parse(c.Param("accountId"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid account ID"})
@@ -80,7 +91,7 @@ func (h *loanMetadataHandler) Update(c *gin.Context) {
 		return
 	}
 
-	updated, err := h.service.Update(c.Request.Context(), accountId, body)
+	updated, err := h.service.Update(ctx, accountId, body)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -89,13 +100,16 @@ func (h *loanMetadataHandler) Update(c *gin.Context) {
 }
 
 func (h *loanMetadataHandler) Delete(c *gin.Context) {
+	ctx := c.Request.Context()
+	utils.MustBudgetID(ctx)
+
 	accountId, err := uuid.Parse(c.Param("accountId"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid account ID"})
 		return
 	}
 
-	if err := h.service.Delete(c.Request.Context(), accountId); err != nil {
+	if err := h.service.Delete(ctx, accountId); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
