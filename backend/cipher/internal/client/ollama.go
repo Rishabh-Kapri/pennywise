@@ -2,7 +2,6 @@ package client
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -10,6 +9,7 @@ import (
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 )
 
 type OllamaClient struct {
@@ -19,8 +19,9 @@ type OllamaClient struct {
 }
 
 type PromptReq struct {
-	Model  string `json:"model"`
-	Prompt string `json:"prompt"`
+	Model      string `json:"model"`
+	Prompt     string `json:"prompt"`
+	UserPrompt string `json:"userPrompt"`
 }
 
 type embedRequest struct {
@@ -42,6 +43,13 @@ type generateRequest struct {
 }
 type generateResponse struct {
 	Response string `json:"response"`
+}
+
+type LLMPrediction struct {
+	MerchantName     string `json:"merchantName"`
+	SuggestedTag string `json:"suggestedTag"`
+	Confidence   int32  `json:"confidence"`
+	Reasoning    string `json:"reasoning"`
 }
 
 // For OpenAI models
@@ -93,6 +101,37 @@ func NewOllamaClient(c *transport.Client) *OllamaClient {
 	return &OllamaClient{client: c, config: cfg.Load()}
 }
 
+func (c *OllamaClient) doOpenAIRequest(ctx context.Context, req PromptReq) (string, error) {
+	headers := map[string][]string{
+		"Authorization": {fmt.Sprintf("Bearer %s", c.config.OpenAIAPIKey)},
+	}
+	logger.Logger(ctx).Info("openai request", "headers", headers, "req", req)
+	openAIModel := strings.ReplaceAll(req.Model, "openai/", "")
+	reqData := openaiGenerateRequest{
+		Model: openAIModel,
+		Messages: []Message{
+			{
+				Role:    "system",
+				Content: req.Prompt,
+			},
+			{
+				Role:    "user",
+				Content: req.UserPrompt,
+			},
+		},
+		ResponseFormat: ResponseFormat{
+			Type: "json_object",
+		},
+	}
+	resp, err := transport.Post[openaiGenerateResponse](ctx, c.client, "https://api.openai.com/v1/chat/completions", headers, reqData)
+	// logger.Logger(ctx).Debug("openai generate", "resp", resp, "err", err)
+	if err != nil {
+		return "", errs.Wrap(errs.CodeInternalError, "error in openai generate", err)
+	}
+	logger.Logger(ctx).Debug("openai generate", "resp", resp, "err", err)
+	return resp.Choices[0].Message.Content, nil
+}
+
 func (c *OllamaClient) Embed(ctx context.Context, model string, text string) ([]float64, error) {
 	reqBody := embedRequest{
 		Model: model,
@@ -100,7 +139,6 @@ func (c *OllamaClient) Embed(ctx context.Context, model string, text string) ([]
 	}
 	var headers map[string][]string
 
-	logger.Logger(ctx).Debug("ollama embed", "model", model, "text", text, "client", c.client)
 	resp, err := transport.Post[embedResponse](ctx, c.client, "/api/embed", headers, reqBody)
 	if err != nil {
 		return nil, errs.Wrap(errs.CodeInternalError, "error in ollama embed", err)
@@ -113,7 +151,7 @@ func (c *OllamaClient) Embed(ctx context.Context, model string, text string) ([]
 	return resp.Embeddings[0], nil
 }
 
-func (c *OllamaClient) Generate(ctx context.Context, model string, prompt string) (string, error) {
+func (c *OllamaClient) Generate(ctx context.Context, model string, prompt string, cleanedText string, amount float64) (string, error) {
 	reqBody := generateRequest{
 		Model:  model,
 		Prompt: prompt,
@@ -129,28 +167,13 @@ func (c *OllamaClient) Generate(ctx context.Context, model string, prompt string
 	// if strings.HasPrefix("ollama") {
 	// }
 	if strings.HasPrefix(model, "openai") {
-		headers = map[string][]string{
-			"Authorization": {fmt.Sprintf("Bearer %s", c.config.OpenAIAPIKey)},
-		}
-		openAIModel := strings.ReplaceAll(model, "openai/", "")
-		req := openaiGenerateRequest{
-			Model: openAIModel,
-			Messages: []Message{
-				{
-					Role:    "user",
-					Content: prompt,
-				},
-			},
-			ResponseFormat: ResponseFormat{
-				Type: "json_object",
-			},
-		}
-		resp, err := transport.Post[openaiGenerateResponse](ctx, c.client, "https://api.openai.com/v1/chat/completions", headers, req)
-		logger.Logger(ctx).Debug("openai generate", "resp", resp, "err", err)
+		userPrompt := fmt.Sprintf("Transaction: \"%s\"\nAmount: %.2f", cleanedText, amount)
+		req := PromptReq{Model: model, Prompt: prompt, UserPrompt: userPrompt}
+		resp, err := c.doOpenAIRequest(ctx, req)
 		if err != nil {
 			return "", errs.Wrap(errs.CodeInternalError, "error in openai generate", err)
 		}
-		return resp.Choices[0].Message.Content, nil
+		return resp, nil
 	}
 
 	// Local LLM call
@@ -193,7 +216,7 @@ func GenericLLMCall[T any](ctx context.Context, c *OllamaClient, req PromptReq) 
 			return res, errs.Wrap(errs.CodeInternalError, "error in openai generate", err)
 		}
 		generatedJSONString = resp.Choices[0].Message.Content
-		return unmarshalResponse[T]([]byte(generatedJSONString))
+		return utils.UnmarshalResponse[T]([]byte(generatedJSONString))
 	}
 
 	reqBody := generateRequest{
@@ -211,13 +234,5 @@ func GenericLLMCall[T any](ctx context.Context, c *OllamaClient, req PromptReq) 
 	if err != nil {
 		return res, errs.Wrap(errs.CodeInternalError, "error in ollama generate", err)
 	}
-	return unmarshalResponse[T]([]byte(generatedJSONString))
-}
-
-func unmarshalResponse[T any](res []byte) (T, error) {
-	var result T
-	if err := json.Unmarshal(res, &result); err != nil {
-		return result, errs.Wrap(errs.CodeInternalError, "error in unmarshalling", err)
-	}
-	return result, nil
+	return utils.UnmarshalResponse[T]([]byte(generatedJSONString))
 }

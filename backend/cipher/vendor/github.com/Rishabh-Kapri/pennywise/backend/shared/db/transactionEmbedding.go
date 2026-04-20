@@ -2,9 +2,8 @@ package db
 
 import (
 	"context"
-	"fmt"
 
-
+	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	"github.com/google/uuid"
@@ -13,9 +12,8 @@ import (
 )
 
 type TransactionEmbeddingRepository interface {
-	SearchSimilar(ctx context.Context, budgetID uuid.UUID, embeddingStr string, limit int) ([]model.TransactionEmbedding, error)
+	SearchSimilar(ctx context.Context, budgetID uuid.UUID, amount float64, embeddingStr string, limit int) ([]model.TransactionEmbedding, error)
 	Upsert(ctx context.Context, tx pgx.Tx, data model.TransactionEmbedding, embeddingStr string) error
-	DeleteByTransactionID(ctx context.Context, tx pgx.Tx, budgetID uuid.UUID, txnID uuid.UUID) error
 }
 
 type transactionEmbeddingRepository struct {
@@ -26,30 +24,32 @@ func NewTransactionEmbeddingRepository(pool *pgxpool.Pool) TransactionEmbeddingR
 	return &transactionEmbeddingRepository{BaseRepository: NewBaseRepository(pool)}
 }
 
-func (r *transactionEmbeddingRepository) SearchSimilar(ctx context.Context, budgetID uuid.UUID, embeddingStr string, limit int) ([]model.TransactionEmbedding, error) {
+func (r *transactionEmbeddingRepository) SearchSimilar(ctx context.Context, budgetID uuid.UUID, amount float64, embeddingStr string, limit int) ([]model.TransactionEmbedding, error) {
 	rows, err := r.Executor(nil).Query(
 		ctx, `
 			SELECT
 				id,
 				budget_id,
 				embedding_text,
-				payee,
-				category,
-				account,
+				payee_id,
+				category_id,
 				amount,
-				transaction_id,
 				source,
-				1 - (embedding <=> $2) AS similarity,
+		    (embedding <=> $1) AS vector_distance,
+		    -- Added NULLIF to handle zero amounts
+        ABS(ABS(amount) - ABS($4)) / NULLIF(GREATEST(ABS(amount), ABS($4)), 0) AS amount_penalty,
 				created_at,
 				updated_at
 			FROM transaction_embeddings
-			WHERE budget_id = $1
-			ORDER BY embedding <=> $2 ASC
+			WHERE budget_id = $2
+			ORDER BY 
+        (embedding <=> $1) +
+        (COALESCE(ABS(ABS(amount) - ABS($4)) / NULLIF(GREATEST(ABS(amount), ABS($4)), 0), 0) * 0.15) ASC
 			LIMIT $3
-		`, budgetID, embeddingStr, limit,
+		`, embeddingStr, budgetID, limit, amount,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("SearchSimilar: %w", err)
+		return nil, errs.Wrap(errs.CodeInternalError, "SearchSimilar", err)
 	}
 	defer rows.Close()
 
@@ -60,17 +60,16 @@ func (r *transactionEmbeddingRepository) SearchSimilar(ctx context.Context, budg
 			&e.ID,
 			&e.BudgetID,
 			&e.EmbeddingText,
-			&e.Payee,
-			&e.Category,
-			&e.Account,
+			&e.PayeeID,
+			&e.CategoryID,
 			&e.Amount,
-			&e.TransactionID,
 			&e.Source,
-			&e.Similarity,
+			&e.VectorDistance,
+			&e.AmountPenalty,
 			&e.CreatedAt,
 			&e.UpdatedAt,
 		); err != nil {
-			return nil, fmt.Errorf("SearchSimilar scan: %w", err)
+			return nil, errs.Wrap(errs.CodeInternalError, "SearchSimilar scan", err)
 		}
 		results = append(results, e)
 	}
@@ -83,8 +82,7 @@ func (r *transactionEmbeddingRepository) Upsert(ctx context.Context, tx pgx.Tx, 
 		WITH target AS (
 				-- 1. Identify if a matching row exists by ID or by Text
 				SELECT id FROM transaction_embeddings 
-				WHERE (transaction_id = $8 AND transaction_id IS NOT NULL)
-					 OR (embedding_text = $2 AND budget_id = $1)
+				WHERE (embedding_text = $2 AND budget_id = $1)
 				LIMIT 1
 		),
 		upsert AS (
@@ -92,13 +90,10 @@ func (r *transactionEmbeddingRepository) Upsert(ctx context.Context, tx pgx.Tx, 
 				UPDATE transaction_embeddings SET
 						embedding_text = $2,
 						embedding = $3,
-						payee = $4,
-						category = $5,
-						account = $6,
-						amount = $7,
-						-- Link the transaction_id if the existing record was just text-based
-						transaction_id = COALESCE(transaction_id, $8),
-						source = $9,
+						payee_id = $4,
+						category_id = $5,
+						amount = $6,
+						source = $7,
 						updated_at = NOW()
 				FROM target
 				WHERE transaction_embeddings.id = target.id
@@ -106,10 +101,10 @@ func (r *transactionEmbeddingRepository) Upsert(ctx context.Context, tx pgx.Tx, 
 		)
 		-- 3. If nothing was updated, insert the new record
 		INSERT INTO transaction_embeddings (
-				budget_id, embedding_text, embedding, payee, category, account,
-				amount, transaction_id, source, created_at, updated_at
+				budget_id, embedding_text, embedding, payee_id, category_id,
+				amount, source, created_at, updated_at
 		)
-		SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW()
+		SELECT $1, $2, $3, $4, $5, $6, $7, NOW(), NOW()
 		WHERE NOT EXISTS (SELECT 1 FROM target);
 	`
 
@@ -117,31 +112,8 @@ func (r *transactionEmbeddingRepository) Upsert(ctx context.Context, tx pgx.Tx, 
 		ctx,
 		query,
 		data.BudgetID, data.EmbeddingText, embeddingStr,
-		data.Payee, data.Category, data.Account,
-		data.Amount, data.TransactionID, data.Source,
-	)
-	return err
-
-	// _, err := executor.Exec(
-	// 	ctx, `
-	// 		INSERT INTO transaction_embeddings (
-	// 			budget_id, embedding_text, embedding, payee, category, account,
-	// 			amount, source, created_at, updated_at
-	// 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
-	// 	`,
-	// 	data.BudgetID, data.EmbeddingText, embeddingStr,
-	// 	data.Payee, data.Category, data.Account,
-	// 	data.Amount, data.Source,
-	// )
-	// return err
-}
-
-func (r *transactionEmbeddingRepository) DeleteByTransactionID(ctx context.Context, tx pgx.Tx, budgetID uuid.UUID, txnID uuid.UUID) error {
-	executor := r.Executor(tx)
-	_, err := executor.Exec(
-		ctx,
-		`DELETE FROM transaction_embeddings WHERE budget_id = $1 AND transaction_id = $2`,
-		budgetID, txnID,
+		data.PayeeID, data.CategoryID,
+		data.Amount, data.Source,
 	)
 	return err
 }
