@@ -127,12 +127,10 @@ func (r *payeeRepo) Create(ctx context.Context, tx pgx.Tx, payee model.Payee) (*
 	err := r.Executor(tx).QueryRow(
 		ctx, `
 				INSERT INTO payees (
-				name, budget_id, transfer_account_id, deleted, created_at, updated_at
-				) VALUES ($1, $2, $3, FALSE, NOW(), NOW())
+				name, budget_id, transfer_account_id, canonical_merchant_id, default_category_id, deleted, created_at, updated_at
+				) VALUES ($1, $2, $3, $4, $5 FALSE, NOW(), NOW())
 				RETURNING id, name, transfer_account_id
-			`, payee.Name,
-		payee.BudgetID,
-		payee.TransferAccountID,
+			`, payee.Name, payee.BudgetID, payee.TransferAccountID, payee.CanonicalMerchantID, payee.DefaultCategoryID,
 	).Scan(&createdPayee.ID, &createdPayee.Name, &createdPayee.TransferAccountID)
 	if err != nil {
 		return nil, err
