@@ -66,8 +66,8 @@ func Get[T any](ctx context.Context, c *Client, path string) (T, error) {
 }
 
 func Post[T any](ctx context.Context, c *Client, path string, headers map[string][]string, data any) (T, error) {
-	logger := logger.Logger(ctx)
-	logger.Debug("transport.Post", "service", c.serviceName, "path", path, "data", data)
+	log := logger.Logger(ctx)
+	log.Info("transport.Post", "service", c.serviceName, "path", path, "data", data)
 	var result T
 
 	req := &Request{Method: "POST", Path: path, Headers: headers, Payload: data}
