@@ -28,6 +28,21 @@ func NewHttpTransport(baseUrl string) transport.Transport {
 	}
 }
 
+func applyHeaders(ctx context.Context, req *http.Request, headers map[string][]string) {
+	req.Header.Set("Content-Type", "application/json")
+	if headers != nil {
+		for k, v := range headers {
+			req.Header[k] = v
+		}
+	}
+
+	for k, v := range utils.GetHeaders(ctx) {
+		if req.Header.Get(k) == "" {
+			req.Header[k] = v
+		}
+	}
+}
+
 func (h *httpTransport) get(ctx context.Context, path string) (transport.Response, error) {
 	var resp transport.Response
 	url := h.baseUrl + path
@@ -37,7 +52,7 @@ func (h *httpTransport) get(ctx context.Context, path string) (transport.Respons
 		resp.StatusCode = http.StatusInternalServerError
 		return resp, err
 	}
-	return h.do(ctx, req)
+	return h.do(ctx, req, nil)
 }
 
 func (h *httpTransport) requestWithBody(ctx context.Context, method string, path string, headers map[string][]string, data any) (transport.Response, error) {
@@ -67,21 +82,17 @@ func (h *httpTransport) requestWithBody(ctx context.Context, method string, path
 		resp.StatusCode = http.StatusInternalServerError
 		return resp, errs.Wrap(errs.CodeHTTPClientError, "error creating request", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	for k, v := range headers {
-		req.Header[k] = v
-	}
 
-	return h.do(ctx, req)
+	return h.do(ctx, req, headers)
 }
 
-func (h *httpTransport) do(ctx context.Context, req *http.Request) (transport.Response, error) {
+func (h *httpTransport) do(ctx context.Context, req *http.Request, headers map[string][]string) (transport.Response, error) {
 	log := logger.Logger(ctx)
 	var resp transport.Response
 
-	for k, v := range utils.GetHeaders(ctx) {
-		req.Header[k] = v
-	}
+	applyHeaders(ctx, req, headers)
+	
+	log.Info("request headers", "headers", req.Header)
 
 	res, err := h.client.Do(req)
 	if err != nil {
@@ -93,7 +104,7 @@ func (h *httpTransport) do(ctx context.Context, req *http.Request) (transport.Re
 
 	resp.StatusCode = res.StatusCode
 	body, err := io.ReadAll(res.Body)
-	log.Debug("response", "method", req.Method, "url", req.URL.String(), "status", res.StatusCode, "body", string(body))
+	// log.Debug("response", "method", req.Method, "url", req.URL.String(), "status", res.StatusCode, "body", string(body))
 	if err != nil {
 		log.Error("error reading body", "method", req.Method, "url", req.URL.String(), "status", res.StatusCode)
 		resp.StatusCode = http.StatusInternalServerError

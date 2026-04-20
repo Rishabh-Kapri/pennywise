@@ -1,6 +1,9 @@
 -- +goose Up
 -- +goose StatementBegin
 -- Global MCC tags
+create type prediction_source as enum (
+  'LLM', 'MANUAL', 'RULE_LOCAL', 'RULE_GLOBAL', 'VECTOR', 'UNCATEGORIZED'
+)
 CREATE TYPE global_mcc_tag AS ENUM (
     -- 🍔 Food & Dining
     'FOOD_DELIVERY', 'FAST_FOOD', 'DINING_OUT', 'COFFEE_SHOP',
@@ -100,15 +103,11 @@ CREATE TABLE IF NOT EXISTS payees (
     name TEXT NOT NULL,
     budget_id UUID NOT NULL REFERENCES budgets(id),
     transfer_account_id UUID REFERENCES accounts(id),
-    canonical_merchant_id UUID REFERENCES global_merchants(id) ON DELETE SET NULL, -- references the internal global_merchants table (source of truth)
     default_category_id UUID REFERENCES categories(id),
     deleted BOOLEAN DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
--- Lookup by Global Business
-CREATE INDEX idx_payees_budget_canonical ON payees(budget_id, canonical_merchant_id) 
-WHERE deleted = false;
 
 -- Adding this constraint directly. accounts had transfer_payee_id as a UUID.
 ALTER TABLE accounts ADD CONSTRAINT fk_transfer_payee_id FOREIGN KEY (transfer_payee_id) REFERENCES payees(id);
@@ -125,6 +124,18 @@ CREATE TABLE IF NOT EXISTS payee_matches (
   UNIQUE (budget_id, match_string)
 );
 CREATE INDEX idx_payee_matches_lookup ON payee_matches(budget_id, match_string);
+
+CREATE TABLE IF NOT EXISTS payee_global_matches (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  budget_id UUID NOT NULL REFERENCES budgets(id) ON DELETE CASCADE,
+  payee_id UUID NOT NULL REFERENCES payees(id) ON DELETE CASCADE,
+  canonical_merchant_id UUID NOT NULL REFERENCES global_merchants(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  deleted BOOLEAN DEFAULT false,
+  -- A user cannot map the exact same canonical merchant to two different payees in their budget.
+  UNIQUE (budget_id, canonical_merchant_id)
+)
 
 CREATE TABLE IF NOT EXISTS category_groups (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -170,7 +181,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     account_id UUID NOT NULL REFERENCES accounts(id),
     note TEXT,
     amount NUMERIC(12, 2) NOT NULL,
-    source TEXT,
+    source prediction_source,
     transfer_account_id UUID REFERENCES accounts(id),
     transfer_transaction_id UUID REFERENCES transactions(id),
     deleted BOOLEAN DEFAULT false,
@@ -267,6 +278,7 @@ DROP TABLE IF EXISTS monthly_budgets;
 DROP TABLE IF EXISTS categories;
 DROP TABLE IF EXISTS category_groups;
 DROP TABLE IF EXISTS payee_matches;
+DROP TABLE IF EXISTS payee_global_matches;
 -- Drop constraints to safely drop items
 ALTER TABLE accounts DROP CONSTRAINT IF EXISTS fk_transfer_payee_id;
 DROP TABLE IF EXISTS payees;
