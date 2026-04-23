@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 )
 
 // Request is protocol agnostic request object
@@ -66,8 +64,8 @@ func Get[T any](ctx context.Context, c *Client, path string) (T, error) {
 }
 
 func Post[T any](ctx context.Context, c *Client, path string, headers map[string][]string, data any) (T, error) {
-	log := logger.Logger(ctx)
-	log.Info("transport.Post", "service", c.serviceName, "path", path, "data", data)
+	// log := logger.Logger(ctx)
+	// log.Info("transport.Post", "service", c.serviceName, "path", path, "data", data)
 	var result T
 
 	req := &Request{Method: "POST", Path: path, Headers: headers, Payload: data}
@@ -89,8 +87,8 @@ func Post[T any](ctx context.Context, c *Client, path string, headers map[string
 }
 
 func Patch[T any](ctx context.Context, c *Client, path string, headers map[string][]string, data any) (T, error) {
-	logger := logger.Logger(ctx)
-	logger.Debug("transport.Patch", "service", c.serviceName, "path", path, "data", data)
+	// logger := logger.Logger(ctx)
+	// logger.Debug("transport.Patch", "service", c.serviceName, "path", path, "data", data)
 	var result T
 
 	req := &Request{Method: "PATCH", Path: path, Headers: headers, Payload: data}

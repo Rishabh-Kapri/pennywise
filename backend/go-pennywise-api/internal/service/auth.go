@@ -9,18 +9,19 @@ import (
 	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/config"
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/google"
 
+	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
+
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
 )
 
 type AuthService interface {
@@ -74,7 +75,11 @@ type gmailSyncResponse struct {
 	HistoryID uint64 `json:"historyID"`
 }
 
-func NewAuthService(r repository.AuthRepository, googleProvider repository.GoogleProviderRepository, transport *transport.Client) AuthService {
+func NewAuthService(
+	r repository.AuthRepository,
+	googleProvider repository.GoogleProviderRepository,
+	transport *transport.Client,
+) AuthService {
 	return &authService{repo: r, googleProvider: googleProvider, config: config.Load(), transport: transport}
 }
 
@@ -102,7 +107,11 @@ func (s *authService) setupGmailWatch(ctx context.Context, googleID string, refr
 	}
 }
 
-func (s *authService) fetchGoogleUser(ctx context.Context, oauthConfig *oauth2.Config, token *oauth2.Token) (*googleUser, error) {
+func (s *authService) fetchGoogleUser(
+	ctx context.Context,
+	oauthConfig *oauth2.Config,
+	token *oauth2.Token,
+) (*googleUser, error) {
 	oauthClient := oauthConfig.Client(ctx, token)
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, googleUserInfoURL, nil)
 	if err != nil {
@@ -141,7 +150,10 @@ func (s *authService) fetchGoogleUser(ctx context.Context, oauthConfig *oauth2.C
 	return &profile, nil
 }
 
-func (s *authService) LoginWithGoogle(ctx context.Context, tokenString string) (*model.AuthUserResponse, string, string, error) {
+func (s *authService) LoginWithGoogle(
+	ctx context.Context,
+	tokenString string,
+) (*model.AuthUserResponse, string, string, error) {
 	logger := logger.Logger(ctx)
 	oauthConfig := s.getOauth2Config()
 	oauthToken, err := oauthConfig.Exchange(ctx, tokenString)
@@ -194,7 +206,12 @@ func (s *authService) LoginWithGoogle(ctx context.Context, tokenString string) (
 	if lastGmailSync == nil || lastGmailSync.Before(time.Now().Add(-time.Hour*24*5)) {
 		googleRefreshToken := userWithCreds.GoogleProvider.RefreshToken
 		detachedCtx := context.WithoutCancel(ctx)
-		go s.setupGmailWatch(detachedCtx, userWithCreds.GoogleProvider.ID, googleRefreshToken, userWithCreds.GoogleProvider.Email)
+		go s.setupGmailWatch(
+			detachedCtx,
+			userWithCreds.GoogleProvider.ID,
+			googleRefreshToken,
+			userWithCreds.GoogleProvider.Email,
+		)
 	}
 
 	resUser := model.AuthUserResponse{
@@ -206,7 +223,11 @@ func (s *authService) LoginWithGoogle(ctx context.Context, tokenString string) (
 	return &resUser, accessToken, refreshToken, nil
 }
 
-func (s *authService) createGoogleUser(ctx context.Context, profile *googleUser, refreshToken string) (*model.UserWithCredentials, error) {
+func (s *authService) createGoogleUser(
+	ctx context.Context,
+	profile *googleUser,
+	refreshToken string,
+) (*model.UserWithCredentials, error) {
 	log := logger.Logger(ctx)
 	log.Info("creating new google user", "googleId", profile.ID, "email", profile.Email)
 
@@ -238,7 +259,13 @@ func (s *authService) createGoogleUser(ctx context.Context, profile *googleUser,
 	return result, nil
 }
 
-func (s *authService) GenerateAccessToken(ctx context.Context, userID uuid.UUID, name string, email string, version int) (string, error) {
+func (s *authService) GenerateAccessToken(
+	ctx context.Context,
+	userID uuid.UUID,
+	name string,
+	email string,
+	version int,
+) (string, error) {
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":     userID.String(),                         // subject (user ID)
 		"iss":     "pennywise",                             // issuer

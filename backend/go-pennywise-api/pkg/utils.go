@@ -32,7 +32,14 @@ func GetMonthKey(date string) string {
 
 // Updates the carryover_balance column in the monthly_budgets table.
 // Pass a context.Context, a pgx.Tx transaction, a categoryId, an amount (reverse it for deletion), and a monthKey (YYYY-MM).
-func UpdateCarryover(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categoryId uuid.UUID, amount float64, monthKey string) error {
+func UpdateCarryover(
+	ctx context.Context,
+	tx pgx.Tx,
+	budgetId uuid.UUID,
+	categoryId uuid.UUID,
+	amount float64,
+	monthKey string,
+) error {
 	if categoryId == uuid.Nil {
 		return fmt.Errorf("categoryId cannot be nil")
 	}

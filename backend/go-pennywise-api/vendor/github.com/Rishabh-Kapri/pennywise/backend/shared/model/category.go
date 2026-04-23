@@ -22,6 +22,11 @@ type Category struct {
 	UpdatedAt       time.Time          `json:"updatedAt"`
 }
 
+type CategorySimplified struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+}
+
 type CategoryFilter struct {
 	ID              *uuid.UUID
 	Name            *string
