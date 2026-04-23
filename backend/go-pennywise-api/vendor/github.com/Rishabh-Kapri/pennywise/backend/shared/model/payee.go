@@ -11,19 +11,19 @@ type Payee struct {
 	Name                string     `json:"name"`
 	BudgetID            uuid.UUID  `json:"budgetId"`
 	TransferAccountID   *uuid.UUID `json:"transferAccountId,omitempty"`
-	CanonicalMerchantID *uuid.UUID `json:"canonicalMerchantId,omitempty"`
-	DefaultCategoryID   *uuid.UUID `json:"defaultCategoryId,omitempty"`
 	Deleted             bool       `json:"deleted"`
 	CreatedAt           time.Time  `json:"createdAt"`
 	UpdatedAt           time.Time  `json:"updatedAt"`
 }
 
-type PayeeMatch struct {
+type PayeeRule struct {
 	ID          uuid.UUID `json:"id"`
-	BudgetID    uuid.UUID `json:"budget_id"`
-	PayeeID     uuid.UUID `json:"payee_id"`
-	MatchString string    `json:"match_string"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	BudgetID    uuid.UUID `json:"budgetId"`
+	PayeeID     uuid.UUID `json:"payeeId"`
+	CategoryID  uuid.UUID `json:"categoryId"`
+	MatchString string    `json:"matchString"`
+	MatchType   string    `json:"matchType"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
 	Deleted     bool      `json:"deleted"`
 }

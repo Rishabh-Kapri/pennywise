@@ -4,9 +4,9 @@ import (
 	"context"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/auth"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/client"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/gmail"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/parser"
-	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/pennywise-api"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/workflows"
 )
@@ -15,10 +15,13 @@ type GmailActivities struct {
 	Auth      *auth.Service
 	Gmail     *gmail.Service
 	Parser    *parser.EmailParser
-	Pennywise *pennywise.Service
+	Pennywise *client.PennywiseClient
 }
 
-func (a *GmailActivities) FetchAndParseEmails(ctx context.Context, input workflows.EmailWorflowInput) ([]workflows.ParsedEmail, error) {
+func (a *GmailActivities) FetchAndParseEmails(
+	ctx context.Context,
+	input workflows.EmailWorflowInput,
+) ([]workflows.ParsedEmail, error) {
 	// fetch user info (including refresh token and history id) by email
 	userInfo, err := a.Pennywise.GetUser(ctx, input.Email)
 	if err != nil {

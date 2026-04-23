@@ -3,8 +3,8 @@ package service
 import (
 	"context"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 )
 
 type EmbeddingService interface {
@@ -20,7 +20,12 @@ func NewEmbeddingService(r repository.EmbeddingRepository) EmbeddingService {
 	return &embeddingService{repo: r}
 }
 
-func (s *embeddingService) Get(ctx context.Context, docType string, queryStr string, limit int64) ([]model.Embedding, error) {
+func (s *embeddingService) Get(
+	ctx context.Context,
+	docType string,
+	queryStr string,
+	limit int64,
+) ([]model.Embedding, error) {
 	// url := "http://192.168.1.24:8000/embeddings"
 	// postData := map[string]string{
 	// 	"content": queryStr,

@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/auth"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/client"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/config"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/gmail"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/parser"
-	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/pennywise-api"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/prediction"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/runner"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
@@ -184,7 +184,7 @@ func PullMessages(ctx context.Context) {
 		gmail.NewService(),
 		parser.NewEmailParser(),
 		prediction.NewService(config),
-		pennywise.NewService(pennywiseClient),
+		client.NewPennywiseClient(pennywiseClient),
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -192,7 +192,11 @@ func PullMessages(ctx context.Context) {
 
 	projectId := config.ProjectID
 	subName := config.SubscriptionName
-	client, err := pubsub.NewClient(ctx, projectId, option.WithCredentialsJSON([]byte(config.GoogleApplicationCredentialsJson)))
+	client, err := pubsub.NewClient(
+		ctx,
+		projectId,
+		option.WithCredentialsJSON([]byte(config.GoogleApplicationCredentialsJson)),
+	)
 	if err != nil {
 		logger.Fatal("failed to create pubsub client", "error", err)
 	}
