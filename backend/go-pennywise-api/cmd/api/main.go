@@ -8,9 +8,9 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/handler"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/middleware"
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
 
+	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedMiddleware "github.com/Rishabh-Kapri/pennywise/backend/shared/middleware"
@@ -35,11 +35,20 @@ func main() {
 
 	router := gin.New()
 	router.Use(gin.Recovery())
-	router.Use(sharedMiddleware.RequestLogger())
 	router.Use(gzip.Gzip(gzip.DefaultCompression))
+	router.Use(sharedMiddleware.StripInternalHeaders())
+	router.Use(sharedMiddleware.RequestLogger())
 
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5000", "http://localhost:5173", "http://192.168.1.34:5100", "https://pennywise-fe-production.up.railway.app", "https://react-fe-production-8fe5.up.railway.app", "https://pennywise.nastydomain.space", "https://react-fe-dev.up.railway.app"},
+		AllowOrigins: []string{
+			"http://localhost:5000",
+			"http://localhost:5173",
+			"http://192.168.1.34:5100",
+			"https://pennywise-fe-production.up.railway.app",
+			"https://react-fe-production-8fe5.up.railway.app",
+			"https://pennywise.nastydomain.space",
+			"https://react-fe-dev.up.railway.app",
+		},
 		AllowMethods:     []string{"GET", "POST", "PATCH", "PUT", "DELETE"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "X-Budget-ID"},
 		ExposeHeaders:    []string{"Content-Length"},
@@ -115,7 +124,7 @@ func main() {
 
 	// Auth middleware
 	authMiddleware := middleware.AuthMiddleware(authService, apiKeyService)
-	budgetMiddleware := middleware.BudgetIdMiddleware(budgetRepo)
+	budgetMiddleware := sharedMiddleware.BudgetIdMiddleware(budgetRepo)
 
 	{
 		api := router.Group("/api")

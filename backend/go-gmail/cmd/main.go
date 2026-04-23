@@ -2,19 +2,24 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"io"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/client"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/config"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/gmail"
-	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/pubsub"
+
+	// "github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/pubsub"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	sharedMiddleware "github.com/Rishabh-Kapri/pennywise/backend/shared/middleware"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
+
+	"github.com/gin-gonic/gin"
 )
 
 /*
@@ -22,66 +27,120 @@ import (
 * Simple http handler apis
  */
 
-func healthPage(w http.ResponseWriter, r *http.Request) {
-	logger := logger.Logger(r.Context())
-
-	requestBody, _ := json.Marshal(map[string]string{"status": "OK"})
-	logger.Info("health check passed")
-	w.WriteHeader(http.StatusOK)
-	w.Write(requestBody)
-	return
+func healthPage(c *gin.Context) {
+	log := logger.Logger(c.Request.Context())
+	log.Info("health check passed")
+	c.JSON(http.StatusOK, gin.H{"status": "OK"})
 }
 
-func watchHandler(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	logger := logger.Logger(ctx)
-
-	data, err := io.ReadAll(r.Body)
-	if err != nil {
-		logger.Error("error reading request body", "error", err)
-		err := errs.Wrap(errs.CodeInternalError, "error reading request body", err)
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(err.Error()))
-		return
-	}
+func watchHandler(c *gin.Context) {
+	ctx := c.Request.Context()
+	log := logger.Logger(ctx)
 
 	var reqData gmail.GmailSyncRequest
-	err = json.Unmarshal(data, &reqData)
-	if err != nil {
-		logger.Error("error unmarshalling request body", "error", err)
-		err := errs.Wrap(errs.CodeInternalError, "error unmarshalling request body", err)
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(err.Error()))
+	if err := c.ShouldBindJSON(&reqData); err != nil {
+		log.Error("error unmarshalling request body", "error", err)
+		wrappedErr := errs.Wrap(errs.CodeInternalError, "error unmarshalling request body", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": wrappedErr.Error()})
 		return
 	}
 
 	res, err := gmail.NewService().WatchHandler(ctx, reqData)
+	if err != nil {
+		log.Error("error in watch handler", "error", err)
+		wrappedErr := errs.Wrap(errs.CodeInternalError, "error in watch handler", err)
+		c.JSON(
+			http.StatusInternalServerError,
+			gin.H{"error": wrappedErr.Error()},
+		)
+		return
+	}
 
-	w.WriteHeader(http.StatusOK)
-	resBytes, _ := json.Marshal(map[string]any{"historyID": res})
-	w.Write(resBytes)
-	return
+	c.JSON(http.StatusOK, gin.H{"historyID": res})
+}
+
+func testHandler(c *gin.Context) {
+	ctx := c.Request.Context()
+	log := logger.Logger(ctx)
+	cfg := config.LoadConfig()
+
+	log.Info("cipher", "url", cfg.CipherServiceURL+"/api")
+
+	var reqData client.PredictRequest
+	if err := c.ShouldBindJSON(&reqData); err != nil {
+		log.Error("error unmarshalling request body", "error", err)
+		wrappedErr := errs.Wrap(errs.CodeInternalError, "error unmarshalling request body", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": wrappedErr.Error()})
+		return
+	}
+
+	log.Info("cipher", "req", reqData)
+	cipherTransport := httpclient.NewHttpTransport(cfg.CipherServiceURL)
+	cipherClient := transport.NewClient("cipher", cipherTransport)
+	log.Info("cipher", "headers", c.Request.Header)
+
+	log.Info("cipher", "ctx:budgetId", ctx.Value("X-Budget-ID"))
+	res, err := client.NewCipherClient(cipherClient).Predict(ctx, reqData)
+	if err != nil {
+		log.Error("error predicting", "error", err)
+		wrappedErr := errs.Wrap(errs.CodeInternalError, "error predicting", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": wrappedErr.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"payeeId":    res.PayeeID,
+		"categoryId": res.CategoryID,
+		"confidence": res.Confidence,
+		"source":     res.Source,
+		"payee":      res.Payee,
+		"category":   res.Category,
+		"reasoning":  res.Reasoning,
+	})
 }
 
 func main() {
 	logger.Setup("gmail-pubsub")
-	config := config.LoadConfig()
+	cfg := config.LoadConfig()
 	ctx := context.Background()
 	log := logger.Logger(ctx)
 
-	log.Info("pennywise-api", "url", config.PennywiseServiceURL+"/api")
-	transport.CheckHealth(ctx, "pennywise-api", config.PennywiseServiceURL+"/api")
-	// transport.CheckHealth(ctx, "mlp-api", config.MLPServiceURL+"/health")
+	transport.CheckHealth(ctx, "pennywise-api", cfg.PennywiseServiceURL+"/api")
+	transport.CheckHealth(ctx, "cipher", cfg.CipherServiceURL+"/api")
+	// transport.CheckHealth(ctx, "mlp-api", cfg.MLPServiceURL+"/health")
 
-	server := &http.Server{Addr: ":" + config.Port, Handler: nil}
-	http.HandleFunc("/api", healthPage)
-	http.HandleFunc("/api/watch", watchHandler)
+	dbConn, err := db.ConnectWithURL(cfg.DatabaseURL)
+	if err != nil {
+		logger.Fatal(err.Error())
+	}
+	log.Info("db connected", "url", cfg.DatabaseURL)
 
-	go pubsub.PullMessages(ctx)
+	router := gin.New()
+	router.Use(gin.Recovery())
+	router.Use(sharedMiddleware.StripInternalHeaders())
+	router.Use(sharedMiddleware.RequestLogger())
+
+	api := router.Group("/api")
+	api.GET("", healthPage)
+
+	budgetRepo := db.NewBudgetRepository(dbConn)
+	budgetApiGroup := api.Group("")
+	budgetApiGroup.Use(sharedMiddleware.BudgetIdMiddleware(budgetRepo))
+
+	budgetApiGroup.POST("/watch", watchHandler)
+	budgetApiGroup.POST("/test", testHandler)
+
+	server := &http.Server{
+		Addr:    ":" + cfg.Port,
+		Handler: router,
+	}
+
+	// go pubsub.PullMessages(ctx)
 
 	go func() {
-		log.Info("Server listening on port " + config.Port)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Info("Server listening on port " + cfg.Port)
+		if err := server.ListenAndServe(); err != nil &&
+			err != http.ErrServerClosed {
 			logger.Fatal("server error", "error", err)
 		}
 	}()

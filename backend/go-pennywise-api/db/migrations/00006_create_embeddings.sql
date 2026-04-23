@@ -2,7 +2,8 @@
 -- +goose StatementBegin
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- Sincle embeddings are budget scoped, we use specific payee_id and category_id
+CREATE TYPE learning_source AS ENUM ('AUTO_LEARNED', 'MANUAL');
+-- Since embeddings are budget scoped, we use specific payee_id and category_id
 CREATE TABLE IF NOT EXISTS transaction_embeddings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     budget_id UUID NOT NULL REFERENCES budgets(id) ON DELETE CASCADE,
@@ -11,9 +12,10 @@ CREATE TABLE IF NOT EXISTS transaction_embeddings (
     payee_id UUID NOT NULL REFERENCES payees(id) ON DELETE CASCADE,
     category_id UUID NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
     amount DECIMAL(12, 2) NOT NULL,
-    source VARCHAR(50) NOT NULL DEFAULT 'AUTO_LEARNED', -- AUTO_LEARNED, MANUAL
+    source learning_source NOT NULL DEFAULT 'MANUAL',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (budget_id, embedding_text)
 );
 
 -- Postgres must filter down to the specific user's budget BEFORE doing vector math.
@@ -30,4 +32,5 @@ USING hnsw (embedding vector_cosine_ops);
 -- +goose Down
 -- +goose StatementBegin
 DROP TABLE IF EXISTS transaction_embeddings;
+DROP TYPE IF EXISTS learning_source;
 -- +goose StatementEnd

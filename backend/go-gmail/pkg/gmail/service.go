@@ -69,7 +69,6 @@ func (s *Service) WatchHandler(ctx context.Context, payload GmailSyncRequest) (u
 	return historyID, nil
 }
 
-
 func (s *Service) stopWatch(ctx context.Context, token *oauth2.Token, oauthConfig *oauth2.Config, email string) error {
 	gmailService, err := gmail.NewService(ctx, option.WithTokenSource(oauthConfig.TokenSource(ctx, token)))
 	if err != nil {
@@ -79,7 +78,12 @@ func (s *Service) stopWatch(ctx context.Context, token *oauth2.Token, oauthConfi
 	return nil
 }
 
-func (s *Service) setupWatch(ctx context.Context, email string, token *oauth2.Token, oauthConfig *oauth2.Config) (uint64, error) {
+func (s *Service) setupWatch(
+	ctx context.Context,
+	email string,
+	token *oauth2.Token,
+	oauthConfig *oauth2.Config,
+) (uint64, error) {
 	gmailService, err := gmail.NewService(ctx, option.WithTokenSource(oauthConfig.TokenSource(ctx, token)))
 	if err != nil {
 		return 0, err
@@ -97,7 +101,12 @@ func (s *Service) setupWatch(ctx context.Context, email string, token *oauth2.To
 	return res.HistoryId, nil
 }
 
-func (s *Service) GetMessageHistory(email string, historyId uint64, token *oauth2.Token, oauthConfig *oauth2.Config) ([]EmailData, error) {
+func (s *Service) GetMessageHistory(
+	email string,
+	historyId uint64,
+	token *oauth2.Token,
+	oauthConfig *oauth2.Config,
+) ([]EmailData, error) {
 	slog.Info("GetMessageHistory", "email", email, "historyId", historyId)
 	ctx := context.Background()
 	gmailService, err := gmail.NewService(ctx, option.WithTokenSource(oauthConfig.TokenSource(ctx, token)))

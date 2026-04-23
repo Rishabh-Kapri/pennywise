@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	"github.com/google/uuid"
@@ -16,6 +17,7 @@ import (
 type CategoryRepository interface {
 	BaseRepositoryInterface
 	GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Category, error)
+	GetAllSimplified(ctx context.Context, budgetId uuid.UUID) ([]model.CategorySimplified, error)
 	GetInflowBalance(ctx context.Context, budgetId uuid.UUID) (float64, error)
 	GetByFilter(ctx context.Context, budgetId uuid.UUID, filter model.CategoryFilter) ([]model.Category, error)
 	Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.Category, error)
@@ -98,6 +100,29 @@ func (r *categoryRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.
 			&c.Balance,
 		)
 		if err != nil {
+			return nil, err
+		}
+		categories = append(categories, c)
+	}
+	return categories, nil
+}
+
+func (r *categoryRepo) GetAllSimplified(ctx context.Context, budgetId uuid.UUID) ([]model.CategorySimplified, error) {
+	rows, err := r.Executor(nil).Query(
+		ctx,
+		`SELECT id, name FROM categories WHERE budget_id = $1 AND deleted = FALSE`,
+		budgetId,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var categories []model.CategorySimplified
+	for rows.Next() {
+		var c model.CategorySimplified
+		if err := rows.Scan(&c.ID, &c.Name); err != nil {
+			logger.Logger(ctx).Error("error scanning category", err)
 			return nil, err
 		}
 		categories = append(categories, c)

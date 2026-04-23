@@ -38,7 +38,11 @@ func NewService(config *config.Config) *Service {
 	}
 }
 
-func (s *Service) CallPredictApi(ctx context.Context, emailDetails *parser.EmailDetails, fieldType string) (*PredictionResult, error) {
+func (s *Service) CallPredictApi(
+	ctx context.Context,
+	emailDetails *parser.EmailDetails,
+	fieldType string,
+) (*PredictionResult, error) {
 	emailDetails.Type = fieldType
 	url := s.config.MLPServiceURL + "/predict"
 
@@ -76,7 +80,11 @@ func (s *Service) CallPredictApi(ctx context.Context, emailDetails *parser.Email
 	return &prediction, nil
 }
 
-func (s *Service) GetPredictedFields(ctx context.Context, parsedDetails *parser.EmailDetails, fallbackAccount string) (*PredictedFields, error) {
+func (s *Service) GetPredictedFields(
+	ctx context.Context,
+	parsedDetails *parser.EmailDetails,
+	fallbackAccount string,
+) (*PredictedFields, error) {
 	log := logger.Logger(ctx)
 	predicted := &PredictedFields{
 		Account: PredictionResult{

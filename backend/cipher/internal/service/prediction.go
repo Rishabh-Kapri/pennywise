@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	// "encoding/json"
 	"fmt"
 	"strings"
 
@@ -11,8 +12,12 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/client"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/model"
 	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"go.opentelemetry.io/otel/attribute"
+
+	oteltrace "go.opentelemetry.io/otel/trace"
 
 	"github.com/google/uuid"
 )
@@ -22,6 +27,7 @@ const (
 	ExactAmountThreshold = 0.70 // lower threshold for pgvector when exact amount is known
 	MLPConfThreshold     = 0.70
 	EmbeddingModel       = "bge-m3"
+	SourcePayeeRule      = "RULE"
 	SourcePgvector       = "VECTOR"
 	SourceMLP            = "MLP"
 	SourceLLM            = "LLM"
@@ -42,14 +48,14 @@ type LLMRequest struct {
 }
 
 type PredictResponse struct {
-	PayeeID      uuid.UUID `json:"payeeId"`
-	CategoryID   uuid.UUID `json:"categoryId"`
-	Payee        string    `json:"payee,omitempty"`
-	SuggestedTag string    `json:"suggestedTag,omitempty"`
-	Amount       float64   `json:"amount"`
-	Confidence   string    `json:"confidence"`
-	Source       string    `json:"source"` // pgvector | mlp | fallback
-	Reasoning    string    `json:"reasoning,omitempty"`
+	PayeeID    uuid.UUID `json:"payeeId"`
+	CategoryID uuid.UUID `json:"categoryId"`
+	Payee      string    `json:"payee,omitempty"`
+	Category   string    `json:"category,omitempty"`
+	Amount     float64   `json:"amount"`
+	Confidence string    `json:"confidence"`
+	Source     string    `json:"source"` // pgvector | mlp | fallback
+	Reasoning  string    `json:"reasoning,omitempty"`
 }
 
 type CorrectionRequest struct {
@@ -70,124 +76,244 @@ type predictionService struct {
 	ollama        *client.OllamaClient
 	mlp           *client.MLPClient
 	embeddingRepo repository.TransactionEmbeddingRepository
+	payeeRepo     repository.PayeesRepository
+	payeeRuleRepo repository.PayeeRuleRepository
+	categoryRepo  repository.CategoryRepository
+	tracer        oteltrace.Tracer
 }
 
 func NewPredictionService(
 	ollama *client.OllamaClient,
 	mlp *client.MLPClient,
 	embeddingRepo repository.TransactionEmbeddingRepository,
+	payeeRepo repository.PayeesRepository,
+	payeeRuleRepo repository.PayeeRuleRepository,
+	categoryRepo repository.CategoryRepository,
+	tracer oteltrace.Tracer,
 ) PredictionService {
 	return &predictionService{
 		ollama:        ollama,
 		mlp:           mlp,
 		embeddingRepo: embeddingRepo,
+		payeeRepo:     payeeRepo,
+		payeeRuleRepo: payeeRuleRepo,
+		categoryRepo:  categoryRepo,
+		tracer:        tracer,
 	}
 }
 
-// Helper function to clean the raw email text using local LLM
-func (s *predictionService) cleanEmailText(ctx context.Context, rawText string, transactionType string) string {
-	prompt := fmt.Sprintf(`
-You are a financial data extractor. Output strictly JSON.
-SCHEMA: {"merchant": "string", "amount": float, "account_card": "string (Bank name and last 4 digits only, no extra words)"}
-
-EXAMPLES:
-Input: "Alert: Rs 500 debited from HDFC CC XX1234 towards SWIGGY"
-Output: {"merchant": "SWIGGY", "amount": 500.0, "account_card": "HDFC 1234"}
-
-Input: "Txn of INR 1540 on ICICI XX4444 at RAZORPAY* MAKE MY T"
-Output: {"merchant": "RAZORPAY* MAKE MY T", "amount": 1540.0, "account_card": "ICICI 4444"}
-
-Input: "UPDATE: Your A/C XXXXXX1234 is debited by Rs 45.00 on 15-Apr-26 for Swiggy Genie via PTM*BUNDLE TECHNOL. Clear Bal Rs 12,345.67."
-Output: {"merchant": "Swiggy Genie", "amount": 45.0, "account_card": "1234"}
-
-Input: "Dear Customer,\nRs.1000.00 has been debited from account 1234 to VPA johndoes@okicici HOTEL JOE AND JOHN on 29-10-25."
-Output: {"merchant": "johndoes@okicici HOTEL JOE AND JOHN", "amount": 1000.0, "account_card": "1234"}
-
-Input: "Dear Customer,\nRs. 15000.00 is successfully credited to your account **9999 by VPA userhigh@okhdfcbank USER HIGH on 07-10-25."
-Output: {"merchant": "userhigh@okhdfcbank USER HIGH", "amount": 15000.0, "account_card": "9999"}
-
-Now process this input:
-Input: "{raw_text}"
-Output:
-		`)
-	prompt = strings.ReplaceAll(prompt, "{raw_text}", rawText)
-	resp, err := s.ollama.Generate(context.Background(), "gemma4", prompt, rawText, 0.0)
+func (s *predictionService) getPayeeAndCategory(
+	ctx context.Context,
+	budgetId uuid.UUID,
+	payeeId uuid.UUID,
+	categoryId uuid.UUID,
+) (payee *sharedModel.Payee, category *sharedModel.Category, err error) {
+	foundPayee, err := s.payeeRepo.GetById(ctx, budgetId, payeeId)
 	if err != nil {
-		return ""
+		return nil, nil, err
 	}
-	logger.Logger(ctx).Info("ollama generate", "resp", resp)
-	return resp
+
+	foundCategory, err := s.categoryRepo.GetById(ctx, budgetId, categoryId)
+	if err != nil {
+		return nil, nil, err
+	}
+	return foundPayee, foundCategory, nil
+}
+
+func (s *predictionService) handlePayeeRules(
+	ctx context.Context,
+	budgetId uuid.UUID,
+	matchString string,
+) (*PredictResponse, error) {
+	var result PredictResponse
+	foundPayeeRule, err := s.payeeRuleRepo.FindByMatchString(ctx, budgetId, matchString)
+	if err != nil {
+		return nil, err
+	}
+	if foundPayeeRule == nil {
+		return nil, nil
+	}
+	result.PayeeID = foundPayeeRule.PayeeID
+	result.CategoryID = foundPayeeRule.CategoryID
+
+	payee, category, err := s.getPayeeAndCategory(ctx, budgetId, result.PayeeID, result.CategoryID)
+	if err != nil {
+		return nil, err
+	}
+	result.Payee = payee.Name
+	result.Category = category.Name
+	result.Source = SourcePayeeRule
+	result.Confidence = "100"
+
+	return &result, nil
+}
+
+func (s *predictionService) handleSemanticSearch(
+	ctx context.Context,
+	budgetId uuid.UUID,
+	embeddingText string,
+	req PredictRequest,
+) (*PredictResponse, error) {
+	log := logger.Logger(ctx)
+
+	embedding, err := s.ollama.Embed(ctx, EmbeddingModel, embeddingText)
+	if err != nil {
+		log.Warn("ollama embed failed, falling back to MLP", "error", err)
+		// return s.mlpFallback(ctx, req, log)
+		return nil, nil
+	}
+
+	embeddingStr := db.VectorToString(embedding)
+
+	// Step 2: pgvector similarity search
+	matches, err := s.embeddingRepo.SearchSimilar(ctx, budgetId, req.Amount, embeddingStr, 3)
+	log.Info("pgvector search", "matches", matches)
+	if err != nil {
+		log.Warn("pgvector search failed", "error", err)
+		return nil, nil
+	}
+
+	if result := s.resolveMatches(matches); result != nil {
+		log.Info("pgvector match found", "payee", result.PayeeID, "similarity", result.Confidence)
+		payee, category, err := s.getPayeeAndCategory(ctx, budgetId, result.PayeeID, result.CategoryID)
+		if err != nil {
+			return nil, err
+		}
+		result.Payee = payee.Name
+		result.Category = category.Name
+		return result, nil
+	}
+	return nil, nil
+}
+
+func (s *predictionService) handleLLM(
+	ctx context.Context,
+	budgetId uuid.UUID,
+	embeddingText string,
+	req PredictRequest,
+) (*PredictResponse, error) {
+	llmReq := LLMRequest{
+		Text:   embeddingText,
+		Amount: req.Amount,
+	}
+	llmResult, err := s.llmFallback(ctx, budgetId, llmReq)
+	if err != nil {
+		return nil, err
+	}
+
+	jsonRes, err := utils.UnmarshalResponse[model.LLMPrediction]([]byte(llmResult))
+	if err != nil {
+		return nil, err
+	}
+	var result PredictResponse
+	// log.Info("LLM prediction", "jsonRes", jsonRes)
+
+	foundPayee, err := s.payeeRepo.Search(ctx, budgetId, jsonRes.MerchantName)
+	if err != nil {
+		return nil, err
+	}
+	if len(foundPayee) > 0 {
+		result.PayeeID = foundPayee[0].ID
+	} else {
+		// create payee
+	}
+	foundCategory, err := s.categoryRepo.Search(ctx, budgetId, jsonRes.SuggestedTag)
+	if err != nil {
+		return nil, err
+	}
+	if foundCategory != nil {
+		result.CategoryID = foundCategory[0].ID
+	} else {
+		// create category
+	}
+
+	result.Source = SourceLLM
+	result.Payee = jsonRes.MerchantName
+	result.Category = jsonRes.SuggestedTag
+	result.Reasoning = jsonRes.Reasoning
+	result.Confidence = fmt.Sprintf("%d", jsonRes.Confidence)
+
+	return &result, nil
 }
 
 func (s *predictionService) Predict(ctx context.Context, req PredictRequest) (*PredictResponse, error) {
 	log := logger.Logger(ctx)
 	log.Info("Predict", "request received", req)
-	// budgetId := utils.MustBudgetID(ctx)
-	budgetId := uuid.MustParse("2166418d-3fa2-4acc-b92c-ab9f36c18d76")
-	log.Info("budgetId", "id", budgetId, "req", req)
+	budgetId := utils.MustBudgetID(ctx)
 
-	// Step 1: Generate embedding via Ollama
-	_ = s.cleanEmailText(ctx, req.EmailText, "debit")
-	// cleanedEmailText := utils.CleanEmailText(req.EmailText, "debit")
-	// split := strings.Split(cleanedEmailText, " ")
-	// embeddingText := split[0] + " " + strings.Join(split[2:], " ")
-	//
-	// log.Info("cleaned email text", "text", cleanedEmailText)
+	ctx, span := s.tracer.Start(ctx, "predict")
+	defer span.End()
 
-	// embedding, err := s.ollama.Embed(ctx, EmbeddingModel, embeddingText)
-	// if err != nil {
-	// 	log.Warn("ollama embed failed, falling back to MLP", "error", err)
-	// 	// return s.mlpFallback(ctx, req, log)
-	// 	return nil, nil
-	// }
+	span.SetName("Predict")
+	span.SetAttributes(
+		attribute.String("emailText", req.EmailText),
+		attribute.Float64("amount", req.Amount),
+	)
 
-	// embeddingStr := db.VectorToString(embedding)
+	transactionType := "debit"
+	if req.Amount > 0 {
+		transactionType = "credit"
+	}
+	// Step 1: Extract email data using gemma4
+	extracted, err := s.ollama.ExtractEmailData(ctx, req.EmailText)
+	log.Info("email extraction", "extracted", extracted)
+	if err != nil {
+		logger.Logger(ctx).Warn("email extraction failed", "error", err)
+		return nil, err
+	}
+	if extracted == nil {
+		return nil, errs.New(errs.CodeInternalError, "email extraction failed")
+	}
+	upiText, merchantName := utils.CleanUPIText(extracted.Merchant)
+	merchantName = utils.CleanMerchantString(extracted.Merchant)
+	var matchString string
+	if upiText != "" {
+		matchString = upiText
+	} else {
+		matchString = merchantName
+	}
+	embeddingText := transactionType + " " + merchantName
+	log.Info("cleaned email text", "text", embeddingText)
 
-	// Step 2: pgvector similarity search
-	// matches, err := s.embeddingRepo.SearchSimilar(ctx, budgetId, req.Amount, embeddingStr, 3)
-	// log.Info("pgvector search", "matches", matches)
-	// if err != nil {
-	// 	log.Warn("pgvector search failed, falling back to MLP", "error", err)
-	// 	// return s.mlpFallback(ctx, req, log)
-	// 	return nil, nil
-	// }
-	//
-	// if result := s.resolveMatches(matches); result != nil {
-	// 	log.Info("pgvector match found", "payee", result.PayeeID, "similarity", result.Confidence)
-	//
-	// 	// @TODO: Store prediction embedding for future lookups after user accepts it
-	// 	// s.storeEmbedding(ctx, budgetID, req, result, SourcePrediction, embeddingStr)
-	//
-	// 	return result, nil
-	// }
-	//
-	// // LLM fallback
-	// llmReq := LLMRequest{
-	// 	Text:   embeddingText,
-	// 	Amount: req.Amount,
-	// }
-	// llmResult, err := s.llmFallback(ctx, llmReq)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	//
-	// jsonRes, err := utils.UnmarshalResponse[client.LLMPrediction]([]byte(llmResult))
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// var result PredictResponse
-	// log.Info("LLM prediction", "jsonRes", jsonRes)
-	// result.Source = SourceLLM
-	// result.Payee = jsonRes.MerchantName
-	// result.SuggestedTag = jsonRes.SuggestedTag
-	// result.Reasoning = jsonRes.Reasoning
-	// result.Confidence = fmt.Sprintf("%d", jsonRes.Confidence)
-	// return &result, nil
+	// Step 2: Search for payee specific rules
+	payeeRuleResult, err := s.handlePayeeRules(ctx, budgetId, matchString)
+	if err != nil {
+		log.Warn("payee rule search failed, falling back to semantic search", "error", err)
+	}
+	if payeeRuleResult == nil {
+		log.Info("payee rule search failed, falling back to semantic search")
+	} else {
+		log.Info("payee rule match found", "payee", payeeRuleResult.PayeeID, "category", payeeRuleResult.CategoryID)
+		return payeeRuleResult, nil
+	}
 
-	// // Store MLP result embedding if confident
-	// if mlpResult.Source == SourceMLP {
-	// 	s.storeEmbedding(ctx, budgetID, req, mlpResult, SourcePrediction, embeddingStr)
-	// }
+	// Step 3: Semantic search in transaction embeddings
+	semanticPrediction, err := s.handleSemanticSearch(ctx, budgetId, embeddingText, req)
+	if err != nil {
+		log.Warn("semantic search failed, falling back to LLM", "error", err)
+	}
+	if semanticPrediction == nil {
+		log.Info("semantic search failed, falling back to LLM")
+	} else {
+		log.Info(
+			"semantic search found",
+			"payee",
+			semanticPrediction.PayeeID,
+			"category",
+			semanticPrediction.CategoryID,
+		)
+		return semanticPrediction, nil
+	}
+
+	// Step 4: LLM fallback
+	llmPrediction, err := s.handleLLM(ctx, budgetId, embeddingText, req)
+	if err != nil {
+		log.Warn("LLM prediction failed, falling back to manual", "error", err)
+	}
+	if llmPrediction != nil {
+		log.Info("LLM prediction found", "payee", llmPrediction.PayeeID, "category", llmPrediction.CategoryID)
+		return llmPrediction, nil
+	}
 
 	return nil, nil
 }
@@ -204,7 +330,7 @@ func (s *predictionService) HandleCorrection(ctx context.Context, req Correction
 
 	embeddingStr := db.VectorToString(embedding)
 
-	data := model.TransactionEmbedding{
+	data := sharedModel.TransactionEmbedding{
 		BudgetID:      budgetID,
 		EmbeddingText: req.EmailText,
 		// PayeeID:       req.PayeeID,
@@ -226,7 +352,7 @@ func (s *predictionService) HandleCorrection(ctx context.Context, req Correction
 	return nil
 }
 
-func (s *predictionService) resolveMatches(matches []model.TransactionEmbedding) *PredictResponse {
+func (s *predictionService) resolveMatches(matches []sharedModel.TransactionEmbedding) *PredictResponse {
 	if len(matches) == 0 {
 		return nil
 	}
@@ -293,13 +419,13 @@ func (s *predictionService) resolveMatches(matches []model.TransactionEmbedding)
 // 	return result, nil
 // }
 
-func (s *predictionService) llmFallback(ctx context.Context, req LLMRequest) (string, error) {
-	// log := logger.Logger(ctx)
+func (s *predictionService) llmFallback(ctx context.Context, budgetId uuid.UUID, req LLMRequest) (string, error) {
+	log := logger.Logger(ctx)
 
 	// model := "gemma4"
-	// model := "openai/gpt-5.4"
+	model := "openai/gpt-5.4"
 	// model := "openai/gpt-4.1-mini"
-	model := "openai/gpt-4o-mini"
+	// model := "openai/gpt-4o-mini"
 	prompt := `
 	You are a transaction classifier for an Indian budgeting app.
 	Classify one bank alert into payee and category.
@@ -401,7 +527,8 @@ func (s *predictionService) llmFallback(ctx context.Context, req LLMRequest) (st
 		"Loan",
 		"Inflow: Ready to Assign",
 	}
-	prompt2 := fmt.Sprintf(`
+	userCategories, err := s.categoryRepo.GetAllSimplified(ctx, budgetId)
+	prompt2 := `
 You are an expert financial data extraction API. Your job is to analyze raw bank transaction text and output strictly valid JSON.
 
 Extract the clean merchant brand name and categorize the transaction into exactly ONE of the allowed categories.
@@ -411,6 +538,7 @@ RULES:
 2. CATEGORY: You must select exactly one category from the ALLOWED CATEGORIES list. If you are completely unsure, use "Uncategorized".
 3. SUBSCRIPTIONS: Flag is_subscription as true ONLY if the text implies a recurring payment (e.g., Netflix, Spotify, AWS, "recurring", "mandate").
 4. JSON ONLY: Do not wrap the response in markdown blocks. Return only the raw JSON object.
+5. Never output the data from the examples. Only process the provided input.
 
 ALLOWED CATEGORIES:
 {categories}
@@ -422,12 +550,53 @@ EXPECTED JSON SCHEMA:
   "confidence": integer (0-100),
   "reasoning": "string (Brief 1-sentence explanation of why you chose this category)"
 }
-		`)
+		`
+	prompt3 := `
+You are an expert financial data extraction API. Your job is to analyze raw bank transaction text and output strictly valid JSON.
+
+Extract the clean merchant brand name and categorize the transaction into exactly ONE of the allowed categories.
+
+RULES:
+1. MERCHANT NAME: Extract the core brand. Remove all bank jargon (UPI, POS, REF, VPA), dates, and reference numbers. (e.g., "PYU*Acme Coffee 12-Apr" -> "Acme Coffee").
+2. CATEGORY: You must select exactly one category from the ALLOWED CATEGORIES list. If you are completely unsure, use "Uncategorized".
+3. SUBSCRIPTIONS: Flag is_subscription as true ONLY if the text implies a recurring payment (e.g., Netflix, Spotify, AWS, "recurring", "mandate").
+4. JSON ONLY: Do not wrap the response in markdown blocks. Return only the raw JSON object.
+5. Pay strict attention to the INPUT string. Do not hallucinate merchants.
+
+ALLOWED CATEGORIES:
+{categories}
+
+EXAMPLES:
+Input: "Txn of INR 1540 on ICICI XX4444 at RAZORPAY* MAKE MY T"
+Output: {"merchantName": "MakeMyTrip", "suggestedTag": "✈️ Travel", "confidence": 95, "reasoning": "MakeMyTrip is a travel booking platform."}
+
+Input: "Rs 500 debited from HDFC CC XX1234 towards RELIANCE FRESH"
+Output: {"merchantName": "Reliance Fresh", "suggestedTag": "🛒 Groceries", "confidence": 98, "reasoning": "Reliance Fresh is a supermarket chain selling groceries."}
+
+Now process the following input. Output ONLY JSON.
+
+INPUT: "{emailText}"
+OUTPUT:
+	`
+	userCategoriesMap := make(map[string]uuid.UUID)
 	categoriesText := "- " + strings.Join(defaultCategories, "\n- ")
+	// userCategoriesText, err := json.Marshal(userCategories)
+	// if err != nil {
+	// 	return "", errs.Wrap(errs.CodeInternalError, "error in llm fallback", err)
+	// }
+	userCategoriesText := ""
+	for _, c := range userCategories {
+		userCategoriesText += c.Name + ", "
+		userCategoriesMap[c.Name] = c.ID
+	}
 	prompt = strings.ReplaceAll(prompt, "{categories}", categoriesText)
 	prompt = strings.ReplaceAll(prompt, "{email_text}", req.Text)
 	prompt = strings.ReplaceAll(prompt, "{amount}", fmt.Sprintf("%.2f", req.Amount))
-	prompt2 = strings.ReplaceAll(prompt2, "{categories}", categoriesText)
+	// prompt2 = strings.ReplaceAll(prompt2, "{categories}", string(userCategoriesText))
+	prompt2 = strings.ReplaceAll(prompt2, "{categories}", userCategoriesText)
+	prompt3 = strings.ReplaceAll(prompt3, "{categories}", userCategoriesText)
+	prompt3 = strings.ReplaceAll(prompt3, "{emailText}", req.Text)
+	log.Info("LLM prompt", "prompt", prompt2)
 	resp, err := s.ollama.Generate(ctx, model, prompt2, req.Text, req.Amount)
 	if err != nil {
 		return "", errs.Wrap(errs.CodeInternalError, "error in llm fallback", err)
@@ -442,32 +611,25 @@ EXPECTED JSON SCHEMA:
 	return resp, nil
 }
 
-// func (s *predictionService) defaultFallback(req PredictRequest) *PredictResponse {
-// 	account := req.Account
-// 	if account == "" {
-// 		account = "Unknown"
-// 	}
-// 	return &PredictResponse{
-// 		Payee:      "Unexpected",
-// 		Category:   "❗ Unexpected expenses",
-// 		Account:    account,
-// 		Confidence: 0,
-// 		Source:     SourceFallback,
-// 	}
-// }
+func (s *predictionService) storeEmbedding(
+	ctx context.Context,
+	budgetID uuid.UUID,
+	req PredictRequest,
+	embeddingText string,
+	result *PredictResponse,
+	source string,
+	embeddingStr string,
+) {
+	data := sharedModel.TransactionEmbedding{
+		BudgetID:      budgetID,
+		EmbeddingText: embeddingText,
+		PayeeID:       result.PayeeID,
+		CategoryID:    result.CategoryID,
+		Amount:        req.Amount,
+		Source:        source,
+	}
 
-// func (s *predictionService) storeEmbedding(ctx context.Context, budgetID uuid.UUID, req PredictRequest, result *PredictResponse, source string, embeddingStr string) {
-// 	data := model.TransactionEmbedding{
-// 		BudgetID:      budgetID,
-// 		EmbeddingText: req.EmailText,
-// 		Payee:         result.Payee,
-// 		Category:      result.Category,
-// 		Account:       result.Account,
-// 		Amount:        req.Amount,
-// 		Source:        source,
-// 	}
-//
-// 	if err := s.embeddingRepo.Upsert(ctx, nil, data, embeddingStr); err != nil {
-// 		slog.Error("failed to store prediction embedding", "error", err)
-// 	}
-// }
+	if err := s.embeddingRepo.Upsert(ctx, nil, data, embeddingStr); err != nil {
+		logger.Logger(ctx).Error("failed to store prediction embedding", "error", err)
+	}
+}

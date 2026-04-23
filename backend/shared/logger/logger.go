@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 	"github.com/lmittmann/tint"
@@ -22,10 +23,21 @@ func Setup(service string) {
 	var handler slog.Handler
 
 	if env == "local" {
+		// handler = slogpretty.New(os.Stdout, &slogpretty.Options{
+		// 	Level:      logLevel,
+		// 	TimeFormat: "15:04:05",
+		// 	AddSource:  logLevel == slog.LevelDebug,
+		// 	Colorful:   true,
+		// 	Multiline:  true,
+		// })
+		// handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		// 	Level:     logLevel,
+		// 	AddSource: logLevel == slog.LevelDebug,
+		// })
 		handler = tint.NewHandler(os.Stdout, &tint.Options{
-			Level:      logLevel,
-			AddSource:  logLevel == slog.LevelDebug,
-			TimeFormat: "15:04:05",
+			Level:     logLevel,
+			AddSource: logLevel == slog.LevelDebug,
+			TimeFormat: time.Kitchen,
 		})
 	} else {
 		handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{

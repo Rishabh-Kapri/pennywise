@@ -4,11 +4,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
-
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
@@ -57,7 +56,15 @@ func NewTransactionService(
 }
 
 // internal method
-func (s *transactionService) updatePrediction(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, txnId uuid.UUID, txn model.Transaction, account model.Account, payee model.Payee) error {
+func (s *transactionService) updatePrediction(
+	ctx context.Context,
+	tx pgx.Tx,
+	budgetId uuid.UUID,
+	txnId uuid.UUID,
+	txn model.Transaction,
+	account model.Account,
+	payee model.Payee,
+) error {
 	prediction, err := s.predictionRepo.GetByTxnIdTx(ctx, tx, budgetId, txnId)
 	if err != nil {
 		return errs.Wrap(errs.CodePredictionLookupFailed, "error getting prediction", err)
@@ -140,7 +147,12 @@ func (s *transactionService) validateTransactionPayload(txn model.Transaction, b
 }
 
 // loadDependencies loads the budget, account, and payee for the transaction
-func (s *transactionService) loadDependencies(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, txn model.Transaction) (budget *model.Budget, account *model.Account, payee *model.Payee, err error) {
+func (s *transactionService) loadDependencies(
+	ctx context.Context,
+	tx pgx.Tx,
+	budgetId uuid.UUID,
+	txn model.Transaction,
+) (budget *model.Budget, account *model.Account, payee *model.Payee, err error) {
 	budget, err = s.budgetRepo.GetById(ctx, tx, budgetId)
 	if err != nil {
 		return nil, nil, nil, errs.Wrap(errs.CodeBudgetLookupFailed, "error fetching budget", err)
@@ -161,7 +173,13 @@ func (s *transactionService) loadDependencies(ctx context.Context, tx pgx.Tx, bu
 
 // validate the category of the transaction
 // for budget transfers, the category should be nil
-func (s *transactionService) validateCategory(categoryID *uuid.UUID, inflowCategoryID uuid.UUID, account model.Account, payee model.Payee, amount float64) error {
+func (s *transactionService) validateCategory(
+	categoryID *uuid.UUID,
+	inflowCategoryID uuid.UUID,
+	account model.Account,
+	payee model.Payee,
+	amount float64,
+) error {
 	// budget -> budget transfers don't have a category
 	if payee.TransferAccountID != nil {
 		if account.Type == "savings" || account.Type == "checking" || account.Type == "creditCard" {
@@ -177,7 +195,15 @@ func (s *transactionService) validateCategory(categoryID *uuid.UUID, inflowCateg
 }
 
 // createCounterpartTxn creates the counterpart transaction for a transfer
-func (s *transactionService) createCounterpartTxn(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, parentId uuid.UUID, txn model.Transaction, account model.Account, payee model.Payee) (uuid.UUID, error) {
+func (s *transactionService) createCounterpartTxn(
+	ctx context.Context,
+	tx pgx.Tx,
+	budgetId uuid.UUID,
+	parentId uuid.UUID,
+	txn model.Transaction,
+	account model.Account,
+	payee model.Payee,
+) (uuid.UUID, error) {
 	counterpart := model.Transaction{
 		BudgetID:              budgetId,
 		AccountID:             payee.TransferAccountID,
@@ -223,18 +249,40 @@ func (s *transactionService) applySideEffects(ctx context.Context, tx pgx.Tx, in
 	case isCreate:
 		if input.newTxn.CategoryID != nil && *input.newTxn.CategoryID != input.budget.Metadata.InflowCategoryID {
 			monthKey := utils.GetMonthKey(input.newTxn.Date.String())
-			if err := s.mbService.UpsertCarryover(ctx, tx, input.budgetId, *input.newTxn.CategoryID, monthKey, input.newTxn.Amount); err != nil {
+			if err := s.mbService.UpsertCarryover(
+				ctx,
+				tx,
+				input.budgetId,
+				*input.newTxn.CategoryID,
+				monthKey,
+				input.newTxn.Amount,
+			); err != nil {
 				return err
 			}
 		}
 	case isUpdate:
-		if err := s.mbService.UpdateCarryovers(ctx, tx, input.budgetId, input.oldTxn, input.newTxn, input.budget.Metadata.InflowCategoryID); err != nil {
+		if err := s.mbService.UpdateCarryovers(
+			ctx,
+			tx,
+			input.budgetId,
+			input.oldTxn,
+			input.newTxn,
+			input.budget.Metadata.InflowCategoryID,
+		); err != nil {
 			return err
 		}
 	case isDelete:
-		if input.oldTxn.CategoryID != nil && (input.budget == nil || *input.oldTxn.CategoryID != input.budget.Metadata.InflowCategoryID) {
+		if input.oldTxn.CategoryID != nil &&
+			(input.budget == nil || *input.oldTxn.CategoryID != input.budget.Metadata.InflowCategoryID) {
 			monthKey := utils.GetMonthKey(input.oldTxn.Date.String())
-			if err := s.mbService.UpsertCarryover(ctx, tx, input.budgetId, *input.oldTxn.CategoryID, monthKey, -input.oldTxn.Amount); err != nil {
+			if err := s.mbService.UpsertCarryover(
+				ctx,
+				tx,
+				input.budgetId,
+				*input.oldTxn.CategoryID,
+				monthKey,
+				-input.oldTxn.Amount,
+			); err != nil {
 				return err
 			}
 		}
@@ -244,7 +292,15 @@ func (s *transactionService) applySideEffects(ctx context.Context, tx pgx.Tx, in
 	switch {
 	case isCreate:
 		if input.payee != nil && input.payee.TransferAccountID != nil {
-			createdId, err := s.createCounterpartTxn(ctx, tx, input.budgetId, input.newTxn.ID, *input.newTxn, *input.account, *input.payee)
+			createdId, err := s.createCounterpartTxn(
+				ctx,
+				tx,
+				input.budgetId,
+				input.newTxn.ID,
+				*input.newTxn,
+				*input.account,
+				*input.payee,
+			)
 			if err != nil {
 				return err
 			}
@@ -255,7 +311,15 @@ func (s *transactionService) applySideEffects(ctx context.Context, tx pgx.Tx, in
 			}
 		}
 	case isUpdate:
-		if err := s.reconcileTransfer(ctx, tx, input.budgetId, *input.oldTxn, input.newTxn, *input.account, *input.payee); err != nil {
+		if err := s.reconcileTransfer(
+			ctx,
+			tx,
+			input.budgetId,
+			*input.oldTxn,
+			input.newTxn,
+			*input.account,
+			*input.payee,
+		); err != nil {
 			return err
 		}
 	case isDelete:
@@ -269,7 +333,15 @@ func (s *transactionService) applySideEffects(ctx context.Context, tx pgx.Tx, in
 	// --- Predictions ---
 	switch {
 	case isUpdate && input.oldTxn.Source == "MLP":
-		if err := s.updatePrediction(ctx, tx, input.budgetId, input.oldTxn.ID, *input.newTxn, *input.account, *input.payee); err != nil {
+		if err := s.updatePrediction(
+			ctx,
+			tx,
+			input.budgetId,
+			input.oldTxn.ID,
+			*input.newTxn,
+			*input.account,
+			*input.payee,
+		); err != nil {
 			return errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating prediction", err)
 		}
 	case isDelete && input.oldTxn.Source == "MLP":
@@ -287,7 +359,15 @@ func (s *transactionService) applySideEffects(ctx context.Context, tx pgx.Tx, in
 	return nil
 }
 
-func (s *transactionService) reconcileTransfer(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, foundTxn model.Transaction, newTxn *model.Transaction, account model.Account, payee model.Payee) error {
+func (s *transactionService) reconcileTransfer(
+	ctx context.Context,
+	tx pgx.Tx,
+	budgetId uuid.UUID,
+	foundTxn model.Transaction,
+	newTxn *model.Transaction,
+	account model.Account,
+	payee model.Payee,
+) error {
 	// reconcile transfer transactions
 	wasTransfer := foundTxn.TransferTransactionID != nil
 	isTransfer := payee.TransferAccountID != nil
@@ -296,7 +376,8 @@ func (s *transactionService) reconcileTransfer(ctx context.Context, tx pgx.Tx, b
 	switch {
 	case wasTransfer && !isTransfer:
 		// transfer → regular: delete counterpart, clear fields
-		logger.Logger(ctx).Info("converting transfer to regular, deleting counterpart", "transferTxnId", *foundTxn.TransferTransactionID)
+		logger.Logger(ctx).
+			Info("converting transfer to regular, deleting counterpart", "transferTxnId", *foundTxn.TransferTransactionID)
 		if err := s.repo.DeleteById(ctx, tx, budgetId, *foundTxn.TransferTransactionID); err != nil {
 			return errs.Wrap(errs.CodeTransactionDeleteFailed, "error deleting transfer transaction", err)
 		}
@@ -328,7 +409,8 @@ func (s *transactionService) reconcileTransfer(ctx context.Context, tx pgx.Tx, b
 
 	case wasTransfer && isTransfer && samePayee:
 		// same transfer: update counterpart with new amount/date/note
-		logger.Logger(ctx).Info("updating existing transfer counterpart", "transferTxnId", *foundTxn.TransferTransactionID)
+		logger.Logger(ctx).
+			Info("updating existing transfer counterpart", "transferTxnId", *foundTxn.TransferTransactionID)
 		counterpart := model.Transaction{
 			BudgetID:              budgetId,
 			AccountID:             payee.TransferAccountID,
@@ -380,7 +462,13 @@ func (s *transactionService) Create(ctx context.Context, txn model.Transaction) 
 			return err
 		}
 
-		if err = s.validateCategory(txn.CategoryID, budget.Metadata.InflowCategoryID, *account, *payee, txn.Amount); err != nil {
+		if err = s.validateCategory(
+			txn.CategoryID,
+			budget.Metadata.InflowCategoryID,
+			*account,
+			*payee,
+			txn.Amount,
+		); err != nil {
 			return err
 		}
 
@@ -461,7 +549,13 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 		// fetch updated txn account and payee
 		budget, account, payee, err := s.loadDependencies(txCtx, tx, budgetId, toUpdate)
 
-		err = s.validateCategory(toUpdate.CategoryID, budget.Metadata.InflowCategoryID, *account, *payee, toUpdate.Amount)
+		err = s.validateCategory(
+			toUpdate.CategoryID,
+			budget.Metadata.InflowCategoryID,
+			*account,
+			*payee,
+			toUpdate.Amount,
+		)
 		if err != nil {
 			return err
 		}
