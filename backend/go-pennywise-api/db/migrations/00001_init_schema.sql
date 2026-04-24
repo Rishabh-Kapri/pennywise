@@ -1,71 +1,12 @@
 -- +goose Up
 -- +goose StatementBegin
--- Global MCC tags
-create type prediction_source as enum (
-  'LLM', 'MANUAL', 'RULE_LOCAL', 'RULE_GLOBAL', 'VECTOR', 'UNCATEGORIZED'
-)
-CREATE TYPE global_mcc_tag AS ENUM (
-    -- 🍔 Food & Dining
-    'FOOD_DELIVERY', 'FAST_FOOD', 'DINING_OUT', 'COFFEE_SHOP',
-
-    -- 🛒 Groceries & Daily Needs
-    'GROCERIES', 'QUICK_COMMERCE', 'PHARMACY',
-
-    -- 🛍️ Shopping & Retail
-    'E_COMMERCE', 'SHOPPING_CLOTHING', 'SHOPPING_ELECTRONICS', 'SHOPPING_FURNITURE', 'SHOPPING_GENERAL',
-
-    -- 🏡 Housing & Utilities
-    'RENT_MORTGAGE', 'UTILITY_ELECTRICITY', 'UTILITY_WATER', 'UTILITY_GAS', 'UTILITY_BROADBAND', 'TELECOM_MOBILE', 'HOME_MAINTENANCE',
-
-    -- 🚗 Transit & Travel
-    'TRANSPORT_LOCAL',     -- Cabs, Autos, Uber, Rapido
-    'TRANSIT_PUBLIC',      -- Metro, City Buses
-    'TRAVEL_FLIGHTS', 'TRAVEL_TRAINS', 'TRAVEL_HOTELS',
-
-    -- 🍿 Subscriptions & Entertainment
-    'SUBSCRIPTION_VIDEO',  -- Netflix, Prime
-    'SUBSCRIPTION_AUDIO',  -- Spotify, Apple Music
-    'SUBSCRIPTION_SOFTWARE', -- Canva, OpenAI, GitHub
-    'SUBSCRIPTION_DIGITAL',  -- Google Play, App Store
-    'ENTERTAINMENT_MOVIES',  -- BookMyShow
-    'ENTERTAINMENT_EVENTS',
-    'GAMING',
-
-    -- 🧘🏽 Health & Wellness
-    'MEDICAL_HOSPITAL', 'FITNESS_GYM', 'SPORTS', 'GROOMING_SALON',
-
-    -- 💳 Financial & Obligations
-    'BILL_CREDIT_CARD', 'BILL_EMI', 'TAX', 'INSURANCE_LIFE', 'INSURANCE_HEALTH', 'INSURANCE_VEHICLE',
-
-    -- 📈 Wealth & Investments
-    'INVESTMENT_MUTUAL_FUND', 'INVESTMENT_STOCKS', 'INVESTMENT_CRYPTO', 'INVESTMENT_GOLD', 'INVESTMENT_FD_RD', 'INVESTMENT_NPS_PPF',
-
-    -- 👪 Life & Family
-    'EDUCATION_FEES', 'PET_CARE', 'CHILDREN', 'CHARITY_DONATION', 'GIFTS',
-
-    -- 💵 Income
-    'INCOME_SALARY', 'INCOME_FREELANCE', 'INCOME_BUSINESS', 'INCOME_REWARD_CASHBACK', 'INCOME_REFUND', 'INCOME_INTEREST_DIVIDEND',
-
-    -- 🔄 System & Transfers
-    'TRANSFER_SELF', 'TRANSFER_P2P', 'CASH_WITHDRAWAL',
-    'WALLET_TOPUP',        -- Paytm Wallet, Amazon Pay Top-up
-    'CHARGES_FEES'         -- Late fees, AMC charges, convenience fees
-);-- Merchants Source of Truth
-CREATE TABLE global_merchants (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    canonical_name VARCHAR(255) NOT NULL UNIQUE,
-    mcc_tag global_mcc_tag NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+CREATE TYPE prediction_source AS ENUM (
+  'LLM', 'MANUAL', 'RULE', 'VECTOR', 'UNCATEGORIZED'
 );
--- Mapping of merchants to raw text (eg, PYU*Swiggy, RSP*Swiggy -> FOOD_DELIVERY)
-CREATE TABLE global_merchant_mappings (
-    -- Making cleaned_raw_text the PK ensures we never have duplicate string mappings
-    cleaned_raw_text VARCHAR(255) PRIMARY KEY, -- eg, debit PYU*Swiggy (no invoice number, upi id)
-    merchant_id UUID NOT NULL REFERENCES global_merchants(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+CREATE TYPE transaction_status AS ENUM (
+  'UNAPPROVED', 'APPROVED', 'REJECTED', 'MANUAL'
 );
-CREATE INDEX idx_global_merchants_mcc ON global_merchants(mcc_tag);
+CREATE TYPE PAYEE_MATCH_TYPE AS ENUM ('EXACT', 'PATTERN');
 
 CREATE TABLE IF NOT EXISTS auth_users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -92,6 +33,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     budget_id UUID NOT NULL REFERENCES budgets(id),
     transfer_payee_id UUID,
     type TEXT NOT NULL,
+    suffix TEXT, -- for saving the last 4 digits of the account number
     closed BOOLEAN DEFAULT false,
     deleted BOOLEAN DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -103,7 +45,6 @@ CREATE TABLE IF NOT EXISTS payees (
     name TEXT NOT NULL,
     budget_id UUID NOT NULL REFERENCES budgets(id),
     transfer_account_id UUID REFERENCES accounts(id),
-    default_category_id UUID REFERENCES categories(id),
     deleted BOOLEAN DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -112,11 +53,15 @@ CREATE TABLE IF NOT EXISTS payees (
 -- Adding this constraint directly. accounts had transfer_payee_id as a UUID.
 ALTER TABLE accounts ADD CONSTRAINT fk_transfer_payee_id FOREIGN KEY (transfer_payee_id) REFERENCES payees(id);
 
-CREATE TABLE IF NOT EXISTS payee_matches (
+CREATE TABLE IF NOT EXISTS payee_rules (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   budget_id UUID NOT NULL REFERENCES budgets(id) ON DELETE CASCADE,
   payee_id UUID NOT NULL REFERENCES payees(id) ON DELETE CASCADE,
+  category_id UUID REFERENCES categories(id),
+
   match_string TEXT NOT NULL, -- upi handle or bank string
+  match_type PAYEE_MATCH_TYPE NOT NULL DEFAULT 'EXACT',
+
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted BOOLEAN DEFAULT false,
@@ -125,17 +70,6 @@ CREATE TABLE IF NOT EXISTS payee_matches (
 );
 CREATE INDEX idx_payee_matches_lookup ON payee_matches(budget_id, match_string);
 
-CREATE TABLE IF NOT EXISTS payee_global_matches (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  budget_id UUID NOT NULL REFERENCES budgets(id) ON DELETE CASCADE,
-  payee_id UUID NOT NULL REFERENCES payees(id) ON DELETE CASCADE,
-  canonical_merchant_id UUID NOT NULL REFERENCES global_merchants(id) ON DELETE CASCADE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  deleted BOOLEAN DEFAULT false,
-  -- A user cannot map the exact same canonical merchant to two different payees in their budget.
-  UNIQUE (budget_id, canonical_merchant_id)
-)
 
 CREATE TABLE IF NOT EXISTS category_groups (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -179,15 +113,24 @@ CREATE TABLE IF NOT EXISTS transactions (
     payee_id UUID REFERENCES payees(id),
     category_id UUID REFERENCES categories(id),
     account_id UUID NOT NULL REFERENCES accounts(id),
-    note TEXT,
     amount NUMERIC(12, 2) NOT NULL,
-    source prediction_source,
+    note TEXT,
+
+    dedupe_hash VARCHAR(64),
+    status transaction_status NOT NULL DEFAULT 'MANUAL',
+    raw_bank_text TEXT,
+
     transfer_account_id UUID REFERENCES accounts(id),
     transfer_transaction_id UUID REFERENCES transactions(id),
     deleted BOOLEAN DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Create partial index on dedupe_hash column
+-- This is a partial index because we don't want to prevent duplicates for manual transactions.
+CREATE UNIQUE INDEX idx_transactions_dedupe
+ON transactions(budget_id, dedupe_hash)
+WHERE dedupe_hash IS NOT NULL and deleted = FALSE;
 
 CREATE TABLE IF NOT EXISTS predictions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -208,6 +151,32 @@ CREATE TABLE IF NOT EXISTS predictions (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted BOOLEAN DEFAULT false
+);
+CREATE TABLE IF NOT EXISTS cipher_predictions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  budget_id UUID NOT NULL REFERENCES budgets(id) ON DELETE CASCADE,
+  transaction_id UUID NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+  email_text TEXT,
+  amount NUMERIC(12, 2),
+  -- extracted strings
+  extracted_account TEXT,
+  extracted_merchant TEXT,
+  -- predictions
+  predicted_payee_id UUID REFERENCES payees(id),
+  predicted_category_id UUID REFERENCES categories(id),
+  -- ai metrics
+  account_confidence NUMERIC(5, 2),
+  payee_confidence NUMERIC(5, 2),
+  category_confidence NUMERIC(5, 2),
+  source prediction_source NOT NULL,
+
+  has_user_corrected BOOLEAN DEFAULT false,
+  actual_payee_id UUID REFERENCES payees(id),
+  actual_category_id UUID REFERENCES categories(id),
+  
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  deleted BOOLEAN DEFAULT false
 );
 
 CREATE TABLE IF NOT EXISTS loan_metadata (
@@ -277,15 +246,15 @@ DROP TABLE IF EXISTS transactions;
 DROP TABLE IF EXISTS monthly_budgets;
 DROP TABLE IF EXISTS categories;
 DROP TABLE IF EXISTS category_groups;
-DROP TABLE IF EXISTS payee_matches;
-DROP TABLE IF EXISTS payee_global_matches;
+DROP TABLE IF EXISTS payee_rules;
 -- Drop constraints to safely drop items
 ALTER TABLE accounts DROP CONSTRAINT IF EXISTS fk_transfer_payee_id;
 DROP TABLE IF EXISTS payees;
 DROP TABLE IF EXISTS accounts;
 DROP TABLE IF EXISTS budgets;
 DROP TABLE IF EXISTS auth_users;
-DROP TABLE IF EXISTS global_merchant_mappings;
-DROP TABLE IF EXISTS global_merchants;
-DROP TYPE IF EXISTS global_mcc_tag;
+DROP TABLE IF EXISTS cipher_predictions;
+DROP TYPE IF EXISTS PAYEE_MATCH_TYPE;
+DROP TYPE IF EXISTS prediction_source;
+DROP TYPE IF EXISTS transaction_status;
 -- +goose StatementEnd

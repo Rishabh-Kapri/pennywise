@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	"github.com/google/uuid"
@@ -15,6 +16,7 @@ type AccountRepository interface {
 	BaseRepositoryInterface
 	GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Account, error)
 	GetById(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, accountId uuid.UUID) (*model.Account, error)
+	GetBySuffix(ctx context.Context, budgetId uuid.UUID, suffix string) (*model.Account, error)
 	Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.Account, error)
 	Create(ctx context.Context, tx pgx.Tx, account model.Account) (*model.Account, error)
 	UpdateTransferPayee(ctx context.Context, tx pgx.Tx, accountId uuid.UUID, payeeId uuid.UUID) error
@@ -86,6 +88,32 @@ func (r *accountRepo) GetById(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID
 		  WHERE id = $1 AND budget_id = $2 AND deleted = FALSE
 		`,
 		accountId, budgetId,
+	).Scan(
+		&a.ID,
+		&a.Name,
+		&a.BudgetID,
+		&a.TransferPayeeID,
+		&a.Type,
+		&a.Closed,
+		&a.CreatedAt,
+		&a.UpdatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &a, nil
+}
+
+func (r *accountRepo) GetBySuffix(ctx context.Context, budgetId uuid.UUID, suffix string) (*model.Account, error) {
+	logger.Logger(ctx).Info("getting account by suffix", "budgetId", budgetId, "suffix", suffix)
+	var a model.Account
+	err := r.Executor(nil).QueryRow(
+		ctx, `
+		  SELECT id, name, budget_id, transfer_payee_id, type, closed, created_at, updated_at 
+		  FROM accounts 
+		  WHERE budget_id = $1 AND deleted = FALSE AND suffix = $2
+		`,
+		budgetId, suffix,
 	).Scan(
 		&a.ID,
 		&a.Name,

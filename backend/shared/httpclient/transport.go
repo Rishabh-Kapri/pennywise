@@ -30,15 +30,16 @@ func NewHttpTransport(baseUrl string) transport.Transport {
 
 func applyHeaders(ctx context.Context, req *http.Request, headers map[string][]string) {
 	req.Header.Set("Content-Type", "application/json")
+
 	if headers != nil {
 		for k, v := range headers {
-			req.Header[k] = v
+			req.Header.Set(k, v[0])
 		}
 	}
 
 	for k, v := range utils.GetHeaders(ctx) {
 		if req.Header.Get(k) == "" {
-			req.Header[k] = v
+			req.Header.Set(k, v[0])
 		}
 	}
 }
@@ -56,7 +57,7 @@ func (h *httpTransport) get(ctx context.Context, path string) (transport.Respons
 }
 
 func (h *httpTransport) requestWithBody(ctx context.Context, method string, path string, headers map[string][]string, data any) (transport.Response, error) {
-	logger.Logger(ctx).Debug("httpTransport."+method, "url", h.baseUrl, "path", path, "data", data)
+	// logger.Logger(ctx).Debug("httpTransport."+method, "url", h.baseUrl, "path", path, "data", data)
 	var url string
 	if strings.HasPrefix(path, "https://") {
 		url = path
@@ -91,8 +92,6 @@ func (h *httpTransport) do(ctx context.Context, req *http.Request, headers map[s
 	var resp transport.Response
 
 	applyHeaders(ctx, req, headers)
-	
-	log.Info("request headers", "headers", req.Header)
 
 	res, err := h.client.Do(req)
 	if err != nil {

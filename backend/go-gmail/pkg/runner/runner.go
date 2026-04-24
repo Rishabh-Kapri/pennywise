@@ -2,15 +2,15 @@ package runner
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/auth"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/client"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/gmail"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/parser"
-	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/pennywise-api"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/prediction"
 
+	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 	"github.com/google/uuid"
@@ -23,7 +23,7 @@ type Runner struct {
 	gmail           *gmail.Service
 	parser          *parser.EmailParser
 	prediction      *prediction.Service
-	pennywise       *pennywise.Service
+	pennywise       *client.PennywiseClient
 	mu              sync.Mutex
 	processedMsgIds map[string]bool
 }
@@ -38,7 +38,7 @@ func NewRunner(
 	gmailService *gmail.Service,
 	parserService *parser.EmailParser,
 	predictionService *prediction.Service,
-	pennywiseService *pennywise.Service,
+	pennywiseService *client.PennywiseClient,
 ) *Runner {
 	return &Runner{
 		auth:            authService,
@@ -76,40 +76,40 @@ func (s *Runner) ProcessGmailHistoryId(ctx context.Context, eventData EventData)
 	// Fetch user info (including budgetId and refresh token) by email — no budget scoping needed
 	userInfo, err := s.pennywise.GetUser(ctx, eventData.Email)
 	if err != nil {
-		return fmt.Errorf("Failed to get user info: %w", err)
+		return err
 	}
 	log.Info("fetched user info", "budgetId", userInfo.BudgetID, "historyId", userInfo.GmailHistoryID)
 
 	// Set budget ID in context so all subsequent transport calls auto-inject X-Budget-ID
 	budgetUUID, err := uuid.Parse(userInfo.BudgetID)
 	if err != nil {
-		return fmt.Errorf("Failed to parse budget ID: %w", err)
+		return errs.Wrap(errs.CodeInvalidArgument, "Failed to parse budget ID", err)
 	}
 	ctx = utils.WithBudgetID(ctx, budgetUUID)
 
 	oauthconfig := s.auth.GetOauth2Config()
 	token, err := s.auth.GetTokenFromRefresh(userInfo.RefreshToken)
 	if err != nil {
-		return fmt.Errorf("Failed to get access token: %w", err)
+		return errs.Wrap(errs.CodeAuthLookupFailed, "Failed to get access token", err)
 	}
 
 	prevHistoryId := uint64(userInfo.GmailHistoryID)
 	log.Info("received history id", "prevHistoryId", prevHistoryId)
 
 	if err := s.pennywise.UpdateUserHistoryId(ctx, eventData.Email, eventData.HistoryId); err != nil {
-		return fmt.Errorf("Failed to update history id: %w", err)
+		return err
 	}
 
 	emailData, err := s.gmail.GetMessageHistory(eventData.Email, prevHistoryId, token, oauthconfig)
 	if err != nil {
-		return fmt.Errorf("Failed to get message history: %w", err)
+		return errs.Wrap(errs.CodeInternalError, "Failed to get message history", err)
 	}
 
 	log.Info("email data fetched", "count", len(emailData))
 	for _, data := range emailData {
 		// Skip already processed Gmail messages (cross-call dedup)
 		if s.isProcessed(data.MessageId) {
-			log.Info("duplicate message ID detected, skipping", "messageId", data.MessageId)
+			log.Warn("duplicate message ID detected, skipping", "messageId", data.MessageId)
 			continue
 		}
 
