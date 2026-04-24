@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/google/uuid"
 )
 
@@ -12,8 +13,22 @@ type contextKey string
 const (
 	budgetIDKey      contextKey = "budgetId"
 	userIDKey        contextKey = "userId"
+	userKey          contextKey = "user"
 	correlationIDKey contextKey = "correlationId"
 )
+
+// WithServiceName returns a new context with the service name set.
+func WithServiceName(ctx context.Context, name string) context.Context {
+	return context.WithValue(ctx, "serviceName", name)
+}
+
+func ServiceNameFromContext(ctx context.Context) string {
+	name, ok := ctx.Value("serviceName").(string)
+	if !ok {
+		return ""
+	}
+	return name
+}
 
 // WithBudgetID returns a new context with the budget ID set.
 func WithBudgetID(ctx context.Context, id uuid.UUID) context.Context {
@@ -51,6 +66,10 @@ func UserIDFromContext(ctx context.Context) (uuid.UUID, error) {
 		return uuid.Nil, errors.New("user ID not found in context")
 	}
 	return id, nil
+}
+
+func WithUser(ctx context.Context, user *model.AuthUser) context.Context {
+	return context.WithValue(ctx, "user", user)
 }
 
 func MustUserID(ctx context.Context) uuid.UUID {
@@ -111,6 +130,10 @@ func GetHeaders(ctx context.Context) map[string][]string {
 		// 	"X-User-ID": []string{uid.String()},
 		// })
 		headers["X-User-ID"] = []string{uid.String()}
+	}
+
+	if serviceName := ServiceNameFromContext(ctx); serviceName != "" {
+		headers["X-Service-Name"] = []string{serviceName}
 	}
 
 	return headers
