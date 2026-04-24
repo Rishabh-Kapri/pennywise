@@ -67,6 +67,12 @@ github.com/cloudwego/base64x/internal/native
 github.com/cloudwego/base64x/internal/native/avx2
 github.com/cloudwego/base64x/internal/native/sse
 github.com/cloudwego/base64x/internal/rt
+# github.com/davecgh/go-spew v1.1.1
+## explicit
+github.com/davecgh/go-spew/spew
+# github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a
+## explicit
+github.com/facebookgo/clock
 # github.com/gabriel-vasile/mimetype v1.4.13
 ## explicit; go 1.21
 github.com/gabriel-vasile/mimetype
@@ -132,9 +138,23 @@ github.com/goccy/go-yaml/parser
 github.com/goccy/go-yaml/printer
 github.com/goccy/go-yaml/scanner
 github.com/goccy/go-yaml/token
+# github.com/gogo/protobuf v1.3.2
+## explicit; go 1.15
+github.com/gogo/protobuf/jsonpb
+github.com/gogo/protobuf/proto
+github.com/gogo/protobuf/sortkeys
+github.com/gogo/protobuf/types
+# github.com/golang/mock v1.6.0
+## explicit; go 1.11
+github.com/golang/mock/gomock
 # github.com/google/uuid v1.6.0
 ## explicit
 github.com/google/uuid
+# github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.2
+## explicit; go 1.23.0
+github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/retry
+github.com/grpc-ecosystem/go-grpc-middleware/v2/metadata
+github.com/grpc-ecosystem/go-grpc-middleware/v2/util/backoffutils
 # github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0
 ## explicit; go 1.24.0
 github.com/grpc-ecosystem/grpc-gateway/v2/internal/httprule
@@ -188,12 +208,18 @@ github.com/modern-go/concurrent
 # github.com/modern-go/reflect2 v1.0.2
 ## explicit; go 1.12
 github.com/modern-go/reflect2
+# github.com/nexus-rpc/sdk-go v0.6.0
+## explicit; go 1.23
+github.com/nexus-rpc/sdk-go/nexus
 # github.com/pelletier/go-toml/v2 v2.3.0
 ## explicit; go 1.21.0
 github.com/pelletier/go-toml/v2
 github.com/pelletier/go-toml/v2/internal/characters
 github.com/pelletier/go-toml/v2/internal/tracker
 github.com/pelletier/go-toml/v2/unstable
+# github.com/pmezard/go-difflib v1.0.0
+## explicit
+github.com/pmezard/go-difflib/difflib
 # github.com/quic-go/qpack v0.6.0
 ## explicit; go 1.24
 github.com/quic-go/qpack
@@ -217,6 +243,18 @@ github.com/quic-go/quic-go/qlog
 github.com/quic-go/quic-go/qlogwriter
 github.com/quic-go/quic-go/qlogwriter/jsontext
 github.com/quic-go/quic-go/quicvarint
+# github.com/robfig/cron v1.2.0
+## explicit
+github.com/robfig/cron
+# github.com/stretchr/objx v0.5.2
+## explicit; go 1.20
+github.com/stretchr/objx
+# github.com/stretchr/testify v1.11.1
+## explicit; go 1.17
+github.com/stretchr/testify/assert
+github.com/stretchr/testify/assert/yaml
+github.com/stretchr/testify/mock
+github.com/stretchr/testify/require
 # github.com/twitchyliquid64/golang-asm v0.15.1
 ## explicit; go 1.13
 github.com/twitchyliquid64/golang-asm/asm/arch
@@ -371,6 +409,65 @@ go.opentelemetry.io/proto/otlp/logs/v1
 go.opentelemetry.io/proto/otlp/metrics/v1
 go.opentelemetry.io/proto/otlp/resource/v1
 go.opentelemetry.io/proto/otlp/trace/v1
+# go.temporal.io/api v1.62.7
+## explicit; go 1.21
+go.temporal.io/api/activity/v1
+go.temporal.io/api/batch/v1
+go.temporal.io/api/command/v1
+go.temporal.io/api/common/v1
+go.temporal.io/api/deployment/v1
+go.temporal.io/api/enums/v1
+go.temporal.io/api/errordetails/v1
+go.temporal.io/api/export/v1
+go.temporal.io/api/failure/v1
+go.temporal.io/api/filter/v1
+go.temporal.io/api/history/v1
+go.temporal.io/api/internal/protojson
+go.temporal.io/api/internal/protojson/errors
+go.temporal.io/api/internal/protojson/genid
+go.temporal.io/api/internal/protojson/json
+go.temporal.io/api/internal/protojson/order
+go.temporal.io/api/internal/protojson/set
+go.temporal.io/api/internal/protojson/strs
+go.temporal.io/api/internal/strcase
+go.temporal.io/api/namespace/v1
+go.temporal.io/api/nexus/v1
+go.temporal.io/api/operatorservice/v1
+go.temporal.io/api/protocol/v1
+go.temporal.io/api/protometa/v1
+go.temporal.io/api/proxy
+go.temporal.io/api/query/v1
+go.temporal.io/api/replication/v1
+go.temporal.io/api/rules/v1
+go.temporal.io/api/schedule/v1
+go.temporal.io/api/sdk/v1
+go.temporal.io/api/serviceerror
+go.temporal.io/api/taskqueue/v1
+go.temporal.io/api/temporalproto
+go.temporal.io/api/update/v1
+go.temporal.io/api/version/v1
+go.temporal.io/api/worker/v1
+go.temporal.io/api/workflow/v1
+go.temporal.io/api/workflowservice/v1
+go.temporal.io/api/workflowservicemock/v1
+# go.temporal.io/sdk v1.42.0
+## explicit; go 1.24.0
+go.temporal.io/sdk/activity
+go.temporal.io/sdk/client
+go.temporal.io/sdk/converter
+go.temporal.io/sdk/internal
+go.temporal.io/sdk/internal/common/backoff
+go.temporal.io/sdk/internal/common/cache
+go.temporal.io/sdk/internal/common/metrics
+go.temporal.io/sdk/internal/common/retry
+go.temporal.io/sdk/internal/common/serializer
+go.temporal.io/sdk/internal/common/util
+go.temporal.io/sdk/internal/log
+go.temporal.io/sdk/internal/protocol
+go.temporal.io/sdk/log
+go.temporal.io/sdk/temporal
+go.temporal.io/sdk/worker
+go.temporal.io/sdk/workflow
 # golang.org/x/arch v0.25.0
 ## explicit; go 1.25.0
 golang.org/x/arch/x86/x86asm
@@ -401,6 +498,7 @@ golang.org/x/net/ipv6
 golang.org/x/net/trace
 # golang.org/x/sync v0.20.0
 ## explicit; go 1.25.0
+golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
 # golang.org/x/sys v0.42.0
 ## explicit; go 1.25.0
@@ -423,8 +521,13 @@ golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
 golang.org/x/text/width
+# golang.org/x/time v0.3.0
+## explicit
+golang.org/x/time/rate
 # google.golang.org/genproto/googleapis/api v0.0.0-20260401024825-9d38bb4040a9
 ## explicit; go 1.25.0
+google.golang.org/genproto/googleapis/api
+google.golang.org/genproto/googleapis/api/annotations
 google.golang.org/genproto/googleapis/api/httpbody
 # google.golang.org/genproto/googleapis/rpc v0.0.0-20260401024825-9d38bb4040a9
 ## explicit; go 1.25.0
@@ -527,10 +630,15 @@ google.golang.org/protobuf/reflect/protoreflect
 google.golang.org/protobuf/reflect/protoregistry
 google.golang.org/protobuf/runtime/protoiface
 google.golang.org/protobuf/runtime/protoimpl
+google.golang.org/protobuf/types/descriptorpb
 google.golang.org/protobuf/types/known/anypb
 google.golang.org/protobuf/types/known/durationpb
+google.golang.org/protobuf/types/known/emptypb
 google.golang.org/protobuf/types/known/fieldmaskpb
 google.golang.org/protobuf/types/known/structpb
 google.golang.org/protobuf/types/known/timestamppb
 google.golang.org/protobuf/types/known/wrapperspb
+# gopkg.in/yaml.v3 v3.0.1
+## explicit
+gopkg.in/yaml.v3
 # github.com/Rishabh-Kapri/pennywise/backend/shared => ../shared
