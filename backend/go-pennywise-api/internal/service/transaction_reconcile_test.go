@@ -55,7 +55,9 @@ func TestReconcileTransfer(t *testing.T) {
 			isTransfer:  true,
 			setupMocks: func(repo *mockTransactionRepo) {
 				// Mock Create for counterpart
-				repo.On("Create", ctx, mockTx, mock.Anything).Return([]model.Transaction{{ID: newTransferTxnId}}, nil).Once()
+				repo.On("Create", ctx, mockTx, mock.Anything).
+					Return([]model.Transaction{{ID: newTransferTxnId}}, nil).
+					Once()
 			},
 			expectedError: false,
 		},
@@ -76,7 +78,9 @@ func TestReconcileTransfer(t *testing.T) {
 			samePayee:   false,
 			setupMocks: func(repo *mockTransactionRepo) {
 				repo.On("DeleteById", ctx, mockTx, budgetId, oldTransferTxnId).Return(nil).Once()
-				repo.On("Create", ctx, mockTx, mock.Anything).Return([]model.Transaction{{ID: newTransferTxnId}}, nil).Once()
+				repo.On("Create", ctx, mockTx, mock.Anything).
+					Return([]model.Transaction{{ID: newTransferTxnId}}, nil).
+					Once()
 			},
 			expectedError: false,
 		},

@@ -17,6 +17,7 @@ var ErrUserNotFound = errors.New("user not found")
 type AuthRepository interface {
 	BaseRepositoryInterface
 	CreateUser(ctx context.Context, tx pgx.Tx) (*model.AuthUser, error)
+	FindByID(ctx context.Context, id uuid.UUID) (*model.AuthUser, error)
 	UpdateTokenVersion(ctx context.Context, id uuid.UUID) error
 	GetTokenVersion(ctx context.Context, id uuid.UUID) (int, error)
 	SaveRefreshTokenHash(ctx context.Context, userID uuid.UUID, tokenHash string) error
@@ -26,6 +27,27 @@ type AuthRepository interface {
 
 type authRepo struct {
 	BaseRepository
+}
+
+func NewAuthRepository(pool *pgxpool.Pool) AuthRepository {
+	return &authRepo{BaseRepository: NewBaseRepository(pool)}
+}
+
+func (r *authRepo) FindByID(ctx context.Context, id uuid.UUID) (*model.AuthUser, error) {
+	var user model.AuthUser
+	err := r.Executor(nil).QueryRow(
+		ctx,
+		`SELECT id, token_version, refresh_token_hash, created_at, updated_at FROM auth_users WHERE id = $1 AND deleted = false`,
+		id,
+	).
+		Scan(&user.ID, &user.TokenVersion, &user.RefreshTokenHash, &user.CreatedAt, &user.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+		return nil, err
+	}
+	return &user, nil
 }
 
 func (r *authRepo) CreateUser(ctx context.Context, tx pgx.Tx) (*model.AuthUser, error) {
@@ -40,19 +62,6 @@ func (r *authRepo) CreateUser(ctx context.Context, tx pgx.Tx) (*model.AuthUser, 
 	}
 	return &user, nil
 }
-
-func NewAuthRepository(pool *pgxpool.Pool) AuthRepository {
-	return &authRepo{BaseRepository: NewBaseRepository(pool)}
-}
-
-// helper method to get the table name for the given provider type
-// func (r *authRepo) getProviderData(ctx context.Context, tx pgx.Tx, providerType model.AuthProviderType, providerID uuid.UUID) (*model.GoogleProviderUser, error) {
-// ...
-// }
-//
-// func (r *authRepo) FindByProviderID(ctx context.Context, providerID string, providerType model.AuthProviderType) (*model.AuthUserResponse, error) {
-// ...
-// }
 
 func (r *authRepo) UpdateTokenVersion(ctx context.Context, id uuid.UUID) error {
 	_, err := r.Executor(nil).Exec(

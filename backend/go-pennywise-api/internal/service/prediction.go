@@ -3,8 +3,8 @@ package service
 import (
 	"context"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
@@ -15,14 +15,16 @@ type PredictionService interface {
 	Create(ctx context.Context, prediction model.Prediction) ([]model.Prediction, error)
 	Update(ctx context.Context, id uuid.UUID, prediction model.Prediction) error
 	DeleteById(ctx context.Context, id uuid.UUID) error
+	CreateCipherPrediction(ctx context.Context, p model.CipherPredictionRecord) (*model.CipherPredictionRecord, error)
 }
 
 type predictionService struct {
-	repo repository.PredictionRepository
+	repo       repository.PredictionRepository
+	cipherRepo repository.CipherPredictionRepository
 }
 
-func NewPredictionService(r repository.PredictionRepository) PredictionService {
-	return &predictionService{repo: r}
+func NewPredictionService(r repository.PredictionRepository, cr repository.CipherPredictionRepository) PredictionService {
+	return &predictionService{repo: r, cipherRepo: cr}
 }
 
 func (s *predictionService) GetAll(ctx context.Context) ([]model.Prediction, error) {
@@ -47,4 +49,10 @@ func (s *predictionService) DeleteById(ctx context.Context, id uuid.UUID) error 
 	// budgetId := utils.MustBudgetID(ctx)
 	// return s.repo.Delete(ctx, budgetId, id)
 	return nil
+}
+
+func (s *predictionService) CreateCipherPrediction(ctx context.Context, p model.CipherPredictionRecord) (*model.CipherPredictionRecord, error) {
+	budgetID := utils.MustBudgetID(ctx)
+	p.BudgetID = budgetID
+	return s.cipherRepo.Create(ctx, p)
 }

@@ -1,5 +1,5 @@
 # Stage 1: build the go binary
-FROM golang:1.24-alpine AS build-stage
+FROM golang:1.25-alpine AS build-stage
 
 RUN apk add --no-cache git tzdata
 
@@ -7,13 +7,13 @@ WORKDIR /app
 
 # Copy go mod and download dependencies
 COPY go.mod go.sum ./
-RUN go mod download
+COPY vendor/ ./vendor/
 
 # Copy source
 COPY . .
 
 # Build
-RUN go build -o worker ./cmd/worker
+RUN go build -mod=vendor -o worker ./cmd/worker
 
 # Stage 2: Create a minimal image
 FROM alpine:latest
@@ -24,7 +24,7 @@ RUN apk update --no-cache && apk add --no-cache ca-certificates
 WORKDIR /root/
 
 # Copy binary from build-stage
-COPY --from=build-stage /app .
+COPY --from=build-stage /app/worker .
   
 # Set timezone for logs and time library
 ENV TZ=Asia/Kolkata
