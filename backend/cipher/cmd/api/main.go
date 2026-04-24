@@ -11,11 +11,15 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/client"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/handler"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/service"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/temporal"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
@@ -23,13 +27,20 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedMiddleware "github.com/Rishabh-Kapri/pennywise/backend/shared/middleware"
+	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/otelSDK"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
+
+	tc "go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/worker"
 )
+
+// package-level Temporal client, set in main() and used by handlers
+var temporalClient tc.Client
 
 func setupLogger() {
 	logger.Setup("cipher")
@@ -37,6 +48,19 @@ func setupLogger() {
 
 func healthPage(c *gin.Context) {
 	c.String(http.StatusOK, "cipher Health OK!")
+}
+
+func connectToTemporal(ctx context.Context, cfg config.Config) (tc.Client, error) {
+	logger.Logger(ctx).Info("temporal", "host", cfg.TemporalServerHost, "port", cfg.TemporalServerPort)
+	c, err := tc.Dial(tc.Options{
+		HostPort: cfg.TemporalServerHost + ":" + cfg.TemporalServerPort,
+		Logger:   logger.Logger(ctx),
+	})
+	if err != nil {
+		return nil, err
+	}
+	logger.Logger(ctx).Info("connected to temporal")
+	return c, nil
 }
 
 func main() {
@@ -64,6 +88,12 @@ func main() {
 	}
 	defer dbConn.Close()
 
+	temporalClient, err = connectToTemporal(ctx, cfg)
+	if err != nil {
+		logger.Fatal("Unable to connect to Temporal", "error", err)
+	}
+	defer temporalClient.Close()
+
 	// Clients
 	// currently we only have http transport
 	ollamaEngine := httpclient.NewHttpTransport(cfg.OllamaURL)
@@ -76,6 +106,7 @@ func main() {
 
 	// Repository
 	txnEmbeddingRepo := repository.NewTransactionEmbeddingRepository(dbConn)
+	accountRepo := repository.NewAccountRepository(dbConn)
 	budgetRepo := repository.NewBudgetRepository(dbConn)
 	payeeRepo := repository.NewPayeesRepository(dbConn)
 	payeeRuleRepo := repository.NewPayeeRuleRepository(dbConn)
@@ -86,11 +117,23 @@ func main() {
 		ollamaClient,
 		mlpClient,
 		txnEmbeddingRepo,
+		accountRepo,
 		payeeRepo,
 		payeeRuleRepo,
 		categoryRepo,
 		tel.Tracer,
 	)
+
+	w := worker.New(temporalClient, sharedModel.CipherActivitiesTaskQueue, worker.Options{
+		UseBuildIDForVersioning: false,
+	})
+	w.RegisterActivity(&temporal.PredictionActivity{PredictionService: predictionService})
+
+	go func() {
+		if err := w.Run(worker.InterruptCh()); err != nil {
+			logger.Fatal("Temporal activity worker failed", "error", err)
+		}
+	}()
 
 	// Handler
 	predictionHandler := handler.NewPredictionHandler(predictionService)
@@ -125,5 +168,9 @@ func main() {
 
 	addr := "0.0.0.0:" + cfg.Port
 	log.Printf("cipher listening on %s\n", addr)
-	router.Run(addr)
+	go router.Run(addr)
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
 }

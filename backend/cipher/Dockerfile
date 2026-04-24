@@ -1,4 +1,4 @@
-FROM golang:1.24-alpine AS build-stage
+FROM golang:1.25-alpine AS build-stage
 
 RUN apk add --no-cache git tzdata
 
@@ -11,7 +11,7 @@ COPY vendor/ ./vendor/
 # Copy source
 COPY . .
 
-RUN go build -mod=vendor -o orchestrator ./cmd/api
+RUN go build -mod=vendor -o cipher ./cmd/api
 
 FROM alpine:latest
 
@@ -19,10 +19,10 @@ RUN apk update --no-cache && apk add --no-cache ca-certificates tzdata
 
 WORKDIR /root/
 
-COPY --from=build-stage /app/orchestrator .
+COPY --from=build-stage /app/cipher .
 
 ENV TZ=Asia/Kolkata
 
 EXPOSE 5160
 
-ENTRYPOINT ["./orchestrator"]
+ENTRYPOINT ["./cipher"]
