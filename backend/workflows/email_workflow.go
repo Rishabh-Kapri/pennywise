@@ -24,11 +24,11 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input EmailWorflowInput) e
 
 	workflow.GetLogger(ctx).Info("Fetched emails", "count", len(parsedEmails))
 
-	var predictions PredictedFields
-	err = workflow.ExecuteActivity(ctx, "PredictFields", parsedEmails).Get(ctx, &predictions)
-	if err != nil {
-		return err
-	}
+	// var predictions PredictedFields
+	// err = workflow.ExecuteActivity(ctx, "PredictFields", parsedEmails).Get(ctx, &predictions)
+	// if err != nil {
+	// 	return err
+	// }
 
 	// err = workflow.ExecuteActivity(ctx, "CreateTransaction", CreateTransactionInput{
 	// 	ParsedData: parsedEmails,
