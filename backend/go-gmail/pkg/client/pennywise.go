@@ -11,6 +11,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/prediction"
 
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
+	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 )
@@ -87,12 +88,12 @@ func buildPath(path string, query map[string]string) string {
 
 // GetUser fetches google user info (including budgetId) by email.
 // This endpoint doesn't require budget scoping.
-func (s *PennywiseClient) GetUser(ctx context.Context, email string) (*GoogleUserInfo, error) {
+func (s *PennywiseClient) GetUser(ctx context.Context, email string) (*sharedModel.GoogleUserInfo, error) {
 	log := logger.Logger(ctx)
 	log.Info("getting user by email", "email", email)
 
 	path := buildPath("/api/auth/google/users", map[string]string{"email": email})
-	user, err := transport.Get[GoogleUserInfo](ctx, s.client, path)
+	user, err := transport.Get[sharedModel.GoogleUserInfo](ctx, s.client, path)
 	if err != nil {
 		log.Error("error getting user", "error", err)
 		return nil, errs.Wrap(errs.CodeUserLookupFailed, "failed to get user by email", err)

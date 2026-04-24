@@ -6,9 +6,9 @@ require (
 	cloud.google.com/go/firestore v1.18.0
 	cloud.google.com/go/pubsub v1.49.0
 	github.com/Rishabh-Kapri/pennywise/backend/shared v0.1.0
-	github.com/Rishabh-Kapri/pennywise/backend/workflows v0.0.0
 	github.com/gin-gonic/gin v1.12.0
 	github.com/lithammer/fuzzysearch v1.1.8
+	go.temporal.io/sdk v1.42.0
 	golang.org/x/oauth2 v0.35.0
 	google.golang.org/api v0.227.0
 )
@@ -58,8 +58,7 @@ require (
 	github.com/ugorji/go/codec v1.3.1 // indirect
 	go.mongodb.org/mongo-driver/v2 v2.5.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
-	go.temporal.io/api v1.62.2 // indirect
-	go.temporal.io/sdk v1.41.1 // indirect
+	go.temporal.io/api v1.62.7 // indirect
 	golang.org/x/arch v0.22.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
@@ -96,5 +95,3 @@ require (
 )
 
 replace github.com/Rishabh-Kapri/pennywise/backend/shared => ../shared
-
-replace github.com/Rishabh-Kapri/pennywise/backend/workflows => ../workflows
