@@ -68,16 +68,17 @@ func (h *authHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	// response, err := h.service.RefreshToken(c.Request.Context(), req.RefreshToken)
-	// logger.Logger(c.Request.Context()).Debug("refresh token response", "response", response, "error", err)
+	response, err := h.service.RefreshToken(c.Request.Context(), req.RefreshToken)
+	logger.Logger(c.Request.Context()).Debug("refresh token response", "response", response, "error", err)
 	logger.Logger(c.Request.Context()).Warn("not implemented")
-	// if err != nil {
-	// 	c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-	// 	return
-	// }
+	c.SetCookie("access_token", response.AccessToken, 3600, "/", h.config.Domain, false, true)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
 
-	// c.JSON(http.StatusOK, response)
-	c.JSON(http.StatusOK, "ok")
+	c.JSON(http.StatusOK, response)
+	// c.JSON(http.StatusOK, "ok")
 }
 
 //
@@ -125,6 +126,7 @@ func (h *authHandler) GetProviderUser(c *gin.Context) {
 	switch provider {
 	case "google":
 		email := strings.TrimSpace(c.Query("email"))
+		logger.Logger(ctx).Info("getting google user by email", "email", email)
 		if email == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "email query parameter is required"})
 			return

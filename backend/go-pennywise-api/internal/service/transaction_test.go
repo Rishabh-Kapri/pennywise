@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -33,7 +33,11 @@ type mockTransactionRepo struct {
 }
 
 // Create implements repository.TransactionRepository.
-func (m *mockTransactionRepo) Create(ctx context.Context, tx pgx.Tx, txn model.Transaction) ([]model.Transaction, error) {
+func (m *mockTransactionRepo) Create(
+	ctx context.Context,
+	tx pgx.Tx,
+	txn model.Transaction,
+) ([]model.Transaction, error) {
 	args := m.Called(ctx, tx, txn)
 	if obj := args.Get(0); obj != nil {
 		return obj.([]model.Transaction), args.Error(1)
@@ -48,7 +52,11 @@ func (m *mockTransactionRepo) DeleteById(ctx context.Context, tx pgx.Tx, budgetI
 }
 
 // GetAll implements repository.TransactionRepository.
-func (m *mockTransactionRepo) GetAll(ctx context.Context, budgetId uuid.UUID, filter *model.TransactionFilter) ([]model.Transaction, error) {
+func (m *mockTransactionRepo) GetAll(
+	ctx context.Context,
+	budgetId uuid.UUID,
+	filter *model.TransactionFilter,
+) ([]model.Transaction, error) {
 	args := m.Called(ctx, budgetId, filter)
 	if obj := args.Get(0); obj != nil {
 		return obj.([]model.Transaction), args.Error(1)
@@ -57,7 +65,11 @@ func (m *mockTransactionRepo) GetAll(ctx context.Context, budgetId uuid.UUID, fi
 }
 
 // GetAllNormalized implements repository.TransactionRepository.
-func (m *mockTransactionRepo) GetAllNormalized(ctx context.Context, budgetId uuid.UUID, accountId *uuid.UUID) ([]model.Transaction, error) {
+func (m *mockTransactionRepo) GetAllNormalized(
+	ctx context.Context,
+	budgetId uuid.UUID,
+	accountId *uuid.UUID,
+) ([]model.Transaction, error) {
 	args := m.Called(ctx, budgetId, accountId)
 	if obj := args.Get(0); obj != nil {
 		return obj.([]model.Transaction), args.Error(1)
@@ -66,7 +78,11 @@ func (m *mockTransactionRepo) GetAllNormalized(ctx context.Context, budgetId uui
 }
 
 // GetById implements repository.TransactionRepository.
-func (m *mockTransactionRepo) GetById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Transaction, error) {
+func (m *mockTransactionRepo) GetById(
+	ctx context.Context,
+	budgetId uuid.UUID,
+	id uuid.UUID,
+) (*model.Transaction, error) {
 	args := m.Called(ctx, budgetId, id)
 	if obj := args.Get(0); obj != nil {
 		return obj.(*model.Transaction), args.Error(1)
@@ -75,7 +91,12 @@ func (m *mockTransactionRepo) GetById(ctx context.Context, budgetId uuid.UUID, i
 }
 
 // GetByIdTx implements repository.TransactionRepository.
-func (m *mockTransactionRepo) GetByIdTx(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID) (*model.Transaction, error) {
+func (m *mockTransactionRepo) GetByIdTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	budgetId uuid.UUID,
+	id uuid.UUID,
+) (*model.Transaction, error) {
 	args := m.Called(ctx, tx, budgetId, id)
 	if obj := args.Get(0); obj != nil {
 		return obj.(*model.Transaction), args.Error(1)
@@ -89,7 +110,13 @@ func (m *mockTransactionRepo) GetPgxTx(ctx context.Context) (pgx.Tx, error) {
 }
 
 // Update implements repository.TransactionRepository.
-func (m *mockTransactionRepo) Update(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID, txn model.Transaction) error {
+func (m *mockTransactionRepo) Update(
+	ctx context.Context,
+	tx pgx.Tx,
+	budgetId uuid.UUID,
+	id uuid.UUID,
+	txn model.Transaction,
+) error {
 	args := m.Called(ctx, tx, budgetId, id, txn)
 	return args.Error(0)
 }
@@ -145,12 +172,20 @@ func (m *mockPredictionRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]
 }
 
 // GetByTxnId implements repository.PredictionRepository.
-func (m *mockPredictionRepo) GetByTxnId(ctx context.Context, budgetId uuid.UUID, txnId uuid.UUID) (*model.Prediction, error) {
+func (m *mockPredictionRepo) GetByTxnId(
+	ctx context.Context,
+	budgetId uuid.UUID,
+	txnId uuid.UUID,
+) (*model.Prediction, error) {
 	panic("unimplemented")
 }
 
 // Correct interface for PredictionRepo.GetByTxnIdTx
-func (m *mockPredictionRepo) GetByTxnIdTx(ctx context.Context, tx pgx.Tx, budgetId, txnId uuid.UUID) (*model.Prediction, error) {
+func (m *mockPredictionRepo) GetByTxnIdTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	budgetId, txnId uuid.UUID,
+) (*model.Prediction, error) {
 	args := m.Called(ctx, tx, budgetId, txnId)
 	if obj := args.Get(0); obj != nil {
 		return obj.(*model.Prediction), args.Error(1)
@@ -158,7 +193,12 @@ func (m *mockPredictionRepo) GetByTxnIdTx(ctx context.Context, tx pgx.Tx, budget
 	return nil, args.Error(1)
 }
 
-func (m *mockPredictionRepo) Update(ctx context.Context, tx pgx.Tx, budgetId, predictionId uuid.UUID, prediction model.Prediction) error {
+func (m *mockPredictionRepo) Update(
+	ctx context.Context,
+	tx pgx.Tx,
+	budgetId, predictionId uuid.UUID,
+	prediction model.Prediction,
+) error {
 	args := m.Called(ctx, tx, budgetId, predictionId, prediction)
 	return args.Error(0)
 }
@@ -178,8 +218,16 @@ func (m *mockAccountRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]mod
 	panic("unimplemented")
 }
 
+func (m *mockAccountRepo) GetBySuffix(ctx context.Context, budgetId uuid.UUID, suffix string) (*model.Account, error) {
+	panic("unimplemented")
+}
+
 // GetById implements repository.AccountRepository.
-func (m *mockAccountRepo) GetById(ctx context.Context, tx pgx.Tx, budgetId, accountId uuid.UUID) (*model.Account, error) {
+func (m *mockAccountRepo) GetById(
+	ctx context.Context,
+	tx pgx.Tx,
+	budgetId, accountId uuid.UUID,
+) (*model.Account, error) {
 	args := m.Called(ctx, tx, budgetId, accountId)
 	if obj := args.Get(0); obj != nil {
 		return obj.(*model.Account), args.Error(1)
@@ -193,7 +241,12 @@ func (m *mockAccountRepo) Search(ctx context.Context, budgetId uuid.UUID, query 
 }
 
 // UpdateTransferPayee implements repository.AccountRepository.
-func (m *mockAccountRepo) UpdateTransferPayee(ctx context.Context, tx pgx.Tx, accountId uuid.UUID, payeeId uuid.UUID) error {
+func (m *mockAccountRepo) UpdateTransferPayee(
+	ctx context.Context,
+	tx pgx.Tx,
+	accountId uuid.UUID,
+	payeeId uuid.UUID,
+) error {
 	panic("unimplemented")
 }
 
@@ -261,13 +314,25 @@ func (m *mockCategoryRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]mo
 	panic("unimplemented")
 }
 
+// GetAllSimplified implements repository.CategoryRepository.
+func (m *mockCategoryRepo) GetAllSimplified(
+	ctx context.Context,
+	budgetId uuid.UUID,
+) ([]model.CategorySimplified, error) {
+	panic("unimplemented")
+}
+
 // GetInflowBalance implements repository.CategoryRepository.
 func (m *mockCategoryRepo) GetInflowBalance(ctx context.Context, budgetId uuid.UUID) (float64, error) {
 	panic("unimplemented")
 }
 
 // GetByFilter implements repository.CategoryRepository.
-func (m *mockCategoryRepo) GetByFilter(ctx context.Context, budgetId uuid.UUID, filter model.CategoryFilter) ([]model.Category, error) {
+func (m *mockCategoryRepo) GetByFilter(
+	ctx context.Context,
+	budgetId uuid.UUID,
+	filter model.CategoryFilter,
+) ([]model.Category, error) {
 	panic("unimplemented")
 }
 
@@ -277,12 +342,20 @@ func (m *mockCategoryRepo) GetById(ctx context.Context, budgetId uuid.UUID, id u
 }
 
 // GetByIdSimplified implements repository.CategoryRepository.
-func (m *mockCategoryRepo) GetByIdSimplified(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Category, error) {
+func (m *mockCategoryRepo) GetByIdSimplified(
+	ctx context.Context,
+	budgetId uuid.UUID,
+	id uuid.UUID,
+) (*model.Category, error) {
 	panic("unimplemented")
 }
 
 // CategoryRepo mock methods
-func (m *mockCategoryRepo) GetByIdSimplifiedTx(ctx context.Context, tx pgx.Tx, budgetId, categoryId uuid.UUID) (*model.Category, error) {
+func (m *mockCategoryRepo) GetByIdSimplifiedTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	budgetId, categoryId uuid.UUID,
+) (*model.Category, error) {
 	args := m.Called(ctx, tx, budgetId, categoryId)
 	if obj := args.Get(0); obj != nil {
 		return obj.(*model.Category), args.Error(1)
@@ -296,7 +369,12 @@ func (m *mockCategoryRepo) Search(ctx context.Context, budgetId uuid.UUID, query
 }
 
 // Update implements repository.CategoryRepository.
-func (m *mockCategoryRepo) Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, category model.Category) error {
+func (m *mockCategoryRepo) Update(
+	ctx context.Context,
+	budgetId uuid.UUID,
+	id uuid.UUID,
+	category model.Category,
+) error {
 	panic("unimplemented")
 }
 
@@ -306,13 +384,24 @@ type mockMonthlyBudgetRepo struct {
 }
 
 // Create implements repository.MonthlyBudgetRepository.
-func (m *mockMonthlyBudgetRepo) Create(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, monthlyBudget model.MonthlyBudget) error {
+func (m *mockMonthlyBudgetRepo) Create(
+	ctx context.Context,
+	tx pgx.Tx,
+	budgetId uuid.UUID,
+	monthlyBudget model.MonthlyBudget,
+) error {
 	args := m.Called(ctx, tx, budgetId, monthlyBudget)
 	return args.Error(0)
 }
 
 // GetByCatIdAndMonth implements repository.MonthlyBudgetRepository.
-func (m *mockMonthlyBudgetRepo) GetByCatIdAndMonth(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categoryId uuid.UUID, month string) (*model.MonthlyBudget, error) {
+func (m *mockMonthlyBudgetRepo) GetByCatIdAndMonth(
+	ctx context.Context,
+	tx pgx.Tx,
+	budgetId uuid.UUID,
+	categoryId uuid.UUID,
+	month string,
+) (*model.MonthlyBudget, error) {
 	args := m.Called(ctx, tx, budgetId, categoryId, month)
 	if obj := args.Get(0); obj != nil {
 		return obj.(*model.MonthlyBudget), args.Error(1)
@@ -321,12 +410,26 @@ func (m *mockMonthlyBudgetRepo) GetByCatIdAndMonth(ctx context.Context, tx pgx.T
 }
 
 // UpdateBudgetedByCatIdAndMonth implements repository.MonthlyBudgetRepository.
-func (m *mockMonthlyBudgetRepo) UpdateBudgetedByCatIdAndMonth(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categoryId uuid.UUID, month string, newBudgeted float64) error {
+func (m *mockMonthlyBudgetRepo) UpdateBudgetedByCatIdAndMonth(
+	ctx context.Context,
+	tx pgx.Tx,
+	budgetId uuid.UUID,
+	categoryId uuid.UUID,
+	month string,
+	newBudgeted float64,
+) error {
 	panic("unimplemented")
 }
 
 // UpdateCarryoverByCatIdAndMonth implements repository.MonthlyBudgetRepository.
-func (m *mockMonthlyBudgetRepo) UpdateCarryoverByCatIdAndMonth(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categoryId uuid.UUID, month string, amount float64) error {
+func (m *mockMonthlyBudgetRepo) UpdateCarryoverByCatIdAndMonth(
+	ctx context.Context,
+	tx pgx.Tx,
+	budgetId uuid.UUID,
+	categoryId uuid.UUID,
+	month string,
+	amount float64,
+) error {
 	args := m.Called(ctx, tx, budgetId, categoryId, month, amount)
 	return args.Error(0)
 }
@@ -405,8 +508,22 @@ func createTestCategory(id uuid.UUID, budgetId uuid.UUID, name string) *model.Ca
 	}
 }
 
-func setupTransactionTestableService(mockPrediction *mockPredictionRepo, mockAccount *mockAccountRepo, mockPayees *mockPayeesRepo, mockCategory *mockCategoryRepo, mockMonthlyBudget *mockMonthlyBudgetRepo) *transactionService {
-	return newTestTransactionService(&mockTransactionRepo{}, &mockBudgetRepo{}, mockPrediction, mockAccount, mockPayees, mockCategory, mockMonthlyBudget)
+func setupTransactionTestableService(
+	mockPrediction *mockPredictionRepo,
+	mockAccount *mockAccountRepo,
+	mockPayees *mockPayeesRepo,
+	mockCategory *mockCategoryRepo,
+	mockMonthlyBudget *mockMonthlyBudgetRepo,
+) *transactionService {
+	return newTestTransactionService(
+		&mockTransactionRepo{},
+		&mockBudgetRepo{},
+		mockPrediction,
+		mockAccount,
+		mockPayees,
+		mockCategory,
+		mockMonthlyBudget,
+	)
 }
 
 func newTestTransactionService(
@@ -510,7 +627,8 @@ func TestUpdatePrediction(t *testing.T) {
 						p.UserCorrectedAccount != nil && *p.UserCorrectedAccount == "Different Account" &&
 						p.UserCorrectedPayee != nil && *p.UserCorrectedPayee == "Different Payee" &&
 						p.UserCorrectedCategory != nil && *p.UserCorrectedCategory == "Different Category"
-				})).Return(nil)
+				})).
+					Return(nil)
 			},
 		},
 		{
@@ -521,7 +639,8 @@ func TestUpdatePrediction(t *testing.T) {
 			expectError:      true,
 			expectUpdate:     false,
 			setupMocks: func(mp *mockPredictionRepo, mc *mockCategoryRepo) {
-				mp.On("GetByTxnIdTx", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, assert.AnError)
+				mp.On("GetByTxnIdTx", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return(nil, assert.AnError)
 			},
 		},
 	}
@@ -681,14 +800,27 @@ func TestUpdateCarryovers(t *testing.T) {
 			mockCategory := &mockCategoryRepo{}
 			mockMonthlyBudget := &mockMonthlyBudgetRepo{}
 
-			service := setupTransactionTestableService(mockPrediction, mockAccount, mockPayees, mockCategory, mockMonthlyBudget)
+			service := setupTransactionTestableService(
+				mockPrediction,
+				mockAccount,
+				mockPayees,
+				mockCategory,
+				mockMonthlyBudget,
+			)
 
 			ctx := context.Background()
 			var mockTx pgx.Tx
 
 			tt.setupMocks(mockMonthlyBudget)
 
-			err := service.mbService.UpdateCarryovers(ctx, mockTx, budgetId, tt.existingTxn, &tt.newTxn, inflowCategoryID)
+			err := service.mbService.UpdateCarryovers(
+				ctx,
+				mockTx,
+				budgetId,
+				tt.existingTxn,
+				&tt.newTxn,
+				inflowCategoryID,
+			)
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -714,7 +846,6 @@ func TestCreateCounterpartTxn(t *testing.T) {
 		AccountID: &accountId,
 		Amount:    -42.50,
 		Date:      "2025-01-15",
-		Source:    "manual",
 	}
 
 	payee := model.Payee{TransferAccountID: &transferAccountID}
@@ -751,7 +882,9 @@ func TestCreateCounterpartTxn(t *testing.T) {
 
 		account := model.Account{TransferPayeeID: &transferPayeeID}
 
-		mockTransaction.On("Create", mock.Anything, mock.Anything, mock.Anything).Return([]model.Transaction{}, nil).Once()
+		mockTransaction.On("Create", mock.Anything, mock.Anything, mock.Anything).
+			Return([]model.Transaction{}, nil).
+			Once()
 
 		createdId, err := service.createCounterpartTxn(ctx, mockTx, budgetId, parentId, txn, account, payee)
 

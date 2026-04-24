@@ -3,10 +3,9 @@ package service
 import (
 	"context"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
-
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
@@ -45,7 +44,10 @@ func (s *categoryGroupService) GetAll(ctx context.Context, month string) ([]mode
 	return groups, nil
 }
 
-func (s *categoryGroupService) Create(ctx context.Context, categoryGroup model.CategoryGroup) (*model.CategoryGroup, error) {
+func (s *categoryGroupService) Create(
+	ctx context.Context,
+	categoryGroup model.CategoryGroup,
+) (*model.CategoryGroup, error) {
 	budgetId := utils.MustBudgetID(ctx)
 	categoryGroup.BudgetID = budgetId
 	return s.repo.Create(ctx, nil, categoryGroup)

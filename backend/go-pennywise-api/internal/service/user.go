@@ -3,8 +3,8 @@ package service
 import (
 	"context"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 )
 

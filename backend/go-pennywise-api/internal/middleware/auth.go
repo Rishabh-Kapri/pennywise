@@ -14,7 +14,13 @@ import (
 	"github.com/google/uuid"
 )
 
-func handleUserID(c *gin.Context, currentCtx context.Context, userID string, authService service.AuthService) {
+func handleUserId(
+	c *gin.Context,
+	currentCtx context.Context,
+	authService service.AuthService,
+	userID string,
+	jwtVersion float64,
+) {
 	log.Printf("userID: %v", userID)
 	userUuid, err := uuid.Parse(userID)
 	if err != nil {
@@ -23,26 +29,27 @@ func handleUserID(c *gin.Context, currentCtx context.Context, userID string, aut
 		return
 	}
 	ctx := utils.WithUserID(currentCtx, userUuid)
-	// Optionally, you can fetch the full user info and set it in the context
 	user, err := authService.GetUserById(ctx, userUuid)
 	if err != nil {
 		c.JSON(401, gin.H{"error": "failed to fetch user"})
 		c.Abort()
 		return
 	}
-	log.Printf("user: %v", user)
+	if user == nil {
+		c.JSON(401, gin.H{"error": "user not found"})
+		c.Abort()
+		return
+	}
 
-	// TODO: set this from utils
-	ctx = context.WithValue(ctx, "user", user)
-	// @TODO: handle this
+	ctx = utils.WithUser(ctx, user)
 	// Check token version matches
 	// This is used to invalidate tokens when user logs out from all devices
-	// jwtVersion, ok := claims["version"].(float64) // JWT stores numbers as float64
-	// if !ok || int(jwtVersion) != user.TokenVersion {
-	// 	c.JSON(401, gin.H{"error": "token revoked, please login again"})
-	// 	c.Abort()
-	// 	return
-	// }
+	// -1 mean we have api key auth
+	if jwtVersion != -1 && int(jwtVersion) != user.TokenVersion {
+		c.JSON(401, gin.H{"error": "token revoked, please login again"})
+		c.Abort()
+		return
+	}
 
 	c.Request = c.Request.WithContext(ctx)
 
@@ -55,7 +62,7 @@ func AuthMiddleware(authService service.AuthService, apiKeyService service.APIKe
 		logger := logger.Logger(ctx)
 		// check if this call is from an internal service
 		if c.GetHeader("X-Internal-Service") == "true" {
-			logger.Debug("internal service call")
+			logger.Debug("internal service call from", "ip", c.ClientIP(), "service", c.Request)
 			c.Next()
 			return
 		}
@@ -101,13 +108,16 @@ func AuthMiddleware(authService service.AuthService, apiKeyService service.APIKe
 			// @TODO: update last used time
 
 			logger.Info("valid api key", "key", key)
-			handleUserID(c, ctx, key.UserID.String(), authService)
+			handleUserId(c, ctx, authService, key.UserID.String(), -1.0)
 			return
 		}
 
 		// -- AUTH HEADER AUTH --
 		// get the auth token from the header
 		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			authHeader, _ = c.Cookie("access_token")
+		}
 		if authHeader == "" {
 			c.JSON(401, gin.H{"error": "unauthorized"})
 			c.Abort()
@@ -144,7 +154,13 @@ func AuthMiddleware(authService service.AuthService, apiKeyService service.APIKe
 			c.Abort()
 			return
 		}
-		handleUserID(c, ctx, userID, authService)
+		jwtVersion, ok := claims["version"].(float64) // JWT stores numbers as float64
+		if !ok {
+			c.JSON(401, gin.H{"error": "invalid jwt version"})
+			c.Abort()
+			return
+		}
+		handleUserId(c, ctx, authService, userID, jwtVersion)
 		return
 	}
 }

@@ -19,6 +19,12 @@ const (
 	CodeHTTPClientError Code = "HTTP_CLIENT_ERROR"
 )
 
+// User error codes
+const (
+	CodeUserLookupFailed Code = "USER_LOOKUP_FAILED"
+	CodeUserUpdateFailed Code = "USER_UPDATE_FAILED"
+)
+
 // Transaction/Transfer/Prediction error codes
 const (
 	CodeTransactionCreateFailed Code = "TRANSACTION_CREATE_FAILED"
@@ -31,6 +37,7 @@ const (
 	CodeTransferLinkFailed      Code = "TRANSFER_LINK_FAILED"
 	CodeBudgetLookupFailed      Code = "BUDGET_LOOKUP_FAILED"
 	CodePredictionLookupFailed  Code = "PREDICTION_LOOKUP_FAILED"
+	CodePredictionCreateFailed  Code = "PREDICTION_CREATE_FAILED"
 	CodePredictionUpdateFailed  Code = "PREDICTION_UPDATE_FAILED"
 	CodePredictionDeleteFailed  Code = "PREDICTION_DELETE_FAILED"
 )
@@ -38,6 +45,7 @@ const (
 // Payee/Account/Category error codes
 const (
 	CodePayeeLookupFailed    Code = "PAYEE_LOOKUP_FAILED"
+	CodePayeeCreateFailed    Code = "PAYEE_CREATE_FAILED"
 	CodeAccountLookupFailed  Code = "ACCOUNT_LOOKUP_FAILED"
 	CodeAccountCreateFailed  Code = "ACCOUNT_CREATE_FAILED"
 	CodeCategoryLookupFailed Code = "CATEGORY_LOOKUP_FAILED"
