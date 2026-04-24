@@ -11,6 +11,15 @@ import (
 
 type Date string
 
+type TransactionStatus string
+
+const (
+	TransactionStatusManual     TransactionStatus = "MANUAL"
+	TransactionStatusApproved   TransactionStatus = "APPROVED"
+	TransactionStatusUnapproved TransactionStatus = "UNAPPROVED"
+	TransactionStatusRejected   TransactionStatus = "REJECTED"
+)
+
 // check if date is valid and is in the format YYYY-MM-DD
 func (d Date) Valid() error {
 	if d == "" {
@@ -28,27 +37,29 @@ func (d Date) String() string {
 }
 
 type Transaction struct {
-	ID                    uuid.UUID   `json:"id"`
-	BudgetID              uuid.UUID   `json:"budgetId"`
-	Date                  Date        `json:"date"`
-	PayeeID               *uuid.UUID  `json:"payeeId,omitempty"`
-	CategoryID            *uuid.UUID  `json:"categoryId,omitempty"`
-	AccountID             *uuid.UUID  `json:"accountId,omitempty"`
-	AccountName           *string     `json:"accountName,omitempty"`
-	PayeeName             *string     `json:"payeeName,omitempty"`
-	CategoryName          *string     `json:"categoryName,omitempty"`
-	Note                  string      `json:"note"`
-	Amount                float64     `json:"amount"`
-	Inflow                float64     `json:"inflow"`
-	Outflow               float64     `json:"outflow"`
-	Balance               float64     `json:"balance"`
-	Source                string      `json:"source"`
-	TransferAccountID     *uuid.UUID  `json:"transferAccountId,omitempty"`
-	TransferTransactionID *uuid.UUID  `json:"transferTransactionId,omitempty"`
-	TagIDs                []uuid.UUID `json:"tagIds"`
-	Deleted               bool        `json:"deleted"`
-	CreatedAt             time.Time   `json:"createdAt"`
-	UpdatedAt             time.Time   `json:"updatedAt"`
+	ID                    uuid.UUID         `json:"id"`
+	BudgetID              uuid.UUID         `json:"budgetId"`
+	Date                  Date              `json:"date"`
+	PayeeID               *uuid.UUID        `json:"payeeId,omitempty"`
+	CategoryID            *uuid.UUID        `json:"categoryId,omitempty"`
+	AccountID             *uuid.UUID        `json:"accountId,omitempty"`
+	AccountName           *string           `json:"accountName,omitempty"`
+	PayeeName             *string           `json:"payeeName,omitempty"`
+	CategoryName          *string           `json:"categoryName,omitempty"`
+	Note                  string            `json:"note"`
+	Amount                float64           `json:"amount"`
+	Inflow                float64           `json:"inflow"`
+	Outflow               float64           `json:"outflow"`
+	Balance               float64           `json:"balance"`
+	DedupeHash            *string           `json:"dedupeHash,omitempty"`
+	Status                TransactionStatus `json:"status"`
+	RawBankText           *string           `json:"rawBankText,omitempty"`
+	TransferAccountID     *uuid.UUID        `json:"transferAccountId,omitempty"`
+	TransferTransactionID *uuid.UUID        `json:"transferTransactionId,omitempty"`
+	TagIDs                []uuid.UUID       `json:"tagIds"`
+	Deleted               bool              `json:"deleted"`
+	CreatedAt             time.Time         `json:"createdAt"`
+	UpdatedAt             time.Time         `json:"updatedAt"`
 }
 
 type TransactionFilter struct {
@@ -77,7 +88,8 @@ func (t *Transaction) String() string {
     Inflow: %.2f,
     Outflow: %.2f,
     Balance: %.2f,
-    Source: %q,
+		Status: %s,
+		RawBankText: %s,
     TransferAccountID: %s,
     TransferTransactionID: %s,
     Deleted: %t,
@@ -87,7 +99,7 @@ func (t *Transaction) String() string {
 		t.ID, t.BudgetID, t.Date,
 		ptrToUUIDString(t.PayeeID), ptrToUUIDString(t.CategoryID), ptrToUUIDString(t.AccountID),
 		ptrToString(t.AccountName), ptrToString(t.PayeeName), ptrToString(t.CategoryName),
-		t.Note, t.Amount, t.Inflow, t.Outflow, t.Balance, t.Source,
+		t.Note, t.Amount, t.Inflow, t.Outflow, t.Balance, t.Status, ptrToString(t.RawBankText),
 		ptrToUUIDString(t.TransferAccountID), ptrToUUIDString(t.TransferTransactionID),
 		t.Deleted, t.CreatedAt, t.UpdatedAt)
 }
