@@ -26,13 +26,13 @@ import (
 
 type AuthService interface {
 	LoginWithGoogle(ctx context.Context, tokenString string) (*model.AuthUserResponse, string, string, error)
-	GenerateAccessToken(ctx context.Context, userID uuid.UUID, name string, email string, version int) (string, error)
+	GenerateAccessToken(ctx context.Context, userID uuid.UUID, version int) (string, error)
 	GenerateRefreshToken(ctx context.Context, userID uuid.UUID) (string, error)
 	ValidateToken(ctx context.Context, tokenString string) (*jwt.Token, error)
 	GetUserById(ctx context.Context, userID uuid.UUID) (*model.AuthUser, error)
 	GetGoogleUserByEmail(ctx context.Context, email string) (*model.GoogleUserInfo, error)
 	UpdateGmailHistoryID(ctx context.Context, email string, historyID uint64) error
-	// RefreshToken(ctx context.Context, refreshToken string) (*model.RefreshTokenResponse, error)
+	RefreshToken(ctx context.Context, refreshToken string) (*model.RefreshTokenResponse, error)
 }
 
 type googleUser struct {
@@ -180,13 +180,7 @@ func (s *authService) LoginWithGoogle(
 	}
 	logger.Info("user found", "authUser", *userWithCreds.AuthUser, "googleProvider", *userWithCreds.GoogleProvider)
 
-	accessToken, err := s.GenerateAccessToken(
-		ctx,
-		userWithCreds.AuthUser.ID,
-		userWithCreds.GoogleProvider.Name,
-		userWithCreds.GoogleProvider.Email,
-		userWithCreds.AuthUser.TokenVersion,
-	)
+	accessToken, err := s.GenerateAccessToken(ctx, userWithCreds.AuthUser.ID, userWithCreds.AuthUser.TokenVersion)
 	if err != nil {
 		return nil, "", "", errs.Wrap(errs.CodeAuthCreateFailed, "failed to generate access token", err)
 	}
@@ -259,17 +253,10 @@ func (s *authService) createGoogleUser(
 	return result, nil
 }
 
-func (s *authService) GenerateAccessToken(
-	ctx context.Context,
-	userID uuid.UUID,
-	name string,
-	email string,
-	version int,
-) (string, error) {
+func (s *authService) GenerateAccessToken(ctx context.Context, userID uuid.UUID, version int) (string, error) {
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":     userID.String(),                         // subject (user ID)
 		"iss":     "pennywise",                             // issuer
-		"aud":     email,                                   // audience (email)
 		"exp":     time.Now().Add(time.Minute * 15).Unix(), // expire in 15 minutes
 		"version": version,                                 // token version for invalidation
 		"iat":     time.Now().Unix(),                       // issued at
@@ -301,11 +288,12 @@ func (s *authService) ValidateToken(ctx context.Context, tokenString string) (*j
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (any, error) {
 		return []byte(s.config.JWTSecret), nil
 	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
-
-	logger.Logger(ctx).Debug("token parsed", "valid", token.Valid, "error", err)
 	if err != nil {
+		logger.Logger(ctx).Debug("token parse failed", "error", err)
 		return nil, err
 	}
+
+	logger.Logger(ctx).Debug("token parsed", "valid", token.Valid)
 	if !token.Valid {
 		return nil, errors.New("invalid token")
 	}
@@ -313,58 +301,60 @@ func (s *authService) ValidateToken(ctx context.Context, tokenString string) (*j
 }
 
 func (s *authService) GetUserById(ctx context.Context, userID uuid.UUID) (*model.AuthUser, error) {
-	// user, err := s.repo.FindByID(ctx, userID)
-	// if err != nil {
-	// 	return nil, errs.New(errs.CodeAuthLookupFailed, "failed to get user by ID", err)
-	// }
-	// return user, nil
-	return nil, nil
+	user, err := s.repo.FindByID(ctx, userID)
+	if err != nil {
+		return nil, errs.New(errs.CodeAuthLookupFailed, "failed to get user by ID", err)
+	}
+	return user, nil
 }
 
-// func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*model.RefreshTokenResponse, error) {
-// 	// Validate the refresh token JWT
-// 	token, err := s.ValidateToken(ctx, refreshToken)
-// 	if err != nil {
-// 		return nil, errs.New(errs.CodeAuthLookupFailed, "invalid refresh token", err)
-// 	}
-// 	logger.Logger(ctx).Debug("token validated", "valid", token.Valid, "claims", token.Claims, "error", err)
-//
-// 	userId, err := token.Claims.GetSubject()
-// 	logger.Logger(ctx).Debug("userId", "userId", userId, "error", err)
-// 	if err != nil {
-// 		return nil, errs.New(errs.CodeAuthLookupFailed, "invalid refresh token claims", err)
-// 	}
-// 	userUuid, err := uuid.Parse(userId)
-// 	if err != nil {
-// 		return nil, errs.New(errs.CodeAuthLookupFailed, "invalid user ID in refresh token", err)
-// 	}
-//
-// 	// Fetch the user and verify the refresh token hash matches
-// 	user, err := s.GetUserById(ctx, userUuid)
-// 	logger.Logger(ctx).Debug("USER INFO", "user", user, "error", err)
-// 	if err != nil {
-// 		return nil, errs.New(errs.CodeAuthLookupFailed, "failed to fetch user for refresh token", err)
-// 	}
-//
-// 	storedHash, err := s.repo.GetRefreshTokenHash(ctx, userUuid)
-// 	logger.Logger(ctx).Debug("STORED HASH", "storedHash", storedHash, "error", err)
-// 	if err != nil {
-// 		return nil, errs.New(errs.CodeAuthLookupFailed, "failed to check refresh token", err)
-// 	}
-// 	// if storedHash == "" || storedHash != utils.Hash(refreshToken) {
-// 	// 	return nil, errs.New(errs.CodeAuthLookupFailed, "refresh token has been revoked")
-// 	// }
-//
-// 	// Generate new access token with the same version
-// 	newAccessToken, err := s.GenerateAccessToken(ctx, user.ID, user.Name, user.Email, user.TokenVersion)
-// 	if err != nil {
-// 		return nil, errs.New(errs.CodeAuthCreateFailed, "failed to generate new access token", err)
-// 	}
-// 	return &model.RefreshTokenResponse{
-// 		AccessToken: newAccessToken,
-// 		ExpiresIn:   900, // 15 minutes
-// 	}, nil
-// }
+func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*model.RefreshTokenResponse, error) {
+	// Validate the refresh token JWT
+	token, err := s.ValidateToken(ctx, refreshToken)
+	if err != nil {
+		return nil, errs.New(errs.CodeAuthLookupFailed, "invalid refresh token", err)
+	}
+	logger.Logger(ctx).Debug("token validated", "valid", token.Valid, "claims", token.Claims, "error", err)
+
+	userId, err := token.Claims.GetSubject()
+	logger.Logger(ctx).Debug("userId", "userId", userId, "error", err)
+	if err != nil {
+		return nil, errs.New(errs.CodeAuthLookupFailed, "invalid refresh token claims", err)
+	}
+	userUuid, err := uuid.Parse(userId)
+	if err != nil {
+		return nil, errs.New(errs.CodeAuthLookupFailed, "invalid user ID in refresh token", err)
+	}
+
+	// Fetch the user and verify the refresh token hash matches
+	user, err := s.GetUserById(ctx, userUuid)
+	logger.Logger(ctx).Debug("USER INFO", "user", user, "error", err)
+	if err != nil {
+		return nil, errs.New(errs.CodeAuthLookupFailed, "failed to fetch user for refresh token", err)
+	}
+	if user == nil {
+		return nil, errs.New(errs.CodeAuthLookupFailed, "user not found")
+	}
+
+	storedHash, err := s.repo.GetRefreshTokenHash(ctx, userUuid)
+	logger.Logger(ctx).Debug("STORED HASH", "storedHash", storedHash, "error", err)
+	if err != nil {
+		return nil, errs.New(errs.CodeAuthLookupFailed, "failed to check refresh token", err)
+	}
+	// if storedHash == "" || storedHash != utils.Hash(refreshToken) {
+	// 	return nil, errs.New(errs.CodeAuthLookupFailed, "refresh token has been revoked")
+	// }
+
+	// Generate new access token with the same version
+	newAccessToken, err := s.GenerateAccessToken(ctx, user.ID, user.TokenVersion)
+	if err != nil {
+		return nil, errs.New(errs.CodeAuthCreateFailed, "failed to generate new access token", err)
+	}
+	return &model.RefreshTokenResponse{
+		AccessToken: newAccessToken,
+		ExpiresIn:   900, // 15 minutes
+	}, nil
+}
 
 func (s *authService) GetGoogleUserByEmail(ctx context.Context, email string) (*model.GoogleUserInfo, error) {
 	return s.googleProvider.GetUserByEmail(ctx, email)

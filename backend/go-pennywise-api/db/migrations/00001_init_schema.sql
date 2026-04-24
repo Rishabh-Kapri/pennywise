@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     budget_id UUID NOT NULL REFERENCES budgets(id),
     transfer_payee_id UUID,
     type TEXT NOT NULL,
+    suffix TEXT, -- for saving the last 4 digits of the account number
     closed BOOLEAN DEFAULT false,
     deleted BOOLEAN DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -112,15 +113,24 @@ CREATE TABLE IF NOT EXISTS transactions (
     payee_id UUID REFERENCES payees(id),
     category_id UUID REFERENCES categories(id),
     account_id UUID NOT NULL REFERENCES accounts(id),
-    note TEXT,
     amount NUMERIC(12, 2) NOT NULL,
-    source prediction_source,
+    note TEXT,
+
+    dedupe_hash VARCHAR(64),
+    status transaction_status NOT NULL DEFAULT 'MANUAL',
+    raw_bank_text TEXT,
+
     transfer_account_id UUID REFERENCES accounts(id),
     transfer_transaction_id UUID REFERENCES transactions(id),
     deleted BOOLEAN DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Create partial index on dedupe_hash column
+-- This is a partial index because we don't want to prevent duplicates for manual transactions.
+CREATE UNIQUE INDEX idx_transactions_dedupe
+ON transactions(budget_id, dedupe_hash)
+WHERE dedupe_hash IS NOT NULL and deleted = FALSE;
 
 CREATE TABLE IF NOT EXISTS predictions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -150,7 +160,7 @@ CREATE TABLE IF NOT EXISTS cipher_predictions (
   amount NUMERIC(12, 2),
   -- extracted strings
   extracted_account TEXT,
-  extracted_payee TEXT,
+  extracted_merchant TEXT,
   -- predictions
   predicted_payee_id UUID REFERENCES payees(id),
   predicted_category_id UUID REFERENCES categories(id),

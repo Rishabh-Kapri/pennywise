@@ -212,7 +212,6 @@ func (s *transactionService) createCounterpartTxn(
 		Amount:                -txn.Amount,
 		Date:                  txn.Date,
 		Note:                  txn.Note,
-		Source:                txn.Source,
 		TransferAccountID:     txn.AccountID,
 		TransferTransactionID: &parentId,
 	}
@@ -332,28 +331,28 @@ func (s *transactionService) applySideEffects(ctx context.Context, tx pgx.Tx, in
 
 	// --- Predictions ---
 	switch {
-	case isUpdate && input.oldTxn.Source == "MLP":
-		if err := s.updatePrediction(
-			ctx,
-			tx,
-			input.budgetId,
-			input.oldTxn.ID,
-			*input.newTxn,
-			*input.account,
-			*input.payee,
-		); err != nil {
-			return errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating prediction", err)
-		}
-	case isDelete && input.oldTxn.Source == "MLP":
-		prediction, err := s.predictionRepo.GetByTxnIdTx(ctx, tx, input.budgetId, input.oldTxn.ID)
-		if err != nil {
-			return errs.Wrap(errs.CodePredictionLookupFailed, "error getting prediction", err)
-		}
-		if prediction != nil {
-			if err = s.predictionRepo.DeleteByTxnId(ctx, tx, input.budgetId, input.oldTxn.ID); err != nil {
-				return errs.Wrap(errs.CodePredictionDeleteFailed, "error deleting prediction", err)
-			}
-		}
+	// case isUpdate && input.oldTxn.Source == "MLP":
+	// 	if err := s.updatePrediction(
+	// 		ctx,
+	// 		tx,
+	// 		input.budgetId,
+	// 		input.oldTxn.ID,
+	// 		*input.newTxn,
+	// 		*input.account,
+	// 		*input.payee,
+	// 	); err != nil {
+	// 		return errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating prediction", err)
+	// 	}
+	// case isDelete && input.oldTxn.Source == "MLP":
+	// 	prediction, err := s.predictionRepo.GetByTxnIdTx(ctx, tx, input.budgetId, input.oldTxn.ID)
+	// 	if err != nil {
+	// 		return errs.Wrap(errs.CodePredictionLookupFailed, "error getting prediction", err)
+	// 	}
+	// 	if prediction != nil {
+	// 		if err = s.predictionRepo.DeleteByTxnId(ctx, tx, input.budgetId, input.oldTxn.ID); err != nil {
+	// 			return errs.Wrap(errs.CodePredictionDeleteFailed, "error deleting prediction", err)
+	// 		}
+	// 	}
 	}
 
 	return nil
@@ -419,7 +418,6 @@ func (s *transactionService) reconcileTransfer(
 			Amount:                -newTxn.Amount,
 			Date:                  newTxn.Date,
 			Note:                  newTxn.Note,
-			Source:                newTxn.Source,
 			TransferAccountID:     newTxn.AccountID,
 			TransferTransactionID: &foundTxn.ID,
 		}

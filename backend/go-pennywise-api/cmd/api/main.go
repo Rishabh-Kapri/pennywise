@@ -2,23 +2,32 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/config"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/handler"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/middleware"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
+	temporalActivities "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/temporal/activities"
 
 	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedMiddleware "github.com/Rishabh-Kapri/pennywise/backend/shared/middleware"
+	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
+	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/worker"
 )
 
 func healthPage(c *gin.Context) {
@@ -26,9 +35,9 @@ func healthPage(c *gin.Context) {
 }
 
 func main() {
-	logger.Setup("pennywise-api")
 	config := config.Load()
-	ctx := context.Background()
+	logger.Setup(config.ServiceName)
+	ctx := utils.WithServiceName(context.Background(), config.ServiceName)
 
 	dbConn := db.Connect(ctx)
 	defer dbConn.Close()
@@ -37,6 +46,10 @@ func main() {
 	router.Use(gin.Recovery())
 	router.Use(gzip.Gzip(gzip.DefaultCompression))
 	router.Use(sharedMiddleware.StripInternalHeaders())
+	router.Use(func(c *gin.Context) {
+		c.Request = c.Request.WithContext(utils.WithServiceName(c.Request.Context(), config.ServiceName))
+		c.Next()
+	})
 	router.Use(sharedMiddleware.RequestLogger())
 
 	router.Use(cors.New(cors.Config{
@@ -60,6 +73,7 @@ func main() {
 	categoryRepo := repository.NewCategoryRepository(dbConn)
 	categoryGroupRepo := repository.NewCategoryGroupRepository(dbConn)
 	predictionRepo := repository.NewPredictionRepository(dbConn)
+	cipherPredictionRepo := repository.NewCipherPredictionRepository(dbConn)
 	accountRepo := repository.NewAccountRepository(dbConn)
 	userRepo := repository.NewUserRepository(dbConn)
 	transactionRepo := repository.NewTransactionRepository(dbConn)
@@ -87,7 +101,7 @@ func main() {
 	monthlyBudgetRepo := repository.NewMonthlyBudgetRepository(dbConn)
 	monthlyBudgetService := service.NewMonthlyBudgetService(monthlyBudgetRepo)
 
-	predictionService := service.NewPredictionService(predictionRepo)
+	predictionService := service.NewPredictionService(predictionRepo, cipherPredictionRepo)
 	predictionHandler := handler.NewPredictionHandler(predictionService)
 
 	transactionService := service.NewTransactionService(
@@ -251,5 +265,48 @@ func main() {
 			loanMetadataGroup.DELETE(":accountId", loanMetadataHandler.Delete)
 		}
 	}
-	router.Run("0.0.0.0:5151")
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+
+	// Temporal worker — skipped if TEMPORAL_SERVER_HOST is not set
+	if config.TemporalServerHost != "" {
+		temporalClient, err := client.Dial(client.Options{
+			HostPort: fmt.Sprintf("%s:%s", config.TemporalServerHost, config.TemporalServerPort),
+		})
+		if err != nil {
+			logger.Logger(ctx).Error("failed to create temporal client", "error", err)
+			panic(err)
+		}
+
+		w := worker.New(temporalClient, sharedModel.PennywiseActivitiesTaskQueue, worker.Options{})
+		w.RegisterActivity(&temporalActivities.CreateTransactionActivity{
+			TransactionService: transactionService,
+			PayeeService:       payeeService,
+		})
+		w.RegisterActivity(&temporalActivities.CreateCipherPredictionActivity{
+			PredictionService: predictionService,
+		})
+
+		if err := w.Start(); err != nil {
+			logger.Logger(ctx).Error("failed to start temporal worker", "error", err)
+			panic(err)
+		}
+		logger.Logger(ctx).Info("temporal worker started", "taskQueue", sharedModel.PennywiseActivitiesTaskQueue)
+
+		go func() {
+			<-quit
+			logger.Logger(ctx).Info("shutting down temporal worker")
+			w.Stop()
+			temporalClient.Close()
+		}()
+	}
+
+	go func() {
+		if err := router.Run("0.0.0.0:5151"); err != nil && err != http.ErrServerClosed {
+			logger.Logger(ctx).Error("http server error", "error", err)
+		}
+	}()
+
+	<-quit
+	logger.Logger(ctx).Info("server shutdown")
 }

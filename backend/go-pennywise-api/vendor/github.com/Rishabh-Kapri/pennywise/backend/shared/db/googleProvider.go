@@ -5,8 +5,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -15,7 +15,16 @@ import (
 
 type GoogleProviderRepository interface {
 	BaseRepositoryInterface
-	Create(ctx context.Context, tx pgx.Tx, authUserID uuid.UUID, googleID string, name string, picture string, email string, refreshToken string) (*model.UserWithCredentials, error)
+	Create(
+		ctx context.Context,
+		tx pgx.Tx,
+		authUserID uuid.UUID,
+		googleID string,
+		name string,
+		picture string,
+		email string,
+		refreshToken string,
+	) (*model.UserWithCredentials, error)
 	GetUserByGoogleID(ctx context.Context, googleID string) (*model.UserWithCredentials, error)
 	GetUserByEmail(ctx context.Context, email string) (*model.GoogleUserInfo, error)
 	UpdateHistoryID(ctx context.Context, googleID string, historyID uint64) error
@@ -31,7 +40,16 @@ func NewGoogleProviderRepository(pool *pgxpool.Pool) GoogleProviderRepository {
 }
 
 // Create inserts an auth_providers row and a google_provider_users row within the given transaction.
-func (r *googleProviderRepo) Create(ctx context.Context, tx pgx.Tx, authUserID uuid.UUID, googleID string, name string, picture string, email string, refreshToken string) (*model.UserWithCredentials, error) {
+func (r *googleProviderRepo) Create(
+	ctx context.Context,
+	tx pgx.Tx,
+	authUserID uuid.UUID,
+	googleID string,
+	name string,
+	picture string,
+	email string,
+	refreshToken string,
+) (*model.UserWithCredentials, error) {
 	// 1. Create auth_providers linking auth_user to google provider
 	_, err := r.Executor(tx).Exec(
 		ctx,
@@ -64,7 +82,10 @@ func (r *googleProviderRepo) Create(ctx context.Context, tx pgx.Tx, authUserID u
 	}, nil
 }
 
-func (r *googleProviderRepo) GetUserByGoogleID(ctx context.Context, googleID string) (*model.UserWithCredentials, error) {
+func (r *googleProviderRepo) GetUserByGoogleID(
+	ctx context.Context,
+	googleID string,
+) (*model.UserWithCredentials, error) {
 	var u model.UserWithCredentials
 	u.AuthUser = &model.AuthUser{}
 	u.GoogleProvider = &model.GoogleProviderUser{}
@@ -127,6 +148,7 @@ func (r *googleProviderRepo) GetUserByEmail(ctx context.Context, email string) (
 		    gpu.gmail_history_id,
 		    gpu.refresh_token,
 		    gpu.last_gmail_sync,
+		    au.id,
 		    b.id
 		  FROM google_provider_users gpu
 		  JOIN auth_providers ap ON ap.provider_id = gpu.id AND ap.provider_type = 'google'
@@ -136,7 +158,7 @@ func (r *googleProviderRepo) GetUserByEmail(ctx context.Context, email string) (
 		  ORDER BY b.is_selected DESC NULLS LAST
 		  LIMIT 1
 		`, email,
-	).Scan(&info.GoogleID, &info.Email, &info.GmailHistoryID, &info.RefreshToken, &info.LastGmailSync, &info.BudgetID)
+	).Scan(&info.GoogleID, &info.Email, &info.GmailHistoryID, &info.RefreshToken, &info.LastGmailSync, &info.UserID, &info.BudgetID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrUserNotFound
