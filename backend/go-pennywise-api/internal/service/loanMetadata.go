@@ -3,8 +3,8 @@ package service
 import (
 	"context"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
@@ -39,7 +39,11 @@ func (s *loanMetadataService) Create(ctx context.Context, loan model.LoanMetadat
 	return s.repo.Create(ctx, loan)
 }
 
-func (s *loanMetadataService) Update(ctx context.Context, accountId uuid.UUID, loan model.LoanMetadata) (*model.LoanMetadata, error) {
+func (s *loanMetadataService) Update(
+	ctx context.Context,
+	accountId uuid.UUID,
+	loan model.LoanMetadata,
+) (*model.LoanMetadata, error) {
 	return s.repo.Update(ctx, accountId, loan)
 }
 

@@ -38,7 +38,7 @@ type GmailSyncRequest struct {
 }
 
 type EventData struct {
-	Email     string `json:"emailAddress"`
+	Email     string `json:"email"`
 	HistoryId uint64 `json:"historyId"`
 }
 

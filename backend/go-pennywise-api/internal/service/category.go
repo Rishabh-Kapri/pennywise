@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
@@ -31,7 +31,11 @@ type categoryService struct {
 	transactionRepo   repository.TransactionRepository
 }
 
-func NewCategoryService(r repository.CategoryRepository, mbR repository.MonthlyBudgetRepository, txnR repository.TransactionRepository) CategoryService {
+func NewCategoryService(
+	r repository.CategoryRepository,
+	mbR repository.MonthlyBudgetRepository,
+	txnR repository.TransactionRepository,
+) CategoryService {
 	return &categoryService{repo: r, monthlyBudgetRepo: mbR, transactionRepo: txnR}
 }
 
@@ -97,7 +101,12 @@ func (s *categoryService) Update(ctx context.Context, id uuid.UUID, category mod
 // updates the monthly budget for a category for a particular month
 // create a new record if it doesn't exist
 // gets the carryover from the previous month
-func (s *categoryService) UpdateMonthlyBudget(ctx context.Context, categoryId uuid.UUID, newBudgeted float64, month string) error {
+func (s *categoryService) UpdateMonthlyBudget(
+	ctx context.Context,
+	categoryId uuid.UUID,
+	newBudgeted float64,
+	month string,
+) error {
 	budgetId := utils.MustBudgetID(ctx)
 
 	return utils.WithTx(ctx, s.monthlyBudgetRepo.GetDB(), func(tx pgx.Tx) error {

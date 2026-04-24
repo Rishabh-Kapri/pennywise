@@ -7,6 +7,7 @@ import (
 )
 
 type Config struct {
+	ServiceName        string
 	DatabaseURL        string
 	JWTSecret          string
 	Domain             string
@@ -17,11 +18,14 @@ type Config struct {
 	GmailServiceName   string
 	CipherServiceURL   string
 	CipherServiceName  string
+	TemporalServerHost string
+	TemporalServerPort string
 }
 
 func Load() Config {
 	_ = godotenv.Load(".env")
 	return Config{
+		ServiceName:        "pennywise-api",
 		DatabaseURL:        os.Getenv("DATABASE_URL"),
 		JWTSecret:          os.Getenv("JWT_SECRET"),
 		Domain:             os.Getenv("DOMAIN"),
@@ -34,5 +38,8 @@ func Load() Config {
 
 		CipherServiceURL:  os.Getenv("CIPHER_SERVICE_URL"),
 		CipherServiceName: "cipher",
+
+		TemporalServerHost: os.Getenv("TEMPORAL_SERVER_HOST"),
+		TemporalServerPort: os.Getenv("TEMPORAL_SERVER_PORT"),
 	}
 }

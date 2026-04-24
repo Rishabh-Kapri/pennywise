@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -42,7 +42,11 @@ func (m *mockLoanMetadataRepo) Create(ctx context.Context, loan model.LoanMetada
 	return nil, args.Error(1)
 }
 
-func (m *mockLoanMetadataRepo) Update(ctx context.Context, accountId uuid.UUID, loan model.LoanMetadata) (*model.LoanMetadata, error) {
+func (m *mockLoanMetadataRepo) Update(
+	ctx context.Context,
+	accountId uuid.UUID,
+	loan model.LoanMetadata,
+) (*model.LoanMetadata, error) {
 	args := m.Called(ctx, accountId, loan)
 	if obj := args.Get(0); obj != nil {
 		return obj.(*model.LoanMetadata), args.Error(1)
