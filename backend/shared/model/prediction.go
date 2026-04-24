@@ -7,6 +7,17 @@ import (
 	"github.com/google/uuid"
 )
 
+// PredictionSource mirrors the prediction_source DB enum.
+type PredictionSource string
+
+const (
+	PredictionSourceLLM           PredictionSource = "LLM"
+	PredictionSourceManual        PredictionSource = "MANUAL"
+	PredictionSourceRule          PredictionSource = "RULE"
+	PredictionSourceVector        PredictionSource = "VECTOR"
+	PredictionSourceUncategorized PredictionSource = "UNCATEGORIZED"
+)
+
 type Prediction struct {
 	ID                    uuid.UUID `json:"id"`
 	BudgetID              uuid.UUID `json:"budgetId"`
@@ -26,6 +37,29 @@ type Prediction struct {
 	CreatedAt             time.Time `json:"createdAt"`
 	UpdatedAt             time.Time `json:"updatedAt"`
 	Deleted               bool      `json:"deleted"`
+}
+
+// CipherPredictionRecord maps to the cipher_predictions table.
+type CipherPredictionRecord struct {
+	ID                  uuid.UUID        `json:"id"`
+	BudgetID            uuid.UUID        `json:"budgetId"`
+	TransactionID       uuid.UUID        `json:"transactionId"`
+	EmailText           *string          `json:"emailText,omitempty"`
+	Amount              *float64         `json:"amount,omitempty"`
+	ExtractedAccount    *string          `json:"extractedAccount,omitempty"`
+	ExtractedMerchant   *string          `json:"extractedMerchant,omitempty"`
+	PredictedPayeeID    *uuid.UUID       `json:"predictedPayeeId,omitempty"`
+	PredictedCategoryID *uuid.UUID       `json:"predictedCategoryId,omitempty"`
+	AccountConfidence   *float64         `json:"accountConfidence,omitempty"`
+	PayeeConfidence     *float64         `json:"payeeConfidence,omitempty"`
+	CategoryConfidence  *float64         `json:"categoryConfidence,omitempty"`
+	Source              PredictionSource `json:"source"`
+	HasUserCorrected    bool             `json:"hasUserCorrected"`
+	ActualPayeeID       *uuid.UUID       `json:"actualPayeeId,omitempty"`
+	ActualCategoryID    *uuid.UUID       `json:"actualCategoryId,omitempty"`
+	CreatedAt           time.Time        `json:"createdAt"`
+	UpdatedAt           time.Time        `json:"updatedAt"`
+	Deleted             bool             `json:"deleted"`
 }
 
 func (p *Prediction) String() string {
