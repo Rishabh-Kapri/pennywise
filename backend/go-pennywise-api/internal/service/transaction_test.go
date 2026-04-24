@@ -218,6 +218,10 @@ func (m *mockAccountRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]mod
 	panic("unimplemented")
 }
 
+func (m *mockAccountRepo) GetBySuffix(ctx context.Context, budgetId uuid.UUID, suffix string) (*model.Account, error) {
+	panic("unimplemented")
+}
+
 // GetById implements repository.AccountRepository.
 func (m *mockAccountRepo) GetById(
 	ctx context.Context,
@@ -842,7 +846,6 @@ func TestCreateCounterpartTxn(t *testing.T) {
 		AccountID: &accountId,
 		Amount:    -42.50,
 		Date:      "2025-01-15",
-		Source:    "manual",
 	}
 
 	payee := model.Payee{TransferAccountID: &transferAccountID}

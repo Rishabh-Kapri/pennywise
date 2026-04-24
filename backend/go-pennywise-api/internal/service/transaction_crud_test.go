@@ -362,7 +362,6 @@ func TestUpdate(t *testing.T) {
 		existingTxn := validTxn
 		existingTxn.ID = txnId
 		existingTxn.Amount = 5.0
-		existingTxn.Source = "MLP" // Trigger prediction update
 
 		mockRepo.On("GetByIdTx", mock.Anything, mockTx, budgetId, txnId).Return(&existingTxn, nil).Once()
 		mockBudget.On("GetById", mock.Anything, mockTx, budgetId).Return(&model.Budget{}, nil).Once()
@@ -442,7 +441,6 @@ func TestDeleteById(t *testing.T) {
 		foundTxn := model.Transaction{
 			ID:                    txnId,
 			TransferTransactionID: &transferTxnId,
-			Source:                "MLP",
 		}
 
 		mockRepo.On("GetByIdTx", mock.Anything, mockTx, budgetId, txnId).Return(&foundTxn, nil).Once()
@@ -469,7 +467,7 @@ func TestDeleteById(t *testing.T) {
 
 		mockBudget.On("GetById", mock.Anything, mockTx, budgetId).Return(&model.Budget{}, nil).Once()
 
-		foundTxn := model.Transaction{ID: txnId, Source: "MLP"}
+		foundTxn := model.Transaction{ID: txnId}
 
 		mockRepo.On("GetByIdTx", mock.Anything, mockTx, budgetId, txnId).Return(&foundTxn, nil).Once()
 
@@ -489,7 +487,7 @@ func TestDeleteById(t *testing.T) {
 
 		mockBudget.On("GetById", mock.Anything, mockTx, budgetId).Return(&model.Budget{}, nil).Once()
 
-		foundTxn := model.Transaction{ID: txnId, Source: "MLP"}
+		foundTxn := model.Transaction{ID: txnId}
 
 		mockRepo.On("GetByIdTx", mock.Anything, mockTx, budgetId, txnId).Return(&foundTxn, nil).Once()
 
