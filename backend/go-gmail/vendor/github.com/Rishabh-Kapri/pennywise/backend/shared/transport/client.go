@@ -3,8 +3,7 @@ package transport
 import (
 	"context"
 	"encoding/json"
-
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	"fmt"
 )
 
 // Request is protocol agnostic request object
@@ -30,6 +29,11 @@ type Transport interface {
 type Client struct {
 	serviceName string
 	transport   Transport
+}
+
+// debug helper
+func (c *Client) Print() string {
+	return fmt.Sprintf("service: %s, transport: %s", c.serviceName, c.transport)
 }
 
 func NewClient(serviceName string, transport Transport) *Client {
@@ -60,8 +64,8 @@ func Get[T any](ctx context.Context, c *Client, path string) (T, error) {
 }
 
 func Post[T any](ctx context.Context, c *Client, path string, headers map[string][]string, data any) (T, error) {
-	logger := logger.Logger(ctx)
-	logger.Debug("transport.Post", "service", c.serviceName, "path", path, "data", data)
+	// log := logger.Logger(ctx)
+	// log.Info("transport.Post", "service", c.serviceName, "path", path, "data", data)
 	var result T
 
 	req := &Request{Method: "POST", Path: path, Headers: headers, Payload: data}
@@ -83,8 +87,8 @@ func Post[T any](ctx context.Context, c *Client, path string, headers map[string
 }
 
 func Patch[T any](ctx context.Context, c *Client, path string, headers map[string][]string, data any) (T, error) {
-	logger := logger.Logger(ctx)
-	logger.Debug("transport.Patch", "service", c.serviceName, "path", path, "data", data)
+	// logger := logger.Logger(ctx)
+	// logger.Debug("transport.Patch", "service", c.serviceName, "path", path, "data", data)
 	var result T
 
 	req := &Request{Method: "PATCH", Path: path, Headers: headers, Payload: data}

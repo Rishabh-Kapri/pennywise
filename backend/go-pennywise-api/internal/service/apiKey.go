@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 )
 

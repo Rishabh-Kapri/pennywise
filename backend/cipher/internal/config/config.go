@@ -7,11 +7,13 @@ import (
 )
 
 type Config struct {
-	DatabaseURL   string
-	OllamaURL     string
-	MLPServiceURL string
-	OpenAIAPIKey  string
-	Port          string
+	DatabaseURL        string
+	OllamaURL          string
+	MLPServiceURL      string
+	OpenAIAPIKey       string
+	TemporalServerHost string
+	TemporalServerPort string
+	Port               string
 }
 
 func Load() Config {
@@ -23,10 +25,12 @@ func Load() Config {
 	}
 
 	return Config{
-		DatabaseURL:   os.Getenv("DATABASE_URL"),
-		OllamaURL:     os.Getenv("OLLAMA_URL"),
-		MLPServiceURL: os.Getenv("MLP_SERVICE_URL"),
-		OpenAIAPIKey:  os.Getenv("OPENAI_API_KEY"),
-		Port:          port,
+		DatabaseURL:        os.Getenv("DATABASE_URL"),
+		OllamaURL:          os.Getenv("OLLAMA_URL"),
+		MLPServiceURL:      os.Getenv("MLP_SERVICE_URL"),
+		OpenAIAPIKey:       os.Getenv("OPENAI_API_KEY"),
+		TemporalServerHost: os.Getenv("TEMPORAL_SERVER_HOST"),
+		TemporalServerPort: os.Getenv("TEMPORAL_SERVER_PORT"),
+		Port:               port,
 	}
 }

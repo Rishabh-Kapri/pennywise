@@ -69,7 +69,6 @@ func (s *Service) WatchHandler(ctx context.Context, payload GmailSyncRequest) (u
 	return historyID, nil
 }
 
-
 func (s *Service) stopWatch(ctx context.Context, token *oauth2.Token, oauthConfig *oauth2.Config, email string) error {
 	gmailService, err := gmail.NewService(ctx, option.WithTokenSource(oauthConfig.TokenSource(ctx, token)))
 	if err != nil {
@@ -79,7 +78,12 @@ func (s *Service) stopWatch(ctx context.Context, token *oauth2.Token, oauthConfi
 	return nil
 }
 
-func (s *Service) setupWatch(ctx context.Context, email string, token *oauth2.Token, oauthConfig *oauth2.Config) (uint64, error) {
+func (s *Service) setupWatch(
+	ctx context.Context,
+	email string,
+	token *oauth2.Token,
+	oauthConfig *oauth2.Config,
+) (uint64, error) {
 	gmailService, err := gmail.NewService(ctx, option.WithTokenSource(oauthConfig.TokenSource(ctx, token)))
 	if err != nil {
 		return 0, err
@@ -97,18 +101,25 @@ func (s *Service) setupWatch(ctx context.Context, email string, token *oauth2.To
 	return res.HistoryId, nil
 }
 
-func (s *Service) GetMessageHistory(email string, historyId uint64, token *oauth2.Token, oauthConfig *oauth2.Config) ([]EmailData, error) {
-	slog.Info("GetMessageHistory", "email", email, "historyId", historyId)
-	ctx := context.Background()
+func (s *Service) GetMessageHistory(
+	ctx context.Context,
+	email string,
+	historyId uint64,
+	token *oauth2.Token,
+	oauthConfig *oauth2.Config,
+) ([]EmailData, error) {
+	log := logger.Logger(ctx)
+	log.Info("GetMessageHistory", "email", email, "historyId", historyId)
+
 	gmailService, err := gmail.NewService(ctx, option.WithTokenSource(oauthConfig.TokenSource(ctx, token)))
 	if err != nil {
-		return nil, fmt.Errorf("Error while creating gmail service: %v", err.Error())
+		return nil, errs.Wrap(errs.CodeInternalError, "Error while creating gmail service", err)
 	}
 	listCall := gmailService.Users.History.List(email)
 	listCall.StartHistoryId(historyId)
 	historyRes, err := listCall.Do()
 	if err != nil {
-		return nil, fmt.Errorf("Error while doing listCall.Do: %v", err.Error())
+		return nil, errs.Wrap(errs.CodeInternalError, "Error while doing listCall.Do", err)
 	}
 	seen := make(map[string]bool)
 	var msgData []EmailData
@@ -121,19 +132,15 @@ func (s *Service) GetMessageHistory(email string, historyId uint64, token *oauth
 			seen[id] = true
 			msgRes, err := gmailService.Users.Messages.Get(email, id).Do()
 			if err != nil {
-				slog.Error("error fetching message", "id", id, "error", err)
-				return nil, err
+				log.Error("error fetching message", "id", id, "error", err)
+				return nil, nil
 			}
-			// body, err := base64.URLEncoding.DecodeString(msgRes.Payload.Body.Data)
-			// if err != nil {
-			// 	log.Printf("Error while decoding body: %v", err.Error())
-			// }
 			var bodyData strings.Builder
 			for _, part := range msgRes.Payload.Parts {
 				if part.MimeType == "text/html" {
 					partData, err := base64.URLEncoding.DecodeString(part.Body.Data)
 					if err != nil {
-						slog.Error("error decoding part", "error", err)
+						log.Error("error decoding part", "error", err)
 					}
 					bodyData.Write(partData)
 				}
@@ -146,9 +153,8 @@ func (s *Service) GetMessageHistory(email string, historyId uint64, token *oauth
 	return msgData, nil
 }
 
-func (s *Service) IsTransactionEmail(emailHeader []*gmail.MessagePartHeader) (bool, string) {
+func (s *Service) IsTransactionEmail(emailHeader []*gmail.MessagePartHeader) bool {
 	isTransaction := false
-	accName := ""
 	for _, header := range emailHeader {
 		if header.Name != "Subject" && header.Name != "From" {
 			continue
@@ -164,13 +170,7 @@ func (s *Service) IsTransactionEmail(emailHeader []*gmail.MessagePartHeader) (bo
 			strings.Contains(valueLower, "view: account") {
 			isTransaction = true
 		}
-		if strings.Contains(valueLower, "credit card") {
-			accName = "HDFC Credit Card"
-		}
-	}
-	if isTransaction && accName != "HDFC Credit Card" {
-		accName = "HDFC (Salary)"
 	}
 
-	return isTransaction, accName
+	return isTransaction
 }

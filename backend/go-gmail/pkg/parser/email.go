@@ -34,10 +34,14 @@ type EmailDetails struct {
 func NewEmailParser() *EmailParser {
 	return &EmailParser{
 		patterns: &Patterns{
-			EmailRegex:   regexp.MustCompile(`(?i)(Dear\s+(Customer|Card Member|Card Holder).*?)\,*(\s|\S)+?(\d{2}-\d{2}-\d{4}|\d{2}-\d{2}-\d{2}|\d{2}\/\d{2}\/\d+|\d{2}\s*\w+,\s*\d+)`),
-			AmountRegex:  regexp.MustCompile(`(?i)(Rs\.?\s?|INR\s?)([\d,]+\.\d+)`),
-			TypeRegex:    regexp.MustCompile(`(?i)(credited|debited)`),
-			DateRegex:    regexp.MustCompile(`\d{2}-\d{2}-\d{4}|\d{2}-\d{2}-\d{2}|\d{2}\/\d{2}\/\d+|\d{2}\s*\w+,\s*\d+`),
+			EmailRegex: regexp.MustCompile(
+				`(?i)(Dear\s+(Customer|Card Member|Card Holder).*?)\,*(\s|\S)+?(\d{2}-\d{2}-\d{4}|\d{2}-\d{2}-\d{2}|\d{2}\/\d{2}\/\d+|\d{2}\s*\w+,\s*\d+)`,
+			),
+			AmountRegex: regexp.MustCompile(`(?i)(Rs\.?\s?|INR\s?)([\d,]+\.\d+)`),
+			TypeRegex:   regexp.MustCompile(`(?i)(credited|debited)`),
+			DateRegex: regexp.MustCompile(
+				`\d{2}-\d{2}-\d{4}|\d{2}-\d{2}-\d{2}|\d{2}\/\d{2}\/\d+|\d{2}\s*\w+,\s*\d+`,
+			),
 			NewlineRegex: regexp.MustCompile(`\n`),
 		},
 	}

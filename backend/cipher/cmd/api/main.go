@@ -8,23 +8,39 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/client"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/handler"
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/service"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/temporal"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
+	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	sharedMiddleware "github.com/Rishabh-Kapri/pennywise/backend/shared/middleware"
+	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/otelSDK"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 
 	"github.com/gin-contrib/cors"
+	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
+
+	tc "go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/worker"
 )
+
+// package-level Temporal client, set in main() and used by handlers
+var temporalClient tc.Client
 
 func setupLogger() {
 	logger.Setup("cipher")
@@ -34,8 +50,34 @@ func healthPage(c *gin.Context) {
 	c.String(http.StatusOK, "cipher Health OK!")
 }
 
+func connectToTemporal(ctx context.Context, cfg config.Config) (tc.Client, error) {
+	logger.Logger(ctx).Info("temporal", "host", cfg.TemporalServerHost, "port", cfg.TemporalServerPort)
+	c, err := tc.Dial(tc.Options{
+		HostPort: cfg.TemporalServerHost + ":" + cfg.TemporalServerPort,
+		Logger:   logger.Logger(ctx),
+	})
+	if err != nil {
+		return nil, err
+	}
+	logger.Logger(ctx).Info("connected to temporal")
+	return c, nil
+}
+
 func main() {
 	setupLogger()
+
+	ctx := context.Background()
+
+	otelConfig := otelSDK.Load()
+	tel, err := otelSDK.NewTelemetry(ctx, *otelConfig)
+	if err != nil {
+		logger.Fatal("error while otel setup", "error", err)
+	}
+	defer func() {
+		if err := tel.Shutdown(ctx); err != nil {
+			logger.Fatal("otel shutdown error", "error", err)
+		}
+	}()
 
 	cfg := config.Load()
 
@@ -46,11 +88,17 @@ func main() {
 	}
 	defer dbConn.Close()
 
+	temporalClient, err = connectToTemporal(ctx, cfg)
+	if err != nil {
+		logger.Fatal("Unable to connect to Temporal", "error", err)
+	}
+	defer temporalClient.Close()
+
 	// Clients
 	// currently we only have http transport
 	ollamaEngine := httpclient.NewHttpTransport(cfg.OllamaURL)
 	ollamaHttpTransport := transport.NewClient("ollama", ollamaEngine)
-	ollamaClient := client.NewOllamaClient(ollamaHttpTransport)
+	ollamaClient := client.NewOllamaClient(ollamaHttpTransport, tel.Tracer)
 
 	mlpEngine := httpclient.NewHttpTransport(cfg.MLPServiceURL)
 	mlpHttpTransport := transport.NewClient("mlp", mlpEngine)
@@ -58,9 +106,34 @@ func main() {
 
 	// Repository
 	txnEmbeddingRepo := repository.NewTransactionEmbeddingRepository(dbConn)
+	accountRepo := repository.NewAccountRepository(dbConn)
+	budgetRepo := repository.NewBudgetRepository(dbConn)
+	payeeRepo := repository.NewPayeesRepository(dbConn)
+	payeeRuleRepo := repository.NewPayeeRuleRepository(dbConn)
+	categoryRepo := repository.NewCategoryRepository(dbConn)
 
 	// Service
-	predictionService := service.NewPredictionService(ollamaClient, mlpClient, txnEmbeddingRepo)
+	predictionService := service.NewPredictionService(
+		ollamaClient,
+		mlpClient,
+		txnEmbeddingRepo,
+		accountRepo,
+		payeeRepo,
+		payeeRuleRepo,
+		categoryRepo,
+		tel.Tracer,
+	)
+
+	w := worker.New(temporalClient, sharedModel.CipherActivitiesTaskQueue, worker.Options{
+		UseBuildIDForVersioning: false,
+	})
+	w.RegisterActivity(&temporal.PredictionActivity{PredictionService: predictionService})
+
+	go func() {
+		if err := w.Run(worker.InterruptCh()); err != nil {
+			logger.Fatal("Temporal activity worker failed", "error", err)
+		}
+	}()
 
 	// Handler
 	predictionHandler := handler.NewPredictionHandler(predictionService)
@@ -68,11 +141,17 @@ func main() {
 	// Router
 	router := gin.New()
 	router.Use(gin.Recovery())
+	router.Use(gzip.Gzip(gzip.DefaultCompression))
+	// router.Use(sharedMiddleware.RequestLogger())
+	router.Use(otelgin.Middleware(otelConfig.ServiceName))
+	router.Use(tel.LogRequest())
+	router.Use(tel.MeterRequestDuration())
+	router.Use(tel.MeterRequestsInFlight())
 
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
+		AllowOrigins:     []string{"http://localhost:5173"},
 		AllowMethods:     []string{"GET", "POST"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "X-Budget-ID", "X-Correlation-ID"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "X-Internal-Service", "X-Budget-ID", "X-Correlation-ID"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: false,
 	}))
@@ -80,11 +159,18 @@ func main() {
 	{
 		api := router.Group("/api")
 		api.GET("", healthPage)
-		api.POST("/predict", predictionHandler.Predict)
-		api.POST("/corrections", predictionHandler.HandleCorrection)
+
+		budgetApi := api.Group("")
+		budgetApi.Use(sharedMiddleware.BudgetIdMiddleware(budgetRepo))
+		budgetApi.POST("/predict", predictionHandler.Predict)
+		budgetApi.POST("/corrections", predictionHandler.HandleCorrection)
 	}
 
 	addr := "0.0.0.0:" + cfg.Port
 	log.Printf("cipher listening on %s\n", addr)
-	router.Run(addr)
+	go router.Run(addr)
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
 }

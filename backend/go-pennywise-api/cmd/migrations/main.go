@@ -61,7 +61,10 @@ func main() {
 		}
 
 		for i := 1; i <= 6; i++ {
-			_, err = db.Exec("INSERT INTO goose_db_version (version_id, is_applied) VALUES ($1, true) ON CONFLICT DO NOTHING", i)
+			_, err = db.Exec(
+				"INSERT INTO goose_db_version (version_id, is_applied) VALUES ($1, true) ON CONFLICT DO NOTHING",
+				i,
+			)
 			if err != nil {
 				log.Printf("Warning: checking baseline insertion for version %d (might already exist)", i)
 			}

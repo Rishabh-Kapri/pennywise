@@ -100,12 +100,13 @@ type GoogleUserInfo struct {
 	GmailHistoryID int        `json:"gmailHistoryId"`
 	RefreshToken   string     `json:"refreshToken"`
 	LastGmailSync  *time.Time `json:"lastGmailSync"`
-	BudgetID       string     `json:"budgetId"`
+	UserID         uuid.UUID  `json:"userId"`
+	BudgetID       uuid.UUID  `json:"budgetId"`
 }
 
 // UpdateGmailHistoryRequest is the request body for updating gmail history ID
 type UpdateGmailHistoryRequest struct {
-	Email          string `json:"email" binding:"required"`
+	Email          string `json:"email"          binding:"required"`
 	GmailHistoryID uint64 `json:"gmailHistoryId" binding:"required"`
 }
 

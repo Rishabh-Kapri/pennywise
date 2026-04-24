@@ -31,7 +31,10 @@ func (m *mockLoanMetadataService) GetAll(ctx context.Context) ([]model.LoanMetad
 	return nil, args.Error(1)
 }
 
-func (m *mockLoanMetadataService) GetByAccountId(ctx context.Context, accountId uuid.UUID) (*model.LoanMetadata, error) {
+func (m *mockLoanMetadataService) GetByAccountId(
+	ctx context.Context,
+	accountId uuid.UUID,
+) (*model.LoanMetadata, error) {
 	args := m.Called(ctx, accountId)
 	if obj := args.Get(0); obj != nil {
 		return obj.(*model.LoanMetadata), args.Error(1)
@@ -47,7 +50,11 @@ func (m *mockLoanMetadataService) Create(ctx context.Context, loan model.LoanMet
 	return nil, args.Error(1)
 }
 
-func (m *mockLoanMetadataService) Update(ctx context.Context, accountId uuid.UUID, loan model.LoanMetadata) (*model.LoanMetadata, error) {
+func (m *mockLoanMetadataService) Update(
+	ctx context.Context,
+	accountId uuid.UUID,
+	loan model.LoanMetadata,
+) (*model.LoanMetadata, error) {
 	args := m.Called(ctx, accountId, loan)
 	if obj := args.Get(0); obj != nil {
 		return obj.(*model.LoanMetadata), args.Error(1)
