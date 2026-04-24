@@ -45,6 +45,7 @@ const (
 // Payee/Account/Category error codes
 const (
 	CodePayeeLookupFailed    Code = "PAYEE_LOOKUP_FAILED"
+	CodePayeeCreateFailed    Code = "PAYEE_CREATE_FAILED"
 	CodeAccountLookupFailed  Code = "ACCOUNT_LOOKUP_FAILED"
 	CodeAccountCreateFailed  Code = "ACCOUNT_CREATE_FAILED"
 	CodeCategoryLookupFailed Code = "CATEGORY_LOOKUP_FAILED"
