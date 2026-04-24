@@ -1,0 +1,140 @@
+package utils
+
+import (
+	"context"
+	"errors"
+
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/google/uuid"
+)
+
+type contextKey string
+
+const (
+	budgetIDKey      contextKey = "budgetId"
+	userIDKey        contextKey = "userId"
+	userKey          contextKey = "user"
+	correlationIDKey contextKey = "correlationId"
+)
+
+// WithServiceName returns a new context with the service name set.
+func WithServiceName(ctx context.Context, name string) context.Context {
+	return context.WithValue(ctx, "serviceName", name)
+}
+
+func ServiceNameFromContext(ctx context.Context) string {
+	name, ok := ctx.Value("serviceName").(string)
+	if !ok {
+		return ""
+	}
+	return name
+}
+
+// WithBudgetID returns a new context with the budget ID set.
+func WithBudgetID(ctx context.Context, id uuid.UUID) context.Context {
+	return context.WithValue(ctx, budgetIDKey, id)
+}
+
+// BudgetIDFromContext extracts the budget ID from the context.
+// Returns an error if the budget ID is missing.
+func BudgetIDFromContext(ctx context.Context) (uuid.UUID, error) {
+	id, ok := ctx.Value(budgetIDKey).(uuid.UUID)
+	if !ok {
+		return uuid.Nil, errors.New("budget ID not found in context")
+	}
+	return id, nil
+}
+
+// MustBudgetID extracts the budget ID or panics.
+func MustBudgetID(ctx context.Context) uuid.UUID {
+	id, err := BudgetIDFromContext(ctx)
+	if err != nil {
+		panic("BudgetIdMiddleware not configured: " + err.Error())
+	}
+	return id
+}
+
+// WithUserID returns a new context with the authenticated user's ID set.
+func WithUserID(ctx context.Context, id uuid.UUID) context.Context {
+	return context.WithValue(ctx, userIDKey, id)
+}
+
+// UserIDFromContext extracts the authenticated user's ID from the context.
+func UserIDFromContext(ctx context.Context) (uuid.UUID, error) {
+	id, ok := ctx.Value(userIDKey).(uuid.UUID)
+	if !ok {
+		return uuid.Nil, errors.New("user ID not found in context")
+	}
+	return id, nil
+}
+
+func WithUser(ctx context.Context, user *model.AuthUser) context.Context {
+	return context.WithValue(ctx, "user", user)
+}
+
+func MustUserID(ctx context.Context) uuid.UUID {
+	id, err := UserIDFromContext(ctx)
+	if err != nil {
+		panic("UserIdMiddleware not configured: " + err.Error())
+	}
+	return id
+}
+
+// WithCorrelationID returns a new context with the correlation ID set.
+func WithCorrelationID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, correlationIDKey, id)
+}
+
+// NewCorrelationID generates a new correlation ID.
+func NewCorrelationID() string {
+	return uuid.New().String()
+}
+
+// CorrelationIDFromContext extracts the correlation ID from the context.
+func CorrelationIDFromContext(ctx context.Context) string {
+	id, ok := ctx.Value(correlationIDKey).(string)
+	if !ok {
+		return ""
+	}
+	return id
+}
+
+// GetHeaders returns a map of headers to be used in the request for internal services
+func GetHeaders(ctx context.Context) map[string][]string {
+	headers := make(map[string][]string)
+
+	// This is an internal service call, add the X-Internal-Service header
+	// headers = append(headers, http.Header{
+	// 	"X-Internal-Service": []string{"true"},
+	// })
+	headers["X-Internal-Service"] = []string{"true"}
+
+	// Inject correlation ID if available
+	if correlationID := CorrelationIDFromContext(ctx); correlationID != "" {
+		// headers = append(headers, http.Header{
+		// 	"X-Correlation-ID": []string{correlationID},
+		// })
+		headers["X-Correlation-ID"] = []string{correlationID}
+	}
+
+	// Inject budget ID if available
+	if budgetID, err := BudgetIDFromContext(ctx); err == nil {
+		// headers = append(headers, http.Header{
+		// 	"X-Budget-ID": []string{budgetID.String()},
+		// })
+		headers["X-Budget-ID"] = []string{budgetID.String()}
+	}
+
+	if uid, err := UserIDFromContext(ctx); err == nil {
+		// headers = append(headers, http.Header{
+		// 	"X-User-ID": []string{uid.String()},
+		// })
+		headers["X-User-ID"] = []string{uid.String()}
+	}
+
+	if serviceName := ServiceNameFromContext(ctx); serviceName != "" {
+		headers["X-Service-Name"] = []string{serviceName}
+	}
+
+	return headers
+}

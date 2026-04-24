@@ -79,35 +79,18 @@ func (r *transactionEmbeddingRepository) SearchSimilar(ctx context.Context, budg
 func (r *transactionEmbeddingRepository) Upsert(ctx context.Context, tx pgx.Tx, data model.TransactionEmbedding, embeddingStr string) error {
 	executor := r.Executor(tx)
 	query := `
-		WITH target AS (
-				-- 1. Identify if a matching row exists by ID or by Text
-				SELECT id FROM transaction_embeddings 
-				WHERE (embedding_text = $2 AND budget_id = $1)
-				LIMIT 1
-		),
-		upsert AS (
-				-- 2. Update the existing row if it was found
-				UPDATE transaction_embeddings SET
-						embedding_text = $2,
-						embedding = $3,
-						payee_id = $4,
-						category_id = $5,
-						amount = $6,
-						source = $7,
-						updated_at = NOW()
-				FROM target
-				WHERE transaction_embeddings.id = target.id
-				RETURNING transaction_embeddings.id
-		)
-		-- 3. If nothing was updated, insert the new record
-		INSERT INTO transaction_embeddings (
-				budget_id, embedding_text, embedding, payee_id, category_id,
-				amount, source, created_at, updated_at
-		)
-		SELECT $1, $2, $3, $4, $5, $6, $7, NOW(), NOW()
-		WHERE NOT EXISTS (SELECT 1 FROM target);
+	  INSERT INTO transaction_embeddings (
+	    budget_id, embedding_text, embedding, payee_id, category_id, amount, source
+	  ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+	  ON CONFLICT (budget_id, embedding_text) 
+	  DO UPDATE SET
+      -- Keep a rolling average of the typical spend amount
+	    AMOUNT = (EXCLUDED.AMOUNT + transaction_embeddings.amount) / 2,
+	    -- if the user changed the payee and category, update it
+	    category_id = EXCLUDED.category_id,
+	    payee_id = EXCLUDED.payee_id,
+	    updated_at = NOW()
 	`
-
 	_, err := executor.Exec(
 		ctx,
 		query,
