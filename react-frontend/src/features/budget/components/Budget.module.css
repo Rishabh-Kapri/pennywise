@@ -3,12 +3,14 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-width: 0;
 }
 
 .container {
   display: flex;
   gap: 1rem;
   align-items: center;
+  min-width: 0;
 }
 
 .amountContainer {
@@ -21,6 +23,7 @@
   border-radius: 0.5rem;
   padding: 0.5rem 1rem;
   transition: all 0.2 ease;
+  min-width: 0;
 }
 
 .allAssigned {
@@ -54,3 +57,29 @@
 /*   border-radius: 1rem; */
 /*   padding: 1rem; */
 /* } */
+
+@media (max-width: 768px) {
+  .container {
+    width: 100%;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding-left: 3.5rem;
+  }
+
+  .amountContainer {
+    flex: 0 1 8.25rem;
+    justify-content: center;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .assignAmount > .title {
+    align-self: flex-start;
+    font-size: 1rem;
+    line-height: 1.15;
+  }
+
+  .assignAmount > .subtitle {
+    font-size: 0.8rem;
+    line-height: 1.25;
+  }
+}
