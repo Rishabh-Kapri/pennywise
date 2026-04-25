@@ -18,6 +18,7 @@ type Config struct {
 	GmailServiceName   string
 	CipherServiceURL   string
 	CipherServiceName  string
+	InternalAuthToken  string
 	TemporalServerHost string
 	TemporalServerPort string
 }
@@ -38,6 +39,7 @@ func Load() Config {
 
 		CipherServiceURL:  os.Getenv("CIPHER_SERVICE_URL"),
 		CipherServiceName: "cipher",
+		InternalAuthToken: os.Getenv("INTERNAL_AUTH_TOKEN"),
 
 		TemporalServerHost: os.Getenv("TEMPORAL_SERVER_HOST"),
 		TemporalServerPort: os.Getenv("TEMPORAL_SERVER_PORT"),

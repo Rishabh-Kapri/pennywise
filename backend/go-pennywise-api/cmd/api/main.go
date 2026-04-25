@@ -20,6 +20,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedMiddleware "github.com/Rishabh-Kapri/pennywise/backend/shared/middleware"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	sharedTemporal "github.com/Rishabh-Kapri/pennywise/backend/shared/temporal"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
@@ -37,7 +38,7 @@ func healthPage(c *gin.Context) {
 func main() {
 	config := config.Load()
 	logger.Setup(config.ServiceName)
-	ctx := utils.WithServiceName(context.Background(), config.ServiceName)
+	ctx := utils.WithInternalAuthToken(utils.WithServiceName(context.Background(), config.ServiceName), config.InternalAuthToken)
 
 	dbConn := db.Connect(ctx)
 	defer dbConn.Close()
@@ -46,10 +47,8 @@ func main() {
 	router.Use(gin.Recovery())
 	router.Use(gzip.Gzip(gzip.DefaultCompression))
 	router.Use(sharedMiddleware.StripInternalHeaders())
-	router.Use(func(c *gin.Context) {
-		c.Request = c.Request.WithContext(utils.WithServiceName(c.Request.Context(), config.ServiceName))
-		c.Next()
-	})
+	router.Use(sharedMiddleware.RequestMetadata(config.ServiceName))
+	router.Use(sharedMiddleware.InternalRequestAuth(config.InternalAuthToken))
 	router.Use(sharedMiddleware.RequestLogger())
 
 	router.Use(cors.New(cors.Config{
@@ -62,8 +61,18 @@ func main() {
 			"https://pennywise.nastydomain.space",
 			"https://react-fe-dev.up.railway.app",
 		},
-		AllowMethods:     []string{"GET", "POST", "PATCH", "PUT", "DELETE"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "X-Budget-ID"},
+		AllowMethods: []string{"GET", "POST", "PATCH", "PUT", "DELETE"},
+		AllowHeaders: []string{
+			"Origin",
+			"Content-Type",
+			"Authorization",
+			utils.HeaderBudgetID,
+			utils.HeaderCorrelationID,
+			utils.HeaderCallerService,
+			utils.HeaderOriginService,
+			utils.HeaderInternalToken,
+			utils.HeaderInternalService,
+		},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
 	}))
@@ -271,14 +280,20 @@ func main() {
 	// Temporal worker — skipped if TEMPORAL_SERVER_HOST is not set
 	if config.TemporalServerHost != "" {
 		temporalClient, err := client.Dial(client.Options{
-			HostPort: fmt.Sprintf("%s:%s", config.TemporalServerHost, config.TemporalServerPort),
+			HostPort:           fmt.Sprintf("%s:%s", config.TemporalServerHost, config.TemporalServerPort),
+			ContextPropagators: sharedTemporal.ContextPropagators(),
 		})
 		if err != nil {
 			logger.Logger(ctx).Error("failed to create temporal client", "error", err)
 			panic(err)
 		}
 
-		w := worker.New(temporalClient, sharedModel.PennywiseActivitiesTaskQueue, worker.Options{})
+		w := worker.New(temporalClient, sharedModel.PennywiseActivitiesTaskQueue, worker.Options{
+			BackgroundActivityContext: utils.WithInternalAuthToken(
+				utils.WithServiceName(context.Background(), config.ServiceName),
+				config.InternalAuthToken,
+			),
+		})
 		w.RegisterActivity(&temporalActivities.CreateTransactionActivity{
 			TransactionService: transactionService,
 			PayeeService:       payeeService,

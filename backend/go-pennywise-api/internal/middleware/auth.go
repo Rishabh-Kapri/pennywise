@@ -59,10 +59,19 @@ func handleUserId(
 func AuthMiddleware(authService service.AuthService, apiKeyService service.APIKeyService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		logger := logger.Logger(ctx)
-		// check if this call is from an internal service
-		if c.GetHeader("X-Internal-Service") == "true" {
-			logger.Debug("internal service call from", "ip", c.ClientIP(), "service", c.Request)
+		log := logger.Logger(ctx)
+		if utils.VerifiedInternalFromContext(ctx) {
+			log.Debug(
+				"internal service request",
+				"ip",
+				c.ClientIP(),
+				"caller_service",
+				utils.CallerServiceFromContext(ctx),
+				"origin_service",
+				utils.OriginServiceFromContext(ctx),
+				"path",
+				c.Request.URL.Path,
+			)
 			c.Next()
 			return
 		}
@@ -73,7 +82,7 @@ func AuthMiddleware(authService service.AuthService, apiKeyService service.APIKe
 		if apiKey != "" {
 			isValid := apiKeyService.ValidateFormat(apiKey)
 			if !isValid {
-				logger.Error("invalid api key", "apiKey", apiKey)
+				log.Error("invalid api key", "apiKey", apiKey)
 				c.JSON(401, gin.H{"error": "invalid api key"})
 				c.Abort()
 				return
@@ -81,7 +90,7 @@ func AuthMiddleware(authService service.AuthService, apiKeyService service.APIKe
 
 			_, _, _, err := apiKeyService.ParseKey(apiKey)
 			if err != nil {
-				logger.Error("failed to parse api key", "apiKey", apiKey)
+				log.Error("failed to parse api key", "apiKey", apiKey)
 				c.JSON(401, gin.H{"error": "invalid api key"})
 				c.Abort()
 				return
@@ -89,14 +98,14 @@ func AuthMiddleware(authService service.AuthService, apiKeyService service.APIKe
 
 			key, err := apiKeyService.GetByHash(ctx, apiKey)
 			if err != nil {
-				logger.Error("failed to get api key", "key", apiKey)
+				log.Error("failed to get api key", "key", apiKey)
 				c.JSON(401, gin.H{"error": "invalid api key"})
 				c.Abort()
 				return
 			}
 
 			if !key.IsValid() {
-				logger.Error("invalid api key", "key", apiKey)
+				log.Error("invalid api key", "key", apiKey)
 				c.JSON(401, gin.H{"error": "invalid api key"})
 				c.Abort()
 				return
@@ -107,7 +116,7 @@ func AuthMiddleware(authService service.AuthService, apiKeyService service.APIKe
 			// @TODO: check rate limit
 			// @TODO: update last used time
 
-			logger.Info("valid api key", "key", key)
+			log.Info("valid api key", "key", key)
 			handleUserId(c, ctx, authService, key.UserID.String(), -1.0)
 			return
 		}
@@ -161,6 +170,5 @@ func AuthMiddleware(authService service.AuthService, apiKeyService service.APIKe
 			return
 		}
 		handleUserId(c, ctx, authService, userID, jwtVersion)
-		return
 	}
 }

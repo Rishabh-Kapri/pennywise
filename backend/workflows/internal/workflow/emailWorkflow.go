@@ -4,12 +4,27 @@ import (
 	"time"
 
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	sharedTemporal "github.com/Rishabh-Kapri/pennywise/backend/shared/temporal"
 
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
 )
 
 func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailWorflowInput) error {
+	workflowInfo := workflow.GetInfo(ctx)
+	workflowMetadata := sharedTemporal.RequestMetadataFromWorkflowContext(ctx)
+	workflowLogFields := []interface{}{
+		"workflow_id", workflowInfo.WorkflowExecution.ID,
+		"workflow_run_id", workflowInfo.WorkflowExecution.RunID,
+	}
+	if workflowMetadata.CorrelationID != "" {
+		workflowLogFields = append(workflowLogFields, "correlation_id", workflowMetadata.CorrelationID)
+	}
+	if workflowMetadata.OriginService != "" {
+		workflowLogFields = append(workflowLogFields, "origin_service", workflowMetadata.OriginService)
+	}
+	workflow.GetLogger(ctx).Info("starting email-to-transaction workflow", workflowLogFields...)
+
 	// ----- Step 1: Fetch emails data from the historyId -----
 	gmailCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 		TaskQueue:           sharedModel.GmailActivitiesTaskQueue,
@@ -27,8 +42,8 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailWor
 	}
 
 	parsedEmails := fetchAndParseEmailResult.ParsedEmails
-	workflow.GetLogger(ctx).Info("Fetched emails", "count", len(parsedEmails))
-	if parsedEmails == nil || len(parsedEmails) == 0 {
+	workflow.GetLogger(ctx).Info("fetched emails", append(workflowLogFields, "count", len(parsedEmails))...)
+	if len(parsedEmails) == 0 {
 		return nil
 	}
 
@@ -48,7 +63,7 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailWor
 	if err != nil {
 		return err
 	}
-	workflow.GetLogger(ctx).Info("Prediction result", "result", predictionResult)
+	workflow.GetLogger(ctx).Info("prediction result", append(workflowLogFields, "result", predictionResult)...)
 
 	// ----- Step 3: Create transactions -----
 	pennywiseCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
@@ -83,6 +98,8 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailWor
 			return err
 		}
 	}
+
+	workflow.GetLogger(ctx).Info("email-to-transaction workflow completed", workflowLogFields...)
 
 	return nil
 }

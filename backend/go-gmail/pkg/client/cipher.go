@@ -36,7 +36,7 @@ type PredictResponse struct {
 
 func (c *CipherClient) Predict(ctx context.Context, req PredictRequest) (res *PredictResponse, err error) {
 	headers := utils.GetHeaders(ctx)
-	logger.Logger(ctx).Info("predict request", "headers", headers)
+	logger.Logger(ctx).Info("predict request", "headers", utils.SanitizeHeadersForLogging(headers))
 
 	resp, err := transport.Post[PredictResponse](ctx, c.client, "/api/predict", headers, req)
 	return &resp, err

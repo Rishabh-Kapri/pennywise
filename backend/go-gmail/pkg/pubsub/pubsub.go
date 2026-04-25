@@ -15,6 +15,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	sharedTemporal "github.com/Rishabh-Kapri/pennywise/backend/shared/temporal"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
@@ -39,15 +40,17 @@ type EventProcessor struct {
 	processed       map[string]historyIDMap
 	lastProcessed   map[string]uint64
 	temporalClient  tc.Client
+	internalToken   string
 }
 
-func NewEventProcessor(tc *tc.Client) *EventProcessor {
+func NewEventProcessor(tc *tc.Client, internalToken string) *EventProcessor {
 	return &EventProcessor{
 		processingQueue: make(map[uint64]bool),
 		pendingEvents:   make(chan *pubsub.Message, 1), // buffered channel for pending historyIds
 		processed:       make(map[string]historyIDMap),
 		lastProcessed:   make(map[string]uint64),
 		temporalClient:  *tc,
+		internalToken:   internalToken,
 	}
 }
 
@@ -73,7 +76,9 @@ func (p *EventProcessor) processMessage(event *pubsub.Message) {
 	// lock the mutex
 	p.mu.Lock()
 	// Create a context with a correlation ID for this message
-	ctx := utils.WithCorrelationID(context.Background(), utils.NewCorrelationID())
+	ctx := utils.WithInternalAuthToken(utils.WithServiceName(context.Background(), "gmail-pubsub"), p.internalToken)
+	ctx = utils.WithOriginService(ctx, "gmail-pubsub")
+	ctx = utils.WithCorrelationID(ctx, utils.NewCorrelationID())
 	log := logger.Logger(ctx)
 
 	var m EventData
@@ -155,7 +160,7 @@ func TestMessages() {
 	// ctx := context.Background()
 	ctx, cancel := context.WithCancel(context.Background())
 
-	processor := NewEventProcessor(nil)
+	processor := NewEventProcessor(nil, "")
 	go processor.startProcessing(ctx)
 
 	eventData1 := EventData{
@@ -193,8 +198,9 @@ func TestMessages() {
 func connectToTemporal(ctx context.Context, cfg config.Config) (tc.Client, error) {
 	logger.Logger(ctx).Info("temporal", "host", cfg.TemporalServerHost, "port", cfg.TemporalServerPort)
 	c, err := tc.Dial(tc.Options{
-		HostPort: cfg.TemporalServerHost + ":" + cfg.TemporalServerPort,
-		Logger:   logger.Logger(ctx),
+		HostPort:           cfg.TemporalServerHost + ":" + cfg.TemporalServerPort,
+		Logger:             logger.Logger(ctx),
+		ContextPropagators: sharedTemporal.ContextPropagators(),
 	})
 	if err != nil {
 		return nil, err
@@ -236,6 +242,10 @@ func PullMessages(ctx context.Context) {
 	pennywiseClient := transport.NewClient("pennywise-api", pennywiseTransport)
 	w := worker.New(tc, sharedModel.GmailActivitiesTaskQueue, worker.Options{
 		UseBuildIDForVersioning: false,
+		BackgroundActivityContext: utils.WithInternalAuthToken(
+			utils.WithServiceName(context.Background(), "gmail-pubsub"),
+			config.InternalAuthToken,
+		),
 	})
 	w.RegisterActivity(&temporal.GmailActivities{
 		Auth:      auth.NewService(config),
@@ -249,7 +259,7 @@ func PullMessages(ctx context.Context) {
 		}
 	}()
 
-	processor := NewEventProcessor(&tc)
+	processor := NewEventProcessor(&tc, config.InternalAuthToken)
 	// start a goroutine to process events
 	go processor.startProcessing(ctx)
 

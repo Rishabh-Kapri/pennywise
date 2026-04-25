@@ -10,6 +10,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
+	"go.temporal.io/sdk/activity"
 )
 
 type CreateCipherPredictionActivity struct {
@@ -22,7 +23,14 @@ func (a *CreateCipherPredictionActivity) CreateCipherPrediction(
 	ctx context.Context,
 	input sharedModel.CreateCipherPredictionInput,
 ) error {
-	log := logger.Logger(ctx)
+	ctx = utils.WithServiceName(ctx, "pennywise-api")
+	activityInfo := activity.GetInfo(ctx)
+	log := logger.Logger(ctx).With(
+		"workflow_id", activityInfo.WorkflowExecution.ID,
+		"workflow_run_id", activityInfo.WorkflowExecution.RunID,
+		"activity_id", activityInfo.ActivityID,
+		"activity_type", activityInfo.ActivityType.Name,
+	)
 
 	if input.BudgetID == uuid.Nil {
 		return errs.New(errs.CodeInvalidArgument, "no budget id found")

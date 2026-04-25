@@ -18,6 +18,7 @@ type Config struct {
 	MLPServiceURL                    string
 	PennywiseServiceURL              string
 	CipherServiceURL                 string
+	InternalAuthToken                string
 	NtfyTopic                        string
 	TemporalServerHost               string
 	TemporalServerPort               string
@@ -44,6 +45,7 @@ func LoadConfig() *Config {
 		MLPServiceURL:                    os.Getenv("MLP_SERVICE_URL"),
 		PennywiseServiceURL:              os.Getenv("PENNYWISE_SERVICE_URL"),
 		CipherServiceURL:                 os.Getenv("CIPHER_SERVICE_URL"),
+		InternalAuthToken:                os.Getenv("INTERNAL_AUTH_TOKEN"),
 		NtfyTopic:                        os.Getenv("NTFY_TOPIC"),
 		TemporalServerHost:               os.Getenv("TEMPORAL_SERVER_HOST"),
 		TemporalServerPort:               os.Getenv("TEMPORAL_SERVER_PORT"),

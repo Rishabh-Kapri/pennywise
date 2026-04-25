@@ -10,6 +10,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
+	"go.temporal.io/sdk/activity"
 )
 
 type PredictionActivity struct {
@@ -20,7 +21,14 @@ func (a *PredictionActivity) Predict(
 	ctx context.Context,
 	input sharedModel.ParsedEmailsInput,
 ) ([]sharedModel.CipherPredictionResult, error) {
-	log := logger.Logger(ctx)
+	ctx = utils.WithServiceName(ctx, "cipher")
+	activityInfo := activity.GetInfo(ctx)
+	log := logger.Logger(ctx).With(
+		"workflow_id", activityInfo.WorkflowExecution.ID,
+		"workflow_run_id", activityInfo.WorkflowExecution.RunID,
+		"activity_id", activityInfo.ActivityID,
+		"activity_type", activityInfo.ActivityType.Name,
+	)
 
 	var predictionResponse []sharedModel.CipherPredictionResult
 
