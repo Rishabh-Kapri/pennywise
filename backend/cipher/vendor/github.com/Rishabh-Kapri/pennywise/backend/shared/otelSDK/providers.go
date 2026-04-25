@@ -3,17 +3,17 @@ package otelSDK
 import (
 	"context"
 	"encoding/base64"
+	logger "log"
 	"os"
 	"strings"
 	"time"
-	logger "log"
 
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
-	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
-	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/stdout/stdoutlog"
 	"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
@@ -185,8 +185,10 @@ func newLoggerProvider(ctx context.Context, cfg Config, res *resource.Resource) 
 
 // newResource creates an OpenTelemetry Resource that identifies the source
 // of the telemetry data. It attaches standard attributes such as the service
-// name, service version, and hostname to all generated spans, metrics, and logs.
-func newResource(serviceName string, serviceVersion string) *resource.Resource {
+// name, service version, hostname, and deployment environment to all generated
+// spans, metrics, and logs. Langfuse uses deployment.environment to scope
+// traces per environment (e.g. "production" vs "development").
+func newResource(serviceName string, serviceVersion string, environment string) *resource.Resource {
 	hostName, _ := os.Hostname()
 
 	return resource.NewWithAttributes(
@@ -194,6 +196,7 @@ func newResource(serviceName string, serviceVersion string) *resource.Resource {
 		semconv.ServiceName(serviceName),
 		semconv.ServiceVersion(serviceVersion),
 		semconv.HostName(hostName),
+		semconv.DeploymentEnvironment(environment),
 	)
 }
 

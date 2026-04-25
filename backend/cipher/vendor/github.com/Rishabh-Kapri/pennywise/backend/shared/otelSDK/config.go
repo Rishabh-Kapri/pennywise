@@ -11,6 +11,7 @@ import (
 type Config struct {
 	ServiceName         string // The name of the service (e.g., "cipher", "go-gmail")
 	ServiceVersion      string // The version of the service (e.g., "1.0.0")
+	Environment         string // Deployment environment (e.g., "production", "development", "local")
 	OtelSdkDisabled     string
 	OtelTracesExporter  string
 	OtelMetricsExporter string
@@ -42,6 +43,7 @@ func Load() *Config {
 	return &Config{
 		ServiceName:         serviceName,
 		ServiceVersion:      serviceVersion,
+		Environment:         env,
 		OtelSdkDisabled:     os.Getenv("OTEL_SDK_DISABLED"),
 		OtelTracesExporter:  os.Getenv("OTEL_TRACES_EXPORTER"),
 		OtelMetricsExporter: os.Getenv("OTEL_METRICS_EXPORTER"),

@@ -48,7 +48,7 @@ type Telemetry struct {
 // Telemetry struct or an error if provider initialization fails.
 func NewTelemetry(ctx context.Context, cfg Config) (*Telemetry, error) {
 	slog.Info("telemetry init", "cfg", cfg)
-	rp := newResource(cfg.ServiceName, cfg.ServiceVersion)
+	rp := newResource(cfg.ServiceName, cfg.ServiceVersion, cfg.Environment)
 
 	// Set up propagator for cross-service trace context (W3C traceparent + baggage headers)
 	prop := newPropagator()
