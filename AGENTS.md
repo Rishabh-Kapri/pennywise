@@ -2,170 +2,209 @@
 
 ## Overview
 
-Pennywise is a **personal finance/budgeting application** with ML-powered transaction classification from email parsing. The system is a monorepo with 4 microservices:
+Pennywise is a personal finance/budgeting monorepo. The repo currently contains production paths, active migration work, and a few experimental services.
+
+### Current service map
+
+| Service | Path | Status | Responsibility |
+|---------|------|--------|----------------|
+| Go API | `backend/go-pennywise-api` | Active | Core REST API (Gin + PostgreSQL), auth, budgets, transactions, tags, loan metadata |
+| Gmail watcher | `backend/go-gmail` | Active | Gmail Pub/Sub ingestion, email parsing, MLP prediction calls, transaction/prediction creation |
+| Python MLP | `backend/python-mlp` | Active | `/predict` inference and retraining/augmentation endpoints |
+| Cipher | `backend/cipher` | Active but partial integration | Prediction orchestrator (Ollama + pgvector + MLP/LLM fallback), corrections, embedding backfill |
+| Shared Go module | `backend/shared` | Active | Common logging, context propagation, transport abstraction, DB base repository |
+| Temporal workflows | `backend/workflows` | Experimental | Workflow definitions and worker scaffolding |
+| React frontend | `react-frontend` | Active development | Main web app (React 19 + Redux Toolkit + Vite) |
+| Angular frontend | `frontend` | Legacy/maintenance | Older app (Angular 17 + NGXS + Firestore remnants) |
+| File parser | `backend/file-parser` | Experimental | Clojure service scaffold for bulk upload flows |
+
+`backend/setu` currently exists as a placeholder module.
+
+## High-level architecture
+
+### Current primary flow
 
 ```
-┌─────────────────┐    Gmail Push    ┌──────────────┐    Predict    ┌─────────────┐
-│  Gmail + PubSub │ ───────────────► │  go-gmail    │ ────────────► │ python-mlp  │
-└─────────────────┘                  └──────────────┘               └─────────────┘
-                                            │
-                                            │ Create Transaction
-                                            ▼
-┌─────────────────┐                  ┌──────────────────┐
-│ Angular/React   │ ◄──────────────► │ go-pennywise-api │ (PostgreSQL)
-│ Frontend        │   REST API       │                  │
-└─────────────────┘                  └──────────────────┘
+Gmail Push (Pub/Sub)
+        |
+        v
+    go-gmail
+        |
+        | parse email + call /predict (python-mlp)
+        v
+ go-pennywise-api (PostgreSQL)
+        ^
+        |
+ React frontend / Angular frontend
 ```
 
-### Service Responsibilities
+### Additional AI flow (newer path)
 
-- **go-pennywise-api** (`backend/go-pennywise-api`): Core REST API with handler -> service -> repository layering. PostgreSQL via pgx.
-- **go-gmail** (`backend/go-gmail`): Watches Gmail via Pub/Sub, parses bank emails with regex, creates transactions via the API.
-- **python-mlp** (`backend/python-mlp`): MLP + sentence-transformer models predicting payee/category/account from email text.
-- **frontend** (`frontend`): Angular 17 app with NGXS state management.
-- **react-frontend** (`react-frontend`): React 19 + Vite + Redux Toolkit (active development).
-- **file-parser** (`backend/file-parser`): Clojure service for bulk-uploading transactions from files.
-
-## Key Data Flow
-
-1. **Email -> Transaction**: Gmail push notification -> `go-gmail` parses email via regex patterns in `backend/go-gmail/pkg/parser/email.go` -> calls `python-mlp /predict` endpoint -> creates transaction via `go-pennywise-api`.
-2. **Budget Context**: All API calls require `X-Budget-ID` header - extracted via `utils.GetBudgetId(c)` in handlers.
-3. **ML Prediction Corrections**: When a user updates an ML-created transaction, `updatePrediction` logic in `backend/go-pennywise-api/internal/service/transaction.go` tracks corrections (`UserCorrectedPayee`, `UserCorrectedCategory`, etc.) for model improvement.
-4. **State Management**: Angular uses NGXS (`store/dashboard/states/`), React uses Redux Toolkit (`features/*/store/`).
-
-## Build/Lint/Test Commands
-
-| Service | Build | Test Single | Test All | Lint |
-|---------|-------|-------------|----------|------|
-| Angular Frontend | `cd frontend && npm run build` | `ng test --include="**/name.spec.ts"` | `npm test` | Follow TypeScript strict mode |
-| React Frontend | `cd react-frontend && npm run build` | `npm test -- filename` | `npm test` | Follow TypeScript strict mode |
-| Go API | `cd backend/go-pennywise-api && go build ./cmd/api` | `go test -run TestName ./internal/service` | `go test ./...` | `go fmt ./... && go vet ./...` |
-| Go Gmail | `cd backend/go-gmail && go build` | `go test -run TestName ./pkg/parser` | `go test ./...` | `go fmt ./... && go vet ./...` |
-| Python MLP | `cd backend/python-mlp && pip install -r requirements.txt && python mlp_predict_server.py` | - | - | - |
-| Docker (Full Stack) | `docker-compose up --build` | - | - | - |
-
-### Development Servers
-
-- **Angular Frontend**: `cd frontend && npm start` (port 5000)
-- **React Frontend**: `cd react-frontend && npm run dev`
-- **Go API**: Built binary runs on port 5151
-- **Python MLP**: `python mlp_predict_server.py` (port 8000)
-- **Docker Compose ports**: Frontend (5000), Gmail (5000), MLP (5050), API (5151)
-
-## Code Patterns & Style
-
-### Go API (Gin Framework)
-
-```go
-// Handler: Parse request, call service, return JSON response
-func (h *transactionHandler) Create(c *gin.Context) {
-    ctx, err := utils.GetBudgetId(c)  // Always extract budget context first
-    if err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-        return
-    }
-    // ... service call
-}
-
-// Service: Business logic, orchestrates repositories
-type TransactionService interface {
-    Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error)
-}
-
-// Repository: Database operations with optional transaction support
-func (r *transactionRepo) GetByIdTx(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID) (*model.Transaction, error)
+```
+cipher
+  |- generates embeddings (Ollama/OpenAI-compatible model)
+  |- checks pgvector similarity in transaction_embeddings
+  |- falls back to MLP/LLM
+  `- handles correction upserts and backfill tooling
 ```
 
-- **Structure**: `internal/` for private API code, `pkg/` for shared utilities
-- **Imports**: Standard library, third-party (gin, uuid, pgx), then local packages - grouped with blank lines
-- **Naming**: PascalCase for exported, camelCase for private (Go conventions)
-- **Error handling**: Return error as last value, handle all errors with `gin.H{"error": err.Error()}` and appropriate HTTP status
-- **Database transactions**: Use `*Tx` suffixed repository methods when atomicity is required
-- **Interfaces**: Define in handler/service layers, implement dependency injection via constructors
+## Key data and auth flow
 
-### Angular Frontend (TypeScript)
+1. **React auth**: Google credential -> `POST /api/auth/google` -> access + refresh tokens.
+2. **Internal service auth**: service-to-service HTTP calls propagate `X-Correlation-ID`, `X-Caller-Service`, `X-Origin-Service`, `X-Budget-ID`, and `X-Internal-Token`; shared middleware verifies internal requests and sets `VerifiedInternal` in context.
+3. **API auth middleware**: accepts `Authorization: Bearer ...` or `X-API-Key` for user traffic, and trusts only shared `VerifiedInternal` context for internal bypass.
+4. **Budget scoping**: budget-scoped routes require `X-Budget-ID`; middleware verifies ownership for user traffic and trusts only verified internal requests for service traffic.
+5. **Gmail ingestion**: Pub/Sub event -> parser -> 3-step MLP prediction (account/payee/category) -> create transaction + prediction via API.
+6. **Prediction corrections**: transaction updates on MLP-sourced records update `predictions.has_user_corrected` fields in API service logic.
 
-- **Components**: Mix of standalone and module-based components (follow existing patterns in each area)
-- **State**: NGXS actions/selectors, defined per feature in `store/dashboard/states/`
-- **Services**: `HttpService` wraps HttpClient with base URL from environment
-- **DI**: Constructor injection preferred (existing codebase pattern), avoid `inject()` for consistency
-- **Imports**: Angular core first, third-party libraries, then local imports (models, services, constants)
-- **Naming**: PascalCase for classes/interfaces, camelCase for methods/properties, kebab-case for files
-- **Types**: Explicit interfaces for all models in `frontend/src/app/models/`, strict TypeScript mode enabled
-- **Styling**: SCSS files with Tailwind CSS classes, component-scoped styles
+## Build, test, lint
 
-### React Frontend (Active Development)
+| Component | Build/Run | Test | Lint/Format |
+|-----------|-----------|------|-------------|
+| Go API | `cd backend/go-pennywise-api && go build ./cmd/api` | `cd backend/go-pennywise-api && go test ./...` | `cd backend/go-pennywise-api && go fmt ./... && go vet ./...` |
+| Go Gmail | `cd backend/go-gmail && go build .` | `cd backend/go-gmail && go test ./...` | `cd backend/go-gmail && go fmt ./... && go vet ./...` |
+| Cipher | `cd backend/cipher && go build ./cmd/api` | `cd backend/cipher && go test ./...` | `cd backend/cipher && go fmt ./... && go vet ./...` |
+| Shared | - | `cd backend/shared && go test ./...` | `cd backend/shared && go fmt ./... && go vet ./...` |
+| Workflows | `cd backend/workflows && go build ./cmd/worker` | `cd backend/workflows && go test ./...` | `cd backend/workflows && go fmt ./... && go vet ./...` |
+| Python MLP | `cd backend/python-mlp && python mlp_predict_server.py` | manual/API-level validation | - |
+| React frontend | `cd react-frontend && npm run dev` / `npm run build` | no dedicated test suite currently | `cd react-frontend && npm run lint` |
+| Angular frontend | `cd frontend && npm start` / `npm run build` | `cd frontend && npm test` | TypeScript strict mode |
+| File parser | `cd backend/file-parser && clojure -M:run-m` | `cd backend/file-parser && clojure -T:build test` | - |
 
-- **State**: Redux Toolkit with feature-based slices in `features/*/store/`
-- **API**: `apiClient` singleton in `react-frontend/src/utils/api.ts` - auto-injects `x-budget-id` header
-- **Structure**: Feature folders (`features/transactions/`, `features/budget/`) containing `components/`, `hooks/`, `store/`, `types/`
-- **Middleware**: Custom middlewares in `react-frontend/src/app/middlewares.ts` for data fetching and date changes
-- **Hooks**: Use typed `useAppDispatch` and `useAppSelector` from `react-frontend/src/app/hooks.ts`
-- **UI**: HeroUI components, Lucide icons, Tailwind CSS v4, Recharts for charts
-- **Naming**: PascalCase for components, camelCase for hooks/utilities, kebab-case for files
+### Database migrations (Go API)
 
-### Python MLP
+- `cd backend/go-pennywise-api && go run ./cmd/migrations -dir ./db/migrations up`
+- `cd backend/go-pennywise-api && go run ./cmd/migrations -dir ./db/migrations status`
+- `baseline` command exists for marking initial seed migrations as applied.
 
-- **ML Models**: Sentence-transformers for embeddings and similarity matching
-- **API**: HTTP server exposing `/predict` endpoint
-- **File Structure**: Separate `.parms` model files for payee, category, and account prediction
+### Backfill command (Cipher)
 
-### Cross-Service Communication
+- `cd backend/cipher && go run ./cmd/backfill -data <path-to-json>`
+- Without `-data`, it fetches `/api/predictions` from `PENNYWISE_API` using `BUDGET_ID`.
 
-- **go-gmail -> python-mlp**: HTTP POST to `/predict` with `{type, email_text, amount}`
-- **go-gmail -> go-pennywise-api**: HTTP calls via `backend/go-gmail/pkg/pennywise-api/`
-- **Frontend -> API**: REST via `HttpService` (Angular) or `apiClient` (React), budget ID injected via header interceptor
+## Runtime ports and local dev
 
-## Key Files Reference
+- Go API: `5151`
+- Go Gmail: `8080`
+- Python MLP: `8000`
+- Cipher: `5160` (default)
+- Angular dev server: `5000`
+- React dev server: Vite default (`5173`)
+
+`docker-compose.yml` currently defines `go-gmail`, `python-mlp`, `go-pennywise-api`, and Angular frontend.
+
+## Code patterns and conventions
+
+### Go API (`backend/go-pennywise-api`)
+
+- Layering is `handler -> service -> repository`.
+- Services read tenant context from `context.Context` via shared utils (`MustUserID`, `MustBudgetID`).
+- Route protection is middleware-first:
+  - auth only for global user resources (`/api/budgets`, `/api/keys`)
+  - auth + budget middleware for budget-scoped resources (`accounts`, `transactions`, `categories`, `payees`, `tags`, `loan-metadata`, etc.)
+- Transaction service contains side effects in one place (carryovers, transfers, prediction correction sync).
+- Errors increasingly use typed shared error wrappers from `backend/shared/errors`.
+
+### Shared module (`backend/shared`)
+
+- `transport.Client` + `httpclient` implement a protocol-agnostic client/engine split.
+- Context headers are propagated centrally via `utils.GetHeaders`, including canonical caller/origin/correlation headers and `X-Internal-Token` when a service context is seeded with `INTERNAL_AUTH_TOKEN`.
+- `middleware.RequestMetadata` normalizes ingress metadata, `middleware.InternalRequestAuth` verifies internal traffic, and `middleware.BudgetIdMiddleware` now keys off shared verified-internal context instead of raw headers.
+- `shared/temporal.RequestMetadataPropagator` bridges `correlation_id` and `origin_service` across Temporal workflow/activity boundaries.
+
+### Go Gmail (`backend/go-gmail`)
+
+- Main operational path uses Pub/Sub + `runner.ProcessGmailHistoryId`.
+- Email parsing is regex-based in `pkg/parser/email.go`; extraction order matters (type before amount sign).
+- Predictions are currently 3 sequential calls to Python MLP (`account -> payee -> category`) with confidence gating.
+
+### React frontend (`react-frontend`)
+
+- Feature-first Redux slices in `src/features/*/store/`.
+- `apiClient` auto-adds:
+  - `Authorization` bearer token (except auth endpoints)
+  - `x-budget-id` from selected budget (except budget endpoints)
+- Automatic refresh flow retries 401s once using `POST /auth/refresh`.
+- Route protection is handled by `features/auth/components/ProtectedRoute.tsx`.
+
+### Angular frontend (`frontend`)
+
+- NGXS-based state remains in `src/app/store/dashboard/states/`.
+- `HeadersInterceptor` still injects `X-Budget-ID`.
+- Firestore-backed services remain present for legacy paths.
+
+### Python MLP (`backend/python-mlp`)
+
+- Main endpoints:
+  - `POST /predict`
+  - `POST /retrain`, `GET /retrain/:id`
+  - `POST /fetch`, `POST /augment`, `POST /rollback`
+  - `GET /backups`, `GET /health`
+- Models are loaded from `.parms` files, with Docker entrypoint seeding `/data` on first run.
+
+## Key files reference
 
 | Purpose | Path |
 |---------|------|
-| API routes | `backend/go-pennywise-api/cmd/api/main.go` |
-| Email parsing patterns | `backend/go-gmail/pkg/parser/email.go` |
-| Transaction model (Go) | `backend/go-pennywise-api/internal/model/transaction.go` |
-| Transaction model (TS) | `frontend/src/app/models/transaction.model.ts` |
-| Angular state config | `frontend/src/app/store/store.config.ts` |
+| API routes and middleware wiring | `backend/go-pennywise-api/cmd/api/main.go` |
+| Auth middleware | `backend/go-pennywise-api/internal/middleware/auth.go` |
+| Budget ownership middleware | `backend/go-pennywise-api/internal/middleware/budget.go` |
+| Transaction side effects/corrections | `backend/go-pennywise-api/internal/service/transaction.go` |
+| Gmail pipeline orchestrator | `backend/go-gmail/pkg/runner/runner.go` |
+| Gmail email parser | `backend/go-gmail/pkg/parser/email.go` |
+| Python MLP server endpoints | `backend/python-mlp/mlp_predict_server.py` |
+| Cipher prediction orchestration | `backend/cipher/internal/service/prediction.go` |
+| Shared transport abstraction | `backend/shared/transport/client.go` |
+| Shared HTTP transport implementation | `backend/shared/httpclient/transport.go` |
+- Shared internal request verifier | `backend/shared/middleware/internalRequestAuth.go` |
+- Shared Temporal propagator | `backend/shared/temporal/propagator.go` |
+| React app routes | `react-frontend/src/app/App.tsx` |
 | React API client | `react-frontend/src/utils/api.ts` |
-| React Redux store | `react-frontend/src/app/store.ts` |
-| React middlewares | `react-frontend/src/app/middlewares.ts` |
-| Docker Compose | `docker-compose.yml` |
-| CI/CD workflow | `.github/workflows/workflow.yml` |
+| React store | `react-frontend/src/app/store.ts` |
+| Angular store config | `frontend/src/app/store/store.config.ts` |
+| CI workflow | `.github/workflows/workflow.yml` |
+| Local stack compose | `docker-compose.yml` |
 
-## Environment & Deployment
+## Environment and deployment notes
 
-### Required Environment Files
+### Common env files
 
-- `backend/go-gmail/.env`: Gmail API credentials and Google Cloud configuration
-- `backend/go-pennywise-api/.env`: PostgreSQL connection string and API configuration
-- Service account JSON for Google Cloud Platform authentication
+- `backend/go-pennywise-api/.env`: `DATABASE_URL`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `DOMAIN`, `INTERNAL_AUTH_TOKEN`
+- `backend/go-gmail/.env`: Gmail/PubSub credentials + `MLP_API`, `PENNYWISE_API`, Temporal host/port, `INTERNAL_AUTH_TOKEN`
+- `backend/cipher/.env`: `DATABASE_URL`, `OLLAMA_URL`, `MLP_API`, `OPENAI_API_KEY`, `PORT`, `INTERNAL_AUTH_TOKEN`
+- `react-frontend/.env*`: `VITE_API_URL`, `VITE_GOOGLE_CLIENT_ID`
 
-### Database
+`python-mlp` primarily uses runtime env vars (`PORT`, optional `VOLUME_DIR`) and data/model files.
 
-- **PostgreSQL**: Primary database for Go API, connected via pgx driver (`internal/db/db.go`)
-- **Firestore**: Legacy - Angular frontend has Firestore integration; migration to PostgreSQL via `cmd/migrations/main.go`
+### CI/deploy
 
-### Deployment
+- GitHub Actions workflow (`master` push) copies env files on self-hosted runner, then runs Docker Compose.
+- Current changed-service mapping in CI mainly targets: `go-gmail`, `python-mlp`, `go-pennywise-api`, and Angular frontend.
 
-- **Primary**: Docker Compose on self-hosted Unraid server, deployed via GitHub Actions CI (`.github/workflows/workflow.yml`)
-- **Secondary**: Railway.app for Go API (`railway.json`)
-- CI workflow detects which services changed and selectively rebuilds via docker-compose
+### Git hooks
 
-## Testing Strategy
+- Root README expects: `git config core.hooksPath .githooks`
+- Pre-commit hook re-runs `go mod vendor` for Go API when `backend/go-pennywise-api/go.mod|go.sum` or `backend/shared/` changes.
 
-### Angular Frontend
-- Karma + Jasmine for unit tests
-- Component testing with Angular testing utilities
-- Test files co-located with components (`.spec.ts`)
+## Current caveats (important for agents)
 
-### React Frontend
-- Test files co-located with source code
+- `go-gmail/pkg/pennywise-api/service.go` currently hardcodes `X-Budget-ID`.
+- `cipher/internal/service/prediction.go` currently hardcodes a budget ID in `Predict` and does not yet use request budget header.
+- Temporal integration is partial:
+  - `go-gmail/main.go` registers workflow/activity but does not start worker run loop.
+  - `backend/workflows/cmd/worker/main.go` references `HelloWorldWorkflow` which is not present.
+- API embedding service (`internal/service/embedding.go`) is mostly stubbed.
+- React frontend calls `POST /auth/logout`, but logout endpoint is currently commented out in API routes.
+- `file-parser` and `setu` are not production-ready.
 
-### Go Backend
-- Go standard testing package with `testify` for assertions
-- Repository layer testing with database mocks
-- Service layer business logic testing
-- HTTP handler testing with Gin test context
-- Email parser has comprehensive tests with test data files in `pkg/parser/`
+## Testing snapshot
 
-### Python MLP
-- Model evaluation via `process_data.py` training pipeline
+- Go API tests are focused in service/repository/handler packages (notably transaction and loan metadata flows).
+- Go Gmail has parser and API client tests.
+- Shared module has text-cleaning utility tests.
+- React frontend currently has no committed automated test suite.
+- Angular frontend still has Karma/Jasmine tests.
+
+## Maintenance
+
+When architecture, routes, service responsibilities, or build/test commands change, update this file in the same PR.

@@ -36,7 +36,12 @@ interface NavItem {
   isCollapsed?: boolean;
 }
 
-export default function Sidebar() {
+interface SidebarProps {
+  isMobileOpen?: boolean;
+  onNavigate?: () => void;
+}
+
+export default function Sidebar({ isMobileOpen = false, onNavigate }: SidebarProps) {
   const navItems: NavItem[] = useMemo(
     () => [
       {
@@ -69,6 +74,7 @@ export default function Sidebar() {
   const [dynamicNavItems, setDynamicNavItems] = useState<NavItem[]>([]);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [hoveredItemKey, setHoveredItemKey] = useState<string | null>(null);
+  const isEffectivelyCollapsed = isCollapsed && !isMobileOpen;
 
   const { trackingAccounts, budgetAccounts, loanAccounts, allAccounts } = useAppSelector(
     (state) => state.accounts,
@@ -235,7 +241,9 @@ export default function Sidebar() {
 
   return (
     <aside
-      className={`${styles.sidebar} ${isCollapsed ? styles.collapsed : ''}`}>
+      className={`${styles.sidebar} ${isEffectivelyCollapsed ? styles.collapsed : ''} ${
+        isMobileOpen ? styles.open : ''
+      }`}>
       <div className={styles.logo}>
         <h2>Pennywise</h2>
         <PanelLeftClose
@@ -256,12 +264,13 @@ export default function Sidebar() {
             key={item.key}
             content={item.label}
             placement="right"
-            isDisabled={!isCollapsed}
+            isDisabled={!isEffectivelyCollapsed}
             classNames={{
               content: styles.tooltipContent,
             }}>
             <NavLink
               to={item.path}
+              onClick={onNavigate}
               className={({ isActive }) =>
                 isActive ? `${styles.active} ${styles.navItem}` : styles.navItem
               }>
@@ -275,7 +284,7 @@ export default function Sidebar() {
         ))}
         {dynamicNavItems.map((item) => (
           <Fragment key={item.key}>
-            {isCollapsed && item.children ? (
+            {isEffectivelyCollapsed && item.children ? (
               <Popover
                 placement="right"
                 isOpen={hoveredItemKey === item.key}
@@ -299,6 +308,7 @@ export default function Sidebar() {
                     <NavLink
                       key={child.key}
                       to={child.path}
+                      onClick={onNavigate}
                       className={({ isActive }) =>
                         isActive
                           ? `${styles.navItem} ${styles.active}`
@@ -320,7 +330,7 @@ export default function Sidebar() {
               <Tooltip
                 content={item.label}
                 placement="right"
-                isDisabled={!isCollapsed}
+                isDisabled={!isEffectivelyCollapsed}
                 classNames={{
                   content: styles.tooltipContent,
                 }}>
@@ -336,19 +346,20 @@ export default function Sidebar() {
               </Tooltip>
             )}
 
-            {!item.isCollapsed && !isCollapsed && (
+            {!item.isCollapsed && !isEffectivelyCollapsed && (
               <div className={styles.childContainer}>
                 {item?.children?.map((child) => (
                   <Tooltip
                     key={child.key}
                     content={child.label}
                     placement="right"
-                    isDisabled={!isCollapsed}
+                    isDisabled={!isEffectivelyCollapsed}
                     classNames={{
                       content: styles.tooltipContent,
                     }}>
                     <NavLink
                       to={child.path}
+                      onClick={onNavigate}
                       className={({ isActive }) =>
                         isActive
                           ? `${styles.navItem} ${styles.active}`

@@ -48,7 +48,7 @@ EMAIL_TEMPLATES = {
 def fetch_predictions(api_url: str, budget_id: str) -> list[dict]:
     """Call GET /api/predictions with the budget ID header and return the JSON array."""
     url = f"{api_url.rstrip('/')}/api/predictions"
-    req = Request(url, headers={"X-Budget-ID": budget_id})
+    req = Request(url, headers={"X-Budget-ID": budget_id, "X-Internal-Service": "true"})
     try:
         with urlopen(req) as resp:
             return json.loads(resp.read().decode("utf-8"))
@@ -273,7 +273,7 @@ def generate_merchant_text(payee_name: str) -> str:
 def fetch_transactions(api_url: str, budget_id: str) -> list[dict]:
     """Fetch all normalized transactions from the API."""
     url = f"{api_url.rstrip('/')}/api/transactions/normalized"
-    req = Request(url, headers={"X-Budget-ID": budget_id})
+    req = Request(url, headers={"X-Budget-ID": budget_id, "X-Internal-Service": "true"})
     try:
         with urlopen(req) as resp:
             return json.loads(resp.read().decode("utf-8"))

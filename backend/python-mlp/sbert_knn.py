@@ -12,7 +12,6 @@ model = SentenceTransformer("all-MiniLM-L6-v2")
 
 embeddings = np.load("./payee_embeddings.npy")
 
-
 def get_labels_and_email(type):
     labels = []
     emails = []
