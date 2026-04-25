@@ -17,6 +17,7 @@
     "@heroui/react": "^2.8.7",
     "@heroui/tooltip": "^2.2.26",
     "@internationalized/date": "^3.10.1",
+    "@react-oauth/google": "^0.13.5",
     "@reduxjs/toolkit": "^2.10.1",
     "@tailwindcss/vite": "^4.1.18",
     "expr-eval": "^2.0.2",
