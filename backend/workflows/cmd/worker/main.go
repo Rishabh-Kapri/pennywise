@@ -6,6 +6,7 @@ import (
 
 	sharedLogger "github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	sharedTemporal "github.com/Rishabh-Kapri/pennywise/backend/shared/temporal"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/workflows/internal/workflow"
 
@@ -36,8 +37,9 @@ func main() {
 	// 1. Connect to Temporal server
 	config := Load()
 	c, err := client.Dial(client.Options{
-		HostPort: config.TEMPORAL_SERVER_HOST + ":" + config.TEMPORAL_SERVER_PORT,
-		Logger:   sdklog.NewStructuredLogger(slog.Default()),
+		HostPort:           config.TEMPORAL_SERVER_HOST + ":" + config.TEMPORAL_SERVER_PORT,
+		Logger:             sdklog.NewStructuredLogger(slog.Default()),
+		ContextPropagators: sharedTemporal.ContextPropagators(),
 	})
 	if err != nil {
 		sharedLogger.Fatal("Unable to create Temporal client", "error", err)

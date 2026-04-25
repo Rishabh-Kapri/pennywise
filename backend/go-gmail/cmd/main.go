@@ -10,7 +10,8 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/client"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/config"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/gmail"
-	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/pubsub"
+
+	// "github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/pubsub"
 
 	// "github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/pubsub"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
@@ -19,7 +20,9 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedMiddleware "github.com/Rishabh-Kapri/pennywise/backend/shared/middleware"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	sharedTemporal "github.com/Rishabh-Kapri/pennywise/backend/shared/temporal"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/gin-gonic/gin"
 
@@ -118,7 +121,7 @@ func testHandler(c *gin.Context) {
 	log.Info("cipher", "req", reqData)
 	cipherTransport := httpclient.NewHttpTransport(cfg.CipherServiceURL)
 	cipherClient := transport.NewClient("cipher", cipherTransport)
-	log.Info("cipher", "headers", c.Request.Header)
+	log.Info("cipher", "headers", utils.SanitizeHeadersForLogging(map[string][]string(c.Request.Header)))
 
 	log.Info("cipher", "ctx:budgetId", ctx.Value("X-Budget-ID"))
 	res, err := client.NewCipherClient(cipherClient).Predict(ctx, reqData)
@@ -143,8 +146,9 @@ func testHandler(c *gin.Context) {
 func connectToTemporal(ctx context.Context, cfg config.Config) (tc.Client, error) {
 	logger.Logger(ctx).Info("temporal", "host", cfg.TemporalServerHost, "port", cfg.TemporalServerPort)
 	c, err := tc.Dial(tc.Options{
-		HostPort: cfg.TemporalServerHost + ":" + cfg.TemporalServerPort,
-		Logger:   logger.Logger(ctx),
+		HostPort:           cfg.TemporalServerHost + ":" + cfg.TemporalServerPort,
+		Logger:             logger.Logger(ctx),
+		ContextPropagators: sharedTemporal.ContextPropagators(),
 	})
 	if err != nil {
 		return nil, err
@@ -156,7 +160,10 @@ func connectToTemporal(ctx context.Context, cfg config.Config) (tc.Client, error
 func main() {
 	logger.Setup("gmail-pubsub")
 	cfg := config.LoadConfig()
-	ctx := context.Background()
+	ctx := utils.WithInternalAuthToken(
+		utils.WithServiceName(context.Background(), "gmail-pubsub"),
+		cfg.InternalAuthToken,
+	)
 	log := logger.Logger(ctx)
 
 	transport.CheckHealth(ctx, "pennywise-api", cfg.PennywiseServiceURL+"/api")
@@ -187,6 +194,8 @@ func main() {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(sharedMiddleware.StripInternalHeaders())
+	router.Use(sharedMiddleware.RequestMetadata("gmail-pubsub"))
+	router.Use(sharedMiddleware.InternalRequestAuth(cfg.InternalAuthToken))
 	router.Use(sharedMiddleware.RequestLogger())
 
 	api := router.Group("/api")
@@ -205,7 +214,7 @@ func main() {
 		Handler: router,
 	}
 
-	go pubsub.PullMessages(ctx)
+	// go pubsub.PullMessages(ctx)
 
 	go func() {
 		log.Info("Server listening on port " + cfg.Port)
