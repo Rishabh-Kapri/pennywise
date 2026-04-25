@@ -48,20 +48,48 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailWor
 	}
 
 	// ----- Step 2: Predict the transactions -----
-	cipherCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
-		TaskQueue:           sharedModel.CipherActivitiesTaskQueue,
-		StartToCloseTimeout: 60 * time.Second,
-		RetryPolicy: &temporal.RetryPolicy{
-			InitialInterval: time.Second,
-			MaximumAttempts: 5,
-		},
-		Summary: "Predict transaction from the parsed email data",
-	})
+	// Ollama may be temporarily unavailable. The retry policy waits PredictRetryInterval
+	// between each automatic attempt. If all attempts are exhausted, the workflow parks on
+	// a RetryPredictSignal so an operator can retrigger without re-submitting the email.
+	retrySignalCh := workflow.GetSignalChannel(ctx, sharedModel.RetryPredictSignal)
 	var predictionResult []sharedModel.CipherPredictionResult
 
-	err = workflow.ExecuteActivity(cipherCtx, "Predict", fetchAndParseEmailResult).Get(cipherCtx, &predictionResult)
-	if err != nil {
-		return err
+	for {
+		cipherCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+			TaskQueue:           sharedModel.CipherActivitiesTaskQueue,
+			StartToCloseTimeout: 90 * time.Second,
+			RetryPolicy: &temporal.RetryPolicy{
+				InitialInterval:    sharedModel.PredictRetryInterval,
+				BackoffCoefficient: 1.0, // fixed interval, not exponential
+				MaximumAttempts:    3,   // 3 total attempts (1 initial + 2 retries)
+			},
+			Summary: "Predict transaction from the parsed email data",
+		})
+
+		predictErr := workflow.ExecuteActivity(cipherCtx, "Predict", fetchAndParseEmailResult).
+			Get(cipherCtx, &predictionResult)
+		if predictErr == nil {
+			break
+		}
+
+		// All automatic retries exhausted. Park the workflow and wait for a manual
+		// retry signal (e.g. sent once Ollama is back online).
+		workflow.GetLogger(ctx).Warn("Predict failed after retries, waiting for retry signal",
+			append(workflowLogFields, "error", predictErr)...)
+
+		var gotSignal bool
+		workflow.NewSelector(ctx).AddReceive(retrySignalCh, func(ch workflow.ReceiveChannel, _ bool) {
+			ch.Receive(ctx, nil)
+			gotSignal = true
+		}).AddFuture(workflow.NewTimer(ctx, sharedModel.RetryPredictWaitTimeout), func(_ workflow.Future) {}).Select(ctx)
+
+		if !gotSignal {
+			// Timer fired — no retry signal arrived within the wait window.
+			workflow.GetLogger(ctx).
+				Error("no retry signal received within wait window, failing workflow", workflowLogFields...)
+			return predictErr
+		}
+		workflow.GetLogger(ctx).Info("retry-predict signal received, retrying Predict", workflowLogFields...)
 	}
 	workflow.GetLogger(ctx).Info("prediction result", append(workflowLogFields, "result", predictionResult)...)
 
