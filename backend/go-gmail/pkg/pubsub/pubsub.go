@@ -51,6 +51,11 @@ func NewEventProcessor(tc *tc.Client) *EventProcessor {
 	}
 }
 
+type EventData struct {
+	Email     string `json:"emailAddress"`
+	HistoryId uint64 `json:"historyId"`
+}
+
 func (p *EventProcessor) startProcessing(ctx context.Context) {
 	for {
 		select {
@@ -71,7 +76,7 @@ func (p *EventProcessor) processMessage(event *pubsub.Message) {
 	ctx := utils.WithCorrelationID(context.Background(), utils.NewCorrelationID())
 	log := logger.Logger(ctx)
 
-	var m gmail.EventData
+	var m EventData
 	err := json.Unmarshal(event.Data, &m)
 	if err != nil {
 		log.Error("failed to unmarshal pubsub msg data", "error", err)
@@ -141,7 +146,7 @@ func (p *EventProcessor) addEventDataToQueue(event *pubsub.Message) {
 	p.pendingEvents <- event
 }
 
-func FakeProcessHistoryId(event gmail.EventData) {
+func FakeProcessHistoryId(event EventData) {
 	logger.Logger(context.Background()).Info("fake processing history ID", "event", event)
 	time.Sleep(3 * time.Second)
 }
@@ -153,7 +158,7 @@ func TestMessages() {
 	processor := NewEventProcessor(nil)
 	go processor.startProcessing(ctx)
 
-	eventData1 := gmail.EventData{
+	eventData1 := EventData{
 		HistoryId: 1,
 		Email:     "rishabhkapri@gmail.com",
 	}
@@ -161,7 +166,7 @@ func TestMessages() {
 	msg := pubsub.Message{
 		Data: []byte(data),
 	}
-	eventData2 := gmail.EventData{
+	eventData2 := EventData{
 		HistoryId: 2,
 		Email:     "rishabhkapri@gmail.com",
 	}
@@ -169,7 +174,7 @@ func TestMessages() {
 	msg2 := pubsub.Message{
 		Data: []byte(data2),
 	}
-	eventData3 := gmail.EventData{
+	eventData3 := EventData{
 		HistoryId: 3,
 		Email:     "rishabhkapri@gmail.com",
 	}
