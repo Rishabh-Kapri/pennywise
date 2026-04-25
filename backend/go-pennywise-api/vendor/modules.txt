@@ -9,6 +9,7 @@ github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient
 github.com/Rishabh-Kapri/pennywise/backend/shared/logger
 github.com/Rishabh-Kapri/pennywise/backend/shared/middleware
 github.com/Rishabh-Kapri/pennywise/backend/shared/model
+github.com/Rishabh-Kapri/pennywise/backend/shared/temporal
 github.com/Rishabh-Kapri/pennywise/backend/shared/transport
 github.com/Rishabh-Kapri/pennywise/backend/shared/utils
 # github.com/bytedance/gopkg v0.1.3

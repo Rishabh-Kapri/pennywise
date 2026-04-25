@@ -13,8 +13,7 @@ import (
 )
 
 const (
-	correlationIDHeader = "X-Correlation-ID"
-	maxLoggedBodyBytes  = 4 * 1024
+	maxLoggedBodyBytes = 4 * 1024
 )
 
 type responseBodyWriter struct {
@@ -37,16 +36,18 @@ func (w *responseBodyWriter) WriteString(s string) (int, error) {
 func RequestLogger() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
+		ctx := c.Request.Context()
 
-		// Extract or generate correlation ID
-		correlationID := c.GetHeader(correlationIDHeader)
+		// Prefer correlation ID already normalized into context.
+		correlationID := utils.CorrelationIDFromContext(ctx)
 		if correlationID == "" {
-			correlationID = utils.NewCorrelationID()
+			correlationID = c.GetHeader(utils.HeaderCorrelationID)
+			if correlationID == "" {
+				correlationID = utils.NewCorrelationID()
+			}
+			ctx = utils.WithCorrelationID(ctx, correlationID)
+			c.Request = c.Request.WithContext(ctx)
 		}
-
-		// Store in context (don't set response header - only for internal tracing)
-		ctx := utils.WithCorrelationID(c.Request.Context(), correlationID)
-		c.Request = c.Request.WithContext(ctx)
 
 		logger := logger.Logger(ctx)
 		debugLogging := logger.Enabled(c.Request.Context(), slog.LevelDebug)

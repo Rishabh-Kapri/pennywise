@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 )
 
-const budgetIDHeader = "X-Budget-ID"
+const budgetIDHeader = utils.HeaderBudgetID
 
 func BudgetIdMiddleware(budgetRepo repository.BudgetRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -34,7 +34,7 @@ func BudgetIdMiddleware(budgetRepo repository.BudgetRepository) gin.HandlerFunc 
 			return
 		}
 
-		if c.GetHeader("X-Internal-Service") == "true" {
+		if utils.VerifiedInternalFromContext(ctx) {
 			ctx = utils.WithBudgetID(ctx, parsedBudgetId)
 			log.Debug("setting budget ID in context for internal service", "budgetId", parsedBudgetId)
 			c.Request = c.Request.WithContext(ctx)

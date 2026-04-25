@@ -29,7 +29,9 @@ import (
 	sharedMiddleware "github.com/Rishabh-Kapri/pennywise/backend/shared/middleware"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/otelSDK"
+	sharedTemporal "github.com/Rishabh-Kapri/pennywise/backend/shared/temporal"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/gzip"
@@ -53,8 +55,9 @@ func healthPage(c *gin.Context) {
 func connectToTemporal(ctx context.Context, cfg config.Config) (tc.Client, error) {
 	logger.Logger(ctx).Info("temporal", "host", cfg.TemporalServerHost, "port", cfg.TemporalServerPort)
 	c, err := tc.Dial(tc.Options{
-		HostPort: cfg.TemporalServerHost + ":" + cfg.TemporalServerPort,
-		Logger:   logger.Logger(ctx),
+		HostPort:           cfg.TemporalServerHost + ":" + cfg.TemporalServerPort,
+		Logger:             logger.Logger(ctx),
+		ContextPropagators: sharedTemporal.ContextPropagators(),
 	})
 	if err != nil {
 		return nil, err
@@ -65,8 +68,9 @@ func connectToTemporal(ctx context.Context, cfg config.Config) (tc.Client, error
 
 func main() {
 	setupLogger()
+	cfg := config.Load()
 
-	ctx := context.Background()
+	ctx := utils.WithInternalAuthToken(utils.WithServiceName(context.Background(), "cipher"), cfg.InternalAuthToken)
 
 	otelConfig := otelSDK.Load()
 	tel, err := otelSDK.NewTelemetry(ctx, *otelConfig)
@@ -78,8 +82,6 @@ func main() {
 			logger.Fatal("otel shutdown error", "error", err)
 		}
 	}()
-
-	cfg := config.Load()
 
 	// Database connection via shared module
 	dbConn, err := db.ConnectWithURL(cfg.DatabaseURL)
@@ -126,6 +128,10 @@ func main() {
 
 	w := worker.New(temporalClient, sharedModel.CipherActivitiesTaskQueue, worker.Options{
 		UseBuildIDForVersioning: false,
+		BackgroundActivityContext: utils.WithInternalAuthToken(
+			utils.WithServiceName(context.Background(), "cipher"),
+			cfg.InternalAuthToken,
+		),
 	})
 	w.RegisterActivity(&temporal.PredictionActivity{PredictionService: predictionService})
 
@@ -142,7 +148,10 @@ func main() {
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(gzip.Gzip(gzip.DefaultCompression))
-	// router.Use(sharedMiddleware.RequestLogger())
+	router.Use(sharedMiddleware.StripInternalHeaders())
+	router.Use(sharedMiddleware.RequestMetadata("cipher"))
+	router.Use(sharedMiddleware.InternalRequestAuth(cfg.InternalAuthToken))
+	router.Use(sharedMiddleware.RequestLogger())
 	router.Use(otelgin.Middleware(otelConfig.ServiceName))
 	router.Use(tel.LogRequest())
 	router.Use(tel.MeterRequestDuration())
@@ -151,7 +160,7 @@ func main() {
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"http://localhost:5173"},
 		AllowMethods:     []string{"GET", "POST"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "X-Internal-Service", "X-Budget-ID", "X-Correlation-ID"},
+		AllowHeaders:     []string{"Origin", "Content-Type", utils.HeaderInternalService, utils.HeaderInternalToken, utils.HeaderBudgetID, utils.HeaderCorrelationID, utils.HeaderCallerService, utils.HeaderOriginService},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: false,
 	}))

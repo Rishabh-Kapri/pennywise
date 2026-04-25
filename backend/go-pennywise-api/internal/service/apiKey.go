@@ -106,7 +106,7 @@ func (s *apiKeyService) ValidateFormat(fullKey string) bool {
 }
 
 func (s *apiKeyService) Create(ctx context.Context, apiKey *model.APIKey) (string, error) {
-	logger.Logger(ctx).Info("creating api key", "headers", utils.GetHeaders(ctx))
+	logger.Logger(ctx).Info("creating api key", "headers", utils.SanitizeHeadersForLogging(utils.GetHeaders(ctx)))
 	userID := utils.MustUserID(ctx)
 
 	if apiKey.Name == "" {
