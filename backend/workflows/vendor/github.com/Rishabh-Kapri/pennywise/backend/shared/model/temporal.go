@@ -1,6 +1,10 @@
 package model
 
-import "github.com/google/uuid"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 const (
 	PennywiseTaskQueue             = "pennywise-tasks"
@@ -8,6 +12,18 @@ const (
 	CipherActivitiesTaskQueue      = "cipher-activities"
 	PennywiseActivitiesTaskQueue   = "pennywise-activities"
 	EmailToTransactionWorkflowName = "EmailToTransactionWorkflow"
+
+	// RetryPredictSignal is sent to a waiting workflow to trigger a manual retry
+	// of the Predict step (e.g. after Ollama comes back online).
+	RetryPredictSignal = "retry-predict"
+
+	// RetryPredictWaitTimeout is how long the workflow parks waiting for a
+	// RetryPredictSignal before permanently failing.
+	RetryPredictWaitTimeout = 24 * time.Hour
+
+	// PredictRetryInterval is the fixed delay between automatic Predict activity
+	// retry attempts. Set this to the expected Ollama recovery window.
+	PredictRetryInterval = 10 * time.Minute
 )
 
 // EmailWorflowInput is the input to the EmailToTransactionWorkflow,

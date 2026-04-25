@@ -143,6 +143,7 @@ func main() {
 
 	// Handler
 	predictionHandler := handler.NewPredictionHandler(predictionService)
+	workflowHandler := handler.NewWorkflowHandler(temporalClient)
 
 	// Router
 	router := gin.New()
@@ -173,6 +174,8 @@ func main() {
 		budgetApi.Use(sharedMiddleware.BudgetIdMiddleware(budgetRepo))
 		budgetApi.POST("/predict", predictionHandler.Predict)
 		budgetApi.POST("/corrections", predictionHandler.HandleCorrection)
+
+		api.POST("/workflows/:workflowId/retry-predict", workflowHandler.RetryPredict)
 	}
 
 	addr := "0.0.0.0:" + cfg.Port
