@@ -1,13 +1,13 @@
 import type { TransactionColumns } from '@/types/common.types';
-import type { Transaction } from '../types/transaction.types';
-import { AccountDropdown } from './popovers/AccountPopover';
-import { PayeeDropdown } from './popovers/PayeePopover';
-import { CategoryDropdown } from './popovers/CategoryPopover';
-import { DateDropdown } from './popovers/DatePopover';
-import { TagDropdown } from './popovers/TagPopover';
+import type { Transaction } from '../../types/transaction.types';
+import { AccountDropdown } from '../popovers/AccountPopover';
+import { PayeeDropdown } from '../popovers/PayeePopover';
+import { CategoryDropdown } from '../popovers/CategoryPopover';
+import { DateDropdown } from '../popovers/DatePopover';
+import { TagDropdown } from '../popovers/TagPopover';
 import { useAppSelector } from '@/app/hooks';
-import styles from './Transaction.module.css';
-import tagStyles from './popovers/TagPopover.module.css';
+import styles from '../Transaction/Transaction.module.css';
+import tagStyles from '../popovers/TagPopover.module.css';
 
 type DropdownColKey = 'accountName' | 'payeeName' | 'categoryName' | 'date';
 

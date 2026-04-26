@@ -58,6 +58,7 @@ class ApiClient {
       try {
         const state = this.getState?.();
         const refreshToken = state?.auth?.tokens?.refreshToken;
+        console.log('refreshToken', refreshToken);
         if (!refreshToken) {
           throw new Error('No refresh token');
         }
@@ -75,7 +76,9 @@ class ApiClient {
         const data = await res.json();
         // Dispatch the refresh success to update store + localStorage
         if (this.dispatch) {
-          const { refreshAccessToken } = await import('@/features/auth/store/authSlice');
+          const { refreshAccessToken } = await import(
+            '@/features/auth/store/authSlice'
+          );
           this.dispatch(refreshAccessToken.fulfilled(data, '', undefined));
         }
         return data.accessToken as string;
@@ -95,7 +98,12 @@ class ApiClient {
     return this.refreshPromise;
   }
 
-  private async handleResponse<T>(res: Response, method: string, endpoint: string, body?: unknown): Promise<T> {
+  private async handleResponse<T>(
+    res: Response,
+    method: string,
+    endpoint: string,
+    body?: unknown,
+  ): Promise<T> {
     // On 401 for non-auth endpoints, try refreshing the token and retry once
     if (res.status === 401 && !this.isAuthEndpoint(endpoint)) {
       const newAccessToken = await this.tryRefreshToken();
@@ -135,6 +143,7 @@ class ApiClient {
     const res = await fetch(`${this.baseUrl}/${endpoint}`, {
       method: 'GET',
       headers: this.getHeaders(endpoint),
+      credentials: 'include',
     });
     return this.handleResponse<T>(res, 'GET', endpoint);
   }
@@ -144,6 +153,7 @@ class ApiClient {
       method: 'POST',
       headers: this.getHeaders(endpoint),
       body: JSON.stringify(data),
+      credentials: 'include',
     });
     return this.handleResponse<T>(res, 'POST', endpoint, data);
   }
@@ -152,6 +162,7 @@ class ApiClient {
     const res = await fetch(`${this.baseUrl}/${endpoint}`, {
       method: 'DELETE',
       headers: this.getHeaders(endpoint),
+      credentials: 'include',
     });
     return this.handleResponse<T>(res, 'DELETE', endpoint);
   }
@@ -161,6 +172,7 @@ class ApiClient {
       method: 'PATCH',
       headers: this.getHeaders(endpoint),
       body: JSON.stringify(data),
+      credentials: 'include',
     });
     return this.handleResponse<T>(res, 'PATCH', endpoint, data);
   }

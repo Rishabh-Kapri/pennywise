@@ -1,0 +1,691 @@
+/* ══════════════════════════════════════════════════════════════
+   Transaction — CSS Module
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Layout ──────────────────────────────────────────────────── */
+
+.wrapper {
+  display: flex;
+  flex-direction: row;
+  gap: 1rem;
+  min-width: 0;
+  align-items: flex-start;
+}
+
+.wrapper:not(.panelOpen) .listArea,
+.panelOpen .listArea {
+  flex: 1;
+  min-width: 0;
+}
+
+.listArea {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: 1;
+}
+
+/* ── Column header row ───────────────────────────────────────── */
+
+.headerContainer {
+  display: flex;
+  flex-direction: row;
+  gap: 1rem;
+  padding: 0.4rem 1.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
+}
+
+/* ── Month group header ──────────────────────────────────────── */
+
+.monthGroupHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 1rem 0.5rem;
+  background: transparent;
+}
+
+.monthGroupLabel {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--color-text);
+  letter-spacing: 0.02em;
+}
+
+.monthGroupStats {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.statInflow  { color: var(--color-budget-positive); }
+.statOutflow { color: var(--color-budget-negative); }
+.statCount   { color: var(--color-text-secondary); font-weight: 400; }
+
+/* ── Transaction list container ──────────────────────────────── */
+
+.txnContainer {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: transparent;
+  height: calc(100vh - 11.35rem);
+  transition: all 0.3s ease;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 0.25rem;
+  scrollbar-width: none;
+}
+
+.txnContainer::-webkit-scrollbar {
+  display: none;
+}
+
+/* Sticky month header overlay */
+.stickyHeaderOverlay {
+  position: sticky;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.7rem 0.5rem;
+  background: var(--color-background);
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+/* ── Transaction rows (card layout) ─────────────────────────── */
+
+/* Each react-window slot wrapper fills the allocated height so
+   no dark gap shows between rows within the same card group.
+   Side borders are shared by all rows in a group. */
+.txnWrapper {
+  background: var(--color-surface);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border-left:  1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+}
+
+.txnCardFirst {
+  border-radius: 0.75rem 0.75rem 0 0;
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  overflow: hidden;
+}
+
+.txnCardLast {
+  border-radius: 0 0 0.75rem 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  overflow: hidden;
+}
+
+.txnCardSingle {
+  border-radius: 0.75rem;
+  border-top:    1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  overflow: hidden;
+}
+
+/* Subtle row separator inside a card */
+.txnDivider {
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
+}
+
+.txnRow {
+  display: flex;
+  flex-direction: row;
+  gap: 1rem;
+  font-size: 1rem;
+  padding: 1.1rem 1.5rem;
+  background: var(--color-surface);
+  cursor: pointer;
+  transition: background 0.2s ease;
+  align-items: center;
+  flex: 1;
+}
+
+.txnRow:hover {
+  background: var(--color-surface-secondary);
+}
+
+.txnRowSelected {
+  background: var(--color-primary) !important;
+  color: #fff;
+}
+
+.txnRowSelected .categoryPill {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* ── Cell styles ─────────────────────────────────────────────── */
+
+.payeeName {
+  color: var(--color-text-secondary);
+  font-size: 1.2rem;
+}
+
+.categoryPill {
+  display: inline-flex;
+  padding: 0.45rem 0.75rem;
+  border-radius: 8px;
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: var(--color-primary-light);
+  background: var(--color-surface-tertiary);
+  opacity: 0.9;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.amountCell {
+  display: flex;
+  align-items: center;
+  text-align: right;
+  font-weight: 500;
+  font-size: 1.2rem;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-primary);
+}
+
+/* .amountInflow  { color: var(--color-budget-positive); } */
+/* .amountOutflow { color: var(--color-budget-negative); } */
+
+.note {
+  color: var(--color-text-secondary);
+}
+
+.input {
+  width: 100%;
+  height: 100%;
+  border: 1px solid transparent;
+  padding: 0.5rem;
+  border-radius: 1rem;
+  background: var(--color-surface-secondary);
+  box-shadow: var(--shadow-sm);
+  font-size: 0.95rem;
+}
+
+input[type=date]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Mobile  (≤ 768px)
+   ══════════════════════════════════════════════════════════════ */
+
+@media (max-width: 768px) {
+  .headerContainer {
+    display: none;
+  }
+
+  .txnContainer {
+    height: calc(100dvh - 13.5rem);
+    min-height: 24rem;
+    border-radius: 0.75rem;
+    background: transparent;
+  }
+
+  .txnWrapper {
+    border-radius: 0.75rem;
+    background: var(--color-surface);
+  }
+
+  .txnRow {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.35rem 0.75rem;
+    min-height: 10rem;
+    padding: 1rem;
+    font-size: 0.95rem;
+    align-items: start;
+    align-content: start;
+  }
+
+  .txnRow > div {
+    grid-column: auto !important;
+    text-align: left !important;
+    flex: none !important;
+    min-width: 0;
+  }
+
+  .allAccounts .txnRow > div:nth-child(1) {
+    grid-column: 1 / 2 !important;
+    grid-row: 2;
+    color: var(--color-text-secondary);
+  }
+
+  .allAccounts .txnRow > div:nth-child(2) {
+    grid-column: 1 / 2 !important;
+    grid-row: 1;
+    color: var(--color-text-secondary);
+  }
+
+  .allAccounts .txnRow > div:nth-child(3) {
+    grid-column: 1 / 2 !important;
+    grid-row: 3;
+    font-size: 1.05rem;
+    font-weight: 600;
+  }
+
+  .allAccounts .txnRow > div:nth-child(4) {
+    grid-column: 1 / 2 !important;
+    grid-row: 4;
+    color: var(--color-text-secondary);
+  }
+
+  .allAccounts .txnRow > div:nth-child(5),
+  .allAccounts .txnRow > div:nth-child(6) {
+    grid-column: 1 / 2 !important;
+  }
+
+  .specificAccount .txnRow > div:nth-child(1) {
+    grid-column: 1 / 2 !important;
+    grid-row: 1;
+    color: var(--color-text-secondary);
+  }
+
+  .specificAccount .txnRow > div:nth-child(2) {
+    grid-column: 1 / 2 !important;
+    grid-row: 2;
+    font-size: 1.05rem;
+    font-weight: 600;
+  }
+
+  .specificAccount .txnRow > div:nth-child(3) {
+    grid-column: 1 / 2 !important;
+    grid-row: 3;
+    color: var(--color-text-secondary);
+  }
+
+  .specificAccount .txnRow > div:nth-child(4),
+  .specificAccount .txnRow > div:nth-child(5) {
+    grid-column: 1 / 2 !important;
+  }
+
+  .txnRow > div:nth-last-child(2),
+  .txnRow > div:nth-last-child(1) {
+    grid-column: 2 / 3 !important;
+    grid-row: 1;
+    text-align: right !important;
+    justify-self: end;
+  }
+
+  .txnRow > div:nth-last-child(1) {
+    grid-row: 2;
+  }
+
+  /* ── Mobile transaction list ─────────────────────────────────── */
+
+  .mobileTxnContainer {
+    display: flex;
+    height: calc(100dvh - 12.75rem);
+    min-height: 24rem;
+    flex-direction: column;
+    gap: 1.5rem;
+    padding: 0.75rem 0.125rem 2rem;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+
+  .mobileTxnContainer::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobileTxnGroup {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .mobileDateHeader {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0 0.875rem;
+    color: var(--color-text);
+    font-size: 0.85rem;
+    font-weight: 500;
+  }
+
+  .mobileDateHeader::after {
+    content: "";
+    flex: 1;
+    border-bottom: 2px solid var(--color-border);
+    opacity: 0.7;
+  }
+
+  .mobileTxnCards {
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+  }
+
+  .mobileTxnCard {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: 1rem;
+    background: var(--color-surface);
+    color: var(--color-text);
+    text-align: left;
+    box-shadow: none;
+  }
+
+  .mobileTxnCard:hover {
+    border-color: var(--color-border);
+    background: var(--color-surface);
+  }
+
+  .selected {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 25%, transparent);
+  }
+
+  .mobileTxnTopRow {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .mobileTxnPayee,
+  .mobileTxnDate {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--color-text-secondary);
+    font-size: 0.95rem;
+    font-weight: 500;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobileTxnDate {
+    flex: 0 0 auto;
+  }
+
+  .mobileTxnBottomRow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+  }
+
+  .mobileTxnAmount {
+    color: var(--color-budget-negative);
+    font-size: 1.4rem;
+    font-weight: 900;
+    letter-spacing: 0;
+    white-space: nowrap;
+  }
+
+  .mobileTxnInflow {
+    color: var(--color-primary-dark);
+  }
+
+  .mobileTxnCategory {
+    display: inline-flex;
+    max-width: 55%;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.65rem 0.85rem;
+    overflow: hidden;
+    border-radius: 0.75rem;
+    background: var(--color-surface-secondary);
+    color: var(--color-text);
+    font-size: 0.85rem;
+    font-weight: 800;
+    text-overflow: ellipsis;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .mobileTxnCategory svg {
+    flex: 0 0 auto;
+    color: var(--color-text-secondary);
+  }
+
+  .mobileTxnAccount {
+    padding: 0 1rem 1rem;
+    color: var(--color-text-secondary);
+    font-size: 0.85rem;
+  }
+
+  .mobileEmptyState {
+    display: grid;
+    min-height: 16rem;
+    place-items: center;
+    color: var(--color-text-secondary);
+  }
+
+  /* ── Mobile detail view ──────────────────────────────────────── */
+
+  .mobileDetail {
+    display: flex;
+    height: calc(100dvh - 4.75rem);
+    min-height: 28rem;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 0.25rem 0.125rem 2rem;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+
+  .mobileDetail::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobileDetailNav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.25rem 0.25rem 0.5rem;
+  }
+
+  .mobileDetailStepper {
+    display: flex;
+    gap: 0.75rem;
+  }
+
+  .mobileIconButton {
+    display: inline-flex;
+    width: 2.75rem;
+    height: 2.75rem;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 0.75rem;
+    background: transparent;
+    color: var(--color-text);
+  }
+
+  .mobileIconButton:hover {
+    border-color: transparent;
+    background: var(--color-surface-secondary);
+  }
+
+  .mobileIconButton:disabled {
+    cursor: default;
+    opacity: 0.35;
+  }
+
+  .mobileIconButton:disabled:hover {
+    background: transparent;
+  }
+
+  .mobileDetailHero {
+    display: flex;
+    min-height: 13rem;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.25rem;
+    border: 1px solid var(--color-border);
+    border-radius: 1rem 1rem 0 0;
+    background: var(--color-surface);
+  }
+
+  .mobileDetailAmount {
+    color: var(--color-budget-negative-bg);
+    font-size: 3rem;
+    font-weight: 900;
+    line-height: 1;
+    letter-spacing: 0;
+  }
+
+  .mobileDetailCategory {
+    max-width: 80%;
+    padding: 0.75rem 1.15rem;
+    overflow: hidden;
+    border-radius: 0.75rem;
+    background: var(--color-surface-secondary);
+    color: var(--color-text);
+    font-size: 1rem;
+    font-weight: 800;
+    text-overflow: ellipsis;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .mobileDetailMetaGrid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-top: -1rem;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-top: 0;
+    border-radius: 0 0 1rem 1rem;
+    background: var(--color-surface);
+  }
+
+  .mobileDetailMetaGrid > div {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 1rem;
+  }
+
+  .mobileDetailMetaGrid > div + div {
+    border-left: 1px solid var(--color-border);
+  }
+
+  .mobileDetailMetaGrid span,
+  .mobileDetailRow span,
+  .mobileDetailNotesHeader span:first-child {
+    color: var(--color-text-secondary);
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .mobileDetailMetaGrid strong {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--color-text);
+    font-size: 1rem;
+    font-weight: 800;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobileDetailPanel,
+  .mobileDetailNotes {
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    border-radius: 1rem;
+    background: var(--color-surface);
+  }
+
+  .mobileDetailRow {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 0.875rem;
+    align-items: center;
+    padding: 1rem;
+    color: var(--color-text);
+  }
+
+  .mobileDetailRow > svg {
+    color: var(--color-text-secondary);
+  }
+
+  .mobileDetailRow > div {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .mobileDetailRow strong {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--color-text);
+    font-size: 1.05rem;
+    font-weight: 800;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobileDetailNotes {
+    padding: 1rem;
+  }
+
+  .mobileDetailNotesHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .mobileDetailNotesHeader span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+  }
+
+  .mobileDetailNotesHeader span:last-child {
+    color: var(--color-text);
+    font-size: 0.85rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .mobileDetailNotes p {
+    display: flex;
+    gap: 0.6rem;
+    margin-top: 1.25rem;
+    color: var(--color-text-secondary);
+    font-size: 1rem;
+    line-height: 1.6;
+  }
+
+  .mobileDetailNotes p svg {
+    flex: 0 0 auto;
+    margin-top: 0.2rem;
+  }
+}
