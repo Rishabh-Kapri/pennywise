@@ -7,6 +7,7 @@ import (
 )
 
 type Config struct {
+	Environment        string
 	ServiceName        string
 	DatabaseURL        string
 	JWTSecret          string
@@ -25,7 +26,12 @@ type Config struct {
 
 func Load() Config {
 	_ = godotenv.Load(".env")
+	env := os.Getenv("RAILWAY_ENVIRONMENT_NAME")
+	if env == "" {
+		env = "local"
+	}
 	return Config{
+		Environment:        env,
 		ServiceName:        "pennywise-api",
 		DatabaseURL:        os.Getenv("DATABASE_URL"),
 		JWTSecret:          os.Getenv("JWT_SECRET"),

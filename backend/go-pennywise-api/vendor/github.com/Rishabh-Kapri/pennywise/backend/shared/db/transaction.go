@@ -255,6 +255,7 @@ func (r *transactionRepo) GetAllNormalized(ctx context.Context, budgetId uuid.UU
 	var txns []model.Transaction
 	for rows.Next() {
 		var txn model.Transaction
+		var status *model.TransactionStatus
 		err := rows.Scan(
 			&txn.ID,
 			&txn.BudgetID,
@@ -265,7 +266,7 @@ func (r *transactionRepo) GetAllNormalized(ctx context.Context, budgetId uuid.UU
 			&txn.Note,
 			&txn.Amount,
 			&txn.DedupeHash,
-			&txn.Status,
+			&status,
 			&txn.RawBankText,
 			&txn.TransferAccountID,
 			&txn.TransferTransactionID,
@@ -281,6 +282,11 @@ func (r *transactionRepo) GetAllNormalized(ctx context.Context, budgetId uuid.UU
 		)
 		if err != nil {
 			return nil, err
+		}
+		if status != nil {
+			txn.Status = *status
+		} else {
+			txn.Status = model.TransactionStatusManual
 		}
 		txns = append(txns, txn)
 	}

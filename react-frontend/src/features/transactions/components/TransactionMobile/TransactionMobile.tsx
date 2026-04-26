@@ -10,8 +10,8 @@ import {
   ReceiptText,
 } from 'lucide-react';
 import { getCurrencyLocaleString } from '@/utils/date.utils';
-import type { Transaction } from '../types/transaction.types';
-import styles from './Transaction.module.css';
+import type { Transaction } from '../../types/transaction.types';
+import styles from '../Transaction/Transaction.module.css';
 import { useEffect, useMemo, useState } from 'react';
 
 interface TransactionMobileProps {
