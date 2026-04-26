@@ -83,7 +83,7 @@ func NewAuthService(
 	return &authService{repo: r, googleProvider: googleProvider, config: config.Load(), transport: transport}
 }
 
-func (s *authService) setupGmailWatch(ctx context.Context, googleID string, refreshToken string, email string) {
+func (s *authService) SetupGmailWatch(ctx context.Context, googleID string, refreshToken string, email string) {
 	logger := logger.Logger(ctx)
 	logger.Info("watching gmail", "email", email)
 
@@ -200,7 +200,7 @@ func (s *authService) LoginWithGoogle(
 	if lastGmailSync == nil || lastGmailSync.Before(time.Now().Add(-time.Hour*24*5)) {
 		googleRefreshToken := userWithCreds.GoogleProvider.RefreshToken
 		detachedCtx := context.WithoutCancel(ctx)
-		go s.setupGmailWatch(
+		go s.SetupGmailWatch(
 			detachedCtx,
 			userWithCreds.GoogleProvider.ID,
 			googleRefreshToken,
