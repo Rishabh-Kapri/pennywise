@@ -278,7 +278,7 @@ func main() {
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 
 	// Temporal worker — skipped if TEMPORAL_SERVER_HOST is not set
-	if config.TemporalServerHost != "" {
+	if config.Environment != "local" && config.TemporalServerHost != "" {
 		temporalClient, err := client.Dial(client.Options{
 			HostPort:           fmt.Sprintf("%s:%s", config.TemporalServerHost, config.TemporalServerPort),
 			ContextPropagators: sharedTemporal.ContextPropagators(),

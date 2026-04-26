@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import {
@@ -86,11 +86,7 @@ export function Login() {
     },
   });
 
-  const handleGoogleError = useCallback(() => {
-    console.log('inside handleGoogleError');
-  }, []);
-
-  const isLoading = loading === LoadingState.PENDING;
+const isLoading = loading === LoadingState.PENDING;
 
   return (
     <div className={styles.container}>

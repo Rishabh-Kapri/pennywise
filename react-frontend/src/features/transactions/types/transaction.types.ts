@@ -16,7 +16,7 @@ export interface Transaction {
   inflow: number | null;
   balance: number;
   note?: string;
-  source: TransactionSource;
+  status?: 'MANUAL' | 'APPROVED' | 'REJECTED' | 'UNAPPROVED';
   transferTransactionId: string | null,
   transferAccountId: string | null,
   tagIds: string[];
@@ -46,3 +46,14 @@ export interface TransactionState {
   loading: LoadingState;
   error: string | null;
 }
+
+export interface MonthGroupStats {
+  count: number;
+  totalInflow: number;
+  totalOutflow: number;
+}
+
+export type ListItem =
+  | { type: 'header'; key: string; label: string; stats: MonthGroupStats }
+  | { type: 'row'; txn: Transaction; originalIndex: number };
+
