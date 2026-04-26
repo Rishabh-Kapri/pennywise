@@ -1,6 +1,6 @@
 import { Outlet } from 'react-router-dom';
 import Header from '../Header/Header';
-import Sidebar from '../Sidebar/Sidebar';
+import { Navbar } from '../Navbar/Navbar';
 import styles from './Layout.module.css';
 import { HeaderProvider } from '../../../context/HeaderProvider';
 import { useEffect } from 'react';
@@ -16,7 +16,7 @@ export default function Layout() {
 
   return (
     <div className={styles.layout}>
-      <Sidebar />
+      <Navbar />
       <div className={styles.mainWrapper}>
         <HeaderProvider>
           <Header />

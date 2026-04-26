@@ -10,10 +10,14 @@ Indian banking infrastructure produces highly fragmented transaction data. A sin
 
 The system utilizes an event-driven, distributed monolith architecture to balance deployment flexibility with ultra-low latency data access.
 
-- **Ingestion (`go-gmail`):** A lightweight service triggered by Google PubSub. It intercepts the raw email, strips the metadata, and acts as a pure, dumb data pipe, passing the raw string to the brain.
-- **The Brain (`cipher`):** The core business logic service. It handles all LLM interactions, data extraction, and routing logic.
+- **Ingestion (`go-gmail`):** A lightweight service triggered by Google PubSub. It intercepts the raw Gmail event and starts a Temporal `EmailToTransactionWorkflow`. The workflow invokes cipher's `PredictionActivity` for the full classification pipeline. The old python-mlp prediction path is deprecated and no longer used.
+- **The Brain (`cipher`):** The core business logic service. It handles all LLM interactions, data extraction, and routing logic. Exposes `POST /api/predict`, `POST /api/corrections`, and `POST /api/workflows/:workflowId/retry-predict`.
 - **The Ledger (`api`):** The backend that manages the frontend API and state mutations.
 - **The Shared Repository (`shared/db`):** Rather than strict, latency-heavy microservice communication over HTTP/gRPC, both `cipher` and `api` import a shared Go repository package. This allows `cipher` to execute sub-millisecond database reads for classification rules without network hops, while keeping SQL queries centralized.
+
+### Temporal Integration
+
+The `EmailToTransactionWorkflow` (on `PennywiseTaskQueue`) is the primary ingestion path. `go-gmail` starts the workflow, which invokes cipher's `PredictionActivity` (on `CipherActivitiesTaskQueue`). The activity processes a batch of parsed emails and returns a `CipherPredictionResult` slice. A `RetryPredict` signal endpoint (`POST /api/workflows/:workflowId/retry-predict`) allows nudging a parked workflow when Ollama was unavailable at processing time.
 
 ---
 
@@ -21,46 +25,66 @@ The system utilizes an event-driven, distributed monolith architecture to balanc
 
 To balance latency, compute cost, and AI accuracy, the system processes incoming transactions through a strict cascade.
 
-### Phase 1: The Local AI Extractor (Ollama + Gemma)
+### Phase 1: The Local AI Extractor (Ollama / gemma4)
 
-Regex pipelines are fragile state machines that break upon minor bank template updates. Phase 1 intercepts the raw, chaotic string and passes it to a local small language model (SLM) (e.g., Gemma 4b via Ollama) running strictly in JSON-output mode with a temperature of `0`.
+Regex pipelines are fragile state machines that break upon minor bank template updates. Phase 1 intercepts the raw, chaotic string and passes it to a local small language model (SLM) (`gemma4` via Ollama) running strictly in JSON-output mode with a temperature of `0`.
 
 - **Input:** `Alert: You've spent USD 12.00 on your CC XX1111 at GITHUB INC... equivalent INR is Rs. 1024.50.`
 - **Few-Shot Prompting:** The LLM uses schema rules to bypass grammatical debris, resolve Forex traps (identifying 1024.50 over 12.00), and autonomously truncate account strings (e.g., dropping "CC XX" to just "1111").
-- **Output:** `{"merchant": "GITHUB INC", "amount": 1024.5, "account_card": "1111"}`
+- **Output:** `{"merchant": "GITHUB INC", "amount": 1024.5, "account_card": "HDFC 1111"}`
 
-### Phase 2: The Fast Path (Hybrid SQL Rules)
+After extraction, `utils.CleanAccountString` normalises the account suffix, and `utils.CleanUPIText` / `utils.CleanMerchantString` produce a canonical merchant name and optional UPI handle used as the match string for Phase 2.
 
-The Go backend takes the Phase 1 extracted merchant and queries the `merchant_rules` table via the shared repository. This utilizes a hybrid SQL query prioritizing `EXACT` matches, falling back to `PATTERN` (`ILIKE`) matches.
+### Phase 2: The Fast Path (Payee Rules)
 
-- **Execution:** `SELECT category_id FROM merchant_rules WHERE budget_id = $1 AND ((match_type = 'EXACT' AND merchant = $2) OR (match_type = 'PATTERN' AND $2 ILIKE merchant)) ORDER BY match_type ASC LIMIT 1;`
-- **Result:** If a match is found, the transaction is categorized instantly. _Latency: <5ms. Cloud AI is bypassed entirely._
+The Go backend takes the extracted merchant/UPI handle and queries the `payee_rules` table via the shared repository. The query prioritises `EXACT` matches, falling back to `PATTERN` (`ILIKE`) matches.
+
+```sql
+SELECT id, budget_id, payee_id, category_id, match_string, match_type, created_at, updated_at
+FROM payee_rules
+WHERE budget_id = $1
+  AND deleted = FALSE
+  AND (
+    (match_type = 'EXACT' AND match_string = $2)
+    OR
+    (match_type = 'PATTERN' AND $2 ILIKE match_string)
+  )
+ORDER BY match_type ASC
+LIMIT 1;
+```
+
+- **Result:** If a match is found, the transaction is categorised instantly with 100% confidence. _Latency: <5ms. Vector search and LLM are bypassed entirely._
 
 ### Phase 3: The Vector Memory (pgvector / bge-m3)
 
-If Phase 2 fails to find a hard SQL rule, the system moves to semantic matching.
+If Phase 2 finds no rule, the system moves to semantic matching.
 
-- **Embedding:** The cleaned text is embedded using the `bge-m3` model, generating a 1024-dimension vector.
-- **Hybrid Search:** It performs a Nearest-Neighbor (K-NN) search against the `transaction_embeddings` table, scoped strictly via a `WHERE budget_id = $1` clause.
-- **Heuristic Penalty:** To prevent false positives, the vector distance score is penalized if the transaction amounts differ wildly.
-  Formula used:
+- **Embedding:** The cleaned text (`"debit SWIGGY"` / `"credit SALARY"`) is embedded using the `bge-m3` model via Ollama, generating a 1024-dimension vector.
+- **Hybrid Search:** A combined-score query orders results by vector distance plus a weighted amount penalty, scoped via `WHERE budget_id = $1`.
+- **Heuristic Penalty:** To prevent false positives when amounts differ wildly, the ordering formula is:
 
+```sql
+(embedding <=> $1)
++ (ABS(ABS(amount) - ABS($amount)) / NULLIF(GREATEST(ABS(amount), ABS($amount)), 0) * 0.15)
 ```
-ABS(amount - transaction_amount) / GREATEST(amount, transaction_amount)) * 0.15
-```
 
-### Phase 4: The Cloud LLM Bridge (Cold Start)
+- **Thresholds:** A similarity of `1 - vector_distance ≥ 0.80` is required for a match. A softer `0.70` threshold applies when the stored amount is exactly equal to the incoming amount.
 
-If the transaction is entirely novel, the system triggers the heavy AI fallback.
+### Phase 4: The Local LLM Fallback (Ollama)
 
-- **Normalization:** An LLM normalizes the chaotic text into a clean corporate brand and assigns a universal `global_mcc_tag`.
-- **Translation:** The LLM maps this universal tag to the specific user's categories, saving the result back down the chain to build Phase 2 and Phase 3 memory for the future.
+If the transaction is entirely novel, the system triggers the LLM fallback — also via Ollama (not a cloud API).
+
+- **Prompt (`prompts.go`):** A detailed `promptV1` includes hardcoded payee normalisation rules, keyword-to-category mappings for Indian merchants (Swiggy, Zomato, BESCOM, Indigo, etc.), and a YNAB-style category list specific to the budget.
+- **Output:** A JSON object with `payee`, `category`, `confidence`, and `reasoning` fields.
+- **Result:** The response is matched against existing payees/categories in the DB. The transaction is created and the embedding is stored for future Phase 3 hits.
 
 ---
 
-## 3. The Conversational RAG Engine (Transaction Search)
+## 3. The Conversational RAG Engine (Transaction Search) — _Planned, Not Yet Implemented_
 
 To allow users to chat with their financial data (e.g., _"How much did I spend on food last month?"_), the architecture bypasses heavy NLP frameworks (like [Rasa](https://fold.money/blog/leveraging-nlp-in-transaction-search)) in favor of a 3-Step Retrieval-Augmented Generation pipeline.
+
+> **Status:** This section describes the planned design. It has not been implemented yet.
 
 1. **Step 1: The Intent Router (Local LLM):** The user's natural language query is passed to an LLM with the current system date. The LLM translates relative timeframes and fuzzy text into a strict JSON search intent (e.g., `{"intent": "sum", "categories": ["Food"], "date_start": "2026-03-01"}`).
 2. **Step 2: The Context Assembler (Go Repository):** The Go backend dynamically builds the PostgreSQL queries (using tools like `squirrel`) based on the JSON intent. It executes standard aggregations or `pgvector` semantic searches, retrieving the hard financial facts to prevent LLM hallucinations.
@@ -70,26 +94,21 @@ To allow users to chat with their financial data (e.g., _"How much did I spend o
 
 ## 4. Core Database Schema
 
-### The Global Layer (Cross-User Truth)
-
-| Table                      | Purpose                                               | Key Columns                            |
-| :------------------------- | :---------------------------------------------------- | :------------------------------------- |
-| `global_merchants`         | The canonical identity of a business.                 | id (UUID), canonical_name, mcc_tag     |
-| `global_merchant_mappings` | The dictionary linking chaotic strings to the entity. | mapping_trigger (PK), merchant_id (FK) |
-
-### The Local Ledger Layer (Per User)
+### The Local Ledger Layer (Per User / Budget)
 
 | Table            | Purpose                                      | Key Columns                                                              |
 | :--------------- | :------------------------------------------- | :----------------------------------------------------------------------- |
-| `merchant_rules` | Phase 2 Fast Path mapping rules.             | id, budget_id, merchant_pattern, category_id, match_type (EXACT/PATTERN) |
+| `payee_rules`    | Phase 2 Fast Path mapping rules.             | id, budget_id, payee_id, category_id, match_string, match_type (EXACT/PATTERN), deleted |
 | `payees`         | The user's local alias engine and UI anchor. | id, budget_id, name, default_category_id                                 |
 | `transactions`   | The actual financial ledger.                 | id, budget_id, amount, payee_id, category_id, original_statement_text    |
 
 ### The AI Memory Layer
 
-| Table                    | Purpose                           | Key Columns                                               |
-| :----------------------- | :-------------------------------- | :-------------------------------------------------------- |
-| `transaction_embeddings` | Fuzzy similarity matching memory. | id, budget_id, embedding_text, embedding (vector), amount |
+| Table                    | Purpose                           | Key Columns                                                               |
+| :----------------------- | :-------------------------------- | :------------------------------------------------------------------------ |
+| `transaction_embeddings` | Fuzzy similarity matching memory. | id, budget_id, embedding_text, embedding (vector), payee_id, category_id, amount, source |
+
+The `source` column in `transaction_embeddings` tracks whether an entry was created from an automatic prediction (`prediction`) or a manual user correction (`user_corrected`). On upsert, the stored amount is updated as a rolling average: `(NEW.amount + existing.amount) / 2`.
 
 ---
 
@@ -106,10 +125,6 @@ Running local edge-AI (Ollama) introduced a 12-second hardware latency when load
 ### Skipping Rasa for Search
 
 Traditional financial search architectures rely on heavy NLP frameworks like Rasa + Duckling to parse intents and relative dates. By injecting the current system date into an LLM prompt, the model natively understands typo-forgiveness (e.g., "Zometo" -> "Zomato") and relative math ("Last month"), outputting perfect JSON search filters. This reduces a massive machine-learning architecture down to a single Go unmarshal endpoint.
-
-### The "Fold" vs "YNAB" Architecture Clash
-
-Standard categorization engines utilize a rigid, global MCC tag system. YNAB-style apps rely on custom user buckets. The solution was to maintain a massive internal `global_mcc_tag` ENUM for the system's objective understanding, but introduce an LLM Bridge during Phase 4 to seamlessly translate those global tags into the user's subjective categories.
 
 ### The Megamart Problem (Decoupling Payees)
 
