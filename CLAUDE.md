@@ -44,7 +44,9 @@ docker-compose up --build
 
 1. Gmail push → `go-gmail` parses email (regex in `pkg/parser/email.go`) → calls `python-mlp /predict` → creates transaction via `go-pennywise-api`
 2. All API calls require `X-Budget-ID` header — extracted via `utils.GetBudgetId(c)` in handlers
-3. ML prediction corrections tracked in `internal/service/transaction.go` (`UserCorrectedPayee`, `UserCorrectedCategory`, etc.)
+3. Internal service calls use shared request metadata headers (`X-Correlation-ID`, `X-Caller-Service`, `X-Origin-Service`, `X-Internal-Token`) and are trusted only after shared internal-request verification marks context as verified.
+4. Temporal workflow/activity hops propagate `correlation_id` and `origin_service` through `backend/shared/temporal/propagator.go`; each activity restamps its local service name before downstream HTTP calls.
+5. ML prediction corrections tracked in `internal/service/transaction.go` (`UserCorrectedPayee`, `UserCorrectedCategory`, etc.)
 
 ## Code Conventions
 
@@ -54,6 +56,7 @@ docker-compose up --build
 - **Error handling**: Return `gin.H{"error": err.Error()}` with appropriate HTTP status
 - **Database transactions**: Use `*Tx` suffixed repository methods when atomicity is required
 - **Naming**: PascalCase exported, camelCase private
+- **Internal traffic**: normalize ingress metadata with shared middleware, trust only `VerifiedInternal` context for internal bypasses, and seed outbound contexts with `INTERNAL_AUTH_TOKEN`
 
 ### React Frontend
 - **State**: Redux Toolkit with feature-based slices in `features/*/store/`
@@ -75,6 +78,7 @@ docker-compose up --build
 ### Cross-Service Communication
 - `go-gmail` → `python-mlp`: HTTP POST to `/predict` with `{type, email_text, amount}`
 - `go-gmail` → `go-pennywise-api`: HTTP calls via `pkg/pennywise-api/`
+- Go services → Go services: shared HTTP transport injects canonical correlation/caller/origin headers plus `X-Internal-Token` from context
 - Frontend → API: REST with budget ID in header interceptor
 
 ## Key Files
@@ -99,4 +103,5 @@ After completing any new feature, bug fix, or task, update this CLAUDE.md file i
 - **Database**: PostgreSQL via pgx (`internal/db/db.go`)
 - **Auth**: None currently. Google OAuth planned.
 - **Deployment**: Docker Compose on self-hosted Unraid, deployed via GitHub Actions CI. Secondary: Railway.app for Go API.
-- **Env files**: `backend/go-gmail/.env`, `backend/go-pennywise-api/.env`
+- **Env files**: `backend/go-gmail/.env`, `backend/go-pennywise-api/.env`, `backend/cipher/.env`
+- **Internal service auth**: Go services now expect a shared `INTERNAL_AUTH_TOKEN` for verified service-to-service HTTP calls
