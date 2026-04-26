@@ -1,139 +1,215 @@
-.container {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
+/* ══════════════════════════════════════════════════════════════
+   Transaction — CSS Module
+   ══════════════════════════════════════════════════════════════ */
 
-
-.title {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  min-width: 0;
-}
-
-.title span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.title > svg {
-  color: var(--color-budget-positive);
-}
-
-.amount {
-  color: var(--color-budget-positive);
-}
+/* ── Layout ──────────────────────────────────────────────────── */
 
 .wrapper {
+  display: flex;
+  flex-direction: row;
+  gap: 1rem;
+  min-width: 0;
+  align-items: flex-start;
+}
+
+.wrapper:not(.panelOpen) .listArea,
+.panelOpen .listArea {
+  flex: 1;
+  min-width: 0;
+}
+
+.listArea {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   min-width: 0;
+  flex: 1;
 }
 
+/* ── Column header row ───────────────────────────────────────── */
+
 .headerContainer {
-  display: grid;
-  grid-template-columns: repeat(10, 1fr);
+  display: flex;
+  flex-direction: row;
   gap: 1rem;
-  padding: 0 1.5rem;
-  font-size: 0.9rem;
+  padding: 0.4rem 1.5rem;
+  font-size: 0.8rem;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   color: var(--color-text-secondary);
 }
 
+/* ── Month group header ──────────────────────────────────────── */
+
+.monthGroupHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 1rem 0.5rem;
+  background: transparent;
+}
+
+.monthGroupLabel {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--color-text);
+  letter-spacing: 0.02em;
+}
+
+.monthGroupStats {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.statInflow  { color: var(--color-budget-positive); }
+.statOutflow { color: var(--color-budget-negative); }
+.statCount   { color: var(--color-text-secondary); font-weight: 400; }
+
+/* ── Transaction list container ──────────────────────────────── */
+
 .txnContainer {
+  position: relative;
   display: flex;
   flex-direction: column;
-  background: var(--color-surface);
-  border-radius: 0.75rem;
+  background: transparent;
   height: calc(100vh - 11.35rem);
   transition: all 0.3s ease;
   overflow-y: auto;
   overflow-x: hidden;
   padding-bottom: 0.25rem;
+  scrollbar-width: none;
 }
 
-/* Custom scrollbar */
 .txnContainer::-webkit-scrollbar {
-  width: 0.5rem;
-  margin-right: 0.25rem;
+  display: none;
 }
 
-.txnContainer::-webkit-scrollbar-track {
-  background: transparent;
-  margin-right: 0.25rem;
+/* Sticky month header overlay */
+.stickyHeaderOverlay {
+  position: sticky;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.7rem 0.5rem;
+  background: var(--color-background);
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 }
 
-.txnContainer::-webkit-scrollbar-thumb {
-  background: var(--color-surface-tertiary);
-  border-radius: 0.25rem;
-  margin-right: 0.25rem;
+/* ── Transaction rows (card layout) ─────────────────────────── */
+
+/* Each react-window slot wrapper fills the allocated height so
+   no dark gap shows between rows within the same card group.
+   Side borders are shared by all rows in a group. */
+.txnWrapper {
+  background: var(--color-surface);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border-left:  1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
 }
 
-.txnContainer::-webkit-scrollbar-thumb:hover {
-  background: var(--color-text-secondary);
+.txnCardFirst {
+  border-radius: 0.75rem 0.75rem 0 0;
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  overflow: hidden;
+}
+
+.txnCardLast {
+  border-radius: 0 0 0.75rem 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  overflow: hidden;
+}
+
+.txnCardSingle {
+  border-radius: 0.75rem;
+  border-top:    1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  overflow: hidden;
+}
+
+/* Subtle row separator inside a card */
+.txnDivider {
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
 }
 
 .txnRow {
-  display: grid;
-  grid-template-columns: repeat(10, 1fr);
+  display: flex;
+  flex-direction: row;
   gap: 1rem;
-  font-size: 0.9725rem;
-  padding: 1.25rem 1.5rem;
+  font-size: 1rem;
+  padding: 1.1rem 1.5rem;
   background: var(--color-surface);
   cursor: pointer;
   transition: background 0.2s ease;
-}
-
-.borderNone {
-  border: none;
-  border-bottom: 2px dashed transparent;
-}
-
-.divider {
-  border: none;
-  margin: 0 1.5rem;
-  border-bottom: 2px dashed var(--color-border);
+  align-items: center;
+  flex: 1;
 }
 
 .txnRow:hover {
   background: var(--color-surface-secondary);
 }
 
-.selected {
-  background: var(--color-primary);
+.txnRowSelected {
+  background: var(--color-primary) !important;
+  color: #fff;
 }
 
-.selected:hover {
-  background: var(--color-primary);
+.txnRowSelected .categoryPill {
+  background: rgba(255, 255, 255, 0.25);
 }
+
+/* ── Cell styles ─────────────────────────────────────────────── */
+
+.payeeName {
+  color: var(--color-text-secondary);
+  font-size: 1.2rem;
+}
+
+.categoryPill {
+  display: inline-flex;
+  padding: 0.45rem 0.75rem;
+  border-radius: 8px;
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: var(--color-primary-light);
+  background: var(--color-surface-tertiary);
+  opacity: 0.9;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.amountCell {
+  display: flex;
+  align-items: center;
+  text-align: right;
+  font-weight: 500;
+  font-size: 1.2rem;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-primary);
+}
+
+/* .amountInflow  { color: var(--color-budget-positive); } */
+/* .amountOutflow { color: var(--color-budget-negative); } */
 
 .note {
   color: var(--color-text-secondary);
 }
 
-.amount {
-  padding: 0.25rem 0.75rem;
-  border-radius: 1.5rem;
-  box-shadow: var(--shadow-sm);
-  transition: filter 0.2s ease;
-}
-
-.outflow {
-  background: var(--color-budget-negative-fg);
-  color: var(--color-budget-negative-bg);
-}
-
-.inflow {
-  background: var(--color-budget-positive-fg);
-  color: var(--color-budget-positive-bg);
-}
-
 .input {
-  border: 1px solid var(--color-primary);
   width: 100%;
   height: 100%;
   border: 1px solid transparent;
@@ -148,212 +224,11 @@ input[type=date]::-webkit-calendar-picker-indicator {
   cursor: pointer;
 }
 
-.txnWrapper {
-  display: flex;
-  flex-direction: column;
-}
-
-.btnContainer {
-  display: flex;
-  gap: 0.5rem;
-  align-self: flex-end;
-  padding-right: 1rem;
-  padding-bottom: 0.5rem;
-}
-
-.btnContainer > button {
-  outline: none;
-  padding: 0.5rem 1rem;
-  font-size: 0.85rem;
-  border-radius: 0.5rem;
-  padding: 0.5rem 0.75rem;
-}
-
-.cancelBtn {
-  background: var(--color-surface-secondary);
-  color: var(--color-text-secondary);
-  box-shadow: var(--shadow-md);
-}
-
-.cancelBtn:hover {
-  border: 1px solid transparent;
-  background: var(--color-surface-tertiary);
-  color: var(--color-text);
-}
-
-.deleteBtn {
-  border: 1px solid var(--color-budget-negative-fg);
-  background: var(--color-surface-secondary);
-  color: var(--color-budget-negative-bg);
-}
-
-.deleteBtn:hover {
-  border: 1px solid transparent;
-  filter: brightness(1.1);
-  background: var(--color-budget-negative-fg);
-}
-
-.actionContainer {
-  margin: 1rem 0;
-  display: flex;
-  width: 100%;
-  justify-content: space-between;
-}
-
-.addButton {
-  width: fit-content;
-  background: var(--color-surface-secondary);
-  border-radius: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  font-size: 1rem;
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  box-shadow: var(--shadow-md);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.addButton:hover {
-  background: var(--color-surface-tertiary);
-}
-
-.addButton > svg {
-  color: var(--color-text-secondary);
-}
-
-.searchContainer {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-
-  border: 1px solid var(--color-primary);
-  border: 1px solid transparent;
-  padding: 0.5rem;
-  border-radius: 1rem;
-  background: var(--color-surface-secondary);
-  box-shadow: var(--shadow-sm);
-}
-
-.searchContainer:focus-within {
-  border-color: var(--color-primary);
-  border-width: 2px;
-}
-
-.searchInput {
-  outline: none;
-  border: none;
-  background: var(--color-surface-secondary);
-  font-size: 1rem;
-  min-width: 0;
-  color: var(--color-text);
-}
-.searchContainer > svg {
-  color: var(--color-text-secondary);
-}
-
-.mobileFilterChips {
-  display: none;
-}
-
-.filterChip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.45rem;
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--color-text-secondary);
-  font-size: 0.85rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.filterChip svg {
-  border-radius: 999px;
-  background: var(--color-surface-secondary);
-  color: var(--color-text);
-}
-
-.activeFilterChip {
-  border-color: var(--color-primary);
-  background: var(--color-surface-secondary);
-  color: var(--color-text);
-}
-
-.mobileTxnContainer {
-  display: none;
-}
+/* ══════════════════════════════════════════════════════════════
+   Mobile  (≤ 768px)
+   ══════════════════════════════════════════════════════════════ */
 
 @media (max-width: 768px) {
-  .container {
-    gap: 0.75rem;
-  }
-
-  .title {
-    display: none;
-  }
-
-  .container > .amount {
-    display: none;
-  }
-
-  .actionContainer {
-    display: flex;
-    flex-direction: column-reverse;
-    gap: 0.5rem;
-    margin: 0;
-  }
-
-  .addButton,
-  .searchContainer {
-    width: 100%;
-    min-width: 0;
-    min-height: 3rem;
-    border-radius: 0.75rem;
-  }
-
-  .addButton {
-    display: none;
-    justify-content: center;
-    padding: 0.5rem;
-    font-size: 0.9rem;
-    line-height: 1.15;
-  }
-
-  .searchContainer {
-    min-height: 3.75rem;
-    padding: 0.75rem 1rem;
-    border-radius: 1rem;
-  }
-
-  .searchInput {
-    width: 100%;
-    font-size: 1.05rem;
-  }
-
-  .mobileFilterChips {
-    display: flex;
-    gap: 0.75rem;
-    max-width: 100%;
-    padding-bottom: 0.25rem;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-
-  .mobileFilterChips::-webkit-scrollbar {
-    display: none;
-  }
-
-  .filterChip {
-    flex: 0 0 auto;
-    min-height: 2.75rem;
-    padding: 0.6rem 0.95rem;
-    font-size: 0.8rem;
-  }
-
   .headerContainer {
     display: none;
   }
@@ -378,11 +253,13 @@ input[type=date]::-webkit-calendar-picker-indicator {
     padding: 1rem;
     font-size: 0.95rem;
     align-items: start;
+    align-content: start;
   }
 
   .txnRow > div {
     grid-column: auto !important;
     text-align: left !important;
+    flex: none !important;
     min-width: 0;
   }
 
@@ -452,26 +329,7 @@ input[type=date]::-webkit-calendar-picker-indicator {
     grid-row: 2;
   }
 
-  .amount {
-    display: inline-flex;
-    justify-content: center;
-    max-width: 8.5rem;
-    white-space: nowrap;
-  }
-
-  .divider {
-    margin: 0 1rem;
-  }
-
-  .btnContainer {
-    width: 100%;
-    justify-content: stretch;
-    padding: 0 1rem 1rem;
-  }
-
-  .btnContainer > button {
-    flex: 1;
-  }
+  /* ── Mobile transaction list ─────────────────────────────────── */
 
   .mobileTxnContainer {
     display: flex;
@@ -535,6 +393,11 @@ input[type=date]::-webkit-calendar-picker-indicator {
   .mobileTxnCard:hover {
     border-color: var(--color-border);
     background: var(--color-surface);
+  }
+
+  .selected {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 25%, transparent);
   }
 
   .mobileTxnTopRow {
@@ -614,6 +477,8 @@ input[type=date]::-webkit-calendar-picker-indicator {
     place-items: center;
     color: var(--color-text-secondary);
   }
+
+  /* ── Mobile detail view ──────────────────────────────────────── */
 
   .mobileDetail {
     display: flex;
