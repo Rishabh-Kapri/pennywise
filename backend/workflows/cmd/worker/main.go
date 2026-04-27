@@ -51,9 +51,12 @@ func main() {
 		UseBuildIDForVersioning: false,
 	})
 
-	// 3. Register the workflow with an explicit short name so callers don't need the full package path
+	// 3. Register workflows with explicit short names so callers don't need the full package path
 	w.RegisterWorkflowWithOptions(workflow.EmailToTransactionWorkflow, sdkworkflow.RegisterOptions{
 		Name: sharedModel.EmailToTransactionWorkflowName,
+	})
+	w.RegisterWorkflowWithOptions(workflow.ParsedEmailToTransactionWorkflow, sdkworkflow.RegisterOptions{
+		Name: sharedModel.ParsedEmailToTransactionWorkflowName,
 	})
 
 	// 4. Start listening (blocks until interrupted)

@@ -7,11 +7,12 @@ import (
 )
 
 const (
-	PennywiseTaskQueue             = "pennywise-tasks"
-	GmailActivitiesTaskQueue       = "gmail-activities"
-	CipherActivitiesTaskQueue      = "cipher-activities"
-	PennywiseActivitiesTaskQueue   = "pennywise-activities"
-	EmailToTransactionWorkflowName = "EmailToTransactionWorkflow"
+	PennywiseTaskQueue                   = "pennywise-tasks"
+	GmailActivitiesTaskQueue             = "gmail-activities"
+	CipherActivitiesTaskQueue            = "cipher-activities"
+	PennywiseActivitiesTaskQueue         = "pennywise-activities"
+	EmailToTransactionWorkflowName       = "EmailToTransactionWorkflow"
+	ParsedEmailToTransactionWorkflowName = "ParsedEmailToTransactionWorkflow"
 
 	// RetryPredictSignal is sent to a waiting workflow to trigger a manual retry
 	// of the Predict step (e.g. after Ollama comes back online).

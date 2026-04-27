@@ -14,7 +14,6 @@ func InternalRequestAuth(internalAuthToken string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := utils.WithInternalAuthToken(c.Request.Context(), internalAuthToken)
 		metadata := utils.RequestMetadataFromContext(ctx)
-		logger.Logger(ctx).Info("internal request auth", "metadata", metadata)
 
 		if metadata.InternalRequest {
 			metadata.VerifiedInternal = verifyInternalRequest(
