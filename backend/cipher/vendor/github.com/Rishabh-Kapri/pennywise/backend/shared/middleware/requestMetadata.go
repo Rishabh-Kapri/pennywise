@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 	"github.com/gin-gonic/gin"
 )
@@ -12,7 +11,6 @@ func RequestMetadata(serviceName string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		current := utils.RequestMetadataFromContext(c.Request.Context())
 		inbound := utils.RequestMetadataFromHeaders(c.Request.Header)
-		logger.Logger(c.Request.Context()).Info("request metadata", "inbound", inbound, "current", current)
 
 		metadata := current
 		if inbound.CorrelationID != "" {
@@ -37,4 +35,3 @@ func RequestMetadata(serviceName string) gin.HandlerFunc {
 		c.Next()
 	}
 }
-

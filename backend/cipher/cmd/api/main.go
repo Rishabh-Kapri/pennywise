@@ -176,6 +176,7 @@ func main() {
 		budgetApi.POST("/corrections", predictionHandler.HandleCorrection)
 
 		api.POST("/workflows/:workflowId/retry-predict", workflowHandler.RetryPredict)
+		api.POST("/workflows/parsed-to-transaction", workflowHandler.StartParsedEmailToTransaction)
 	}
 
 	addr := "0.0.0.0:" + cfg.Port

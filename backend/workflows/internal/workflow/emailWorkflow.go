@@ -47,6 +47,59 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailWor
 		return nil
 	}
 
+	if len(parsedEmails) == 0 {
+		return nil
+	}
+
+	// Start child workflow for steps 2-4 (Predict -> CreateTransaction -> CreateCipherPrediction)
+	childWorkflowID := workflowInfo.WorkflowExecution.ID + "-parsed"
+	childCtx := workflow.WithChildOptions(ctx, workflow.ChildWorkflowOptions{
+		WorkflowID: childWorkflowID,
+	})
+	workflow.GetLogger(ctx).Info("starting child workflow for parsed emails",
+		append(workflowLogFields, "child_workflow_id", childWorkflowID)...)
+
+	err = workflow.ExecuteChildWorkflow(childCtx, sharedModel.ParsedEmailToTransactionWorkflowName, fetchAndParseEmailResult).
+		Get(childCtx, nil)
+	if err != nil {
+		return err
+	}
+
+	workflow.GetLogger(ctx).Info("email-to-transaction workflow completed", workflowLogFields...)
+	return nil
+}
+
+// ParsedEmailToTransactionWorkflow runs steps 2-4 only: Predict, CreateTransaction,
+// CreateCipherPrediction. It accepts pre-parsed email data and skips the Gmail fetch.
+func ParsedEmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.ParsedEmailsInput) error {
+	workflowInfo := workflow.GetInfo(ctx)
+	workflowMetadata := sharedTemporal.RequestMetadataFromWorkflowContext(ctx)
+	workflowLogFields := []interface{}{
+		"workflow_id", workflowInfo.WorkflowExecution.ID,
+		"workflow_run_id", workflowInfo.WorkflowExecution.RunID,
+	}
+	if workflowMetadata.CorrelationID != "" {
+		workflowLogFields = append(workflowLogFields, "correlation_id", workflowMetadata.CorrelationID)
+	}
+	if workflowMetadata.OriginService != "" {
+		workflowLogFields = append(workflowLogFields, "origin_service", workflowMetadata.OriginService)
+	}
+	workflow.GetLogger(ctx).Info("starting parsed-email-to-transaction workflow", workflowLogFields...)
+
+	if err := processParsedEmails(ctx, input, workflowLogFields); err != nil {
+		return err
+	}
+
+	workflow.GetLogger(ctx).Info("parsed-email-to-transaction workflow completed", workflowLogFields...)
+	return nil
+}
+
+// processParsedEmails executes steps 2-4 (Predict -> CreateTransaction -> CreateCipherPrediction).
+func processParsedEmails(
+	ctx workflow.Context,
+	input sharedModel.ParsedEmailsInput,
+	workflowLogFields []interface{},
+) error {
 	// ----- Step 2: Predict the transactions -----
 	// Ollama may be temporarily unavailable. The retry policy waits PredictRetryInterval
 	// between each automatic attempt. If all attempts are exhausted, the workflow parks on
@@ -66,7 +119,7 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailWor
 			Summary: "Predict transaction from the parsed email data",
 		})
 
-		predictErr := workflow.ExecuteActivity(cipherCtx, "Predict", fetchAndParseEmailResult).
+		predictErr := workflow.ExecuteActivity(cipherCtx, "Predict", input).
 			Get(cipherCtx, &predictionResult)
 		if predictErr == nil {
 			break
@@ -105,11 +158,11 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailWor
 
 	txnInput := sharedModel.PredictionResultInput{
 		Predictions: predictionResult,
-		BudgetID:    fetchAndParseEmailResult.BudgetID,
+		BudgetID:    input.BudgetID,
 	}
 
 	var createdTransactions []sharedModel.Transaction
-	err = workflow.ExecuteActivity(pennywiseCtx, "CreateTransaction", txnInput).Get(pennywiseCtx, &createdTransactions)
+	err := workflow.ExecuteActivity(pennywiseCtx, "CreateTransaction", txnInput).Get(pennywiseCtx, &createdTransactions)
 	if err != nil {
 		return err
 	}
@@ -119,15 +172,13 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailWor
 		predInput := sharedModel.CreateCipherPredictionInput{
 			Transactions: createdTransactions,
 			Predictions:  predictionResult,
-			BudgetID:     fetchAndParseEmailResult.BudgetID,
+			BudgetID:     input.BudgetID,
 		}
 		err = workflow.ExecuteActivity(pennywiseCtx, "CreateCipherPrediction", predInput).Get(pennywiseCtx, nil)
 		if err != nil {
 			return err
 		}
 	}
-
-	workflow.GetLogger(ctx).Info("email-to-transaction workflow completed", workflowLogFields...)
 
 	return nil
 }
