@@ -72,7 +72,7 @@ html, body, #root {
   /* Borders and dividers */
   --color-border: #626262;
   --color-border-light: #788dba;
-  --color-border: color(srgb 0.384314 0.384314 0.384314 / 0.5);
+  --color-border-muted: color(srgb 0.384314 0.384314 0.384314 / 0.5);
 
   /* Budget specific colors */
 

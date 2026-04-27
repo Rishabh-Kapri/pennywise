@@ -96,12 +96,7 @@
 
 .virtualList {
   height: 100%;
-  scrollbar-color: color-mix(
-      in srgb,
-      var(--color-text-secondary) 65%,
-      transparent
-    )
-    transparent;
+  scrollbar-color: color-mix(in srgb, var(--color-text-secondary) 65%, transparent) transparent;
   scrollbar-width: thin;
 }
 
@@ -166,10 +161,8 @@
   height: 100%;
   min-width: 0;
   overflow: hidden;
-  border-left: 1px solid
-    color-mix(in srgb, var(--color-border) 60%, transparent);
-  border-right: 1px solid
-    color-mix(in srgb, var(--color-border) 60%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
 }
 
 .txnCardFirst {
@@ -180,23 +173,20 @@
 
 .txnCardLast {
   border-radius: 0 0 0.75rem 0.75rem;
-  border-bottom: 1px solid
-    color-mix(in srgb, var(--color-border) 60%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
   overflow: hidden;
 }
 
 .txnCardSingle {
   border-radius: 0.75rem;
   border-top: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
-  border-bottom: 1px solid
-    color-mix(in srgb, var(--color-border) 60%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
   overflow: hidden;
 }
 
 /* Subtle row separator inside a card */
 .txnDivider {
-  border-bottom: 1px solid
-    color-mix(in srgb, var(--color-border) 50%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
 }
 
 .txnRow {
@@ -208,7 +198,9 @@
   padding: 0.75rem 1.5rem;
   background: var(--color-surface);
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition:
+    background 0.2s ease,
+    box-shadow 0.2s ease;
   align-items: center;
   flex: 1;
   min-width: 0;
@@ -224,13 +216,8 @@
 }
 
 .txnRowSelected {
-  /* background: var(--color-primary) !important; */
-  background: var(--color-surface) !important;
-  color: #fff;
-}
-
-.txnRowSelected .categoryPill {
-  background: rgba(255, 255, 255, 0.25);
+  background: color-mix(in srgb, var(--color-primary) 18%, var(--color-surface)) !important;
+  box-shadow: inset 3px 0 0 var(--color-primary-light);
 }
 
 /* ── Cell styles ─────────────────────────────────────────────── */
@@ -239,6 +226,11 @@
   width: 70%;
   max-width: 70%;
   min-width: 0;
+}
+
+.dateInlineEditHitArea {
+  width: 100%;
+  max-width: 100%;
 }
 
 .payeeName {
@@ -484,8 +476,7 @@ input[type='date']::-webkit-calendar-picker-indicator {
 
   .selected {
     border-color: var(--color-primary);
-    box-shadow: 0 0 0 2px
-      color-mix(in srgb, var(--color-primary) 25%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 25%, transparent);
   }
 
   .mobileTxnTopRow {
