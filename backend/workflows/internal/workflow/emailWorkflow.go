@@ -119,8 +119,7 @@ func processParsedEmails(
 			Summary: "Predict transaction from the parsed email data",
 		})
 
-		predictErr := workflow.ExecuteActivity(cipherCtx, "Predict", input).
-			Get(cipherCtx, &predictionResult)
+		predictErr := workflow.ExecuteActivity(cipherCtx, "Predict", input).Get(cipherCtx, &predictionResult)
 		if predictErr == nil {
 			break
 		}
