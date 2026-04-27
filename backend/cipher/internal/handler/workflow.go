@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	tc "go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/temporal"
 )
 
 type WorkflowHandler interface {
@@ -40,11 +41,15 @@ func (h *workflowHandler) StartParsedEmailToTransaction(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": wrappedErr.Error()})
 		return
 	}
+	log.Info("ParsedEmailToTransaction", "input", input)
 
 	we, err := h.temporalClient.ExecuteWorkflow(
 		ctx,
 		tc.StartWorkflowOptions{
 			TaskQueue: sharedModel.PennywiseTaskQueue,
+			RetryPolicy: &temporal.RetryPolicy{
+				MaximumAttempts: 1,
+			},
 		},
 		sharedModel.ParsedEmailToTransactionWorkflowName,
 		input,
