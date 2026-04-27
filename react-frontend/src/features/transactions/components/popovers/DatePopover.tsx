@@ -4,15 +4,9 @@ import { parseDate, type DateValue } from '@internationalized/date';
 import { Popover, PopoverTrigger, PopoverContent } from '@heroui/popover';
 import styles from './Popover.module.css';
 import { getLocaleDate } from '@/utils/date.utils';
+import type { TransactionDropdownProps } from './types';
 
-interface Props {
-  value: string;
-  onClick: (id: string, name: string) => void;
-  autoFocus?: boolean;
-  triggerClassName?: string;
-}
-
-export function DateDropdown({ value, onClick, autoFocus, triggerClassName }: Props) {
+export function DateDropdown({ value, onClick, autoFocus, variant = 'inline' }: TransactionDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [pendingDate, setPendingDate] = useState<DateValue | undefined>();
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -53,6 +47,7 @@ export function DateDropdown({ value, onClick, autoFocus, triggerClassName }: Pr
   const displayValue = value
     ? getLocaleDate(value, { month: 'short', day: 'numeric', year: 'numeric' }, ['en-GB'])
     : '';
+  const triggerClassName = variant === 'form' ? styles.formTrigger : styles.dateTrigger;
 
   return (
     <div className={styles.popoverContainer}>
@@ -61,7 +56,7 @@ export function DateDropdown({ value, onClick, autoFocus, triggerClassName }: Pr
           <button
             type="button"
             ref={triggerRef}
-            className={`${styles.dateTrigger} ${styles.trigger} ${triggerClassName ?? ''}`}
+            className={triggerClassName}
             autoFocus={autoFocus}
             aria-haspopup="true"
             aria-expanded={isOpen}>
