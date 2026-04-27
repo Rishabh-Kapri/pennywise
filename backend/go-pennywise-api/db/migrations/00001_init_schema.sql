@@ -157,6 +157,7 @@ CREATE TABLE IF NOT EXISTS cipher_predictions (
   budget_id UUID NOT NULL REFERENCES budgets(id) ON DELETE CASCADE,
   transaction_id UUID NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
   email_text TEXT,
+  llm_reasoning TEXT,
   amount NUMERIC(12, 2),
   -- extracted strings
   extracted_account TEXT,
