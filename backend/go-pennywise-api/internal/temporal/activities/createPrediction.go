@@ -69,11 +69,15 @@ func (a *CreateCipherPredictionActivity) CreateCipherPrediction(
 			confidence = &parsed
 		}
 		var predictedPayeeID *uuid.UUID
-		if pred.PayeeID != uuid.Nil {
+		if txn.PayeeID != nil && *txn.PayeeID != uuid.Nil {
+			predictedPayeeID = txn.PayeeID
+		} else if pred.PayeeID != uuid.Nil {
 			predictedPayeeID = &pred.PayeeID
 		}
 		var predictedCategoryID *uuid.UUID
-		if pred.CategoryID != uuid.Nil {
+		if txn.CategoryID != nil && *txn.CategoryID != uuid.Nil {
+			predictedCategoryID = txn.CategoryID
+		} else if pred.CategoryID != uuid.Nil {
 			predictedCategoryID = &pred.CategoryID
 		}
 		accountConfidence := 100.0
