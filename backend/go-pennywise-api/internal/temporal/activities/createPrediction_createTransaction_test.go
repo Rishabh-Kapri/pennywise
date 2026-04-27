@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 
@@ -115,6 +116,13 @@ func assertErrorCode(t *testing.T, err error, code errs.Code) {
 	if appErr.Code != code {
 		t.Fatalf("expected error code %s, got %s", code, appErr.Code)
 	}
+}
+
+func valueOrNil[T any](value *T) any {
+	if value == nil {
+		return nil
+	}
+	return *value
 }
 
 func executeCreateCipherPredictionActivity(
@@ -242,14 +250,14 @@ func TestCreateCipherPredictionCreatesRecords(t *testing.T) {
 				if record.EmailText == nil || *record.EmailText != rawText {
 					t.Fatalf("expected raw text %q, got %v", rawText, record.EmailText)
 				}
-				if record.AccountConfidence == nil || *record.AccountConfidence != 92.5 {
-					t.Fatalf("expected account confidence 92.5, got %v", record.AccountConfidence)
+				if record.AccountConfidence == nil || math.Abs(*record.AccountConfidence-100) > 0.0001 {
+					t.Fatalf("expected account confidence 100, got %v", valueOrNil(record.AccountConfidence))
 				}
-				if record.PayeeConfidence == nil || *record.PayeeConfidence != 92.5 {
-					t.Fatalf("expected payee confidence 92.5, got %v", record.PayeeConfidence)
+				if record.PayeeConfidence == nil || math.Abs(*record.PayeeConfidence-92.5) > 0.0001 {
+					t.Fatalf("expected payee confidence 92.5, got %v", valueOrNil(record.PayeeConfidence))
 				}
-				if record.CategoryConfidence == nil || *record.CategoryConfidence != 92.5 {
-					t.Fatalf("expected category confidence 92.5, got %v", record.CategoryConfidence)
+				if record.CategoryConfidence == nil || math.Abs(*record.CategoryConfidence-92.5) > 0.0001 {
+					t.Fatalf("expected category confidence 92.5, got %v", valueOrNil(record.CategoryConfidence))
 				}
 				if record.ExtractedAccount == nil || *record.ExtractedAccount != "Checking" {
 					t.Fatalf("expected extracted account, got %v", record.ExtractedAccount)
@@ -313,6 +321,35 @@ func TestCreateCipherPredictionOmitsNilPredictionIDs(t *testing.T) {
 		BudgetID:     uuid.New(),
 		Transactions: []model.Transaction{{ID: uuid.New()}},
 		Predictions:  []model.CipherPredictionResult{{}},
+	})
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+}
+
+func TestCreateCipherPredictionUsesCreatedTransactionIDsWhenPredictionIDsNil(t *testing.T) {
+	payeeID := uuid.New()
+	categoryID := uuid.New()
+	activity := CreateCipherPredictionActivity{
+		PredictionService: &fakePredictionService{createCipherPrediction: func(_ context.Context, record model.CipherPredictionRecord) (*model.CipherPredictionRecord, error) {
+			if record.PredictedPayeeID == nil || *record.PredictedPayeeID != payeeID {
+				t.Fatalf("expected predicted payee id %s, got %v", payeeID, record.PredictedPayeeID)
+			}
+			if record.PredictedCategoryID == nil || *record.PredictedCategoryID != categoryID {
+				t.Fatalf("expected predicted category id %s, got %v", categoryID, record.PredictedCategoryID)
+			}
+			return &record, nil
+		}},
+	}
+
+	err := executeCreateCipherPredictionActivity(t, activity, model.CreateCipherPredictionInput{
+		BudgetID: uuid.New(),
+		Transactions: []model.Transaction{{
+			ID:         uuid.New(),
+			PayeeID:    &payeeID,
+			CategoryID: &categoryID,
+		}},
+		Predictions: []model.CipherPredictionResult{{}},
 	})
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
