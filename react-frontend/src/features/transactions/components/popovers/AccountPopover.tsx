@@ -8,9 +8,10 @@ interface Props {
   value: string;
   onClick: (id: string, name: string) => void;
   autoFocus?: boolean;
+  triggerClassName?: string;
 }
 
-export function AccountDropdown({ value, onClick, autoFocus }: Props) {
+export function AccountDropdown({ value, onClick, autoFocus, triggerClassName }: Props) {
   const { budgetAccounts } = useAppSelector((state) => state.accounts);
   const filterFn = (accounts: Account[], query: string) => {
     return accounts.filter((account) =>
@@ -32,7 +33,7 @@ export function AccountDropdown({ value, onClick, autoFocus }: Props) {
         inputProps={{
           autoFocus,
           classNames: {
-            input: styles.input,
+            input: `${styles.input} ${triggerClassName ?? ''}`,
           }
         }}
         classNames={{

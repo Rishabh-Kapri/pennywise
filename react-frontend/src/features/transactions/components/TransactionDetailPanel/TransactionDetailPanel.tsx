@@ -66,7 +66,7 @@ export function TransactionDetailPanel({
           </button>
         </div>
 
-        <div className={styles.panelBody}>
+        <div className={`${styles.panelBody} ${styles.addNewPanelBody}`}>
           {/* Amount input */}
           <div className={styles.formGroup}>
             <label className={styles.label}>Amount</label>
@@ -116,6 +116,7 @@ export function TransactionDetailPanel({
             <DateDropdown
               value={selectedTxn.date || getTodaysDate()}
               onClick={onSelectChange('date', 'date')}
+              triggerClassName={styles.formDropdownControl}
             />
           </div>
 
@@ -125,6 +126,7 @@ export function TransactionDetailPanel({
             <PayeeDropdown
               value={selectedTxn.payeeName}
               onClick={onSelectChange('payeeId', 'payeeName')}
+              triggerClassName={styles.formDropdownControl}
             />
           </div>
 
@@ -134,6 +136,7 @@ export function TransactionDetailPanel({
             <CategoryDropdown
               value={selectedTxn.categoryName ?? ''}
               onClick={onSelectChange('categoryId', 'categoryName')}
+              triggerClassName={styles.formDropdownControl}
             />
           </div>
 
@@ -143,6 +146,7 @@ export function TransactionDetailPanel({
             <AccountDropdown
               value={selectedTxn.accountName}
               onClick={onSelectChange('accountId', 'accountName')}
+              triggerClassName={styles.formDropdownControl}
             />
           </div>
 

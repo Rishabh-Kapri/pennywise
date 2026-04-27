@@ -90,6 +90,11 @@
   gap: 1.25rem;
 }
 
+.addNewPanelBody {
+  padding: 1rem;
+  background: var(--color-surface-secondary);
+}
+
 /* ── Hero ── */
 .heroSection {
   display: flex;
@@ -314,8 +319,8 @@
   flex: 1;
   padding: 0.5rem 0.75rem;
   border-radius: 0.5rem;
-  background: var(--color-surface-secondary);
-  border: 1px solid transparent;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-muted);
   font-size: 1rem;
   font-weight: 600;
   color: var(--color-text);
@@ -330,14 +335,33 @@
 .textInput {
   padding: 0.5rem 0.75rem;
   border-radius: 0.5rem;
-  background: var(--color-surface-secondary);
-  border: 1px solid transparent;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-muted);
   font-size: 0.9rem;
   color: var(--color-text);
   width: 100%;
 }
 
 .textInput:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.formDropdownControl {
+  width: 100%;
+  min-height: 2.6rem;
+  justify-content: flex-start;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.5rem;
+  background: var(--color-surface);
+  box-shadow: none;
+  color: var(--color-text-secondary);
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.formDropdownControl:focus {
   outline: none;
   border-color: var(--color-primary);
 }

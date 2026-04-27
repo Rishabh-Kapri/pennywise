@@ -1,12 +1,7 @@
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import {
-  createTransaction,
-  deleteTransactionById,
-  fetchAllTransaction,
-  updateTransaction,
-} from '../../store';
+import { createTransaction, deleteTransactionById, fetchAllTransaction, updateTransaction } from '../../store';
 import { LoadingState } from '@/utils';
 import { toast } from '@/utils';
 import styles from './Transaction.module.css';
@@ -23,10 +18,7 @@ import {
   type MonthGroupStats,
 } from '../../types/transaction.types';
 import { TransactionSkeleton } from '../TransactionSkeleton';
-import {
-  allAccountTxnCols,
-  specificAccountTxnCols,
-} from '../TransactionColumns';
+import { allAccountTxnCols, specificAccountTxnCols } from '../TransactionColumns';
 import type { TransactionColumns } from '@/types/common.types';
 import { List } from 'react-window';
 import { TransactionRow } from '../TransactionRow';
@@ -96,9 +88,7 @@ function groupTransactions(txns: Transaction[]): ListItem[] {
 
 function useIsMobile(breakpoint = 768) {
   const [isMobile, setIsMobile] = useState(() =>
-    typeof window !== 'undefined'
-      ? window.matchMedia(`(max-width: ${breakpoint}px)`).matches
-      : false,
+    typeof window !== 'undefined' ? window.matchMedia(`(max-width: ${breakpoint}px)`).matches : false,
   );
   useEffect(() => {
     const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
@@ -166,22 +156,28 @@ export function Transaction() {
     return () => document.removeEventListener('keydown', handleEscape);
   }, [paramId, dispatch, setSidePanelContent]);
 
-  const handleTxnSelect = useCallback((index: number, txn: Transaction | null) => {
-    if (isAddingNew) return; // don't overwrite add-new mode
-    setInlineEditingTxnId(null);
-    setIsAddingNew(false);
-    setSelectedTxn(txn);
-    void index; // originalIndex carried in ListItem, not needed here
-  }, [isAddingNew]);
+  const handleTxnSelect = useCallback(
+    (index: number, txn: Transaction | null) => {
+      if (isAddingNew) return; // don't overwrite add-new mode
+      setInlineEditingTxnId(null);
+      setIsAddingNew(false);
+      setSelectedTxn(txn);
+      void index; // originalIndex carried in ListItem, not needed here
+    },
+    [isAddingNew],
+  );
 
-  const handleInlineTxnEdit = useCallback((index: number, txn: Transaction | null) => {
-    if (isAddingNew) return;
-    setInlineEditingTxnId(txn?.id ?? null);
-    setIsAddingNew(false);
-    setSelectedTxn(txn);
-    setSidePanelContent(null);
-    void index;
-  }, [isAddingNew, setSidePanelContent]);
+  const handleInlineTxnEdit = useCallback(
+    (index: number, txn: Transaction | null) => {
+      if (isAddingNew) return;
+      setInlineEditingTxnId(txn?.id ?? null);
+      setIsAddingNew(false);
+      setSelectedTxn(txn);
+      setSidePanelContent(null);
+      void index;
+    },
+    [isAddingNew, setSidePanelContent],
+  );
 
   const resetSelectedTxn = useCallback(() => {
     setSelectedTxn(null);
@@ -190,15 +186,12 @@ export function Transaction() {
     setSidePanelContent(null);
   }, [setSidePanelContent]);
 
-  const handleSelectedTxnChange = useCallback(
-    (key: keyof Transaction, value: string | number | null) => {
-      setSelectedTxn((prev) => {
-        if (!prev) return null;
-        return { ...prev, [key]: value };
-      });
-    },
-    [],
-  );
+  const handleSelectedTxnChange = useCallback((key: keyof Transaction, value: string | number | null) => {
+    setSelectedTxn((prev) => {
+      if (!prev) return null;
+      return { ...prev, [key]: value };
+    });
+  }, []);
 
   // Build the save payload from a transaction object
   const buildPayload = (txn: Transaction): TransactionDTO => ({
@@ -312,24 +305,26 @@ export function Transaction() {
     }
   }, [selectedTxn, dispatch, paramId, resetSelectedTxn]);
 
-  const handleStatusChange = useCallback(async (status: 'APPROVED' | 'REJECTED') => {
-    if (!selectedTxn?.id) return;
-    try {
-      await dispatch(updateTransaction(buildPayload({ ...selectedTxn, status }))).unwrap();
-      dispatch(fetchAllTransaction(paramId ? selectedTxn.accountId : ''));
-      toast.success(`Transaction ${status.toLowerCase()}`);
-      resetSelectedTxn();
-    } catch {
-      toast.error('Failed to update status');
-    }
-  }, [selectedTxn, dispatch, paramId, resetSelectedTxn]);
+  const handleStatusChange = useCallback(
+    async (status: 'APPROVED' | 'REJECTED') => {
+      if (!selectedTxn?.id) return;
+      try {
+        await dispatch(updateTransaction(buildPayload({ ...selectedTxn, status }))).unwrap();
+        dispatch(fetchAllTransaction(paramId ? selectedTxn.accountId : ''));
+        toast.success(`Transaction ${status.toLowerCase()}`);
+        resetSelectedTxn();
+      } catch {
+        toast.error('Failed to update status');
+      }
+    },
+    [selectedTxn, dispatch, paramId, resetSelectedTxn],
+  );
 
   const handlePanelSelectChange = useCallback(
-    (idKey: keyof Transaction, nameKey: keyof Transaction) =>
-      (id: string, name: string) => {
-        handleSelectedTxnChange(idKey, id);
-        handleSelectedTxnChange(nameKey, name);
-      },
+    (idKey: keyof Transaction, nameKey: keyof Transaction) => (id: string, name: string) => {
+      handleSelectedTxnChange(idKey, id);
+      handleSelectedTxnChange(nameKey, name);
+    },
     [handleSelectedTxnChange],
   );
 
@@ -339,8 +334,14 @@ export function Transaction() {
     return transactions.filter((txn) => {
       const matchesSearch =
         !search ||
-        [txn.accountName, txn.payeeName, txn.categoryName, txn.note,
-          String(txn.outflow ?? ''), String(txn.inflow ?? '')]
+        [
+          txn.accountName,
+          txn.payeeName,
+          txn.categoryName,
+          txn.note,
+          String(txn.outflow ?? ''),
+          String(txn.inflow ?? ''),
+        ]
           .filter(Boolean)
           .some((v) => v?.toLowerCase().includes(search));
       if (!matchesSearch) return false;
@@ -368,8 +369,19 @@ export function Transaction() {
       handleInputBlur,
       onAutoSave: handleAutoSave,
     }),
-    [paramId, listItems, cols, isAddingNew, selectedTxn, inlineEditingTxnId, handleTxnSelect, handleInlineTxnEdit,
-      handleSelectedTxnChange, handleInputBlur, handleAutoSave],
+    [
+      paramId,
+      listItems,
+      cols,
+      isAddingNew,
+      selectedTxn,
+      inlineEditingTxnId,
+      handleTxnSelect,
+      handleInlineTxnEdit,
+      handleSelectedTxnChange,
+      handleInputBlur,
+      handleAutoSave,
+    ],
   );
 
   const dynamicRowHeight = useCallback(
@@ -452,8 +464,7 @@ export function Transaction() {
     <>
       {loading === LoadingState.PENDING && <TransactionSkeleton />}
       {loading === LoadingState.SUCCESS && (
-        <div
-          className={`${styles.wrapper} ${paramId ? styles.specificAccount : styles.allAccounts}`}>
+        <div className={`${styles.wrapper} ${paramId ? styles.specificAccount : styles.allAccounts}`}>
           {isMobile ? (
             <TransactionMobile
               transactions={filteredTransactions}
@@ -477,7 +488,9 @@ export function Transaction() {
                     <div className={styles.stickyHeaderOverlay}>
                       <span className={styles.monthGroupLabel}>{stickyHeader.label}</span>
                       <span className={styles.monthGroupStats}>
-                        <span className={styles.statCount}>{stickyHeader.stats.count} transaction{stickyHeader.stats.count !== 1 ? 's' : ''}</span>
+                        <span className={styles.statCount}>
+                          {stickyHeader.stats.count} transaction{stickyHeader.stats.count !== 1 ? 's' : ''}
+                        </span>
                         {stickyHeader.stats.totalOutflow > 0 && (
                           <span className={styles.statOutflow}>
                             <LucideMinus color="var(--color-text-secondary)" size={14} />
@@ -509,6 +522,5 @@ export function Transaction() {
         </div>
       )}
     </>
-
   );
 }
