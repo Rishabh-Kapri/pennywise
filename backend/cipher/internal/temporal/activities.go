@@ -54,14 +54,18 @@ func (a *PredictionActivity) Predict(
 		}
 		log.Info("Prediction result", "result", prediction)
 		predictionResponse = append(predictionResponse, sharedModel.CipherPredictionResult{
-			PayeeID:    prediction.PayeeID,
-			CategoryID: prediction.CategoryID,
-			Payee:      prediction.Payee,
-			Category:   prediction.Category,
-			Amount:     email.Amount,
-			Confidence: prediction.Confidence,
-			Source:     prediction.Source,
-			Reasoning:  prediction.Reasoning,
+			OriginalRawText: email.EmailText,
+			AccountID:       prediction.AccountID,
+			Account:         prediction.Account,
+			PayeeID:         prediction.PayeeID,
+			CategoryID:      prediction.CategoryID,
+			Payee:           prediction.Payee,
+			Category:        prediction.Category,
+			Date:            email.Date,
+			Amount:          email.Amount,
+			Confidence:      prediction.Confidence,
+			Source:          prediction.Source,
+			Reasoning:       prediction.Reasoning,
 		})
 	}
 
