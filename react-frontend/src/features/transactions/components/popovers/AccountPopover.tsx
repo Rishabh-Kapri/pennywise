@@ -3,16 +3,11 @@ import { useDropdown } from '../../hooks/useDropdown';
 import type { Account } from '@/features/accounts/types/account.types';
 import styles from './Popover.module.css';
 import { Autocomplete, AutocompleteItem } from '@heroui/autocomplete';
+import type { TransactionDropdownProps } from './types';
 
-interface Props {
-  value: string;
-  onClick: (id: string, name: string) => void;
-  autoFocus?: boolean;
-  triggerClassName?: string;
-}
-
-export function AccountDropdown({ value, onClick, autoFocus, triggerClassName }: Props) {
+export function AccountDropdown({ value, onClick, autoFocus, variant = 'inline' }: TransactionDropdownProps) {
   const { budgetAccounts } = useAppSelector((state) => state.accounts);
+  const selectedAccount = budgetAccounts.find((account) => account.name === value);
   const filterFn = (accounts: Account[], query: string) => {
     return accounts.filter((account) =>
       account.name.trim().toLowerCase().includes(query),
@@ -27,21 +22,27 @@ export function AccountDropdown({ value, onClick, autoFocus, triggerClassName }:
     onClick(account.id!, account.name);
   };
 
+  const inputClassName = variant === 'form' ? styles.formInput : styles.input;
+
   return (
     <div className={styles.popoverContainer}>
       <Autocomplete
+        inputValue={filterQuery}
+        selectedKey={selectedAccount?.id ?? null}
         inputProps={{
           autoFocus,
           classNames: {
-            input: `${styles.input} ${triggerClassName ?? ''}`,
+            inputWrapper: styles.autocompleteInputWrapper,
+            innerWrapper: styles.autocompleteInnerWrapper,
+            input: inputClassName,
           }
         }}
         classNames={{
+          base: styles.autocompleteBase,
           selectorButton: styles.selectorButton,
           clearButton: styles.clearButton,
         }}
         placeholder="Select Account"
-        value={filterQuery}
         popoverProps={{
           classNames: {
             base: styles.popoverBase,

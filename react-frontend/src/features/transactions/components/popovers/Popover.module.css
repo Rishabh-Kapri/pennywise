@@ -17,11 +17,11 @@
 }
 
 .input {
-  border: 2px solid transparent;
   font-size: 1.2rem;
   width: 100%;
   height: 100%;
-  border: 1px solid transparent;
+  border: 2px solid transparent;
+  color: var(--color-text-secondary);
   padding: 0.5rem 1rem;
   border-radius: 0.5rem;
   background: var(--color-surface-secondary);
@@ -29,7 +29,25 @@
 }
 
 .input:focus {
-  border: 2px solid var(--color-border-light) !important;
+  outline: none;
+  border-color: var(--color-border-light);
+}
+
+.autocompleteBase {
+  width: 100%;
+}
+
+.autocompleteInputWrapper {
+  min-height: auto;
+  height: auto;
+  padding: 0;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.autocompleteInnerWrapper {
+  width: 100%;
 }
 
 .groupContainer {
@@ -42,6 +60,34 @@
   color: var(--color-text);
   width: fit-content;
   font-size: 1.05rem;
+  cursor: pointer;
+  text-align: left;
+}
+
+.formInput,
+.formTrigger {
+  width: 100%;
+  min-height: 2.6rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.5rem;
+  background: var(--color-surface);
+  box-shadow: none;
+  color: var(--color-text-secondary);
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.formInput:focus,
+.formTrigger:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.formTrigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
   cursor: pointer;
   text-align: left;
 }

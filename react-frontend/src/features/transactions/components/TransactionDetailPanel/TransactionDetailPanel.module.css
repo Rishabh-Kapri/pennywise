@@ -120,16 +120,10 @@
   color: var(--color-budget-negative);
 }
 
-.heroCategoryPill {
-  display: inline-block;
+.heroCategoryControl {
   max-width: 80%;
-  padding: 0.3rem 0.85rem;
-  border-radius: 0.5rem;
-  font-size: 1rem;
-  font-weight: 500;
-  color: #fff;
-  background: var(--color-primary);
-  opacity: 0.9;
+  display: flex;
+  justify-content: center;
 }
 
 /* ── Meta grid ── */
@@ -265,11 +259,22 @@
   padding: 0 1.25rem 1rem;
 }
 
-.notesText {
+.notesInput {
+  width: 100%;
+  min-height: 6rem;
+  resize: vertical;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.5rem;
+  background: var(--color-surface);
+  color: var(--color-text);
   font-size: 1rem;
-  color: var(--color-text-secondary);
-  /* line-height: 1.5; */
-  /* min-height: 3rem; */
+  line-height: 1.5;
+}
+
+.notesInput:focus {
+  outline: none;
+  border-color: var(--color-primary);
 }
 
 /* ── Add new form ── */
@@ -343,25 +348,6 @@
 }
 
 .textInput:focus {
-  outline: none;
-  border-color: var(--color-primary);
-}
-
-.formDropdownControl {
-  width: 100%;
-  min-height: 2.6rem;
-  justify-content: flex-start;
-  padding: 0.55rem 0.75rem;
-  border: 1px solid var(--color-border-muted);
-  border-radius: 0.5rem;
-  background: var(--color-surface);
-  box-shadow: none;
-  color: var(--color-text-secondary);
-  font-size: 1rem;
-  font-weight: 500;
-}
-
-.formDropdownControl:focus {
   outline: none;
   border-color: var(--color-primary);
 }

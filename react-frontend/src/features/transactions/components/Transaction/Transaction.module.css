@@ -45,7 +45,7 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  padding: 1rem 0.5rem;
+  padding: 0.5rem;
   background: transparent;
 }
 
@@ -216,8 +216,8 @@
 }
 
 .txnRowSelected {
-  background: color-mix(in srgb, var(--color-primary) 18%, var(--color-surface)) !important;
-  box-shadow: inset 3px 0 0 var(--color-primary-light);
+  background: var(--color-surface-secondary) !important;
+  box-shadow: inset 3px 0 0 var(--color-border-light);
 }
 
 /* ── Cell styles ─────────────────────────────────────────────── */
