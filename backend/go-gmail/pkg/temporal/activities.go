@@ -77,6 +77,7 @@ func (a *GmailActivities) FetchAndParseEmails(
 			MessageId:       data.MessageId,
 			EmailText:       parsed.Text,
 			Amount:          parsed.Amount,
+			Date:            parsed.Date,
 			TransactionType: parsed.TransactionType,
 			Account:         "",
 		})
