@@ -7,9 +7,10 @@ import { Autocomplete, AutocompleteItem } from '@heroui/autocomplete';
 interface Props {
   value: string;
   onClick: (id: string, name: string) => void;
+  autoFocus?: boolean;
 }
 
-export function AccountDropdown({ value, onClick }: Props) {
+export function AccountDropdown({ value, onClick, autoFocus }: Props) {
   const { budgetAccounts } = useAppSelector((state) => state.accounts);
   const filterFn = (accounts: Account[], query: string) => {
     return accounts.filter((account) =>
@@ -29,6 +30,7 @@ export function AccountDropdown({ value, onClick }: Props) {
     <div className={styles.popoverContainer}>
       <Autocomplete
         inputProps={{
+          autoFocus,
           classNames: {
             input: styles.input,
           }

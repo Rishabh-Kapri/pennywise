@@ -7,9 +7,10 @@ import styles from './Popover.module.css';
 interface Props {
   value: string;
   onClick: (id: string, name: string) => void;
+  autoFocus?: boolean;
 }
 
-export function DateDropdown({ value, onClick }: Props) {
+export function DateDropdown({ value, onClick, autoFocus }: Props) {
   const [isOpen, setIsOpen] = useState(false);
 
   const handleDateChange = (newDate: DateValue) => {
@@ -21,7 +22,7 @@ export function DateDropdown({ value, onClick }: Props) {
   let dateValue;
   try {
     dateValue = value ? parseDate(value) : undefined;
-  } catch (e) {
+  } catch {
     dateValue = undefined;
   }
 
@@ -46,6 +47,7 @@ export function DateDropdown({ value, onClick }: Props) {
           <input
             className={`${styles.input} ${styles.trigger}`}
             value={displayValue}
+            autoFocus={autoFocus}
             readOnly
             placeholder="Select Date"
             aria-haspopup="true"
