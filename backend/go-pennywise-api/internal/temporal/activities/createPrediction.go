@@ -2,6 +2,8 @@ package temporal
 
 import (
 	"context"
+	"strconv"
+	"strings"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
 	"github.com/google/uuid"
@@ -49,15 +51,44 @@ func (a *CreateCipherPredictionActivity) CreateCipherPrediction(
 
 	for i, txn := range input.Transactions {
 		pred := input.Predictions[i]
+		emailText := pred.OriginalRawText
+		if emailText == "" && txn.RawBankText != nil {
+			emailText = *txn.RawBankText
+		}
+		var emailTextPtr *string
+		if emailText != "" {
+			emailTextPtr = &emailText
+		}
+
+		var confidence *float64
+		if pred.Confidence != "" {
+			parsed, err := strconv.ParseFloat(strings.TrimSuffix(pred.Confidence, "%"), 64)
+			if err != nil {
+				return errs.Wrap(errs.CodeInvalidArgument, "invalid prediction confidence", err)
+			}
+			confidence = &parsed
+		}
+		var predictedPayeeID *uuid.UUID
+		if pred.PayeeID != uuid.Nil {
+			predictedPayeeID = &pred.PayeeID
+		}
+		var predictedCategoryID *uuid.UUID
+		if pred.CategoryID != uuid.Nil {
+			predictedCategoryID = &pred.CategoryID
+		}
+		accountConfidence := 100.0
 
 		record := sharedModel.CipherPredictionRecord{
 			BudgetID:            input.BudgetID,
 			TransactionID:       txn.ID,
-			EmailText:           txn.RawBankText,
+			EmailText:           emailTextPtr,
 			ExtractedAccount:    &pred.Account,
 			ExtractedMerchant:   &pred.Payee,
-			PredictedPayeeID:    &pred.PayeeID,
-			PredictedCategoryID: &pred.CategoryID,
+			PredictedPayeeID:    predictedPayeeID,
+			PredictedCategoryID: predictedCategoryID,
+			AccountConfidence:   &accountConfidence,
+			PayeeConfidence:     confidence,
+			CategoryConfidence:  confidence,
 			Amount:              &pred.Amount,
 			Source:              pred.Source,
 		}

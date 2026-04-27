@@ -51,7 +51,7 @@ func (a *CreateTransactionActivity) CreateTransaction(
 		payeeID := p.PayeeID
 		// handle payee creation
 		// payee will only be not present for the llm fallback
-		if payeeID == uuid.Nil || p.Payee == "" {
+		if payeeID == uuid.Nil {
 			payeeName := p.Payee
 			if payeeName == "" {
 				payeeName = "Unknown Payee"
