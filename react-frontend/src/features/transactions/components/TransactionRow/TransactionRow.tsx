@@ -1,4 +1,4 @@
-import { type MouseEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, type MouseEvent, useCallback, useEffect, useRef, useState } from 'react';
 import type { TransactionColumns } from '@/types/common.types';
 import { type Transaction, type ListItem } from '../../types/transaction.types';
 import styles from '../Transaction/Transaction.module.css';
@@ -13,6 +13,39 @@ const INLINE_EDIT_TRANSACTION_KEYS = new Set<keyof Transaction>([
   'accountName',
   'note',
 ]);
+
+function isInlineEditableKey(key: keyof Transaction) {
+  return INLINE_EDIT_TRANSACTION_KEYS.has(key);
+}
+
+function isInsideDialog(target: Node) {
+  return target instanceof Element && Boolean(target.closest('[role="dialog"]'));
+}
+
+function isInlineEditCell(target: Node) {
+  return target instanceof Element && Boolean(target.closest('[data-inline-edit-cell="true"]'));
+}
+
+function MonthGroupHeader({ item, style }: { item: Extract<ListItem, { type: 'header' }>; style: CSSProperties }) {
+  const { label, stats } = item;
+
+  return (
+    <div style={style}>
+      <div className={styles.monthGroupHeader}>
+        <span className={styles.monthGroupLabel}>{label}</span>
+        <span className={styles.monthGroupStats}>
+          {stats.count} transaction{stats.count !== 1 ? 's' : ''}
+          {stats.totalOutflow > 0 && (
+            <span className={styles.statOutflow}>-{getCurrencyLocaleString(stats.totalOutflow)}</span>
+          )}
+          {stats.totalInflow > 0 && (
+            <span className={styles.statInflow}>+{getCurrencyLocaleString(stats.totalInflow)}</span>
+          )}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 export interface Props {
   paramId: string;
@@ -59,9 +92,8 @@ export function TransactionRow({
     const handleOutsideClick = (event: globalThis.MouseEvent) => {
       const target = event.target as Node;
       const isInsideActiveEditor = activeInlineEditRef.current?.contains(target);
-      const isInsidePopover = target instanceof Element && Boolean(target.closest('[role="dialog"]'));
 
-      if (!isInsideActiveEditor && !isInsidePopover) {
+      if (!isInsideActiveEditor && !isInsideDialog(target) && !isInlineEditCell(target)) {
         resetInlineEdit();
       }
     };
@@ -98,28 +130,10 @@ export function TransactionRow({
     [handleSelectedTxnChange],
   );
 
-  // ── Month group header ────────────────────────────────────────────────────
   if (item.type === 'header') {
-    const { label, stats } = item;
-    return (
-      <div style={style}>
-        <div className={styles.monthGroupHeader}>
-          <span className={styles.monthGroupLabel}>{label}</span>
-          <span className={styles.monthGroupStats}>
-            {stats.count} transaction{stats.count !== 1 ? 's' : ''}
-            {stats.totalOutflow > 0 && (
-              <span className={styles.statOutflow}>-{getCurrencyLocaleString(stats.totalOutflow)}</span>
-            )}
-            {stats.totalInflow > 0 && (
-              <span className={styles.statInflow}>+{getCurrencyLocaleString(stats.totalInflow)}</span>
-            )}
-          </span>
-        </div>
-      </div>
-    );
+    return <MonthGroupHeader item={item} style={style} />;
   }
 
-  // ── Transaction row ───────────────────────────────────────────────────────
   const { txn, originalIndex } = item;
 
   const onSelect = (txn: Transaction) => {
@@ -128,7 +142,7 @@ export function TransactionRow({
   };
 
   const editInlineField = (key: keyof Transaction, txn: Transaction) => (event: MouseEvent<HTMLDivElement>) => {
-    if (!INLINE_EDIT_TRANSACTION_KEYS.has(key)) return;
+    if (!isInlineEditableKey(key)) return;
     event.stopPropagation();
     setActiveInlineEditKey(key);
     handleInlineTxnEdit(originalIndex, txn);
@@ -175,8 +189,9 @@ export function TransactionRow({
                 key={`${txn.id}-${col.key}`}
                 style={{ ...col.layout }}
                 className={col.className?.map((c) => styles[c]).join(' ')}>
-                {INLINE_EDIT_TRANSACTION_KEYS.has(col.key) ? (
+                {isInlineEditableKey(col.key) ? (
                   <div
+                    data-inline-edit-cell="true"
                     ref={isActiveInlineEditCell ? activeInlineEditRef : null}
                     className={`${styles.inlineEditHitArea} ${col.key === 'date' ? styles.dateInlineEditHitArea : ''}`}
                     onClick={editInlineField(col.key, txn)}>

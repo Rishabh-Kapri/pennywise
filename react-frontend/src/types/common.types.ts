@@ -11,5 +11,6 @@ export interface TransactionColumns {
     overflow?: string;
   };
   className?: string[];
+  headerClassName?: string[];
   render?: (txn: Transaction) => React.ReactNode;
 }

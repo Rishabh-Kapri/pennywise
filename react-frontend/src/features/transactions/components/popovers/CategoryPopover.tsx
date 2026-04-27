@@ -7,19 +7,13 @@ import type { Category, CategoryGroup } from '@/features/category/types/category
 import { selectSelectedMonth } from '@/features/budget';
 import { getCurrencyLocaleString } from '@/utils/date.utils';
 import { selectInflowCategory } from '@/features/category/store/categorySlice';
-
-interface Props {
-  value: string;
-  onClick: (id: string, name: string) => void;
-  autoFocus?: boolean;
-  triggerClassName?: string;
-}
+import type { TransactionDropdownProps } from './types';
 
 const transformGroups = (groups: CategoryGroup[]) => {
   return groups.filter((group) => !group.isSystem && group.name !== 'Hidden');
 };
 
-export function CategoryDropdown({ value, onClick, autoFocus, triggerClassName }: Props) {
+export function CategoryDropdown({ value, onClick, autoFocus, variant = 'inline' }: TransactionDropdownProps) {
   const { allCategoryGroups } = useAppSelector(selectCategoryGroups);
   const inflowCategory = useAppSelector(selectInflowCategory);
 
@@ -84,10 +78,12 @@ export function CategoryDropdown({ value, onClick, autoFocus, triggerClassName }
   }, [isOpen]);
 
   const handleOnClick = (category: Category) => {
-    // setIsOpen(false);
+    setIsOpen(false);
     setSearchQuery('');
     onClick(category.id!, category.name);
   };
+
+  const triggerClassName = variant === 'form' ? styles.formTrigger : styles.categoryTrigger;
 
   return (
     <div className={styles.popoverContainer}>
@@ -95,7 +91,7 @@ export function CategoryDropdown({ value, onClick, autoFocus, triggerClassName }
         type="button"
         ref={triggerRef}
         onClick={() => setIsOpen(true)}
-        className={`${styles.categoryTrigger} ${styles.trigger} ${styles.triggerButton} ${isOpen ? styles.open : ''} ${triggerClassName ?? ''}`}
+        className={`${triggerClassName} ${styles.triggerButton} ${isOpen ? styles.open : ''}`}
         autoFocus={autoFocus}
         aria-haspopup="true"
         aria-expanded={isOpen}
