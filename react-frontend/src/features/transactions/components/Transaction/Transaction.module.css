@@ -7,15 +7,12 @@
 .wrapper {
   display: flex;
   flex-direction: row;
+  height: 100%;
   gap: 1rem;
   min-width: 0;
+  min-height: 0;
   align-items: flex-start;
-}
-
-.wrapper:not(.panelOpen) .listArea,
-.panelOpen .listArea {
-  flex: 1;
-  min-width: 0;
+  overflow: hidden;
 }
 
 .listArea {
@@ -23,7 +20,9 @@
   flex-direction: column;
   gap: 0.5rem;
   min-width: 0;
+  min-height: 0;
   flex: 1;
+  height: 100%;
 }
 
 /* ── Column header row ───────────────────────────────────────── */
@@ -66,9 +65,20 @@
   color: var(--color-text-secondary);
 }
 
-.statInflow  { color: var(--color-budget-positive); }
-.statOutflow { color: var(--color-budget-negative); }
-.statCount   { color: var(--color-text-secondary); font-weight: 400; }
+.statInflow {
+  display: flex;
+  align-items: center;
+  color: var(--color-budget-positive);
+}
+.statOutflow {
+  display: flex;
+  align-items: center;
+  color: var(--color-budget-negative);
+}
+.statCount {
+  color: var(--color-text-secondary);
+  font-weight: 400;
+}
 
 /* ── Transaction list container ──────────────────────────────── */
 
@@ -77,16 +87,55 @@
   display: flex;
   flex-direction: column;
   background: transparent;
-  height: calc(100vh - 11.35rem);
+  flex: 1;
+  min-height: 0;
   transition: all 0.3s ease;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
   padding-bottom: 0.25rem;
-  scrollbar-width: none;
 }
 
-.txnContainer::-webkit-scrollbar {
-  display: none;
+.virtualList {
+  height: 100%;
+  scrollbar-color: color-mix(
+      in srgb,
+      var(--color-text-secondary) 65%,
+      transparent
+    )
+    transparent;
+  scrollbar-width: thin;
+}
+
+.virtualList::-webkit-scrollbar {
+  width: 0.45rem;
+}
+
+.virtualList::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.virtualList::-webkit-scrollbar-button {
+  width: 0;
+  height: 0;
+  background: transparent;
+  border: 0;
+}
+
+.virtualList::-webkit-scrollbar-button:single-button,
+.virtualList::-webkit-scrollbar-button:vertical:start:decrement,
+.virtualList::-webkit-scrollbar-button:vertical:end:increment {
+  width: 0;
+  height: 0;
+  background: transparent;
+  border: 0;
+}
+
+.virtualList::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-text-secondary) 55%, transparent);
+}
+
+.virtualList::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-text-secondary) 75%, transparent);
 }
 
 /* Sticky month header overlay */
@@ -100,7 +149,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 0.7rem 0.5rem;
-  background: var(--color-background);
+  /* background: var(--color-background); */
   border-bottom: 1px solid var(--color-border);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 }
@@ -115,8 +164,12 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  border-left:  1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
-  border-right: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  min-width: 0;
+  overflow: hidden;
+  border-left: 1px solid
+    color-mix(in srgb, var(--color-border) 60%, transparent);
+  border-right: 1px solid
+    color-mix(in srgb, var(--color-border) 60%, transparent);
 }
 
 .txnCardFirst {
@@ -127,41 +180,52 @@
 
 .txnCardLast {
   border-radius: 0 0 0.75rem 0.75rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--color-border) 60%, transparent);
   overflow: hidden;
 }
 
 .txnCardSingle {
   border-radius: 0.75rem;
-  border-top:    1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--color-border) 60%, transparent);
   overflow: hidden;
 }
 
 /* Subtle row separator inside a card */
 .txnDivider {
-  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--color-border) 50%, transparent);
 }
 
 .txnRow {
   display: flex;
   flex-direction: row;
+  flex-wrap: nowrap;
   gap: 1rem;
   font-size: 1rem;
-  padding: 1.1rem 1.5rem;
+  padding: 0.75rem 1.5rem;
   background: var(--color-surface);
   cursor: pointer;
   transition: background 0.2s ease;
   align-items: center;
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 
-.txnRow:hover {
-  background: var(--color-surface-secondary);
+.txnRow > div {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  /* background: var(--color-surface-secondary); */
 }
 
 .txnRowSelected {
-  background: var(--color-primary) !important;
+  /* background: var(--color-primary) !important; */
+  background: var(--color-surface) !important;
   color: #fff;
 }
 
@@ -171,9 +235,27 @@
 
 /* ── Cell styles ─────────────────────────────────────────────── */
 
+.inlineEditHitArea {
+  width: 70%;
+  max-width: 70%;
+  min-width: 0;
+}
+
 .payeeName {
+  border: 2px solid transparent;
   color: var(--color-text-secondary);
   font-size: 1.2rem;
+  max-width: 100%;
+  display: block;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.payeeName:hover {
+  cursor: text;
+  background: var(--color-surface-secondary);
 }
 
 .categoryPill {
@@ -194,6 +276,7 @@
 .amountCell {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   text-align: right;
   font-weight: 500;
   font-size: 1.2rem;
@@ -212,15 +295,19 @@
 .input {
   width: 100%;
   height: 100%;
-  border: 1px solid transparent;
-  padding: 0.5rem;
-  border-radius: 1rem;
+  border: 2px solid transparent;
+  padding: 0.5rem 0.5rem;
+  border-radius: 0.5rem;
   background: var(--color-surface-secondary);
   box-shadow: var(--shadow-sm);
-  font-size: 0.95rem;
+  font-size: 1.1rem;
 }
 
-input[type=date]::-webkit-calendar-picker-indicator {
+.input:focus {
+  border: 2px solid var(--color-border-light);
+}
+
+input[type='date']::-webkit-calendar-picker-indicator {
   cursor: pointer;
 }
 
@@ -363,7 +450,7 @@ input[type=date]::-webkit-calendar-picker-indicator {
   }
 
   .mobileDateHeader::after {
-    content: "";
+    content: '';
     flex: 1;
     border-bottom: 2px solid var(--color-border);
     opacity: 0.7;
@@ -397,7 +484,8 @@ input[type=date]::-webkit-calendar-picker-indicator {
 
   .selected {
     border-color: var(--color-primary);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 25%, transparent);
+    box-shadow: 0 0 0 2px
+      color-mix(in srgb, var(--color-primary) 25%, transparent);
   }
 
   .mobileTxnTopRow {

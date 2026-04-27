@@ -11,6 +11,7 @@ import { LoadingState } from '@/utils';
 import { toast } from '@/utils';
 import styles from './Transaction.module.css';
 import { useHeader } from '@/context/HeaderContext';
+import { useSidePanel } from '@/context/SidePanelContext';
 import { LucideMinus, LucidePlus } from 'lucide-react';
 import { getCurrencyLocaleString, getTodaysDate } from '@/utils/date.utils';
 import { selectAccountInfoFromId } from '@/features/accounts/store/accountSlice';
@@ -38,7 +39,7 @@ import { TransactionHeader, type MobileFilter } from '../TransactionHeader';
 const parser = new Parser();
 
 const HEADER_ROW_HEIGHT = 56;
-const TXN_ROW_HEIGHT = 84;
+const TXN_ROW_HEIGHT = 80;
 
 // ── Utilities ────────────────────────────────────────────────────────────────
 
@@ -113,6 +114,7 @@ function useIsMobile(breakpoint = 768) {
 
 export function Transaction() {
   const { setHeaderContent } = useHeader();
+  const { setSidePanelContent } = useSidePanel();
   const { id } = useParams();
   const paramId = id ?? '';
   const dispatch = useAppDispatch();
@@ -124,15 +126,12 @@ export function Transaction() {
   const selectedBudgetId = selectedBudget?.id ?? '';
   const [cols, setCols] = useState<TransactionColumns[]>([]);
   const [selectedTxn, setSelectedTxn] = useState<Transaction | null>(null);
+  const [inlineEditingTxnId, setInlineEditingTxnId] = useState<string | null>(null);
   const [isAddingNew, setIsAddingNew] = useState(false);
-  const [isPanelClosing, setIsPanelClosing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [mobileFilter, setMobileFilter] = useState<MobileFilter>('all');
   const [stickyHeader, setStickyHeader] = useState<{ label: string; stats: MonthGroupStats } | null>(null);
   const isMobile = useIsMobile();
-
-  const isPanelOpen = isAddingNew || selectedTxn !== null;
-  const isPanelVisible = isPanelOpen || isPanelClosing;
 
   const rowHeightForItem = useCallback(
     (index: number, items: ListItem[]) => {
@@ -147,11 +146,15 @@ export function Transaction() {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setSelectedTxn(null);
+        setInlineEditingTxnId(null);
         setIsAddingNew(false);
+        setSidePanelContent(null);
       }
     };
     setSelectedTxn(null);
+    setInlineEditingTxnId(null);
     setIsAddingNew(false);
+    setSidePanelContent(null);
     if (!paramId) {
       setCols([...allAccountTxnCols]);
       dispatch(fetchAllTransaction(''));
@@ -161,26 +164,31 @@ export function Transaction() {
     }
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
-  }, [paramId, dispatch]);
+  }, [paramId, dispatch, setSidePanelContent]);
 
   const handleTxnSelect = useCallback((index: number, txn: Transaction | null) => {
     if (isAddingNew) return; // don't overwrite add-new mode
+    setInlineEditingTxnId(null);
     setIsAddingNew(false);
     setSelectedTxn(txn);
     void index; // originalIndex carried in ListItem, not needed here
   }, [isAddingNew]);
 
-  const resetSelectedTxn = useCallback(() => {
-    setIsPanelClosing(true);
-  }, []);
+  const handleInlineTxnEdit = useCallback((index: number, txn: Transaction | null) => {
+    if (isAddingNew) return;
+    setInlineEditingTxnId(txn?.id ?? null);
+    setIsAddingNew(false);
+    setSelectedTxn(txn);
+    setSidePanelContent(null);
+    void index;
+  }, [isAddingNew, setSidePanelContent]);
 
-  const handlePanelAnimationEnd = useCallback(() => {
-    if (isPanelClosing) {
-      setIsPanelClosing(false);
-      setSelectedTxn(null);
-      setIsAddingNew(false);
-    }
-  }, [isPanelClosing]);
+  const resetSelectedTxn = useCallback(() => {
+    setSelectedTxn(null);
+    setInlineEditingTxnId(null);
+    setIsAddingNew(false);
+    setSidePanelContent(null);
+  }, [setSidePanelContent]);
 
   const handleSelectedTxnChange = useCallback(
     (key: keyof Transaction, value: string | number | null) => {
@@ -353,12 +361,14 @@ export function Transaction() {
       cols,
       isAddingNew,
       selectedTxn,
+      inlineEditingTxnId,
       handleTxnSelect,
+      handleInlineTxnEdit,
       handleSelectedTxnChange,
       handleInputBlur,
       onAutoSave: handleAutoSave,
     }),
-    [paramId, listItems, cols, isAddingNew, selectedTxn, handleTxnSelect,
+    [paramId, listItems, cols, isAddingNew, selectedTxn, inlineEditingTxnId, handleTxnSelect, handleInlineTxnEdit,
       handleSelectedTxnChange, handleInputBlur, handleAutoSave],
   );
 
@@ -403,14 +413,47 @@ export function Transaction() {
     return () => setHeaderContent(null);
   }, [setHeaderContent, accountName, accountBal, searchTerm, mobileFilter, addTransaction]);
 
+  // Sync detail panel into the side panel slot whenever selected txn changes
+  useEffect(() => {
+    if (!selectedTxn && !isAddingNew) {
+      setSidePanelContent(null);
+      return;
+    }
+    if (selectedTxn?.id && inlineEditingTxnId === selectedTxn.id && !isAddingNew) {
+      setSidePanelContent(null);
+      return;
+    }
+    setSidePanelContent(
+      <TransactionDetailPanel
+        selectedTxn={selectedTxn}
+        isAddingNew={isAddingNew}
+        onChange={handleSelectedTxnChange}
+        onSelectChange={handlePanelSelectChange}
+        onSave={handleSave}
+        onDelete={handleDelete}
+        onClose={resetSelectedTxn}
+        onStatusChange={handleStatusChange}
+      />,
+    );
+  }, [
+    selectedTxn,
+    inlineEditingTxnId,
+    isAddingNew,
+    setSidePanelContent,
+    handleSelectedTxnChange,
+    handlePanelSelectChange,
+    handleSave,
+    handleDelete,
+    resetSelectedTxn,
+    handleStatusChange,
+  ]);
+
   return (
     <>
       {loading === LoadingState.PENDING && <TransactionSkeleton />}
       {loading === LoadingState.SUCCESS && (
         <div
-          className={`${styles.wrapper} ${paramId ? styles.specificAccount : styles.allAccounts} ${
-            isPanelVisible ? styles.panelOpen : ''
-          }`}>
+          className={`${styles.wrapper} ${paramId ? styles.specificAccount : styles.allAccounts}`}>
           {isMobile ? (
             <TransactionMobile
               transactions={filteredTransactions}
@@ -451,6 +494,7 @@ export function Transaction() {
                     </div>
                   )}
                   <List
+                    className={styles.virtualList}
                     defaultHeight={500}
                     rowCount={listItems.length}
                     rowHeight={dynamicRowHeight}
@@ -460,22 +504,6 @@ export function Transaction() {
                   />
                 </div>
               </div>
-
-              {/* Detail panel */}
-              {isPanelVisible && (
-                <TransactionDetailPanel
-                  selectedTxn={selectedTxn}
-                  isAddingNew={isAddingNew}
-                  isClosing={isPanelClosing}
-                  onChange={handleSelectedTxnChange}
-                  onSelectChange={handlePanelSelectChange}
-                  onSave={handleSave}
-                  onDelete={handleDelete}
-                  onClose={resetSelectedTxn}
-                  onStatusChange={handleStatusChange}
-                  onAnimationEnd={handlePanelAnimationEnd}
-                />
-              )}
             </>
           )}
         </div>

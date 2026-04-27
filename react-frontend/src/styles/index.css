@@ -11,7 +11,10 @@
 
 html, body, #root {
   height: 100%;
+  width: 100%;
   overflow: hidden;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 :root {
@@ -68,6 +71,8 @@ html, body, #root {
 
   /* Borders and dividers */
   --color-border: #626262;
+  --color-border-light: #788dba;
+  --color-border: color(srgb 0.384314 0.384314 0.384314 / 0.5);
 
   /* Budget specific colors */
 
@@ -113,6 +118,7 @@ body {
   place-items: center;
   min-width: 320px;
   min-height: 100vh;
+  background-color: #1f1f1e;
 }
 
 h1 {

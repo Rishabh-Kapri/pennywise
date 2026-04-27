@@ -15,13 +15,14 @@ import { selectInflowCategory } from '@/features/category/store/categorySlice';
 interface Props {
   value: string;
   onClick: (id: string, name: string) => void;
+  autoFocus?: boolean;
 }
 
 const transformGroups = (groups: CategoryGroup[]) => {
   return groups.filter((group) => !group.isSystem && group.name !== 'Hidden');
 };
 
-export function CategoryDropdown({ value, onClick }: Props) {
+export function CategoryDropdown({ value, onClick, autoFocus }: Props) {
   const { allCategoryGroups } = useAppSelector(selectCategoryGroups);
   const inflowCategory = useAppSelector(selectInflowCategory);
 
@@ -85,6 +86,7 @@ export function CategoryDropdown({ value, onClick }: Props) {
         onFocus={() => setIsOpen(true)}
         onBlur={handleOnBlur}
         className={`${styles.input} ${styles.trigger}`}
+        autoFocus={autoFocus}
         onChange={(e) => filterValues(e.target.value)}
         value={filterQuery}
         placeholder="Select Category"

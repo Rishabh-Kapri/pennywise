@@ -50,6 +50,7 @@ interface Props {
   ) => (id: string, name: string) => void;
   onTagsChange?: (tagIds: string[]) => void;
   onBlur?: (key: keyof Transaction, value: string | number) => void;
+  autoFocus?: boolean;
 }
 
 /**
@@ -63,6 +64,7 @@ export function TransactionCell({
   onSelectChange,
   onTagsChange,
   onBlur,
+  autoFocus,
 }: Props) {
   const { allTags } = useAppSelector((state) => state.tags);
   const isEditable = col.key !== 'balance';
@@ -111,6 +113,7 @@ export function TransactionCell({
       <DropdownComponent
         value={value.toString()}
         onClick={onSelectChange(idKey, col.key)}
+        autoFocus={autoFocus}
       />
     );
   }
@@ -123,6 +126,7 @@ export function TransactionCell({
       onChange={(e) => onFieldChange(col.key, e.target.value)}
       onBlur={(e) => onBlur?.(col.key, e.target.value)}
       className={styles.input}
+      autoFocus={autoFocus}
     />
   );
 }

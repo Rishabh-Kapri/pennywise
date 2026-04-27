@@ -8,13 +8,14 @@ import { useDropdown } from '../../hooks/useDropdown';
 interface PayeePopoverProps {
   value: string;
   onClick: (id: string, name: string) => void;
+  autoFocus?: boolean;
 }
 /*
  * This component handles rendering the payees list to be shown when adding or editing a transaction
  * The button element is the trigger which will open the popover as a portal
  * I need to handle the onClose function from the parent component as well, we need to close the dropdown when other dropdown is opened
  */
-export function PayeeDropdown({ value, onClick }: PayeePopoverProps) {
+export function PayeeDropdown({ value, onClick, autoFocus }: PayeePopoverProps) {
   const { allPayees } = useAppSelector((state) => state.payees);
   const {
     isOpen,
@@ -44,6 +45,7 @@ export function PayeeDropdown({ value, onClick }: PayeePopoverProps) {
         onFocus={() => setIsOpen(true)}
         onBlur={() => setIsOpen(false)}
         className={`${styles.input} ${styles.trigger}`}
+        autoFocus={autoFocus}
         onChange={(e) => filterValues(e.target.value)}
         value={filterQuery}
         placeholder="Select Payee"
