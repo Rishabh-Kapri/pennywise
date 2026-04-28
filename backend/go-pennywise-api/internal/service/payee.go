@@ -8,6 +8,7 @@ import (
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 type PayeeService interface {
@@ -15,6 +16,7 @@ type PayeeService interface {
 	Search(ctx context.Context, query string) ([]model.Payee, error)
 	GetById(ctx context.Context, id uuid.UUID) (*model.Payee, error)
 	Create(ctx context.Context, payee model.Payee) (*model.Payee, error)
+	CreateWithTx(ctx context.Context, tx pgx.Tx, payee model.Payee) (*model.Payee, error)
 	DeleteById(ctx context.Context, id uuid.UUID) error
 	Update(ctx context.Context, id uuid.UUID, payee model.Payee) error
 }
@@ -45,7 +47,13 @@ func (s *payeeService) GetById(ctx context.Context, id uuid.UUID) (*model.Payee,
 func (s *payeeService) Create(ctx context.Context, payee model.Payee) (*model.Payee, error) {
 	budgetId := utils.MustBudgetID(ctx)
 	payee.BudgetID = budgetId
-	return s.repo.Create(ctx, nil, payee)
+	return s.CreateWithTx(ctx, nil, payee)
+}
+
+func (s *payeeService) CreateWithTx(ctx context.Context, tx pgx.Tx, payee model.Payee) (*model.Payee, error) {
+	budgetId := utils.MustBudgetID(ctx)
+	payee.BudgetID = budgetId
+	return s.repo.Create(ctx, tx, payee)
 }
 
 func (s *payeeService) DeleteById(ctx context.Context, id uuid.UUID) error {

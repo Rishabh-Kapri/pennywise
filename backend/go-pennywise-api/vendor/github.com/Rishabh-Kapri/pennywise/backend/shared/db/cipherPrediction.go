@@ -6,12 +6,13 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type CipherPredictionRepository interface {
 	BaseRepositoryInterface
-	Create(ctx context.Context, p model.CipherPredictionRecord) (*model.CipherPredictionRecord, error)
+	Create(ctx context.Context, tx pgx.Tx, p model.CipherPredictionRecord) (*model.CipherPredictionRecord, error)
 	GetByTransactionID(ctx context.Context, budgetID uuid.UUID, txnID uuid.UUID) (*model.CipherPredictionRecord, error)
 }
 
@@ -23,11 +24,15 @@ func NewCipherPredictionRepository(pool *pgxpool.Pool) CipherPredictionRepositor
 	return &cipherPredictionRepo{BaseRepository: NewBaseRepository(pool)}
 }
 
-func (r *cipherPredictionRepo) Create(ctx context.Context, p model.CipherPredictionRecord) (*model.CipherPredictionRecord, error) {
+func (r *cipherPredictionRepo) Create(
+	ctx context.Context,
+	tx pgx.Tx,
+	p model.CipherPredictionRecord,
+) (*model.CipherPredictionRecord, error) {
 	var created model.CipherPredictionRecord
 	now := time.Now()
 
-	err := r.Executor(nil).QueryRow(
+	err := r.Executor(tx).QueryRow(
 		ctx,
 		`INSERT INTO cipher_predictions (
 			budget_id,
@@ -106,7 +111,11 @@ func (r *cipherPredictionRepo) Create(ctx context.Context, p model.CipherPredict
 	return &created, nil
 }
 
-func (r *cipherPredictionRepo) GetByTransactionID(ctx context.Context, budgetID uuid.UUID, txnID uuid.UUID) (*model.CipherPredictionRecord, error) {
+func (r *cipherPredictionRepo) GetByTransactionID(
+	ctx context.Context,
+	budgetID uuid.UUID,
+	txnID uuid.UUID,
+) (*model.CipherPredictionRecord, error) {
 	var p model.CipherPredictionRecord
 	err := r.Executor(nil).QueryRow(
 		ctx,
