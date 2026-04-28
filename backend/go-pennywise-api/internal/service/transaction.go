@@ -73,7 +73,7 @@ func NewTransactionService(
 	}
 }
 
-// internal method
+// Deprecated: legacy MLP prediction corrections are no longer updated from transaction edits.
 func (s *transactionService) updatePrediction(
 	ctx context.Context,
 	tx pgx.Tx,
@@ -459,8 +459,6 @@ func (s *transactionService) applySideEffects(ctx context.Context, tx pgx.Tx, in
 			return errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating cipher prediction correction", err)
 		}
 
-		input.newTxn.Status = model.TransactionStatusApproved
-
 		if input.queueLearning != nil {
 			learningTxn := *input.newTxn
 			learningTxn.RawBankText = input.oldTxn.RawBankText
@@ -670,6 +668,10 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 		}
 
 		toUpdate.ID = id
+		toUpdate.Status = foundTxn.Status
+		if foundTxn.Status == model.TransactionStatusUnapproved {
+			toUpdate.Status = model.TransactionStatusApproved
+		}
 		same := foundTxn.Compare(&toUpdate)
 		if same {
 			logger.Logger(txCtx).Info("transaction is the same as the existing transaction, skipping update")
@@ -678,6 +680,9 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 
 		// fetch updated txn account and payee
 		budget, account, payee, err := s.loadDependencies(txCtx, tx, budgetId, toUpdate)
+		if err != nil {
+			return err
+		}
 
 		err = s.validateCategory(
 			toUpdate.CategoryID,
@@ -704,7 +709,6 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 			return err
 		}
 
-		toUpdate.Status = model.TransactionStatusApproved
 		if err = s.repo.Update(txCtx, tx, budgetId, id, toUpdate); err != nil {
 			return errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating transaction", err)
 		}

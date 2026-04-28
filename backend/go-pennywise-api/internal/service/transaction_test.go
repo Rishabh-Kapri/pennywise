@@ -914,6 +914,7 @@ func TestUpdateWithCipherPredictionMappingChangeMarksCorrectionAndLearns(t *test
 		CategoryID:  &categoryId,
 		Amount:      -450,
 		Date:        "2023-01-01",
+		Status:      model.TransactionStatusRejected,
 		RawBankText: &rawBankText,
 	}
 	toUpdate := model.Transaction{
@@ -977,7 +978,7 @@ func TestUpdateWithCipherPredictionMappingChangeMarksCorrectionAndLearns(t *test
 	txnRepo.On("Update", mock.Anything, mock.Anything, budgetId, txnId, mock.MatchedBy(func(txn model.Transaction) bool {
 		return txn.ID == txnId &&
 			txn.PayeeID != nil && *txn.PayeeID == newPayeeId &&
-			txn.Status == model.TransactionStatusApproved
+			txn.Status == model.TransactionStatusRejected
 	})).Return(nil).Once()
 	cipherClient.On("GenerateTransactionEmbedding", mock.Anything, TransactionEmbeddingRequest{
 		RawBankText: rawBankText,
@@ -1242,6 +1243,28 @@ func TestUpdateCarryovers(t *testing.T) {
 			},
 			expectError:  false,
 			expectUpdate: true,
+		},
+		{
+			name:       "same_inflow_category_ignored",
+			setupMocks: func(mb *mockMonthlyBudgetRepo) {},
+			existingTxn: &model.Transaction{
+				ID:         txnId,
+				AccountID:  &accountId,
+				PayeeID:    &payeeId,
+				CategoryID: &inflowCategoryID,
+				Amount:     1000.00,
+				Date:       "2025-01-01",
+			},
+			newTxn: model.Transaction{
+				ID:         txnId,
+				AccountID:  &accountId,
+				PayeeID:    &payeeId,
+				CategoryID: &inflowCategoryID,
+				Amount:     1500.00,
+				Date:       "2025-01-01",
+			},
+			expectError:  false,
+			expectUpdate: false,
 		},
 	}
 	for _, tt := range tests {

@@ -111,6 +111,7 @@ export function buildTransactionPayload(txn: Transaction): TransactionDTO {
     date: txn.date,
     amount: txn.outflow ? -txn.outflow : (txn.inflow ?? 0),
     note: txn.note ?? '',
+    status: txn.status,
     source: TransactionSource.PENNYWISE,
     tagIds: txn.tagIds ?? [],
   };
