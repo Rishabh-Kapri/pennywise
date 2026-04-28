@@ -157,9 +157,16 @@ export function Transaction() {
       if (!selectedTxn || !value) return;
       try {
         const updatedTxn = applyParsedInputValue(selectedTxn, key, value);
+        const optimisticTxn: Transaction = {
+          ...updatedTxn,
+          status: updatedTxn.status === 'UNAPPROVED' ? 'APPROVED' : updatedTxn.status,
+        };
         setSelectedTxn(updatedTxn);
         if (!isAddingNew && updatedTxn.id) {
-          dispatch(updateTransaction(buildTransactionPayload(updatedTxn)))
+          dispatch(updateTransaction({
+            payload: buildTransactionPayload(optimisticTxn),
+            optimisticTransaction: optimisticTxn,
+          }))
             .unwrap()
             .then(() => toast.success('Saved'))
             .catch(() => toast.error('Failed to save'));
@@ -175,7 +182,14 @@ export function Transaction() {
     (overrides: Partial<Transaction>) => {
       if (!selectedTxn || isAddingNew || !selectedTxn.id) return;
       const updatedTxn: Transaction = { ...selectedTxn, ...overrides };
-      dispatch(updateTransaction(buildTransactionPayload(updatedTxn)))
+      const optimisticTxn: Transaction = {
+        ...updatedTxn,
+        status: updatedTxn.status === 'UNAPPROVED' ? 'APPROVED' : updatedTxn.status,
+      };
+      dispatch(updateTransaction({
+        payload: buildTransactionPayload(optimisticTxn),
+        optimisticTransaction: optimisticTxn,
+      }))
         .unwrap()
         .then(() => toast.success('Saved'))
         .catch(() => toast.error('Failed to save'));
@@ -203,7 +217,14 @@ export function Transaction() {
         toast.success('Transaction created');
         dispatch(fetchAllTransaction(paramId || ''));
       } else {
-        await dispatch(updateTransaction(buildTransactionPayload(selectedTxn))).unwrap();
+        const optimisticTxn: Transaction = {
+          ...selectedTxn,
+          status: selectedTxn.status === 'UNAPPROVED' ? 'APPROVED' : selectedTxn.status,
+        };
+        await dispatch(updateTransaction({
+          payload: buildTransactionPayload(optimisticTxn),
+          optimisticTransaction: optimisticTxn,
+        })).unwrap();
         toast.success('Transaction updated');
       }
       resetSelectedTxn();
@@ -229,14 +250,13 @@ export function Transaction() {
       if (!selectedTxn?.id) return;
       try {
         await dispatch(updateTransactionStatus({ id: selectedTxn.id, status })).unwrap();
-        dispatch(fetchAllTransaction(paramId ? selectedTxn.accountId : ''));
         toast.success(`Transaction ${status.toLowerCase()}`);
         resetSelectedTxn();
       } catch {
         toast.error('Failed to update status');
       }
     },
-    [selectedTxn, dispatch, paramId, resetSelectedTxn],
+    [selectedTxn, dispatch, resetSelectedTxn],
   );
 
   const handlePanelSelectChange = useCallback(

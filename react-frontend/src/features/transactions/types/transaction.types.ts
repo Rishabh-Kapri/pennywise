@@ -39,6 +39,7 @@ export interface TransactionDTO {
   date: string;
   amount: number;
   note?: string;
+  status?: TransactionStatus;
   source: TransactionSource;
   tagIds?: string[];
 }
@@ -50,6 +51,7 @@ export interface TransactionStatusDTO {
 
 export interface TransactionState {
   transactions: Transaction[];
+  optimisticTransactions: Record<string, Transaction>;
   loading: LoadingState;
   error: string | null;
 }

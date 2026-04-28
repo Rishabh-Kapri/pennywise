@@ -85,7 +85,9 @@ func (s *monthlyBudgetService) getCarryoverOps(
 	case carryoverCase.sameCategory && carryoverCase.sameMonth:
 		{
 			// check if amount has changed
-			if diff == 0 {
+			// Inflow categories are filtered out before this branch, so no carryover op is needed.
+			// since for inflow transactions, both the old and new categories are nil, the branch is taken.
+			if diff == 0 || txnDiff.newCatId == nil {
 				return carryoverOps
 			}
 			// amount has changed
@@ -185,10 +187,10 @@ func (s *monthlyBudgetService) UpdateCarryovers(
 		newAmount:   newTxn.Amount,
 	}
 	// don't add or update carryover for inflow category id
-	if diff.oldCatId != nil && *diff.oldCatId != inflowCategoryID {
+	if diff.oldCatId != nil && *diff.oldCatId == inflowCategoryID {
 		diff.oldCatId = nil
 	}
-	if diff.newCatId != nil && *diff.newCatId != inflowCategoryID {
+	if diff.newCatId != nil && *diff.newCatId == inflowCategoryID {
 		diff.newCatId = nil
 	}
 	cc := carryoverCase{

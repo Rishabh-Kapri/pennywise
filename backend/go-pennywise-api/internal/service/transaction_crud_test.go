@@ -274,10 +274,12 @@ func TestUpdate(t *testing.T) {
 	payeeId := uuid.New()
 	txnId := uuid.New()
 	validTxn := model.Transaction{
+		BudgetID:  budgetId,
 		AccountID: &accountId,
 		PayeeID:   &payeeId,
 		Amount:    10.0,
 		Date:      "2023-01-01",
+		Status:    model.TransactionStatusApproved,
 	}
 
 	t.Run("validation_error", func(t *testing.T) {
@@ -352,7 +354,7 @@ func TestUpdate(t *testing.T) {
 		assert.Error(t, err) // It fails and propagates!
 	})
 
-	t.Run("prediction_update_fails", func(t *testing.T) {
+	t.Run("preserves_existing_status_and_skips_legacy_prediction_update", func(t *testing.T) {
 		mockRepo := &mockTransactionRepo{}
 		mockBudget := &mockBudgetRepo{}
 		mockAccount := &mockAccountRepo{}
@@ -363,6 +365,7 @@ func TestUpdate(t *testing.T) {
 		existingTxn := validTxn
 		existingTxn.ID = txnId
 		existingTxn.Amount = 5.0
+		existingTxn.Status = model.TransactionStatusRejected
 
 		mockRepo.On("GetByIdTx", mock.Anything, mockTx, budgetId, txnId).Return(&existingTxn, nil).Once()
 		mockBudget.On("GetById", mock.Anything, mockTx, budgetId).Return(&model.Budget{}, nil).Once()
@@ -371,11 +374,39 @@ func TestUpdate(t *testing.T) {
 			Once()
 		mockPayee.On("GetByIdTx", mock.Anything, mockTx, budgetId, payeeId).Return(&model.Payee{}, nil).Once()
 
-		// Prediction mock returns error
-		mockPrediction.On("GetByTxnIdTx", mock.Anything, mockTx, budgetId, txnId).Return(nil, assert.AnError).Once()
+		mockRepo.On("Update", mock.Anything, mockTx, budgetId, txnId, mock.MatchedBy(func(txn model.Transaction) bool {
+			return txn.Status == model.TransactionStatusRejected
+		})).Return(nil).Once()
 
 		err := service.Update(ctx, txnId, validTxn)
-		assert.Error(t, err)
+		assert.NoError(t, err)
+		mockPrediction.AssertNotCalled(t, "GetByTxnIdTx", mock.Anything, mockTx, budgetId, txnId)
+	})
+
+	t.Run("unapproved_update_becomes_approved", func(t *testing.T) {
+		mockRepo := &mockTransactionRepo{}
+		mockBudget := &mockBudgetRepo{}
+		mockAccount := &mockAccountRepo{}
+		mockPayee := &mockPayeesRepo{}
+		service := newTestTransactionService(mockRepo, mockBudget, nil, mockAccount, mockPayee, nil, nil)
+
+		existingTxn := validTxn
+		existingTxn.ID = txnId
+		existingTxn.Amount = 5.0
+		existingTxn.Status = model.TransactionStatusUnapproved
+
+		mockRepo.On("GetByIdTx", mock.Anything, mockTx, budgetId, txnId).Return(&existingTxn, nil).Once()
+		mockBudget.On("GetById", mock.Anything, mockTx, budgetId).Return(&model.Budget{}, nil).Once()
+		mockAccount.On("GetById", mock.Anything, mockTx, budgetId, accountId).
+			Return(&model.Account{Type: "checking"}, nil).
+			Once()
+		mockPayee.On("GetByIdTx", mock.Anything, mockTx, budgetId, payeeId).Return(&model.Payee{}, nil).Once()
+		mockRepo.On("Update", mock.Anything, mockTx, budgetId, txnId, mock.MatchedBy(func(txn model.Transaction) bool {
+			return txn.Status == model.TransactionStatusApproved
+		})).Return(nil).Once()
+
+		err := service.Update(ctx, txnId, validTxn)
+		assert.NoError(t, err)
 	})
 
 	t.Run("repo_update_fails", func(t *testing.T) {
