@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import styles from './Popover.module.css';
 import { useAppSelector } from '@/app/hooks';
 import { selectCategoryGroups } from '@/features/category';
@@ -83,6 +83,16 @@ export function CategoryDropdown({ value, onClick, autoFocus, variant = 'inline'
     onClick(category.id!, category.name);
   };
 
+  const handleSearchKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+
+    const firstCategory = filteredItems.find((group) => group.categories.length > 0)?.categories[0];
+    if (!firstCategory) return;
+
+    e.preventDefault();
+    handleOnClick(firstCategory);
+  };
+
   const triggerClassName = variant === 'form' ? styles.formTrigger : styles.categoryTrigger;
 
   return (
@@ -110,6 +120,7 @@ export function CategoryDropdown({ value, onClick, autoFocus, variant = 'inline'
             className={styles.searchInput}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
             placeholder="Search categories"
             aria-label="Search categories"
           />

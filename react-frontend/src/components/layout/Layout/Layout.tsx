@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import Header from '../Header/Header';
 import { Navbar } from '../Navbar/Navbar';
 import styles from './Layout.module.css';
@@ -11,10 +11,12 @@ import { useAppDispatch } from '@/app/hooks';
 
 function MainWithSidePanel() {
   const { sidePanelContent } = useSidePanel();
+  const location = useLocation();
+  const isDashboard = location.pathname === '/dashboard' || location.pathname === '/';
 
   return (
     <div className={styles.mainWrapper}>
-      <main className={styles.mainContent}>
+      <main className={`${styles.mainContent} ${isDashboard ? styles.dashboardMainContent : ''}`}>
         <Outlet />
       </main>
       {sidePanelContent && (
