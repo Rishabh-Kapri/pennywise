@@ -1,10 +1,7 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
-import type {
-  Transaction,
-  TransactionDTO,
-  TransactionState,
-} from '../types/transaction.types';
+import type { Transaction, TransactionDTO, TransactionState } from '../types/transaction.types';
 import { apiClient, LoadingState } from '@/utils';
+import { type PaginationResponse } from '@/utils/common.constants';
 
 const initialState: TransactionState = {
   transactions: [],
@@ -12,14 +9,14 @@ const initialState: TransactionState = {
   error: null,
 };
 
-export const fetchAllTransaction = createAsyncThunk<Transaction[], string>(
+export const fetchAllTransaction = createAsyncThunk<PaginationResponse<Transaction[]>, string>(
   'transactions/fetchAllTransactions',
   async (accountId: string = '') => {
     let url = `transactions/normalized`;
     if (accountId) {
       url = `transactions/normalized?accountId=${accountId}`;
     }
-    return await apiClient.get<Transaction[]>(url);
+    return await apiClient.get<PaginationResponse<Transaction[]>>(url);
   },
 );
 
@@ -59,7 +56,7 @@ const transactionSlice = createSlice({
       })
       .addCase(fetchAllTransaction.fulfilled, (state, action) => {
         state.loading = LoadingState.SUCCESS;
-        state.transactions = action.payload ?? [];
+        state.transactions = action.payload.data ?? [];
         state.error = null;
       })
       .addCase(fetchAllTransaction.rejected, (state, action) => {
