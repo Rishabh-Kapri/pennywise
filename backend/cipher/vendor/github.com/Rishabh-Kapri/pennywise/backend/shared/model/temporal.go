@@ -67,6 +67,7 @@ type CipherPredictionResult struct {
 	Confidence      string           `json:"confidence"`
 	Source          PredictionSource `json:"source"` // pgvector | rule | llm
 	Reasoning       string           `json:"reasoning,omitempty"`
+	Metadata        map[string]any   `json:"metadata,omitempty"`
 }
 
 type PredictionResultInput struct {

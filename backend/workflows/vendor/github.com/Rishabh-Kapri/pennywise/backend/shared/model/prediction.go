@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -45,6 +46,8 @@ type CipherPredictionRecord struct {
 	BudgetID            uuid.UUID        `json:"budgetId"`
 	TransactionID       uuid.UUID        `json:"transactionId"`
 	EmailText           *string          `json:"emailText,omitempty"`
+	LLMReasoning        *string          `json:"llmReasoning,omitempty"`
+	Metadata            json.RawMessage  `json:"metadata,omitempty"`
 	Amount              *float64         `json:"amount,omitempty"`
 	ExtractedAccount    *string          `json:"extractedAccount,omitempty"`
 	ExtractedMerchant   *string          `json:"extractedMerchant,omitempty"`
