@@ -60,6 +60,7 @@ type PredictResponse struct {
 	Confidence string                       `json:"confidence"`
 	Source     sharedModel.PredictionSource `json:"source"` // pgvector | mlp | fallback
 	Reasoning  string                       `json:"reasoning,omitempty"`
+	Metadata   map[string]any               `json:"metadata,omitempty"`
 }
 
 type CorrectionRequest struct {
@@ -157,6 +158,10 @@ func (s *predictionService) handlePayeeRules(
 	result.Category = category.Name
 	result.Source = SourcePayeeRule
 	result.Confidence = "100"
+	result.Metadata = map[string]any{
+		"strategy":     "payee_rule",
+		"match_string": matchString,
+	}
 
 	return &result, nil
 }
@@ -209,7 +214,7 @@ func (s *predictionService) handleLLM(
 		Text:   embeddingText,
 		Amount: req.Amount,
 	}
-	parsed, categoryID, err := s.llmFallback(ctx, budgetId, llmReq)
+	parsed, categoryID, metadata, err := s.llmFallback(ctx, budgetId, llmReq)
 	if err != nil {
 		return nil, err
 	}
@@ -230,6 +235,7 @@ func (s *predictionService) handleLLM(
 	result.Category = parsed.SuggestedTag
 	result.Reasoning = parsed.Reasoning
 	result.Confidence = fmt.Sprintf("%d", parsed.Confidence)
+	result.Metadata = metadata
 
 	return &result, nil
 }
@@ -393,6 +399,12 @@ func (s *predictionService) resolveMatches(matches []sharedModel.TransactionEmbe
 		Amount:     best.Amount,
 		Confidence: fmt.Sprintf("%.2f", (1-(*best.VectorDistance+amountPenalty*0.15))*100),
 		Source:     SourcePgvector,
+		Metadata: map[string]any{
+			"strategy":        "semantic_search",
+			"embedding_model": EmbeddingModel,
+			"vector_distance": best.VectorDistance,
+			"amount_penalty":  best.AmountPenalty,
+		},
 	}
 
 	if similarity >= SimilarityThreshold {
@@ -447,12 +459,12 @@ func (s *predictionService) llmFallback(
 	ctx context.Context,
 	budgetId uuid.UUID,
 	req LLMRequest,
-) (*model.LLMPrediction, uuid.UUID, error) {
+) (*model.LLMPrediction, uuid.UUID, map[string]any, error) {
 	llmModel := "openai/gpt-5.4"
 
 	userCategories, err := s.categoryRepo.GetAllSimplified(ctx, budgetId)
 	if err != nil {
-		return nil, uuid.Nil, err
+		return nil, uuid.Nil, nil, err
 	}
 
 	userCategoriesMap := make(map[string]uuid.UUID, len(userCategories))
@@ -466,24 +478,36 @@ func (s *predictionService) llmFallback(
 
 	resp, err := s.ollama.Generate(ctx, llmModel, prompt, req.Text, req.Amount)
 	if err != nil {
-		return nil, uuid.Nil, errs.Wrap(errs.CodeInternalError, "error in llm fallback", err)
+		return nil, uuid.Nil, nil, errs.Wrap(errs.CodeInternalError, "error in llm fallback", err)
 	}
 	if resp == "" {
-		return nil, uuid.Nil, errs.New(errs.CodeInternalError, "LLM fallback: no result returned")
+		return nil, uuid.Nil, nil, errs.New(errs.CodeInternalError, "LLM fallback: no result returned")
 	}
 
 	parsed, err := utils.UnmarshalResponse[model.LLMPrediction]([]byte(resp))
 	if err != nil {
-		return nil, uuid.Nil, err
+		return nil, uuid.Nil, nil, err
 	}
 
 	categoryID, ok := userCategoriesMap[parsed.SuggestedTag]
 	if !ok {
 		// Category should always be found by the LLM from existing categories
-		return nil, uuid.Nil, errs.New(errs.CodeCategoryLookupFailed, "category not found")
+		return nil, uuid.Nil, nil, errs.New(errs.CodeCategoryLookupFailed, "category not found")
 	}
 
-	return &parsed, categoryID, nil
+	metadata := map[string]any{
+		"strategy":          "llm_fallback",
+		"model":             llmModel,
+		"prompt":            prompt,
+		"input_text":        req.Text,
+		"input_amount":      req.Amount,
+		"response":          resp,
+		"categories_count":  len(userCategories),
+		"prompt_template":   "promptV2",
+		"response_category": parsed.SuggestedTag,
+	}
+
+	return &parsed, categoryID, metadata, nil
 }
 
 func (s *predictionService) storeEmbedding(

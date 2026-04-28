@@ -2,6 +2,7 @@ package temporal
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
 	"strings"
 
@@ -59,6 +60,18 @@ func (a *CreateCipherPredictionActivity) CreateCipherPrediction(
 		if emailText != "" {
 			emailTextPtr = &emailText
 		}
+		var reasoning *string
+		if pred.Reasoning != "" {
+			reasoning = &pred.Reasoning
+		}
+		var metadata json.RawMessage
+		if len(pred.Metadata) > 0 {
+			data, err := json.Marshal(pred.Metadata)
+			if err != nil {
+				return errs.Wrap(errs.CodeInvalidArgument, "invalid prediction metadata", err)
+			}
+			metadata = data
+		}
 
 		var confidence *float64
 		if pred.Confidence != "" {
@@ -86,6 +99,8 @@ func (a *CreateCipherPredictionActivity) CreateCipherPrediction(
 			BudgetID:            input.BudgetID,
 			TransactionID:       txn.ID,
 			EmailText:           emailTextPtr,
+			LLMReasoning:        reasoning,
+			Metadata:            metadata,
 			ExtractedAccount:    &pred.Account,
 			ExtractedMerchant:   &pred.Payee,
 			PredictedPayeeID:    predictedPayeeID,

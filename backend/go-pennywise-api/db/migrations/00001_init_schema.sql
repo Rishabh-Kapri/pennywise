@@ -158,6 +158,7 @@ CREATE TABLE IF NOT EXISTS cipher_predictions (
   transaction_id UUID NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
   email_text TEXT,
   llm_reasoning TEXT,
+  metadata JSONB,
   amount NUMERIC(12, 2),
   -- extracted strings
   extracted_account TEXT,

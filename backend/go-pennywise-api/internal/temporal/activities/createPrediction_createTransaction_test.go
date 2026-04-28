@@ -233,6 +233,7 @@ func TestCreateCipherPredictionCreatesRecords(t *testing.T) {
 	categoryID := uuid.New()
 	rawText := "bank email text"
 	amount := 42.75
+	reasoning := "matched merchant using LLM fallback"
 
 	activity := CreateCipherPredictionActivity{
 		PredictionService: &fakePredictionService{
@@ -249,6 +250,16 @@ func TestCreateCipherPredictionCreatesRecords(t *testing.T) {
 				}
 				if record.EmailText == nil || *record.EmailText != rawText {
 					t.Fatalf("expected raw text %q, got %v", rawText, record.EmailText)
+				}
+				if record.LLMReasoning == nil || *record.LLMReasoning != reasoning {
+					t.Fatalf("expected llm reasoning %q, got %v", reasoning, record.LLMReasoning)
+				}
+				metadata := string(record.Metadata)
+				if !strings.Contains(metadata, `"model":"openai/gpt-5.4"`) {
+					t.Fatalf("expected metadata model, got %s", metadata)
+				}
+				if !strings.Contains(metadata, `"prompt":"classify this"`) {
+					t.Fatalf("expected metadata prompt, got %s", metadata)
 				}
 				if record.AccountConfidence == nil || math.Abs(*record.AccountConfidence-100) > 0.0001 {
 					t.Fatalf("expected account confidence 100, got %v", valueOrNil(record.AccountConfidence))
@@ -297,6 +308,11 @@ func TestCreateCipherPredictionCreatesRecords(t *testing.T) {
 			Amount:          amount,
 			Confidence:      "92.50%",
 			Source:          model.PredictionSourceLLM,
+			Reasoning:       reasoning,
+			Metadata: map[string]any{
+				"model":  "openai/gpt-5.4",
+				"prompt": "classify this",
+			},
 		}},
 	})
 	if err != nil {
