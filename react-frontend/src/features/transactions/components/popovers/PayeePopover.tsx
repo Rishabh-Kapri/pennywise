@@ -1,5 +1,5 @@
 import { Popover } from '@/components/common/Popover/Popover';
-import { useRef } from 'react';
+import { type KeyboardEvent, useRef } from 'react';
 import styles from './Popover.module.css';
 import { useAppSelector } from '@/app/hooks';
 import type { Payee } from '@/features/payees/types/payee.types';
@@ -34,6 +34,16 @@ export function PayeeDropdown({ value, onClick, autoFocus, variant = 'inline' }:
     onClick(payee.id!, payee.name);
   };
 
+  const handleInputKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+
+    const firstPayee = filteredItems[0];
+    if (!firstPayee) return;
+
+    e.preventDefault();
+    handleOnClick(firstPayee);
+  };
+
   const triggerClassName = variant === 'form' ? styles.formInput : styles.input;
 
   return (
@@ -45,6 +55,7 @@ export function PayeeDropdown({ value, onClick, autoFocus, variant = 'inline' }:
         className={triggerClassName}
         autoFocus={autoFocus}
         onChange={(e) => filterValues(e.target.value)}
+        onKeyDown={handleInputKeyDown}
         value={filterQuery}
         placeholder="Select Payee"
         aria-haspopup="true"

@@ -115,9 +115,15 @@ export function TransactionRow({
       handleSelectedTxnChange(idKey, id);
       handleSelectedTxnChange(nameKey, name);
       // auto-save for existing transactions after a dropdown selection
-      if (idKey === 'date' && !isAddingNew && onAutoSave) {
-        onAutoSave({ date: id });
-        resetInlineEdit();
+      if (!isAddingNew && onAutoSave) {
+        if (idKey === 'date') {
+          onAutoSave({ date: id });
+          resetInlineEdit();
+        }
+        if (idKey === 'payeeId' || idKey === 'categoryId') {
+          onAutoSave({ [idKey]: id, [nameKey]: name });
+          resetInlineEdit();
+        }
       }
     },
     [handleSelectedTxnChange, isAddingNew, onAutoSave, resetInlineEdit],

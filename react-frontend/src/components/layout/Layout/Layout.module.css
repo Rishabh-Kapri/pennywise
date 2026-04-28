@@ -33,6 +33,14 @@
   border-radius: 1rem;
 }
 
+.dashboardMainContent {
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
 .sidePanel {
   flex: 0 0 22rem;
   min-width: 0;
