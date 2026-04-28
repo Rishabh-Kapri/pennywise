@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
@@ -18,41 +19,57 @@ var withTx = utils.WithTx
 
 type TransactionService interface {
 	GetAll(ctx context.Context) ([]model.Transaction, error)
-	GetAllNormalized(ctx context.Context, filter *model.TransactionFilter) (model.PaginatedResponse[model.Transaction], error)
+	GetAllNormalized(
+		ctx context.Context,
+		filter *model.TransactionFilter,
+	) (model.PaginatedResponse[model.Transaction], error)
 	// GetById(ctx context.Context, id uuid.UUID) (*model.Transaction, error)
 	Update(ctx context.Context, id uuid.UUID, txn model.Transaction) error
+	UpdateStatus(ctx context.Context, id uuid.UUID, status model.TransactionStatus) error
 	Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error)
 	CreateWithTx(ctx context.Context, tx pgx.Tx, txn model.Transaction) ([]model.Transaction, error)
 	DeleteById(ctx context.Context, id uuid.UUID) error
 }
 
 type transactionService struct {
-	repo           repository.TransactionRepository
-	budgetRepo     repository.BudgetRepository
-	predictionRepo repository.PredictionRepository
-	accountRepo    repository.AccountRepository
-	payeeRepo      repository.PayeesRepository
-	categoryRepo   repository.CategoryRepository
-	mbService      MonthlyBudgetService
+	repo                 repository.TransactionRepository
+	budgetRepo           repository.BudgetRepository
+	txnEmbeddingRepo     repository.TransactionEmbeddingRepository
+	cipherClient         CipherClient
+	predictionRepo       repository.PredictionRepository
+	cipherPredictionRepo repository.CipherPredictionRepository
+	payeeRuleRepo        repository.PayeeRuleRepository
+	accountRepo          repository.AccountRepository
+	payeeRepo            repository.PayeesRepository
+	categoryRepo         repository.CategoryRepository
+	mbService            MonthlyBudgetService
 }
 
 func NewTransactionService(
 	r repository.TransactionRepository,
 	budgetRepo repository.BudgetRepository,
+	txnEmbeddingRepo repository.TransactionEmbeddingRepository,
+	cipherClient CipherClient,
 	predictionRepo repository.PredictionRepository,
+	cipherPredictionRepo repository.CipherPredictionRepository,
+	payeeRuleRepo repository.PayeeRuleRepository,
 	accountRepo repository.AccountRepository,
 	payeeRepo repository.PayeesRepository,
 	catRepo repository.CategoryRepository,
 	mbService MonthlyBudgetService,
 ) TransactionService {
 	return &transactionService{
-		repo:           r,
-		budgetRepo:     budgetRepo,
-		predictionRepo: predictionRepo,
-		accountRepo:    accountRepo,
-		payeeRepo:      payeeRepo,
-		categoryRepo:   catRepo,
-		mbService:      mbService,
+		repo:                 r,
+		budgetRepo:           budgetRepo,
+		txnEmbeddingRepo:     txnEmbeddingRepo,
+		cipherClient:         cipherClient,
+		predictionRepo:       predictionRepo,
+		cipherPredictionRepo: cipherPredictionRepo,
+		payeeRuleRepo:        payeeRuleRepo,
+		accountRepo:          accountRepo,
+		payeeRepo:            payeeRepo,
+		categoryRepo:         catRepo,
+		mbService:            mbService,
 	}
 }
 
@@ -436,7 +453,10 @@ func (s *transactionService) GetAll(ctx context.Context) ([]model.Transaction, e
 	return s.repo.GetAll(ctx, budgetId, nil)
 }
 
-func (s *transactionService) GetAllNormalized(ctx context.Context, filter *model.TransactionFilter) (model.PaginatedResponse[model.Transaction], error) {
+func (s *transactionService) GetAllNormalized(
+	ctx context.Context,
+	filter *model.TransactionFilter,
+) (model.PaginatedResponse[model.Transaction], error) {
 	budgetId := utils.MustBudgetID(ctx)
 	return s.repo.GetAllNormalized(ctx, budgetId, filter)
 }
@@ -457,7 +477,11 @@ func (s *transactionService) Create(ctx context.Context, txn model.Transaction) 
 	return createdTxn, nil
 }
 
-func (s *transactionService) CreateWithTx(ctx context.Context, tx pgx.Tx, txn model.Transaction) ([]model.Transaction, error) {
+func (s *transactionService) CreateWithTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	txn model.Transaction,
+) ([]model.Transaction, error) {
 	if tx == nil {
 		return s.Create(ctx, txn)
 	}
@@ -584,6 +608,105 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 		}
 
 		return nil
+	})
+}
+
+func (s *transactionService) UpdateStatus(ctx context.Context, id uuid.UUID, status model.TransactionStatus) error {
+	txCtx, txCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer txCancel()
+	budgetId := utils.MustBudgetID(ctx)
+	logger.Logger(txCtx).Info("updating transaction status", "id", id, "status", status)
+
+	if status != model.TransactionStatusApproved {
+		return withTx(txCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
+			return s.repo.UpdateStatus(txCtx, tx, budgetId, id, status)
+		})
+	}
+
+	foundTxn, err := s.repo.GetById(txCtx, budgetId, id)
+	if err != nil {
+		return errs.Wrap(errs.CodeTransactionLookupFailed, "error getting transaction", err)
+	}
+
+	if foundTxn == nil {
+		return errs.New(errs.CodeTransactionLookupFailed, "transaction not found for id %v", id)
+	}
+	if s.cipherPredictionRepo == nil {
+		return errs.New(errs.CodeInternalError, "cipher prediction repository is not configured")
+	}
+
+	cipherPrediction, err := s.cipherPredictionRepo.GetByTransactionID(txCtx, budgetId, foundTxn.ID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			return withTx(txCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
+				return s.repo.UpdateStatus(txCtx, tx, budgetId, id, status)
+			})
+		}
+		return errs.Wrap(errs.CodeTransactionLookupFailed, "error getting cipher prediction", err)
+	}
+	if cipherPrediction == nil || cipherPrediction.Source != model.PredictionSourceLLM {
+		return withTx(txCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
+			return s.repo.UpdateStatus(txCtx, tx, budgetId, id, status)
+		})
+	}
+
+	if foundTxn.PayeeID == nil {
+		return errs.New(errs.CodeInvalidArgument, "payee is required to approve transaction")
+	}
+	if foundTxn.CategoryID == nil {
+		return errs.New(errs.CodeInvalidArgument, "category is required to approve transaction")
+	}
+	if foundTxn.RawBankText == nil || strings.TrimSpace(*foundTxn.RawBankText) == "" {
+		return errs.New(errs.CodeInvalidArgument, "raw bank text is required to approve transaction")
+	}
+	if cipherPrediction.ExtractedPayee == nil || strings.TrimSpace(*cipherPrediction.ExtractedPayee) == "" {
+		return errs.New(errs.CodeInvalidArgument, "extracted merchant is required to create payee rule")
+	}
+	if s.cipherClient == nil {
+		return errs.New(errs.CodeInternalError, "cipher client is not configured")
+	}
+	if s.payeeRuleRepo == nil {
+		return errs.New(errs.CodeInternalError, "payee rule repository is not configured")
+	}
+	if s.txnEmbeddingRepo == nil {
+		return errs.New(errs.CodeInternalError, "transaction embedding repository is not configured")
+	}
+
+	generatedEmbedding, err := s.cipherClient.GenerateTransactionEmbedding(txCtx, TransactionEmbeddingRequest{
+		RawBankText: *foundTxn.RawBankText,
+		Amount:      foundTxn.Amount,
+	})
+	if err != nil {
+		return errs.Wrap(errs.CodeInternalError, "error generating transaction embedding", err)
+	}
+	if generatedEmbedding == nil || strings.TrimSpace(generatedEmbedding.Embedding) == "" {
+		return errs.New(errs.CodeInternalError, "cipher returned empty transaction embedding")
+	}
+
+	return withTx(txCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
+		if err = s.repo.UpdateStatus(txCtx, tx, budgetId, id, status); err != nil {
+			return errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating transaction status", err)
+		}
+
+		payeeRule := model.PayeeRule{
+			BudgetID:    budgetId,
+			PayeeID:     *foundTxn.PayeeID,
+			CategoryID:  *foundTxn.CategoryID,
+			MatchString: generatedEmbedding.MatchString,
+		}
+		if err = s.payeeRuleRepo.CreatePayeeRule(txCtx, tx, payeeRule); err != nil {
+			return errs.Wrap(errs.CodeInternalError, "error creating payee rule", err)
+		}
+
+		embedding := model.TransactionEmbedding{
+			BudgetID:      budgetId,
+			PayeeID:       *foundTxn.PayeeID,
+			CategoryID:    *foundTxn.CategoryID,
+			Amount:        foundTxn.Amount,
+			Source:        "AUTO_LEARNED",
+			EmbeddingText: generatedEmbedding.EmbeddingText,
+		}
+		return s.txnEmbeddingRepo.Upsert(txCtx, tx, embedding, generatedEmbedding.Embedding)
 	})
 }
 

@@ -30,6 +30,7 @@ func (r *payeeRuleRepo) CreatePayeeRule(ctx context.Context, tx pgx.Tx, payeeMat
 		VALUES ($1, $2, $3, $4)
 		ON CONFLICT (budget_id, match_string)
 		DO UPDATE SET
+		  payee_id = EXCLUDED.payee_id,
 		  category_id = EXCLUDED.category_id,
 		  updated_at = NOW()
 		`,

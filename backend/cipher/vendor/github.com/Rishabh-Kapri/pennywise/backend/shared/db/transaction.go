@@ -27,6 +27,7 @@ type TransactionRepository interface {
 		filter *model.TransactionFilter,
 	) (model.PaginatedResponse[model.Transaction], error)
 	Update(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID, txn model.Transaction) error
+	UpdateStatus(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID, status model.TransactionStatus) error
 	Create(ctx context.Context, tx pgx.Tx, txn model.Transaction) ([]model.Transaction, error)
 	DeleteById(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID) error
 }
@@ -103,6 +104,7 @@ func (r *transactionRepo) GetById(ctx context.Context, budgetId uuid.UUID, id uu
 				transactions.account_id,
 				transactions.note,
 				transactions.amount,
+		    transactions.raw_bank_text,
 				transactions.transfer_account_id,
 				transactions.transfer_transaction_id,
 				transactions.tag_ids,
@@ -126,6 +128,7 @@ func (r *transactionRepo) GetById(ctx context.Context, budgetId uuid.UUID, id uu
 		&txn.AccountID,
 		&txn.Note,
 		&txn.Amount,
+		&txn.RawBankText,
 		&txn.TransferAccountID,
 		&txn.TransferTransactionID,
 		&txn.TagIDs,
@@ -489,6 +492,28 @@ func (r *transactionRepo) Update(
 		txn.TagIDs,
 		budgetId,
 		id,
+	)
+	if err != nil {
+		return err
+	}
+	if cmdTag.RowsAffected() == 0 {
+		return fmt.Errorf("Transaction not found for id: %v", id)
+	}
+	return nil
+}
+
+func (r *transactionRepo) UpdateStatus(
+	ctx context.Context,
+	tx pgx.Tx,
+	budgetId uuid.UUID,
+	id uuid.UUID,
+	status model.TransactionStatus,
+) error {
+	cmdTag, err := r.Executor(tx).Exec(
+		ctx, `
+			UPDATE transactions 
+			SET status = $1 WHERE budget_id = $2 AND id = $3 
+			`, status, budgetId, id,
 	)
 	if err != nil {
 		return err

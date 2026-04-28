@@ -18,6 +18,7 @@ type TransactionHandler interface {
 	ListNormalized(c *gin.Context)
 	Create(c *gin.Context)
 	Update(c *gin.Context)
+	UpdateStatus(c *gin.Context)
 	// DeleteById deletes a transaction by its ID.
 	// It retrieves the budget context and the transaction ID from the request parameters,
 	// parses the ID, and then calls the service to perform the deletion.
@@ -135,6 +136,31 @@ func (h *transactionHandler) Update(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, body)
+}
+
+func (h *transactionHandler) UpdateStatus(c *gin.Context) {
+	ctx := c.Request.Context()
+	id, ok := c.Params.Get("id")
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})
+		return
+	}
+	parsedId, err := uuid.Parse(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error while parsing id"})
+	}
+
+	var body model.TransactionStatusReq
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	err = h.service.UpdateStatus(ctx, parsedId, body.Status)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, nil)
 }
 
 func (h *transactionHandler) DeleteById(c *gin.Context) {
