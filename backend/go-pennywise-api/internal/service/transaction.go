@@ -644,7 +644,7 @@ func (s *transactionService) UpdateStatus(ctx context.Context, id uuid.UUID, sta
 		}
 		return errs.Wrap(errs.CodeTransactionLookupFailed, "error getting cipher prediction", err)
 	}
-	if cipherPrediction == nil || cipherPrediction.Source != model.PredictionSourceLLM {
+	if cipherPrediction == nil {
 		return withTx(txCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
 			return s.repo.UpdateStatus(txCtx, tx, budgetId, id, status)
 		})
