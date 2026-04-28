@@ -133,6 +133,9 @@ func (t *Transaction) Compare(other *Transaction) bool {
 	if t.Amount != other.Amount {
 		return false
 	}
+	if t.Status != other.Status {
+		return false
+	}
 	// handle tagIds
 	if len(t.TagIDs) != len(other.TagIDs) {
 		return false

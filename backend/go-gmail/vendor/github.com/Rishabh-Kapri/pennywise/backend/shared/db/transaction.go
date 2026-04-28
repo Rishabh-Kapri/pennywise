@@ -479,8 +479,9 @@ func (r *transactionRepo) Update(
 				transfer_account_id = $7,
 				transfer_transaction_id = $8,
 				tag_ids = $9,
+				status = $10,
 				updated_at = NOW()
-		  WHERE budget_id = $10 AND id = $11
+		  WHERE budget_id = $11 AND id = $12
 		`, txn.Date,
 		txn.PayeeID,
 		txn.CategoryID,
@@ -490,6 +491,7 @@ func (r *transactionRepo) Update(
 		txn.TransferAccountID,
 		txn.TransferTransactionID,
 		txn.TagIDs,
+		txn.Status,
 		budgetId,
 		id,
 	)

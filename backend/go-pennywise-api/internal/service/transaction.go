@@ -246,12 +246,95 @@ func (s *transactionService) createCounterpartTxn(
 // sideEffectInput holds the context for applying side effects to a transaction.
 // oldTxn == nil means create, newTxn == nil means delete, both non-nil means update.
 type sideEffectInput struct {
-	budgetId uuid.UUID
-	oldTxn   *model.Transaction // nil for create
-	newTxn   *model.Transaction // nil for delete
-	budget   *model.Budget      // required for create (inflow category check)
-	account  *model.Account     // nil for delete
-	payee    *model.Payee       // nil for delete
+	budgetId      uuid.UUID
+	oldTxn        *model.Transaction // nil for create
+	newTxn        *model.Transaction // nil for delete
+	budget        *model.Budget      // required for create (inflow category check)
+	account       *model.Account     // nil for delete
+	payee         *model.Payee       // nil for delete
+	queueLearning func(model.Transaction)
+}
+
+func transactionMappingChanged(oldTxn, newTxn *model.Transaction) bool {
+	if oldTxn == nil || newTxn == nil {
+		return false
+	}
+
+	payeeChanged := (oldTxn.PayeeID == nil) != (newTxn.PayeeID == nil) ||
+		(oldTxn.PayeeID != nil && newTxn.PayeeID != nil && *oldTxn.PayeeID != *newTxn.PayeeID)
+	categoryChanged := (oldTxn.CategoryID == nil) != (newTxn.CategoryID == nil) ||
+		(oldTxn.CategoryID != nil && newTxn.CategoryID != nil && *oldTxn.CategoryID != *newTxn.CategoryID)
+
+	return payeeChanged || categoryChanged
+}
+
+func (s *transactionService) learnTransactionMappingAsync(
+	ctx context.Context,
+	budgetId uuid.UUID,
+	txn model.Transaction,
+) {
+	if s.cipherClient == nil || s.payeeRuleRepo == nil || s.txnEmbeddingRepo == nil {
+		logger.Logger(ctx).
+			Warn("skipping transaction learning because dependencies are not configured", "txnId", txn.ID)
+		return
+	}
+	if txn.PayeeID == nil || txn.CategoryID == nil {
+		logger.Logger(ctx).Warn("skipping transaction learning because payee or category is missing", "txnId", txn.ID)
+		return
+	}
+	if txn.RawBankText == nil || strings.TrimSpace(*txn.RawBankText) == "" {
+		logger.Logger(ctx).Warn("skipping transaction learning because raw bank text is missing", "txnId", txn.ID)
+		return
+	}
+
+	go func() {
+		bgCtx := utils.WithRequestMetadata(context.Background(), utils.RequestMetadataFromContext(ctx))
+		bgCtx = utils.WithInternalAuthToken(bgCtx, utils.InternalAuthTokenFromContext(ctx))
+		bgCtx, cancel := context.WithTimeout(bgCtx, 30*time.Second)
+		defer cancel()
+
+		generatedEmbedding, err := s.cipherClient.GenerateTransactionEmbedding(bgCtx, TransactionEmbeddingRequest{
+			RawBankText: *txn.RawBankText,
+			Amount:      txn.Amount,
+		})
+		if err != nil {
+			err := errs.Wrap(errs.CodeInternalError, "error generating transaction embedding", err)
+			logger.Logger(bgCtx).Error("error generating transaction embedding", "error", err)
+			return
+		}
+		if generatedEmbedding == nil || strings.TrimSpace(generatedEmbedding.Embedding) == "" {
+			err := errs.New(errs.CodeInternalError, "cipher returned empty transaction embedding")
+			logger.Logger(bgCtx).Error("cipher returned empty transaction embedding", "error", err)
+			return
+		}
+
+		payeeRule := model.PayeeRule{
+			BudgetID:    budgetId,
+			PayeeID:     *txn.PayeeID,
+			CategoryID:  *txn.CategoryID,
+			MatchString: generatedEmbedding.MatchString,
+		}
+		err = withTx(bgCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
+			if err = s.payeeRuleRepo.CreatePayeeRule(bgCtx, tx, payeeRule); err != nil {
+				err := errs.Wrap(errs.CodeInternalError, "error creating payee rule", err)
+				logger.Logger(bgCtx).Error("error creating payee rule", "error", err)
+				return err
+			}
+
+			embedding := model.TransactionEmbedding{
+				BudgetID:      budgetId,
+				PayeeID:       *txn.PayeeID,
+				CategoryID:    *txn.CategoryID,
+				Amount:        txn.Amount,
+				Source:        "AUTO_LEARNED",
+				EmbeddingText: generatedEmbedding.EmbeddingText,
+			}
+			return s.txnEmbeddingRepo.Upsert(bgCtx, tx, embedding, generatedEmbedding.Embedding)
+		})
+		if err != nil {
+			logger.Logger(bgCtx).Error("error upserting transaction embedding", "error", err)
+		}
+	}()
 }
 
 // applySideEffects applies all side effects (carryovers, transfers, predictions)
@@ -347,30 +430,44 @@ func (s *transactionService) applySideEffects(ctx context.Context, tx pgx.Tx, in
 		}
 	}
 
-	// --- Predictions ---
+	// --- Cipher Predictions ---
 	switch {
-	// case isUpdate && input.oldTxn.Source == "MLP":
-	// 	if err := s.updatePrediction(
-	// 		ctx,
-	// 		tx,
-	// 		input.budgetId,
-	// 		input.oldTxn.ID,
-	// 		*input.newTxn,
-	// 		*input.account,
-	// 		*input.payee,
-	// 	); err != nil {
-	// 		return errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating prediction", err)
-	// 	}
-	// case isDelete && input.oldTxn.Source == "MLP":
-	// 	prediction, err := s.predictionRepo.GetByTxnIdTx(ctx, tx, input.budgetId, input.oldTxn.ID)
-	// 	if err != nil {
-	// 		return errs.Wrap(errs.CodePredictionLookupFailed, "error getting prediction", err)
-	// 	}
-	// 	if prediction != nil {
-	// 		if err = s.predictionRepo.DeleteByTxnId(ctx, tx, input.budgetId, input.oldTxn.ID); err != nil {
-	// 			return errs.Wrap(errs.CodePredictionDeleteFailed, "error deleting prediction", err)
-	// 		}
-	// 	}
+	case isUpdate && transactionMappingChanged(input.oldTxn, input.newTxn):
+		if s.cipherPredictionRepo == nil {
+			return nil
+		}
+
+		cipherPrediction, err := s.cipherPredictionRepo.GetByTransactionID(ctx, input.budgetId, input.oldTxn.ID)
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				return nil
+			}
+			return errs.Wrap(errs.CodeTransactionLookupFailed, "error getting cipher prediction", err)
+		}
+		if cipherPrediction == nil {
+			return nil
+		}
+
+		if err := s.cipherPredictionRepo.MarkUserCorrected(
+			ctx,
+			tx,
+			input.budgetId,
+			input.oldTxn.ID,
+			input.newTxn.PayeeID,
+			input.newTxn.CategoryID,
+		); err != nil {
+			return errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating cipher prediction correction", err)
+		}
+
+		input.newTxn.Status = model.TransactionStatusApproved
+
+		if input.queueLearning != nil {
+			learningTxn := *input.newTxn
+			learningTxn.RawBankText = input.oldTxn.RawBankText
+			input.queueLearning(learningTxn)
+		}
+
+		logger.Logger(ctx).Info("updated cipher prediction for transaction mapping change", "txnId", input.oldTxn.ID)
 	}
 
 	return nil
@@ -559,7 +656,8 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 		return err
 	}
 
-	return withTx(txCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
+	var learningTxn *model.Transaction
+	err := withTx(txCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
 		foundTxn, err := s.repo.GetByIdTx(txCtx, tx, budgetId, id)
 		if err != nil {
 			return errs.Wrap(errs.CodeTransactionLookupFailed, "error getting transaction", err)
@@ -599,6 +697,9 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 			budget:   budget,
 			account:  account,
 			payee:    payee,
+			queueLearning: func(txn model.Transaction) {
+				learningTxn = &txn
+			},
 		}); err != nil {
 			return err
 		}
@@ -609,6 +710,14 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+	if learningTxn != nil {
+		s.learnTransactionMappingAsync(ctx, budgetId, *learningTxn)
+	}
+
+	return nil
 }
 
 func (s *transactionService) UpdateStatus(ctx context.Context, id uuid.UUID, status model.TransactionStatus) error {
@@ -659,18 +768,6 @@ func (s *transactionService) UpdateStatus(ctx context.Context, id uuid.UUID, sta
 	if foundTxn.RawBankText == nil || strings.TrimSpace(*foundTxn.RawBankText) == "" {
 		return errs.New(errs.CodeInvalidArgument, "raw bank text is required to approve transaction")
 	}
-	if cipherPrediction.ExtractedPayee == nil || strings.TrimSpace(*cipherPrediction.ExtractedPayee) == "" {
-		return errs.New(errs.CodeInvalidArgument, "extracted payee is required to create payee rule")
-	}
-	if s.cipherClient == nil {
-		return errs.New(errs.CodeInternalError, "cipher client is not configured")
-	}
-	if s.payeeRuleRepo == nil {
-		return errs.New(errs.CodeInternalError, "payee rule repository is not configured")
-	}
-	if s.txnEmbeddingRepo == nil {
-		return errs.New(errs.CodeInternalError, "transaction embedding repository is not configured")
-	}
 
 	if err := withTx(txCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
 		return s.repo.UpdateStatus(txCtx, tx, budgetId, id, status)
@@ -678,54 +775,7 @@ func (s *transactionService) UpdateStatus(ctx context.Context, id uuid.UUID, sta
 		return errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating transaction status", err)
 	}
 
-	go func() {
-		bgCtx := utils.WithRequestMetadata(context.Background(), utils.RequestMetadataFromContext(ctx))
-		bgCtx = utils.WithInternalAuthToken(bgCtx, utils.InternalAuthTokenFromContext(ctx))
-		bgCtx, cancel := context.WithTimeout(bgCtx, 30*time.Second)
-		defer cancel()
-
-		generatedEmbedding, err := s.cipherClient.GenerateTransactionEmbedding(bgCtx, TransactionEmbeddingRequest{
-			RawBankText: *foundTxn.RawBankText,
-			Amount:      foundTxn.Amount,
-		})
-		if err != nil {
-			err := errs.Wrap(errs.CodeInternalError, "error generating transaction embedding", err)
-			logger.Logger(bgCtx).Error("error generating transaction embedding", "error", err)
-			return
-		}
-		if generatedEmbedding == nil || strings.TrimSpace(generatedEmbedding.Embedding) == "" {
-			err := errs.New(errs.CodeInternalError, "cipher returned empty transaction embedding")
-			logger.Logger(bgCtx).Error("cipher returned empty transaction embedding", "error", err)
-			return
-		}
-
-		payeeRule := model.PayeeRule{
-			BudgetID:    budgetId,
-			PayeeID:     *foundTxn.PayeeID,
-			CategoryID:  *foundTxn.CategoryID,
-			MatchString: generatedEmbedding.MatchString,
-		}
-		err = withTx(bgCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
-			if err = s.payeeRuleRepo.CreatePayeeRule(bgCtx, tx, payeeRule); err != nil {
-				err := errs.Wrap(errs.CodeInternalError, "error creating payee rule", err)
-				logger.Logger(bgCtx).Error("error creating payee rule", "error", err)
-				return err
-			}
-
-			embedding := model.TransactionEmbedding{
-				BudgetID:      budgetId,
-				PayeeID:       *foundTxn.PayeeID,
-				CategoryID:    *foundTxn.CategoryID,
-				Amount:        foundTxn.Amount,
-				Source:        "AUTO_LEARNED",
-				EmbeddingText: generatedEmbedding.EmbeddingText,
-			}
-			return s.txnEmbeddingRepo.Upsert(bgCtx, tx, embedding, generatedEmbedding.Embedding)
-		})
-		if err != nil {
-			logger.Logger(bgCtx).Error("error upserting transaction embedding", "error", err)
-		}
-	}()
+	s.learnTransactionMappingAsync(ctx, budgetId, *foundTxn)
 
 	return nil
 }
