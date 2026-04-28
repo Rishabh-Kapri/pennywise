@@ -13,6 +13,7 @@ import (
 
 type PredictionHandler interface {
 	Predict(c *gin.Context)
+	GenerateTransactionEmbedding(c *gin.Context)
 	HandleCorrection(c *gin.Context)
 }
 
@@ -37,6 +38,25 @@ func (h *predictionHandler) Predict(c *gin.Context) {
 	if err != nil {
 		logger.Logger(ctx).Error("prediction failed", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "prediction failed"})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *predictionHandler) GenerateTransactionEmbedding(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	var req service.TransactionEmbeddingRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	result, err := h.predictionService.GenerateTransactionEmbedding(ctx, req)
+	if err != nil {
+		logger.Logger(ctx).Error("transaction embedding generation failed", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate transaction embedding"})
 		return
 	}
 

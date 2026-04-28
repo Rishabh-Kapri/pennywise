@@ -90,12 +90,6 @@ func main() {
 	}
 	defer dbConn.Close()
 
-	temporalClient, err = connectToTemporal(ctx, cfg)
-	if err != nil {
-		logger.Fatal("Unable to connect to Temporal", "error", err)
-	}
-	defer temporalClient.Close()
-
 	// Clients
 	// currently we only have http transport
 	ollamaEngine := httpclient.NewHttpTransport(cfg.OllamaURL)
@@ -126,21 +120,28 @@ func main() {
 		tel.Tracer,
 	)
 
-	w := worker.New(temporalClient, sharedModel.CipherActivitiesTaskQueue, worker.Options{
-		UseBuildIDForVersioning: false,
-		BackgroundActivityContext: utils.WithInternalAuthToken(
-			utils.WithServiceName(context.Background(), "cipher"),
-			cfg.InternalAuthToken,
-		),
-	})
-	w.RegisterActivity(&temporal.PredictionActivity{PredictionService: predictionService})
-
-	go func() {
-		if err := w.Run(worker.InterruptCh()); err != nil {
-			logger.Fatal("Temporal activity worker failed", "error", err)
+	if cfg.Environment != "local" {
+		temporalClient, err = connectToTemporal(ctx, cfg)
+		if err != nil {
+			logger.Fatal("Unable to connect to Temporal", "error", err)
 		}
-	}()
+		defer temporalClient.Close()
 
+		w := worker.New(temporalClient, sharedModel.CipherActivitiesTaskQueue, worker.Options{
+			UseBuildIDForVersioning: false,
+			BackgroundActivityContext: utils.WithInternalAuthToken(
+				utils.WithServiceName(context.Background(), "cipher"),
+				cfg.InternalAuthToken,
+			),
+		})
+		w.RegisterActivity(&temporal.PredictionActivity{PredictionService: predictionService})
+
+		go func() {
+			if err := w.Run(worker.InterruptCh()); err != nil {
+				logger.Fatal("Temporal activity worker failed", "error", err)
+			}
+		}()
+	}
 	// Handler
 	predictionHandler := handler.NewPredictionHandler(predictionService)
 	workflowHandler := handler.NewWorkflowHandler(temporalClient)
@@ -159,9 +160,18 @@ func main() {
 	router.Use(tel.MeterRequestsInFlight())
 
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5173"},
-		AllowMethods:     []string{"GET", "POST"},
-		AllowHeaders:     []string{"Origin", "Content-Type", utils.HeaderInternalService, utils.HeaderInternalToken, utils.HeaderBudgetID, utils.HeaderCorrelationID, utils.HeaderCallerService, utils.HeaderOriginService},
+		AllowOrigins: []string{"http://localhost:5173"},
+		AllowMethods: []string{"GET", "POST"},
+		AllowHeaders: []string{
+			"Origin",
+			"Content-Type",
+			utils.HeaderInternalService,
+			utils.HeaderInternalToken,
+			utils.HeaderBudgetID,
+			utils.HeaderCorrelationID,
+			utils.HeaderCallerService,
+			utils.HeaderOriginService,
+		},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: false,
 	}))
@@ -173,6 +183,7 @@ func main() {
 		budgetApi := api.Group("")
 		budgetApi.Use(sharedMiddleware.BudgetIdMiddleware(budgetRepo))
 		budgetApi.POST("/predict", predictionHandler.Predict)
+		budgetApi.POST("/embeddings/transaction", predictionHandler.GenerateTransactionEmbedding)
 		budgetApi.POST("/corrections", predictionHandler.HandleCorrection)
 
 		api.POST("/workflows/:workflowId/retry-predict", workflowHandler.RetryPredict)

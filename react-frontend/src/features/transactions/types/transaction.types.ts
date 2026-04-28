@@ -7,6 +7,8 @@ export const TransactionSource = {
 
 export type TransactionSource = typeof TransactionSource[keyof typeof TransactionSource];
 
+export type TransactionStatus = 'MANUAL' | 'APPROVED' | 'REJECTED' | 'UNAPPROVED';
+
 export interface Transaction {
   id?: string;
   budgetId: string;
@@ -16,7 +18,7 @@ export interface Transaction {
   inflow: number | null;
   balance: number;
   note?: string;
-  status?: 'MANUAL' | 'APPROVED' | 'REJECTED' | 'UNAPPROVED';
+  status?: TransactionStatus;
   transferTransactionId: string | null,
   transferAccountId: string | null,
   tagIds: string[];
@@ -41,6 +43,11 @@ export interface TransactionDTO {
   tagIds?: string[];
 }
 
+export interface TransactionStatusDTO {
+  id: string;
+  status: Extract<TransactionStatus, 'APPROVED' | 'REJECTED'>;
+}
+
 export interface TransactionState {
   transactions: Transaction[];
   loading: LoadingState;
@@ -56,4 +63,3 @@ export interface MonthGroupStats {
 export type ListItem =
   | { type: 'header'; key: string; label: string; stats: MonthGroupStats }
   | { type: 'row'; txn: Transaction; originalIndex: number };
-

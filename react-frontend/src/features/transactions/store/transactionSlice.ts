@@ -1,5 +1,5 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
-import type { Transaction, TransactionDTO, TransactionState } from '../types/transaction.types';
+import type { Transaction, TransactionDTO, TransactionState, TransactionStatusDTO } from '../types/transaction.types';
 import { apiClient, LoadingState } from '@/utils';
 import { type PaginationResponse } from '@/utils/common.constants';
 
@@ -42,6 +42,15 @@ export const updateTransaction = createAsyncThunk<
 >('transactions/updateTransaction', async (transaction: TransactionDTO) => {
   const url = `transactions/${transaction.id}`;
   return await apiClient.patch(url, transaction);
+});
+
+export const updateTransactionStatus = createAsyncThunk<
+  TransactionStatusDTO,
+  TransactionStatusDTO
+>('transactions/updateTransactionStatus', async ({ id, status }: TransactionStatusDTO) => {
+  const url = `transactions/${id}/status`;
+  await apiClient.patch(url, { status });
+  return { id, status };
 });
 
 const transactionSlice = createSlice({
@@ -94,6 +103,22 @@ const transactionSlice = createSlice({
       .addCase(updateTransaction.rejected, (state, action) => {
         state.loading = LoadingState.ERROR;
         state.error = action.error.message ?? 'Failed to update transaction';
+      })
+      .addCase(updateTransactionStatus.pending, (state) => {
+        state.loading = LoadingState.PENDING;
+        state.error = null;
+      })
+      .addCase(updateTransactionStatus.fulfilled, (state, action) => {
+        state.loading = LoadingState.SUCCESS;
+        state.error = null;
+        const transaction = state.transactions.find((txn) => txn.id === action.payload.id);
+        if (transaction) {
+          transaction.status = action.payload.status;
+        }
+      })
+      .addCase(updateTransactionStatus.rejected, (state, action) => {
+        state.loading = LoadingState.ERROR;
+        state.error = action.error.message ?? 'Failed to update transaction status';
       });
   },
 });

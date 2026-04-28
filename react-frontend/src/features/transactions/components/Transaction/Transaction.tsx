@@ -1,7 +1,7 @@
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { createTransaction, deleteTransactionById, fetchAllTransaction, updateTransaction } from '../../store';
+import { createTransaction, deleteTransactionById, fetchAllTransaction, updateTransaction, updateTransactionStatus } from '../../store';
 import { LoadingState } from '@/utils';
 import { toast } from '@/utils';
 import styles from './Transaction.module.css';
@@ -228,7 +228,7 @@ export function Transaction() {
     async (status: 'APPROVED' | 'REJECTED') => {
       if (!selectedTxn?.id) return;
       try {
-        await dispatch(updateTransaction(buildTransactionPayload({ ...selectedTxn, status }))).unwrap();
+        await dispatch(updateTransactionStatus({ id: selectedTxn.id, status })).unwrap();
         dispatch(fetchAllTransaction(paramId ? selectedTxn.accountId : ''));
         toast.success(`Transaction ${status.toLowerCase()}`);
         resetSelectedTxn();

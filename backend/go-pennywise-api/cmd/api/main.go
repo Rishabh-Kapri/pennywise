@@ -38,7 +38,10 @@ func healthPage(c *gin.Context) {
 func main() {
 	config := config.Load()
 	logger.Setup(config.ServiceName)
-	ctx := utils.WithInternalAuthToken(utils.WithServiceName(context.Background(), config.ServiceName), config.InternalAuthToken)
+	ctx := utils.WithInternalAuthToken(
+		utils.WithServiceName(context.Background(), config.ServiceName),
+		config.InternalAuthToken,
+	)
 
 	dbConn := db.Connect(ctx)
 	defer dbConn.Close()
@@ -79,6 +82,7 @@ func main() {
 
 	budgetRepo := repository.NewBudgetRepository(dbConn)
 	payeeRepo := repository.NewPayeesRepository(dbConn)
+	payeeRuleRepo := repository.NewPayeeRuleRepository(dbConn)
 	categoryRepo := repository.NewCategoryRepository(dbConn)
 	categoryGroupRepo := repository.NewCategoryGroupRepository(dbConn)
 	predictionRepo := repository.NewPredictionRepository(dbConn)
@@ -87,6 +91,7 @@ func main() {
 	userRepo := repository.NewUserRepository(dbConn)
 	transactionRepo := repository.NewTransactionRepository(dbConn)
 	embeddingRepo := repository.NewEmbeddingRepository(dbConn)
+	transactionEmbeddingRepo := repository.NewTransactionEmbeddingRepository(dbConn)
 	tagRepo := repository.NewTagRepository(dbConn)
 	authRepo := repository.NewAuthRepository(dbConn)
 	googleProviderRepo := repository.NewGoogleProviderRepository(dbConn)
@@ -113,10 +118,18 @@ func main() {
 	predictionService := service.NewPredictionService(predictionRepo, cipherPredictionRepo)
 	predictionHandler := handler.NewPredictionHandler(predictionService)
 
+	cipherHttpTransport := httpclient.NewHttpTransport(config.CipherServiceURL)
+	cipherTransportClient := transport.NewClient(config.CipherServiceName, cipherHttpTransport)
+	cipherClient := service.NewCipherClient(cipherTransportClient)
+
 	transactionService := service.NewTransactionService(
 		transactionRepo,
 		budgetRepo,
+		transactionEmbeddingRepo,
+		cipherClient,
 		predictionRepo,
+		cipherPredictionRepo,
+		payeeRuleRepo,
 		accountRepo,
 		payeeRepo,
 		categoryRepo,
@@ -230,6 +243,7 @@ func main() {
 			transactionGroup.GET("/normalized", transactionHandler.ListNormalized)
 			transactionGroup.POST("", transactionHandler.Create)
 			transactionGroup.PATCH(":id", transactionHandler.Update)
+			transactionGroup.PATCH(":id/status", transactionHandler.UpdateStatus)
 			transactionGroup.DELETE(":id", transactionHandler.DeleteById)
 		}
 		{

@@ -146,7 +146,7 @@ func buildCipherPredictionRecord(
 		LLMReasoning:        reasoning,
 		Metadata:            metadata,
 		ExtractedAccount:    &pred.Account,
-		ExtractedMerchant:   &pred.Payee,
+		ExtractedPayee:      &pred.Payee,
 		PredictedPayeeID:    predictedPayeeID,
 		PredictedCategoryID: predictedCategoryID,
 		AccountConfidence:   &accountConfidence,

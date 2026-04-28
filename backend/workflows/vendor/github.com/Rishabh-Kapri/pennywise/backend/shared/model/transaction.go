@@ -62,6 +62,10 @@ type Transaction struct {
 	UpdatedAt             time.Time         `json:"updatedAt"`
 }
 
+type TransactionStatusReq struct {
+	Status TransactionStatus `json:"status"`
+}
+
 type TransactionFilter struct {
 	AccountIDs   []uuid.UUID
 	StartDate    *string
