@@ -34,9 +34,10 @@ func TestGetAllNormalized(t *testing.T) {
 	budgetId := uuid.New()
 	accountId := uuid.New()
 	ctx := utils.WithBudgetID(context.Background(), budgetId)
+	filter := &model.TransactionFilter{AccountIDs: []uuid.UUID{accountId}}
 
-	mockRepo.On("GetAllNormalized", ctx, budgetId, &accountId).Return([]model.Transaction{}, nil).Once()
-	_, err := service.GetAllNormalized(ctx, &accountId)
+	mockRepo.On("GetAllNormalized", ctx, budgetId, filter).Return(model.PaginatedResponse[model.Transaction]{}, nil).Once()
+	_, err := service.GetAllNormalized(ctx, filter)
 	assert.NoError(t, err)
 	mockRepo.AssertExpectations(t)
 }

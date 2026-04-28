@@ -2,9 +2,28 @@ package model
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 )
+
+type Pagination struct {
+	PrevCursor string `json:"prevCursor,omitempty"`
+	NextCursor string `json:"nextCursor,omitempty"`
+}
+
+type Cursor struct {
+	Date       string
+	UpdatedAt  time.Time
+	ID         uuid.UUID
+	PointsNext bool
+}
+
+type PaginatedResponse[T any] struct {
+	Data       []T        `json:"data"`
+	Total      int        `json:"total"`
+	Pagination Pagination `json:"pagination"`
+}
 
 // ptrToString returns "<nil>" if the pointer is nil
 func ptrToString(s *string) string {

@@ -63,12 +63,14 @@ type Transaction struct {
 }
 
 type TransactionFilter struct {
-	AccountID  *uuid.UUID
-	PayeeID    *uuid.UUID
-	CategoryID *uuid.UUID
-	StartDate  *string
-	EndDate    *string
-	Note       *string
+	AccountIDs   []uuid.UUID
+	StartDate    *string
+	EndDate      *string
+	Note         *string
+	SortOrder    string
+	Limit        uint64
+	GroupBy      *string
+	CursorString string
 }
 
 // Helper method to help log the transaction object
