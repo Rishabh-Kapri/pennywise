@@ -14,6 +14,7 @@ type CipherPredictionRepository interface {
 	BaseRepositoryInterface
 	Create(ctx context.Context, tx pgx.Tx, p model.CipherPredictionRecord) (*model.CipherPredictionRecord, error)
 	GetByTransactionID(ctx context.Context, budgetID uuid.UUID, txnID uuid.UUID) (*model.CipherPredictionRecord, error)
+	MarkUserCorrected(ctx context.Context, tx pgx.Tx, budgetID uuid.UUID, txnID uuid.UUID, actualPayeeID *uuid.UUID, actualCategoryID *uuid.UUID) error
 }
 
 type cipherPredictionRepo struct {
@@ -157,4 +158,34 @@ func (r *cipherPredictionRepo) GetByTransactionID(
 		return nil, err
 	}
 	return &p, nil
+}
+
+func (r *cipherPredictionRepo) MarkUserCorrected(
+	ctx context.Context,
+	tx pgx.Tx,
+	budgetID uuid.UUID,
+	txnID uuid.UUID,
+	actualPayeeID *uuid.UUID,
+	actualCategoryID *uuid.UUID,
+) error {
+	cmdTag, err := r.Executor(tx).Exec(
+		ctx,
+		`UPDATE cipher_predictions
+		 SET has_user_corrected = TRUE,
+		     actual_payee_id = $1,
+		     actual_category_id = $2,
+		     updated_at = NOW()
+		 WHERE budget_id = $3 AND transaction_id = $4 AND deleted = FALSE`,
+		actualPayeeID,
+		actualCategoryID,
+		budgetID,
+		txnID,
+	)
+	if err != nil {
+		return err
+	}
+	if cmdTag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
 }
