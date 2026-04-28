@@ -660,7 +660,7 @@ func (s *transactionService) UpdateStatus(ctx context.Context, id uuid.UUID, sta
 		return errs.New(errs.CodeInvalidArgument, "raw bank text is required to approve transaction")
 	}
 	if cipherPrediction.ExtractedPayee == nil || strings.TrimSpace(*cipherPrediction.ExtractedPayee) == "" {
-		return errs.New(errs.CodeInvalidArgument, "extracted merchant is required to create payee rule")
+		return errs.New(errs.CodeInvalidArgument, "extracted payee is required to create payee rule")
 	}
 	if s.cipherClient == nil {
 		return errs.New(errs.CodeInternalError, "cipher client is not configured")
@@ -672,20 +672,31 @@ func (s *transactionService) UpdateStatus(ctx context.Context, id uuid.UUID, sta
 		return errs.New(errs.CodeInternalError, "transaction embedding repository is not configured")
 	}
 
-	generatedEmbedding, err := s.cipherClient.GenerateTransactionEmbedding(txCtx, TransactionEmbeddingRequest{
-		RawBankText: *foundTxn.RawBankText,
-		Amount:      foundTxn.Amount,
-	})
-	if err != nil {
-		return errs.Wrap(errs.CodeInternalError, "error generating transaction embedding", err)
-	}
-	if generatedEmbedding == nil || strings.TrimSpace(generatedEmbedding.Embedding) == "" {
-		return errs.New(errs.CodeInternalError, "cipher returned empty transaction embedding")
+	if err := withTx(txCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
+		return s.repo.UpdateStatus(txCtx, tx, budgetId, id, status)
+	}); err != nil {
+		return errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating transaction status", err)
 	}
 
-	return withTx(txCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
-		if err = s.repo.UpdateStatus(txCtx, tx, budgetId, id, status); err != nil {
-			return errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating transaction status", err)
+	go func() {
+		bgCtx := utils.WithRequestMetadata(context.Background(), utils.RequestMetadataFromContext(ctx))
+		bgCtx = utils.WithInternalAuthToken(bgCtx, utils.InternalAuthTokenFromContext(ctx))
+		bgCtx, cancel := context.WithTimeout(bgCtx, 30*time.Second)
+		defer cancel()
+
+		generatedEmbedding, err := s.cipherClient.GenerateTransactionEmbedding(bgCtx, TransactionEmbeddingRequest{
+			RawBankText: *foundTxn.RawBankText,
+			Amount:      foundTxn.Amount,
+		})
+		if err != nil {
+			err := errs.Wrap(errs.CodeInternalError, "error generating transaction embedding", err)
+			logger.Logger(bgCtx).Error("error generating transaction embedding", "error", err)
+			return
+		}
+		if generatedEmbedding == nil || strings.TrimSpace(generatedEmbedding.Embedding) == "" {
+			err := errs.New(errs.CodeInternalError, "cipher returned empty transaction embedding")
+			logger.Logger(bgCtx).Error("cipher returned empty transaction embedding", "error", err)
+			return
 		}
 
 		payeeRule := model.PayeeRule{
@@ -694,20 +705,29 @@ func (s *transactionService) UpdateStatus(ctx context.Context, id uuid.UUID, sta
 			CategoryID:  *foundTxn.CategoryID,
 			MatchString: generatedEmbedding.MatchString,
 		}
-		if err = s.payeeRuleRepo.CreatePayeeRule(txCtx, tx, payeeRule); err != nil {
-			return errs.Wrap(errs.CodeInternalError, "error creating payee rule", err)
-		}
+		err = withTx(bgCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
+			if err = s.payeeRuleRepo.CreatePayeeRule(bgCtx, tx, payeeRule); err != nil {
+				err := errs.Wrap(errs.CodeInternalError, "error creating payee rule", err)
+				logger.Logger(bgCtx).Error("error creating payee rule", "error", err)
+				return err
+			}
 
-		embedding := model.TransactionEmbedding{
-			BudgetID:      budgetId,
-			PayeeID:       *foundTxn.PayeeID,
-			CategoryID:    *foundTxn.CategoryID,
-			Amount:        foundTxn.Amount,
-			Source:        "AUTO_LEARNED",
-			EmbeddingText: generatedEmbedding.EmbeddingText,
+			embedding := model.TransactionEmbedding{
+				BudgetID:      budgetId,
+				PayeeID:       *foundTxn.PayeeID,
+				CategoryID:    *foundTxn.CategoryID,
+				Amount:        foundTxn.Amount,
+				Source:        "AUTO_LEARNED",
+				EmbeddingText: generatedEmbedding.EmbeddingText,
+			}
+			return s.txnEmbeddingRepo.Upsert(bgCtx, tx, embedding, generatedEmbedding.Embedding)
+		})
+		if err != nil {
+			logger.Logger(bgCtx).Error("error upserting transaction embedding", "error", err)
 		}
-		return s.txnEmbeddingRepo.Upsert(txCtx, tx, embedding, generatedEmbedding.Embedding)
-	})
+	}()
+
+	return nil
 }
 
 func (s *transactionService) DeleteById(ctx context.Context, id uuid.UUID) error {
