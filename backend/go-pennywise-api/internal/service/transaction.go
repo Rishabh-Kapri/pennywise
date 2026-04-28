@@ -704,6 +704,7 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 			return err
 		}
 
+		toUpdate.Status = model.TransactionStatusApproved
 		if err = s.repo.Update(txCtx, tx, budgetId, id, toUpdate); err != nil {
 			return errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating transaction", err)
 		}
