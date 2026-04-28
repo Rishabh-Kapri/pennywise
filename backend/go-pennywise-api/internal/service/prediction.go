@@ -8,6 +8,7 @@ import (
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 type PredictionService interface {
@@ -16,6 +17,7 @@ type PredictionService interface {
 	Update(ctx context.Context, id uuid.UUID, prediction model.Prediction) error
 	DeleteById(ctx context.Context, id uuid.UUID) error
 	CreateCipherPrediction(ctx context.Context, p model.CipherPredictionRecord) (*model.CipherPredictionRecord, error)
+	CreateCipherPredictionWithTx(ctx context.Context, tx pgx.Tx, p model.CipherPredictionRecord) (*model.CipherPredictionRecord, error)
 }
 
 type predictionService struct {
@@ -46,13 +48,18 @@ func (s *predictionService) Update(ctx context.Context, id uuid.UUID, prediction
 }
 
 func (s *predictionService) DeleteById(ctx context.Context, id uuid.UUID) error {
-	// budgetId := utils.MustBudgetID(ctx)
-	// return s.repo.Delete(ctx, budgetId, id)
-	return nil
+	budgetId := utils.MustBudgetID(ctx)
+	return s.repo.DeleteByTxnId(ctx, nil, budgetId, id)
 }
 
 func (s *predictionService) CreateCipherPrediction(ctx context.Context, p model.CipherPredictionRecord) (*model.CipherPredictionRecord, error) {
+	budgetId := utils.MustBudgetID(ctx)
+	p.BudgetID = budgetId
+	return s.CreateCipherPredictionWithTx(ctx, nil, p)
+}
+
+func (s *predictionService) CreateCipherPredictionWithTx(ctx context.Context, tx pgx.Tx, p model.CipherPredictionRecord) (*model.CipherPredictionRecord, error) {
 	budgetID := utils.MustBudgetID(ctx)
 	p.BudgetID = budgetID
-	return s.cipherRepo.Create(ctx, p)
+	return s.cipherRepo.Create(ctx, tx, p)
 }

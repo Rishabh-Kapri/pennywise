@@ -22,6 +22,7 @@ type TransactionService interface {
 	// GetById(ctx context.Context, id uuid.UUID) (*model.Transaction, error)
 	Update(ctx context.Context, id uuid.UUID, txn model.Transaction) error
 	Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error)
+	CreateWithTx(ctx context.Context, tx pgx.Tx, txn model.Transaction) ([]model.Transaction, error)
 	DeleteById(ctx context.Context, id uuid.UUID) error
 }
 
@@ -444,6 +445,23 @@ func (s *transactionService) Create(ctx context.Context, txn model.Transaction) 
 	txCtx, txCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer txCancel()
 
+	var createdTxn []model.Transaction
+	err := withTx(txCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
+		var err error
+		createdTxn, err = s.CreateWithTx(txCtx, tx, txn)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return createdTxn, nil
+}
+
+func (s *transactionService) CreateWithTx(ctx context.Context, tx pgx.Tx, txn model.Transaction) ([]model.Transaction, error) {
+	if tx == nil {
+		return s.Create(ctx, txn)
+	}
+
 	budgetID := utils.MustBudgetID(ctx)
 	txn.BudgetID = budgetID
 
@@ -452,61 +470,53 @@ func (s *transactionService) Create(ctx context.Context, txn model.Transaction) 
 	}
 
 	var createdTxn []model.Transaction
-	err := withTx(txCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
-		var err error
-
-		budget, account, payee, err := s.loadDependencies(txCtx, tx, budgetID, txn)
-		if err != nil {
-			return err
-		}
-
-		if err = s.validateCategory(
-			txn.CategoryID,
-			budget.Metadata.InflowCategoryID,
-			*account,
-			*payee,
-			txn.Amount,
-		); err != nil {
-			return err
-		}
-
-		// clear transfer fields in case they are set
-		txn.TransferAccountID = nil
-		txn.TransferTransactionID = nil
-
-		createdTxn, err = s.repo.Create(txCtx, tx, txn)
-		if err != nil {
-			return errs.Wrap(errs.CodeTransactionCreateFailed, "failed to create transaction", err)
-		}
-		if len(createdTxn) == 0 {
-			return errs.New(errs.CodeTransactionNotCreated, "no transaction was created")
-		}
-
-		txn.ID = createdTxn[0].ID
-
-		if err = s.applySideEffects(txCtx, tx, sideEffectInput{
-			budgetId: budgetID,
-			oldTxn:   nil,
-			newTxn:   &txn,
-			budget:   budget,
-			account:  account,
-			payee:    payee,
-		}); err != nil {
-			return err
-		}
-
-		// Reload to pick up any mutations from side effects (e.g., transfer linking)
-		final, err := s.repo.GetByIdTx(txCtx, tx, budgetID, txn.ID)
-		if err != nil {
-			return errs.Wrap(errs.CodeTransactionLookupFailed, "error reloading created transaction", err)
-		}
-		createdTxn[0] = *final
-
-		return nil
-	})
+	budget, account, payee, err := s.loadDependencies(ctx, tx, budgetID, txn)
 	if err != nil {
 		return nil, err
 	}
+
+	if err = s.validateCategory(
+		txn.CategoryID,
+		budget.Metadata.InflowCategoryID,
+		*account,
+		*payee,
+		txn.Amount,
+	); err != nil {
+		return nil, err
+	}
+
+	// clear transfer fields in case they are set
+	txn.TransferAccountID = nil
+	txn.TransferTransactionID = nil
+
+	createdTxn, err = s.repo.Create(ctx, tx, txn)
+	if err != nil {
+		return nil, errs.Wrap(errs.CodeTransactionCreateFailed, "failed to create transaction", err)
+	}
+	if len(createdTxn) == 0 {
+		return nil, errs.New(errs.CodeTransactionNotCreated, "no transaction was created")
+	}
+
+	txn.ID = createdTxn[0].ID
+
+	if err = s.applySideEffects(ctx, tx, sideEffectInput{
+		budgetId: budgetID,
+		oldTxn:   nil,
+		newTxn:   &txn,
+		budget:   budget,
+		account:  account,
+		payee:    payee,
+	}); err != nil {
+		return nil, err
+	}
+
+	// Reload to pick up any mutations from side effects (e.g., transfer linking)
+	final, err := s.repo.GetByIdTx(ctx, tx, budgetID, txn.ID)
+	if err != nil {
+		return nil, errs.Wrap(errs.CodeTransactionLookupFailed, "error reloading created transaction", err)
+	}
+	createdTxn[0] = *final
+
 	return createdTxn, nil
 }
 

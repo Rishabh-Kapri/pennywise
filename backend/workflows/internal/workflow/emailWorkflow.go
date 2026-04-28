@@ -145,7 +145,7 @@ func processParsedEmails(
 	}
 	workflow.GetLogger(ctx).Info("prediction result", append(workflowLogFields, "result", predictionResult)...)
 
-	// ----- Step 3: Create transactions -----
+	// ----- Step 3: Create transactions and cipher predictions atomically -----
 	pennywiseCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 		TaskQueue:           sharedModel.PennywiseActivitiesTaskQueue,
 		StartToCloseTimeout: 30 * time.Second,
@@ -161,23 +161,13 @@ func processParsedEmails(
 	}
 
 	var createdTransactions []sharedModel.Transaction
-	err := workflow.ExecuteActivity(pennywiseCtx, "CreateTransaction", txnInput).Get(pennywiseCtx, &createdTransactions)
+	err := workflow.ExecuteActivity(pennywiseCtx, "CreateTransactionAndCipherPrediction", txnInput).
+		Get(pennywiseCtx, &createdTransactions)
 	if err != nil {
 		return err
 	}
-
-	// ----- Step 4: Create cipher predictions -----
-	if len(createdTransactions) > 0 {
-		predInput := sharedModel.CreateCipherPredictionInput{
-			Transactions: createdTransactions,
-			Predictions:  predictionResult,
-			BudgetID:     input.BudgetID,
-		}
-		err = workflow.ExecuteActivity(pennywiseCtx, "CreateCipherPrediction", predInput).Get(pennywiseCtx, nil)
-		if err != nil {
-			return err
-		}
-	}
+	workflow.GetLogger(ctx).Info("created transactions and cipher predictions",
+		append(workflowLogFields, "count", len(createdTransactions))...)
 
 	return nil
 }
