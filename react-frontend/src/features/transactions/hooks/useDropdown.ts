@@ -1,10 +1,6 @@
 import { useEffect, useState } from 'react';
 
-export function useDropdown<T>(
-  value: string,
-  allItems: T[],
-  filterFn: (items: T[], query: string) => T[],
-) {
+export function useDropdown<T>(value: string, allItems: T[], filterFn: (items: T[], query: string) => T[]) {
   const [isOpen, setIsOpen] = useState(false);
   const [filterQuery, setFilterQuery] = useState(value);
   const [filteredItems, setFilteredItems] = useState(allItems);
@@ -12,7 +8,8 @@ export function useDropdown<T>(
   // sync with value
   useEffect(() => {
     setFilterQuery(value);
-  }, [value]);
+    setFilteredItems(filterFn(allItems, value.trim().toLowerCase()));
+  }, [allItems, value]);
 
   const filterValues = (value: string) => {
     setFilterQuery(value);
