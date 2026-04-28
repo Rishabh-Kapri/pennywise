@@ -68,13 +68,13 @@ func (m *mockTransactionRepo) GetAll(
 func (m *mockTransactionRepo) GetAllNormalized(
 	ctx context.Context,
 	budgetId uuid.UUID,
-	accountId *uuid.UUID,
-) ([]model.Transaction, error) {
-	args := m.Called(ctx, budgetId, accountId)
+	filter *model.TransactionFilter,
+) (model.PaginatedResponse[model.Transaction], error) {
+	args := m.Called(ctx, budgetId, filter)
 	if obj := args.Get(0); obj != nil {
-		return obj.([]model.Transaction), args.Error(1)
+		return obj.(model.PaginatedResponse[model.Transaction]), args.Error(1)
 	}
-	return nil, args.Error(1)
+	return model.PaginatedResponse[model.Transaction]{}, args.Error(1)
 }
 
 // GetById implements repository.TransactionRepository.

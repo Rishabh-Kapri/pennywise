@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
@@ -47,17 +48,46 @@ func (h *transactionHandler) ListNormalized(c *gin.Context) {
 	ctx := c.Request.Context()
 	accountIdParam := strings.TrimSpace(c.Query("accountId"))
 
-	logger.Logger(ctx).Info("listing normalized transactions", "accountIdParam", accountIdParam)
-	var accountId *uuid.UUID
-	if accountIdParam != "" {
-		parsedId, err := uuid.Parse(accountIdParam)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing accountId"})
-			return
-		}
-		accountId = &parsedId
+	limit := c.DefaultQuery("limit", "30")
+	limitInt, err := strconv.ParseUint(limit, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing limit"})
+		return
 	}
-	transactions, err := h.service.GetAllNormalized(ctx, accountId)
+	groupBy := c.DefaultQuery("groupBy", "month")
+	sortOrder := c.DefaultQuery("sortOrder", "DESC")
+	accountIds := c.QueryArray("accountId[]")
+	cursor := c.Query("cursor")
+	if len(accountIds) == 0 && accountIdParam != "" {
+		accountIds = strings.Split(accountIdParam, ",")
+	}
+
+	logger.Logger(ctx).Info("listing normalized transactions", "accountIdParam", accountIdParam)
+	var accountIdsFilter []uuid.UUID
+	if len(accountIds) > 0 {
+		for _, id := range accountIds {
+			id = strings.TrimSpace(id)
+			if id == "" {
+				continue
+			}
+			parsedId, err := uuid.Parse(id)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing accountId"})
+				return
+			}
+			accountIdsFilter = append(accountIdsFilter, parsedId)
+		}
+	}
+
+	txnFilter := model.TransactionFilter{
+		AccountIDs:   accountIdsFilter,
+		Limit:        limitInt,
+		GroupBy:      &groupBy,
+		SortOrder:    sortOrder,
+		CursorString: cursor,
+	}
+
+	transactions, err := h.service.GetAllNormalized(ctx, &txnFilter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

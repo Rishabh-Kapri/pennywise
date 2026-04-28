@@ -63,8 +63,8 @@ func (f *fakeTransactionService) GetAll(context.Context) ([]model.Transaction, e
 	return nil, nil
 }
 
-func (f *fakeTransactionService) GetAllNormalized(context.Context, *uuid.UUID) ([]model.Transaction, error) {
-	return nil, nil
+func (f *fakeTransactionService) GetAllNormalized(context.Context, *model.TransactionFilter) (model.PaginatedResponse[model.Transaction], error) {
+	return model.PaginatedResponse[model.Transaction]{}, nil
 }
 
 func (f *fakeTransactionService) Update(context.Context, uuid.UUID, model.Transaction) error {

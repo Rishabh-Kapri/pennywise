@@ -18,7 +18,7 @@ var withTx = utils.WithTx
 
 type TransactionService interface {
 	GetAll(ctx context.Context) ([]model.Transaction, error)
-	GetAllNormalized(ctx context.Context, accountId *uuid.UUID) ([]model.Transaction, error)
+	GetAllNormalized(ctx context.Context, filter *model.TransactionFilter) (model.PaginatedResponse[model.Transaction], error)
 	// GetById(ctx context.Context, id uuid.UUID) (*model.Transaction, error)
 	Update(ctx context.Context, id uuid.UUID, txn model.Transaction) error
 	Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error)
@@ -436,9 +436,9 @@ func (s *transactionService) GetAll(ctx context.Context) ([]model.Transaction, e
 	return s.repo.GetAll(ctx, budgetId, nil)
 }
 
-func (s *transactionService) GetAllNormalized(ctx context.Context, accountId *uuid.UUID) ([]model.Transaction, error) {
+func (s *transactionService) GetAllNormalized(ctx context.Context, filter *model.TransactionFilter) (model.PaginatedResponse[model.Transaction], error) {
 	budgetId := utils.MustBudgetID(ctx)
-	return s.repo.GetAllNormalized(ctx, budgetId, accountId)
+	return s.repo.GetAllNormalized(ctx, budgetId, filter)
 }
 
 func (s *transactionService) Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error) {
