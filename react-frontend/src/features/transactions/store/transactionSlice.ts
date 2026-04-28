@@ -5,9 +5,23 @@ import { type PaginationResponse } from '@/utils/common.constants';
 
 const initialState: TransactionState = {
   transactions: [],
+  optimisticTransactions: {},
   loading: LoadingState.IDLE,
   error: null,
 };
+
+type UpdateTransactionArgs = {
+  payload: TransactionDTO;
+  optimisticTransaction: Transaction;
+};
+
+function applyOptimisticTransaction(transaction: Transaction, optimisticTransaction: Transaction) {
+  const status = optimisticTransaction.status ?? transaction.status;
+  Object.assign(transaction, optimisticTransaction, {
+    status,
+    tagIds: [...optimisticTransaction.tagIds],
+  });
+}
 
 export const fetchAllTransaction = createAsyncThunk<PaginationResponse<Transaction[]>, string>(
   'transactions/fetchAllTransactions',
@@ -38,10 +52,10 @@ export const createTransaction = createAsyncThunk<
 
 export const updateTransaction = createAsyncThunk<
   TransactionDTO,
-  TransactionDTO
->('transactions/updateTransaction', async (transaction: TransactionDTO) => {
-  const url = `transactions/${transaction.id}`;
-  return await apiClient.patch(url, transaction);
+  UpdateTransactionArgs
+>('transactions/updateTransaction', async ({ payload }: UpdateTransactionArgs) => {
+  const url = `transactions/${payload.id}`;
+  return await apiClient.patch(url, payload);
 });
 
 export const updateTransactionStatus = createAsyncThunk<
@@ -92,17 +106,34 @@ const transactionSlice = createSlice({
         state.loading = LoadingState.ERROR;
         state.error = action.error.message ?? 'Failed to create transaction';
       })
-      .addCase(updateTransaction.pending, (state) => {
+      .addCase(updateTransaction.pending, (state, action) => {
         state.loading = LoadingState.PENDING;
         state.error = null;
+        const id = action.meta.arg.payload.id;
+        if (!id) return;
+        const transaction = state.transactions.find((txn) => txn.id === id);
+        if (!transaction) return;
+        state.optimisticTransactions[id] = { ...transaction, tagIds: [...transaction.tagIds] };
+        applyOptimisticTransaction(transaction, action.meta.arg.optimisticTransaction);
       })
-      .addCase(updateTransaction.fulfilled, (state) => {
+      .addCase(updateTransaction.fulfilled, (state, action) => {
         state.loading = LoadingState.SUCCESS;
         state.error = null;
+        if (action.meta.arg.payload.id) {
+          delete state.optimisticTransactions[action.meta.arg.payload.id];
+        }
       })
       .addCase(updateTransaction.rejected, (state, action) => {
         state.loading = LoadingState.ERROR;
         state.error = action.error.message ?? 'Failed to update transaction';
+        const id = action.meta.arg.payload.id;
+        if (!id) return;
+        const previous = state.optimisticTransactions[id];
+        const index = state.transactions.findIndex((txn) => txn.id === id);
+        if (previous && index !== -1) {
+          state.transactions[index] = previous;
+        }
+        delete state.optimisticTransactions[id];
       })
       .addCase(updateTransactionStatus.pending, (state) => {
         state.loading = LoadingState.PENDING;
