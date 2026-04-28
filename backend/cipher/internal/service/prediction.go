@@ -44,6 +44,17 @@ type PredictRequest struct {
 	Amount    float64 `json:"amount"`
 }
 
+type TransactionEmbeddingRequest struct {
+	RawBankText string  `json:"rawBankText"`
+	Amount      float64 `json:"amount"`
+}
+
+type TransactionEmbeddingResponse struct {
+	MatchString   string `json:"matchString"`
+	EmbeddingText string `json:"embeddingText"`
+	Embedding     string `json:"embedding"`
+}
+
 type LLMRequest struct {
 	Text   string  `json:"text"`
 	Amount float64 `json:"amount"`
@@ -74,6 +85,10 @@ type CorrectionRequest struct {
 
 type PredictionService interface {
 	Predict(ctx context.Context, req PredictRequest) (*PredictResponse, error)
+	GenerateTransactionEmbedding(
+		ctx context.Context,
+		req TransactionEmbeddingRequest,
+	) (*TransactionEmbeddingResponse, error)
 	HandleCorrection(ctx context.Context, req CorrectionRequest) error
 }
 
@@ -342,6 +357,55 @@ func (s *predictionService) Predict(ctx context.Context, req PredictRequest) (*P
 	}
 
 	return nil, nil
+}
+
+func (s *predictionService) GenerateTransactionEmbedding(
+	ctx context.Context,
+	req TransactionEmbeddingRequest,
+) (*TransactionEmbeddingResponse, error) {
+	utils.MustBudgetID(ctx)
+
+	if strings.TrimSpace(req.RawBankText) == "" {
+		return nil, errs.New(errs.CodeInvalidArgument, "rawBankText is required")
+	}
+
+	transactionType := "debit"
+	if req.Amount > 0 {
+		transactionType = "credit"
+	}
+
+	extracted, err := s.ollama.ExtractEmailData(ctx, req.RawBankText)
+	if err != nil {
+		return nil, errs.Wrap(errs.CodeInternalError, "extract transaction embedding text", err)
+	}
+	if extracted == nil {
+		return nil, errs.New(errs.CodeInternalError, "transaction embedding text extraction failed")
+	}
+
+	upiText, merchantName := utils.CleanUPIText(extracted.Merchant)
+	merchantName = utils.CleanMerchantString(merchantName)
+	if merchantName == "" {
+		return nil, errs.New(errs.CodeInvalidArgument, "merchant name could not be extracted")
+	}
+
+	var matchString string
+	if upiText != "" {
+		matchString = upiText
+	} else {
+		matchString = merchantName
+	}
+
+	embeddingText := transactionType + " " + merchantName
+	embedding, err := s.ollama.Embed(ctx, EmbeddingModel, embeddingText)
+	if err != nil {
+		return nil, errs.Wrap(errs.CodeInternalError, "generate transaction embedding", err)
+	}
+
+	return &TransactionEmbeddingResponse{
+		MatchString:   matchString,
+		EmbeddingText: embeddingText,
+		Embedding:     db.VectorToString(embedding),
+	}, nil
 }
 
 func (s *predictionService) HandleCorrection(ctx context.Context, req CorrectionRequest) error {

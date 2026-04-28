@@ -71,6 +71,10 @@ func (f *fakeTransactionService) Update(context.Context, uuid.UUID, model.Transa
 	return nil
 }
 
+func (f *fakeTransactionService) UpdateStatus(context.Context, uuid.UUID, model.TransactionStatus) error {
+	return nil
+}
+
 func (f *fakeTransactionService) Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error) {
 	return f.CreateWithTx(ctx, nil, txn)
 }
@@ -290,8 +294,8 @@ func TestCreateCipherPredictionCreatesRecords(t *testing.T) {
 				if record.ExtractedAccount == nil || *record.ExtractedAccount != "Checking" {
 					t.Fatalf("expected extracted account, got %v", record.ExtractedAccount)
 				}
-				if record.ExtractedMerchant == nil || *record.ExtractedMerchant != "Merchant" {
-					t.Fatalf("expected extracted merchant, got %v", record.ExtractedMerchant)
+				if record.ExtractedPayee == nil || *record.ExtractedPayee != "Merchant" {
+					t.Fatalf("expected extracted merchant, got %v", record.ExtractedPayee)
 				}
 				if record.PredictedPayeeID == nil || *record.PredictedPayeeID != payeeID {
 					t.Fatalf("expected payee id %s, got %v", payeeID, record.PredictedPayeeID)

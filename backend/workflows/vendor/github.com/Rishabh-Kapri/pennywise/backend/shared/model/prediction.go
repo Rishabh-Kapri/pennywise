@@ -50,7 +50,7 @@ type CipherPredictionRecord struct {
 	Metadata            json.RawMessage  `json:"metadata,omitempty"`
 	Amount              *float64         `json:"amount,omitempty"`
 	ExtractedAccount    *string          `json:"extractedAccount,omitempty"`
-	ExtractedMerchant   *string          `json:"extractedMerchant,omitempty"`
+	ExtractedPayee      *string          `json:"extractedPayee,omitempty"`
 	PredictedPayeeID    *uuid.UUID       `json:"predictedPayeeId,omitempty"`
 	PredictedCategoryID *uuid.UUID       `json:"predictedCategoryId,omitempty"`
 	AccountConfidence   *float64         `json:"accountConfidence,omitempty"`
