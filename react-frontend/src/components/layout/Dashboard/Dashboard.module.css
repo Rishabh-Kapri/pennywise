@@ -1,40 +1,484 @@
 .container {
-  padding: 1.5rem;
   height: 100%;
-  overflow-y: auto;
-  background: var(--color-background);
-}
-
-.greeting {
-  margin-bottom: 1.5rem;
-}
-
-.greetingTitle {
-  font-size: 1.75rem;
-  font-weight: 700;
+  padding: 1.25rem 1.5rem;
+  overflow: hidden;
   color: var(--color-text);
-  margin: 0 0 0.25rem 0;
+  background: transparent;
 }
 
-.greetingSubtitle {
-  font-size: 0.875rem;
+.pageHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1.25rem;
+}
+
+.eyebrow {
+  margin: 0 0 0.4rem;
   color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dateTitle {
   margin: 0;
+  color: var(--color-text);
+  font-size: 0.98rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-.statsSection {
-  margin-bottom: 1.5rem;
+.dashboardShell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 21rem;
+  gap: 1.25rem;
+  align-items: start;
+  height: calc(100% - 4.25rem);
+  min-height: 0;
 }
 
-.gridLayout {
+.mainColumn {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.contentGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(22rem, 0.85fr);
+  gap: 1.25rem;
+  height: 100%;
+  min-height: 0;
+}
+
+.card {
+  min-height: 0;
+  height: fit-content;
+  overflow: hidden;
+  background: var(--color-surface-secondary);
+  border: 0;
+  border-radius: 15px;
+  box-shadow: var(--shadow-md);
+}
+
+.accountsCard {
+  padding: 1.5rem;
+}
+
+.budgetCard {
+  display: flex;
+  flex-direction: column;
+  padding: 1.25rem;
+}
+
+.cardTitleRow,
+.railHeader,
+.transactionTopLine,
+.transactionBody,
+.budgetCategoryRow,
+.cashFlowRows > div,
+.accountPill {
+  display: flex;
+  align-items: center;
+}
+
+.cardTitleRow,
+.railHeader,
+.transactionTopLine,
+.transactionBody,
+.budgetCategoryRow,
+.cashFlowRows > div {
+  justify-content: space-between;
+}
+
+.cardTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  color: var(--color-text-secondary);
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.monthPill,
+.filterRow span {
+  border: 0;
+  border-radius: 8px;
+  background: var(--color-surface-tertiary);
+  color: var(--color-text-secondary);
+  font-size: 0.83rem;
+  font-weight: 700;
+}
+
+.monthPill {
+  padding: 0.45rem 0.8rem;
+}
+
+.accountsOverview {
+  display: flex;
+  flex-direction: column;
+  gap: 1.4rem;
+  height: calc(100% - 2.25rem);
+  min-height: 0;
+  padding-top: 1.5rem;
+}
+
+.accountMetricGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.accountMetric {
+  display: flex;
+  min-height: 5.7rem;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 1rem;
+  border-radius: 12px;
+  background: var(--color-surface);
+}
+
+.accountMetric span {
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.accountMetric strong {
+  color: var(--color-text);
+  font-size: clamp(1.25rem, 1.8vw, 1.75rem);
+  font-weight: 900;
+  letter-spacing: -0.04em;
+}
+
+.accountList {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.accountPill {
+  min-height: 2.9rem;
+  gap: 0.55rem;
+  padding: 0.65rem 0.8rem;
+  background: var(--color-surface);
+  border-radius: 8px;
+}
+
+.accountDot {
+  display: inline-flex;
+  width: 1.4rem;
+  height: 1.4rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: var(--color-text);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.accountName {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accountPill strong {
+  color: var(--color-text);
+  font-size: 0.8rem;
+}
+
+.cashFlowRows {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1.25rem;
+}
+
+.cashFlowRows strong {
+  color: var(--color-text);
+  font-size: clamp(1.6rem, 2.2vw, 2.1rem);
+  font-weight: 900;
+  letter-spacing: -0.04em;
+}
+
+.cashFlowRows span {
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.budgetSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem;
+  margin-top: 1.25rem;
+}
+
+.budgetSummaryGrid > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.85rem;
+  border-radius: 10px;
+  background: var(--color-surface);
+}
+
+.budgetSummaryGrid span,
+.panelHeading {
+  color: var(--color-text-secondary);
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.budgetSummaryGrid strong {
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: 1.05rem;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.budgetCategoryPanel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin-top: 1rem;
+  overflow-y: auto;
+  padding-right: 0.2rem;
+}
+
+.panelHeading {
+  margin-top: 0.35rem;
+}
+
+.budgetCategoryRow {
+  gap: 0.8rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 9px;
+  background: var(--color-surface);
+}
+
+.budgetCategoryRow > div {
+  min-width: 0;
+}
+
+.budgetCategoryRow span,
+.budgetCategoryRow small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.budgetCategoryRow span {
+  color: var(--color-text);
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
+.budgetCategoryRow small {
+  color: var(--color-text-secondary);
+  font-size: 0.74rem;
+}
+
+.budgetCategoryRow strong {
+  flex: 0 0 auto;
+  color: var(--color-text);
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+
+.overspentRow {
+  background: color-mix(in srgb, var(--color-error) 18%, var(--color-surface-secondary));
+}
+
+.overspentRow strong {
+  color: var(--color-error);
+}
+
+.dividerRow {
+  margin-top: 0.6rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--color-border-muted);
+}
+
+.cardFootnote {
+  margin: 1rem -1.25rem -1.25rem;
+  padding: 1rem 1.25rem;
+  border-top: 1px solid var(--color-border-muted);
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.recentRail {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-surface-secondary);
+  border-radius: 0.7rem;
+  padding: 1rem;
+}
+
+.railHeader {
+  margin-bottom: 0.85rem;
+}
+
+.railHeader h2 {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.railHeader a {
+  color: var(--color-primary-light);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.filterRow {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 1.5rem;
+  gap: 0.5rem;
   margin-bottom: 1.5rem;
 }
 
-.fullWidth {
-  grid-column: 1 / -1;
+.filterRow span {
+  min-width: 0;
+  padding: 0.55rem 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recentList {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 0.65rem;
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.transactionCard {
+  overflow: hidden;
+  border: 0;
+  border-radius: 0.6rem;
+  background: var(--color-surface);
+}
+
+.transactionTopLine {
+  gap: 1rem;
+  padding: 0.65rem 0.75rem 0.6rem;
+  border-bottom: 1px solid var(--color-border-muted);
+  color: var(--color-text-secondary);
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.transactionTopLine span,
+.transactionTopLine time {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transactionTopLine span {
+  min-width: 0;
+  flex: 1;
+}
+
+.transactionTopLine time {
+  flex: 0 0 auto;
+}
+
+.transactionBody {
+  display: grid;
+  grid-template-columns: minmax(5.5rem, auto) minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.65rem 0.75rem 0.75rem;
+}
+
+.transactionBody strong {
+  min-width: 0;
+  color: var(--color-text);
+  font-size: clamp(1.05rem, 2.8vw, 1.35rem);
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+}
+
+.categoryBadge {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  justify-self: end;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.28rem 0.5rem;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  background: var(--color-surface-tertiary);
+  color: var(--color-text);
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.categoryBadge svg {
+  flex: 0 0 auto;
+}
+
+.categoryBadge span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.emptyInline {
+  padding: 1rem;
+  color: var(--color-text-secondary);
+  font-weight: 700;
 }
 
 .loadingContainer {
@@ -44,11 +488,14 @@
   padding: 2rem;
 }
 
+.gridLayout {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+}
+
 .skeleton {
-  background: linear-gradient(90deg,
-      var(--skeleton-base) 0%,
-      var(--skeleton-highlight) 50%,
-      var(--skeleton-base) 100%);
+  background: linear-gradient(90deg, var(--skeleton-base) 0%, var(--skeleton-highlight) 50%, var(--skeleton-base) 100%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
   border-radius: 16px;
@@ -72,10 +519,18 @@
   }
 }
 
-/* Responsive adjustments */
-@media (max-width: 1024px) {
-  .gridLayout {
+@media (max-width: 1280px) {
+  .dashboardShell,
+  .contentGrid {
     grid-template-columns: 1fr;
+  }
+
+  .dashboardShell {
+    overflow-y: auto;
+  }
+
+  .recentRail {
+    min-height: 30rem;
   }
 }
 
@@ -84,11 +539,19 @@
     padding: 1rem;
   }
 
-  .greetingTitle {
-    font-size: 1.5rem;
+  .accountsCard,
+  .budgetCard {
+    padding: 1rem;
   }
 
-  .gridLayout {
-    gap: 1rem;
+  .accountMetricGrid,
+  .accountList,
+  .budgetSummaryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .cardTitleRow {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
