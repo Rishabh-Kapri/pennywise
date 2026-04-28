@@ -66,6 +66,7 @@ func (a *PredictionActivity) Predict(
 			Confidence:      prediction.Confidence,
 			Source:          prediction.Source,
 			Reasoning:       prediction.Reasoning,
+			Metadata:        prediction.Metadata,
 		})
 	}
 

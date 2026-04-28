@@ -33,6 +33,8 @@ func (r *cipherPredictionRepo) Create(ctx context.Context, p model.CipherPredict
 			budget_id,
 			transaction_id,
 			email_text,
+			llm_reasoning,
+			metadata,
 			amount,
 			extracted_account,
 			extracted_payee,
@@ -47,9 +49,9 @@ func (r *cipherPredictionRepo) Create(ctx context.Context, p model.CipherPredict
 			actual_category_id,
 			created_at,
 			updated_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
 		RETURNING
-			id, budget_id, transaction_id, email_text, amount,
+			id, budget_id, transaction_id, email_text, llm_reasoning, metadata, amount,
 			extracted_account, extracted_payee,
 			predicted_payee_id, predicted_category_id,
 			account_confidence, payee_confidence, category_confidence,
@@ -59,6 +61,8 @@ func (r *cipherPredictionRepo) Create(ctx context.Context, p model.CipherPredict
 		p.BudgetID,
 		p.TransactionID,
 		p.EmailText,
+		p.LLMReasoning,
+		p.Metadata,
 		p.Amount,
 		p.ExtractedAccount,
 		p.ExtractedMerchant,
@@ -78,6 +82,8 @@ func (r *cipherPredictionRepo) Create(ctx context.Context, p model.CipherPredict
 		&created.BudgetID,
 		&created.TransactionID,
 		&created.EmailText,
+		&created.LLMReasoning,
+		&created.Metadata,
 		&created.Amount,
 		&created.ExtractedAccount,
 		&created.ExtractedMerchant,
@@ -105,7 +111,7 @@ func (r *cipherPredictionRepo) GetByTransactionID(ctx context.Context, budgetID 
 	err := r.Executor(nil).QueryRow(
 		ctx,
 		`SELECT
-			id, budget_id, transaction_id, email_text, amount,
+			id, budget_id, transaction_id, email_text, llm_reasoning, metadata, amount,
 			extracted_account, extracted_payee,
 			predicted_payee_id, predicted_category_id,
 			account_confidence, payee_confidence, category_confidence,
@@ -120,6 +126,8 @@ func (r *cipherPredictionRepo) GetByTransactionID(ctx context.Context, budgetID 
 		&p.BudgetID,
 		&p.TransactionID,
 		&p.EmailText,
+		&p.LLMReasoning,
+		&p.Metadata,
 		&p.Amount,
 		&p.ExtractedAccount,
 		&p.ExtractedMerchant,
