@@ -13,6 +13,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
+	"github.com/jackc/pgx/v5"
 	"go.temporal.io/sdk/activity"
 )
 
@@ -51,73 +52,107 @@ func (a *CreateCipherPredictionActivity) CreateCipherPrediction(
 	ctx = utils.WithBudgetID(ctx, input.BudgetID)
 
 	for i, txn := range input.Transactions {
-		pred := input.Predictions[i]
-		emailText := pred.OriginalRawText
-		if emailText == "" && txn.RawBankText != nil {
-			emailText = *txn.RawBankText
-		}
-		var emailTextPtr *string
-		if emailText != "" {
-			emailTextPtr = &emailText
-		}
-		var reasoning *string
-		if pred.Reasoning != "" {
-			reasoning = &pred.Reasoning
-		}
-		var metadata json.RawMessage
-		if len(pred.Metadata) > 0 {
-			data, err := json.Marshal(pred.Metadata)
-			if err != nil {
-				return errs.Wrap(errs.CodeInvalidArgument, "invalid prediction metadata", err)
-			}
-			metadata = data
+		record, err := buildCipherPredictionRecord(input.BudgetID, txn, input.Predictions[i])
+		if err != nil {
+			return err
 		}
 
-		var confidence *float64
-		if pred.Confidence != "" {
-			parsed, err := strconv.ParseFloat(strings.TrimSuffix(pred.Confidence, "%"), 64)
-			if err != nil {
-				return errs.Wrap(errs.CodeInvalidArgument, "invalid prediction confidence", err)
-			}
-			confidence = &parsed
-		}
-		var predictedPayeeID *uuid.UUID
-		if txn.PayeeID != nil && *txn.PayeeID != uuid.Nil {
-			predictedPayeeID = txn.PayeeID
-		} else if pred.PayeeID != uuid.Nil {
-			predictedPayeeID = &pred.PayeeID
-		}
-		var predictedCategoryID *uuid.UUID
-		if txn.CategoryID != nil && *txn.CategoryID != uuid.Nil {
-			predictedCategoryID = txn.CategoryID
-		} else if pred.CategoryID != uuid.Nil {
-			predictedCategoryID = &pred.CategoryID
-		}
-		accountConfidence := 100.0
-
-		record := sharedModel.CipherPredictionRecord{
-			BudgetID:            input.BudgetID,
-			TransactionID:       txn.ID,
-			EmailText:           emailTextPtr,
-			LLMReasoning:        reasoning,
-			Metadata:            metadata,
-			ExtractedAccount:    &pred.Account,
-			ExtractedMerchant:   &pred.Payee,
-			PredictedPayeeID:    predictedPayeeID,
-			PredictedCategoryID: predictedCategoryID,
-			AccountConfidence:   &accountConfidence,
-			PayeeConfidence:     confidence,
-			CategoryConfidence:  confidence,
-			Amount:              &pred.Amount,
-			Source:              pred.Source,
-		}
-
-		log.Info("creating cipher prediction", "transactionId", txn.ID, "source", pred.Source)
-		_, err := a.PredictionService.CreateCipherPrediction(ctx, record)
+		log.Info("creating cipher prediction", "transactionId", txn.ID, "source", input.Predictions[i].Source)
+		_, err = a.PredictionService.CreateCipherPrediction(ctx, record)
 		if err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func createCipherPredictionWithTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	service service.PredictionService,
+	budgetID uuid.UUID,
+	txn sharedModel.Transaction,
+	pred sharedModel.CipherPredictionResult,
+) error {
+	record, err := buildCipherPredictionRecord(budgetID, txn, pred)
+	if err != nil {
+		return err
+	}
+	_, err = service.CreateCipherPredictionWithTx(ctx, tx, record)
+	return err
+}
+
+func buildCipherPredictionRecord(
+	budgetID uuid.UUID,
+	txn sharedModel.Transaction,
+	pred sharedModel.CipherPredictionResult,
+) (sharedModel.CipherPredictionRecord, error) {
+	emailText := pred.OriginalRawText
+	if emailText == "" && txn.RawBankText != nil {
+		emailText = *txn.RawBankText
+	}
+	var emailTextPtr *string
+	if emailText != "" {
+		emailTextPtr = &emailText
+	}
+	var reasoning *string
+	if pred.Reasoning != "" {
+		reasoning = &pred.Reasoning
+	}
+	var metadata json.RawMessage
+	if len(pred.Metadata) > 0 {
+		data, err := json.Marshal(pred.Metadata)
+		if err != nil {
+			return sharedModel.CipherPredictionRecord{}, errs.Wrap(
+				errs.CodeInvalidArgument,
+				"invalid prediction metadata",
+				err,
+			)
+		}
+		metadata = data
+	}
+
+	var confidence *float64
+	if pred.Confidence != "" {
+		parsed, err := strconv.ParseFloat(strings.TrimSuffix(pred.Confidence, "%"), 64)
+		if err != nil {
+			return sharedModel.CipherPredictionRecord{}, errs.Wrap(
+				errs.CodeInvalidArgument,
+				"invalid prediction confidence",
+				err,
+			)
+		}
+		confidence = &parsed
+	}
+	var predictedPayeeID *uuid.UUID
+	if txn.PayeeID != nil && *txn.PayeeID != uuid.Nil {
+		predictedPayeeID = txn.PayeeID
+	} else if pred.PayeeID != uuid.Nil {
+		predictedPayeeID = &pred.PayeeID
+	}
+	var predictedCategoryID *uuid.UUID
+	if txn.CategoryID != nil && *txn.CategoryID != uuid.Nil {
+		predictedCategoryID = txn.CategoryID
+	} else if pred.CategoryID != uuid.Nil {
+		predictedCategoryID = &pred.CategoryID
+	}
+	accountConfidence := 100.0
+
+	return sharedModel.CipherPredictionRecord{
+		BudgetID:            budgetID,
+		TransactionID:       txn.ID,
+		EmailText:           emailTextPtr,
+		LLMReasoning:        reasoning,
+		Metadata:            metadata,
+		ExtractedAccount:    &pred.Account,
+		ExtractedMerchant:   &pred.Payee,
+		PredictedPayeeID:    predictedPayeeID,
+		PredictedCategoryID: predictedCategoryID,
+		AccountConfidence:   &accountConfidence,
+		PayeeConfidence:     confidence,
+		CategoryConfidence:  confidence,
+		Amount:              &pred.Amount,
+		Source:              pred.Source,
+	}, nil
 }

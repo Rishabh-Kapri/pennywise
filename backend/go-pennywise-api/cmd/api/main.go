@@ -297,6 +297,8 @@ func main() {
 		w.RegisterActivity(&temporalActivities.CreateTransactionActivity{
 			TransactionService: transactionService,
 			PayeeService:       payeeService,
+			PredictionService:  predictionService,
+			DB:                 dbConn,
 		})
 		w.RegisterActivity(&temporalActivities.CreateCipherPredictionActivity{
 			PredictionService: predictionService,

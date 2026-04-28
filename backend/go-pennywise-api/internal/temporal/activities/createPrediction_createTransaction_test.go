@@ -11,6 +11,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"go.temporal.io/sdk/testsuite"
 
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
@@ -40,6 +41,14 @@ func (f *fakePredictionService) CreateCipherPrediction(
 	ctx context.Context,
 	p model.CipherPredictionRecord,
 ) (*model.CipherPredictionRecord, error) {
+	return f.CreateCipherPredictionWithTx(ctx, nil, p)
+}
+
+func (f *fakePredictionService) CreateCipherPredictionWithTx(
+	ctx context.Context,
+	_ pgx.Tx,
+	p model.CipherPredictionRecord,
+) (*model.CipherPredictionRecord, error) {
 	if f.createCipherPrediction == nil {
 		return &p, nil
 	}
@@ -63,6 +72,10 @@ func (f *fakeTransactionService) Update(context.Context, uuid.UUID, model.Transa
 }
 
 func (f *fakeTransactionService) Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error) {
+	return f.CreateWithTx(ctx, nil, txn)
+}
+
+func (f *fakeTransactionService) CreateWithTx(ctx context.Context, _ pgx.Tx, txn model.Transaction) ([]model.Transaction, error) {
 	if f.create == nil {
 		return []model.Transaction{txn}, nil
 	}
@@ -90,6 +103,10 @@ func (f *fakePayeeService) GetById(context.Context, uuid.UUID) (*model.Payee, er
 }
 
 func (f *fakePayeeService) Create(ctx context.Context, payee model.Payee) (*model.Payee, error) {
+	return f.CreateWithTx(ctx, nil, payee)
+}
+
+func (f *fakePayeeService) CreateWithTx(ctx context.Context, _ pgx.Tx, payee model.Payee) (*model.Payee, error) {
 	if f.create == nil {
 		return &payee, nil
 	}
