@@ -8,6 +8,9 @@ import { Login, ProtectedRoute } from '@/features/auth';
 
 const Dashboard = lazy(() => import('@/components/layout/Dashboard/Dashboard'));
 const Budget = lazy(() => import('@/features/budget/components/Budget'));
+const BudgetOnboarding = lazy(
+  () => import('@/features/budget/components/BudgetOnboarding'),
+);
 const Transaction = lazy(() =>
   import('@/features/transactions/components/Transaction').then((module) => ({
     default: module.Transaction,
@@ -29,6 +32,17 @@ function App() {
               <Suspense fallback={<div>Loading...</div>}>
                 <Login />
               </Suspense>
+            }
+          />
+
+          <Route
+            path="/budget/new"
+            element={
+              <ProtectedRoute>
+                <Suspense fallback={<div>Loading...</div>}>
+                  <BudgetOnboarding />
+                </Suspense>
+              </ProtectedRoute>
             }
           />
 

@@ -65,7 +65,9 @@
   right: 0;
   z-index: 1000;
   min-width: 100%;
-  padding: 0.35rem;
+  width: max-content;
+  max-width: min(22rem, calc(100vw - 1rem));
+  padding: 0.45rem;
   border: 1px solid var(--color-border);
   border-radius: 0.65rem;
   background: var(--color-surface);
@@ -99,6 +101,146 @@
   color: var(--color-primary-light);
 }
 
+.divider {
+  height: 1px;
+  margin: 0.35rem 0;
+  background: var(--color-border);
+}
+
+.createOption {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.65rem 0.75rem;
+  border: 0;
+  border-radius: 0.45rem;
+  background: transparent;
+  color: var(--color-primary-light);
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.createOption:hover {
+  background: color-mix(in srgb, var(--color-primary) 18%, var(--color-surface-secondary));
+}
+
+.createForm {
+  min-width: 22rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.15rem;
+}
+
+.createInput {
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.45rem;
+  background: var(--color-background);
+  color: var(--color-text);
+  font-size: 0.95rem;
+  outline: none;
+}
+
+.createInput:focus {
+  border-color: var(--color-primary);
+}
+
+.templateHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.selectAllButton {
+  border: 0;
+  background: transparent;
+  color: var(--color-primary-light);
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.templateList {
+  max-height: 17.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-right: 0.45rem;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.templateOption {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.55rem;
+  background: var(--color-background);
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.templateOption strong,
+.templateOption small {
+  display: block;
+}
+
+.templateOption strong {
+  margin-bottom: 0.25rem;
+  font-size: 0.95rem;
+}
+
+.templateOption small {
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.templateSelected {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 14%, var(--color-background));
+}
+
+.createActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding-top: 0.1rem;
+}
+
+.cancelButton,
+.createButton {
+  padding: 0.5rem 0.7rem;
+  border: 0;
+  border-radius: 0.45rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.cancelButton {
+  background: var(--color-surface-secondary);
+  color: var(--color-text-secondary);
+}
+
+.createButton {
+  background: var(--color-primary);
+  color: var(--color-text);
+}
+
 @media (max-width: 768px) {
   .switcher {
     max-width: calc(100vw - 5rem);
@@ -107,5 +249,9 @@
   .trigger {
     max-width: 9rem;
     min-width: 7.5rem;
+  }
+
+  .createForm {
+    min-width: min(20rem, calc(100vw - 2rem));
   }
 }
