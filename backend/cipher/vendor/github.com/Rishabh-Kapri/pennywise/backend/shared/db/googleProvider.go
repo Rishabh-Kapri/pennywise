@@ -183,18 +183,20 @@ func (r *googleProviderRepo) UpdateHistoryID(
 	expiryAt *int64,
 ) error {
 	logger.Logger(ctx).Info("updating historyID", "googleID", googleID, "historyID", historyID)
-	_, err := r.Executor(nil).Exec(
-		ctx, `
-		UPDATE google_provider_users 
-		SET 
-		  gmail_history_id = $1, 
-		  last_gmail_sync = NOW(),
-			expiry_at = $3
-		WHERE 
-		  id = $2 AND 
-		  deleted = false`,
-		historyID, googleID, expiryAt,
-	)
+	query := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
+		Update("google_provider_users").
+		Set("gmail_history_id", historyID).
+		Set("last_gmail_sync", time.Now()).
+		Set("updated_at", time.Now())
+
+	if expiryAt != nil {
+		query = query.Set("expiry_at", expiryAt)
+	}
+	query = query.Where(sq.Eq{"id": googleID, "deleted": false})
+
+	sql, args, err := query.ToSql()
+
+	_, err = r.Executor(nil).Exec(ctx, sql, args...)
 	return err
 }
 
