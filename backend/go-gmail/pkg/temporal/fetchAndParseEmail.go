@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/auth"
-	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/client"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/gmail"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/parser"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
@@ -14,15 +13,14 @@ import (
 )
 
 type GmailActivities struct {
-	Auth      *auth.Service
-	Gmail     *gmail.Service
-	Parser    *parser.EmailParser
-	Pennywise *client.PennywiseClient
+	Auth   *auth.Service
+	Gmail  *gmail.Service
+	Parser *parser.EmailParser
 }
 
 func (a *GmailActivities) FetchAndParseEmails(
 	ctx context.Context,
-	input sharedModel.EmailWorflowInput,
+	input sharedModel.FetchAndParseEmailsInput,
 ) (result sharedModel.ParsedEmailsInput, err error) {
 	ctx = utils.WithServiceName(ctx, "gmail-pubsub")
 	activityInfo := activity.GetInfo(ctx)
@@ -32,29 +30,17 @@ func (a *GmailActivities) FetchAndParseEmails(
 		"activity_id", activityInfo.ActivityID,
 		"activity_type", activityInfo.ActivityType.Name,
 	)
-	log.Info("FetchAndParseEmails", "input", input)
-	// fetch user info (including refresh token and history id) by email
-	userInfo, err := a.Pennywise.GetUser(ctx, input.Email)
-	if err != nil {
-		return result, err
-	}
+	log.Info("FetchAndParseEmails", "email", input.Email, "historyId", input.HistoryID, "budgetId", input.BudgetID)
 
 	// get access token from refresh token
 	oauthConfig := a.Auth.GetOauth2Config()
-	token, err := a.Auth.GetTokenFromRefresh(userInfo.RefreshToken)
+	token, err := a.Auth.GetTokenFromRefresh(input.RefreshToken)
 	if err != nil {
-		return result, err
-	}
-
-	prevHistoryId := uint64(userInfo.GmailHistoryID)
-
-	// update history id first
-	if err := a.Pennywise.UpdateUserHistoryId(ctx, input.Email, input.HistoryId); err != nil {
 		return result, err
 	}
 
 	// fetch new emails from Gmail using history id
-	emailData, err := a.Gmail.GetMessageHistory(ctx, input.Email, prevHistoryId, token, oauthConfig)
+	emailData, err := a.Gmail.GetMessageHistory(ctx, input.Email, input.HistoryID, token, oauthConfig)
 	if err != nil {
 		return result, err
 	}
@@ -83,7 +69,7 @@ func (a *GmailActivities) FetchAndParseEmails(
 		})
 	}
 	result.ParsedEmails = results
-	result.BudgetID = userInfo.BudgetID
+	result.BudgetID = input.BudgetID
 
 	return result, nil
 }

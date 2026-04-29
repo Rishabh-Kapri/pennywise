@@ -7,16 +7,13 @@ import (
 	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/auth"
-	pc "github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/client"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/config"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/gmail"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/parser"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/temporal"
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	sharedTemporal "github.com/Rishabh-Kapri/pennywise/backend/shared/temporal"
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"cloud.google.com/go/pubsub"
@@ -238,8 +235,6 @@ func PullMessages(ctx context.Context) {
 		logger.Fatal("Unable to connect to Temporal", "error", err)
 	}
 
-	pennywiseTransport := httpclient.NewHttpTransport(config.PennywiseServiceURL)
-	pennywiseClient := transport.NewClient("pennywise-api", pennywiseTransport)
 	w := worker.New(tc, sharedModel.GmailActivitiesTaskQueue, worker.Options{
 		UseBuildIDForVersioning: false,
 		BackgroundActivityContext: utils.WithInternalAuthToken(
@@ -248,11 +243,11 @@ func PullMessages(ctx context.Context) {
 		),
 	})
 	w.RegisterActivity(&temporal.GmailActivities{
-		Auth:      auth.NewService(config),
-		Gmail:     gmail.NewService(),
-		Parser:    parser.NewEmailParser(),
-		Pennywise: pc.NewPennywiseClient(pennywiseClient),
+		Auth:   auth.NewService(config),
+		Gmail:  gmail.NewService(),
+		Parser: parser.NewEmailParser(),
 	})
+	w.RegisterActivity(&temporal.WatchGmailActivity{Gmail: gmail.NewService()})
 	go func() {
 		if err := w.Run(worker.InterruptCh()); err != nil {
 			logger.Fatal("Temporal activity worker failed", "error", err)

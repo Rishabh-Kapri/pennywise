@@ -25,7 +25,31 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailWor
 	}
 	workflow.GetLogger(ctx).Info("starting email-to-transaction workflow", workflowLogFields...)
 
-	// ----- Step 1: Fetch emails data from the historyId -----
+	// ----- Step 1: Fetch user data and update history id in Pennywise -----
+	pennywiseCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+		TaskQueue:           sharedModel.PennywiseActivitiesTaskQueue,
+		StartToCloseTimeout: 30 * time.Second,
+		RetryPolicy: &temporal.RetryPolicy{
+			InitialInterval: time.Second,
+			MaximumAttempts: 5,
+		},
+	})
+
+	var googleUser sharedModel.GoogleUserInfo
+	err := workflow.ExecuteActivity(pennywiseCtx, "GetGoogleUserByEmail", input.Email).Get(pennywiseCtx, &googleUser)
+	if err != nil {
+		return err
+	}
+
+	updateHistoryInput := sharedModel.UpdateGmailHistoryInput{
+		Email:          input.Email,
+		GmailHistoryID: input.HistoryId,
+	}
+	if err := workflow.ExecuteActivity(pennywiseCtx, "UpdateGmailHistoryID", updateHistoryInput).Get(pennywiseCtx, nil); err != nil {
+		return err
+	}
+
+	// ----- Step 2: Fetch emails data from Gmail using Pennywise-owned user data -----
 	gmailCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 		TaskQueue:           sharedModel.GmailActivitiesTaskQueue,
 		StartToCloseTimeout: 30 * time.Second,
@@ -35,8 +59,14 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailWor
 		},
 	})
 
+	fetchInput := sharedModel.FetchAndParseEmailsInput{
+		Email:        input.Email,
+		HistoryID:    googleUser.GmailHistoryID,
+		RefreshToken: googleUser.RefreshToken,
+		BudgetID:     googleUser.BudgetID,
+	}
 	var fetchAndParseEmailResult sharedModel.ParsedEmailsInput
-	err := workflow.ExecuteActivity(gmailCtx, "FetchAndParseEmails", input).Get(gmailCtx, &fetchAndParseEmailResult)
+	err = workflow.ExecuteActivity(gmailCtx, "FetchAndParseEmails", fetchInput).Get(gmailCtx, &fetchAndParseEmailResult)
 	if err != nil {
 		return err
 	}

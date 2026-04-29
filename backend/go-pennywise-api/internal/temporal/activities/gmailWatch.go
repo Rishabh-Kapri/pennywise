@@ -38,6 +38,24 @@ func (a *FetchGoogleUsersActivity) ListGoogleUsersNeedingWatchRefresh(
 	return watchUsers, nil
 }
 
+func (a *FetchGoogleUsersActivity) GetGoogleUserByEmail(
+	ctx context.Context,
+	email string,
+) (*sharedModel.GoogleUserInfo, error) {
+	user, err := a.AuthService.GetGoogleUserByEmail(ctx, email)
+	if err != nil {
+		return nil, errs.Wrap(errs.CodeAuthLookupFailed, "failed to get google user by email", err)
+	}
+	return user, nil
+}
+
+func (a *FetchGoogleUsersActivity) UpdateGmailHistoryID(
+	ctx context.Context,
+	input sharedModel.UpdateGmailHistoryInput,
+) error {
+	return a.AuthService.UpdateGmailHistoryID(ctx, input.Email, input.GmailHistoryID, nil)
+}
+
 func (a *FetchGoogleUsersActivity) UpdateGmailWatchState(
 	ctx context.Context,
 	input []sharedModel.GoogleWatchUser,
