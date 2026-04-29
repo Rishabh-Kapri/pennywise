@@ -31,7 +31,7 @@ class ApiClient {
 
       // Add Authorization header if user is authenticated
       const accessToken = state.auth?.tokens?.accessToken;
-      if (accessToken && !endpoint.includes('auth/')) {
+      if (accessToken && !this.isPublicAuthEndpoint(endpoint)) {
         headers['Authorization'] = `Bearer ${accessToken}`;
       }
 
@@ -44,8 +44,12 @@ class ApiClient {
     return headers;
   }
 
-  private isAuthEndpoint(endpoint: string): boolean {
-    return endpoint.includes('auth/');
+  private isPublicAuthEndpoint(endpoint: string): boolean {
+    return endpoint === 'auth/google' || endpoint === 'auth/refresh';
+  }
+
+  private isRefreshEndpoint(endpoint: string): boolean {
+    return endpoint === 'auth/refresh';
   }
 
   private async tryRefreshToken(): Promise<string> {
@@ -105,7 +109,7 @@ class ApiClient {
     body?: unknown,
   ): Promise<T> {
     // On 401 for non-auth endpoints, try refreshing the token and retry once
-    if (res.status === 401 && !this.isAuthEndpoint(endpoint)) {
+    if (res.status === 401 && !this.isRefreshEndpoint(endpoint)) {
       const newAccessToken = await this.tryRefreshToken();
 
       const headers = this.getHeaders(endpoint) as Record<string, string>;
