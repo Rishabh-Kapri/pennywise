@@ -9,11 +9,9 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/config"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/gmail"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/pubsub"
 	temporalActivities "github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/temporal"
 
-	// "github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/pubsub"
-
-	// "github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/pubsub"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
@@ -24,7 +22,6 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/gin-gonic/gin"
-
 	tc "go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 )
@@ -153,13 +150,16 @@ func main() {
 	transport.CheckHealth(ctx, "cipher", cfg.CipherServiceURL+"/api")
 	// transport.CheckHealth(ctx, "mlp-api", cfg.MLPServiceURL+"/health")
 
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
 	dbConn, err := db.ConnectWithURL(cfg.DatabaseURL)
 	if err != nil {
 		logger.Fatal(err.Error())
 	}
 	log.Info("db connected", "url", cfg.DatabaseURL)
 
-	if cfg.TemporalServerHost != "" {
+	if cfg.Environment != "local" && cfg.TemporalServerHost != "" {
 		temporalClient, err = connectToTemporal(ctx, *cfg)
 		if err != nil {
 			logger.Fatal("Unable to connect to Temporal", "error", err)
@@ -179,16 +179,14 @@ func main() {
 				logger.Fatal("Temporal activity worker failed", "error", err)
 			}
 		}()
+
+		go func() {
+			<-quit
+			logger.Logger(ctx).Info("shutting down temporal worker")
+			w.Stop()
+			temporalClient.Close()
+		}()
 	}
-
-	// pennywiseTransport := httpclient.NewHttpTransport(cfg.PennywiseServiceURL)
-	// pennywiseClient := transport.NewClient("pennywise-api", pennywiseTransport)
-
-	// go func() {
-	// 	if err := w.Run(worker.InterruptCh()); err != nil {
-	// 		logger.Fatal("Temporal activity worker failed", "error", err)
-	// 	}
-	// }()
 
 	router := gin.New()
 	router.Use(gin.Recovery())
@@ -213,21 +211,20 @@ func main() {
 		Handler: router,
 	}
 
-	// go pubsub.PullMessages(ctx)
+	if cfg.Environment != "local" {
+		go pubsub.PullMessages(ctx)
+	}
 
 	go func() {
-		log.Info("Server listening on port " + cfg.Port)
 		if err := server.ListenAndServe(); err != nil &&
 			err != http.ErrServerClosed {
 			logger.Fatal("server error", "error", err)
 		}
+		log.Info("Server listening on port " + cfg.Port)
 	}()
 
 	// Wait for interrupt signal for graceful shutdown
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-
 	if err := server.Shutdown(context.Background()); err != nil {
 		logger.Fatal("server forced to shutdown", "error", err)
 	}
