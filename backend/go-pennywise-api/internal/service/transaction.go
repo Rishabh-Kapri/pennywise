@@ -170,23 +170,30 @@ func (s *transactionService) loadDependencies(
 	tx pgx.Tx,
 	budgetId uuid.UUID,
 	txn model.Transaction,
-) (budget *model.Budget, account *model.Account, payee *model.Payee, err error) {
+) (budget *model.Budget, account *model.Account, payee *model.Payee, transferAccount *model.Account, err error) {
 	budget, err = s.budgetRepo.GetById(ctx, tx, budgetId)
 	if err != nil {
-		return nil, nil, nil, errs.Wrap(errs.CodeBudgetLookupFailed, "error fetching budget", err)
+		return nil, nil, nil, nil, errs.Wrap(errs.CodeBudgetLookupFailed, "error fetching budget", err)
 	}
 
 	account, err = s.accountRepo.GetById(ctx, tx, budgetId, *txn.AccountID)
 	if err != nil {
-		return nil, nil, nil, errs.Wrap(errs.CodeAccountLookupFailed, "error getting account", err)
+		return nil, nil, nil, nil, errs.Wrap(errs.CodeAccountLookupFailed, "error getting account", err)
 	}
 
 	payee, err = s.payeeRepo.GetByIdTx(ctx, tx, budgetId, *txn.PayeeID)
 	if err != nil {
-		return nil, nil, nil, errs.Wrap(errs.CodePayeeLookupFailed, "error getting payee", err)
+		return nil, nil, nil, nil, errs.Wrap(errs.CodePayeeLookupFailed, "error getting payee", err)
 	}
 
-	return budget, account, payee, nil
+	if payee.TransferAccountID != nil {
+		transferAccount, err = s.accountRepo.GetById(ctx, tx, budgetId, *payee.TransferAccountID)
+		if err != nil {
+			return nil, nil, nil, nil, errs.Wrap(errs.CodeAccountLookupFailed, "error getting transfer account", err)
+		}
+	}
+
+	return budget, account, payee, transferAccount, nil
 }
 
 // validate the category of the transaction
@@ -196,14 +203,19 @@ func (s *transactionService) validateCategory(
 	inflowCategoryID uuid.UUID,
 	account model.Account,
 	payee model.Payee,
+	transferAccount *model.Account,
 	amount float64,
 ) error {
 	// budget -> budget transfers don't have a category
-	if payee.TransferAccountID != nil {
-		if account.Type == "savings" || account.Type == "checking" || account.Type == "creditCard" {
-			if categoryID != nil {
-				return errs.New(errs.CodeInvalidArgument, "category is not allowed for budget transfers")
-			}
+	isBudgetAcount := account.Type == "savings" || account.Type == "checking" || account.Type == "creditCard"
+	isTransferBudget := false
+	if transferAccount != nil && isBudgetAcount {
+		isTransferBudget = transferAccount.Type == "savings" || transferAccount.Type == "checking" ||
+			transferAccount.Type == "creditCard"
+	}
+	if isBudgetAcount && isTransferBudget {
+		if categoryID != nil {
+			return errs.New(errs.CodeInvalidArgument, "category is not allowed for budget transfers")
 		}
 	}
 	if categoryID != nil && *categoryID == inflowCategoryID && amount < 0 {
@@ -589,7 +601,7 @@ func (s *transactionService) CreateWithTx(
 	}
 
 	var createdTxn []model.Transaction
-	budget, account, payee, err := s.loadDependencies(ctx, tx, budgetID, txn)
+	budget, account, payee, transferAccount, err := s.loadDependencies(ctx, tx, budgetID, txn)
 	if err != nil {
 		return nil, err
 	}
@@ -599,6 +611,7 @@ func (s *transactionService) CreateWithTx(
 		budget.Metadata.InflowCategoryID,
 		*account,
 		*payee,
+		transferAccount,
 		txn.Amount,
 	); err != nil {
 		return nil, err
@@ -679,7 +692,7 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 		}
 
 		// fetch updated txn account and payee
-		budget, account, payee, err := s.loadDependencies(txCtx, tx, budgetId, toUpdate)
+		budget, account, payee, transferAccount, err := s.loadDependencies(txCtx, tx, budgetId, toUpdate)
 		if err != nil {
 			return err
 		}
@@ -689,6 +702,7 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 			budget.Metadata.InflowCategoryID,
 			*account,
 			*payee,
+			transferAccount,
 			toUpdate.Amount,
 		)
 		if err != nil {
