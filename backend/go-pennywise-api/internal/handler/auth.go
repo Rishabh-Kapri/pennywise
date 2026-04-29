@@ -8,6 +8,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -15,11 +16,11 @@ import (
 type AuthHandler interface {
 	LoginWithGoogle(c *gin.Context)
 	RefreshToken(c *gin.Context)
+	GetCurrentUser(c *gin.Context)
 	GetProviderUser(c *gin.Context)
 	UpdateProviderUser(c *gin.Context)
 	// Logout(c *gin.Context)
 	// LogoutAll(c *gin.Context)
-	// GetCurrentUser(c *gin.Context)
 }
 
 type authHandler struct {
@@ -81,42 +82,49 @@ func (h *authHandler) RefreshToken(c *gin.Context) {
 	// c.JSON(http.StatusOK, "ok")
 }
 
-//
 // // Logout handles POST /api/auth/logout
-// func (h *authHandler) Logout(c *gin.Context) {
-// 	// For stateless JWT, logout is handled client-side by clearing tokens
-// 	// This endpoint is mainly for logging/audit purposes
-// 	c.JSON(http.StatusOK, gin.H{"message": "logged out successfully"})
-// }
+//
+//	func (h *authHandler) Logout(c *gin.Context) {
+//		// For stateless JWT, logout is handled client-side by clearing tokens
+//		// This endpoint is mainly for logging/audit purposes
+//		c.JSON(http.StatusOK, gin.H{"message": "logged out successfully"})
+//	}
 //
 // // LogoutAll handles POST /api/auth/logout-all
-// func (h *authHandler) LogoutAll(c *gin.Context) {
-// 	// Get user from context (set by auth middleware)
-// 	userID, exists := c.Get("userID")
-// 	if !exists {
-// 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-// 		return
-// 	}
 //
-// 	err := h.service.LogoutAllDevices(c.Request.Context(), userID.(model.AuthUserResponse).ID)
-// 	if err != nil {
-// 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to logout"})
-// 		return
-// 	}
+//	func (h *authHandler) LogoutAll(c *gin.Context) {
+//		// Get user from context (set by auth middleware)
+//		userID, exists := c.Get("userID")
+//		if !exists {
+//			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+//			return
+//		}
 //
-// 	c.JSON(http.StatusOK, gin.H{"message": "logged out from all devices"})
-// }
+//		err := h.service.LogoutAllDevices(c.Request.Context(), userID.(model.AuthUserResponse).ID)
+//		if err != nil {
+//			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to logout"})
+//			return
+//		}
 //
-// // GetCurrentUser handles GET /api/auth/me
-// func (h *authHandler) GetCurrentUser(c *gin.Context) {
-// 	user, exists := c.Get("user")
-// 	if !exists {
-// 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-// 		return
-// 	}
+//		c.JSON(http.StatusOK, gin.H{"message": "logged out from all devices"})
+//	}
 //
-// 	c.JSON(http.StatusOK, user)
-// }
+// GetCurrentUser handles GET /api/auth/users/me.
+func (h *authHandler) GetCurrentUser(c *gin.Context) {
+	ctx := c.Request.Context()
+	userID, err := utils.UserIDFromContext(ctx)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+		return
+	}
+
+	user, err := h.service.GetCurrentUser(ctx, userID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, user)
+}
 
 // GetProviderUser handles GET /api/auth/:provider/users?email=...
 func (h *authHandler) GetProviderUser(c *gin.Context) {

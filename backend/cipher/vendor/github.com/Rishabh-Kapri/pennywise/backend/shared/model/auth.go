@@ -61,6 +61,30 @@ type AuthUserResponse struct {
 	Picture string    `json:"picture,omitempty"`
 }
 
+type AuthProviderUserResponse struct {
+	ProviderType AuthProviderType `json:"providerType"`
+	ProviderID   string           `json:"providerId"`
+	Email        string           `json:"email,omitempty"`
+	Name         string           `json:"name,omitempty"`
+	Picture      string           `json:"picture,omitempty"`
+
+	GmailHistoryID *uint64    `json:"gmailHistoryId,omitempty"`
+	LastGmailSync  *time.Time `json:"lastGmailSync,omitempty"`
+	ExpiryAt       *int64     `json:"expiryAt,omitempty"`
+
+	VerifiedAt time.Time `json:"verifiedAt"`
+}
+
+type CurrentAuthUserResponse struct {
+	ID        uuid.UUID                  `json:"id"`
+	Email     string                     `json:"email"`
+	Name      string                     `json:"name"`
+	Picture   string                     `json:"picture,omitempty"`
+	CreatedAt time.Time                  `json:"createdAt"`
+	UpdatedAt time.Time                  `json:"updatedAt"`
+	Providers []AuthProviderUserResponse `json:"providers"`
+}
+
 // GoogleLoginRequest is the request body for Google login
 type GoogleLoginRequest struct {
 	// Credential string `json:"credential" binding:"required"`

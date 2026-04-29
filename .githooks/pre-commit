@@ -1,16 +1,25 @@
 #!/bin/sh
-# Re-vendor go-pennywise-api whenever go.mod or shared/ changes
+# Re-vendor Go modules whenever their go.mod/go.sum or shared/ changes.
 
 STAGED=$(git diff --cached --name-only)
 
-NEEDS_VENDOR=false
+vendor_module() {
+  module=$1
+  echo "Vendoring $module..."
+  (cd "$module" && GOWORK=off go mod vendor) || exit 1
+  git add "$module/vendor/"
+}
 
-# Check if go.mod/go.sum or shared module files changed
-echo "$STAGED" | grep -qE "^backend/go-pennywise-api/go\.(mod|sum)$" && NEEDS_VENDOR=true
-echo "$STAGED" | grep -qE "^backend/shared/" && NEEDS_VENDOR=true
+SHARED_CHANGED=false
+echo "$STAGED" | grep -qE "^backend/shared/" && SHARED_CHANGED=true
 
-if [ "$NEEDS_VENDOR" = "true" ]; then
-  echo "go.mod or shared/ changed — running go mod vendor..."
-  (cd backend/go-pennywise-api && GOWORK=off go mod vendor)
-  git add backend/go-pennywise-api/vendor/
-fi
+for module in \
+  backend/go-pennywise-api \
+  backend/go-gmail \
+  backend/cipher \
+  backend/workflows
+do
+  if [ "$SHARED_CHANGED" = "true" ] || echo "$STAGED" | grep -qE "^$module/go\.(mod|sum)$"; then
+    vendor_module "$module"
+  fi
+done

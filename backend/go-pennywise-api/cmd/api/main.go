@@ -185,6 +185,11 @@ func main() {
 
 		// Protected routes - all require authentication
 		{
+			authUserGroup := router.Group("/api/auth/users")
+			authUserGroup.Use(authMiddleware)
+			authUserGroup.GET("/me", authHandler.GetCurrentUser)
+		}
+		{
 			apiKeyGroup := router.Group("/api/keys")
 			apiKeyGroup.Use(authMiddleware)
 			apiKeyGroup.GET("", apiKeyHandler.GetByKeyID)

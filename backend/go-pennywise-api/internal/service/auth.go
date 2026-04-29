@@ -31,6 +31,7 @@ type AuthService interface {
 	ValidateToken(ctx context.Context, tokenString string) (*jwt.Token, error)
 	GetUserById(ctx context.Context, userID uuid.UUID) (*model.AuthUser, error)
 	GetAllGoogleUsers(ctx context.Context) ([]model.GoogleProviderUser, error)
+	GetCurrentUser(ctx context.Context, userID uuid.UUID) (*model.CurrentAuthUserResponse, error)
 	GetGoogleUserByEmail(ctx context.Context, email string) (*model.GoogleUserInfo, error)
 	UpdateGmailHistoryID(ctx context.Context, email string, historyID uint64, expiryAt *int64) error
 	RefreshToken(ctx context.Context, refreshToken string) (*model.RefreshTokenResponse, error)
@@ -312,6 +313,47 @@ func (s *authService) GetUserById(ctx context.Context, userID uuid.UUID) (*model
 
 func (s *authService) GetAllGoogleUsers(ctx context.Context) ([]model.GoogleProviderUser, error) {
 	return s.googleProvider.GetAll(ctx, nil)
+}
+
+func (s *authService) GetCurrentUser(ctx context.Context, userID uuid.UUID) (*model.CurrentAuthUserResponse, error) {
+	user, err := s.repo.GetUserWithProviders(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range user.Providers {
+		provider := &user.Providers[i]
+		switch provider.ProviderType {
+		case model.GoogleAuthProviderType:
+			googleUser, err := s.googleProvider.GetUserByGoogleID(ctx, provider.ProviderID)
+			if err != nil {
+				return nil, err
+			}
+			if googleUser.GoogleProvider == nil {
+				continue
+			}
+
+			googleProvider := googleUser.GoogleProvider
+			provider.Name = googleProvider.Name
+			provider.Email = googleProvider.Email
+			provider.Picture = googleProvider.Picture
+			provider.GmailHistoryID = googleProvider.GmailHistoryID
+			provider.LastGmailSync = googleProvider.LastGmailSync
+			provider.ExpiryAt = googleProvider.ExpiryAt
+
+			if user.Picture == "" && googleProvider.Picture != "" {
+				user.Picture = googleProvider.Picture
+			}
+			if user.Email == "" && googleProvider.Email != "" {
+				user.Email = googleProvider.Email
+			}
+			if user.Name == "" && googleProvider.Name != "" {
+				user.Name = googleProvider.Name
+			}
+		}
+	}
+
+	return user, nil
 }
 
 func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*model.RefreshTokenResponse, error) {
