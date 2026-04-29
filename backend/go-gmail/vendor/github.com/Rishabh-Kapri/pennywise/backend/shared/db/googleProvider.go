@@ -8,6 +8,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
+	sq "github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -233,16 +234,21 @@ func (r *googleProviderRepo) UpdateHistoryIDByEmail(
 	historyID uint64,
 	expiryAt *int64,
 ) error {
-	_, err := r.Executor(nil).Exec(
-		ctx, `
-		UPDATE google_provider_users 
-		SET 
-		  gmail_history_id = $1, 
-		  expiry_at = $3,
-		  last_gmail_sync = NOW(),
-		  updated_at = NOW()
-		WHERE email = $2 AND deleted = false`,
-		historyID, email, expiryAt,
-	)
+	query := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
+		Update("google_provider_users").
+		Set("gmail_history_id", historyID).
+		Set("last_gmail_sync", time.Now()).
+		Set("updated_at", time.Now())
+
+	if expiryAt != nil {
+		query = query.Set("expiry_at", expiryAt)
+	}
+	query = query.Where(sq.Eq{"email": email, "deleted": false})
+
+	sql, args, err := query.ToSql()
+	if err != nil {
+		return err
+	}
+	_, err = r.Executor(nil).Exec(ctx, sql, args...)
 	return err
 }
