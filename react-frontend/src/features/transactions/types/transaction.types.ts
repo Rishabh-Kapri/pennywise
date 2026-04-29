@@ -1,13 +1,13 @@
 import type { LoadingState } from "@/utils";
 
-export const TransactionSource = {
-  PENNYWISE: 'PENNYWISE',
-  MLP: 'MLP',
+export const TransactionStatus = {
+  MANUAL: 'MANUAL',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+  UNAPPROVED: 'UNAPPROVED',
 } as const;
 
-export type TransactionSource = typeof TransactionSource[keyof typeof TransactionSource];
-
-export type TransactionStatus = 'MANUAL' | 'APPROVED' | 'REJECTED' | 'UNAPPROVED';
+export type TransactionStatus = typeof TransactionStatus[keyof typeof TransactionStatus];
 
 export interface Transaction {
   id?: string;
@@ -40,13 +40,12 @@ export interface TransactionDTO {
   amount: number;
   note?: string;
   status?: TransactionStatus;
-  source: TransactionSource;
   tagIds?: string[];
 }
 
 export interface TransactionStatusDTO {
   id: string;
-  status: Extract<TransactionStatus, 'APPROVED' | 'REJECTED'>;
+  status: Extract<TransactionStatus, typeof TransactionStatus.APPROVED | typeof TransactionStatus.REJECTED>;
 }
 
 export interface TransactionState {

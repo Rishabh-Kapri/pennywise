@@ -15,6 +15,17 @@
   overflow: hidden;
 }
 
+.errorBanner {
+  margin: 0 0 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--color-budget-negative) 35%, transparent);
+  border-radius: 0.65rem;
+  background: color-mix(in srgb, var(--color-budget-negative) 12%, transparent);
+  color: var(--color-budget-negative);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
 .listArea {
   display: flex;
   flex-direction: column;
