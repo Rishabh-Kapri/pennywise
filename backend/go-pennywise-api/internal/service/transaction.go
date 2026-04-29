@@ -242,8 +242,12 @@ func (s *transactionService) createCounterpartTxn(
 		Amount:                -txn.Amount,
 		Date:                  txn.Date,
 		Note:                  txn.Note,
+		Status:                txn.Status,
 		TransferAccountID:     txn.AccountID,
 		TransferTransactionID: &parentId,
+	}
+	if counterpart.Status == "" {
+		counterpart.Status = model.TransactionStatusManual
 	}
 	created, err := s.repo.Create(ctx, tx, counterpart)
 	if err != nil {
@@ -595,6 +599,9 @@ func (s *transactionService) CreateWithTx(
 
 	budgetID := utils.MustBudgetID(ctx)
 	txn.BudgetID = budgetID
+	if txn.Status == "" {
+		txn.Status = model.TransactionStatusManual
+	}
 
 	if err := s.validateTransactionPayload(txn, budgetID); err != nil {
 		return nil, err
