@@ -30,8 +30,9 @@ type AuthService interface {
 	GenerateRefreshToken(ctx context.Context, userID uuid.UUID) (string, error)
 	ValidateToken(ctx context.Context, tokenString string) (*jwt.Token, error)
 	GetUserById(ctx context.Context, userID uuid.UUID) (*model.AuthUser, error)
+	GetAllGoogleUsers(ctx context.Context) ([]model.GoogleProviderUser, error)
 	GetGoogleUserByEmail(ctx context.Context, email string) (*model.GoogleUserInfo, error)
-	UpdateGmailHistoryID(ctx context.Context, email string, historyID uint64) error
+	UpdateGmailHistoryID(ctx context.Context, email string, historyID uint64, expiryAt *int64) error
 	RefreshToken(ctx context.Context, refreshToken string) (*model.RefreshTokenResponse, error)
 }
 
@@ -72,7 +73,8 @@ type gmailSyncRequest struct {
 }
 
 type gmailSyncResponse struct {
-	HistoryID uint64 `json:"historyID"`
+	HistoryID  uint64 `json:"historyID"`
+	Expiration int64  `json:"expiration"`
 }
 
 func NewAuthService(
@@ -92,7 +94,6 @@ func (s *authService) SetupGmailWatch(ctx context.Context, googleID string, refr
 		Email:        email,
 		IsStop:       false,
 	}
-	// headers := utils.GetHeaders(ctx)
 	var headers map[string][]string
 	res, err := transport.Post[gmailSyncResponse](ctx, s.transport, "/api/watch", headers, reqData)
 	if err != nil {
@@ -101,7 +102,7 @@ func (s *authService) SetupGmailWatch(ctx context.Context, googleID string, refr
 		return
 	}
 	logger.Info("gmail watch done", "historyId", res.HistoryID)
-	if err = s.googleProvider.UpdateHistoryID(ctx, googleID, res.HistoryID); err != nil {
+	if err = s.googleProvider.UpdateHistoryID(ctx, googleID, res.HistoryID, &res.Expiration); err != nil {
 		logger.Error("error updating gmail history id", "email", email, "error", err)
 		return
 	}
@@ -236,6 +237,7 @@ func (s *authService) createGoogleUser(
 			ctx, tx, authUser.ID,
 			profile.ID, profile.Name, profile.Picture, profile.Email,
 			refreshToken,
+			nil,
 		)
 		if err != nil {
 			return errs.Wrap(errs.CodeAuthCreateFailed, "failed to create google provider user", err)
@@ -308,6 +310,10 @@ func (s *authService) GetUserById(ctx context.Context, userID uuid.UUID) (*model
 	return user, nil
 }
 
+func (s *authService) GetAllGoogleUsers(ctx context.Context) ([]model.GoogleProviderUser, error) {
+	return s.googleProvider.GetAll(ctx, nil)
+}
+
 func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*model.RefreshTokenResponse, error) {
 	// Validate the refresh token JWT
 	token, err := s.ValidateToken(ctx, refreshToken)
@@ -360,6 +366,6 @@ func (s *authService) GetGoogleUserByEmail(ctx context.Context, email string) (*
 	return s.googleProvider.GetUserByEmail(ctx, email)
 }
 
-func (s *authService) UpdateGmailHistoryID(ctx context.Context, email string, historyID uint64) error {
-	return s.googleProvider.UpdateHistoryIDByEmail(ctx, email, historyID)
+func (s *authService) UpdateGmailHistoryID(ctx context.Context, email string, historyID uint64, expiryAt *int64) error {
+	return s.googleProvider.UpdateHistoryIDByEmail(ctx, email, historyID, expiryAt)
 }
