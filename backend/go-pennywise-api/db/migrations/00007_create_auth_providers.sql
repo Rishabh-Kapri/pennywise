@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS google_provider_users (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_gmail_sync TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expiry_at BIGINT,
     deleted BOOLEAN DEFAULT false
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_google_provider_users_id

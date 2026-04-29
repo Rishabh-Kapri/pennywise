@@ -15,6 +15,7 @@ import (
 
 type GoogleProviderRepository interface {
 	BaseRepositoryInterface
+	GetAll(ctx context.Context, tx pgx.Tx) ([]model.GoogleProviderUser, error)
 	Create(
 		ctx context.Context,
 		tx pgx.Tx,
@@ -24,11 +25,12 @@ type GoogleProviderRepository interface {
 		picture string,
 		email string,
 		refreshToken string,
+		expiryAt *int64,
 	) (*model.UserWithCredentials, error)
 	GetUserByGoogleID(ctx context.Context, googleID string) (*model.UserWithCredentials, error)
 	GetUserByEmail(ctx context.Context, email string) (*model.GoogleUserInfo, error)
-	UpdateHistoryID(ctx context.Context, googleID string, historyID uint64) error
-	UpdateHistoryIDByEmail(ctx context.Context, email string, historyID uint64) error
+	UpdateHistoryID(ctx context.Context, googleID string, historyID uint64, expiryAt *int64) error
+	UpdateHistoryIDByEmail(ctx context.Context, email string, historyID uint64, expiryAt *int64) error
 }
 
 type googleProviderRepo struct {
@@ -37,6 +39,49 @@ type googleProviderRepo struct {
 
 func NewGoogleProviderRepository(pool *pgxpool.Pool) GoogleProviderRepository {
 	return &googleProviderRepo{BaseRepository: NewBaseRepository(pool)}
+}
+
+func (r *googleProviderRepo) GetAll(ctx context.Context, tx pgx.Tx) ([]model.GoogleProviderUser, error) {
+	rows, err := r.Executor(tx).Query(ctx, `
+		SELECT 
+		  id,
+		  name,
+		  picture, 
+		  email, 
+		  gmail_history_id, 
+		  refresh_token, 
+		  created_at, 
+		  updated_at, 
+		  last_gmail_sync, 
+		  expiry_at
+		FROM google_provider_users
+		WHERE deleted = FALSE`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []model.GoogleProviderUser
+	for rows.Next() {
+		var user model.GoogleProviderUser
+		if err := rows.Scan(
+			&user.ID,
+			&user.Name,
+			&user.Picture,
+			&user.Email,
+			&user.GmailHistoryID,
+			&user.RefreshToken,
+			&user.CreatedAt,
+			&user.UpdatedAt,
+			&user.LastGmailSync,
+			&user.ExpiryAt,
+		); err != nil {
+			return nil, err
+		}
+		users = append(users, user)
+	}
+
+	return users, rows.Err()
 }
 
 // Create inserts an auth_providers row and a google_provider_users row within the given transaction.
@@ -49,6 +94,7 @@ func (r *googleProviderRepo) Create(
 	picture string,
 	email string,
 	refreshToken string,
+	expiryAt *int64,
 ) (*model.UserWithCredentials, error) {
 	// 1. Create auth_providers linking auth_user to google provider
 	_, err := r.Executor(tx).Exec(
@@ -65,10 +111,10 @@ func (r *googleProviderRepo) Create(
 	var gpu model.GoogleProviderUser
 	err = r.Executor(tx).QueryRow(
 		ctx,
-		`INSERT INTO google_provider_users (id, name, picture, email, refresh_token)
-		 VALUES ($1, $2, $3, $4, $5)
+		`INSERT INTO google_provider_users (id, name, picture, email, refresh_token, expiry_at)
+		 VALUES ($1, $2, $3, $4, $5, $6)
 		 RETURNING id, name, picture, email, gmail_history_id, refresh_token, created_at, updated_at, last_gmail_sync`,
-		googleID, name, picture, email, refreshToken,
+		googleID, name, picture, email, refreshToken, expiryAt,
 	).Scan(&gpu.ID, &gpu.Name, &gpu.Picture, &gpu.Email, &gpu.GmailHistoryID,
 		&gpu.RefreshToken, &gpu.CreatedAt, &gpu.UpdatedAt, &gpu.LastGmailSync,
 	)
@@ -106,7 +152,8 @@ func (r *googleProviderRepo) GetUserByGoogleID(
 		    gpu.refresh_token,
 		    gpu.created_at,
 		    gpu.updated_at,
-		    gpu.last_gmail_sync
+		    gpu.last_gmail_sync,
+			  gpu.expiry_at
 		  FROM auth_users au
 		  JOIN auth_providers ap ON au.id = ap.auth_user_id
 		  JOIN google_provider_users gpu on ap.provider_id = gpu.id
@@ -117,7 +164,7 @@ func (r *googleProviderRepo) GetUserByGoogleID(
 		&u.GoogleProvider.ID, &u.GoogleProvider.Name, &u.GoogleProvider.Picture,
 		&u.GoogleProvider.Email, &u.GoogleProvider.GmailHistoryID,
 		&u.GoogleProvider.RefreshToken, &u.GoogleProvider.CreatedAt,
-		&u.GoogleProvider.UpdatedAt, &u.GoogleProvider.LastGmailSync,
+		&u.GoogleProvider.UpdatedAt, &u.GoogleProvider.LastGmailSync, &u.GoogleProvider.ExpiryAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -128,12 +175,24 @@ func (r *googleProviderRepo) GetUserByGoogleID(
 	return &u, nil
 }
 
-func (r *googleProviderRepo) UpdateHistoryID(ctx context.Context, googleID string, historyID uint64) error {
+func (r *googleProviderRepo) UpdateHistoryID(
+	ctx context.Context,
+	googleID string,
+	historyID uint64,
+	expiryAt *int64,
+) error {
 	logger.Logger(ctx).Info("updating historyID", "googleID", googleID, "historyID", historyID)
 	_, err := r.Executor(nil).Exec(
-		ctx,
-		`UPDATE google_provider_users SET gmail_history_id = $1, last_gmail_sync = NOW() WHERE id = $2 AND deleted = false`,
-		historyID, googleID,
+		ctx, `
+		UPDATE google_provider_users 
+		SET 
+		  gmail_history_id = $1, 
+		  last_gmail_sync = NOW(),
+			expiry_at = $3
+		WHERE 
+		  id = $2 AND 
+		  deleted = false`,
+		historyID, googleID, expiryAt,
 	)
 	return err
 }
@@ -168,11 +227,22 @@ func (r *googleProviderRepo) GetUserByEmail(ctx context.Context, email string) (
 	return &info, nil
 }
 
-func (r *googleProviderRepo) UpdateHistoryIDByEmail(ctx context.Context, email string, historyID uint64) error {
+func (r *googleProviderRepo) UpdateHistoryIDByEmail(
+	ctx context.Context,
+	email string,
+	historyID uint64,
+	expiryAt *int64,
+) error {
 	_, err := r.Executor(nil).Exec(
-		ctx,
-		`UPDATE google_provider_users SET gmail_history_id = $1, updated_at = NOW() WHERE email = $2 AND deleted = false`,
-		historyID, email,
+		ctx, `
+		UPDATE google_provider_users 
+		SET 
+		  gmail_history_id = $1, 
+		  expiry_at = $3,
+		  last_gmail_sync = NOW(),
+		  updated_at = NOW()
+		WHERE email = $2 AND deleted = false`,
+		historyID, email, expiryAt,
 	)
 	return err
 }

@@ -7,16 +7,15 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/client"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/config"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/gmail"
+	temporalActivities "github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/temporal"
 
 	// "github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/pubsub"
 
 	// "github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/pubsub"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedMiddleware "github.com/Rishabh-Kapri/pennywise/backend/shared/middleware"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
@@ -27,6 +26,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	tc "go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/worker"
 )
 
 // package-level Temporal client, set in main() and used by handlers
@@ -89,7 +89,7 @@ func watchHandler(c *gin.Context) {
 		return
 	}
 
-	res, err := gmail.NewService().WatchHandler(ctx, reqData)
+	historyId, expiration, err := gmail.NewService().WatchHandler(ctx, reqData)
 	if err != nil {
 		log.Error("error in watch handler", "error", err)
 		wrappedErr := errs.Wrap(errs.CodeInternalError, "error in watch handler", err)
@@ -100,17 +100,14 @@ func watchHandler(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"historyID": res})
+	c.JSON(http.StatusOK, gin.H{"historyID": historyId, "expiration": expiration})
 }
 
-func testHandler(c *gin.Context) {
+func setupWatchTestHandler(c *gin.Context) {
 	ctx := c.Request.Context()
 	log := logger.Logger(ctx)
-	cfg := config.LoadConfig()
 
-	log.Info("cipher", "url", cfg.CipherServiceURL+"/api")
-
-	var reqData client.PredictRequest
+	var reqData gmail.GmailSyncRequest
 	if err := c.ShouldBindJSON(&reqData); err != nil {
 		log.Error("error unmarshalling request body", "error", err)
 		wrappedErr := errs.Wrap(errs.CodeInternalError, "error unmarshalling request body", err)
@@ -118,29 +115,15 @@ func testHandler(c *gin.Context) {
 		return
 	}
 
-	log.Info("cipher", "req", reqData)
-	cipherTransport := httpclient.NewHttpTransport(cfg.CipherServiceURL)
-	cipherClient := transport.NewClient("cipher", cipherTransport)
-	log.Info("cipher", "headers", utils.SanitizeHeadersForLogging(map[string][]string(c.Request.Header)))
-
-	log.Info("cipher", "ctx:budgetId", ctx.Value("X-Budget-ID"))
-	res, err := client.NewCipherClient(cipherClient).Predict(ctx, reqData)
+	historyId, expiration, err := gmail.NewService().WatchHandler(ctx, reqData)
 	if err != nil {
-		log.Error("error predicting", "error", err)
-		wrappedErr := errs.Wrap(errs.CodeInternalError, "error predicting", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": wrappedErr.Error()})
+		log.Error("error setting up gmail watch", "error", err)
+		wrappedErr := errs.Wrap(errs.CodeInternalError, "error setting up gmail watch", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": wrappedErr.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"payeeId":    res.PayeeID,
-		"categoryId": res.CategoryID,
-		"confidence": res.Confidence,
-		"source":     res.Source,
-		"payee":      res.Payee,
-		"category":   res.Category,
-		"reasoning":  res.Reasoning,
-	})
+	c.JSON(http.StatusOK, gin.H{"historyID": historyId, "expiration": expiration})
 }
 
 func connectToTemporal(ctx context.Context, cfg config.Config) (tc.Client, error) {
@@ -176,11 +159,27 @@ func main() {
 	}
 	log.Info("db connected", "url", cfg.DatabaseURL)
 
-	// temporalClient, err = connectToTemporal(ctx, *cfg)
-	// if err != nil {
-	// 	logger.Fatal("Unable to connect to Temporal", "error", err)
-	// }
-	// defer temporalClient.Close()
+	if cfg.TemporalServerHost != "" {
+		temporalClient, err = connectToTemporal(ctx, *cfg)
+		if err != nil {
+			logger.Fatal("Unable to connect to Temporal", "error", err)
+		}
+		defer temporalClient.Close()
+
+		w := worker.New(temporalClient, sharedModel.GmailActivitiesTaskQueue, worker.Options{
+			UseBuildIDForVersioning: false,
+			BackgroundActivityContext: utils.WithInternalAuthToken(
+				utils.WithServiceName(context.Background(), "gmail-pubsub"),
+				cfg.InternalAuthToken,
+			),
+		})
+		w.RegisterActivity(&temporalActivities.WatchGmailActivity{Gmail: gmail.NewService()})
+		go func() {
+			if err := w.Run(worker.InterruptCh()); err != nil {
+				logger.Fatal("Temporal activity worker failed", "error", err)
+			}
+		}()
+	}
 
 	// pennywiseTransport := httpclient.NewHttpTransport(cfg.PennywiseServiceURL)
 	// pennywiseClient := transport.NewClient("pennywise-api", pennywiseTransport)
@@ -206,7 +205,7 @@ func main() {
 	budgetApiGroup.Use(sharedMiddleware.BudgetIdMiddleware(budgetRepo))
 
 	budgetApiGroup.POST("/watch", watchHandler)
-	budgetApiGroup.POST("/test", testHandler)
+	budgetApiGroup.POST("/test/setup-watch", setupWatchTestHandler)
 	budgetApiGroup.POST("/temporal", temporalHandler)
 
 	server := &http.Server{

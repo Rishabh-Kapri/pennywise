@@ -13,6 +13,7 @@ const (
 	PennywiseActivitiesTaskQueue         = "pennywise-activities"
 	EmailToTransactionWorkflowName       = "EmailToTransactionWorkflow"
 	ParsedEmailToTransactionWorkflowName = "ParsedEmailToTransactionWorkflow"
+	RefreshGmailWatchWorkflowName        = "RefreshGmailWatchWorkflow"
 
 	// RetryPredictSignal is sent to a waiting workflow to trigger a manual retry
 	// of the Predict step (e.g. after Ollama comes back online).
@@ -81,4 +82,13 @@ type CreateCipherPredictionInput struct {
 	Transactions []Transaction            `json:"transactions"`
 	Predictions  []CipherPredictionResult `json:"predictions"`
 	BudgetID     uuid.UUID                `json:"budgetId"`
+}
+
+// ------ Google Watch ------
+type GoogleWatchUser struct {
+	ID             string `json:"id"`
+	Email          string `json:"email"`
+	GmailHistoryID uint64 `json:"gmailHistoryId"`
+	RefreshToken   string `json:"refreshToken"`
+	ExpiryAt       *int64 `json:"expiryAt"`
 }
