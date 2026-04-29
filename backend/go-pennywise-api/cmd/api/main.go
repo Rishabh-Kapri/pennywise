@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/config"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/db"
@@ -305,6 +306,7 @@ func main() {
 			ID: "sync-gmail-watch-workflow",
 			Spec: client.ScheduleSpec{
 				CronExpressions: []string{"0 12 */2 * *"}, // every 2 days at 12:00 PM
+				StartAt:         time.Date(2026, 4, 29, 7, 30, 0, 0, time.UTC),
 			},
 			Action: &client.ScheduleWorkflowAction{
 				ID:        "",
