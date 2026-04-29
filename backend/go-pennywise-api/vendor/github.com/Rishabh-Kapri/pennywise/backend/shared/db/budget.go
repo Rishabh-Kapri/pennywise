@@ -31,7 +31,7 @@ func NewBudgetRepository(pool *pgxpool.Pool) BudgetRepository {
 func (r *budgetRepo) GetAll(ctx context.Context, userID uuid.UUID) ([]model.Budget, error) {
 	rows, err := r.Executor(nil).Query(
 		ctx, `
-			SELECT id, user_id, name, is_selected, created_at, updated_at, metadata
+			SELECT id, user_id, name, is_selected, created_at, updated_at, COALESCE(metadata, '{}')
 			FROM budgets
 			WHERE user_id = $1 AND deleted = FALSE
 		`, userID,
@@ -59,7 +59,7 @@ func (r *budgetRepo) GetById(ctx context.Context, tx pgx.Tx, id uuid.UUID) (*mod
 	var budget model.Budget
 	err := r.Executor(tx).QueryRow(
 		ctx, `
-				SELECT id, user_id, name, is_selected, created_at, updated_at, metadata
+				SELECT id, user_id, name, is_selected, created_at, updated_at, COALESCE(metadata, '{}')
 				FROM budgets
 				WHERE id = $1 AND deleted = FALSE
 			`, id,

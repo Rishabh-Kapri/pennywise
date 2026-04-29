@@ -195,7 +195,7 @@ func main() {
 			budgetGroup.Use(authMiddleware)
 			budgetGroup.GET("", budgetHandler.List)
 			budgetGroup.POST("", budgetHandler.Create)
-			budgetGroup.PATCH(":id", budgetHandler.UpdateById)
+			budgetGroup.PATCH("/:id", budgetHandler.UpdateById)
 		}
 		// Auth-only provider user routes (no budget middleware) — used by internal services
 		{

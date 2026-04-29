@@ -51,18 +51,19 @@ func (h *budgetHandler) Create(c *gin.Context) {
 		return
 	}
 
-	var body model.Budget
+	var body model.CreateBudgetRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	if err := h.service.Create(ctx, body.Name, userID); err != nil {
+	budget, err := h.service.Create(ctx, body, userID)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusCreated, nil)
+	c.JSON(http.StatusCreated, budget)
 }
 
 func (h *budgetHandler) UpdateById(c *gin.Context) {
