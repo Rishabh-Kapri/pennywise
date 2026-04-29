@@ -4,7 +4,6 @@ import type { TransactionColumns } from '@/types/common.types';
 import { allAccountTxnCols, specificAccountTxnCols } from '../TransactionColumns';
 import type { MobileFilter } from '../TransactionHeader';
 import {
-  TransactionSource,
   type ListItem,
   type MonthGroupStats,
   type Transaction,
@@ -103,7 +102,7 @@ export function filterTransactions(
 
 export function buildTransactionPayload(txn: Transaction): TransactionDTO {
   return {
-    id: txn.id,
+    id: txn.id || undefined,
     budgetId: txn.budgetId,
     accountId: txn.accountId,
     payeeId: txn.payeeId,
@@ -112,7 +111,6 @@ export function buildTransactionPayload(txn: Transaction): TransactionDTO {
     amount: txn.outflow ? -txn.outflow : (txn.inflow ?? 0),
     note: txn.note ?? '',
     status: txn.status,
-    source: TransactionSource.PENNYWISE,
     tagIds: txn.tagIds ?? [],
   };
 }

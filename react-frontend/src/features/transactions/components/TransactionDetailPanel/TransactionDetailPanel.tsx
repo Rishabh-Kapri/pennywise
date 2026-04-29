@@ -13,14 +13,21 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { getCurrencyLocaleString, getLocaleDate, getTodaysDate } from '@/utils/date.utils';
-import type { Transaction } from '../../types/transaction.types';
+import {
+  TransactionStatus,
+  type Transaction,
+  type TransactionStatus as TransactionStatusType,
+} from '../../types/transaction.types';
 import { AccountDropdown } from '../popovers/AccountPopover';
 import { PayeeDropdown } from '../popovers/PayeePopover';
 import { CategoryDropdown } from '../popovers/CategoryPopover';
 import { DateDropdown } from '../popovers/DatePopover';
 import styles from './TransactionDetailPanel.module.css';
 
-type TransactionStatusAction = 'APPROVED' | 'REJECTED';
+type TransactionStatusAction = Extract<
+  TransactionStatusType,
+  typeof TransactionStatus.APPROVED | typeof TransactionStatus.REJECTED
+>;
 type TransactionChangeHandler = (key: keyof Transaction, value: string | number | null) => void;
 type TransactionSelectHandler = (
   idKey: keyof Transaction,
@@ -80,7 +87,7 @@ function PanelFrame({
 
 function AmountField({ txn, isInflow, onChange }: { txn: Transaction; isInflow: boolean; onChange: TransactionChangeHandler }) {
   const setAmountType = (nextType: 'inflow' | 'outflow') => {
-    const current = txn.inflow ?? txn.outflow ?? 0;
+    const current = isInflow ? (txn.inflow ?? 0) : (txn.outflow ?? 0);
     onChange(nextType, Math.abs(current));
     onChange(nextType === 'inflow' ? 'outflow' : 'inflow', null);
   };
@@ -89,18 +96,22 @@ function AmountField({ txn, isInflow, onChange }: { txn: Transaction; isInflow: 
     <div className={styles.formGroup}>
       <label className={styles.label}>Amount</label>
       <div className={styles.amountInputRow}>
-        <button
-          type="button"
-          className={`${styles.amountTypeBtn} ${!isInflow ? styles.amountTypeBtnActive : ''}`}
-          onClick={() => setAmountType('outflow')}>
-          Outflow
-        </button>
-        <button
-          type="button"
-          className={`${styles.amountTypeBtn} ${isInflow ? styles.amountTypeBtnActive : ''}`}
-          onClick={() => setAmountType('inflow')}>
-          Inflow
-        </button>
+        <div className={styles.amountTypeControl}>
+          <button
+            type="button"
+            className={`${styles.amountTypeBtn} ${!isInflow ? styles.amountTypeBtnActive : ''}`}
+            onClick={() => setAmountType('outflow')}
+            aria-pressed={!isInflow}>
+            Outflow
+          </button>
+          <button
+            type="button"
+            className={`${styles.amountTypeBtn} ${isInflow ? styles.amountTypeBtnActive : ''}`}
+            onClick={() => setAmountType('inflow')}
+            aria-pressed={isInflow}>
+            Inflow
+          </button>
+        </div>
         <input
           type="text"
           className={styles.amountInput}
@@ -244,14 +255,14 @@ function StatusControl({
   status: Transaction['status'];
   onStatusChange: (status: TransactionStatusAction) => void;
 }) {
-  if (status === 'UNAPPROVED') {
+  if (status === TransactionStatus.UNAPPROVED) {
     return (
       <div className={styles.statusActions}>
-        <button type="button" className={styles.approveBtn} onClick={() => onStatusChange('APPROVED')} aria-label="Approve transaction">
+        <button type="button" className={styles.approveBtn} onClick={() => onStatusChange(TransactionStatus.APPROVED)} aria-label="Approve transaction">
           <LucideThumbsUp size={13} />
           Approve
         </button>
-        <button type="button" className={styles.rejectBtn} onClick={() => onStatusChange('REJECTED')} aria-label="Reject transaction">
+        <button type="button" className={styles.rejectBtn} onClick={() => onStatusChange(TransactionStatus.REJECTED)} aria-label="Reject transaction">
           <LucideThumbsDown size={13} />
           Reject
         </button>
