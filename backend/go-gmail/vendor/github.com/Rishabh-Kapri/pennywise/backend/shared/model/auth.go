@@ -38,11 +38,12 @@ type GoogleProviderUser struct {
 	Name           string     `json:"name"`
 	Picture        string     `json:"picture"`
 	Email          string     `json:"email"`
-	GmailHistoryID *int       `json:"gmailHistoryId"`
+	GmailHistoryID *uint64    `json:"gmailHistoryId"`
 	RefreshToken   string     `json:"refreshToken"`
 	CreatedAt      time.Time  `json:"createdAt"`
 	UpdatedAt      time.Time  `json:"updatedAt"`
 	LastGmailSync  *time.Time `json:"lastGmailSync"`
+	ExpiryAt       *int64     `json:"expiryAt"`
 	Deleted        bool       `json:"deleted"`
 }
 

@@ -301,6 +301,20 @@ func main() {
 			logger.Logger(ctx).Error("failed to create temporal client", "error", err)
 			panic(err)
 		}
+		_, err = temporalClient.ScheduleClient().Create(ctx, client.ScheduleOptions{
+			ID: "sync-gmail-watch-workflow",
+			Spec: client.ScheduleSpec{
+				CronExpressions: []string{"0 12 */2 * *"}, // every 2 days at 12:00 PM
+			},
+			Action: &client.ScheduleWorkflowAction{
+				ID:        "",
+				Workflow:  sharedModel.RefreshGmailWatchWorkflowName,
+				TaskQueue: sharedModel.PennywiseTaskQueue,
+			},
+		})
+		if err != nil {
+			logger.Logger(ctx).Warn("failed to create gmail watch schedule", "error", err)
+		}
 
 		w := worker.New(temporalClient, sharedModel.PennywiseActivitiesTaskQueue, worker.Options{
 			BackgroundActivityContext: utils.WithInternalAuthToken(
@@ -316,6 +330,9 @@ func main() {
 		})
 		w.RegisterActivity(&temporalActivities.CreateCipherPredictionActivity{
 			PredictionService: predictionService,
+		})
+		w.RegisterActivity(&temporalActivities.FetchGoogleUsersActivity{
+			AuthService: authService,
 		})
 
 		if err := w.Start(); err != nil {

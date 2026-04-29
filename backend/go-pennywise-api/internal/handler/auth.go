@@ -154,7 +154,7 @@ func (h *authHandler) UpdateProviderUser(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		if err := h.service.UpdateGmailHistoryID(ctx, req.Email, req.GmailHistoryID); err != nil {
+		if err := h.service.UpdateGmailHistoryID(ctx, req.Email, req.GmailHistoryID, nil); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}

@@ -45,12 +45,17 @@ func (s noopAuthService) GetUserById(context.Context, uuid.UUID) (*model.AuthUse
 	return nil, nil
 }
 
+func (s noopAuthService) GetAllGoogleUsers(context.Context) ([]model.GoogleProviderUser, error) {
+	s.t.Fatalf("GetAllGoogleUsers should not be called for verified internal requests")
+	return nil, nil
+}
+
 func (s noopAuthService) GetGoogleUserByEmail(context.Context, string) (*model.GoogleUserInfo, error) {
 	s.t.Fatalf("GetGoogleUserByEmail should not be called for verified internal requests")
 	return nil, nil
 }
 
-func (s noopAuthService) UpdateGmailHistoryID(context.Context, string, uint64) error {
+func (s noopAuthService) UpdateGmailHistoryID(context.Context, string, uint64, *int64) error {
 	s.t.Fatalf("UpdateGmailHistoryID should not be called for verified internal requests")
 	return nil
 }

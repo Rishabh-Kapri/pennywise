@@ -58,6 +58,9 @@ func main() {
 	w.RegisterWorkflowWithOptions(workflow.ParsedEmailToTransactionWorkflow, sdkworkflow.RegisterOptions{
 		Name: sharedModel.ParsedEmailToTransactionWorkflowName,
 	})
+	w.RegisterWorkflowWithOptions(workflow.RefreshGmailWatchWorkflow, sdkworkflow.RegisterOptions{
+		Name: sharedModel.RefreshGmailWatchWorkflowName,
+	})
 
 	// 4. Start listening (blocks until interrupted)
 	err = w.Run(worker.InterruptCh())

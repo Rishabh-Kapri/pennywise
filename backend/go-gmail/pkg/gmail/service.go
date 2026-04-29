@@ -39,34 +39,33 @@ func NewService() *Service {
 }
 
 // WatchHandler is the gmail watch handler
-func (s *Service) WatchHandler(ctx context.Context, payload GmailSyncRequest) (uint64, error) {
+func (s *Service) WatchHandler(ctx context.Context, payload GmailSyncRequest) (uint64, int64, error) {
 	config := getOauth2Config()
 	logger := logger.Logger(ctx)
 	tokenSource := config.TokenSource(ctx, &oauth2.Token{
 		RefreshToken: payload.RefreshToken,
 	})
 	token, err := tokenSource.Token()
-	logger.Info("token", "token", token)
 	if err != nil {
 		logger.Error("Error while fetching token", "error", err)
-		return 0, errs.Wrap(errs.CodeInternalError, "Error while fetching token", err)
+		return 0, 0, errs.Wrap(errs.CodeInternalError, "Error while fetching token", err)
 	}
 
 	if payload.IsStop {
 		logger.Info("stopping gmail watch", "email", payload.Email)
 		err := s.stopWatch(ctx, token, config, payload.Email)
 		if err != nil {
-			return 0, err
+			return 0, 0, err
 		}
 		logger.Info("stopped gmail watch", "email", payload.Email)
-		return 0, nil
+		return 0, 0, nil
 	}
 
 	// historyID := uint64(1)
-	historyID, err := s.setupWatch(ctx, payload.Email, token, config)
-	logger.Info("gmail setup done", "historyId", historyID, "err", err)
+	historyID, expiration, err := s.setupWatch(ctx, payload.Email, token, config)
+	logger.Info("gmail setup done", "historyId", historyID, "expiration", expiration, "err", err)
 
-	return historyID, nil
+	return historyID, expiration, err
 }
 
 func (s *Service) stopWatch(ctx context.Context, token *oauth2.Token, oauthConfig *oauth2.Config, email string) error {
@@ -83,10 +82,10 @@ func (s *Service) setupWatch(
 	email string,
 	token *oauth2.Token,
 	oauthConfig *oauth2.Config,
-) (uint64, error) {
+) (uint64, int64, error) {
 	gmailService, err := gmail.NewService(ctx, option.WithTokenSource(oauthConfig.TokenSource(ctx, token)))
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	watchRequest := &gmail.WatchRequest{
 		LabelIds:          []string{"INBOX"},
@@ -96,9 +95,10 @@ func (s *Service) setupWatch(
 	gmailUserService := gmail.NewUsersService(gmailService)
 	res, err := gmailUserService.Watch(email, watchRequest).Do()
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
-	return res.HistoryId, nil
+	logger.Logger(ctx).Info("gmail watch done", "res", res)
+	return res.HistoryId, res.Expiration, nil
 }
 
 func (s *Service) GetMessageHistory(
