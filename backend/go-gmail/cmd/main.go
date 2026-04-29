@@ -7,8 +7,10 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/auth"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/config"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/gmail"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/parser"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/pubsub"
 	temporalActivities "github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/temporal"
 
@@ -174,6 +176,11 @@ func main() {
 			),
 		})
 		w.RegisterActivity(&temporalActivities.WatchGmailActivity{Gmail: gmail.NewService()})
+		w.RegisterActivity(&temporalActivities.GmailActivities{
+			Auth:   auth.NewService(cfg),
+			Gmail:  gmail.NewService(),
+			Parser: parser.NewEmailParser(),
+		})
 		go func() {
 			if err := w.Run(worker.InterruptCh()); err != nil {
 				logger.Fatal("Temporal activity worker failed", "error", err)
