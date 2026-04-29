@@ -54,6 +54,18 @@ type ParsedEmailsInput struct {
 	BudgetID     uuid.UUID     `json:"budgetId"`
 }
 
+type FetchAndParseEmailsInput struct {
+	Email        string    `json:"email"`
+	HistoryID    uint64    `json:"historyId"`
+	RefreshToken string    `json:"refreshToken"`
+	BudgetID     uuid.UUID `json:"budgetId"`
+}
+
+type UpdateGmailHistoryInput struct {
+	Email          string `json:"email"`
+	GmailHistoryID uint64 `json:"gmailHistoryId"`
+}
+
 // CipherPredictionResult is the result of the Predict activity (cipher).
 type CipherPredictionResult struct {
 	OriginalRawText string           `json:"rawText"`

@@ -19,7 +19,7 @@ function applyOptimisticTransaction(transaction: Transaction, optimisticTransact
   const status = optimisticTransaction.status ?? transaction.status;
   Object.assign(transaction, optimisticTransaction, {
     status,
-    tagIds: [...optimisticTransaction.tagIds],
+    tagIds: [...(optimisticTransaction.tagIds ?? [])],
   });
 }
 
@@ -113,7 +113,7 @@ const transactionSlice = createSlice({
         if (!id) return;
         const transaction = state.transactions.find((txn) => txn.id === id);
         if (!transaction) return;
-        state.optimisticTransactions[id] = { ...transaction, tagIds: [...transaction.tagIds] };
+        state.optimisticTransactions[id] = { ...transaction, tagIds: [...(transaction.tagIds ?? [])] };
         applyOptimisticTransaction(transaction, action.meta.arg.optimisticTransaction);
       })
       .addCase(updateTransaction.fulfilled, (state, action) => {

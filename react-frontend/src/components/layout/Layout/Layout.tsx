@@ -5,9 +5,13 @@ import styles from './Layout.module.css';
 import { HeaderProvider } from '../../../context/HeaderProvider';
 import { SidePanelProvider } from '../../../context/SidePanelProvider';
 import { useSidePanel } from '../../../context/SidePanelContext';
-import { useEffect } from 'react';
-import { fetchAllBudgets } from '@/features/budget';
-import { useAppDispatch } from '@/app/hooks';
+import { useEffect, useState } from 'react';
+import {
+  fetchAllBudgets,
+  selectAllBudgets,
+} from '@/features/budget';
+import { useAppDispatch, useAppSelector } from '@/app/hooks';
+import BudgetOnboarding from '@/features/budget/components/BudgetOnboarding';
 
 function MainWithSidePanel() {
   const { sidePanelContent } = useSidePanel();
@@ -30,10 +34,16 @@ function MainWithSidePanel() {
 
 export default function Layout() {
   const dispatch = useAppDispatch();
+  const budgets = useAppSelector(selectAllBudgets);
+  const [hasLoadedBudgets, setHasLoadedBudgets] = useState(false);
 
   useEffect(() => {
-    dispatch(fetchAllBudgets());
+    dispatch(fetchAllBudgets()).finally(() => setHasLoadedBudgets(true));
   }, [dispatch]);
+
+  if (hasLoadedBudgets && budgets.length === 0) {
+    return <BudgetOnboarding />;
+  }
 
   return (
     <div className={styles.layout}>
