@@ -4,6 +4,7 @@ import type { TransactionColumns } from '@/types/common.types';
 import { allAccountTxnCols, specificAccountTxnCols } from '../TransactionColumns';
 import type { MobileFilter } from '../TransactionHeader';
 import {
+  TransactionStatus,
   type ListItem,
   type MonthGroupStats,
   type Transaction,
@@ -78,11 +79,7 @@ export function groupTransactions(txns: Transaction[]): ListItem[] {
   return items;
 }
 
-export function filterTransactions(
-  transactions: Transaction[],
-  searchTerm: string,
-  mobileFilter: MobileFilter,
-) {
+export function filterTransactions(transactions: Transaction[], searchTerm: string, mobileFilter: MobileFilter) {
   const search = searchTerm.trim().toLowerCase();
 
   return transactions.filter((txn) => {
@@ -110,7 +107,7 @@ export function buildTransactionPayload(txn: Transaction): TransactionDTO {
     date: txn.date,
     amount: txn.outflow ? -txn.outflow : (txn.inflow ?? 0),
     note: txn.note ?? '',
-    status: txn.status,
+    status: txn.status ?? TransactionStatus.MANUAL,
     tagIds: txn.tagIds ?? [],
   };
 }
