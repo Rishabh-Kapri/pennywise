@@ -7,6 +7,7 @@ import (
 )
 
 type Config struct {
+	Environment                      string
 	GoogleClientId                   string
 	GoogleClientSecret               string
 	GoogleApplicationCredentialsJson string
@@ -32,8 +33,13 @@ func LoadConfig() *Config {
 	if port == "" {
 		port = "5170"
 	}
+	env := os.Getenv("RAILWAY_ENVIRONMENT_NAME")
+	if env == "" {
+		env = "local"
+	}
 
 	return &Config{
+		Environment:                      env,
 		GoogleClientId:                   os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret:               os.Getenv("GOOGLE_CLIENT_SECRET"),
 		GoogleApplicationCredentialsJson: os.Getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON"),
