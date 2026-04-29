@@ -1,80 +1,37 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { Check, ChevronRight } from 'lucide-react';
 import {
   createBudget,
   fetchAllBudgets,
+  selectAllBudgets,
   selectBudgetError,
   selectBudgetLoading,
-  type BudgetTemplateGroupInput,
 } from '../store';
+import {
+  DEFAULT_SELECTED_TEMPLATE_GROUPS,
+  STARTER_BUDGET_TEMPLATE_GROUPS,
+} from '../constants/budgetTemplates';
 import { LoadingState, toast } from '@/utils';
 import styles from './BudgetOnboarding.module.css';
 
-const TEMPLATE_GROUPS: BudgetTemplateGroupInput[] = [
-  {
-    name: 'Monthly Bills',
-    categories: [
-      { name: 'Rent / Mortgage' },
-      { name: 'Electricity' },
-      { name: 'Water' },
-      { name: 'Internet' },
-      { name: 'Phone' },
-    ],
-  },
-  {
-    name: 'Everyday Spending',
-    categories: [
-      { name: 'Groceries' },
-      { name: 'Dining Out' },
-      { name: 'Fuel' },
-      { name: 'Shopping' },
-      { name: 'Personal Care' },
-    ],
-  },
-  {
-    name: 'Savings Goals',
-    categories: [
-      { name: 'Emergency Fund' },
-      { name: 'Vacation' },
-      { name: 'Investments' },
-      { name: 'Big Purchases' },
-    ],
-  },
-  {
-    name: 'Debt Payments',
-    categories: [
-      { name: 'Credit Card' },
-      { name: 'Student Loan' },
-      { name: 'Auto Loan' },
-      { name: 'Personal Loan' },
-    ],
-  },
-  {
-    name: 'Quality of Life',
-    categories: [
-      { name: 'Entertainment' },
-      { name: 'Fitness' },
-      { name: 'Subscriptions' },
-      { name: 'Gifts' },
-      { name: 'Travel' },
-    ],
-  },
-];
-
-const DEFAULT_SELECTED_GROUPS = TEMPLATE_GROUPS.map((group) => group.name);
-
 export default function BudgetOnboarding() {
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const loading = useAppSelector(selectBudgetLoading);
   const error = useAppSelector(selectBudgetError);
+  const budgets = useAppSelector(selectAllBudgets);
   const [budgetName, setBudgetName] = useState('My Budget');
   const [selectedGroups, setSelectedGroups] = useState<string[]>(
-    DEFAULT_SELECTED_GROUPS,
+    DEFAULT_SELECTED_TEMPLATE_GROUPS,
   );
 
   const selectedTemplateGroups = useMemo(
-    () => TEMPLATE_GROUPS.filter((group) => selectedGroups.includes(group.name)),
+    () =>
+      STARTER_BUDGET_TEMPLATE_GROUPS.filter((group) =>
+        selectedGroups.includes(group.name),
+      ),
     [selectedGroups],
   );
 
@@ -105,6 +62,7 @@ export default function BudgetOnboarding() {
       .then(() => {
         toast.success('Budget created');
         dispatch(fetchAllBudgets());
+        navigate('/budget', { replace: true });
       })
       .catch((err: unknown) => {
         const message =
@@ -120,7 +78,9 @@ export default function BudgetOnboarding() {
   return (
     <main className={styles.page}>
       <section className={styles.hero}>
-        <div className={styles.eyebrow}>First budget setup</div>
+        <div className={styles.eyebrow}>
+          {budgets.length === 0 ? 'First budget setup' : 'New budget setup'}
+        </div>
         <h1>Create your budget</h1>
         <p>
           Start with a practical category template, then customize it once your
@@ -148,14 +108,14 @@ export default function BudgetOnboarding() {
           <button
             type="button"
             className={styles.secondaryButton}
-            onClick={() => setSelectedGroups(DEFAULT_SELECTED_GROUPS)}
+            onClick={() => setSelectedGroups(DEFAULT_SELECTED_TEMPLATE_GROUPS)}
             disabled={isCreating}>
             Select all
           </button>
         </div>
 
         <div className={styles.groupGrid}>
-          {TEMPLATE_GROUPS.map((group) => {
+          {STARTER_BUDGET_TEMPLATE_GROUPS.map((group) => {
             const selected = selectedGroups.includes(group.name);
             return (
               <button
@@ -178,14 +138,25 @@ export default function BudgetOnboarding() {
 
         {error && <div className={styles.error}>{error}</div>}
 
-        <button
-          type="button"
-          className={styles.createButton}
-          onClick={handleCreateBudget}
-          disabled={isCreating}>
-          {isCreating ? 'Creating budget...' : 'Create budget'}
-          {!isCreating && <ChevronRight size={18} />}
-        </button>
+        <div className={styles.actions}>
+          {budgets.length > 0 && (
+            <button
+              type="button"
+              className={styles.cancelButton}
+              onClick={() => navigate(-1)}
+              disabled={isCreating}>
+              Cancel
+            </button>
+          )}
+          <button
+            type="button"
+            className={styles.createButton}
+            onClick={handleCreateBudget}
+            disabled={isCreating}>
+            {isCreating ? 'Creating budget...' : 'Create budget'}
+            {!isCreating && <ChevronRight size={18} />}
+          </button>
+        </div>
       </section>
     </main>
   );

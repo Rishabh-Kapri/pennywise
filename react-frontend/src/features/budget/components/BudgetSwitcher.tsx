@@ -1,4 +1,4 @@
-import { Check, ChevronDown, WalletCards } from 'lucide-react';
+import { Check, ChevronDown, Plus, WalletCards } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import {
@@ -7,10 +7,12 @@ import {
   setSelectedBudget,
   updateBudgetSelection,
 } from '../store';
+import { useNavigate } from 'react-router-dom';
 import styles from './BudgetSwitcher.module.css';
 
 export default function BudgetSwitcher() {
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const budgets = useAppSelector(selectAllBudgets);
   const selectedBudget = useAppSelector(selectSelectedBudget);
   const [isOpen, setIsOpen] = useState(false);
@@ -61,21 +63,18 @@ export default function BudgetSwitcher() {
       <button
         type="button"
         className={styles.trigger}
-        onClick={() => budgets.length > 1 && setIsOpen((current) => !current)}
-        disabled={budgets.length <= 1}
+        onClick={() => setIsOpen((current) => !current)}
         aria-label="Select active budget"
         aria-haspopup="listbox"
         aria-expanded={isOpen}>
         <span className={styles.selectedName}>
           {selectedBudget?.name ?? budgets[0]?.name ?? 'No budget'}
         </span>
-        {budgets.length > 1 && (
-          <ChevronDown
-            size={16}
-            strokeWidth={2}
-            className={`${styles.chevron} ${isOpen ? styles.chevronOpen : ''}`}
-          />
-        )}
+        <ChevronDown
+          size={16}
+          strokeWidth={2}
+          className={`${styles.chevron} ${isOpen ? styles.chevronOpen : ''}`}
+        />
       </button>
 
       {isOpen && (
@@ -95,6 +94,19 @@ export default function BudgetSwitcher() {
               </button>
             );
           })}
+
+          <div className={styles.divider} />
+
+          <button
+            type="button"
+            className={styles.createOption}
+            onClick={() => {
+              setIsOpen(false);
+              navigate('/budget/new');
+            }}>
+            <Plus size={15} strokeWidth={2.2} />
+            <span>Create budget</span>
+          </button>
         </div>
       )}
     </div>

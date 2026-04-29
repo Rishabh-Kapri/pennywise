@@ -9,10 +9,12 @@
     radial-gradient(circle at top left, color-mix(in srgb, var(--color-primary) 24%, transparent), transparent 32rem),
     #0a0a0a;
   color: #fff;
+  animation: pageEnter 0.36s ease-out both;
 }
 
 .hero {
   max-width: 520px;
+  animation: heroEnter 0.46s ease-out both;
 }
 
 .eyebrow {
@@ -49,6 +51,49 @@
   background: rgba(20, 20, 20, 0.88);
   box-shadow: 0 24px 90px rgba(0, 0, 0, 0.4);
   backdrop-filter: blur(16px);
+  animation: cardEnter 0.46s ease-out 0.06s both;
+}
+
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes heroEnter {
+  from {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes cardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page,
+  .hero,
+  .card {
+    animation: none;
+  }
 }
 
 .label {
@@ -166,9 +211,15 @@
   font-size: 0.9rem;
 }
 
-.createButton {
+.actions {
   width: 100%;
   margin-top: 1.25rem;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.cancelButton,
+.createButton {
   padding: 0.9rem 1rem;
   display: inline-flex;
   align-items: center;
@@ -176,13 +227,24 @@
   gap: 0.5rem;
   border: 0;
   border-radius: 12px;
-  background: var(--color-primary);
-  color: #fff;
   font-weight: 800;
   cursor: pointer;
 }
 
+.cancelButton {
+  flex: 0 0 auto;
+  background: var(--color-surface-secondary);
+  color: var(--color-text-secondary);
+}
+
+.createButton {
+  flex: 1;
+  background: var(--color-primary);
+  color: #fff;
+}
+
 .createButton:disabled,
+.cancelButton:disabled,
 .groupCard:disabled,
 .secondaryButton:disabled,
 .input:disabled {
@@ -208,5 +270,9 @@
 
   .groupGrid {
     grid-template-columns: 1fr;
+  }
+
+  .actions {
+    flex-direction: column-reverse;
   }
 }
