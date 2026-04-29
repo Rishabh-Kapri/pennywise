@@ -1,9 +1,10 @@
 import { NavLink } from 'react-router-dom';
-import { ChartPie, WalletCards, Banknote, UserCircle, Menu, X, ReceiptIndianRupee } from 'lucide-react';
+import { ChartPie, WalletCards, Banknote, Menu, X, ReceiptIndianRupee } from 'lucide-react';
 import styles from './Navbar.module.css';
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import BudgetSwitcher from '@/features/budget/components/BudgetSwitcher';
+import { UserMenu } from './UserMenu';
 
 const NAV_ITEMS = [
   { path: '/', key: 'home', label: 'Home', icon: <ChartPie size={16} strokeWidth={1.75} />, exact: true },
@@ -42,9 +43,7 @@ export function Navbar() {
         {/* Profile + mobile toggle */}
         <div className={styles.navRight}>
           <BudgetSwitcher />
-          <button type="button" className={styles.profileButton} aria-label="Profile">
-            <UserCircle size={28} strokeWidth={1.5} />
-          </button>
+          <UserMenu />
           <button
             type="button"
             className={styles.mobileMenuButton}
