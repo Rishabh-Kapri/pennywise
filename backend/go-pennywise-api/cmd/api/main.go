@@ -303,7 +303,7 @@ func main() {
 			panic(err)
 		}
 		_, err = temporalClient.ScheduleClient().Create(ctx, client.ScheduleOptions{
-			ID: "sync-gmail-watch-workflow",
+			ID: "sync-gmail-watch-workflow-schedule",
 			Spec: client.ScheduleSpec{
 				CronExpressions: []string{"0 12 */2 * *"}, // every 2 days at 12:00 PM
 				StartAt:         time.Date(2026, 4, 29, 7, 30, 0, 0, time.UTC),
