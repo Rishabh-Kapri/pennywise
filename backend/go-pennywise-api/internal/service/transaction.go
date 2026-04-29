@@ -290,7 +290,7 @@ func (s *transactionService) learnTransactionMappingAsync(
 	go func() {
 		bgCtx := utils.WithRequestMetadata(context.Background(), utils.RequestMetadataFromContext(ctx))
 		bgCtx = utils.WithInternalAuthToken(bgCtx, utils.InternalAuthTokenFromContext(ctx))
-		bgCtx, cancel := context.WithTimeout(bgCtx, 30*time.Second)
+		bgCtx, cancel := context.WithTimeout(bgCtx, 2*time.Minute)
 		defer cancel()
 
 		generatedEmbedding, err := s.cipherClient.GenerateTransactionEmbedding(bgCtx, TransactionEmbeddingRequest{
