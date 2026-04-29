@@ -10,7 +10,12 @@ import { useSidePanel } from '@/context/SidePanelContext';
 import { LucideMinus, LucidePlus } from 'lucide-react';
 import { getCurrencyLocaleString } from '@/utils/date.utils';
 import { selectAccountInfoFromId } from '@/features/accounts/store/accountSlice';
-import { type Transaction, type MonthGroupStats } from '../../types/transaction.types';
+import {
+  TransactionStatus,
+  type Transaction,
+  type MonthGroupStats,
+  type TransactionStatus as TransactionStatusType,
+} from '../../types/transaction.types';
 import { TransactionSkeleton } from '../TransactionSkeleton';
 import { List } from 'react-window';
 import { TransactionRow } from '../TransactionRow';
@@ -78,7 +83,7 @@ export function Transaction() {
   const { id } = useParams();
   const paramId = id ?? '';
   const dispatch = useAppDispatch();
-  const { loading, transactions } = useAppSelector((state) => state.transactions);
+  const { loading, transactions, error } = useAppSelector((state) => state.transactions);
   const { name: accountName, balance: accountBal } = useAppSelector((state) =>
     selectAccountInfoFromId(state, paramId ?? ''),
   );
@@ -159,7 +164,7 @@ export function Transaction() {
         const updatedTxn = applyParsedInputValue(selectedTxn, key, value);
         const optimisticTxn: Transaction = {
           ...updatedTxn,
-          status: updatedTxn.status === 'UNAPPROVED' ? 'APPROVED' : updatedTxn.status,
+          status: updatedTxn.status === TransactionStatus.UNAPPROVED ? TransactionStatus.APPROVED : updatedTxn.status,
         };
         setSelectedTxn(updatedTxn);
         if (!isAddingNew && updatedTxn.id) {
@@ -184,7 +189,7 @@ export function Transaction() {
       const updatedTxn: Transaction = { ...selectedTxn, ...overrides };
       const optimisticTxn: Transaction = {
         ...updatedTxn,
-        status: updatedTxn.status === 'UNAPPROVED' ? 'APPROVED' : updatedTxn.status,
+        status: updatedTxn.status === TransactionStatus.UNAPPROVED ? TransactionStatus.APPROVED : updatedTxn.status,
       };
       dispatch(updateTransaction({
         payload: buildTransactionPayload(optimisticTxn),
@@ -219,7 +224,7 @@ export function Transaction() {
       } else {
         const optimisticTxn: Transaction = {
           ...selectedTxn,
-          status: selectedTxn.status === 'UNAPPROVED' ? 'APPROVED' : selectedTxn.status,
+          status: selectedTxn.status === TransactionStatus.UNAPPROVED ? TransactionStatus.APPROVED : selectedTxn.status,
         };
         await dispatch(updateTransaction({
           payload: buildTransactionPayload(optimisticTxn),
@@ -246,7 +251,7 @@ export function Transaction() {
   }, [selectedTxn, dispatch, paramId, resetSelectedTxn]);
 
   const handleStatusChange = useCallback(
-    async (status: 'APPROVED' | 'REJECTED') => {
+    async (status: Extract<TransactionStatusType, typeof TransactionStatus.APPROVED | typeof TransactionStatus.REJECTED>) => {
       if (!selectedTxn?.id) return;
       try {
         await dispatch(updateTransactionStatus({ id: selectedTxn.id, status })).unwrap();
@@ -363,8 +368,9 @@ export function Transaction() {
 
   return (
     <>
-      {loading === LoadingState.PENDING && <TransactionSkeleton />}
-      {loading === LoadingState.SUCCESS && (
+      {loading === LoadingState.PENDING && transactions.length === 0 && <TransactionSkeleton />}
+      {error && <div className={styles.errorBanner}>{error}</div>}
+      {(loading !== LoadingState.PENDING || transactions.length > 0) && (
         <div className={`${styles.wrapper} ${paramId ? styles.specificAccount : styles.allAccounts}`}>
           {isMobile ? (
             <TransactionMobile
