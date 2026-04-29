@@ -21,3 +21,17 @@ type Budget struct {
 	UpdatedAt  time.Time      `json:"updatedAt"`
 	Metadata   BudgetMetadata `json:"metadata"`
 }
+
+type BudgetTemplateCategory struct {
+	Name string `json:"name"`
+}
+
+type BudgetTemplateGroup struct {
+	Name       string                   `json:"name"`
+	Categories []BudgetTemplateCategory `json:"categories"`
+}
+
+type CreateBudgetRequest struct {
+	Name           string                `json:"name"`
+	TemplateGroups []BudgetTemplateGroup `json:"templateGroups"`
+}

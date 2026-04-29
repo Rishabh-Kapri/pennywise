@@ -98,7 +98,7 @@ type JWTClaims struct {
 type GoogleUserInfo struct {
 	GoogleID       string     `json:"googleId"`
 	Email          string     `json:"email"`
-	GmailHistoryID int        `json:"gmailHistoryId"`
+	GmailHistoryID uint64     `json:"gmailHistoryId"`
 	RefreshToken   string     `json:"refreshToken"`
 	LastGmailSync  *time.Time `json:"lastGmailSync"`
 	UserID         uuid.UUID  `json:"userId"`
