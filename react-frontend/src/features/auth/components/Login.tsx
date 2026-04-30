@@ -1,5 +1,5 @@
 import { useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import {
   loginWithGoogle,
@@ -69,7 +69,7 @@ export function Login() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      navigate('/', { replace: true });
+      navigate('/dashboard', { replace: true });
     }
   }, [isAuthenticated, navigate]);
 
@@ -126,6 +126,8 @@ export function Login() {
 
   return (
     <div className={styles.container}>
+      <div className={styles.orbOne} aria-hidden="true" />
+      <div className={styles.orbTwo} aria-hidden="true" />
       <div className={styles.card}>
         {/* Logo */}
         <div className={styles.logoContainer}>
@@ -183,8 +185,8 @@ export function Login() {
 
         {/* Footer */}
         <div className={styles.footer}>
-          By continuing, you agree to our{' '}
-          <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>
+          By continuing, you agree to our <Link to="/terms">Terms of Service</Link> and{' '}
+          <Link to="/privacy">Privacy Policy</Link>
         </div>
       </div>
     </div>

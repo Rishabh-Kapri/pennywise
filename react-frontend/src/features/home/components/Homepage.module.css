@@ -1,0 +1,494 @@
+.page {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+  color: #f8fafc;
+  background: #071111;
+}
+
+.page > *:not(.backgroundPattern) {
+  position: relative;
+  z-index: 1;
+}
+
+.backgroundPattern {
+  position: absolute;
+  top: 7rem;
+  right: -9rem;
+  width: min(44vw, 32rem);
+  height: min(44vw, 32rem);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 42%, transparent);
+  border-radius: 4rem;
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  box-shadow:
+    -5rem 7rem 0 -3rem color-mix(in srgb, var(--color-primary) 20%, transparent),
+    -12rem -2rem 0 -5rem color-mix(in srgb, var(--color-primary) 16%, transparent);
+  pointer-events: none;
+  transform: rotate(14deg);
+  animation: patternFloat 10s ease-in-out infinite alternate;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 1.5rem clamp(1rem, 4vw, 2rem);
+  animation: slideDown 0.7s ease both;
+}
+
+.brand,
+.actions,
+.ctaRow,
+.previewTopline,
+.barLabel {
+  display: flex;
+  align-items: center;
+}
+
+.brand {
+  gap: 0.75rem;
+  color: #ffffff;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.brand:hover,
+.loginButton:hover,
+.secondaryCta:hover {
+  color: #ffffff;
+}
+
+.logo {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 0.85rem;
+  color: #ffffff;
+  background: var(--color-primary);
+  box-shadow: 0 0 30px color-mix(in srgb, var(--color-primary) 28%, transparent);
+}
+
+.actions {
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.loginButton,
+.signupButton,
+.primaryCta,
+.secondaryCta {
+  border-radius: 999px;
+  font-weight: 700;
+  text-decoration: none;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.loginButton {
+  padding: 0.65rem 1rem;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.signupButton,
+.primaryCta {
+  color: #ffffff;
+  background: var(--color-primary);
+  box-shadow: 0 16px 40px color-mix(in srgb, var(--color-primary) 22%, transparent);
+}
+
+.signupButton:hover,
+.primaryCta:hover {
+  color: #ffffff;
+  background: var(--color-primary);
+  transform: translateY(-2px);
+  box-shadow: 0 20px 42px color-mix(in srgb, var(--color-primary) 30%, transparent);
+}
+
+.loginButton:hover,
+.secondaryCta:hover,
+.legalLink:hover {
+  transform: translateY(-2px);
+}
+
+.signupButton {
+  padding: 0.65rem 1.05rem;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.75fr);
+  align-items: center;
+  gap: clamp(2rem, 6vw, 5rem);
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: clamp(3rem, 8vw, 7rem) clamp(1rem, 4vw, 2rem) 3rem;
+}
+
+.heroContent {
+  max-width: 690px;
+  animation: fadeUp 0.8s ease both 0.1s;
+}
+
+.eyebrow {
+  width: fit-content;
+  margin-bottom: 1.25rem;
+  padding: 0.45rem 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 34%, transparent);
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--color-primary) 75%, white);
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.hero h1 {
+  max-width: 12ch;
+  color: #ffffff;
+  font-size: clamp(3.5rem, 9vw, 7rem);
+  line-height: 0.9;
+  letter-spacing: -0.08em;
+}
+
+.subcopy {
+  max-width: 620px;
+  margin-top: 1.5rem;
+  color: rgba(226, 232, 240, 0.78);
+  font-size: clamp(1rem, 2vw, 1.2rem);
+}
+
+.ctaRow {
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.primaryCta,
+.secondaryCta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.9rem 1.25rem;
+}
+
+.secondaryCta {
+  color: #e2e8f0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.previewCard,
+.highlightCard {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(12, 18, 18, 0.72);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(18px);
+}
+
+.previewCard {
+  padding: clamp(1.25rem, 4vw, 2rem);
+  border-radius: 2rem;
+  transform: rotate(2deg);
+  animation: floatCard 5.5s ease-in-out infinite;
+}
+
+.previewTopline,
+.barLabel {
+  justify-content: space-between;
+}
+
+.previewTopline {
+  color: rgba(255, 255, 255, 0.74);
+  font-size: 0.9rem;
+}
+
+.previewTopline strong {
+  color: color-mix(in srgb, var(--color-primary) 78%, white);
+}
+
+.amountBlock {
+  margin: 2.75rem 0;
+}
+
+.amountBlock span,
+.barLabel {
+  color: rgba(226, 232, 240, 0.68);
+  font-size: 0.88rem;
+}
+
+.amountBlock strong {
+  display: block;
+  margin-top: 0.35rem;
+  color: #ffffff;
+  font-size: clamp(2.6rem, 5vw, 4rem);
+  line-height: 1;
+  letter-spacing: -0.06em;
+}
+
+.barGroup {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.track {
+  height: 0.75rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.barEssentials {
+  width: 72%;
+  background: var(--color-primary);
+}
+
+.barSavings {
+  width: 48%;
+  background: color-mix(in srgb, var(--color-primary) 72%, white);
+}
+
+.barDining {
+  width: 31%;
+  background: color-mix(in srgb, var(--color-primary) 48%, white);
+}
+
+.highlights {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 clamp(1rem, 4vw, 2rem) 4rem;
+}
+
+.highlightCard {
+  padding: 1.25rem;
+  border-radius: 1.35rem;
+  animation: fadeUp 0.75s ease both;
+  transition:
+    transform 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.highlightCard:nth-child(2) {
+  animation-delay: 0.12s;
+}
+
+.highlightCard:nth-child(3) {
+  animation-delay: 0.24s;
+}
+
+.highlightCard:hover {
+  transform: translateY(-4px);
+  border-color: color-mix(in srgb, var(--color-primary) 36%, transparent);
+}
+
+.highlightIcon {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  margin-bottom: 1rem;
+  border-radius: 0.9rem;
+  color: color-mix(in srgb, var(--color-primary) 80%, white);
+  background: color-mix(in srgb, var(--color-primary) 13%, transparent);
+}
+
+.highlightCard h2 {
+  color: #ffffff;
+  font-size: 1.05rem;
+}
+
+.highlightCard p {
+  margin-top: 0.5rem;
+  color: rgba(226, 232, 240, 0.66);
+  font-size: 0.94rem;
+}
+
+.legalPreview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 clamp(1rem, 4vw, 2rem) 5rem;
+}
+
+.legalCard {
+  scroll-margin-top: 1rem;
+}
+
+.legalCard {
+  padding: clamp(1.25rem, 3vw, 2rem);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1.5rem;
+  background: rgba(255, 255, 255, 0.055);
+  animation: fadeUp 0.75s ease both 0.32s;
+}
+
+.legalKicker {
+  color: color-mix(in srgb, var(--color-primary) 78%, white);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.legalCard h2 {
+  margin-top: 0.75rem;
+  color: #ffffff;
+  font-size: clamp(1.35rem, 3vw, 2rem);
+  line-height: 1.05;
+  letter-spacing: -0.04em;
+}
+
+.legalCard p {
+  margin-top: 0.9rem;
+  color: rgba(226, 232, 240, 0.68);
+}
+
+.legalLink {
+  display: inline-flex;
+  margin-top: 1.2rem;
+  color: #ffffff;
+  background: var(--color-primary);
+  border-radius: 999px;
+  padding: 0.7rem 1rem;
+  font-weight: 800;
+  transition:
+    transform 0.18s ease,
+    background-color 0.18s ease;
+}
+
+.legalLink:hover {
+  color: #ffffff;
+  background: var(--color-primary);
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes floatCard {
+  0%,
+  100% {
+    transform: translateY(0) rotate(2deg);
+  }
+  50% {
+    transform: translateY(-14px) rotate(1deg);
+  }
+}
+
+@keyframes patternFloat {
+  from {
+    transform: translateY(0) rotate(14deg);
+  }
+  to {
+    transform: translateY(18px) rotate(10deg);
+  }
+}
+
+@media (max-width: 860px) {
+  .hero {
+    grid-template-columns: 1fr;
+    padding-top: 2rem;
+  }
+
+  .hero h1 {
+    max-width: 10ch;
+  }
+
+  .previewCard {
+    animation-name: floatCardMobile;
+  }
+
+  .highlights,
+  .legalPreview {
+    grid-template-columns: 1fr;
+  }
+}
+
+@keyframes floatCardMobile {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .header,
+  .heroContent,
+  .previewCard,
+  .highlightCard,
+  .legalCard,
+  .backgroundPattern {
+    animation: none;
+  }
+
+  .signupButton:hover,
+  .primaryCta:hover,
+  .loginButton:hover,
+  .secondaryCta:hover,
+  .legalLink:hover,
+  .highlightCard:hover {
+    transform: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .header {
+    align-items: flex-start;
+  }
+
+  .brand span:last-child {
+    display: none;
+  }
+
+  .actions {
+    gap: 0.45rem;
+  }
+
+  .loginButton,
+  .signupButton {
+    padding: 0.58rem 0.82rem;
+    font-size: 0.88rem;
+  }
+}
