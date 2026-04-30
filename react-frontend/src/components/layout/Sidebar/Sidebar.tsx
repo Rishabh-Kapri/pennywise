@@ -45,7 +45,7 @@ export default function Sidebar({ isMobileOpen = false, onNavigate }: SidebarPro
   const navItems: NavItem[] = useMemo(
     () => [
       {
-        path: '/',
+        path: '/dashboard',
         key: 'home',
         label: 'Overview',
         icon: <ChartPie strokeWidth={1.5} />,
