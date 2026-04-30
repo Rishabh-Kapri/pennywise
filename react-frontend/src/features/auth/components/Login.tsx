@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useCallback } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import {
   loginWithGoogle,
@@ -43,7 +43,7 @@ export function Login() {
   useEffect(() => {
     console.log(JSON.stringify(import.meta.env.VITE_GOOGLE_CLIENT_ID));
     if (isAuthenticated) {
-      navigate('/', { replace: true });
+      navigate('/dashboard', { replace: true });
     }
   }, [isAuthenticated, navigate]);
 
@@ -90,6 +90,8 @@ const isLoading = loading === LoadingState.PENDING;
 
   return (
     <div className={styles.container}>
+      <div className={styles.orbOne} aria-hidden="true" />
+      <div className={styles.orbTwo} aria-hidden="true" />
       <div className={styles.card}>
         {/* Logo */}
         <div className={styles.logoContainer}>
@@ -148,8 +150,8 @@ const isLoading = loading === LoadingState.PENDING;
 
         {/* Footer */}
         <div className={styles.footer}>
-          By continuing, you agree to our <a href="#">Terms of Service</a> and{' '}
-          <a href="#">Privacy Policy</a>
+          By continuing, you agree to our <Link to="/terms">Terms of Service</Link> and{' '}
+          <Link to="/privacy">Privacy Policy</Link>
         </div>
       </div>
     </div>
