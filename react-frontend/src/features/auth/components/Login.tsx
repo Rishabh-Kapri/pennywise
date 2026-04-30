@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import {
@@ -90,12 +90,11 @@ const isLoading = loading === LoadingState.PENDING;
 
   return (
     <div className={styles.container}>
-      <div className={styles.orbOne} aria-hidden="true" />
-      <div className={styles.orbTwo} aria-hidden="true" />
+      <div className={styles.backgroundPattern} aria-hidden="true" />
       <div className={styles.card}>
         {/* Logo */}
         <div className={styles.logoContainer}>
-          <LogoIcon />
+          <span className={styles.logoMark}>P</span>
           <span className={styles.logoText}>Pennywise</span>
         </div>
 
@@ -103,7 +102,7 @@ const isLoading = loading === LoadingState.PENDING;
         <div className={styles.welcome}>
           <h1 className={styles.welcomeTitle}>Welcome back</h1>
           <p className={styles.welcomeSubtitle}>
-            Sign in to manage your budget
+            Sign in to place, track, and trust every rupee.
           </p>
         </div>
 
@@ -120,6 +119,7 @@ const isLoading = loading === LoadingState.PENDING;
             )}
             {GOOGLE_CLIENT_ID && (
               <button className={styles.googleButton} onClick={onGoogleLogin}>
+                <LogoIcon />
                 Sign In with Google
               </button>
             )}
@@ -153,6 +153,10 @@ const isLoading = loading === LoadingState.PENDING;
           By continuing, you agree to our <Link to="/terms">Terms of Service</Link> and{' '}
           <Link to="/privacy">Privacy Policy</Link>
         </div>
+
+        <Link to="/" className={styles.homeLink}>
+          Back to homepage
+        </Link>
       </div>
     </div>
   );
