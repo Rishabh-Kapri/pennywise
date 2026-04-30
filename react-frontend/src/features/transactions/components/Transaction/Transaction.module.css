@@ -319,6 +319,11 @@ input[type='date']::-webkit-calendar-picker-indicator {
    ══════════════════════════════════════════════════════════════ */
 
 @media (max-width: 768px) {
+  .wrapper {
+    width: 100%;
+    align-items: stretch;
+  }
+
   .headerContainer {
     display: none;
   }
@@ -423,11 +428,13 @@ input[type='date']::-webkit-calendar-picker-indicator {
 
   .mobileTxnContainer {
     display: flex;
+    width: 100%;
+    min-width: 0;
     height: calc(100dvh - 12.75rem);
     min-height: 24rem;
     flex-direction: column;
     gap: 1.5rem;
-    padding: 0.75rem 0.125rem 2rem;
+    padding: 1rem 0.875rem 2rem;
     overflow-y: auto;
     scrollbar-width: none;
   }
@@ -461,6 +468,7 @@ input[type='date']::-webkit-calendar-picker-indicator {
 
   .mobileTxnCards {
     display: flex;
+    width: 100%;
     flex-direction: column;
     gap: 0.875rem;
   }
