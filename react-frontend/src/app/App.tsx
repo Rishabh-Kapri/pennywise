@@ -5,6 +5,8 @@ import '../styles/index.css';
 import { Layout } from '@/components/layout';
 import { lazy, Suspense } from 'react';
 import { Login, ProtectedRoute } from '@/features/auth';
+import Homepage from '@/features/home/components/Homepage';
+import LegalPage from '@/features/home/components/LegalPage';
 
 const Dashboard = lazy(() => import('@/components/layout/Dashboard/Dashboard'));
 const Budget = lazy(() => import('@/features/budget/components/Budget'));
@@ -26,9 +28,21 @@ function App() {
     <Provider store={store}>
       <BrowserRouter>
         <Routes>
+          <Route path="/" element={<Homepage />} />
+          <Route path="/terms" element={<LegalPage />} />
+          <Route path="/privacy" element={<LegalPage />} />
+
           {/* Public route - Login */}
           <Route
             path="/login"
+            element={
+              <Suspense fallback={<div>Loading...</div>}>
+                <Login />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/signup"
             element={
               <Suspense fallback={<div>Loading...</div>}>
                 <Login />
@@ -55,7 +69,7 @@ function App() {
               </ProtectedRoute>
             }>
             <Route
-              path="/"
+              path="/dashboard"
               element={
                 <Suspense fallback={<div>Loading...</div>}>
                   <Dashboard />

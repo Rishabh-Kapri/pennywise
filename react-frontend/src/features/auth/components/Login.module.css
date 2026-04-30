@@ -1,19 +1,51 @@
 .container {
+  position: relative;
   width: 100vw;
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
   background: #0a0a0a;
 }
 
+.orbOne,
+.orbTwo {
+  position: absolute;
+  width: 18rem;
+  height: 18rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  filter: blur(12px);
+  pointer-events: none;
+}
+
+.orbOne {
+  top: 10%;
+  left: 12%;
+  animation: orbitOne 9s ease-in-out infinite alternate;
+}
+
+.orbTwo {
+  right: 10%;
+  bottom: 8%;
+  width: 14rem;
+  height: 14rem;
+  background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+  animation: orbitTwo 10s ease-in-out infinite alternate;
+}
+
 .card {
+  position: relative;
+  z-index: 1;
   background: #141414;
   border-radius: 16px;
   padding: 2.5rem;
   border: 1px solid rgba(255, 255, 255, 0.06);
   max-width: 400px;
   width: 90%;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+  animation: cardIn 0.72s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 .logoContainer {
@@ -26,7 +58,8 @@
 .logoIcon {
   width: 32px;
   height: 32px;
-  color: #4fd1c5;
+  color: var(--color-primary);
+  animation: logoPulse 2.8s ease-in-out infinite;
 }
 
 .logoText {
@@ -38,6 +71,7 @@
 
 .welcome {
   margin-top: 2rem;
+  animation: fadeUp 0.7s ease both 0.1s;
 }
 
 .welcomeTitle {
@@ -55,6 +89,7 @@
 
 .googleButtonContainer {
   margin-top: 2rem;
+  animation: fadeUp 0.7s ease both 0.18s;
 }
 
 .googleButton {
@@ -71,12 +106,18 @@
   font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition:
+    transform 0.16s ease,
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
 }
 
 .googleButton:hover {
   background: #262626;
   border-color: rgba(255, 255, 255, 0.12);
+  transform: translateY(-2px);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.28);
 }
 
 .googleButton:active {
@@ -136,7 +177,7 @@
   width: 32px;
   height: 32px;
   border: 2px solid #262626;
-  border-top-color: #4fd1c5;
+  border-top-color: var(--color-primary);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
@@ -149,6 +190,7 @@
   margin-top: 2rem;
   padding-top: 1.5rem;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
+  animation: fadeUp 0.7s ease both 0.28s;
 }
 
 .featuresTitle {
@@ -172,12 +214,20 @@
   gap: 0.75rem;
   color: #a3a3a3;
   font-size: 0.8125rem;
+  transition:
+    color 0.16s ease,
+    transform 0.16s ease;
+}
+
+.featureItem:hover {
+  color: #e5e5e5;
+  transform: translateX(4px);
 }
 
 .featureIcon {
   width: 18px;
   height: 18px;
-  color: #4fd1c5;
+  color: var(--color-primary);
   flex-shrink: 0;
 }
 
@@ -187,6 +237,7 @@
   font-size: 0.6875rem;
   color: #525252;
   line-height: 1.5;
+  animation: fadeUp 0.7s ease both 0.36s;
 }
 
 .footer a {
@@ -195,5 +246,73 @@
 }
 
 .footer a:hover {
-  color: #4fd1c5;
+  color: var(--color-primary);
+}
+
+@keyframes cardIn {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes logoPulse {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 0 color-mix(in srgb, var(--color-primary) 0%, transparent));
+  }
+  50% {
+    filter: drop-shadow(0 0 12px color-mix(in srgb, var(--color-primary) 55%, transparent));
+  }
+}
+
+@keyframes orbitOne {
+  from {
+    transform: translate3d(-1rem, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(2rem, 1.5rem, 0) scale(1.08);
+  }
+}
+
+@keyframes orbitTwo {
+  from {
+    transform: translate3d(1rem, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(-2rem, -1.25rem, 0) scale(1.1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orbOne,
+  .orbTwo,
+  .card,
+  .logoIcon,
+  .welcome,
+  .googleButtonContainer,
+  .features,
+  .footer {
+    animation: none;
+  }
+
+  .googleButton:hover,
+  .featureItem:hover {
+    transform: none;
+  }
 }
