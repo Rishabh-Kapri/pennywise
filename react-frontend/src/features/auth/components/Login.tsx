@@ -41,7 +41,6 @@ export function Login() {
   const isAuthenticated = useAppSelector(selectIsAuthenticated);
 
   useEffect(() => {
-    console.log(JSON.stringify(import.meta.env.VITE_GOOGLE_CLIENT_ID));
     if (isAuthenticated) {
       navigate('/dashboard', { replace: true });
     }
@@ -68,7 +67,6 @@ export function Login() {
     flow: 'auth-code',
     scope: 'https://mail.google.com/',
     onSuccess: async (codeResponse) => {
-      console.log('inside onGoogleLogin', codeResponse);
       dispatch(loginWithGoogle(codeResponse.code))
         .unwrap()
         .catch((err: unknown) => {
