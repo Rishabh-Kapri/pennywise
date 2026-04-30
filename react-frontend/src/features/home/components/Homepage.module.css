@@ -105,7 +105,7 @@
 .primaryCta {
   color: #ffffff;
   background: var(--color-primary);
-  box-shadow: 0 16px 40px color-mix(in srgb, var(--color-primary) 22%, transparent);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
 }
 
 .signupButton:hover,
@@ -113,7 +113,7 @@
   color: #ffffff;
   background: var(--color-primary);
   transform: translateY(-2px);
-  box-shadow: 0 20px 42px color-mix(in srgb, var(--color-primary) 30%, transparent);
+  box-shadow: 0 20px 42px rgba(0, 0, 0, 0.28);
 }
 
 .loginButton:hover,
