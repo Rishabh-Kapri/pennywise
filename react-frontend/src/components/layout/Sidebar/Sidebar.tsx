@@ -40,7 +40,7 @@ export default function Sidebar() {
   const navItems: NavItem[] = useMemo(
     () => [
       {
-        path: '/',
+        path: '/dashboard',
         key: 'home',
         label: 'Overview',
         icon: <ChartPie strokeWidth={1.5} />,
