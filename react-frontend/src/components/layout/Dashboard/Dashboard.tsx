@@ -178,11 +178,15 @@ export default function Dashboard() {
 
                 <div className={styles.accountList}>
                   {accounts.slice(0, 4).map((account) => (
-                    <div key={account.id ?? account.name} className={styles.accountPill}>
+                    <Link
+                      key={account.id ?? account.name}
+                      to={account.id ? `/transactions/${account.id}` : '/transactions'}
+                      className={styles.accountPill}
+                    >
                       <span className={styles.accountDot}>{account.name.charAt(0).toUpperCase()}</span>
                       <span className={styles.accountName}>{account.name}</span>
                       <strong>{account.balance && account.balance < 0 ? '-' : ''}{formatCurrency(account.balance ?? 0)}</strong>
-                    </div>
+                    </Link>
                   ))}
                   {accounts.length === 0 && (
                     <div className={styles.emptyInline}>No accounts yet</div>
