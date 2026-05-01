@@ -67,7 +67,7 @@ export function WebSocketProvider() {
           }
 
           if (message.eventName === 'transaction::created') {
-            dispatch(fetchAllTransaction(''));
+            dispatch(fetchAllTransaction());
           }
         } catch (error) {
           console.error('failed to parse websocket message', error);
@@ -78,11 +78,16 @@ export function WebSocketProvider() {
         console.error('websocket error', event);
       };
 
-      socket.onclose = () => {
+      socket.onclose = (event) => {
         if (socketRef.current === socket) {
           socketRef.current = null;
         }
-        console.info('websocket disconnected', { budgetId });
+        console.info('websocket disconnected', {
+          budgetId,
+          code: event.code,
+          reason: event.reason,
+          wasClean: event.wasClean,
+        });
 
         if (!shouldReconnect) {
           return;
