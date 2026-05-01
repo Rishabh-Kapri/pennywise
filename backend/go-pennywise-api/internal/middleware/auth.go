@@ -128,6 +128,11 @@ func AuthMiddleware(authService service.AuthService, apiKeyService service.APIKe
 			authHeader, _ = c.Cookie("access_token")
 		}
 		if authHeader == "" {
+			if token := c.Query("token"); token != "" {
+				authHeader = "Bearer " + token
+			}
+		}
+		if authHeader == "" {
 			c.JSON(401, gin.H{"error": "unauthorized"})
 			c.Abort()
 			return

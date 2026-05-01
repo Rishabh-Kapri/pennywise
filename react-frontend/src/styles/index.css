@@ -54,7 +54,7 @@ body,
   --color-accent: #f6f6f6;
 
   /* Background color */
-  --color-background: #0d0d0d;
+  --color-background: #1f1f1e;
   --color-surface: #1f1f1f;
   --color-surface-secondary: #323232;
   --color-surface-tertiary: #424242;
@@ -100,7 +100,7 @@ body,
 }
 
 [data-theme='dark'] {
-  --color-background: #0d0d0d;
+  --color-background: #1f1f1e;
   --skeleton-base: rgba(255, 255, 255, 0.1);
   --skeleton-highlight: rgba(255, 255, 255, 0.05);
 }

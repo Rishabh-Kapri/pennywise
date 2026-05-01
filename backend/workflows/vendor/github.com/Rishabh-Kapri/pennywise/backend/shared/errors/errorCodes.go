@@ -19,6 +19,12 @@ const (
 	CodeHTTPClientError Code = "HTTP_CLIENT_ERROR"
 )
 
+// Websocket error codes
+const (
+	CodeWebsocketClientError Code = "WS_CLIENT_ERROR"
+	CodeWebsocketMessageRead Code = "WS_MESSAGE_READ_ERROR"
+)
+
 // User error codes
 const (
 	CodeUserLookupFailed Code = "USER_LOOKUP_FAILED"

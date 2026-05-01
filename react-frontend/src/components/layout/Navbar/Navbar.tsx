@@ -7,7 +7,7 @@ import BudgetSwitcher from '@/features/budget/components/BudgetSwitcher';
 import { UserMenu } from './UserMenu';
 
 const NAV_ITEMS = [
-  { path: '/', key: 'home', label: 'Home', icon: <ChartPie size={16} strokeWidth={1.75} />, exact: true },
+  { path: '/dashboard', key: 'home', label: 'Home', icon: <ChartPie size={16} strokeWidth={1.75} />, exact: true },
   { path: '/transactions', key: 'transactions', label: 'Transactions', icon: <ReceiptIndianRupee size={16} strokeWidth={1.75} />, exact: false },
   { path: '/budget', key: 'budget', label: 'Budget', icon: <WalletCards size={16} strokeWidth={1.75} />, exact: false },
   { path: '/loans', key: 'loans', label: 'Loans', icon: <Banknote size={16} strokeWidth={1.75} />, exact: false },

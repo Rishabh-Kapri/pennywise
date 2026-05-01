@@ -1,3 +1,4 @@
+/* ─── Container ─── */
 .container {
   position: relative;
   width: 100vw;
@@ -7,40 +8,82 @@
   justify-content: center;
   overflow: hidden;
   padding: 1rem;
-  background: #071111;
+  background: #1f1f1e;
 }
 
-.backgroundPattern {
+/* ─── Dot-grid background ─── */
+.bgDots {
   position: absolute;
-  top: 11%;
-  right: -8rem;
-  width: min(44vw, 30rem);
-  height: min(44vw, 30rem);
-  border: 1px solid color-mix(in srgb, var(--color-primary) 42%, transparent);
-  border-radius: 4rem;
-  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
-  box-shadow:
-    -5rem 7rem 0 -3rem color-mix(in srgb, var(--color-primary) 20%, transparent),
-    -12rem -2rem 0 -5rem color-mix(in srgb, var(--color-primary) 16%, transparent);
+  inset: 0;
   pointer-events: none;
-  transform: rotate(14deg);
-  animation: patternFloat 10s ease-in-out infinite alternate;
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--color-primary) 16%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 28px 28px;
+  mask-image: radial-gradient(ellipse 65% 55% at 50% 50%, black 15%, transparent 68%);
+  -webkit-mask-image: radial-gradient(ellipse 65% 55% at 50% 50%, black 15%, transparent 68%);
+  opacity: 0.5;
 }
 
+/* ─── Floating vector glyphs ─── */
+.glyphFloat {
+  position: absolute;
+  pointer-events: none;
+  color: var(--color-primary);
+  opacity: 0;
+  animation: glyphDrift 16s ease-in-out infinite alternate, glyphReveal 1.4s ease forwards;
+}
+
+.glyphFloat svg { display: block; }
+
+.glyph1 {
+  top: 14%;
+  left: 12%;
+  animation-delay: 0s;
+}
+.glyph2 {
+  top: 22%;
+  right: 16%;
+  animation-delay: 0.2s;
+}
+.glyph3 {
+  bottom: 20%;
+  left: 18%;
+  animation-delay: 0.4s;
+}
+.glyph4 {
+  bottom: 28%;
+  right: 10%;
+  animation-delay: 0.55s;
+}
+
+@keyframes glyphDrift {
+  0% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-10px) rotate(5deg); }
+  100% { transform: translateY(6px) rotate(-4deg); }
+}
+@keyframes glyphReveal {
+  to { opacity: 0.18; }
+}
+
+/* ─── Card ─── */
 .card {
   position: relative;
   z-index: 1;
-  background: rgba(12, 18, 18, 0.78);
+  background: rgba(28, 28, 28, 0.9);
   border-radius: 2rem;
   padding: clamp(1.5rem, 5vw, 2.5rem);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   max-width: 430px;
   width: 90%;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
   backdrop-filter: blur(18px);
   animation: cardIn 0.72s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
+/* ─── Logo ─── */
 .logoContainer {
   display: flex;
   align-items: center;
@@ -53,11 +96,10 @@
   place-items: center;
   width: 2.25rem;
   height: 2.25rem;
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 40%, transparent);
   border-radius: 0.85rem;
   color: #ffffff;
   background: var(--color-primary);
-  box-shadow: 0 0 30px color-mix(in srgb, var(--color-primary) 28%, transparent);
   font-weight: 800;
 }
 
@@ -74,6 +116,7 @@
   letter-spacing: -0.02em;
 }
 
+/* ─── Welcome ─── */
 .welcome {
   margin-top: 2rem;
   animation: fadeUp 0.7s ease both 0.1s;
@@ -89,12 +132,17 @@
   margin: 0 0 0.85rem 0;
 }
 
+.welcomeAccent {
+  color: var(--color-primary);
+}
+
 .welcomeSubtitle {
   font-size: 1rem;
-  color: rgba(226, 232, 240, 0.74);
+  color: rgba(226, 232, 240, 0.72);
   margin: 0;
 }
 
+/* ─── Google button ─── */
 .googleButtonContainer {
   margin-top: 2rem;
   animation: fadeUp 0.7s ease both 0.18s;
@@ -115,17 +163,22 @@
   font-weight: 800;
   cursor: pointer;
   transition:
-    transform 0.16s ease,
-    background-color 0.16s ease,
-    border-color 0.16s ease,
-    box-shadow 0.16s ease;
+    transform 0.18s ease,
+    background-color 0.18s ease,
+    box-shadow 0.18s ease;
+  animation: btnGlow 3s ease-in-out infinite;
+}
+
+@keyframes btnGlow {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 22px color-mix(in srgb, var(--color-primary) 20%, transparent); }
 }
 
 .googleButton:hover {
-  background: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 88%, white);
   border-color: transparent;
   transform: translateY(-2px);
-  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--color-primary) 26%, transparent);
 }
 
 .googleButton:active {
@@ -137,31 +190,12 @@
   height: 18px;
 }
 
-.divider {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  margin: 1.5rem 0;
-}
-
-.dividerLine {
-  flex: 1;
-  height: 1px;
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.dividerText {
-  font-size: 0.75rem;
-  color: #525252;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
+/* ─── Error ─── */
 .error {
   margin-top: 1rem;
   padding: 0.75rem 1rem;
-  background: rgba(239, 68, 68, 0.1);
-  border: 1px solid rgba(239, 68, 68, 0.15);
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.12);
   border-radius: 8px;
   color: #f87171;
   font-size: 0.8125rem;
@@ -170,6 +204,7 @@
   gap: 0.5rem;
 }
 
+/* ─── Loading ─── */
 .loading {
   display: flex;
   flex-direction: column;
@@ -184,7 +219,7 @@
 .spinner {
   width: 32px;
   height: 32px;
-  border: 2px solid rgba(255, 255, 255, 0.12);
+  border: 2px solid rgba(255, 255, 255, 0.08);
   border-top-color: var(--color-primary);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
@@ -194,6 +229,7 @@
   to { transform: rotate(360deg); }
 }
 
+/* ─── Features ─── */
 .features {
   margin-top: 2rem;
   padding-top: 1.5rem;
@@ -204,7 +240,7 @@
 .featuresTitle {
   font-size: 0.6875rem;
   font-weight: 500;
-  color: color-mix(in srgb, var(--color-primary) 78%, white);
+  color: var(--color-primary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 1rem;
@@ -223,8 +259,8 @@
   color: #a3a3a3;
   font-size: 0.8125rem;
   transition:
-    color 0.16s ease,
-    transform 0.16s ease;
+    color 0.18s ease,
+    transform 0.18s ease;
 }
 
 .featureItem:hover {
@@ -239,6 +275,7 @@
   flex-shrink: 0;
 }
 
+/* ─── Footer ─── */
 .footer {
   margin-top: 2rem;
   text-align: center;
@@ -265,12 +302,14 @@
   font-weight: 700;
   text-align: center;
   text-decoration: none;
+  transition: color 0.18s ease;
 }
 
 .homeLink:hover {
   color: #ffffff;
 }
 
+/* ─── Keyframes ─── */
 @keyframes cardIn {
   from {
     opacity: 0;
@@ -293,27 +332,15 @@
   }
 }
 
-@keyframes patternFloat {
-  from {
-    transform: translateY(0) rotate(14deg);
-  }
-  to {
-    transform: translateY(18px) rotate(10deg);
-  }
-}
-
+/* ─── Reduced motion ─── */
 @media (prefers-reduced-motion: reduce) {
-  .backgroundPattern,
-  .card,
-  .welcome,
-  .googleButtonContainer,
-  .features,
-  .footer {
+  .card, .welcome, .googleButtonContainer,
+  .features, .footer, .glyphFloat,
+  .googleButton {
     animation: none;
   }
-
-  .googleButton:hover,
-  .featureItem:hover {
+  .googleButton:hover, .featureItem:hover {
     transform: none;
   }
+  .glyphFloat { opacity: 0.18; }
 }

@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS payee_rules (
   -- A user cannot map the exact same string to two different payees in their budget.
   UNIQUE (budget_id, match_string)
 );
-CREATE INDEX idx_payee_matches_lookup ON payee_matches(budget_id, match_string);
+CREATE INDEX idx_payee_rules_lookup ON payee_rules(budget_id, match_string);
 
 
 CREATE TABLE IF NOT EXISTS category_groups (
@@ -202,8 +202,8 @@ CREATE TABLE IF NOT EXISTS tags (
     deleted BOOLEAN DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE(name, budget_id)
 );
+CREATE UNIQUE INDEX uniq_tags_budget_name_active ON tags(budget_id, name) WHERE deleted = false;
 
 CREATE TABLE IF NOT EXISTS api_keys (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -243,6 +243,7 @@ CREATE INDEX IF NOT EXISTS idx_categories_budget ON categories(budget_id) WHERE 
 DROP TABLE IF EXISTS api_keys;
 DROP TABLE IF EXISTS tags;
 DROP TABLE IF EXISTS loan_metadata;
+DROP TABLE IF EXISTS cipher_predictions;
 DROP TABLE IF EXISTS predictions;
 DROP TABLE IF EXISTS transactions;
 DROP TABLE IF EXISTS monthly_budgets;
@@ -255,7 +256,6 @@ DROP TABLE IF EXISTS payees;
 DROP TABLE IF EXISTS accounts;
 DROP TABLE IF EXISTS budgets;
 DROP TABLE IF EXISTS auth_users;
-DROP TABLE IF EXISTS cipher_predictions;
 DROP TYPE IF EXISTS PAYEE_MATCH_TYPE;
 DROP TYPE IF EXISTS prediction_source;
 DROP TYPE IF EXISTS transaction_status;

@@ -20,6 +20,9 @@ func BudgetIdMiddleware(budgetRepo repository.BudgetRepository) gin.HandlerFunc 
 		log := logger.Logger(ctx)
 
 		budgetId := c.GetHeader(budgetIDHeader)
+		if budgetId == "" {
+			budgetId = c.Query("budgetId")
+		}
 		log.Debug("checking budget ownership", budgetIDHeader, budgetId)
 		if budgetId == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "missing X-Budget-ID header"})

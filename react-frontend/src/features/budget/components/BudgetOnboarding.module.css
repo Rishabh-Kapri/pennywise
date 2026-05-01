@@ -144,7 +144,7 @@
   padding: 0.55rem 0.75rem;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 10px;
-  background: #1f1f1f;
+  background: var(--color-surface);
   color: #d4d4d4;
   cursor: pointer;
 }

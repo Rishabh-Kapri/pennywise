@@ -58,7 +58,6 @@
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  box-shadow: var(--shadow-md);
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -79,7 +78,6 @@
   padding: 0.5rem;
   border-radius: 1rem;
   background: var(--color-surface-secondary);
-  box-shadow: var(--shadow-sm);
 }
 
 .searchContainer:focus-within {
