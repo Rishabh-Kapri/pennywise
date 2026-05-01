@@ -15,6 +15,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/middleware"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
 	temporalActivities "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/temporal/activities"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/websocket"
 
 	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
@@ -162,10 +163,23 @@ func main() {
 	loanMetadataService := service.NewLoanMetadataService(loanMetadataRepo)
 	loanMetadataHandler := handler.NewLoanMetadataHandler(loanMetadataService)
 
+	websocketHub := websocket.NewConnectionHub()
+	websocketService := service.NewWebsocketService(websocketHub)
+	websocketHandler := handler.NewWebsocketHandler(websocketService)
+	go websocketHub.HandleBroadcastMessages() // run once
+
 	// Auth middleware
 	authMiddleware := middleware.AuthMiddleware(authService, apiKeyService)
 	budgetMiddleware := sharedMiddleware.BudgetIdMiddleware(budgetRepo)
 
+	// Websocket routes
+	{
+		ws := router.Group("/ws")
+		ws.Use(authMiddleware, budgetMiddleware)
+		ws.GET("", websocketHandler.Connect)
+		ws.GET("/sessions", websocketHandler.GetSessions)
+		ws.POST("/test-event", websocketHandler.SendTestEvent)
+	}
 	{
 		api := router.Group("/api")
 		api.GET("", healthPage) // simple health check
@@ -336,6 +350,7 @@ func main() {
 			TransactionService: transactionService,
 			PayeeService:       payeeService,
 			PredictionService:  predictionService,
+			WebsocketService:   websocketService,
 			DB:                 dbConn,
 		})
 		w.RegisterActivity(&temporalActivities.CreateCipherPredictionActivity{

@@ -41,7 +41,7 @@ func upSeedPayeesTxns(ctx context.Context, tx *sql.Tx) error {
 		for _, d := range transactions {
 			_, err = tx.ExecContext(
 				ctx,
-				`INSERT INTO transactions (id, budget_id, date, payee_id, category_id, account_id, note, amount, source, transfer_account_id, transfer_transaction_id, deleted, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) ON CONFLICT DO NOTHING`,
+				`INSERT INTO transactions (id, budget_id, date, payee_id, category_id, account_id, note, amount, transfer_account_id, transfer_transaction_id, deleted, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) ON CONFLICT DO NOTHING`,
 				d.ID,
 				d.BudgetID,
 				d.Date,

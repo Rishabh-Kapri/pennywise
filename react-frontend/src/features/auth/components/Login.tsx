@@ -33,6 +33,33 @@ const LogoIcon = () => (
   </svg>
 );
 
+/* ── Floating vector glyph SVGs ── */
+
+const GlyphRing = ({ size = 36 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="18" cy="18" r="15" stroke="currentColor" strokeWidth="1.5" />
+    <circle cx="18" cy="18" r="7" stroke="currentColor" strokeWidth="1" opacity="0.4" />
+  </svg>
+);
+
+const GlyphCross = ({ size = 22 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M11 3v16M3 11h16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+);
+
+const GlyphDiamond = ({ size = 28 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="14" y="2" width="16" height="16" rx="2.5" transform="rotate(45 14 2)" stroke="currentColor" strokeWidth="1.5" />
+  </svg>
+);
+
+const GlyphHex = ({ size = 30 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M15 3L26 9.5v11L15 27 4 20.5v-11L15 3Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+  </svg>
+);
+
 export function Login() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
@@ -88,7 +115,23 @@ const isLoading = loading === LoadingState.PENDING;
 
   return (
     <div className={styles.container}>
-      <div className={styles.backgroundPattern} aria-hidden="true" />
+      {/* Dot-grid background */}
+      <div className={styles.bgDots} aria-hidden="true" />
+
+      {/* Floating vector glyphs */}
+      <div className={`${styles.glyphFloat} ${styles.glyph1}`} aria-hidden="true">
+        <GlyphRing size={40} />
+      </div>
+      <div className={`${styles.glyphFloat} ${styles.glyph2}`} aria-hidden="true">
+        <GlyphCross size={22} />
+      </div>
+      <div className={`${styles.glyphFloat} ${styles.glyph3}`} aria-hidden="true">
+        <GlyphDiamond size={30} />
+      </div>
+      <div className={`${styles.glyphFloat} ${styles.glyph4}`} aria-hidden="true">
+        <GlyphHex size={34} />
+      </div>
+
       <div className={styles.card}>
         {/* Logo */}
         <div className={styles.logoContainer}>
@@ -98,7 +141,7 @@ const isLoading = loading === LoadingState.PENDING;
 
         {/* Welcome text */}
         <div className={styles.welcome}>
-          <h1 className={styles.welcomeTitle}>Welcome back</h1>
+          <h1 className={styles.welcomeTitle}>Welcome <span className={styles.welcomeAccent}>back</span></h1>
           <p className={styles.welcomeSubtitle}>
             Sign in to place, track, and trust every rupee.
           </p>

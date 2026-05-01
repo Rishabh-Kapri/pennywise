@@ -21,6 +21,7 @@ type CreateTransactionActivity struct {
 	TransactionService service.TransactionService
 	PayeeService       service.PayeeService
 	PredictionService  service.PredictionService
+	WebsocketService   service.WebsocketService
 	DB                 *pgxpool.Pool
 }
 
@@ -92,6 +93,7 @@ func (a *CreateTransactionActivity) CreateTransaction(
 		}
 		createdTxns = append(createdTxns, createdTxn[0])
 	}
+	a.sendTransactionCreatedNotification(ctx, budgetId, createdTxns, log)
 	return createdTxns, nil
 }
 
@@ -133,7 +135,14 @@ func (a *CreateTransactionActivity) CreateTransactionAndCipherPrediction(
 		}
 		for i, txn := range createdTxns {
 			log.Info("creating cipher prediction", "transactionId", txn.ID, "source", input.Predictions[i].Source)
-			if err = createCipherPredictionWithTx(ctx, tx, a.PredictionService, input.BudgetID, txn, input.Predictions[i]); err != nil {
+			if err = createCipherPredictionWithTx(
+				ctx,
+				tx,
+				a.PredictionService,
+				input.BudgetID,
+				txn,
+				input.Predictions[i],
+			); err != nil {
 				return err
 			}
 		}
@@ -142,7 +151,23 @@ func (a *CreateTransactionActivity) CreateTransactionAndCipherPrediction(
 	if err != nil {
 		return nil, err
 	}
+	a.sendTransactionCreatedNotification(ctx, input.BudgetID, createdTxns, log)
 	return createdTxns, nil
+}
+
+func (a *CreateTransactionActivity) sendTransactionCreatedNotification(
+	ctx context.Context,
+	budgetId uuid.UUID,
+	transactions []sharedModel.Transaction,
+	log *slog.Logger,
+) {
+	if a.WebsocketService == nil || len(transactions) == 0 {
+		return
+	}
+
+	if err := a.WebsocketService.SendNotification(ctx, budgetId, "transaction::created", transactions); err != nil {
+		log.Warn("failed to send transaction created websocket notification", "error", err)
+	}
 }
 
 func (a *CreateTransactionActivity) createTransactions(

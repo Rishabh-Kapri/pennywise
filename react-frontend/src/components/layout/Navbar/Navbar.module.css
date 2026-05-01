@@ -22,20 +22,21 @@
 .navTabs {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.35rem;
   background: var(--color-surface);
-  padding: 0.35rem;
-  border-radius: 0.6rem;
+  padding: 0.3rem;
+  border-radius: 0.65rem;
+  border: 1px solid var(--color-border);
 }
 
 .navTab {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.4rem 1rem;
+  padding: 0.4375rem 0.9rem;
   border-radius: 0.5rem;
   font-size: 1rem;
-  background: var(--color-background);
+  background: transparent;
   font-weight: 500;
   color: var(--color-text-secondary);
   text-decoration: none;
@@ -50,15 +51,13 @@
 
 .navTabActive {
   background: var(--color-primary);
-  color: var(--color-text);
+  color: #fff;
   font-weight: 500;
-}
-.navTabActive:hover {
-  background: var(--color-primary) !important;
 }
 
 .navTabActive:hover {
-  background: var(--color-surface);
+  background: var(--color-primary);
+  color: #fff;
 }
 
 /* Right section */
@@ -72,22 +71,26 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.35rem;
-  height: 2.35rem;
+  width: 2.25rem;
+  height: 2.25rem;
   color: var(--color-text-secondary);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-muted);
   border-radius: 50%;
   padding: 0;
   overflow: hidden;
-  background: var(--color-background);
-  transition: color 0.15s ease;
+  background: var(--color-surface);
+  transition: border-color 0.15s ease;
 }
 
 .profileButton:hover {
   color: var(--color-text);
+  border-color: var(--color-border-light);
+  border-width: 2px;
 }
 
 .userMenu {
+  display: flex;
+  align-items: center;
   position: relative;
 }
 
@@ -107,18 +110,18 @@
   right: 0;
   z-index: 1000;
   width: 17rem;
-  padding: 0.45rem;
+  padding: 0.4rem;
   border: 1px solid var(--color-border);
   border-radius: 0.75rem;
   background: var(--color-surface);
-  box-shadow: 0 18px 45px rgb(0 0 0 / 0.36);
+  box-shadow: var(--shadow-lg);
 }
 
 .userSummary {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.65rem;
+  padding: 0.6rem;
 }
 
 .dropdownImage {
@@ -135,7 +138,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0.1rem;
 }
 
 .userText strong,
@@ -147,12 +150,12 @@
 
 .userText strong {
   color: var(--color-text);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
 }
 
 .userText span {
   color: var(--color-text-secondary);
-  font-size: 0.9rem;
+  font-size: 0.82rem;
 }
 
 .dropdownAction {
@@ -160,15 +163,16 @@
   display: flex;
   align-items: center;
   gap: 0.65rem;
-  padding: 0.7rem 0.75rem;
+  padding: 0.65rem 0.7rem;
   border: 0;
-  border-radius: 0.55rem;
+  border-radius: 0.5rem;
   background: transparent;
   color: var(--color-text);
-  font-size: 0.95rem;
-  font-weight: 700;
+  font-size: 0.88rem;
+  font-weight: 600;
   text-align: left;
   cursor: pointer;
+  transition: background-color 0.15s ease;
 }
 
 .dropdownAction:hover {
@@ -182,9 +186,9 @@
   justify-content: center;
   width: 2.25rem;
   height: 2.25rem;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-muted);
   border-radius: 0.5rem;
-  background: var(--color-surface-secondary);
+  background: var(--color-surface);
   color: var(--color-text);
 }
 
@@ -232,7 +236,7 @@
     right: 0;
     z-index: 950;
     background: var(--color-surface);
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border-muted);
     padding: 0.5rem 1rem;
     gap: 0.25rem;
     transform: translateY(calc(-100% - 3.25rem));
@@ -253,7 +257,7 @@
     gap: 0.75rem;
     padding: 0.75rem;
     border-radius: 0.5rem;
-    font-size: 0.95rem;
+    font-size: 0.9rem;
     font-weight: 500;
     color: var(--color-text-secondary);
     text-decoration: none;

@@ -7,9 +7,9 @@
   margin-left: auto;
   margin-right: auto;
   min-width: 0;
-  background: #1f1f1e;
+  background: var(--color-background);
   overflow: hidden;
-  padding: 1.25rem;
+  padding: 1rem 1.25rem;
   gap: 0.4rem;
 }
 

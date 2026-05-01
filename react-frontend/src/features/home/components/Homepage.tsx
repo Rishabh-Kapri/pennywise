@@ -2,6 +2,39 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, ChartPie, ShieldCheck, Sparkles } from 'lucide-react';
 import styles from './Homepage.module.css';
 
+/* ── Inline vector glyphs used as floating decorations ── */
+
+const GlyphCircle = ({ size = 32 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="16" cy="16" r="14" stroke="currentColor" strokeWidth="1.5" />
+    <circle cx="16" cy="16" r="6" stroke="currentColor" strokeWidth="1" opacity="0.5" />
+  </svg>
+);
+
+const GlyphCross = ({ size = 28 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M14 4v20M4 14h20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+);
+
+const GlyphDiamond = ({ size = 30 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="15" y="2" width="18" height="18" rx="3" transform="rotate(45 15 2)" stroke="currentColor" strokeWidth="1.5" />
+  </svg>
+);
+
+const GlyphTriangle = ({ size = 26 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 26 26" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M13 4L23 22H3L13 4Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+  </svg>
+);
+
+const GlyphHex = ({ size = 34 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M17 3L29 10v14l-12 7L5 24V10L17 3Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+  </svg>
+);
+
 const highlights = [
   {
     icon: <ChartPie size={20} />,
@@ -23,7 +56,25 @@ const highlights = [
 export default function Homepage() {
   return (
     <main className={styles.page}>
-      <div className={styles.backgroundPattern} aria-hidden="true" />
+      {/* Dot-grid background */}
+      <div className={styles.bgDots} aria-hidden="true" />
+
+      {/* Floating vector glyphs */}
+      <div className={`${styles.glyphFloat} ${styles.glyph1}`} aria-hidden="true">
+        <GlyphCircle size={40} />
+      </div>
+      <div className={`${styles.glyphFloat} ${styles.glyph2}`} aria-hidden="true">
+        <GlyphCross size={24} />
+      </div>
+      <div className={`${styles.glyphFloat} ${styles.glyph3}`} aria-hidden="true">
+        <GlyphDiamond size={36} />
+      </div>
+      <div className={`${styles.glyphFloat} ${styles.glyph4}`} aria-hidden="true">
+        <GlyphTriangle size={28} />
+      </div>
+      <div className={`${styles.glyphFloat} ${styles.glyph5}`} aria-hidden="true">
+        <GlyphHex size={38} />
+      </div>
 
       <header className={styles.header}>
         <Link to="/" className={styles.brand} aria-label="Pennywise home">
@@ -46,8 +97,11 @@ export default function Homepage() {
 
       <section className={styles.hero}>
         <div className={styles.heroContent}>
-          <p className={styles.eyebrow}>Personal budgeting without the spreadsheet fog</p>
-          <h1>Make every rupee easier to place, track, and trust.</h1>
+          <p className={styles.eyebrow}>
+            <Sparkles size={14} className={styles.eyebrowIcon} />
+            Personal budgeting without the spreadsheet fog
+          </p>
+          <h1>Make every rupee easier to <span className={styles.heroAccent}>place, track,</span> and trust.</h1>
           <p className={styles.subcopy}>
             Pennywise helps you plan monthly budgets, monitor accounts, and turn
             transaction noise into clear financial decisions.

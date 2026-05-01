@@ -12,6 +12,7 @@ import {
 } from '@/features/budget';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import BudgetOnboarding from '@/features/budget/components/BudgetOnboarding';
+import { WebSocketProvider } from '@/features/websocket/WebSocketProvider';
 
 function MainWithSidePanel() {
   const { sidePanelContent } = useSidePanel();
@@ -47,6 +48,7 @@ export default function Layout() {
 
   return (
     <div className={styles.layout}>
+      <WebSocketProvider />
       <Navbar />
       <HeaderProvider>
         <SidePanelProvider>
