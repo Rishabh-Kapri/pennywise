@@ -25,7 +25,7 @@ export const dataFetchMiddleware: Middleware =
     const month = (store.getState() as RootState).budgets.selectedMonth;
     if (fetchAllBudgets.fulfilled.match(action)) {
       dispatch(fetchAllAccounts());
-      dispatch(fetchAllTransaction(''));
+      dispatch(fetchAllTransaction());
       dispatch(fetchAllCategoryGroups(month));
       dispatch(fetchInflowAmount());
       dispatch(fetchAllPayees());
@@ -41,7 +41,7 @@ export const dataFetchMiddleware: Middleware =
 
     if (setSelectedBudget.match(action)) {
       dispatch(fetchAllAccounts());
-      dispatch(fetchAllTransaction(''));
+      dispatch(fetchAllTransaction());
       dispatch(fetchAllCategoryGroups(month));
       dispatch(fetchInflowAmount());
       dispatch(fetchAllPayees());

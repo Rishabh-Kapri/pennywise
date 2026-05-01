@@ -7,11 +7,7 @@ import { selectAllLoanMetadata } from '../store/loanSlice';
 import { fetchAllTransaction } from '@/features/transactions/store/transactionSlice';
 import type { Transaction } from '@/features/transactions/types/transaction.types';
 import { apiClient } from '@/utils';
-import {
-  calculateAmortizationSchedule,
-  calculateTotalInterest,
-  formatPayoffDuration,
-} from '../utils/payoffCalculator';
+import { calculateAmortizationSchedule, calculateTotalInterest, formatPayoffDuration } from '../utils/payoffCalculator';
 import PayoffSimulator from './PayoffSimulator';
 import LoanAccountForm from './LoanAccountForm';
 import styles from './LoanOverview.module.css';
@@ -43,14 +39,12 @@ export default function LoanOverview() {
     [loanAccounts, id],
   );
 
-  const loanMeta = selectedAccount?.id
-    ? allMetadata[selectedAccount.id] ?? null
-    : null;
+  const loanMeta = selectedAccount?.id ? (allMetadata[selectedAccount.id] ?? null) : null;
 
   // Fetch transactions when switching to activity tab or when account changes
   useEffect(() => {
     if (activeTab === 'activity' && selectedAccount?.id) {
-      dispatch(fetchAllTransaction(selectedAccount.id));
+      dispatch(fetchAllTransaction({ accountIds: [selectedAccount.id] }));
     }
   }, [activeTab, selectedAccount?.id, dispatch]);
 
@@ -66,15 +60,20 @@ export default function LoanOverview() {
     if (idsNeedingCategory.length === 0) return;
 
     // Fetch all transactions to find the paired ones with categories
-    apiClient.get<Transaction[]>('transactions/normalized').then((allTxns) => {
-      const map: Record<string, string> = {};
-      for (const txn of allTxns) {
-        if (txn.id && idsNeedingCategory.includes(txn.id) && txn.categoryName) {
-          map[txn.id] = txn.categoryName;
+    apiClient
+      .get<Transaction[]>('transactions/normalized')
+      .then((allTxns) => {
+        const map: Record<string, string> = {};
+        for (const txn of allTxns) {
+          if (txn.id && idsNeedingCategory.includes(txn.id) && txn.categoryName) {
+            map[txn.id] = txn.categoryName;
+          }
         }
-      }
-      setCategoryMap(map);
-    }).catch(() => { /* silent */ });
+        setCategoryMap(map);
+      })
+      .catch(() => {
+        /* silent */
+      });
   }, [activeTab, transactions]);
 
   // Computed payoff data
@@ -97,9 +96,7 @@ export default function LoanOverview() {
     const totalPaid = currentBalance + totalInterest;
     const paidSoFar = totalPayments;
     const percentPaid =
-      loanMeta.originalBalance > 0
-        ? Math.min(Math.round((paidSoFar / loanMeta.originalBalance) * 100), 100)
-        : 0;
+      loanMeta.originalBalance > 0 ? Math.min(Math.round((paidSoFar / loanMeta.originalBalance) * 100), 100) : 0;
 
     // Projected payoff date
     const payoffDate = new Date();
@@ -130,8 +127,8 @@ export default function LoanOverview() {
           <Landmark size={48} />
           <h2>No Loan Accounts Yet</h2>
           <p>
-            Track your mortgages, auto loans, student loans, and more. Add a loan
-            to start visualizing your path to being debt-free.
+            Track your mortgages, auto loans, student loans, and more. Add a loan to start visualizing your path to
+            being debt-free.
           </p>
           <button className={styles.addBtn} onClick={() => setShowAddForm(true)}>
             <Plus size={16} /> Add Loan Account
@@ -149,8 +146,8 @@ export default function LoanOverview() {
         <div className={styles.emptyState}>
           <h2>Loan Details Missing</h2>
           <p>
-            This loan account doesn&apos;t have interest rate or payment information
-            yet. Please re-create it with the loan form.
+            This loan account doesn&apos;t have interest rate or payment information yet. Please re-create it with the
+            loan form.
           </p>
         </div>
       </div>
@@ -178,14 +175,12 @@ export default function LoanOverview() {
       <div className={styles.tabs}>
         <button
           className={activeTab === 'overview' ? styles.tabActive : styles.tab}
-          onClick={() => setActiveTab('overview')}
-        >
+          onClick={() => setActiveTab('overview')}>
           Overview
         </button>
         <button
           className={activeTab === 'activity' ? styles.tabActive : styles.tab}
-          onClick={() => setActiveTab('activity')}
-        >
+          onClick={() => setActiveTab('activity')}>
           Activity
         </button>
       </div>
@@ -204,9 +199,7 @@ export default function LoanOverview() {
                     cy="64"
                     r="56"
                     strokeDasharray={circumference}
-                    strokeDashoffset={
-                      circumference - (circumference * payoffData.percentPaid) / 100
-                    }
+                    strokeDashoffset={circumference - (circumference * payoffData.percentPaid) / 100}
                   />
                 </svg>
                 <span className={styles.progressPercent}>{payoffData.percentPaid}%</span>
@@ -230,15 +223,11 @@ export default function LoanOverview() {
               </div>
               <div className={styles.balanceRow}>
                 <span className={styles.balanceLabel}>Total Interest (projected)</span>
-                <span className={styles.balanceValue}>
-                  {formatCurrency(payoffData.totalInterest)}
-                </span>
+                <span className={styles.balanceValue}>{formatCurrency(payoffData.totalInterest)}</span>
               </div>
               <div className={styles.balanceRow}>
                 <span className={styles.balanceLabel}>Total Cost</span>
-                <span className={styles.balanceValue}>
-                  {formatCurrency(payoffData.totalPaid)}
-                </span>
+                <span className={styles.balanceValue}>{formatCurrency(payoffData.totalPaid)}</span>
               </div>
             </div>
 
@@ -247,24 +236,14 @@ export default function LoanOverview() {
               <span className={styles.insightTitle}>Payoff Insight</span>
               <p className={styles.insightBody}>
                 At your current monthly payment of{' '}
-                <span className={styles.insightHighlight}>
-                  {formatCurrency(loanMeta.monthlyPayment)}
-                </span>
-                , you&apos;ll pay off this loan in{' '}
-                <span className={styles.insightHighlight}>
-                  {formatPayoffDuration(payoffData.payoffMonths)}
-                </span>
-                , with{' '}
-                <span className={styles.insightHighlight}>
-                  {formatCurrency(payoffData.totalInterest)}
-                </span>{' '}
-                in total interest.
+                <span className={styles.insightHighlight}>{formatCurrency(loanMeta.monthlyPayment)}</span>, you&apos;ll
+                pay off this loan in{' '}
+                <span className={styles.insightHighlight}>{formatPayoffDuration(payoffData.payoffMonths)}</span>, with{' '}
+                <span className={styles.insightHighlight}>{formatCurrency(payoffData.totalInterest)}</span> in total
+                interest.
               </p>
               <div className={styles.insightActions}>
-                <button
-                  className={styles.simulatorBtn}
-                  onClick={() => setShowSimulator(true)}
-                >
+                <button className={styles.simulatorBtn} onClick={() => setShowSimulator(true)}>
                   Open Payoff Simulator
                 </button>
               </div>
@@ -278,15 +257,11 @@ export default function LoanOverview() {
               </div>
               <div className={styles.detailItem}>
                 <span className={styles.detailLabel}>Monthly Payment</span>
-                <span className={styles.detailValue}>
-                  {formatCurrency(loanMeta.monthlyPayment)}
-                </span>
+                <span className={styles.detailValue}>{formatCurrency(loanMeta.monthlyPayment)}</span>
               </div>
               <div className={styles.detailItem}>
                 <span className={styles.detailLabel}>Original Balance</span>
-                <span className={styles.detailValue}>
-                  {formatCurrency(loanMeta.originalBalance)}
-                </span>
+                <span className={styles.detailValue}>{formatCurrency(loanMeta.originalBalance)}</span>
               </div>
               <div className={styles.detailItem}>
                 <span className={styles.detailLabel}>Debt Free Date</span>
@@ -321,10 +296,17 @@ export default function LoanOverview() {
               <tbody>
                 {transactions.map((txn: Transaction) => (
                   <tr key={txn.id}>
-                    <td>{new Date(txn.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</td>
+                    <td>
+                      {new Date(txn.date).toLocaleDateString('en-IN', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
+                    </td>
                     <td>{txn.payeeName || '—'}</td>
                     <td>{txn.categoryName || categoryMap[txn.transferTransactionId ?? ''] || '—'}</td>
-                    <td className={`${styles.txnAmountCol} ${(txn.inflow ?? 0) > 0 ? styles.balancePositive : styles.balanceNegative}`}>
+                    <td
+                      className={`${styles.txnAmountCol} ${(txn.inflow ?? 0) > 0 ? styles.balancePositive : styles.balanceNegative}`}>
                       {formatCurrency(txn.inflow ?? txn.outflow ?? 0)}
                     </td>
                   </tr>
