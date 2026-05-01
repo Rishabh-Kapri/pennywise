@@ -125,7 +125,9 @@ func AuthMiddleware(authService service.AuthService, apiKeyService service.APIKe
 		// get the auth token from the header
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			authHeader, _ = c.Cookie("access_token")
+			if token, _ := c.Cookie("access_token"); token != "" {
+				authHeader = "Bearer " + token
+			}
 		}
 		if authHeader == "" {
 			if token := c.Query("token"); token != "" {
