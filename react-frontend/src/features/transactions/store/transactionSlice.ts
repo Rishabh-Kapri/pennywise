@@ -7,7 +7,16 @@ const initialState: TransactionState = {
   transactions: [],
   optimisticTransactions: {},
   loading: LoadingState.IDLE,
+  loadingMore: LoadingState.IDLE,
+  nextCursor: null,
+  total: 0,
   error: null,
+};
+
+type FetchTransactionArgs = {
+  accountIds?: string[];
+  cursor?: string;
+  limit?: number;
 };
 
 type UpdateTransactionArgs = {
@@ -23,16 +32,26 @@ function applyOptimisticTransaction(transaction: Transaction, optimisticTransact
   });
 }
 
-export const fetchAllTransaction = createAsyncThunk<PaginationResponse<Transaction[]>, string>(
-  'transactions/fetchAllTransactions',
-  async (accountId: string = '') => {
-    let url = `transactions/normalized`;
-    if (accountId) {
-      url = `transactions/normalized?accountId=${accountId}`;
-    }
-    return await apiClient.get<PaginationResponse<Transaction[]>>(url);
-  },
-);
+export const fetchAllTransaction = createAsyncThunk<
+  PaginationResponse<Transaction[]>,
+  FetchTransactionArgs | undefined
+>('transactions/fetchAllTransactions', async (args = {}) => {
+  let url = `transactions/normalized`;
+  const params = new URLSearchParams();
+  
+  if (args?.accountIds) {
+    params.set('accountId[]', args.accountIds.join(','))
+  }
+  if (args?.cursor) {
+    params.set('cursor', args.cursor)
+  }
+  params.set('limit', String(args?.limit ?? 30))
+
+  const queryParams = params.toString()
+  url = `${url}${queryParams ? `?${queryParams}` : ''}`
+
+  return await apiClient.get<PaginationResponse<Transaction[]>>(url);
+});
 
 export const deleteTransactionById = createAsyncThunk<Transaction[], string>(
   'transactions/deleteTransaction',
@@ -42,30 +61,30 @@ export const deleteTransactionById = createAsyncThunk<Transaction[], string>(
   },
 );
 
-export const createTransaction = createAsyncThunk<
-  TransactionDTO,
-  TransactionDTO
->('transactions/createTransaction', async (transaction: TransactionDTO) => {
-  const url = `transactions`;
-  return await apiClient.post(url, transaction);
-});
+export const createTransaction = createAsyncThunk<TransactionDTO, TransactionDTO>(
+  'transactions/createTransaction',
+  async (transaction: TransactionDTO) => {
+    const url = `transactions`;
+    return await apiClient.post(url, transaction);
+  },
+);
 
-export const updateTransaction = createAsyncThunk<
-  TransactionDTO,
-  UpdateTransactionArgs
->('transactions/updateTransaction', async ({ payload }: UpdateTransactionArgs) => {
-  const url = `transactions/${payload.id}`;
-  return await apiClient.patch(url, payload);
-});
+export const updateTransaction = createAsyncThunk<TransactionDTO, UpdateTransactionArgs>(
+  'transactions/updateTransaction',
+  async ({ payload }: UpdateTransactionArgs) => {
+    const url = `transactions/${payload.id}`;
+    return await apiClient.patch(url, payload);
+  },
+);
 
-export const updateTransactionStatus = createAsyncThunk<
-  TransactionStatusDTO,
-  TransactionStatusDTO
->('transactions/updateTransactionStatus', async ({ id, status }: TransactionStatusDTO) => {
-  const url = `transactions/${id}/status`;
-  await apiClient.patch(url, { status });
-  return { id, status };
-});
+export const updateTransactionStatus = createAsyncThunk<TransactionStatusDTO, TransactionStatusDTO>(
+  'transactions/updateTransactionStatus',
+  async ({ id, status }: TransactionStatusDTO) => {
+    const url = `transactions/${id}/status`;
+    await apiClient.patch(url, { status });
+    return { id, status };
+  },
+);
 
 const transactionSlice = createSlice({
   name: 'transactions',
@@ -73,17 +92,44 @@ const transactionSlice = createSlice({
   reducers: {},
   extraReducers: (builder) => {
     builder
-      .addCase(fetchAllTransaction.pending, (state) => {
-        state.loading = LoadingState.PENDING;
+      .addCase(fetchAllTransaction.pending, (state, action) => {
+        const isLoadingMore = Boolean(action.meta.arg?.cursor);
+
+        if (isLoadingMore) {
+          state.loadingMore = LoadingState.PENDING;
+        } else {
+          state.loading = LoadingState.PENDING;
+          state.loadingMore = LoadingState.IDLE;
+          state.transactions = [];
+          state.nextCursor = null;
+        }
+
         state.error = null;
       })
       .addCase(fetchAllTransaction.fulfilled, (state, action) => {
-        state.loading = LoadingState.SUCCESS;
-        state.transactions = action.payload.data ?? [];
+        const isLoadingMore = Boolean(action.meta.arg?.cursor);
+        const data = action.payload.data ?? [];
+
+        if (isLoadingMore) {
+          state.transactions.push(...data);
+          state.loadingMore = LoadingState.SUCCESS;
+        } else {
+          state.transactions = data;
+          state.loading = LoadingState.SUCCESS;
+          state.loadingMore = LoadingState.SUCCESS;
+        }
+
+        state.nextCursor = action.payload.pagination.nextCursor ?? '';
+        state.total = action.payload.total;
         state.error = null;
       })
       .addCase(fetchAllTransaction.rejected, (state, action) => {
-        state.loading = LoadingState.ERROR;
+        const isLoadingMore = Boolean(action.meta.arg?.cursor);
+        if (isLoadingMore) {
+          state.loadingMore = LoadingState.ERROR;
+        } else {
+          state.loading = LoadingState.ERROR;
+        }
         state.error = action.error.message ?? 'Failed to load transactions';
       })
       .addCase(deleteTransactionById.pending, (state) => {

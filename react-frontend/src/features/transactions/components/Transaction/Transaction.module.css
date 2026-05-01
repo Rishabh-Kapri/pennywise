@@ -111,6 +111,10 @@
   scrollbar-width: thin;
 }
 
+.txnContainerLoadingMore .virtualList {
+  height: calc(100% - 2.75rem);
+}
+
 .virtualList::-webkit-scrollbar {
   width: 0.45rem;
 }
@@ -142,6 +146,28 @@
 
 .virtualList::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--color-text-secondary) 75%, transparent);
+}
+
+.bottomLoader {
+  display: flex;
+  height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+}
+
+.loaderSpinner {
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid color-mix(in srgb, var(--color-text-secondary) 25%, transparent);
+  border-top-color: var(--color-primary);
+  border-radius: 999px;
+  animation: loaderSpin 0.7s linear infinite;
+}
+
+@keyframes loaderSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* Sticky month header overlay */

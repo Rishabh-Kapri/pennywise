@@ -52,6 +52,9 @@ export interface TransactionState {
   transactions: Transaction[];
   optimisticTransactions: Record<string, Transaction>;
   loading: LoadingState;
+  loadingMore: LoadingState;
+  nextCursor: string | null;
+  total: number;
   error: string | null;
 }
 
