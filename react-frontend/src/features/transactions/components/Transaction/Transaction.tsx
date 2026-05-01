@@ -1,7 +1,13 @@
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { createTransaction, deleteTransactionById, fetchAllTransaction, updateTransaction, updateTransactionStatus } from '../../store';
+import {
+  createTransaction,
+  deleteTransactionById,
+  fetchAllTransaction,
+  updateTransaction,
+  updateTransactionStatus,
+} from '../../store';
 import { LoadingState } from '@/utils';
 import { toast } from '@/utils';
 import styles from './Transaction.module.css';
@@ -83,7 +89,9 @@ export function Transaction() {
   const { id } = useParams();
   const paramId = id ?? '';
   const dispatch = useAppDispatch();
-  const { loading, transactions, error } = useAppSelector((state) => state.transactions);
+  const { loading, transactions, loadingMore, nextCursor, error } = useAppSelector(
+    (state) => state.transactions,
+  );
   const { name: accountName, balance: accountBal } = useAppSelector((state) =>
     selectAccountInfoFromId(state, paramId ?? ''),
   );
@@ -114,7 +122,7 @@ export function Transaction() {
     setIsDetailPanelOpen(false);
     setIsAddingNew(false);
     setSidePanelContent(null);
-    dispatch(fetchAllTransaction(paramId));
+    dispatch(fetchAllTransaction({ accountIds: [paramId] }));
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
   }, [paramId, dispatch, setSidePanelContent]);
@@ -168,10 +176,12 @@ export function Transaction() {
         };
         setSelectedTxn(updatedTxn);
         if (!isAddingNew && updatedTxn.id) {
-          dispatch(updateTransaction({
-            payload: buildTransactionPayload(optimisticTxn),
-            optimisticTransaction: optimisticTxn,
-          }))
+          dispatch(
+            updateTransaction({
+              payload: buildTransactionPayload(optimisticTxn),
+              optimisticTransaction: optimisticTxn,
+            }),
+          )
             .unwrap()
             .then(() => toast.success('Saved'))
             .catch(() => toast.error('Failed to save'));
@@ -191,10 +201,12 @@ export function Transaction() {
         ...updatedTxn,
         status: updatedTxn.status === TransactionStatus.UNAPPROVED ? TransactionStatus.APPROVED : updatedTxn.status,
       };
-      dispatch(updateTransaction({
-        payload: buildTransactionPayload(optimisticTxn),
-        optimisticTransaction: optimisticTxn,
-      }))
+      dispatch(
+        updateTransaction({
+          payload: buildTransactionPayload(optimisticTxn),
+          optimisticTransaction: optimisticTxn,
+        }),
+      )
         .unwrap()
         .then(() => toast.success('Saved'))
         .catch(() => toast.error('Failed to save'));
@@ -220,16 +232,22 @@ export function Transaction() {
       if (isAddingNew) {
         await dispatch(createTransaction(buildTransactionPayload(selectedTxn))).unwrap();
         toast.success('Transaction created');
-        dispatch(fetchAllTransaction(paramId || ''));
+        const accountIds = paramId ? [paramId] : [];
+        const params = {
+          ...(accountIds.length && { accountIds: accountIds }),
+        };
+        dispatch(fetchAllTransaction(params));
       } else {
         const optimisticTxn: Transaction = {
           ...selectedTxn,
           status: selectedTxn.status === TransactionStatus.UNAPPROVED ? TransactionStatus.APPROVED : selectedTxn.status,
         };
-        await dispatch(updateTransaction({
-          payload: buildTransactionPayload(optimisticTxn),
-          optimisticTransaction: optimisticTxn,
-        })).unwrap();
+        await dispatch(
+          updateTransaction({
+            payload: buildTransactionPayload(optimisticTxn),
+            optimisticTransaction: optimisticTxn,
+          }),
+        ).unwrap();
         toast.success('Transaction updated');
       }
       resetSelectedTxn();
@@ -242,7 +260,11 @@ export function Transaction() {
     if (!selectedTxn?.id) return;
     try {
       await dispatch(deleteTransactionById(selectedTxn.id)).unwrap();
-      dispatch(fetchAllTransaction(paramId ? selectedTxn.accountId : ''));
+      const accountIds = paramId ? [paramId] : [];
+      const params = {
+        ...(accountIds.length && { accountIds: accountIds }),
+      };
+      dispatch(fetchAllTransaction(params));
       toast.success('Transaction deleted');
       resetSelectedTxn();
     } catch {
@@ -251,7 +273,9 @@ export function Transaction() {
   }, [selectedTxn, dispatch, paramId, resetSelectedTxn]);
 
   const handleStatusChange = useCallback(
-    async (status: Extract<TransactionStatusType, typeof TransactionStatus.APPROVED | typeof TransactionStatus.REJECTED>) => {
+    async (
+      status: Extract<TransactionStatusType, typeof TransactionStatus.APPROVED | typeof TransactionStatus.REJECTED>,
+    ) => {
       if (!selectedTxn?.id) return;
       try {
         await dispatch(updateTransactionStatus({ id: selectedTxn.id, status })).unwrap();
@@ -277,6 +301,7 @@ export function Transaction() {
   }, [transactions, searchTerm, mobileFilter]);
 
   const listItems = useMemo(() => groupTransactions(filteredTransactions), [filteredTransactions]);
+  const isLoadingMore = loadingMore === LoadingState.PENDING;
 
   const rowProps = useMemo(
     () => ({
@@ -312,11 +337,26 @@ export function Transaction() {
     [isMobile, listItems],
   );
 
+  const loadMoreTransactions = useCallback(() => {
+    if (!nextCursor || loadingMore === LoadingState.PENDING || loading === LoadingState.PENDING) {
+      return;
+    }
+    const accountIds = paramId ? [paramId] : [];
+    const params = {
+      ...(accountIds.length && { accountIds: accountIds }),
+      cursor: nextCursor,
+    };
+    dispatch(fetchAllTransaction(params));
+  }, [dispatch, loading, loadingMore, nextCursor, paramId]);
+
   const handleRowsRendered = useCallback(
-    ({ startIndex }: { startIndex: number }) => {
+    ({ startIndex, stopIndex }: { startIndex: number; stopIndex: number }) => {
       setStickyHeader(getStickyHeaderForStartIndex(listItems, startIndex));
+      if (stopIndex >= listItems.length - 3) {
+        loadMoreTransactions();
+      }
     },
-    [listItems],
+    [listItems, loadMoreTransactions],
   );
 
   useEffect(() => {
@@ -388,7 +428,7 @@ export function Transaction() {
                   </div>
                 ))}
               </div>
-              <div className={styles.txnContainer}>
+              <div className={`${styles.txnContainer} ${isLoadingMore ? styles.txnContainerLoadingMore : ''}`}>
                 {stickyHeader && <StickyMonthHeader stickyHeader={stickyHeader} />}
                 <List
                   className={styles.virtualList}
@@ -399,6 +439,11 @@ export function Transaction() {
                   rowProps={rowProps}
                   onRowsRendered={handleRowsRendered}
                 />
+                {isLoadingMore && (
+                  <div className={styles.bottomLoader} role="status" aria-live="polite" aria-label="Loading more transactions">
+                    <span className={styles.loaderSpinner} />
+                  </div>
+                )}
               </div>
             </div>
           )}
