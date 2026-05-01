@@ -111,7 +111,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     dispatch(fetchAllAccounts());
-    dispatch(fetchAllTransaction(''));
+    dispatch(fetchAllTransaction());
     if (selectedMonth) {
       dispatch(fetchAllCategoryGroups(selectedMonth));
       dispatch(fetchInflowAmount());
