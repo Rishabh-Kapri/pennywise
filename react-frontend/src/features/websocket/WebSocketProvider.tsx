@@ -1,11 +1,13 @@
 import { useEffect, useRef } from 'react';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { config } from '@/config/env';
-import { selectAccessToken } from '@/features/auth/store';
+import { refreshAccessToken, selectAccessToken } from '@/features/auth/store';
 import { selectSelectedBudget } from '@/features/budget';
 import { fetchAllTransaction } from '@/features/transactions/store';
+import { parseJWT } from '@/utils/auth.utils';
 
 const RECONNECT_DELAY_MS = 3000;
+const TOKEN_EXPIRY_BUFFER_MS = 30000;
 
 type WebSocketMessage = {
   eventName: string;
@@ -22,6 +24,15 @@ function getWebSocketUrl(accessToken: string, budgetId: string) {
   });
 
   return `${protocol}//${apiUrl.host}/ws?${params.toString()}`;
+}
+
+function isTokenExpiringSoon(accessToken: string) {
+  const parsedToken = parseJWT(accessToken);
+  if (!parsedToken?.exp) {
+    return true;
+  }
+
+  return Date.now() >= parsedToken.exp * 1000 - TOKEN_EXPIRY_BUFFER_MS;
 }
 
 export function WebSocketProvider() {
@@ -45,12 +56,28 @@ export function WebSocketProvider() {
 
     let shouldReconnect = true;
 
-    const connect = () => {
+    const connect = async () => {
       if (!shouldReconnect) {
         return;
       }
 
-      const socket = new WebSocket(getWebSocketUrl(accessToken, budgetId));
+      let token = accessToken;
+      if (isTokenExpiringSoon(token)) {
+        try {
+          const refreshedToken = await dispatch(refreshAccessToken()).unwrap();
+          token = refreshedToken.accessToken;
+        } catch (error) {
+          shouldReconnect = false;
+          console.error('failed to refresh token for websocket', error);
+          return;
+        }
+      }
+
+      if (!shouldReconnect) {
+        return;
+      }
+
+      const socket = new WebSocket(getWebSocketUrl(token, budgetId));
       socketRef.current = socket;
 
       socket.onopen = () => {
@@ -66,7 +93,7 @@ export function WebSocketProvider() {
             return;
           }
 
-          if (message.eventName === 'transaction::created') {
+          if (message.eventName === 'transaction.created' || message.eventName === 'transaction::created') {
             dispatch(fetchAllTransaction());
           }
         } catch (error) {
@@ -95,12 +122,12 @@ export function WebSocketProvider() {
 
         reconnectTimerRef.current = window.setTimeout(() => {
           reconnectTimerRef.current = null;
-          connect();
+          void connect();
         }, RECONNECT_DELAY_MS);
       };
     };
 
-    connect();
+    void connect();
 
     return () => {
       shouldReconnect = false;
