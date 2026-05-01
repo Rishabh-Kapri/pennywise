@@ -5,6 +5,8 @@ import { selectAccessToken } from '@/features/auth/store';
 import { selectSelectedBudget } from '@/features/budget';
 import { fetchAllTransaction } from '@/features/transactions/store';
 
+const RECONNECT_DELAY_MS = 3000;
+
 type WebSocketMessage = {
   eventName: string;
   budgetId: string;
@@ -27,55 +29,82 @@ export function WebSocketProvider() {
   const accessToken = useAppSelector(selectAccessToken);
   const selectedBudget = useAppSelector(selectSelectedBudget);
   const socketRef = useRef<WebSocket | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const budgetId = selectedBudget?.id;
     if (!accessToken || !budgetId) {
+      if (reconnectTimerRef.current) {
+        window.clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
       socketRef.current?.close();
       socketRef.current = null;
       return;
     }
 
-    const socket = new WebSocket(getWebSocketUrl(accessToken, budgetId));
-    socketRef.current = socket;
+    let shouldReconnect = true;
 
-    socket.onopen = () => {
-      console.info('websocket connected', { budgetId });
-    };
+    const connect = () => {
+      if (!shouldReconnect) {
+        return;
+      }
 
-    socket.onmessage = (event) => {
-      try {
-        console.log('message received', event);
-        const message = JSON.parse(event.data) as WebSocketMessage;
+      const socket = new WebSocket(getWebSocketUrl(accessToken, budgetId));
+      socketRef.current = socket;
 
-        if (message.budgetId !== budgetId) {
+      socket.onopen = () => {
+        console.info('websocket connected', { budgetId });
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          console.log('message received', event);
+          const message = JSON.parse(event.data) as WebSocketMessage;
+
+          if (message.budgetId !== budgetId) {
+            return;
+          }
+
+          if (message.eventName === 'transaction::created') {
+            dispatch(fetchAllTransaction(''));
+          }
+        } catch (error) {
+          console.error('failed to parse websocket message', error);
+        }
+      };
+
+      socket.onerror = (event) => {
+        console.error('websocket error', event);
+      };
+
+      socket.onclose = () => {
+        if (socketRef.current === socket) {
+          socketRef.current = null;
+        }
+        console.info('websocket disconnected', { budgetId });
+
+        if (!shouldReconnect) {
           return;
         }
 
-        if (message.eventName === 'transaction::created') {
-          dispatch(fetchAllTransaction(''));
-        }
-      } catch (error) {
-        console.error('failed to parse websocket message', error);
-      }
+        reconnectTimerRef.current = window.setTimeout(() => {
+          reconnectTimerRef.current = null;
+          connect();
+        }, RECONNECT_DELAY_MS);
+      };
     };
 
-    socket.onerror = (event) => {
-      console.error('websocket error', event);
-    };
-
-    socket.onclose = () => {
-      if (socketRef.current === socket) {
-        socketRef.current = null;
-      }
-      console.info('websocket disconnected', { budgetId });
-    };
+    connect();
 
     return () => {
-      socket.close();
-      if (socketRef.current === socket) {
-        socketRef.current = null;
+      shouldReconnect = false;
+      if (reconnectTimerRef.current) {
+        window.clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
       }
+      socketRef.current?.close();
+      socketRef.current = null;
     };
   }, [accessToken, selectedBudget?.id, dispatch]);
 
