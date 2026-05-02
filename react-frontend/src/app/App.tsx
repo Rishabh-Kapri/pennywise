@@ -22,6 +22,7 @@ const Transaction = lazy(() =>
 const LoanOverview = lazy(() =>
   import('@/features/loans/components/LoanOverview'),
 );
+const Payees = lazy(() => import('@/features/payees/components/Payees'));
 
 function App() {
   return (
@@ -105,6 +106,14 @@ function App() {
               element={
                 <Suspense fallback={<div>Loading...</div>}>
                   <LoanOverview />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/payees"
+              element={
+                <Suspense fallback={<div>Loading...</div>}>
+                  <Payees />
                 </Suspense>
               }
             />

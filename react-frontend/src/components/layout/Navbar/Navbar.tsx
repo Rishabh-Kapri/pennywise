@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { ChartPie, WalletCards, Banknote, Menu, X, ReceiptIndianRupee } from 'lucide-react';
+import { ChartPie, WalletCards, Banknote, Menu, X, ReceiptIndianRupee, UsersRound } from 'lucide-react';
 import styles from './Navbar.module.css';
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { path: '/transactions', key: 'transactions', label: 'Transactions', icon: <ReceiptIndianRupee size={16} strokeWidth={1.75} />, exact: false },
   { path: '/budget', key: 'budget', label: 'Budget', icon: <WalletCards size={16} strokeWidth={1.75} />, exact: false },
   { path: '/loans', key: 'loans', label: 'Loans', icon: <Banknote size={16} strokeWidth={1.75} />, exact: false },
+  { path: '/payees', key: 'payees', label: 'Payees', icon: <UsersRound size={16} strokeWidth={1.75} />, exact: false },
 ];
 
 export function Navbar() {

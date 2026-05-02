@@ -30,7 +30,7 @@ type APIKeyService interface {
 	Create(ctx context.Context, apiKey *model.APIKey) (string, error)
 	GetByKeyID(ctx context.Context, keyID string) (*model.APIKey, error)
 	GetByHash(ctx context.Context, fullKey string) (*model.APIKey, error)
-	UpdateLastUsed(ctx context.Context, id uuid.UUID) (error)
+	UpdateLastUsed(ctx context.Context, id uuid.UUID) error
 }
 
 type apiKeyService struct {

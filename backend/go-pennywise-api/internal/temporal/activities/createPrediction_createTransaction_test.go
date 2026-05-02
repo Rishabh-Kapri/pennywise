@@ -106,6 +106,22 @@ func (f *fakePayeeService) GetById(context.Context, uuid.UUID) (*model.Payee, er
 	return nil, nil
 }
 
+func (f *fakePayeeService) GetRules(context.Context, uuid.UUID) ([]model.PayeeRuleDetails, error) {
+	return nil, nil
+}
+
+func (f *fakePayeeService) CreateRule(context.Context, uuid.UUID, model.PayeeRule) error {
+	return nil
+}
+
+func (f *fakePayeeService) UpdateRule(context.Context, uuid.UUID, uuid.UUID, model.PayeeRule) error {
+	return nil
+}
+
+func (f *fakePayeeService) DeleteRule(context.Context, uuid.UUID) error {
+	return nil
+}
+
 func (f *fakePayeeService) Create(ctx context.Context, payee model.Payee) (*model.Payee, error) {
 	return f.CreateWithTx(ctx, nil, payee)
 }
