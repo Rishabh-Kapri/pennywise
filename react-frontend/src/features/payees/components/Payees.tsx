@@ -75,19 +75,14 @@ export default function Payees() {
     const query = searchTerm.trim().toLowerCase();
     return allPayees
       .filter((payee) => !query || payee.name.toLowerCase().includes(query))
-      .toSorted((a, b) => a.name.localeCompare(b.name));
+      .sort((a, b) => a.name.localeCompare(b.name))
+
   }, [allPayees, searchTerm]);
 
   const selectedPayee = useMemo(
     () => allPayees.find((payee) => getPayeeId(payee) === selectedPayeeId) ?? null,
     [allPayees, selectedPayeeId],
   );
-
-  useEffect(() => {
-    if (!selectedPayeeId && allPayees.length > 0) {
-      setSelectedPayeeId(getPayeeId(allPayees[0]));
-    }
-  }, [allPayees, selectedPayeeId]);
 
   useEffect(() => {
     fetchRules(selectedPayeeId);

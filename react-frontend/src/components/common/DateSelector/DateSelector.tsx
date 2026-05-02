@@ -42,7 +42,7 @@ export default function DateSelector({ monthYearOnly = false }: DateSelectorProp
       const [year, month] = monthKey.split('-');
       // Calendar expects first day of the month
       return new CalendarDate(parseInt(year, 10), parseInt(month, 10), 1);
-    } catch (e) {
+    } catch {
       return undefined;
     }
   };
