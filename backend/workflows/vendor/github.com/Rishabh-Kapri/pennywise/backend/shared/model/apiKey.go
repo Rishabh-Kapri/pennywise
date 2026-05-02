@@ -33,7 +33,7 @@ type APIKey struct {
 	Scopes []Scope `json:"scopes"`
 
 	// Restrictions
-	AllowedIPs       []string `json:"allowedIps"`
+	AllowedIPs      []string `json:"allowedIps"`
 	AllowedReferers []string `json:"allowedReferers"`
 
 	// Rate Limiting

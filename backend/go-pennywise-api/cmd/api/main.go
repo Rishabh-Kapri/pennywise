@@ -124,7 +124,7 @@ func main() {
 	userService := service.NewUserService(userRepo)
 	userHandler := handler.NewUserHandler(userService)
 
-	payeeService := service.NewPayeeService(payeeRepo)
+	payeeService := service.NewPayeeService(payeeRepo, payeeRuleRepo)
 	payeeHandler := handler.NewPayeeHandler(payeeService)
 
 	categoryGroupService := service.NewCategoryGroupService(categoryGroupRepo)
@@ -328,6 +328,11 @@ func main() {
 			payeeGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
 			payeeGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), payeeHandler.List)
 			payeeGroup.GET("/search", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), payeeHandler.Search)
+			payeeGroup.GET("/:id", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), payeeHandler.GetById)
+			payeeGroup.GET("/:id/rules", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), payeeHandler.GetRules)
+			payeeGroup.POST("/:id/rules", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), payeeHandler.CreateRule)
+			payeeGroup.PATCH("/:id/rules/:ruleId", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), payeeHandler.UpdateRule)
+			payeeGroup.DELETE("/:id/rules/:ruleId", middleware.RouteAuthMiddleware(sharedModel.ScopeDelete), payeeHandler.DeleteRule)
 			payeeGroup.POST("", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), payeeHandler.Create)
 			payeeGroup.PATCH(":id", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), payeeHandler.Update)
 			payeeGroup.DELETE(":id", middleware.RouteAuthMiddleware(sharedModel.ScopeDelete), payeeHandler.DeleteById)

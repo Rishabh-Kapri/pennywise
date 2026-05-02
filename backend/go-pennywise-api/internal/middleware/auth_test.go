@@ -104,6 +104,11 @@ func (s noopAPIKeyService) GetByHash(context.Context, string) (*model.APIKey, er
 	return nil, nil
 }
 
+func (s noopAPIKeyService) UpdateLastUsed(context.Context, uuid.UUID) error {
+	s.t.Fatalf("UpdateLastUsed should not be called for verified internal requests")
+	return nil
+}
+
 var _ service.AuthService = noopAuthService{}
 var _ service.APIKeyService = noopAPIKeyService{}
 

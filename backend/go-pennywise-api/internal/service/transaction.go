@@ -327,7 +327,7 @@ func (s *transactionService) learnTransactionMappingAsync(
 		payeeRule := model.PayeeRule{
 			BudgetID:    budgetId,
 			PayeeID:     *txn.PayeeID,
-			CategoryID:  *txn.CategoryID,
+			CategoryID:  txn.CategoryID,
 			MatchString: generatedEmbedding.MatchString,
 		}
 		err = withTx(bgCtx, s.repo.GetDB(), func(tx pgx.Tx) error {

@@ -37,11 +37,11 @@ func RateLimitMiddleware(rateLimitService service.RateLimitService) gin.HandlerF
 
 		c.Header("X-RateLimit-Limit", strconv.Itoa(key.RateLimit))
 		c.Header("X-RateLimit-Remaining", strconv.FormatInt(result.Remaining, 10))
-		c.Header("X-RateLimit-Reset", result.ResetAt.Format(http.TimeFormat))
+		c.Header("X-RateLimit-Reset", result.ResetAt.UTC().Format(http.TimeFormat))
 
 		if !result.Allowed {
 			retryAfter := int64(math.Ceil(result.RetryAfter.Seconds()))
-			log.Debug("rate limit exceeded", "key_id", key.KeyID, "retry_after", retryAfter, "addr", c.Request.RemoteAddr)
+			log.Debug("rate limit exceeded", "key", key, "retry_after", retryAfter, "addr", c.Request.RemoteAddr)
 			c.Header("Retry-After", strconv.FormatInt(retryAfter, 10))
 			c.Header("X-RateLimit-RetryAfter", strconv.FormatInt(retryAfter, 10))
 			c.JSON(http.StatusTooManyRequests, gin.H{"error": "rate limit exceeded"})
