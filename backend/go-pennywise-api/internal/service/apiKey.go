@@ -13,6 +13,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
+	"github.com/google/uuid"
 )
 
 var (
@@ -29,6 +30,7 @@ type APIKeyService interface {
 	Create(ctx context.Context, apiKey *model.APIKey) (string, error)
 	GetByKeyID(ctx context.Context, keyID string) (*model.APIKey, error)
 	GetByHash(ctx context.Context, fullKey string) (*model.APIKey, error)
+	UpdateLastUsed(ctx context.Context, id uuid.UUID) (error)
 }
 
 type apiKeyService struct {
@@ -143,4 +145,8 @@ func (s *apiKeyService) GetByHash(ctx context.Context, fullKey string) (*model.A
 	keyHash := utils.Hash(fullKey)
 	logger.Logger(ctx).Debug("GetByHash", "fullKey", fullKey, "keyHash", keyHash)
 	return s.repo.GetByHash(ctx, nil, keyHash)
+}
+
+func (s *apiKeyService) UpdateLastUsed(ctx context.Context, id uuid.UUID) error {
+	return s.repo.UpdateLastUsed(ctx, nil, id)
 }
