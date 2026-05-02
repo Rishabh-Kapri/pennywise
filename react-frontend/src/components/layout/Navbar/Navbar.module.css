@@ -200,11 +200,15 @@
   display: none;
 }
 
+.bottomNav {
+  display: none;
+}
+
 @media (max-width: 900px) {
   .navbar {
     border-radius: 0;
-    padding: 0 1rem;
-    min-height: 3.25rem;
+    padding: 0.5rem 1rem;
+    min-height: 3rem;
     z-index: 1000;
   }
 
@@ -214,6 +218,9 @@
 
   .mobileMenuButton {
     display: inline-flex;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.5rem;
   }
 
   .backdrop {
@@ -231,7 +238,7 @@
     display: flex;
     flex-direction: column;
     position: fixed;
-    top: 3.25rem;
+    top: 3rem;
     left: 0;
     right: 0;
     z-index: 950;
@@ -239,16 +246,17 @@
     border-bottom: 1px solid var(--color-border-muted);
     padding: 0.5rem 1rem;
     gap: 0.25rem;
-    transform: translateY(calc(-100% - 3.25rem));
+    transform: translateY(calc(-100% - 3rem));
     transition: transform 0.25s ease;
     pointer-events: none;
     visibility: hidden;
   }
 
   .mobileDrawerOpen {
-    transform: translateY(0);
+    transform: translateY(-3rem);
     pointer-events: auto;
     visibility: visible;
+    z-index: 1000;
   }
 
   .mobileNavItem {
@@ -272,5 +280,56 @@
     background: var(--color-surface-secondary);
     color: var(--color-text);
     font-weight: 600;
+  }
+
+  .bottomNav {
+    display: flex;
+    position: fixed;
+    bottom: calc(0.75rem + env(safe-area-inset-bottom, 0));
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    z-index: 950;
+    width: min(23rem, calc(100vw - 1.5rem));
+    height: 4.25rem;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem;
+    border: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+    box-shadow: 0 1.5rem 3rem rgb(0 0 0 / 0.34), inset 0 1px 0 rgb(255 255 255 / 0.04);
+    backdrop-filter: blur(18px);
+  }
+
+  .bottomNavItem {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    height: 100%;
+    min-width: 0;
+    border-radius: 999px;
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    transition: color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+  }
+
+  .bottomNavItem span {
+    display: none;
+  }
+
+  .bottomNavItem svg {
+    width: 1.7rem;
+    height: 1.7rem;
+    stroke-width: 1.8;
+  }
+
+  .bottomNavItemActive {
+    background: color-mix(in srgb, var(--color-text) 8%, transparent);
+    color: var(--color-text);
+    transform: translateY(-1px);
   }
 }
