@@ -1,16 +1,19 @@
 .wrapper {
   flex: 0.75;
-  height: calc(100vh - 11.4rem);
+  height: 100%;
+  min-width: 18rem;
 }
 
 .infoContainer {
   flex: 0.75;
   padding: 1.5rem;
-  /* margin-bottom: 12rem; */
   height: 100%;
-  background: var(--color-surface);
+  border: 1px solid var(--color-border-muted);
+  background: color-mix(in srgb, var(--color-surface) 88%, transparent);
   border-radius: 1rem;
   overflow-y: auto;
+  scrollbar-color: color-mix(in srgb, var(--color-text-secondary) 65%, transparent) transparent;
+  scrollbar-width: thin;
 }
 
 .infoContainer::-webkit-scrollbar {
@@ -22,16 +25,16 @@
 }
 
 .infoContainer::-webkit-scrollbar-thumb {
-  background: var(--color-surface-tertiary);
-  border-radius: 0.25rem;
+  background: color-mix(in srgb, var(--color-text-secondary) 55%, transparent);
+  border-radius: 999px;
 }
 
 .infoContainer::-webkit-scrollbar-thumb:hover  {
-  background: var(--color-surface-secondary);
+  background: color-mix(in srgb, var(--color-text-secondary) 75%, transparent);
 }
 
 .spacer {
-  height: 2.4rem;
+  height: 1.65rem;
 }
 
 .info {
@@ -42,6 +45,7 @@
 
 .title {
   font-size: 1.2rem;
+  font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -59,11 +63,11 @@
 .budgetInfo {
   display: flex;
   flex-direction: column;
-  background: var(--color-surface-secondary);
+  border: 1px solid var(--color-border-muted);
+  background: var(--color-background);
   padding: 1rem;
   padding-top: 1.5rem;
-  border-radius: 0.5rem;
-  /* box-shadow: var(--shadow-md); */
+  border-radius: 0.9rem;
 }
 
 .header {
@@ -75,7 +79,8 @@
 }
 
 .budgetInfo > .divider {
-  border-bottom: 1px solid var(--color-border);
+  border: 0;
+  border-bottom: 1px solid var(--color-border-muted);
   margin: 1rem 0;
 }
 
@@ -87,21 +92,24 @@
 }
 
 .note {
-  background: var(--color-surface-secondary);
+  border: 1px solid var(--color-border-muted);
+  background: var(--color-background);
   padding: 1rem;
-  border-radius: 0.5rem;
-  /* box-shadow: var(--shadow-md); */
+  border-radius: 0.9rem;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
 }
 
 .note > textarea {
-  padding: 0.5rem;
-  border-radius: 0.5rem;
-  border-color: var(--color-border);
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.65rem;
   background: var(--color-surface);
-  max-width: 424px;
+  color: var(--color-text);
+  font: inherit;
+  resize: vertical;
 }
 
 .note > textarea:focus {
@@ -115,4 +123,10 @@
 
 .activityItemAmount {
   color: var(--color-text);
+}
+
+@media (max-width: 768px) {
+  .wrapper {
+    display: none;
+  }
 }
