@@ -50,6 +50,11 @@ func (s noopAuthService) GetAllGoogleUsers(context.Context) ([]model.GoogleProvi
 	return nil, nil
 }
 
+func (s noopAuthService) GetCurrentUser(context.Context, uuid.UUID) (*model.CurrentAuthUserResponse, error) {
+	s.t.Fatalf("GetCurrentUser should not be called for verified internal requests")
+	return nil, nil
+}
+
 func (s noopAuthService) GetGoogleUserByEmail(context.Context, string) (*model.GoogleUserInfo, error) {
 	s.t.Fatalf("GetGoogleUserByEmail should not be called for verified internal requests")
 	return nil, nil

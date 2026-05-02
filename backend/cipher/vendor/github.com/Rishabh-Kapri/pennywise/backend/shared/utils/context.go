@@ -19,6 +19,7 @@ const (
 	serviceNameKey   contextKey = "serviceName"
 	requestMetaKey   contextKey = "requestMetadata"
 	internalTokenKey contextKey = "internalAuthToken"
+	apiKeyKey        contextKey = "apiKey"
 
 	HeaderCorrelationID   = "X-Correlation-ID"
 	HeaderCallerService   = "X-Caller-Service"
@@ -28,6 +29,7 @@ const (
 	HeaderServiceName     = "X-Service-Name"
 	HeaderBudgetID        = "X-Budget-ID"
 	HeaderUserID          = "X-User-ID"
+	HeaderAPIKey          = "X-API-Key"
 )
 
 type RequestMetadata struct {
@@ -215,6 +217,21 @@ func InternalAuthTokenFromContext(ctx context.Context) string {
 	}
 
 	return ""
+}
+
+func WithAPIKey(ctx context.Context, apiKey *model.APIKey) context.Context {
+	if apiKey == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, apiKeyKey, apiKey)
+}
+
+func APIKeyFromContext(ctx context.Context) *model.APIKey {
+	if apiKey, ok := ctx.Value(apiKeyKey).(*model.APIKey); ok {
+		return apiKey
+	}
+
+	return nil
 }
 
 // WithServiceName returns a new context with the service name set.

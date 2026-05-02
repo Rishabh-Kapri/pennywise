@@ -5,6 +5,7 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -14,6 +15,7 @@ type APIKeyRepository interface {
 	Create(ctx context.Context, tx pgx.Tx, apiKey *model.APIKey) error
 	GetByKeyID(ctx context.Context, tx pgx.Tx, keyID string) (*model.APIKey, error)
 	GetByHash(ctx context.Context, tx pgx.Tx, keyHash string) (*model.APIKey, error)
+	UpdateLastUsed(ctx context.Context, tx pgx.Tx, id uuid.UUID) error
 }
 
 type apiKeyRepo struct {
@@ -154,4 +156,14 @@ func (r *apiKeyRepo) GetByHash(ctx context.Context, tx pgx.Tx, keyHash string) (
 		return nil, err
 	}
 	return &key, nil
+}
+
+func (r *apiKeyRepo) UpdateLastUsed(ctx context.Context, tx pgx.Tx, id uuid.UUID) error {
+	_, err := r.Executor(tx).Exec(
+		ctx, `
+		UPDATE api_keys
+		SET last_used_at = NOW()
+		WHERE id = $1
+		`, id)
+	return err
 }
