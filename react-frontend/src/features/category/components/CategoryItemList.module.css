@@ -84,8 +84,8 @@
   .categoryItem {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.75rem;
-    padding: 0.875rem 1rem;
+    gap: 0.65rem;
+    padding: 0.8rem 1rem;
     align-items: start;
   }
 
@@ -93,6 +93,7 @@
     grid-column: 1 / -1;
     grid-row: auto;
     font-size: 0.95rem;
+    gap: 0.55rem;
   }
 
   .amountItem {
@@ -101,7 +102,7 @@
     gap: 0.25rem;
     min-width: 0;
     text-align: left;
-    font-size: 0.9rem;
+    font-size: 0.88rem;
     white-space: nowrap;
   }
 
@@ -113,7 +114,7 @@
   }
 
   .amountItem::before {
-    font-size: 0.68rem;
+    font-size: 0.65rem;
     font-weight: 700;
     letter-spacing: 0.04em;
     color: var(--color-text-secondary);
