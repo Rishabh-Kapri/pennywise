@@ -162,8 +162,11 @@ func (s *predictionService) handlePayeeRules(
 	if foundPayeeRule == nil {
 		return nil, nil
 	}
+	if foundPayeeRule.CategoryID == nil {
+		return nil, nil
+	}
 	result.PayeeID = foundPayeeRule.PayeeID
-	result.CategoryID = foundPayeeRule.CategoryID
+	result.CategoryID = *foundPayeeRule.CategoryID
 
 	payee, category, err := s.getPayeeAndCategory(ctx, budgetId, result.PayeeID, result.CategoryID)
 	if err != nil {

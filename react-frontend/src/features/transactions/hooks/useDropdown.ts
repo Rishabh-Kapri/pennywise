@@ -9,7 +9,7 @@ export function useDropdown<T>(value: string, allItems: T[], filterFn: (items: T
   useEffect(() => {
     setFilterQuery(value);
     setFilteredItems(filterFn(allItems, value.trim().toLowerCase()));
-  }, [allItems, value]);
+  }, [allItems, filterFn, value]);
 
   const filterValues = (value: string) => {
     setFilterQuery(value);

@@ -122,7 +122,7 @@ func (d *BackfillDeps) handleUPIMerchant(
 	data := model.PayeeRule{
 		BudgetID:    budgetID,
 		PayeeID:     payee.ID,
-		CategoryID:  foundCategory.ID,
+		CategoryID:  &foundCategory.ID,
 		MatchString: upiText,
 		MatchType:   "EXACT",
 	}
