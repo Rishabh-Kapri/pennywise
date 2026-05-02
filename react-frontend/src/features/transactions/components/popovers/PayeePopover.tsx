@@ -1,5 +1,5 @@
 import { Popover } from '@/components/common/Popover/Popover';
-import { type KeyboardEvent, useRef } from 'react';
+import { type KeyboardEvent, useCallback, useRef } from 'react';
 import styles from './Popover.module.css';
 import { useAppSelector } from '@/app/hooks';
 import type { Payee } from '@/features/payees/types/payee.types';
@@ -13,6 +13,11 @@ import type { TransactionDropdownProps } from './types';
  */
 export function PayeeDropdown({ value, onClick, autoFocus, variant = 'inline' }: TransactionDropdownProps) {
   const { allPayees } = useAppSelector((state) => state.payees);
+  const filterPayees = useCallback(
+    (payees: Payee[], filterQuery: string) =>
+      payees.filter((payee) => payee.name.trim().toLowerCase().includes(filterQuery)),
+    [],
+  );
   const {
     isOpen,
     setIsOpen,
@@ -20,11 +25,7 @@ export function PayeeDropdown({ value, onClick, autoFocus, variant = 'inline' }:
     setFilterQuery,
     filteredItems,
     filterValues,
-  } = useDropdown(value, allPayees, (allPayees, filterQuery) =>
-    allPayees.filter((payee) =>
-      payee.name.trim().toLowerCase().includes(filterQuery),
-    ),
-  );
+  } = useDropdown(value, allPayees, filterPayees);
 
   const triggerRef = useRef<HTMLInputElement | null>(null);
 
