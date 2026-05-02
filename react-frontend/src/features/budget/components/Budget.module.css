@@ -150,34 +150,70 @@
 
 @media (max-width: 768px) {
   .page {
-    gap: 0.85rem;
-    padding: 1rem;
+    height: auto;
+    min-height: 100%;
+    gap: 0.95rem;
+    padding: 0.85rem 0.75rem 1.25rem;
+    overflow-y: auto;
   }
 
   .heading {
     align-items: flex-start;
     flex-direction: column;
+    gap: 0.75rem;
   }
 
   .heading h1 {
-    font-size: 2.25rem;
+    font-size: 2rem;
+    line-height: 1;
+  }
+
+  .heading p {
+    max-width: 21rem;
+    line-height: 1.55;
+  }
+
+  .countBadge {
+    width: fit-content;
+    padding: 0.45rem 0.8rem;
   }
 
   .summaryGrid {
     grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  .summaryCard {
+    min-height: 5.2rem;
+    padding: 0.95rem 1rem;
+    border-radius: 1rem;
+    background: transparent;
+  }
+
+  .summaryCard strong {
+    overflow: hidden;
+    font-size: 1.05rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .container {
     width: 100%;
-    justify-content: space-between;
-    gap: 0.5rem;
-    padding-left: 3.5rem;
+    justify-content: center;
+    gap: 0.65rem;
+    padding: 0 0.5rem;
   }
 
   .amountContainer {
-    flex: 0 1 8.25rem;
+    flex: 0 1 8.75rem;
     justify-content: center;
-    padding: 0.5rem 0.75rem;
+    padding: 0.55rem 0.75rem;
+    border-radius: 0.9rem;
+  }
+
+  .budgetPanel {
+    min-height: auto;
+    flex: none;
   }
 
   .assignAmount > .title {

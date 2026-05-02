@@ -55,7 +55,7 @@ export function Navbar() {
         </div>
       </nav>
 
-      {/* Mobile drawer */}
+      {/* Mobile drawer — minimal: BudgetSwitcher + UserMenu moved here on open */}
       {isMobileMenuOpen && (
         <button
           type="button"
@@ -78,6 +78,22 @@ export function Navbar() {
           </NavLink>
         ))}
       </div>
+
+      {/* Bottom mobile nav bar */}
+      <nav className={styles.bottomNav}>
+        {NAV_ITEMS.slice(0, 4).map((item) => (
+          <NavLink
+            key={item.key}
+            to={item.path}
+            end={item.exact}
+            className={({ isActive }) =>
+              `${styles.bottomNavItem} ${isActive ? styles.bottomNavItemActive : ''}`
+            }>
+            {item.icon}
+            <span>{item.label}</span>
+          </NavLink>
+        ))}
+      </nav>
     </>
   );
 }

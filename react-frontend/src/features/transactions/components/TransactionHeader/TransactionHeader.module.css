@@ -138,6 +138,7 @@
 @media (max-width: 768px) {
   .container {
     gap: 0.75rem;
+    padding: 0 0.775rem 0.5rem;
   }
 
   .title {

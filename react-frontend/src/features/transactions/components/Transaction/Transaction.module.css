@@ -460,7 +460,7 @@ input[type='date']::-webkit-calendar-picker-indicator {
     min-height: 24rem;
     flex-direction: column;
     gap: 1.5rem;
-    padding: 1rem 0.875rem 2rem;
+    padding: 0.5rem 0;
     overflow-y: auto;
     scrollbar-width: none;
   }
@@ -480,8 +480,8 @@ input[type='date']::-webkit-calendar-picker-indicator {
     align-items: center;
     gap: 1rem;
     padding: 0 0.875rem;
-    color: var(--color-text);
-    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+    font-size: 0.9rem;
     font-weight: 500;
   }
 
@@ -508,7 +508,7 @@ input[type='date']::-webkit-calendar-picker-indicator {
     overflow: hidden;
     border: 1px solid var(--color-border);
     border-radius: 1rem;
-    background: var(--color-surface);
+    background: var(--color-surface-secondary);
     color: var(--color-text);
     text-align: left;
     box-shadow: none;
@@ -564,7 +564,7 @@ input[type='date']::-webkit-calendar-picker-indicator {
   }
 
   .mobileTxnInflow {
-    color: var(--color-primary-dark);
+    color: var(--color-budget-positive);
   }
 
   .mobileTxnCategory {
@@ -575,8 +575,8 @@ input[type='date']::-webkit-calendar-picker-indicator {
     padding: 0.65rem 0.85rem;
     overflow: hidden;
     border-radius: 0.75rem;
-    background: var(--color-surface-secondary);
-    color: var(--color-text);
+    background: var(--color-surface-tertiary);
+    color: var(--color-primary-light);
     font-size: 0.85rem;
     font-weight: 800;
     text-overflow: ellipsis;
