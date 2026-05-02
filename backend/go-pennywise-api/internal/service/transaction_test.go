@@ -259,6 +259,28 @@ func (m *mockPayeeRuleRepo) FindByMatchString(
 	return nil, args.Error(1)
 }
 
+func (m *mockPayeeRuleRepo) FindByPayeeID(
+	ctx context.Context,
+	budgetId uuid.UUID,
+	payeeId uuid.UUID,
+) ([]model.PayeeRuleDetails, error) {
+	args := m.Called(ctx, budgetId, payeeId)
+	if obj := args.Get(0); obj != nil {
+		return obj.([]model.PayeeRuleDetails), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+
+func (m *mockPayeeRuleRepo) Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, payeeRule model.PayeeRule) error {
+	args := m.Called(ctx, budgetId, id, payeeRule)
+	return args.Error(0)
+}
+
+func (m *mockPayeeRuleRepo) DeleteByID(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error {
+	args := m.Called(ctx, budgetId, id)
+	return args.Error(0)
+}
+
 type mockCipherClient struct {
 	mock.Mock
 }
@@ -793,7 +815,7 @@ func TestUpdateStatusApprovedWithNonLLMCipherPredictionLearnsRuleAndEmbedding(t 
 	payeeRuleRepo.On("CreatePayeeRule", mock.Anything, mock.Anything, mock.MatchedBy(func(rule model.PayeeRule) bool {
 		return rule.BudgetID == budgetId &&
 			rule.PayeeID == payeeId &&
-			rule.CategoryID == categoryId &&
+			rule.CategoryID != nil && *rule.CategoryID == categoryId &&
 			rule.MatchString == matchString
 	})).Return(nil).Once()
 	txnEmbeddingRepo.On("Upsert", mock.Anything, mock.Anything, mock.MatchedBy(func(embedding model.TransactionEmbedding) bool {
@@ -869,7 +891,7 @@ func TestUpdateStatusApprovedWithLLMCipherPredictionLearnsRuleAndEmbedding(t *te
 	payeeRuleRepo.On("CreatePayeeRule", mock.Anything, mock.Anything, mock.MatchedBy(func(rule model.PayeeRule) bool {
 		return rule.BudgetID == budgetId &&
 			rule.PayeeID == payeeId &&
-			rule.CategoryID == categoryId &&
+			rule.CategoryID != nil && *rule.CategoryID == categoryId &&
 			rule.MatchString == extractedMerchant
 	})).Return(nil).Once()
 	txnEmbeddingRepo.On("Upsert", mock.Anything, mock.Anything, mock.MatchedBy(func(embedding model.TransactionEmbedding) bool {
@@ -991,7 +1013,7 @@ func TestUpdateWithCipherPredictionMappingChangeMarksCorrectionAndLearns(t *test
 	payeeRuleRepo.On("CreatePayeeRule", mock.Anything, mock.Anything, mock.MatchedBy(func(rule model.PayeeRule) bool {
 		return rule.BudgetID == budgetId &&
 			rule.PayeeID == newPayeeId &&
-			rule.CategoryID == categoryId &&
+			rule.CategoryID != nil && *rule.CategoryID == categoryId &&
 			rule.MatchString == matchString
 	})).Return(nil).Once()
 	txnEmbeddingRepo.On("Upsert", mock.Anything, mock.Anything, mock.MatchedBy(func(embedding model.TransactionEmbedding) bool {
