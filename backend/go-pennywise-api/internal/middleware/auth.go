@@ -56,7 +56,10 @@ func handleUserId(
 	c.Next()
 }
 
-func AuthMiddleware(authService service.AuthService, apiKeyService service.APIKeyService) gin.HandlerFunc {
+func AuthMiddleware(
+	authService service.AuthService,
+	apiKeyService service.APIKeyService,
+) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		log := logger.Logger(ctx)
@@ -112,11 +115,11 @@ func AuthMiddleware(authService service.AuthService, apiKeyService service.APIKe
 			}
 			// @TODO: check ip address
 			// @TODO: check referers
-			// @TODO: check scopes
-			// @TODO: check rate limit
-			// @TODO: update last used time
-
+			ctx = utils.WithAPIKey(ctx, key)
 			log.Info("valid api key", "key", key)
+			go func() {
+				_ = apiKeyService.UpdateLastUsed(ctx, key.ID)
+			}()
 			handleUserId(c, ctx, authService, key.UserID.String(), -1.0)
 			return
 		}

@@ -29,6 +29,7 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 )
@@ -47,6 +48,17 @@ func main() {
 
 	dbConn := db.Connect(ctx)
 	defer dbConn.Close()
+	redisOptions := &redis.Options{Addr: "localhost:6379"}
+	if config.RedisURL != "" {
+		parsedOptions, err := redis.ParseURL(config.RedisURL)
+		if err != nil {
+			logger.Logger(ctx).Error("invalid redis url", "error", err)
+			panic(err)
+		}
+		redisOptions = parsedOptions
+	}
+	redisClient := redis.NewClient(redisOptions)
+	defer redisClient.Close()
 
 	router := gin.New()
 	router.Use(gin.Recovery())
@@ -74,6 +86,7 @@ func main() {
 			"Origin",
 			"Content-Type",
 			"Authorization",
+			utils.HeaderAPIKey,
 			utils.HeaderBudgetID,
 			utils.HeaderCorrelationID,
 			utils.HeaderCallerService,
@@ -170,15 +183,16 @@ func main() {
 
 	// Auth middleware
 	authMiddleware := middleware.AuthMiddleware(authService, apiKeyService)
+	rateLimitMiddleware := middleware.RateLimitMiddleware(service.NewRateLimitService(redisClient))
 	budgetMiddleware := sharedMiddleware.BudgetIdMiddleware(budgetRepo)
 
 	// Websocket routes
 	{
 		ws := router.Group("/ws")
-		ws.Use(authMiddleware, budgetMiddleware)
-		ws.GET("", websocketHandler.Connect)
-		ws.GET("/sessions", websocketHandler.GetSessions)
-		ws.POST("/test-event", websocketHandler.SendTestEvent)
+		ws.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
+		ws.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), websocketHandler.Connect)
+		ws.GET("/sessions", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), websocketHandler.GetSessions)
+		ws.POST("/test-event", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), websocketHandler.SendTestEvent)
 	}
 	{
 		api := router.Group("/api")
@@ -203,112 +217,180 @@ func main() {
 		// Protected routes - all require authentication
 		{
 			authUserGroup := router.Group("/api/auth/users")
-			authUserGroup.Use(authMiddleware)
-			authUserGroup.GET("/me", authHandler.GetCurrentUser)
+			authUserGroup.Use(authMiddleware, rateLimitMiddleware)
+			authUserGroup.GET("/me", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), authHandler.GetCurrentUser)
 		}
 		{
 			apiKeyGroup := router.Group("/api/keys")
-			apiKeyGroup.Use(authMiddleware)
-			apiKeyGroup.GET("", apiKeyHandler.GetByKeyID)
-			apiKeyGroup.POST("", apiKeyHandler.Create)
+			apiKeyGroup.Use(authMiddleware, rateLimitMiddleware)
+			apiKeyGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), apiKeyHandler.GetByKeyID)
+			apiKeyGroup.POST("", middleware.RouteAuthMiddleware(sharedModel.ScopeAdmin), apiKeyHandler.Create)
 		}
 		{
 			budgetGroup := router.Group("/api/budgets")
-			budgetGroup.Use(authMiddleware)
-			budgetGroup.GET("", budgetHandler.List)
-			budgetGroup.POST("", budgetHandler.Create)
-			budgetGroup.PATCH("/:id", budgetHandler.UpdateById)
+			budgetGroup.Use(authMiddleware, rateLimitMiddleware)
+			budgetGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), budgetHandler.List)
+			budgetGroup.POST("", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), budgetHandler.Create)
+			budgetGroup.PATCH("/:id", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), budgetHandler.UpdateById)
 		}
 		// Auth-only provider user routes (no budget middleware) — used by internal services
 		{
 			providerUserGroup := router.Group("/api/auth/:provider/users")
-			providerUserGroup.Use(authMiddleware)
-			providerUserGroup.GET("", authHandler.GetProviderUser)
-			providerUserGroup.PATCH("", authHandler.UpdateProviderUser)
+			providerUserGroup.Use(authMiddleware, rateLimitMiddleware)
+			providerUserGroup.GET(
+				"",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				authHandler.GetProviderUser,
+			)
+			providerUserGroup.PATCH(
+				"",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				authHandler.UpdateProviderUser,
+			)
 		}
 		{
 			accountGroup := router.Group("/api/accounts")
-			accountGroup.Use(authMiddleware, budgetMiddleware)
-			accountGroup.GET("/search", accountHandler.Search)
-			accountGroup.GET("", accountHandler.List)
-			accountGroup.POST("", accountHandler.Create)
+			accountGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
+			accountGroup.GET("/search", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), accountHandler.Search)
+			accountGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), accountHandler.List)
+			accountGroup.POST("", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), accountHandler.Create)
 		}
 		{
 			userGroup := router.Group("/api/users")
-			userGroup.Use(authMiddleware, budgetMiddleware)
-			userGroup.GET("/search", userHandler.Search)
-			userGroup.PATCH("", userHandler.Update)
+			userGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
+			userGroup.GET("/search", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), userHandler.Search)
+			userGroup.PATCH("", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), userHandler.Update)
 		}
 		{
 			groupGroup := router.Group("/api/category-groups")
-			groupGroup.Use(authMiddleware, budgetMiddleware)
-			groupGroup.GET("", categoryGroupHandler.List)
-			groupGroup.POST("", categoryGroupHandler.Create)
-			groupGroup.PUT(":id", categoryGroupHandler.Update)
-			groupGroup.DELETE(":id", categoryGroupHandler.DeleteById)
+			groupGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
+			groupGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), categoryGroupHandler.List)
+			groupGroup.POST("", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), categoryGroupHandler.Create)
+			groupGroup.PUT(":id", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), categoryGroupHandler.Update)
+			groupGroup.DELETE(
+				":id",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeDelete),
+				categoryGroupHandler.DeleteById,
+			)
 		}
 		{
 			categoryGroup := router.Group("/api/categories")
-			categoryGroup.Use(authMiddleware, budgetMiddleware)
-			categoryGroup.POST("", categoryHandler.Create)
-			categoryGroup.GET("", categoryHandler.List)
-			categoryGroup.GET("/inflow", categoryHandler.GetInflowBalance)
-			categoryGroup.PATCH("/:id/:month", categoryHandler.UpdateBudget)
-			categoryGroup.GET("/search", categoryHandler.Search)
-			categoryGroup.GET(":id", categoryHandler.GetById)
-			categoryGroup.PUT(":id", categoryHandler.Update)
-			categoryGroup.DELETE(":id", categoryHandler.DeleteById)
+			categoryGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
+			categoryGroup.POST("", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), categoryHandler.Create)
+			categoryGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), categoryHandler.List)
+			categoryGroup.GET(
+				"/inflow",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				categoryHandler.GetInflowBalance,
+			)
+			categoryGroup.PATCH(
+				"/:id/:month",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				categoryHandler.UpdateBudget,
+			)
+			categoryGroup.GET("/search", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), categoryHandler.Search)
+			categoryGroup.GET(":id", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), categoryHandler.GetById)
+			categoryGroup.PUT(":id", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), categoryHandler.Update)
+			categoryGroup.DELETE(
+				":id",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeDelete),
+				categoryHandler.DeleteById,
+			)
 		}
 		{
 			transactionGroup := router.Group("/api/transactions")
-			transactionGroup.Use(authMiddleware, budgetMiddleware)
-			transactionGroup.GET("", transactionHandler.List)
-			transactionGroup.GET("/normalized", transactionHandler.ListNormalized)
-			transactionGroup.POST("", transactionHandler.Create)
-			transactionGroup.PATCH(":id", transactionHandler.Update)
-			transactionGroup.PATCH(":id/status", transactionHandler.UpdateStatus)
-			transactionGroup.DELETE(":id", transactionHandler.DeleteById)
+			transactionGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
+			transactionGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), transactionHandler.List)
+			transactionGroup.GET(
+				"/normalized",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				transactionHandler.ListNormalized,
+			)
+			transactionGroup.POST("", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), transactionHandler.Create)
+			transactionGroup.PATCH(
+				":id",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				transactionHandler.Update,
+			)
+			transactionGroup.PATCH(
+				":id/status",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				transactionHandler.UpdateStatus,
+			)
+			transactionGroup.DELETE(
+				":id",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeDelete),
+				transactionHandler.DeleteById,
+			)
 		}
 		{
 			payeeGroup := router.Group("/api/payees")
-			payeeGroup.Use(authMiddleware, budgetMiddleware)
-			payeeGroup.GET("", payeeHandler.List)
-			payeeGroup.GET("/search", payeeHandler.Search)
-			payeeGroup.POST("", payeeHandler.Create)
-			payeeGroup.PATCH(":id", payeeHandler.Update)
-			payeeGroup.DELETE(":id", payeeHandler.DeleteById)
+			payeeGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
+			payeeGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), payeeHandler.List)
+			payeeGroup.GET("/search", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), payeeHandler.Search)
+			payeeGroup.POST("", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), payeeHandler.Create)
+			payeeGroup.PATCH(":id", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), payeeHandler.Update)
+			payeeGroup.DELETE(":id", middleware.RouteAuthMiddleware(sharedModel.ScopeDelete), payeeHandler.DeleteById)
 		}
 		{
 			tagGroup := router.Group("/api/tags")
-			tagGroup.Use(authMiddleware, budgetMiddleware)
-			tagGroup.GET("", tagHandler.List)
-			tagGroup.GET("/search", tagHandler.Search)
-			tagGroup.POST("", tagHandler.Create)
-			tagGroup.PATCH(":id", tagHandler.Update)
-			tagGroup.DELETE(":id", tagHandler.DeleteById)
+			tagGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
+			tagGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), tagHandler.List)
+			tagGroup.GET("/search", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), tagHandler.Search)
+			tagGroup.POST("", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), tagHandler.Create)
+			tagGroup.PATCH(":id", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), tagHandler.Update)
+			tagGroup.DELETE(":id", middleware.RouteAuthMiddleware(sharedModel.ScopeDelete), tagHandler.DeleteById)
 		}
 		{
 			predictionGroup := router.Group("/api/predictions")
-			predictionGroup.Use(authMiddleware, budgetMiddleware)
-			predictionGroup.GET("", predictionHandler.List)
-			predictionGroup.POST("", predictionHandler.Create)
-			predictionGroup.PATCH(":id", predictionHandler.Update)
-			predictionGroup.DELETE(":id", predictionHandler.DeleteById)
+			predictionGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
+			predictionGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), predictionHandler.List)
+			predictionGroup.POST("", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), predictionHandler.Create)
+			predictionGroup.PATCH(
+				":id",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				predictionHandler.Update,
+			)
+			predictionGroup.DELETE(
+				":id",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeDelete),
+				predictionHandler.DeleteById,
+			)
 		}
 		{
 			embeddingGroup := router.Group("/api/embeddings")
-			embeddingGroup.Use(authMiddleware)
-			embeddingGroup.POST("", embeddingHandler.Create)
-			embeddingGroup.GET("/search", embeddingHandler.Search)
+			embeddingGroup.Use(authMiddleware, rateLimitMiddleware)
+			embeddingGroup.POST("", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), embeddingHandler.Create)
+			embeddingGroup.GET(
+				"/search",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				embeddingHandler.Search,
+			)
 		}
 		{
 			loanMetadataGroup := router.Group("/api/loan-metadata")
-			loanMetadataGroup.Use(authMiddleware, budgetMiddleware)
-			loanMetadataGroup.GET("", loanMetadataHandler.List)
-			loanMetadataGroup.GET(":accountId", loanMetadataHandler.GetByAccountId)
-			loanMetadataGroup.POST("", loanMetadataHandler.Create)
-			loanMetadataGroup.PATCH(":accountId", loanMetadataHandler.Update)
-			loanMetadataGroup.DELETE(":accountId", loanMetadataHandler.Delete)
+			loanMetadataGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
+			loanMetadataGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), loanMetadataHandler.List)
+			loanMetadataGroup.GET(
+				":accountId",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				loanMetadataHandler.GetByAccountId,
+			)
+			loanMetadataGroup.POST(
+				"",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				loanMetadataHandler.Create,
+			)
+			loanMetadataGroup.PATCH(
+				":accountId",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				loanMetadataHandler.Update,
+			)
+			loanMetadataGroup.DELETE(
+				":accountId",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeDelete),
+				loanMetadataHandler.Delete,
+			)
 		}
 	}
 	quit := make(chan os.Signal, 1)

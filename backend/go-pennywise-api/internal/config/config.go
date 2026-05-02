@@ -15,6 +15,7 @@ type Config struct {
 	GoogleClientID     string
 	GoogleClientSecret string
 	CallbackURL        string
+	RedisURL           string
 	GmailServiceURL    string
 	GmailServiceName   string
 	CipherServiceURL   string
@@ -39,6 +40,7 @@ func Load() Config {
 		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
 		CallbackURL:        os.Getenv("CALLBACK_URL"),
+		RedisURL:           os.Getenv("REDIS_URL"),
 
 		GmailServiceURL:  os.Getenv("GMAIL_SERVICE_URL"),
 		GmailServiceName: "gmail-watch",
