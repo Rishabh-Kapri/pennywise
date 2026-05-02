@@ -4,15 +4,15 @@ import type { Account } from '@/features/accounts/types/account.types';
 import styles from './Popover.module.css';
 import { Autocomplete, AutocompleteItem } from '@heroui/autocomplete';
 import type { TransactionDropdownProps } from './types';
+import { useCallback } from 'react';
 
 export function AccountDropdown({ value, onClick, autoFocus, variant = 'inline' }: TransactionDropdownProps) {
   const { budgetAccounts } = useAppSelector((state) => state.accounts);
   const selectedAccount = budgetAccounts.find((account) => account.name === value);
-  const filterFn = (accounts: Account[], query: string) => {
-    return accounts.filter((account) =>
-      account.name.trim().toLowerCase().includes(query),
-    );
-  };
+  const filterFn = useCallback(
+    (accounts: Account[], query: string) => accounts.filter((account) => account.name.trim().toLowerCase().includes(query)),
+    [],
+  );
 
   const { filterQuery, setFilterQuery, filteredItems, filterValues } =
     useDropdown(value, budgetAccounts, filterFn);
