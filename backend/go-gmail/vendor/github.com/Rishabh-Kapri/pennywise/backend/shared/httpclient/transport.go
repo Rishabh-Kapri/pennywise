@@ -11,7 +11,6 @@ import (
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 )
 
 // Private struct that satisfies the transport interface
@@ -29,22 +28,17 @@ func NewHttpTransport(baseUrl string) transport.Transport {
 }
 
 func applyHeaders(ctx context.Context, req *http.Request, headers map[string][]string) {
-	req.Header.Set("Content-Type", "application/json")
-
-	if headers != nil {
-		for k, v := range headers {
-			req.Header.Set(k, v[0])
-		}
-	}
-
-	for k, v := range utils.GetHeaders(ctx) {
+	for k, v := range headers {
 		if req.Header.Get(k) == "" {
 			req.Header.Set(k, v[0])
 		}
 	}
+	if req.Header.Get("Content-Type") == "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
 }
 
-func (h *httpTransport) get(ctx context.Context, path string) (transport.Response, error) {
+func (h *httpTransport) get(ctx context.Context, path string, headers map[string][]string) (transport.Response, error) {
 	var resp transport.Response
 	url := h.baseUrl + path
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -56,7 +50,13 @@ func (h *httpTransport) get(ctx context.Context, path string) (transport.Respons
 	return h.do(ctx, req, nil)
 }
 
-func (h *httpTransport) requestWithBody(ctx context.Context, method string, path string, headers map[string][]string, data any) (transport.Response, error) {
+func (h *httpTransport) requestWithBody(
+	ctx context.Context,
+	method string,
+	path string,
+	headers map[string][]string,
+	data any,
+) (transport.Response, error) {
 	// logger.Logger(ctx).Debug("httpTransport."+method, "url", h.baseUrl, "path", path, "data", data)
 	var url string
 	if strings.HasPrefix(path, "https://") {
@@ -64,6 +64,7 @@ func (h *httpTransport) requestWithBody(ctx context.Context, method string, path
 	} else {
 		url = h.baseUrl + path
 	}
+
 	var resp transport.Response
 	var reqBody io.Reader
 
@@ -87,7 +88,11 @@ func (h *httpTransport) requestWithBody(ctx context.Context, method string, path
 	return h.do(ctx, req, headers)
 }
 
-func (h *httpTransport) do(ctx context.Context, req *http.Request, headers map[string][]string) (transport.Response, error) {
+func (h *httpTransport) do(
+	ctx context.Context,
+	req *http.Request,
+	headers map[string][]string,
+) (transport.Response, error) {
 	log := logger.Logger(ctx)
 	var resp transport.Response
 
@@ -107,11 +112,33 @@ func (h *httpTransport) do(ctx context.Context, req *http.Request, headers map[s
 	if err != nil {
 		log.Error("error reading body", "method", req.Method, "url", req.URL.String(), "status", res.StatusCode)
 		resp.StatusCode = http.StatusInternalServerError
-		return resp, errs.New(errs.CodeHTTPClientError, "%s request for %s failed with status code: %d", req.Method, req.URL.String(), res.StatusCode)
+		return resp, errs.New(
+			errs.CodeHTTPClientError,
+			"%s request for %s failed with status code: %d",
+			req.Method,
+			req.URL.String(),
+			res.StatusCode,
+		)
 	}
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		log.Error("request failed", "method", req.Method, "url", req.URL.String(), "status", res.StatusCode, "body", string(body))
-		return resp, errs.New(errs.CodeHTTPClientError, "%s request for %s failed with status code: %d", req.Method, req.URL.String(), res.StatusCode)
+		log.Error(
+			"request failed",
+			"method",
+			req.Method,
+			"url",
+			req.URL.String(),
+			"status",
+			res.StatusCode,
+			"body",
+			string(body),
+		)
+		return resp, errs.New(
+			errs.CodeHTTPClientError,
+			"%s request for %s failed with status code: %d",
+			req.Method,
+			req.URL.String(),
+			res.StatusCode,
+		)
 	}
 	resp.Body = body
 
@@ -123,9 +150,9 @@ func (h *httpTransport) do(ctx context.Context, req *http.Request, headers map[s
 func (h *httpTransport) Send(ctx context.Context, req *transport.Request) (transport.Response, error) {
 	switch req.Method {
 	case http.MethodGet:
-		return h.get(ctx, req.Path)
+		return h.get(ctx, req.Path, req.MergedHeaders)
 	case http.MethodPost, http.MethodPatch, http.MethodPut:
-		return h.requestWithBody(ctx, req.Method, req.Path, req.Headers, req.Payload)
+		return h.requestWithBody(ctx, req.Method, req.Path, req.MergedHeaders, req.Payload)
 	default:
 		return transport.Response{}, errs.New(errs.CodeInvalidArgument, "unsupported request method")
 	}

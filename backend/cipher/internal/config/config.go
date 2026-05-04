@@ -12,6 +12,7 @@ type Config struct {
 	OllamaURL          string
 	MLPServiceURL      string
 	OpenAIAPIKey       string
+	AnthropicAPIKey    string
 	InternalAuthToken  string
 	TemporalServerHost string
 	TemporalServerPort string
@@ -37,6 +38,7 @@ func Load() Config {
 		OllamaURL:          os.Getenv("OLLAMA_URL"),
 		MLPServiceURL:      os.Getenv("MLP_SERVICE_URL"),
 		OpenAIAPIKey:       os.Getenv("OPENAI_API_KEY"),
+		AnthropicAPIKey:    os.Getenv("ANTHROPIC_API_KEY"),
 		InternalAuthToken:  os.Getenv("INTERNAL_AUTH_TOKEN"),
 		TemporalServerHost: os.Getenv("TEMPORAL_SERVER_HOST"),
 		TemporalServerPort: os.Getenv("TEMPORAL_SERVER_PORT"),

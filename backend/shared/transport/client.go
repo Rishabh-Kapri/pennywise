@@ -3,15 +3,16 @@ package transport
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 )
 
 // Request is protocol agnostic request object
 type Request struct {
-	Method  string
-	Path    string
-	Headers map[string][]string
-	Payload any
+	Method        string
+	Path          string
+	MergedHeaders map[string][]string
+	Payload       any
 }
 
 // Response is protocol agnostic response object
@@ -27,20 +28,69 @@ type Transport interface {
 }
 
 type Client struct {
-	serviceName string
-	transport   Transport
+	serviceName              string
+	transport                Transport
+	defaultHeaders           map[string][]string
+	propagateInternalHeaders bool
 }
 
-// debug helper
-func (c *Client) Print() string {
-	return fmt.Sprintf("service: %s, transport: %s", c.serviceName, c.transport)
+type Options struct {
+	Headers                  map[string][]string
+	PropagateInternalHeaders bool
 }
 
-func NewClient(serviceName string, transport Transport) *Client {
-	return &Client{
-		serviceName: serviceName,
-		transport:   transport,
+type Option func(*Options)
+
+func WithDefaultHeaders(headers map[string][]string) Option {
+	return func(o *Options) {
+		o.Headers = headers
 	}
+}
+
+func WithPropagateInternalHeaders(value bool) Option {
+	return func(o *Options) {
+		o.PropagateInternalHeaders = value
+	}
+}
+
+func NewClient(serviceName string, transport Transport, opts ...Option) *Client {
+	options := Options{
+		PropagateInternalHeaders: true,
+	}
+	for _, opt := range opts {
+		opt(&options)
+	}
+	return &Client{
+		serviceName:              serviceName,
+		transport:                transport,
+		defaultHeaders:           options.Headers,
+		propagateInternalHeaders: options.PropagateInternalHeaders,
+	}
+}
+
+func (c *Client) getMergedHeader(ctx context.Context, headers map[string][]string) map[string][]string {
+	mergedHeaders := make(map[string][]string)
+
+	if c.defaultHeaders != nil {
+		for key, value := range c.defaultHeaders {
+			mergedHeaders[key] = value
+		}
+	}
+
+	if headers != nil {
+		for key, value := range headers {
+			mergedHeaders[key] = value
+		}
+	}
+
+	if c.propagateInternalHeaders == true {
+		for key, value := range utils.GetHeaders(ctx) {
+			if mergedHeaders[key] == nil {
+				mergedHeaders[key] = value
+			}
+		}
+	}
+	return mergedHeaders
 }
 
 // Helper methods to accept generics, go doesn't allow generics on struct methods
@@ -48,7 +98,7 @@ func NewClient(serviceName string, transport Transport) *Client {
 func Get[T any](ctx context.Context, c *Client, path string) (T, error) {
 	var result T
 
-	req := &Request{Method: "GET", Path: path}
+	req := &Request{Method: "GET", Path: path, MergedHeaders: c.getMergedHeader(ctx, nil)}
 
 	res, err := c.transport.Send(ctx, req)
 	if err != nil {
@@ -68,7 +118,7 @@ func Post[T any](ctx context.Context, c *Client, path string, headers map[string
 	// log.Info("transport.Post", "service", c.serviceName, "path", path, "data", data)
 	var result T
 
-	req := &Request{Method: "POST", Path: path, Headers: headers, Payload: data}
+	req := &Request{Method: "POST", Path: path, MergedHeaders: c.getMergedHeader(ctx, headers), Payload: data}
 
 	// Engine gives us raw bytes
 	res, err := c.transport.Send(ctx, req)
@@ -91,7 +141,7 @@ func Patch[T any](ctx context.Context, c *Client, path string, headers map[strin
 	// logger.Debug("transport.Patch", "service", c.serviceName, "path", path, "data", data)
 	var result T
 
-	req := &Request{Method: "PATCH", Path: path, Headers: headers, Payload: data}
+	req := &Request{Method: "PATCH", Path: path, MergedHeaders: c.getMergedHeader(ctx, headers), Payload: data}
 
 	res, err := c.transport.Send(ctx, req)
 	if err != nil {
