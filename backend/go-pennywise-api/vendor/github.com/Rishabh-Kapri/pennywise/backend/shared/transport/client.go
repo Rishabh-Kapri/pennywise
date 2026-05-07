@@ -21,10 +21,21 @@ type Response struct {
 	Body       []byte
 }
 
+type SSEEvent struct {
+	Event string
+	Data  []byte
+}
+
+type StreamResponse struct {
+	StatusCode int
+	Events     <-chan SSEEvent // receive only channel, prevents consumers sending events
+}
+
 // Defines the strategy pattern for inter service communication
 // All the actual transports like HTTP will have to satisfy this interface
 type Transport interface {
 	Send(ctx context.Context, req *Request) (Response, error)
+	Stream(ctx context.Context, req *Request) (StreamResponse, error)
 }
 
 type Client struct {
@@ -155,4 +166,10 @@ func Patch[T any](ctx context.Context, c *Client, path string, headers map[strin
 	}
 
 	return result, nil
+}
+
+func StreamPost(ctx context.Context, c *Client, path string, headers map[string][]string, data any) (StreamResponse, error) {
+	req := &Request{Method: "POST", Path: path, MergedHeaders: c.getMergedHeader(ctx, headers), Payload: data}
+
+	return c.transport.Stream(ctx, req)
 }

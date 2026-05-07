@@ -64,7 +64,7 @@ func TestLoadDependencies(t *testing.T) {
 		mockAccount.On("GetById", ctx, mockTx, budgetId, accountId).Return(&model.Account{}, nil).Once()
 		mockPayee.On("GetByIdTx", ctx, mockTx, budgetId, payeeId).Return(&model.Payee{}, nil).Once()
 
-		b, a, p, err := service.loadDependencies(ctx, mockTx, budgetId, txn)
+		b, a, p, _, err := service.loadDependencies(ctx, mockTx, budgetId, txn)
 		assert.NoError(t, err)
 		assert.NotNil(t, b)
 		assert.NotNil(t, a)
@@ -76,7 +76,7 @@ func TestLoadDependencies(t *testing.T) {
 		service := newTestTransactionService(nil, mockBudget, nil, nil, nil, nil, nil)
 		mockBudget.On("GetById", ctx, mockTx, budgetId).Return(nil, assert.AnError).Once()
 
-		_, _, _, err := service.loadDependencies(ctx, mockTx, budgetId, txn)
+		_, _, _, _, err := service.loadDependencies(ctx, mockTx, budgetId, txn)
 		assert.Error(t, err)
 	})
 
@@ -87,7 +87,7 @@ func TestLoadDependencies(t *testing.T) {
 		mockBudget.On("GetById", ctx, mockTx, budgetId).Return(&model.Budget{}, nil).Once()
 		mockAccount.On("GetById", ctx, mockTx, budgetId, accountId).Return(nil, assert.AnError).Once()
 
-		_, _, _, err := service.loadDependencies(ctx, mockTx, budgetId, txn)
+		_, _, _, _, err := service.loadDependencies(ctx, mockTx, budgetId, txn)
 		assert.Error(t, err)
 	})
 
@@ -100,7 +100,7 @@ func TestLoadDependencies(t *testing.T) {
 		mockAccount.On("GetById", ctx, mockTx, budgetId, accountId).Return(&model.Account{}, nil).Once()
 		mockPayee.On("GetByIdTx", ctx, mockTx, budgetId, payeeId).Return(nil, assert.AnError).Once()
 
-		_, _, _, err := service.loadDependencies(ctx, mockTx, budgetId, txn)
+		_, _, _, _, err := service.loadDependencies(ctx, mockTx, budgetId, txn)
 		assert.Error(t, err)
 	})
 }
@@ -227,6 +227,9 @@ func TestCreate(t *testing.T) {
 		mockAccount.On("GetById", mock.Anything, mockTx, budgetId, accountId).
 			Return(&model.Account{Type: "checking"}, nil).
 			Once()
+		mockAccount.On("GetById", mock.Anything, mockTx, budgetId, transferAccountId).
+			Return(&model.Account{Type: "checking"}, nil).
+			Once()
 		mockPayee.On("GetByIdTx", mock.Anything, mockTx, budgetId, payeeId).
 			Return(&model.Payee{TransferAccountID: &transferAccountId}, nil).
 			Once()
@@ -341,6 +344,9 @@ func TestUpdate(t *testing.T) {
 			Once()
 
 		transferAccountId := uuid.New()
+		mockAccount.On("GetById", mock.Anything, mockTx, budgetId, transferAccountId).
+			Return(&model.Account{Type: "checking"}, nil).
+			Once()
 		mockPayee.On("GetByIdTx", mock.Anything, mockTx, budgetId, payeeId).
 			Return(&model.Payee{TransferAccountID: &transferAccountId}, nil).
 			Once()
@@ -381,6 +387,55 @@ func TestUpdate(t *testing.T) {
 		err := service.Update(ctx, txnId, validTxn)
 		assert.NoError(t, err)
 		mockPrediction.AssertNotCalled(t, "GetByTxnIdTx", mock.Anything, mockTx, budgetId, txnId)
+	})
+
+	t.Run("transfer_counterpart_update_preserves_status", func(t *testing.T) {
+		mockRepo := &mockTransactionRepo{}
+		mockBudget := &mockBudgetRepo{}
+		mockAccount := &mockAccountRepo{}
+		mockPayee := &mockPayeesRepo{}
+		service := newTestTransactionService(mockRepo, mockBudget, nil, mockAccount, mockPayee, nil, nil)
+
+		counterpartId := uuid.New()
+		transferAccountId := uuid.New()
+		transferPayeeId := uuid.New()
+
+		existingTxn := validTxn
+		existingTxn.ID = txnId
+		existingTxn.Amount = 5.0
+		existingTxn.Status = model.TransactionStatusManual
+		existingTxn.TransferTransactionID = &counterpartId
+
+		updatedTxn := validTxn
+		updatedTxn.Status = ""
+
+		mockRepo.On("GetByIdTx", mock.Anything, mockTx, budgetId, txnId).Return(&existingTxn, nil).Once()
+		mockBudget.On("GetById", mock.Anything, mockTx, budgetId).Return(&model.Budget{}, nil).Once()
+		mockAccount.On("GetById", mock.Anything, mockTx, budgetId, accountId).
+			Return(&model.Account{ID: accountId, Type: "checking", TransferPayeeID: &transferPayeeId}, nil).
+			Once()
+		mockPayee.On("GetByIdTx", mock.Anything, mockTx, budgetId, payeeId).
+			Return(&model.Payee{TransferAccountID: &transferAccountId}, nil).
+			Once()
+		mockAccount.On("GetById", mock.Anything, mockTx, budgetId, transferAccountId).
+			Return(&model.Account{ID: transferAccountId, Type: "checking"}, nil).
+			Once()
+
+		mockRepo.On("Update", mock.Anything, mockTx, budgetId, counterpartId, mock.MatchedBy(func(txn model.Transaction) bool {
+			return txn.Status == model.TransactionStatusManual &&
+				txn.AccountID != nil && *txn.AccountID == transferAccountId &&
+				txn.PayeeID != nil && *txn.PayeeID == transferPayeeId &&
+				txn.Amount == -updatedTxn.Amount
+		})).Return(nil).Once()
+		mockRepo.On("Update", mock.Anything, mockTx, budgetId, txnId, mock.MatchedBy(func(txn model.Transaction) bool {
+			return txn.Status == model.TransactionStatusManual &&
+				txn.TransferTransactionID != nil && *txn.TransferTransactionID == counterpartId
+		})).Return(nil).Once()
+
+		err := service.Update(ctx, txnId, updatedTxn)
+
+		assert.NoError(t, err)
+		mockRepo.AssertExpectations(t)
 	})
 
 	t.Run("unapproved_update_becomes_approved", func(t *testing.T) {
@@ -461,11 +516,10 @@ func TestDeleteById(t *testing.T) {
 		assert.Error(t, err)
 	})
 
-	t.Run("success_with_transfer_and_prediction", func(t *testing.T) {
+	t.Run("success_with_transfer", func(t *testing.T) {
 		mockRepo := &mockTransactionRepo{}
-		mockPrediction := &mockPredictionRepo{}
 		mockBudget := &mockBudgetRepo{}
-		service := newTestTransactionService(mockRepo, mockBudget, mockPrediction, nil, nil, nil, nil)
+		service := newTestTransactionService(mockRepo, mockBudget, nil, nil, nil, nil, nil)
 
 		mockBudget.On("GetById", mock.Anything, mockTx, budgetId).Return(&model.Budget{}, nil).Once()
 
@@ -476,36 +530,28 @@ func TestDeleteById(t *testing.T) {
 		}
 
 		mockRepo.On("GetByIdTx", mock.Anything, mockTx, budgetId, txnId).Return(&foundTxn, nil).Once()
+		// applySideEffects isDelete: deletes counterpart transfer transaction
 		mockRepo.On("DeleteById", mock.Anything, mockTx, budgetId, transferTxnId).Return(nil).Once()
-
-		prediction := model.Prediction{ID: uuid.New()}
-		mockPrediction.On("GetByTxnIdTx", mock.Anything, mockTx, budgetId, txnId).Return(&prediction, nil).Once()
-		mockPrediction.On("DeleteByTxnId", mock.Anything, mockTx, budgetId, txnId).Return(nil).Once()
-
 		// Delete main transaction
 		mockRepo.On("DeleteById", mock.Anything, mockTx, budgetId, txnId).Return(nil).Once()
 
 		err := service.DeleteById(ctx, txnId)
 		assert.NoError(t, err)
 		mockRepo.AssertExpectations(t)
-		mockPrediction.AssertExpectations(t)
 	})
 
-	t.Run("prediction_deletion_fails", func(t *testing.T) {
+	t.Run("transfer_counterpart_deletion_fails", func(t *testing.T) {
 		mockRepo := &mockTransactionRepo{}
-		mockPrediction := &mockPredictionRepo{}
 		mockBudget := &mockBudgetRepo{}
-		service := newTestTransactionService(mockRepo, mockBudget, mockPrediction, nil, nil, nil, nil)
+		service := newTestTransactionService(mockRepo, mockBudget, nil, nil, nil, nil, nil)
 
 		mockBudget.On("GetById", mock.Anything, mockTx, budgetId).Return(&model.Budget{}, nil).Once()
 
-		foundTxn := model.Transaction{ID: txnId}
+		transferTxnId := uuid.New()
+		foundTxn := model.Transaction{ID: txnId, TransferTransactionID: &transferTxnId}
 
 		mockRepo.On("GetByIdTx", mock.Anything, mockTx, budgetId, txnId).Return(&foundTxn, nil).Once()
-
-		prediction := model.Prediction{ID: uuid.New()}
-		mockPrediction.On("GetByTxnIdTx", mock.Anything, mockTx, budgetId, txnId).Return(&prediction, nil).Once()
-		mockPrediction.On("DeleteByTxnId", mock.Anything, mockTx, budgetId, txnId).Return(assert.AnError).Once()
+		mockRepo.On("DeleteById", mock.Anything, mockTx, budgetId, transferTxnId).Return(assert.AnError).Once()
 
 		err := service.DeleteById(ctx, txnId)
 		assert.Error(t, err)
@@ -513,18 +559,14 @@ func TestDeleteById(t *testing.T) {
 
 	t.Run("repo_deletion_fails", func(t *testing.T) {
 		mockRepo := &mockTransactionRepo{}
-		mockPrediction := &mockPredictionRepo{}
 		mockBudget := &mockBudgetRepo{}
-		service := newTestTransactionService(mockRepo, mockBudget, mockPrediction, nil, nil, nil, nil)
+		service := newTestTransactionService(mockRepo, mockBudget, nil, nil, nil, nil, nil)
 
 		mockBudget.On("GetById", mock.Anything, mockTx, budgetId).Return(&model.Budget{}, nil).Once()
 
 		foundTxn := model.Transaction{ID: txnId}
 
 		mockRepo.On("GetByIdTx", mock.Anything, mockTx, budgetId, txnId).Return(&foundTxn, nil).Once()
-
-		mockPrediction.On("GetByTxnIdTx", mock.Anything, mockTx, budgetId, txnId).Return(nil, nil).Once()
-
 		mockRepo.On("DeleteById", mock.Anything, mockTx, budgetId, txnId).Return(assert.AnError).Once()
 
 		err := service.DeleteById(ctx, txnId)

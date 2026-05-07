@@ -7,22 +7,23 @@ import (
 )
 
 type Config struct {
-	Environment        string
-	ServiceName        string
-	DatabaseURL        string
-	JWTSecret          string
-	Domain             string
-	GoogleClientID     string
-	GoogleClientSecret string
-	CallbackURL        string
-	RedisURL           string
-	GmailServiceURL    string
-	GmailServiceName   string
-	CipherServiceURL   string
-	CipherServiceName  string
-	InternalAuthToken  string
-	TemporalServerHost string
-	TemporalServerPort string
+	Environment           string
+	ServiceName           string
+	DatabaseURL           string
+	JWTSecret             string
+	Domain                string
+	GoogleClientID        string
+	GoogleClientSecret    string
+	GoogleAndroidClientID string
+	CallbackURL           string
+	RedisURL              string
+	GmailServiceURL       string
+	GmailServiceName      string
+	CipherServiceURL      string
+	CipherServiceName     string
+	InternalAuthToken     string
+	TemporalServerHost    string
+	TemporalServerPort    string
 }
 
 func Load() Config {
@@ -32,15 +33,16 @@ func Load() Config {
 		env = "local"
 	}
 	return Config{
-		Environment:        env,
-		ServiceName:        "pennywise-api",
-		DatabaseURL:        os.Getenv("DATABASE_URL"),
-		JWTSecret:          os.Getenv("JWT_SECRET"),
-		Domain:             os.Getenv("DOMAIN"),
-		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
-		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
-		CallbackURL:        os.Getenv("CALLBACK_URL"),
-		RedisURL:           os.Getenv("REDIS_URL"),
+		Environment:           env,
+		ServiceName:           "pennywise-api",
+		DatabaseURL:           os.Getenv("DATABASE_URL"),
+		JWTSecret:             os.Getenv("JWT_SECRET"),
+		Domain:                os.Getenv("DOMAIN"),
+		GoogleClientID:        os.Getenv("GOOGLE_CLIENT_ID"),
+		GoogleClientSecret:    os.Getenv("GOOGLE_CLIENT_SECRET"),
+		GoogleAndroidClientID: os.Getenv("GOOGLE_ANDROID_CLIENT_ID"),
+		CallbackURL:           os.Getenv("CALLBACK_URL"),
+		RedisURL:              os.Getenv("REDIS_URL"),
 
 		GmailServiceURL:  os.Getenv("GMAIL_SERVICE_URL"),
 		GmailServiceName: "gmail-watch",

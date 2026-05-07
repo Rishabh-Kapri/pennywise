@@ -1,4 +1,5 @@
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { X } from 'lucide-react';
 import styles from './Popover.module.css';
 import { useAppSelector } from '@/app/hooks';
 import { selectCategoryGroups } from '@/features/category';
@@ -83,6 +84,12 @@ export function CategoryDropdown({ value, onClick, autoFocus, variant = 'inline'
     onClick(category.id!, category.name);
   };
 
+  const handleClearCategory = () => {
+    setIsOpen(false);
+    setSearchQuery('');
+    onClick('', '');
+  };
+
   const handleSearchKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== 'Enter') return;
 
@@ -125,6 +132,18 @@ export function CategoryDropdown({ value, onClick, autoFocus, variant = 'inline'
             aria-label="Search categories"
           />
         </div>
+        {value && (
+          <button
+            type="button"
+            className={styles.clearSelectionItem}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              handleClearCategory();
+            }}>
+            <X size={16} />
+            <span>Remove selected category</span>
+          </button>
+        )}
         {filteredItems.length > 0 ? (
           filteredItems.map((group) => (
             <div key={group.id} role="option" className={styles.groupContainer}>

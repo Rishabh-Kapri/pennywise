@@ -52,6 +52,12 @@ func TestExtractDate(t *testing.T) {
 			"",
 			true,
 		},
+		{
+			"Date regex matches but parse fails (invalid month)",
+			"transaction on 99-99-9999",
+			"",
+			true,
+		},
 	}
 
 	for _, testCase := range tests {
@@ -138,6 +144,20 @@ func TestExtractAmount(t *testing.T) {
 			3000,
 			false,
 		},
+		{
+			"No amount pattern",
+			"Dear Customer, no monetary value here on 01-01-2025.",
+			"debited",
+			0,
+			true,
+		},
+		{
+			"Amount with comma causes parse error",
+			"Dear Customer, Rs. 1,234.56 debited from account on 01-01-2025.",
+			"debited",
+			0,
+			true,
+		},
 	}
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -203,6 +223,12 @@ func TestExtractText(t *testing.T) {
 			readTestEmail(t, "testdata/valid_cc_mandate_combined.txt"),
 			"Dear Customer, Thank you for using HDFC Bank Card XX9876 for Rs. 16.56 at GOOGLE CLOUD CYBS SI on 04-04-2026.",
 			false,
+		},
+		{
+			"No email pattern match",
+			"This is just a random string with no bank email pattern at all.",
+			"",
+			true,
 		},
 	}
 	for _, tt := range tests {
@@ -270,6 +296,20 @@ func TestParseEmail(t *testing.T) {
 			readTestEmail(t, "testdata/valid_cc_mandate_combined.txt"),
 			"Dear Customer, Thank you for using HDFC Bank Card XX9876 for Rs. 16.56 at GOOGLE CLOUD CYBS SI on 04-04-2026.",
 			false,
+		},
+		{
+			// extractText succeeds (Dear Customer pattern found) but extractDate fails (invalid date)
+			"DateParseError",
+			"Dear Customer, Rs.100.00 has been debited from account **1234 to VPA abc@ybl SHOP on 99-99-9999.",
+			"",
+			true,
+		},
+		{
+			// extractText and extractDate succeed but extractAmount fails (amount with comma)
+			"AmountParseError",
+			"Dear Customer, Rs. 1,234.56 has been debited from account **1234 to VPA abc@ybl SHOP on 14-07-25.",
+			"",
+			true,
 		},
 	}
 	for _, testCase := range tests {

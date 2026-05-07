@@ -15,75 +15,77 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	gmail "google.golang.org/api/gmail/v1"
-	"google.golang.org/api/option"
 )
 
 type Service struct {
-	config *config.Config
+	config          *config.Config
+	gmailAPIFactory GmailAPIFactory
+	oauthConfig     OAuthConfig
 }
 
-func getOauth2Config() *oauth2.Config {
-	return &oauth2.Config{
-		ClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
-		ClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
-		// RedirectURL:  os.Getenv("CALLBACK_URL"),
-		RedirectURL: "postmessage",
-		Endpoint:    google.Endpoint,
-		Scopes:      []string{"https://mail.google.com/", "https://www.googleapis.com/auth/userinfo.email"},
+func getOauth2Config() OAuthConfig {
+	return &realOAuthConfig{
+		cfg: &oauth2.Config{
+			ClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
+			ClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
+			RedirectURL:  "postmessage",
+			Endpoint:     google.Endpoint,
+			Scopes:       []string{"https://mail.google.com/", "https://www.googleapis.com/auth/userinfo.email"},
+		},
 	}
 }
 
 func NewService() *Service {
-	config := config.LoadConfig()
-	return &Service{config: config}
+	cfg := config.LoadConfig()
+	return &Service{
+		config:          cfg,
+		gmailAPIFactory: newRealGmailAPI,
+		oauthConfig:     getOauth2Config(),
+	}
 }
 
 // WatchHandler is the gmail watch handler
 func (s *Service) WatchHandler(ctx context.Context, payload GmailSyncRequest) (uint64, int64, error) {
-	config := getOauth2Config()
-	logger := logger.Logger(ctx)
-	tokenSource := config.TokenSource(ctx, &oauth2.Token{
+	log := logger.Logger(ctx)
+	tokenSource := s.oauthConfig.TokenSource(ctx, &oauth2.Token{
 		RefreshToken: payload.RefreshToken,
 	})
 	token, err := tokenSource.Token()
 	if err != nil {
-		logger.Error("Error while fetching token", "error", err)
+		log.Error("Error while fetching token", "error", err)
 		return 0, 0, errs.Wrap(errs.CodeInternalError, "Error while fetching token", err)
 	}
 
 	if payload.IsStop {
-		logger.Info("stopping gmail watch", "email", payload.Email)
-		err := s.stopWatch(ctx, token, config, payload.Email)
+		log.Info("stopping gmail watch", "email", payload.Email)
+		err := s.stopWatch(ctx, token, payload.Email)
 		if err != nil {
 			return 0, 0, err
 		}
-		logger.Info("stopped gmail watch", "email", payload.Email)
+		log.Info("stopped gmail watch", "email", payload.Email)
 		return 0, 0, nil
 	}
 
-	// historyID := uint64(1)
-	historyID, expiration, err := s.setupWatch(ctx, payload.Email, token, config)
-	logger.Info("gmail setup done", "historyId", historyID, "expiration", expiration, "err", err)
+	historyID, expiration, err := s.setupWatch(ctx, payload.Email, token)
+	log.Info("gmail setup done", "historyId", historyID, "expiration", expiration, "err", err)
 
 	return historyID, expiration, err
 }
 
-func (s *Service) stopWatch(ctx context.Context, token *oauth2.Token, oauthConfig *oauth2.Config, email string) error {
-	gmailService, err := gmail.NewService(ctx, option.WithTokenSource(oauthConfig.TokenSource(ctx, token)))
+func (s *Service) stopWatch(ctx context.Context, token *oauth2.Token, email string) error {
+	gmailAPI, err := s.gmailAPIFactory(ctx, token, s.oauthConfig)
 	if err != nil {
 		return err
 	}
-	gmailService.Users.Stop(email)
-	return nil
+	return gmailAPI.StopWatch(ctx, email)
 }
 
 func (s *Service) setupWatch(
 	ctx context.Context,
 	email string,
 	token *oauth2.Token,
-	oauthConfig *oauth2.Config,
 ) (uint64, int64, error) {
-	gmailService, err := gmail.NewService(ctx, option.WithTokenSource(oauthConfig.TokenSource(ctx, token)))
+	gmailAPI, err := s.gmailAPIFactory(ctx, token, s.oauthConfig)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -92,8 +94,7 @@ func (s *Service) setupWatch(
 		LabelFilterAction: "include",
 		TopicName:         fmt.Sprintf("projects/%s/topics/%s", s.config.ProjectID, s.config.PubsubTopic),
 	}
-	gmailUserService := gmail.NewUsersService(gmailService)
-	res, err := gmailUserService.Watch(email, watchRequest).Do()
+	res, err := gmailAPI.SetupWatch(ctx, email, watchRequest)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -106,18 +107,16 @@ func (s *Service) GetMessageHistory(
 	email string,
 	historyId uint64,
 	token *oauth2.Token,
-	oauthConfig *oauth2.Config,
+	oauthConfig OAuthConfig,
 ) ([]EmailData, error) {
 	log := logger.Logger(ctx)
 	log.Info("GetMessageHistory", "email", email, "historyId", historyId)
 
-	gmailService, err := gmail.NewService(ctx, option.WithTokenSource(oauthConfig.TokenSource(ctx, token)))
+	gmailAPI, err := s.gmailAPIFactory(ctx, token, oauthConfig)
 	if err != nil {
 		return nil, errs.Wrap(errs.CodeInternalError, "Error while creating gmail service", err)
 	}
-	listCall := gmailService.Users.History.List(email)
-	listCall.StartHistoryId(historyId)
-	historyRes, err := listCall.Do()
+	historyRes, err := gmailAPI.ListHistory(ctx, email, historyId)
 	if err != nil {
 		return nil, errs.Wrap(errs.CodeInternalError, "Error while doing listCall.Do", err)
 	}
@@ -130,7 +129,7 @@ func (s *Service) GetMessageHistory(
 				continue
 			}
 			seen[id] = true
-			msgRes, err := gmailService.Users.Messages.Get(email, id).Do()
+			msgRes, err := gmailAPI.GetMessage(ctx, email, id)
 			if err != nil {
 				log.Error("error fetching message", "id", id, "error", err)
 				return nil, nil
@@ -146,7 +145,6 @@ func (s *Service) GetMessageHistory(
 				}
 			}
 			headers := msgRes.Payload.Headers
-			// parts := msgRes.Payload.Parts
 			msgData = append(msgData, EmailData{MessageId: id, Headers: headers, Body: bodyData.String()})
 		}
 	}

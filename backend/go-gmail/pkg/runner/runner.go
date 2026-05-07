@@ -100,7 +100,7 @@ func (s *Runner) ProcessGmailHistoryId(ctx context.Context, eventData EventData)
 		return err
 	}
 
-	emailData, err := s.gmail.GetMessageHistory(eventData.Email, prevHistoryId, token, oauthconfig)
+	emailData, err := s.gmail.GetMessageHistory(ctx, eventData.Email, prevHistoryId, token, gmail.WrapOAuthConfig(oauthconfig))
 	if err != nil {
 		return errs.Wrap(errs.CodeInternalError, "Failed to get message history", err)
 	}

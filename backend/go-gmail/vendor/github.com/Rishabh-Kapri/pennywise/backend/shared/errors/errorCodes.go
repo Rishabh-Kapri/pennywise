@@ -63,3 +63,12 @@ const (
 	CodeMonthlyBudgetCreateFailed Code = "MONTHLY_BUDGET_CREATE_FAILED"
 	CodeMonthlyBudgetUpdateFailed Code = "MONTHLY_BUDGET_UPDATE_FAILED"
 )
+
+// Agent
+
+// Tool
+const (
+	CodeToolNotFound    Code = "TOOL_NOT_FOUND"
+	CodeToolExecuteFail Code = "TOOL_EXECUTION_FAILED"
+
+)

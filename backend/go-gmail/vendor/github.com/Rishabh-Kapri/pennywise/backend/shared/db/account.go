@@ -15,6 +15,7 @@ import (
 type AccountRepository interface {
 	BaseRepositoryInterface
 	GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Account, error)
+	GetAllSimplified(ctx context.Context, budgetId uuid.UUID) ([]model.AccountSimplified, error)
 	GetById(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, accountId uuid.UUID) (*model.Account, error)
 	GetBySuffix(ctx context.Context, budgetId uuid.UUID, suffix string) (*model.Account, error)
 	Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.Account, error)
@@ -73,6 +74,29 @@ func (r *accountRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.A
 		if err != nil {
 			errorMsg := errors.New("Error while parsing account rows: ")
 			return nil, errors.Join(errorMsg, err)
+		}
+		accounts = append(accounts, a)
+	}
+	return accounts, nil
+}
+
+func (r *accountRepo) GetAllSimplified(ctx context.Context, budgetId uuid.UUID) ([]model.AccountSimplified, error) {
+	rows, err := r.Executor(nil).Query(
+		ctx,
+		`SELECT id, name FROM accounts WHERE budget_id = $1 AND deleted = FALSE AND closed = FALSE`,
+		budgetId,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var accounts []model.AccountSimplified
+	for rows.Next() {
+		var a model.AccountSimplified
+		if err := rows.Scan(&a.ID, &a.Name); err != nil {
+			logger.Logger(ctx).Error("error scanning account", "error", err)
+			return nil, err
 		}
 		accounts = append(accounts, a)
 	}

@@ -359,6 +359,10 @@ func (m *mockAccountRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]mod
 	panic("unimplemented")
 }
 
+func (m *mockAccountRepo) GetAllSimplified(ctx context.Context, budgetId uuid.UUID) ([]model.AccountSimplified, error) {
+	panic("unimplemented")
+}
+
 func (m *mockAccountRepo) GetBySuffix(ctx context.Context, budgetId uuid.UUID, suffix string) (*model.Account, error) {
 	panic("unimplemented")
 }
@@ -1460,5 +1464,408 @@ func TestHandleCarryoversSkipsForNonCarryoverTransactions(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	monthlyBudgetRepo.AssertExpectations(t)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tests: learnTransactionMappingAsync early-return guards
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestLearnTransactionMappingAsync_NilDeps_Skips(t *testing.T) {
+	ctx := context.Background()
+	budgetId := uuid.New()
+	payeeId := uuid.New()
+	categoryId := uuid.New()
+	rawText := "some bank text"
+	txn := model.Transaction{
+		ID:          uuid.New(),
+		PayeeID:     &payeeId,
+		CategoryID:  &categoryId,
+		RawBankText: &rawText,
+	}
+
+	// cipherClient, payeeRuleRepo, txnEmbeddingRepo all nil → should return immediately without panic
+	svc := &transactionService{}
+	// must not panic
+	svc.learnTransactionMappingAsync(ctx, budgetId, txn)
+}
+
+func TestLearnTransactionMappingAsync_NilPayeeID_Skips(t *testing.T) {
+	ctx := context.Background()
+	budgetId := uuid.New()
+	rawText := "some bank text"
+	categoryId := uuid.New()
+	txn := model.Transaction{
+		ID:          uuid.New(),
+		PayeeID:     nil, // nil payee
+		CategoryID:  &categoryId,
+		RawBankText: &rawText,
+	}
+
+	// provide non-nil cipher/payeeRule/txnEmbedding so we don't hit the first guard
+	// but payeeID is nil → hits second guard
+	mockCipher := &mockCipherClientTxn{}
+	svc := &transactionService{
+		cipherClient:    mockCipher,
+		payeeRuleRepo:   &mockPayeeRuleRepo{},
+		txnEmbeddingRepo: &mockTxnEmbeddingRepo{},
+	}
+	svc.learnTransactionMappingAsync(ctx, budgetId, txn)
+	// no mock calls expected
+	mockCipher.AssertExpectations(t)
+}
+
+func TestLearnTransactionMappingAsync_NilCategoryID_Skips(t *testing.T) {
+	ctx := context.Background()
+	budgetId := uuid.New()
+	payeeId := uuid.New()
+	rawText := "some bank text"
+	txn := model.Transaction{
+		ID:          uuid.New(),
+		PayeeID:     &payeeId,
+		CategoryID:  nil, // nil category
+		RawBankText: &rawText,
+	}
+
+	mockCipher := &mockCipherClientTxn{}
+	svc := &transactionService{
+		cipherClient:    mockCipher,
+		payeeRuleRepo:   &mockPayeeRuleRepo{},
+		txnEmbeddingRepo: &mockTxnEmbeddingRepo{},
+	}
+	svc.learnTransactionMappingAsync(ctx, budgetId, txn)
+	mockCipher.AssertExpectations(t)
+}
+
+func TestLearnTransactionMappingAsync_NilRawBankText_Skips(t *testing.T) {
+	ctx := context.Background()
+	budgetId := uuid.New()
+	payeeId := uuid.New()
+	categoryId := uuid.New()
+	txn := model.Transaction{
+		ID:          uuid.New(),
+		PayeeID:     &payeeId,
+		CategoryID:  &categoryId,
+		RawBankText: nil,
+	}
+
+	mockCipher := &mockCipherClientTxn{}
+	svc := &transactionService{
+		cipherClient:    mockCipher,
+		payeeRuleRepo:   &mockPayeeRuleRepo{},
+		txnEmbeddingRepo: &mockTxnEmbeddingRepo{},
+	}
+	svc.learnTransactionMappingAsync(ctx, budgetId, txn)
+	mockCipher.AssertExpectations(t)
+}
+
+func TestLearnTransactionMappingAsync_BlankRawBankText_Skips(t *testing.T) {
+	ctx := context.Background()
+	budgetId := uuid.New()
+	payeeId := uuid.New()
+	categoryId := uuid.New()
+	blank := "   "
+	txn := model.Transaction{
+		ID:          uuid.New(),
+		PayeeID:     &payeeId,
+		CategoryID:  &categoryId,
+		RawBankText: &blank,
+	}
+
+	mockCipher := &mockCipherClientTxn{}
+	svc := &transactionService{
+		cipherClient:    mockCipher,
+		payeeRuleRepo:   &mockPayeeRuleRepo{},
+		txnEmbeddingRepo: &mockTxnEmbeddingRepo{},
+	}
+	svc.learnTransactionMappingAsync(ctx, budgetId, txn)
+	mockCipher.AssertExpectations(t)
+}
+
+// Minimal mocks needed for learnTransactionMappingAsync guard tests
+
+type mockCipherClientTxn struct {
+	mock.Mock
+}
+
+func (m *mockCipherClientTxn) GenerateTransactionEmbedding(ctx context.Context, req TransactionEmbeddingRequest) (*TransactionEmbeddingResponse, error) {
+	args := m.Called(ctx, req)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*TransactionEmbeddingResponse), args.Error(1)
+}
+
+type mockTxnEmbeddingRepo struct {
+	mock.Mock
+}
+
+func (m *mockTxnEmbeddingRepo) Upsert(ctx context.Context, tx pgx.Tx, embedding model.TransactionEmbedding, embeddingStr string) error {
+	args := m.Called(ctx, tx, embedding, embeddingStr)
+	return args.Error(0)
+}
+
+func (m *mockTxnEmbeddingRepo) SearchSimilar(ctx context.Context, budgetID uuid.UUID, amount float64, embeddingStr string, limit int) ([]model.TransactionEmbedding, error) {
+	args := m.Called(ctx, budgetID, amount, embeddingStr, limit)
+	return args.Get(0).([]model.TransactionEmbedding), args.Error(1)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tests: UpdateStatus — missing branches
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestUpdateStatus_GetByIdError_ReturnsError(t *testing.T) {
+	budgetId, txnId := uuid.New(), uuid.New()
+	ctx := utils.WithBudgetID(context.Background(), budgetId)
+
+	txnRepo := &mockTransactionRepo{}
+	svc := &transactionService{repo: txnRepo}
+
+	txnRepo.On("GetById", mock.Anything, budgetId, txnId).Return(nil, assert.AnError).Once()
+
+	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved)
+	require.Error(t, err)
+	txnRepo.AssertExpectations(t)
+}
+
+func TestUpdateStatus_NotFoundNilTxn_ReturnsError(t *testing.T) {
+	budgetId, txnId := uuid.New(), uuid.New()
+	ctx := utils.WithBudgetID(context.Background(), budgetId)
+
+	txnRepo := &mockTransactionRepo{}
+	svc := &transactionService{repo: txnRepo}
+
+	txnRepo.On("GetById", mock.Anything, budgetId, txnId).Return((*model.Transaction)(nil), nil).Once()
+
+	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved)
+	require.Error(t, err)
+	var appErr *errs.Error
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, errs.CodeTransactionLookupFailed, appErr.Code)
+	txnRepo.AssertExpectations(t)
+}
+
+func TestUpdateStatus_NilCipherPredictionRepo_ReturnsError(t *testing.T) {
+	budgetId, txnId := uuid.New(), uuid.New()
+	ctx := utils.WithBudgetID(context.Background(), budgetId)
+	payeeId := uuid.New()
+	categoryId := uuid.New()
+	rawText := "some text"
+
+	txnRepo := &mockTransactionRepo{}
+	svc := &transactionService{
+		repo:                 txnRepo,
+		cipherPredictionRepo: nil, // explicitly nil
+	}
+
+	txn := &model.Transaction{
+		ID:          txnId,
+		BudgetID:    budgetId,
+		PayeeID:     &payeeId,
+		CategoryID:  &categoryId,
+		RawBankText: &rawText,
+	}
+	txnRepo.On("GetById", mock.Anything, budgetId, txnId).Return(txn, nil).Once()
+
+	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved)
+	require.Error(t, err)
+	var appErr *errs.Error
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, errs.CodeInternalError, appErr.Code)
+	txnRepo.AssertExpectations(t)
+}
+
+func TestUpdateStatus_CipherPredictionGetError_ReturnsError(t *testing.T) {
+	useInlineTx(t)
+	budgetId, txnId := uuid.New(), uuid.New()
+	ctx := utils.WithBudgetID(context.Background(), budgetId)
+	payeeId := uuid.New()
+	categoryId := uuid.New()
+	rawText := "some text"
+
+	txnRepo := &mockTransactionRepo{}
+	cipherPredictionRepo := &mockCipherPredictionRepo{}
+	svc := &transactionService{repo: txnRepo, cipherPredictionRepo: cipherPredictionRepo}
+
+	txn := &model.Transaction{
+		ID:          txnId,
+		BudgetID:    budgetId,
+		PayeeID:     &payeeId,
+		CategoryID:  &categoryId,
+		RawBankText: &rawText,
+	}
+	txnRepo.On("GetById", mock.Anything, budgetId, txnId).Return(txn, nil).Once()
+	cipherPredictionRepo.On("GetByTransactionID", mock.Anything, budgetId, txnId).Return(nil, assert.AnError).Once()
+
+	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved)
+	require.Error(t, err)
+	txnRepo.AssertExpectations(t)
+	cipherPredictionRepo.AssertExpectations(t)
+}
+
+func TestUpdateStatus_NilPayeeID_ReturnsError(t *testing.T) {
+	useInlineTx(t)
+	budgetId, txnId := uuid.New(), uuid.New()
+	ctx := utils.WithBudgetID(context.Background(), budgetId)
+	categoryId := uuid.New()
+	rawText := "some text"
+
+	txnRepo := &mockTransactionRepo{}
+	cipherPredictionRepo := &mockCipherPredictionRepo{}
+	svc := &transactionService{repo: txnRepo, cipherPredictionRepo: cipherPredictionRepo}
+
+	txn := &model.Transaction{
+		ID:          txnId,
+		BudgetID:    budgetId,
+		PayeeID:     nil, // nil payee
+		CategoryID:  &categoryId,
+		RawBankText: &rawText,
+	}
+	txnRepo.On("GetById", mock.Anything, budgetId, txnId).Return(txn, nil).Once()
+	cipherPredictionRepo.On("GetByTransactionID", mock.Anything, budgetId, txnId).Return(&model.CipherPredictionRecord{}, nil).Once()
+
+	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved)
+	require.Error(t, err)
+	var appErr *errs.Error
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, errs.CodeInvalidArgument, appErr.Code)
+}
+
+func TestUpdateStatus_NilCategoryID_ReturnsError(t *testing.T) {
+	useInlineTx(t)
+	budgetId, txnId := uuid.New(), uuid.New()
+	ctx := utils.WithBudgetID(context.Background(), budgetId)
+	payeeId := uuid.New()
+	rawText := "some text"
+
+	txnRepo := &mockTransactionRepo{}
+	cipherPredictionRepo := &mockCipherPredictionRepo{}
+	svc := &transactionService{repo: txnRepo, cipherPredictionRepo: cipherPredictionRepo}
+
+	txn := &model.Transaction{
+		ID:          txnId,
+		BudgetID:    budgetId,
+		PayeeID:     &payeeId,
+		CategoryID:  nil, // nil category
+		RawBankText: &rawText,
+	}
+	txnRepo.On("GetById", mock.Anything, budgetId, txnId).Return(txn, nil).Once()
+	cipherPredictionRepo.On("GetByTransactionID", mock.Anything, budgetId, txnId).Return(&model.CipherPredictionRecord{}, nil).Once()
+
+	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved)
+	require.Error(t, err)
+	var appErr *errs.Error
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, errs.CodeInvalidArgument, appErr.Code)
+}
+
+func TestUpdateStatus_NilRawBankText_ReturnsError(t *testing.T) {
+	useInlineTx(t)
+	budgetId, txnId := uuid.New(), uuid.New()
+	ctx := utils.WithBudgetID(context.Background(), budgetId)
+	payeeId := uuid.New()
+	categoryId := uuid.New()
+
+	txnRepo := &mockTransactionRepo{}
+	cipherPredictionRepo := &mockCipherPredictionRepo{}
+	svc := &transactionService{repo: txnRepo, cipherPredictionRepo: cipherPredictionRepo}
+
+	txn := &model.Transaction{
+		ID:         txnId,
+		BudgetID:   budgetId,
+		PayeeID:    &payeeId,
+		CategoryID: &categoryId,
+		RawBankText: nil, // nil raw bank text
+	}
+	txnRepo.On("GetById", mock.Anything, budgetId, txnId).Return(txn, nil).Once()
+	cipherPredictionRepo.On("GetByTransactionID", mock.Anything, budgetId, txnId).Return(&model.CipherPredictionRecord{}, nil).Once()
+
+	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved)
+	require.Error(t, err)
+	var appErr *errs.Error
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, errs.CodeInvalidArgument, appErr.Code)
+}
+
+func TestUpdateStatus_BlankRawBankText_ReturnsError(t *testing.T) {
+	useInlineTx(t)
+	budgetId, txnId := uuid.New(), uuid.New()
+	ctx := utils.WithBudgetID(context.Background(), budgetId)
+	payeeId := uuid.New()
+	categoryId := uuid.New()
+	blank := "  "
+
+	txnRepo := &mockTransactionRepo{}
+	cipherPredictionRepo := &mockCipherPredictionRepo{}
+	svc := &transactionService{repo: txnRepo, cipherPredictionRepo: cipherPredictionRepo}
+
+	txn := &model.Transaction{
+		ID:          txnId,
+		BudgetID:    budgetId,
+		PayeeID:     &payeeId,
+		CategoryID:  &categoryId,
+		RawBankText: &blank,
+	}
+	txnRepo.On("GetById", mock.Anything, budgetId, txnId).Return(txn, nil).Once()
+	cipherPredictionRepo.On("GetByTransactionID", mock.Anything, budgetId, txnId).Return(&model.CipherPredictionRecord{}, nil).Once()
+
+	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved)
+	require.Error(t, err)
+	var appErr *errs.Error
+	require.ErrorAs(t, err, &appErr)
+	assert.Equal(t, errs.CodeInvalidArgument, appErr.Code)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tests: applySideEffects — isDelete branches
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestApplySideEffects_Delete_NilCategory_Skips(t *testing.T) {
+	ctx := context.Background()
+	budgetId := uuid.New()
+	inflowCategoryID := uuid.New()
+	monthlyBudgetRepo := &mockMonthlyBudgetRepo{}
+	service := newTestTransactionService(nil, nil, nil, nil, nil, nil, monthlyBudgetRepo)
+
+	budget := model.Budget{
+		Metadata: model.BudgetMetadata{InflowCategoryID: inflowCategoryID},
+	}
+
+	oldTxn := model.Transaction{
+		Date:       "2025-01-01",
+		Amount:     100,
+		CategoryID: nil, // nil → skip UpsertCarryover
+	}
+	err := service.applySideEffects(ctx, nil, sideEffectInput{
+		budgetId: budgetId,
+		oldTxn:   &oldTxn,
+		budget:   &budget,
+	})
+	require.NoError(t, err)
+	monthlyBudgetRepo.AssertExpectations(t)
+}
+
+func TestApplySideEffects_Delete_InflowCategory_Skips(t *testing.T) {
+	ctx := context.Background()
+	budgetId := uuid.New()
+	inflowCategoryID := uuid.New()
+	monthlyBudgetRepo := &mockMonthlyBudgetRepo{}
+	service := newTestTransactionService(nil, nil, nil, nil, nil, nil, monthlyBudgetRepo)
+
+	budget := model.Budget{
+		Metadata: model.BudgetMetadata{InflowCategoryID: inflowCategoryID},
+	}
+
+	oldTxn := model.Transaction{
+		Date:       "2025-01-01",
+		Amount:     100,
+		CategoryID: &inflowCategoryID, // matches inflow → skip
+	}
+	err := service.applySideEffects(ctx, nil, sideEffectInput{
+		budgetId: budgetId,
+		oldTxn:   &oldTxn,
+		budget:   &budget,
+	})
+	require.NoError(t, err)
 	monthlyBudgetRepo.AssertExpectations(t)
 }
