@@ -9,7 +9,13 @@ import (
 	"time"
 )
 
+type BankPattern struct {
+	Name     string
+	Patterns *Patterns
+}
+
 type EmailParser struct {
+	bank     string
 	patterns *Patterns
 }
 

@@ -111,9 +111,13 @@ export function TransactionRow({
   // ── Hooks (must be called unconditionally before any early return) ──────────
   const createSelectHandler = useCallback(
     (idKey: keyof Transaction, nameKey: keyof Transaction) => (id: string, name: string) => {
-      if (!id || !name) return;
-      handleSelectedTxnChange(idKey, id);
-      handleSelectedTxnChange(nameKey, name);
+      const isClearingCategory = idKey === 'categoryId' && !id && !name;
+      if ((!id || !name) && !isClearingCategory) return;
+
+      const nextId = isClearingCategory ? null : id;
+      const nextName = isClearingCategory ? null : name;
+      handleSelectedTxnChange(idKey, nextId);
+      handleSelectedTxnChange(nameKey, nextName);
       // auto-save for existing transactions after a dropdown selection
       if (!isAddingNew && onAutoSave) {
         if (idKey === 'date') {
@@ -121,7 +125,7 @@ export function TransactionRow({
           resetInlineEdit();
         }
         if (idKey === 'payeeId' || idKey === 'categoryId') {
-          onAutoSave({ [idKey]: id, [nameKey]: name });
+          onAutoSave({ [idKey]: nextId, [nameKey]: nextName });
           resetInlineEdit();
         }
       }

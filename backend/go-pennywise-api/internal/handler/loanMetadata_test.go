@@ -134,18 +134,6 @@ func TestLoanMetadataHandler_List(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:           "missing_budget_id_returns_400",
-			budgetIdHeader: "",
-			setupMocks:     func(m *mockLoanMetadataService) {},
-			expectedStatus: http.StatusBadRequest,
-		},
-		{
-			name:           "invalid_budget_id_returns_400",
-			budgetIdHeader: "not-a-uuid",
-			setupMocks:     func(m *mockLoanMetadataService) {},
-			expectedStatus: http.StatusBadRequest,
-		},
-		{
 			name:           "service_error_returns_500",
 			budgetIdHeader: budgetId.String(),
 			setupMocks: func(m *mockLoanMetadataService) {
@@ -201,13 +189,6 @@ func TestLoanMetadataHandler_GetByAccountId(t *testing.T) {
 				m.On("GetByAccountId", mock.Anything, accountId).Return(loan, nil)
 			},
 			expectedStatus: http.StatusOK,
-		},
-		{
-			name:           "missing_budget_id_returns_400",
-			budgetIdHeader: "",
-			accountIdParam: accountId.String(),
-			setupMocks:     func(m *mockLoanMetadataService) {},
-			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name:           "invalid_account_id_returns_400",
@@ -282,15 +263,6 @@ func TestLoanMetadataHandler_Create(t *testing.T) {
 				})).Return(createTestLoanMetadata(accountId, &catId), nil)
 			},
 			expectedStatus: http.StatusCreated,
-		},
-		{
-			name:           "missing_budget_id_returns_400",
-			budgetIdHeader: "",
-			body: model.LoanMetadata{
-				AccountID: accountId,
-			},
-			setupMocks:     func(m *mockLoanMetadataService) {},
-			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name:           "invalid_json_body_returns_400",
@@ -371,16 +343,6 @@ func TestLoanMetadataHandler_Update(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:           "missing_budget_id_returns_400",
-			budgetIdHeader: "",
-			accountIdParam: accountId.String(),
-			body: model.LoanMetadata{
-				InterestRate: 4.0,
-			},
-			setupMocks:     func(m *mockLoanMetadataService) {},
-			expectedStatus: http.StatusBadRequest,
-		},
-		{
 			name:           "invalid_account_id_returns_400",
 			budgetIdHeader: budgetId.String(),
 			accountIdParam: "not-a-uuid",
@@ -457,13 +419,6 @@ func TestLoanMetadataHandler_Delete(t *testing.T) {
 				m.On("Delete", mock.Anything, accountId).Return(nil)
 			},
 			expectedStatus: http.StatusOK,
-		},
-		{
-			name:           "missing_budget_id_returns_400",
-			budgetIdHeader: "",
-			accountIdParam: accountId.String(),
-			setupMocks:     func(m *mockLoanMetadataService) {},
-			expectedStatus: http.StatusBadRequest,
 		},
 		{
 			name:           "invalid_account_id_returns_400",

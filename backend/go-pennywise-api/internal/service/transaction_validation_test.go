@@ -162,7 +162,11 @@ func TestValidateCategory(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := service.validateCategory(tt.categoryID, inflowCategoryID, tt.account, tt.payee, tt.amount)
+			var transferAccount *model.Account
+			if tt.payee.TransferAccountID != nil {
+				transferAccount = &model.Account{Type: "checking"}
+			}
+			err := service.validateCategory(tt.categoryID, inflowCategoryID, tt.account, tt.payee, transferAccount, tt.amount)
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {

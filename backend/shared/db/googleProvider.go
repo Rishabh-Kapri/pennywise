@@ -30,6 +30,7 @@ type GoogleProviderRepository interface {
 	) (*model.UserWithCredentials, error)
 	GetUserByGoogleID(ctx context.Context, googleID string) (*model.UserWithCredentials, error)
 	GetUserByEmail(ctx context.Context, email string) (*model.GoogleUserInfo, error)
+	UpdateUserByGoogleID(ctx context.Context, googleID string, data *model.GoogleProviderUser) error
 	UpdateHistoryID(ctx context.Context, googleID string, historyID uint64, expiryAt *int64) error
 	UpdateHistoryIDByEmail(ctx context.Context, email string, historyID uint64, expiryAt *int64) error
 }
@@ -228,6 +229,39 @@ func (r *googleProviderRepo) GetUserByEmail(ctx context.Context, email string) (
 		return nil, err
 	}
 	return &info, nil
+}
+
+func (r *googleProviderRepo) UpdateUserByGoogleID(
+	ctx context.Context,
+	googleID string,
+	data *model.GoogleProviderUser,
+) error {
+	logger.Logger(ctx).Info("updating user", "googleID", googleID, "data", data)
+	query := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).Update("google_provider_users")
+	isUpdate := false
+	if data.Name != "" {
+		isUpdate = true
+		query = query.Set("name", data.Name)
+	}
+	if data.Picture != "" {
+		isUpdate = true
+		query = query.Set("picture", data.Picture)
+	}
+	if data.RefreshToken != "" {
+		isUpdate = true
+		query = query.Set("refresh_token", data.RefreshToken)
+	}
+	if isUpdate {
+		query = query.Set("updated_at", time.Now())
+		query = query.Where(sq.Eq{"id": googleID, "deleted": false})
+		sql, args, err := query.ToSql()
+		if err != nil {
+			return err
+		}
+		_, err = r.Executor(nil).Exec(ctx, sql, args...)
+		return err
+	}
+	return nil
 }
 
 func (r *googleProviderRepo) UpdateHistoryIDByEmail(
