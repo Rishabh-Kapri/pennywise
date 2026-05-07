@@ -88,7 +88,9 @@ type CurrentAuthUserResponse struct {
 // GoogleLoginRequest is the request body for Google login
 type GoogleLoginRequest struct {
 	// Credential string `json:"credential" binding:"required"`
-	Code string `json:"code" binding:"required"`
+	Code         string `json:"code" binding:"required"`
+	RedirectURI  string `json:"redirectUri,omitempty"`
+	CodeVerifier string `json:"codeVerifier,omitempty"`
 }
 
 // LoginResponse is returned after successful authentication

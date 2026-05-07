@@ -140,7 +140,7 @@ func (s *PennywiseClient) CreateTransaction(
 		return nil, errs.Wrap(errs.CodeAccountLookupFailed, "error searching for account", err)
 	}
 	if len(accounts) == 0 {
-		return nil, errs.New(errs.CodeAccountLookupFailed, "Account not found for", txnData.Account)
+		return nil, errs.New(errs.CodeAccountLookupFailed, "Account not found for %s", txnData.Account)
 	}
 	accountId := accounts[0].ID
 
@@ -151,7 +151,7 @@ func (s *PennywiseClient) CreateTransaction(
 		return nil, errs.Wrap(errs.CodePayeeLookupFailed, "error searching for payee", err)
 	}
 	if len(payees) == 0 {
-		return nil, errs.New(errs.CodePayeeLookupFailed, "Payee not found for", txnData.Payee)
+		return nil, errs.New(errs.CodePayeeLookupFailed, "Payee not found for %s", txnData.Payee)
 	}
 	payeeId := payees[0].ID
 
@@ -164,7 +164,7 @@ func (s *PennywiseClient) CreateTransaction(
 			return nil, errs.Wrap(errs.CodeCategoryLookupFailed, "error searching for category", err)
 		}
 		if len(categories) == 0 {
-			return nil, errs.New(errs.CodeCategoryLookupFailed, "Category not found for", txnData.Category)
+			return nil, errs.New(errs.CodeCategoryLookupFailed, "Category not found for %s", txnData.Category)
 		}
 		catId := categories[0].ID
 		catIdPtr = &catId

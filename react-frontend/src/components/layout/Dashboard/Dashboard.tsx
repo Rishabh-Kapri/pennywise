@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useHeader } from '../../../context/HeaderContext';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { fetchAllAccounts } from '@/features/accounts/store/accountSlice';
+import { TrackingAccountType } from '@/features/accounts/types/account.types';
 import { fetchAllTransaction } from '@/features/transactions/store';
 import { fetchAllCategoryGroups, fetchInflowAmount } from '@/features/category/store';
 import { selectMonthInHumanFormat, selectSelectedMonth } from '@/features/budget/store/budgetSlice';
@@ -83,7 +84,12 @@ export default function Dashboard() {
   const selectedMonth = useAppSelector(selectSelectedMonth);
   const selectedMonthLabel = useAppSelector(selectMonthInHumanFormat);
   const loading = useAppSelector(selectDashboardLoading);
-  const accounts = useAppSelector((state) => state.accounts.budgetAccounts);
+  const accounts = useAppSelector((state) => [
+    ...state.accounts.budgetAccounts,
+    ...state.accounts.trackingAccounts.filter(
+      (account) => account.type === TrackingAccountType.ASSET,
+    ),
+  ]);
   const transactions = useAppSelector((state) => state.transactions.transactions);
   const budgetHealth = useAppSelector(selectBudgetHealth);
   const recentTransactions = useAppSelector(selectRecentTransactions);
@@ -177,7 +183,7 @@ export default function Dashboard() {
                 </div>
 
                 <div className={styles.accountList}>
-                  {accounts.slice(0, 4).map((account) => (
+                  {accounts.map((account) => (
                     <Link
                       key={account.id ?? account.name}
                       to={account.id ? `/transactions/${account.id}` : '/transactions'}

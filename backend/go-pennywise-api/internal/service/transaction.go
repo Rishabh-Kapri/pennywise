@@ -547,8 +547,12 @@ func (s *transactionService) reconcileTransfer(
 			Amount:                -newTxn.Amount,
 			Date:                  newTxn.Date,
 			Note:                  newTxn.Note,
+			Status:                newTxn.Status,
 			TransferAccountID:     newTxn.AccountID,
 			TransferTransactionID: &foundTxn.ID,
+		}
+		if counterpart.Status == "" {
+			counterpart.Status = model.TransactionStatusManual
 		}
 		if err := s.repo.Update(ctx, tx, budgetId, *foundTxn.TransferTransactionID, counterpart); err != nil {
 			return errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating transfer counterpart", err)
@@ -576,6 +580,12 @@ func (s *transactionService) Create(ctx context.Context, txn model.Transaction) 
 	txCtx, txCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer txCancel()
 
+	budgetID := utils.MustBudgetID(txCtx)
+	txn.BudgetID = budgetID
+	if err := s.validateTransactionPayload(txn, budgetID); err != nil {
+		return nil, err
+	}
+
 	var createdTxn []model.Transaction
 	err := withTx(txCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
 		var err error
@@ -593,10 +603,6 @@ func (s *transactionService) CreateWithTx(
 	tx pgx.Tx,
 	txn model.Transaction,
 ) ([]model.Transaction, error) {
-	if tx == nil {
-		return s.Create(ctx, txn)
-	}
-
 	budgetID := utils.MustBudgetID(ctx)
 	txn.BudgetID = budgetID
 	if txn.Status == "" {

@@ -74,7 +74,7 @@ func (s *apiKeyService) Generate() (fullKey string, keyID string, err error) {
 }
 
 func (s *apiKeyService) ParseKey(fullKey string) (prefix, version, base64String string, err error) {
-	parts := strings.Split(fullKey, "_")
+	parts := strings.SplitN(fullKey, "_", 3)
 	if len(parts) != 3 {
 		return "", "", "", errs.New(errs.CodeInvalidArgument, "invalid api key format")
 	}

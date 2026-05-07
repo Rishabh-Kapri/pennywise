@@ -40,7 +40,7 @@ func (a *GmailActivities) FetchAndParseEmails(
 	}
 
 	// fetch new emails from Gmail using history id
-	emailData, err := a.Gmail.GetMessageHistory(ctx, input.Email, input.HistoryID, token, oauthConfig)
+	emailData, err := a.Gmail.GetMessageHistory(ctx, input.Email, input.HistoryID, token, gmail.WrapOAuthConfig(oauthConfig))
 	if err != nil {
 		return result, err
 	}

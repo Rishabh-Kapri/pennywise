@@ -290,8 +290,9 @@ export function Transaction() {
 
   const handlePanelSelectChange = useCallback(
     (idKey: keyof Transaction, nameKey: keyof Transaction) => (id: string, name: string) => {
-      handleSelectedTxnChange(idKey, id);
-      handleSelectedTxnChange(nameKey, name);
+      const isClearingCategory = idKey === 'categoryId' && !id && !name;
+      handleSelectedTxnChange(idKey, isClearingCategory ? null : id);
+      handleSelectedTxnChange(nameKey, isClearingCategory ? null : name);
     },
     [handleSelectedTxnChange],
   );

@@ -25,7 +25,7 @@ import (
 )
 
 type AuthService interface {
-	LoginWithGoogle(ctx context.Context, tokenString string) (*model.AuthUserResponse, string, string, error)
+	LoginWithGoogle(ctx context.Context, req model.GoogleLoginRequest) (*model.AuthUserResponse, string, string, error)
 	GenerateAccessToken(ctx context.Context, userID uuid.UUID, version int) (string, error)
 	GenerateRefreshToken(ctx context.Context, userID uuid.UUID) (string, error)
 	ValidateToken(ctx context.Context, tokenString string) (*jwt.Token, error)
@@ -56,6 +56,8 @@ type authService struct {
 
 const googleUserInfoURL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
+var googleOAuthScopes = []string{"https://mail.google.com/", "https://www.googleapis.com/auth/userinfo.email"}
+
 func (s *authService) getOauth2Config() *oauth2.Config {
 	return &oauth2.Config{
 		ClientID:     s.config.GoogleClientID,
@@ -63,8 +65,36 @@ func (s *authService) getOauth2Config() *oauth2.Config {
 		// RedirectURL:  s.config.CallbackURL,
 		RedirectURL: "postmessage",
 		Endpoint:    google.Endpoint,
-		Scopes:      []string{"https://mail.google.com/", "https://www.googleapis.com/auth/userinfo.email"},
+		Scopes:      googleOAuthScopes,
 	}
+}
+
+func (s *authService) getMobileOauth2Config(req model.GoogleLoginRequest) (*oauth2.Config, []oauth2.AuthCodeOption, error) {
+	if req.RedirectURI == "" || req.CodeVerifier == "" {
+		return nil, nil, errs.New(
+			errs.CodeInvalidArgument,
+			"redirectUri and codeVerifier are required for mobile Google login",
+		)
+	}
+	if s.config.GoogleAndroidClientID == "" {
+		return nil, nil, errs.New(
+			errs.CodeInvalidArgument,
+			"GOOGLE_ANDROID_CLIENT_ID is required for mobile Google login",
+		)
+	}
+	return &oauth2.Config{
+		ClientID:    s.config.GoogleAndroidClientID,
+		RedirectURL: req.RedirectURI,
+		Endpoint:    google.Endpoint,
+		Scopes:      googleOAuthScopes,
+	}, []oauth2.AuthCodeOption{oauth2.SetAuthURLParam("code_verifier", req.CodeVerifier)}, nil
+}
+
+func (s *authService) getOauth2ConfigForLogin(req model.GoogleLoginRequest) (*oauth2.Config, []oauth2.AuthCodeOption, error) {
+	if req.RedirectURI != "" || req.CodeVerifier != "" {
+		return s.getMobileOauth2Config(req)
+	}
+	return s.getOauth2Config(), nil, nil
 }
 
 type gmailSyncRequest struct {
@@ -154,11 +184,14 @@ func (s *authService) fetchGoogleUser(
 
 func (s *authService) LoginWithGoogle(
 	ctx context.Context,
-	tokenString string,
+	req model.GoogleLoginRequest,
 ) (*model.AuthUserResponse, string, string, error) {
 	logger := logger.Logger(ctx)
-	oauthConfig := s.getOauth2Config()
-	oauthToken, err := oauthConfig.Exchange(ctx, tokenString)
+	oauthConfig, authCodeOptions, err := s.getOauth2ConfigForLogin(req)
+	if err != nil {
+		return nil, "", "", err
+	}
+	oauthToken, err := oauthConfig.Exchange(ctx, req.Code, authCodeOptions...)
 	if err != nil {
 		return nil, "", "", errs.Wrap(errs.CodeInvalidArgument, "token exchange failed", err)
 	}
@@ -176,6 +209,18 @@ func (s *authService) LoginWithGoogle(
 
 		// User not found — create auth_user + auth_provider + google_provider_user in a transaction
 		userWithCreds, err = s.createGoogleUser(ctx, googleProfile, oauthToken.RefreshToken)
+		if err != nil {
+			return nil, "", "", err
+		}
+	} else {
+		data := model.GoogleProviderUser{
+			Name:    googleProfile.Name,
+			Picture: googleProfile.Picture,
+		}
+		if oauthToken.RefreshToken != "" {
+			data.RefreshToken = oauthToken.RefreshToken
+		}
+		err = s.googleProvider.UpdateUserByGoogleID(ctx, googleProfile.ID, &data)
 		if err != nil {
 			return nil, "", "", err
 		}
@@ -199,7 +244,7 @@ func (s *authService) LoginWithGoogle(
 
 	// setup gmail watch
 	lastGmailSync := userWithCreds.GoogleProvider.LastGmailSync
-	if lastGmailSync == nil || lastGmailSync.Before(time.Now().Add(-time.Hour*24*5)) {
+	if userWithCreds.GoogleProvider.RefreshToken != "" && (lastGmailSync == nil || lastGmailSync.Before(time.Now().Add(-time.Hour*24*5))) {
 		googleRefreshToken := userWithCreds.GoogleProvider.RefreshToken
 		detachedCtx := context.WithoutCancel(ctx)
 		go s.SetupGmailWatch(
@@ -306,7 +351,7 @@ func (s *authService) ValidateToken(ctx context.Context, tokenString string) (*j
 func (s *authService) GetUserById(ctx context.Context, userID uuid.UUID) (*model.AuthUser, error) {
 	user, err := s.repo.FindByID(ctx, userID)
 	if err != nil {
-		return nil, errs.New(errs.CodeAuthLookupFailed, "failed to get user by ID", err)
+		return nil, errs.Wrap(errs.CodeAuthLookupFailed, "failed to get user by ID", err)
 	}
 	return user, nil
 }
@@ -360,25 +405,25 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*m
 	// Validate the refresh token JWT
 	token, err := s.ValidateToken(ctx, refreshToken)
 	if err != nil {
-		return nil, errs.New(errs.CodeAuthLookupFailed, "invalid refresh token", err)
+		return nil, errs.Wrap(errs.CodeAuthLookupFailed, "invalid refresh token", err)
 	}
 	logger.Logger(ctx).Debug("token validated", "valid", token.Valid, "claims", token.Claims, "error", err)
 
 	userId, err := token.Claims.GetSubject()
 	logger.Logger(ctx).Debug("userId", "userId", userId, "error", err)
 	if err != nil {
-		return nil, errs.New(errs.CodeAuthLookupFailed, "invalid refresh token claims", err)
+		return nil, errs.Wrap(errs.CodeAuthLookupFailed, "invalid refresh token claims", err)
 	}
 	userUuid, err := uuid.Parse(userId)
 	if err != nil {
-		return nil, errs.New(errs.CodeAuthLookupFailed, "invalid user ID in refresh token", err)
+		return nil, errs.Wrap(errs.CodeAuthLookupFailed, "invalid user ID in refresh token", err)
 	}
 
 	// Fetch the user and verify the refresh token hash matches
 	user, err := s.GetUserById(ctx, userUuid)
 	logger.Logger(ctx).Debug("USER INFO", "user", user, "error", err)
 	if err != nil {
-		return nil, errs.New(errs.CodeAuthLookupFailed, "failed to fetch user for refresh token", err)
+		return nil, errs.Wrap(errs.CodeAuthLookupFailed, "failed to fetch user for refresh token", err)
 	}
 	if user == nil {
 		return nil, errs.New(errs.CodeAuthLookupFailed, "user not found")
@@ -387,7 +432,7 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*m
 	storedHash, err := s.repo.GetRefreshTokenHash(ctx, userUuid)
 	logger.Logger(ctx).Debug("STORED HASH", "storedHash", storedHash, "error", err)
 	if err != nil {
-		return nil, errs.New(errs.CodeAuthLookupFailed, "failed to check refresh token", err)
+		return nil, errs.Wrap(errs.CodeAuthLookupFailed, "failed to check refresh token", err)
 	}
 	// if storedHash == "" || storedHash != utils.Hash(refreshToken) {
 	// 	return nil, errs.New(errs.CodeAuthLookupFailed, "refresh token has been revoked")
@@ -396,7 +441,7 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*m
 	// Generate new access token with the same version
 	newAccessToken, err := s.GenerateAccessToken(ctx, user.ID, user.TokenVersion)
 	if err != nil {
-		return nil, errs.New(errs.CodeAuthCreateFailed, "failed to generate new access token", err)
+		return nil, errs.Wrap(errs.CodeAuthCreateFailed, "failed to generate new access token", err)
 	}
 	return &model.RefreshTokenResponse{
 		AccessToken: newAccessToken,

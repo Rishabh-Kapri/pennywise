@@ -40,7 +40,7 @@ func (h *authHandler) LoginWithGoogle(c *gin.Context) {
 		return
 	}
 
-	user, accessToken, refreshToken, err := h.service.LoginWithGoogle(c.Request.Context(), req.Code)
+	user, accessToken, refreshToken, err := h.service.LoginWithGoogle(c.Request.Context(), req)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
