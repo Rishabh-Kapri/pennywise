@@ -45,9 +45,12 @@ func main() {
 		utils.WithServiceName(context.Background(), config.ServiceName),
 		config.InternalAuthToken,
 	)
+	appCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	dbConn := db.Connect(ctx)
 	defer dbConn.Close()
+
 	redisOptions := &redis.Options{Addr: "localhost:6379"}
 	if config.RedisURL != "" {
 		parsedOptions, err := redis.ParseURL(config.RedisURL)
@@ -114,6 +117,7 @@ func main() {
 	authRepo := repository.NewAuthRepository(dbConn)
 	googleProviderRepo := repository.NewGoogleProviderRepository(dbConn)
 	apiKeyRepo := repository.NewAPIKeyRepository(dbConn)
+	agentRepo := repository.NewAgentRepository(dbConn)
 
 	budgetService := service.NewBudgetService(budgetRepo, payeeRepo, categoryRepo, categoryGroupRepo)
 	budgetHandler := handler.NewBudgetHandler(budgetService)
@@ -137,8 +141,19 @@ func main() {
 	predictionHandler := handler.NewPredictionHandler(predictionService)
 
 	cipherHttpTransport := httpclient.NewHttpTransport(config.CipherServiceURL)
-	cipherTransportClient := transport.NewClient(config.CipherServiceName, cipherHttpTransport)
+	cipherDefaultHeaders := map[string][]string{}
+	if config.InternalAuthToken != "" {
+		cipherDefaultHeaders[utils.HeaderInternalToken] = []string{config.InternalAuthToken}
+	}
+	cipherTransportClient := transport.NewClient(
+		config.CipherServiceName,
+		cipherHttpTransport,
+		transport.WithDefaultHeaders(cipherDefaultHeaders),
+	)
 	cipherClient := service.NewCipherClient(cipherTransportClient)
+	agentClient := service.NewCipherAgentClient(cipherTransportClient)
+	agentService := service.NewAgentService(agentClient, agentRepo)
+	agentHandler := handler.NewAgentHandler(agentService)
 
 	transactionService := service.NewTransactionService(
 		transactionRepo,
@@ -179,7 +194,8 @@ func main() {
 	websocketHub := websocket.NewConnectionHub()
 	websocketService := service.NewWebsocketService(websocketHub)
 	websocketHandler := handler.NewWebsocketHandler(websocketService)
-	go websocketHub.HandleBroadcastMessages() // run once
+	// go websocketHub.HandleBroadcastMessages() // run once
+	go websocket.NewRedisStreamListener(redisClient, websocketHub).Listen(appCtx)
 
 	// Auth middleware
 	authMiddleware := middleware.AuthMiddleware(authService, apiKeyService)
@@ -219,6 +235,42 @@ func main() {
 			authUserGroup := router.Group("/api/auth/users")
 			authUserGroup.Use(authMiddleware, rateLimitMiddleware)
 			authUserGroup.GET("/me", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), authHandler.GetCurrentUser)
+		}
+		{
+			agentGroup := router.Group("/api/agent")
+			agentGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
+			agentGroup.GET(
+				"/conversations",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				agentHandler.GetConversations,
+			)
+			agentGroup.GET(
+				"/conversations/:id/messages",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				agentHandler.GetConversationMessages,
+			)
+			agentGroup.PATCH(
+				"/conversations/:conversationId",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				agentHandler.UpdateConversation,
+			)
+			agentGroup.PATCH(
+				"/conversations/:conversationId/message/:messageId",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				agentHandler.UpdateConversationMessageContent,
+			)
+			agentGroup.POST("/runs", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), agentHandler.CreateRun)
+			agentGroup.GET("/runs/:id", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), agentHandler.GetRun)
+			agentGroup.POST(
+				"/runs/:id/cancel",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				agentHandler.CancelRun,
+			)
+			agentGroup.PATCH(
+				"/:entity/:id/metadata",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				agentHandler.UpdateEntityMetadata,
+			)
 		}
 		{
 			apiKeyGroup := router.Group("/api/keys")
@@ -330,9 +382,21 @@ func main() {
 			payeeGroup.GET("/search", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), payeeHandler.Search)
 			payeeGroup.GET("/:id", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), payeeHandler.GetById)
 			payeeGroup.GET("/:id/rules", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), payeeHandler.GetRules)
-			payeeGroup.POST("/:id/rules", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), payeeHandler.CreateRule)
-			payeeGroup.PATCH("/:id/rules/:ruleId", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), payeeHandler.UpdateRule)
-			payeeGroup.DELETE("/:id/rules/:ruleId", middleware.RouteAuthMiddleware(sharedModel.ScopeDelete), payeeHandler.DeleteRule)
+			payeeGroup.POST(
+				"/:id/rules",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				payeeHandler.CreateRule,
+			)
+			payeeGroup.PATCH(
+				"/:id/rules/:ruleId",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				payeeHandler.UpdateRule,
+			)
+			payeeGroup.DELETE(
+				"/:id/rules/:ruleId",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeDelete),
+				payeeHandler.DeleteRule,
+			)
 			payeeGroup.POST("", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), payeeHandler.Create)
 			payeeGroup.PATCH(":id", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), payeeHandler.Update)
 			payeeGroup.DELETE(":id", middleware.RouteAuthMiddleware(sharedModel.ScopeDelete), payeeHandler.DeleteById)
@@ -468,5 +532,6 @@ func main() {
 	}()
 
 	<-quit
+	cancel()
 	logger.Logger(ctx).Info("server shutdown")
 }

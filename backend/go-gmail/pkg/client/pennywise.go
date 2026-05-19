@@ -11,8 +11,8 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/prediction"
 
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
-	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 )
 
@@ -55,11 +55,12 @@ type PredictionReq struct {
 
 // GoogleUserInfo matches the API response from GET /api/auth/google/users
 type GoogleUserInfo struct {
-	GoogleID       string `json:"googleId"`
-	Email          string `json:"email"`
-	GmailHistoryID int    `json:"gmailHistoryId"`
-	RefreshToken   string `json:"refreshToken"`
-	BudgetID       string `json:"budgetId"`
+	GoogleID        string                            `json:"googleId"`
+	OAuthClientType sharedModel.GoogleOAuthClientType `json:"oauthClientType"`
+	Email           string                            `json:"email"`
+	GmailHistoryID  int                               `json:"gmailHistoryId"`
+	RefreshToken    string                            `json:"refreshToken"`
+	BudgetID        string                            `json:"budgetId"`
 }
 
 type searchResult struct {
@@ -67,8 +68,9 @@ type searchResult struct {
 }
 
 type updateHistoryRequest struct {
-	Email          string `json:"email"`
-	GmailHistoryID uint64 `json:"gmailHistoryId"`
+	Email           string                            `json:"email"`
+	OAuthClientType sharedModel.GoogleOAuthClientType `json:"oauthClientType"`
+	GmailHistoryID  uint64                            `json:"gmailHistoryId"`
 }
 
 func NewPennywiseClient(client *transport.Client) *PennywiseClient {
@@ -103,11 +105,17 @@ func (s *PennywiseClient) GetUser(ctx context.Context, email string) (*sharedMod
 
 // UpdateUserHistoryId updates the gmail history ID for a user by email.
 // This endpoint doesn't require budget scoping.
-func (s *PennywiseClient) UpdateUserHistoryId(ctx context.Context, email string, historyId uint64) error {
+func (s *PennywiseClient) UpdateUserHistoryId(
+	ctx context.Context,
+	email string,
+	oauthClientType sharedModel.GoogleOAuthClientType,
+	historyId uint64,
+) error {
+	oauthClientType = sharedModel.NormalizeGoogleOAuthClientType(oauthClientType)
 	log := logger.Logger(ctx)
-	log.Info("updating user history id", "email", email, "historyId", historyId)
+	log.Info("updating user history id", "email", email, "oauthClientType", oauthClientType, "historyId", historyId)
 
-	data := updateHistoryRequest{Email: email, GmailHistoryID: historyId}
+	data := updateHistoryRequest{Email: email, OAuthClientType: oauthClientType, GmailHistoryID: historyId}
 	_, err := transport.Patch[map[string]any](ctx, s.client, "/api/auth/google/users", nil, data)
 	if err != nil {
 		return errs.Wrap(errs.CodeUserUpdateFailed, "failed to update history id", err)

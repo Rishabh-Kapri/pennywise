@@ -1608,8 +1608,8 @@ func (m *svcGoogleProviderRepo) GetAll(ctx context.Context, tx pgx.Tx) ([]model.
 	}
 	return nil, args.Error(1)
 }
-func (m *svcGoogleProviderRepo) Create(ctx context.Context, tx pgx.Tx, authUserID uuid.UUID, googleID string, name string, picture string, email string, refreshToken string, expiryAt *int64) (*model.UserWithCredentials, error) {
-	args := m.Called(ctx, tx, authUserID, googleID, name, picture, email, refreshToken, expiryAt)
+func (m *svcGoogleProviderRepo) Create(ctx context.Context, tx pgx.Tx, authUserID uuid.UUID, googleID string, oauthClientType model.GoogleOAuthClientType, name string, picture string, email string, refreshToken string, expiryAt *int64) (*model.UserWithCredentials, error) {
+	args := m.Called(ctx, tx, authUserID, googleID, oauthClientType, name, picture, email, refreshToken, expiryAt)
 	if v := args.Get(0); v != nil {
 		return v.(*model.UserWithCredentials), args.Error(1)
 	}
@@ -1622,6 +1622,13 @@ func (m *svcGoogleProviderRepo) GetUserByGoogleID(ctx context.Context, googleID 
 	}
 	return nil, args.Error(1)
 }
+func (m *svcGoogleProviderRepo) GetUserByGoogleIDAndClientType(ctx context.Context, googleID string, oauthClientType model.GoogleOAuthClientType) (*model.UserWithCredentials, error) {
+	args := m.Called(ctx, googleID, oauthClientType)
+	if v := args.Get(0); v != nil {
+		return v.(*model.UserWithCredentials), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
 func (m *svcGoogleProviderRepo) GetUserByEmail(ctx context.Context, email string) (*model.GoogleUserInfo, error) {
 	args := m.Called(ctx, email)
 	if v := args.Get(0); v != nil {
@@ -1629,14 +1636,14 @@ func (m *svcGoogleProviderRepo) GetUserByEmail(ctx context.Context, email string
 	}
 	return nil, args.Error(1)
 }
-func (m *svcGoogleProviderRepo) UpdateUserByGoogleID(ctx context.Context, googleID string, data *model.GoogleProviderUser) error {
-	return m.Called(ctx, googleID, data).Error(0)
+func (m *svcGoogleProviderRepo) UpdateUserByGoogleIDAndClientType(ctx context.Context, googleID string, oauthClientType model.GoogleOAuthClientType, data *model.GoogleProviderUser) error {
+	return m.Called(ctx, googleID, oauthClientType, data).Error(0)
 }
-func (m *svcGoogleProviderRepo) UpdateHistoryID(ctx context.Context, googleID string, historyID uint64, expiryAt *int64) error {
-	return m.Called(ctx, googleID, historyID, expiryAt).Error(0)
+func (m *svcGoogleProviderRepo) UpdateHistoryID(ctx context.Context, googleID string, oauthClientType model.GoogleOAuthClientType, historyID uint64, expiryAt *int64) error {
+	return m.Called(ctx, googleID, oauthClientType, historyID, expiryAt).Error(0)
 }
-func (m *svcGoogleProviderRepo) UpdateHistoryIDByEmail(ctx context.Context, email string, historyID uint64, expiryAt *int64) error {
-	return m.Called(ctx, email, historyID, expiryAt).Error(0)
+func (m *svcGoogleProviderRepo) UpdateHistoryIDByEmail(ctx context.Context, email string, oauthClientType model.GoogleOAuthClientType, historyID uint64, expiryAt *int64) error {
+	return m.Called(ctx, email, oauthClientType, historyID, expiryAt).Error(0)
 }
 
 func newAuthSvcWithGoogle(authRepo *svcAuthRepo, googleRepo *svcGoogleProviderRepo) *authService {
@@ -1698,9 +1705,9 @@ func TestAuthService_UpdateGmailHistoryID(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		authRepo := &svcAuthRepo{}
 		googleRepo := &svcGoogleProviderRepo{}
-		googleRepo.On("UpdateHistoryIDByEmail", mock.Anything, "a@b.com", uint64(42), (*int64)(nil)).Return(nil)
+		googleRepo.On("UpdateHistoryIDByEmail", mock.Anything, "a@b.com", model.GoogleOAuthClientTypeWeb, uint64(42), (*int64)(nil)).Return(nil)
 		svc := newAuthSvcWithGoogle(authRepo, googleRepo)
-		assert.NoError(t, svc.UpdateGmailHistoryID(context.Background(), "a@b.com", 42, nil))
+		assert.NoError(t, svc.UpdateGmailHistoryID(context.Background(), "a@b.com", model.GoogleOAuthClientTypeWeb, 42, nil))
 		googleRepo.AssertExpectations(t)
 	})
 }
@@ -1774,8 +1781,8 @@ func TestAuthService_GetCurrentUser_GoogleProviderNil(t *testing.T) {
 		},
 	}
 	authRepo.On("GetUserWithProviders", mock.Anything, userID).Return(user, nil)
-	// GetUserByGoogleID returns UserWithCredentials with nil GoogleProvider
-	googleRepo.On("GetUserByGoogleID", mock.Anything, "gid123").Return(&model.UserWithCredentials{
+	// GetUserByGoogleIDAndClientType returns UserWithCredentials with nil GoogleProvider
+	googleRepo.On("GetUserByGoogleIDAndClientType", mock.Anything, "gid123", model.GoogleOAuthClientTypeWeb).Return(&model.UserWithCredentials{
 		GoogleProvider: nil,
 	}, nil)
 
@@ -1809,7 +1816,7 @@ func TestAuthService_GetCurrentUser_GoogleProviderEnrichesUser(t *testing.T) {
 		Email:   "alice@example.com",
 		Picture: "https://picture.url",
 	}
-	googleRepo.On("GetUserByGoogleID", mock.Anything, "gid456").Return(&model.UserWithCredentials{
+	googleRepo.On("GetUserByGoogleIDAndClientType", mock.Anything, "gid456", model.GoogleOAuthClientTypeWeb).Return(&model.UserWithCredentials{
 		GoogleProvider: gp,
 	}, nil)
 
@@ -1836,7 +1843,7 @@ func TestAuthService_GetCurrentUser_GoogleLookupError(t *testing.T) {
 		},
 	}
 	authRepo.On("GetUserWithProviders", mock.Anything, userID).Return(user, nil)
-	googleRepo.On("GetUserByGoogleID", mock.Anything, "gid789").Return(nil, assert.AnError)
+	googleRepo.On("GetUserByGoogleIDAndClientType", mock.Anything, "gid789", model.GoogleOAuthClientTypeWeb).Return(nil, assert.AnError)
 
 	svc := newAuthSvcWithGoogle(authRepo, googleRepo)
 	result, err := svc.GetCurrentUser(ctx, userID)

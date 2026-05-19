@@ -85,7 +85,7 @@ func AuthMiddleware(
 		if apiKey != "" {
 			isValid := apiKeyService.ValidateFormat(apiKey)
 			if !isValid {
-				log.Error("invalid api key", "apiKey", apiKey)
+				log.Error("invalid api key", "ValidateFormat failed", apiKey)
 				c.JSON(401, gin.H{"error": "invalid api key"})
 				c.Abort()
 				return
@@ -93,7 +93,7 @@ func AuthMiddleware(
 
 			_, _, _, err := apiKeyService.ParseKey(apiKey)
 			if err != nil {
-				log.Error("failed to parse api key", "apiKey", apiKey)
+				log.Error("failed to parse api key", "ParseKey failed", apiKey)
 				c.JSON(401, gin.H{"error": "invalid api key"})
 				c.Abort()
 				return
@@ -101,14 +101,14 @@ func AuthMiddleware(
 
 			key, err := apiKeyService.GetByHash(ctx, apiKey)
 			if err != nil {
-				log.Error("failed to get api key", "key", apiKey)
+				log.Error("failed to get api key", "GetByHash failed", apiKey)
 				c.JSON(401, gin.H{"error": "invalid api key"})
 				c.Abort()
 				return
 			}
 
 			if !key.IsValid() {
-				log.Error("invalid api key", "key", apiKey)
+				log.Error("invalid api key", "key.IsValid failed", apiKey)
 				c.JSON(401, gin.H{"error": "invalid api key"})
 				c.Abort()
 				return

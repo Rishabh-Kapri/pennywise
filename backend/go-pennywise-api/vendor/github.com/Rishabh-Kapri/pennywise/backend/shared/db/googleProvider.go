@@ -22,6 +22,7 @@ type GoogleProviderRepository interface {
 		tx pgx.Tx,
 		authUserID uuid.UUID,
 		googleID string,
+		oauthClientType model.GoogleOAuthClientType,
 		name string,
 		picture string,
 		email string,
@@ -29,10 +30,11 @@ type GoogleProviderRepository interface {
 		expiryAt *int64,
 	) (*model.UserWithCredentials, error)
 	GetUserByGoogleID(ctx context.Context, googleID string) (*model.UserWithCredentials, error)
+	GetUserByGoogleIDAndClientType(ctx context.Context, googleID string, oauthClientType model.GoogleOAuthClientType) (*model.UserWithCredentials, error)
 	GetUserByEmail(ctx context.Context, email string) (*model.GoogleUserInfo, error)
-	UpdateUserByGoogleID(ctx context.Context, googleID string, data *model.GoogleProviderUser) error
-	UpdateHistoryID(ctx context.Context, googleID string, historyID uint64, expiryAt *int64) error
-	UpdateHistoryIDByEmail(ctx context.Context, email string, historyID uint64, expiryAt *int64) error
+	UpdateUserByGoogleIDAndClientType(ctx context.Context, googleID string, oauthClientType model.GoogleOAuthClientType, data *model.GoogleProviderUser) error
+	UpdateHistoryID(ctx context.Context, googleID string, oauthClientType model.GoogleOAuthClientType, historyID uint64, expiryAt *int64) error
+	UpdateHistoryIDByEmail(ctx context.Context, email string, oauthClientType model.GoogleOAuthClientType, historyID uint64, expiryAt *int64) error
 }
 
 type googleProviderRepo struct {
@@ -47,6 +49,7 @@ func (r *googleProviderRepo) GetAll(ctx context.Context, tx pgx.Tx) ([]model.Goo
 	rows, err := r.Executor(tx).Query(ctx, `
 		SELECT 
 		  id,
+		  oauth_client_type,
 		  name,
 		  picture, 
 		  email, 
@@ -68,6 +71,7 @@ func (r *googleProviderRepo) GetAll(ctx context.Context, tx pgx.Tx) ([]model.Goo
 		var user model.GoogleProviderUser
 		if err := rows.Scan(
 			&user.ID,
+			&user.OAuthClientType,
 			&user.Name,
 			&user.Picture,
 			&user.Email,
@@ -92,18 +96,20 @@ func (r *googleProviderRepo) Create(
 	tx pgx.Tx,
 	authUserID uuid.UUID,
 	googleID string,
+	oauthClientType model.GoogleOAuthClientType,
 	name string,
 	picture string,
 	email string,
 	refreshToken string,
 	expiryAt *int64,
 ) (*model.UserWithCredentials, error) {
+	oauthClientType = model.NormalizeGoogleOAuthClientType(oauthClientType)
 	// 1. Create auth_providers linking auth_user to google provider
 	_, err := r.Executor(tx).Exec(
 		ctx,
-		`INSERT INTO auth_providers (auth_user_id, provider_type, provider_id, verified_at)
-		 VALUES ($1, 'google', $2, $3)`,
-		authUserID, googleID, time.Now(),
+		`INSERT INTO auth_providers (auth_user_id, provider_type, provider_id, oauth_client_type, verified_at)
+		 VALUES ($1, 'google', $2, $3, $4)`,
+		authUserID, googleID, oauthClientType, time.Now(),
 	)
 	if err != nil {
 		return nil, err
@@ -113,12 +119,12 @@ func (r *googleProviderRepo) Create(
 	var gpu model.GoogleProviderUser
 	err = r.Executor(tx).QueryRow(
 		ctx,
-		`INSERT INTO google_provider_users (id, name, picture, email, refresh_token, expiry_at)
-		 VALUES ($1, $2, $3, $4, $5, $6)
-		 RETURNING id, name, picture, email, gmail_history_id, refresh_token, created_at, updated_at, last_gmail_sync`,
-		googleID, name, picture, email, refreshToken, expiryAt,
-	).Scan(&gpu.ID, &gpu.Name, &gpu.Picture, &gpu.Email, &gpu.GmailHistoryID,
-		&gpu.RefreshToken, &gpu.CreatedAt, &gpu.UpdatedAt, &gpu.LastGmailSync,
+		`INSERT INTO google_provider_users (id, oauth_client_type, name, picture, email, refresh_token, expiry_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
+		 RETURNING id, oauth_client_type, name, picture, email, gmail_history_id, refresh_token, created_at, updated_at, last_gmail_sync, expiry_at`,
+		googleID, oauthClientType, name, picture, email, refreshToken, expiryAt,
+	).Scan(&gpu.ID, &gpu.OAuthClientType, &gpu.Name, &gpu.Picture, &gpu.Email, &gpu.GmailHistoryID,
+		&gpu.RefreshToken, &gpu.CreatedAt, &gpu.UpdatedAt, &gpu.LastGmailSync, &gpu.ExpiryAt,
 	)
 	if err != nil {
 		return nil, err
@@ -134,12 +140,28 @@ func (r *googleProviderRepo) GetUserByGoogleID(
 	ctx context.Context,
 	googleID string,
 ) (*model.UserWithCredentials, error) {
+	return r.getUserByGoogleID(ctx, googleID, "", false)
+}
+
+func (r *googleProviderRepo) GetUserByGoogleIDAndClientType(
+	ctx context.Context,
+	googleID string,
+	oauthClientType model.GoogleOAuthClientType,
+) (*model.UserWithCredentials, error) {
+	return r.getUserByGoogleID(ctx, googleID, model.NormalizeGoogleOAuthClientType(oauthClientType), true)
+}
+
+func (r *googleProviderRepo) getUserByGoogleID(
+	ctx context.Context,
+	googleID string,
+	oauthClientType model.GoogleOAuthClientType,
+	filterByClientType bool,
+) (*model.UserWithCredentials, error) {
 	var u model.UserWithCredentials
 	u.AuthUser = &model.AuthUser{}
 	u.GoogleProvider = &model.GoogleProviderUser{}
 
-	err := r.Executor(nil).QueryRow(
-		ctx, `
+	query := `
 		  SELECT
 		    au.id,
 		    au.token_version,
@@ -147,6 +169,7 @@ func (r *googleProviderRepo) GetUserByGoogleID(
 		    au.created_at,
 		    au.updated_at,
 		    gpu.id,
+		    gpu.oauth_client_type,
 		    gpu.name,
 		    gpu.picture,
 		    gpu.email,
@@ -158,12 +181,18 @@ func (r *googleProviderRepo) GetUserByGoogleID(
 			  gpu.expiry_at
 		  FROM auth_users au
 		  JOIN auth_providers ap ON au.id = ap.auth_user_id
-		  JOIN google_provider_users gpu on ap.provider_id = gpu.id
-		  WHERE ap.provider_type = 'google' AND ap.provider_id = $1 AND gpu.deleted = FALSE
-		`, googleID,
-	).Scan(&u.AuthUser.ID, &u.AuthUser.TokenVersion, &u.AuthUser.RefreshTokenHash,
+		  JOIN google_provider_users gpu on ap.provider_id = gpu.id AND ap.oauth_client_type = gpu.oauth_client_type
+		  WHERE ap.provider_type = 'google' AND ap.provider_id = $1 AND gpu.deleted = FALSE AND ap.deleted = FALSE`
+	args := []any{googleID}
+	if filterByClientType {
+		query += ` AND ap.oauth_client_type = $2`
+		args = append(args, oauthClientType)
+	}
+	query += ` ORDER BY ap.verified_at ASC NULLS LAST LIMIT 1`
+
+	err := r.Executor(nil).QueryRow(ctx, query, args...).Scan(&u.AuthUser.ID, &u.AuthUser.TokenVersion, &u.AuthUser.RefreshTokenHash,
 		&u.AuthUser.CreatedAt, &u.AuthUser.UpdatedAt,
-		&u.GoogleProvider.ID, &u.GoogleProvider.Name, &u.GoogleProvider.Picture,
+		&u.GoogleProvider.ID, &u.GoogleProvider.OAuthClientType, &u.GoogleProvider.Name, &u.GoogleProvider.Picture,
 		&u.GoogleProvider.Email, &u.GoogleProvider.GmailHistoryID,
 		&u.GoogleProvider.RefreshToken, &u.GoogleProvider.CreatedAt,
 		&u.GoogleProvider.UpdatedAt, &u.GoogleProvider.LastGmailSync, &u.GoogleProvider.ExpiryAt,
@@ -180,10 +209,12 @@ func (r *googleProviderRepo) GetUserByGoogleID(
 func (r *googleProviderRepo) UpdateHistoryID(
 	ctx context.Context,
 	googleID string,
+	oauthClientType model.GoogleOAuthClientType,
 	historyID uint64,
 	expiryAt *int64,
 ) error {
-	logger.Logger(ctx).Info("updating historyID", "googleID", googleID, "historyID", historyID)
+	oauthClientType = model.NormalizeGoogleOAuthClientType(oauthClientType)
+	logger.Logger(ctx).Info("updating historyID", "googleID", googleID, "oauthClientType", oauthClientType, "historyID", historyID)
 	query := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
 		Update("google_provider_users").
 		Set("gmail_history_id", historyID).
@@ -193,9 +224,12 @@ func (r *googleProviderRepo) UpdateHistoryID(
 	if expiryAt != nil {
 		query = query.Set("expiry_at", expiryAt)
 	}
-	query = query.Where(sq.Eq{"id": googleID, "deleted": false})
+	query = query.Where(sq.Eq{"id": googleID, "oauth_client_type": oauthClientType, "deleted": false})
 
 	sql, args, err := query.ToSql()
+	if err != nil {
+		return err
+	}
 
 	_, err = r.Executor(nil).Exec(ctx, sql, args...)
 	return err
@@ -207,6 +241,7 @@ func (r *googleProviderRepo) GetUserByEmail(ctx context.Context, email string) (
 		ctx, `
 		  SELECT
 		    gpu.id,
+		    gpu.oauth_client_type,
 		    gpu.email,
 		    gpu.gmail_history_id,
 		    gpu.refresh_token,
@@ -214,14 +249,17 @@ func (r *googleProviderRepo) GetUserByEmail(ctx context.Context, email string) (
 		    au.id,
 		    b.id
 		  FROM google_provider_users gpu
-		  JOIN auth_providers ap ON ap.provider_id = gpu.id AND ap.provider_type = 'google'
+		  JOIN auth_providers ap ON ap.provider_id = gpu.id AND ap.oauth_client_type = gpu.oauth_client_type AND ap.provider_type = 'google'
 		  JOIN auth_users au ON au.id = ap.auth_user_id
 		  JOIN budgets b ON b.user_id = au.id AND b.deleted = FALSE
 		  WHERE gpu.email = $1 AND gpu.deleted = FALSE
-		  ORDER BY b.is_selected DESC NULLS LAST
+		  ORDER BY (gpu.gmail_history_id IS NOT NULL) DESC,
+		           gpu.last_gmail_sync DESC NULLS LAST,
+		           b.is_selected DESC NULLS LAST,
+		           gpu.updated_at DESC
 		  LIMIT 1
 		`, email,
-	).Scan(&info.GoogleID, &info.Email, &info.GmailHistoryID, &info.RefreshToken, &info.LastGmailSync, &info.UserID, &info.BudgetID)
+	).Scan(&info.GoogleID, &info.OAuthClientType, &info.Email, &info.GmailHistoryID, &info.RefreshToken, &info.LastGmailSync, &info.UserID, &info.BudgetID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrUserNotFound
@@ -231,12 +269,14 @@ func (r *googleProviderRepo) GetUserByEmail(ctx context.Context, email string) (
 	return &info, nil
 }
 
-func (r *googleProviderRepo) UpdateUserByGoogleID(
+func (r *googleProviderRepo) UpdateUserByGoogleIDAndClientType(
 	ctx context.Context,
 	googleID string,
+	oauthClientType model.GoogleOAuthClientType,
 	data *model.GoogleProviderUser,
 ) error {
-	logger.Logger(ctx).Info("updating user", "googleID", googleID, "data", data)
+	oauthClientType = model.NormalizeGoogleOAuthClientType(oauthClientType)
+	logger.Logger(ctx).Info("updating user", "googleID", googleID, "oauthClientType", oauthClientType, "data", data)
 	query := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).Update("google_provider_users")
 	isUpdate := false
 	if data.Name != "" {
@@ -253,7 +293,7 @@ func (r *googleProviderRepo) UpdateUserByGoogleID(
 	}
 	if isUpdate {
 		query = query.Set("updated_at", time.Now())
-		query = query.Where(sq.Eq{"id": googleID, "deleted": false})
+		query = query.Where(sq.Eq{"id": googleID, "oauth_client_type": oauthClientType, "deleted": false})
 		sql, args, err := query.ToSql()
 		if err != nil {
 			return err
@@ -267,9 +307,11 @@ func (r *googleProviderRepo) UpdateUserByGoogleID(
 func (r *googleProviderRepo) UpdateHistoryIDByEmail(
 	ctx context.Context,
 	email string,
+	oauthClientType model.GoogleOAuthClientType,
 	historyID uint64,
 	expiryAt *int64,
 ) error {
+	oauthClientType = model.NormalizeGoogleOAuthClientType(oauthClientType)
 	query := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
 		Update("google_provider_users").
 		Set("gmail_history_id", historyID).
@@ -279,7 +321,7 @@ func (r *googleProviderRepo) UpdateHistoryIDByEmail(
 	if expiryAt != nil {
 		query = query.Set("expiry_at", expiryAt)
 	}
-	query = query.Where(sq.Eq{"email": email, "deleted": false})
+	query = query.Where(sq.Eq{"email": email, "oauth_client_type": oauthClientType, "deleted": false})
 
 	sql, args, err := query.ToSql()
 	if err != nil {

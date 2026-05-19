@@ -9,6 +9,7 @@ import (
 
 	// "github.com/joho/godotenv"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	gmail "google.golang.org/api/gmail/v1"
 )
 
@@ -32,9 +33,10 @@ type UserInfo struct {
 }
 
 type GmailSyncRequest struct {
-	RefreshToken string `json:"refreshToken"`
-	Email        string `json:"email"`
-	IsStop       bool   `json:"isStop"`
+	RefreshToken    string                      `json:"refreshToken"`
+	OAuthClientType model.GoogleOAuthClientType `json:"oauthClientType"`
+	Email           string                      `json:"email"`
+	IsStop          bool                        `json:"isStop"`
 }
 
 type EventData struct {

@@ -11,6 +11,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/config"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
@@ -23,7 +24,18 @@ type Service struct {
 	oauthConfig     OAuthConfig
 }
 
-func getOauth2Config() OAuthConfig {
+func getOauth2Config(clientType model.GoogleOAuthClientType) OAuthConfig {
+	clientType = model.NormalizeGoogleOAuthClientType(clientType)
+	if clientType == model.GoogleOAuthClientTypeAndroid {
+		return &realOAuthConfig{
+			cfg: &oauth2.Config{
+				ClientID: os.Getenv("GOOGLE_ANDROID_CLIENT_ID"),
+				Endpoint: google.Endpoint,
+				Scopes:   []string{"https://mail.google.com/", "https://www.googleapis.com/auth/userinfo.email"},
+			},
+		}
+	}
+
 	return &realOAuthConfig{
 		cfg: &oauth2.Config{
 			ClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
@@ -40,14 +52,23 @@ func NewService() *Service {
 	return &Service{
 		config:          cfg,
 		gmailAPIFactory: newRealGmailAPI,
-		oauthConfig:     getOauth2Config(),
+		oauthConfig:     getOauth2Config(model.GoogleOAuthClientTypeWeb),
 	}
+}
+
+func (s *Service) getOauth2ConfigForClientType(clientType model.GoogleOAuthClientType) OAuthConfig {
+	clientType = model.NormalizeGoogleOAuthClientType(clientType)
+	if clientType == model.GoogleOAuthClientTypeWeb && s.oauthConfig != nil {
+		return s.oauthConfig
+	}
+	return getOauth2Config(clientType)
 }
 
 // WatchHandler is the gmail watch handler
 func (s *Service) WatchHandler(ctx context.Context, payload GmailSyncRequest) (uint64, int64, error) {
 	log := logger.Logger(ctx)
-	tokenSource := s.oauthConfig.TokenSource(ctx, &oauth2.Token{
+	oauthConfig := s.getOauth2ConfigForClientType(payload.OAuthClientType)
+	tokenSource := oauthConfig.TokenSource(ctx, &oauth2.Token{
 		RefreshToken: payload.RefreshToken,
 	})
 	token, err := tokenSource.Token()
@@ -58,7 +79,7 @@ func (s *Service) WatchHandler(ctx context.Context, payload GmailSyncRequest) (u
 
 	if payload.IsStop {
 		log.Info("stopping gmail watch", "email", payload.Email)
-		err := s.stopWatch(ctx, token, payload.Email)
+		err := s.stopWatch(ctx, token, payload.Email, oauthConfig)
 		if err != nil {
 			return 0, 0, err
 		}
@@ -66,14 +87,14 @@ func (s *Service) WatchHandler(ctx context.Context, payload GmailSyncRequest) (u
 		return 0, 0, nil
 	}
 
-	historyID, expiration, err := s.setupWatch(ctx, payload.Email, token)
+	historyID, expiration, err := s.setupWatch(ctx, payload.Email, token, oauthConfig)
 	log.Info("gmail setup done", "historyId", historyID, "expiration", expiration, "err", err)
 
 	return historyID, expiration, err
 }
 
-func (s *Service) stopWatch(ctx context.Context, token *oauth2.Token, email string) error {
-	gmailAPI, err := s.gmailAPIFactory(ctx, token, s.oauthConfig)
+func (s *Service) stopWatch(ctx context.Context, token *oauth2.Token, email string, oauthConfig OAuthConfig) error {
+	gmailAPI, err := s.gmailAPIFactory(ctx, token, oauthConfig)
 	if err != nil {
 		return err
 	}
@@ -84,8 +105,9 @@ func (s *Service) setupWatch(
 	ctx context.Context,
 	email string,
 	token *oauth2.Token,
+	oauthConfig OAuthConfig,
 ) (uint64, int64, error) {
-	gmailAPI, err := s.gmailAPIFactory(ctx, token, s.oauthConfig)
+	gmailAPI, err := s.gmailAPIFactory(ctx, token, oauthConfig)
 	if err != nil {
 		return 0, 0, err
 	}

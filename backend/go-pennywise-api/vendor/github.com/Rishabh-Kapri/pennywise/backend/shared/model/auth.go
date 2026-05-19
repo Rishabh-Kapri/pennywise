@@ -7,10 +7,21 @@ import (
 )
 
 type AuthProviderType string
+type GoogleOAuthClientType string
 
 const (
 	GoogleAuthProviderType AuthProviderType = "google"
+
+	GoogleOAuthClientTypeWeb     GoogleOAuthClientType = "web"
+	GoogleOAuthClientTypeAndroid GoogleOAuthClientType = "android"
 )
+
+func NormalizeGoogleOAuthClientType(clientType GoogleOAuthClientType) GoogleOAuthClientType {
+	if clientType == GoogleOAuthClientTypeAndroid {
+		return GoogleOAuthClientTypeAndroid
+	}
+	return GoogleOAuthClientTypeWeb
+}
 
 // AuthUser represents an authenticated internal user
 // The user is linked to an auth provider (eg, Google, Email, etc)
@@ -24,27 +35,29 @@ type AuthUser struct {
 }
 
 type AuthProvider struct {
-	ID           uuid.UUID        `json:"id"`
-	AuthUserID   uuid.UUID        `json:"authUserId"` // AuthUser.ID
-	ProviderType AuthProviderType `json:"providerType"`
-	ProviderID   string           `json:"providerId"` // eg, google_id
-	VerifiedAt   time.Time        `json:"verifiedAt"` // when the user verified the provider (eg, email verification)
-	CreatedAt    time.Time        `json:"createdAt"`
-	UpdatedAt    time.Time        `json:"updatedAt"`
+	ID              uuid.UUID             `json:"id"`
+	AuthUserID      uuid.UUID             `json:"authUserId"` // AuthUser.ID
+	ProviderType    AuthProviderType      `json:"providerType"`
+	ProviderID      string                `json:"providerId"` // eg, google_id
+	OAuthClientType GoogleOAuthClientType `json:"oauthClientType"`
+	VerifiedAt      time.Time             `json:"verifiedAt"` // when the user verified the provider (eg, email verification)
+	CreatedAt       time.Time             `json:"createdAt"`
+	UpdatedAt       time.Time             `json:"updatedAt"`
 }
 
 type GoogleProviderUser struct {
-	ID             string     `json:"id"` // AuthProvider.ProviderID
-	Name           string     `json:"name"`
-	Picture        string     `json:"picture"`
-	Email          string     `json:"email"`
-	GmailHistoryID *uint64    `json:"gmailHistoryId"`
-	RefreshToken   string     `json:"refreshToken"`
-	CreatedAt      time.Time  `json:"createdAt"`
-	UpdatedAt      time.Time  `json:"updatedAt"`
-	LastGmailSync  *time.Time `json:"lastGmailSync"`
-	ExpiryAt       *int64     `json:"expiryAt"`
-	Deleted        bool       `json:"deleted"`
+	ID              string                `json:"id"` // AuthProvider.ProviderID
+	OAuthClientType GoogleOAuthClientType `json:"oauthClientType"`
+	Name            string                `json:"name"`
+	Picture         string                `json:"picture"`
+	Email           string                `json:"email"`
+	GmailHistoryID  *uint64               `json:"gmailHistoryId"`
+	RefreshToken    string                `json:"refreshToken"`
+	CreatedAt       time.Time             `json:"createdAt"`
+	UpdatedAt       time.Time             `json:"updatedAt"`
+	LastGmailSync   *time.Time            `json:"lastGmailSync"`
+	ExpiryAt        *int64                `json:"expiryAt"`
+	Deleted         bool                  `json:"deleted"`
 }
 
 type UserWithCredentials struct {
@@ -62,11 +75,12 @@ type AuthUserResponse struct {
 }
 
 type AuthProviderUserResponse struct {
-	ProviderType AuthProviderType `json:"providerType"`
-	ProviderID   string           `json:"providerId"`
-	Email        string           `json:"email,omitempty"`
-	Name         string           `json:"name,omitempty"`
-	Picture      string           `json:"picture,omitempty"`
+	ProviderType    AuthProviderType      `json:"providerType"`
+	ProviderID      string                `json:"providerId"`
+	OAuthClientType GoogleOAuthClientType `json:"oauthClientType,omitempty"`
+	Email           string                `json:"email,omitempty"`
+	Name            string                `json:"name,omitempty"`
+	Picture         string                `json:"picture,omitempty"`
 
 	GmailHistoryID *uint64    `json:"gmailHistoryId,omitempty"`
 	LastGmailSync  *time.Time `json:"lastGmailSync,omitempty"`
@@ -122,19 +136,21 @@ type JWTClaims struct {
 // GoogleUserInfo is returned for internal service lookups by email.
 // Contains google provider data plus the user's budget context.
 type GoogleUserInfo struct {
-	GoogleID       string     `json:"googleId"`
-	Email          string     `json:"email"`
-	GmailHistoryID uint64     `json:"gmailHistoryId"`
-	RefreshToken   string     `json:"refreshToken"`
-	LastGmailSync  *time.Time `json:"lastGmailSync"`
-	UserID         uuid.UUID  `json:"userId"`
-	BudgetID       uuid.UUID  `json:"budgetId"`
+	GoogleID        string                `json:"googleId"`
+	OAuthClientType GoogleOAuthClientType `json:"oauthClientType"`
+	Email           string                `json:"email"`
+	GmailHistoryID  uint64                `json:"gmailHistoryId"`
+	RefreshToken    string                `json:"refreshToken"`
+	LastGmailSync   *time.Time            `json:"lastGmailSync"`
+	UserID          uuid.UUID             `json:"userId"`
+	BudgetID        uuid.UUID             `json:"budgetId"`
 }
 
 // UpdateGmailHistoryRequest is the request body for updating gmail history ID
 type UpdateGmailHistoryRequest struct {
-	Email          string `json:"email"          binding:"required"`
-	GmailHistoryID uint64 `json:"gmailHistoryId" binding:"required"`
+	Email           string                `json:"email"          binding:"required"`
+	OAuthClientType GoogleOAuthClientType `json:"oauthClientType,omitempty"`
+	GmailHistoryID  uint64                `json:"gmailHistoryId" binding:"required"`
 }
 
 // GoogleTokenPayload represents the decoded Google ID token

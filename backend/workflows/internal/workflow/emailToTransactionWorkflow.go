@@ -42,8 +42,9 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailWor
 	}
 
 	updateHistoryInput := sharedModel.UpdateGmailHistoryInput{
-		Email:          input.Email,
-		GmailHistoryID: input.HistoryId,
+		Email:           input.Email,
+		OAuthClientType: googleUser.OAuthClientType,
+		GmailHistoryID:  input.HistoryId,
 	}
 	if err := workflow.ExecuteActivity(pennywiseCtx, "UpdateGmailHistoryID", updateHistoryInput).Get(pennywiseCtx, nil); err != nil {
 		return err
@@ -60,10 +61,11 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailWor
 	})
 
 	fetchInput := sharedModel.FetchAndParseEmailsInput{
-		Email:        input.Email,
-		HistoryID:    googleUser.GmailHistoryID,
-		RefreshToken: googleUser.RefreshToken,
-		BudgetID:     googleUser.BudgetID,
+		Email:           input.Email,
+		HistoryID:       googleUser.GmailHistoryID,
+		RefreshToken:    googleUser.RefreshToken,
+		OAuthClientType: googleUser.OAuthClientType,
+		BudgetID:        googleUser.BudgetID,
 	}
 	var fetchAndParseEmailResult sharedModel.ParsedEmailsInput
 	err = workflow.ExecuteActivity(gmailCtx, "FetchAndParseEmails", fetchInput).Get(gmailCtx, &fetchAndParseEmailResult)

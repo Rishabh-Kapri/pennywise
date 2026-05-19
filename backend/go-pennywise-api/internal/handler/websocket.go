@@ -14,8 +14,9 @@ type WebsocketHandler interface {
 }
 
 type websocketTestEventRequest struct {
-	EventName string `json:"eventName" binding:"required"`
-	Data      any    `json:"data"`
+	EventName string  `json:"eventName" binding:"required"`
+	Data      any     `json:"data"`
+	RoomID    *string `json:"roomId,omitempty"`
 }
 
 type websocketHandler struct {
@@ -47,7 +48,7 @@ func (h *websocketHandler) SendTestEvent(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.SendTestEvent(ctx, req.EventName, req.Data); err != nil {
+	if err := h.service.SendTestEvent(ctx, req.EventName, req.Data, req.RoomID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

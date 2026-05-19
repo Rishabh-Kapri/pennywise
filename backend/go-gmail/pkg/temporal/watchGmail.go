@@ -19,19 +19,21 @@ func (a *WatchGmailActivity) GmailWatchCall(
 	var updatedUsers []model.GoogleWatchUser
 	for _, user := range input {
 		syncReq := gmail.GmailSyncRequest{
-			RefreshToken: user.RefreshToken,
-			Email:        user.Email,
+			RefreshToken:    user.RefreshToken,
+			OAuthClientType: user.OAuthClientType,
+			Email:           user.Email,
 		}
 		historyId, expiration, err := a.Gmail.WatchHandler(ctx, syncReq)
 		if err != nil {
 			return nil, err
 		}
 		updatedUsers = append(updatedUsers, model.GoogleWatchUser{
-			ID:             user.ID,
-			Email:          user.Email,
-			GmailHistoryID: historyId,
-			RefreshToken:   user.RefreshToken,
-			ExpiryAt:       &expiration,
+			ID:              user.ID,
+			OAuthClientType: user.OAuthClientType,
+			Email:           user.Email,
+			GmailHistoryID:  historyId,
+			RefreshToken:    user.RefreshToken,
+			ExpiryAt:        &expiration,
 		})
 	}
 

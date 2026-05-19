@@ -13,7 +13,6 @@ import (
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
-	"github.com/google/uuid"
 )
 
 const maxProcessedMsgIds = 1000
@@ -81,14 +80,10 @@ func (s *Runner) ProcessGmailHistoryId(ctx context.Context, eventData EventData)
 	log.Info("fetched user info", "budgetId", userInfo.BudgetID, "historyId", userInfo.GmailHistoryID)
 
 	// Set budget ID in context so all subsequent transport calls auto-inject X-Budget-ID
-	budgetUUID, err := uuid.Parse(userInfo.BudgetID)
-	if err != nil {
-		return errs.Wrap(errs.CodeInvalidArgument, "Failed to parse budget ID", err)
-	}
-	ctx = utils.WithBudgetID(ctx, budgetUUID)
+	ctx = utils.WithBudgetID(ctx, userInfo.BudgetID)
 
-	oauthconfig := s.auth.GetOauth2Config()
-	token, err := s.auth.GetTokenFromRefresh(userInfo.RefreshToken)
+	oauthconfig := s.auth.GetOauth2ConfigForClientType(userInfo.OAuthClientType)
+	token, err := s.auth.GetTokenFromRefresh(userInfo.RefreshToken, userInfo.OAuthClientType)
 	if err != nil {
 		return errs.Wrap(errs.CodeAuthLookupFailed, "Failed to get access token", err)
 	}
@@ -96,7 +91,7 @@ func (s *Runner) ProcessGmailHistoryId(ctx context.Context, eventData EventData)
 	prevHistoryId := uint64(userInfo.GmailHistoryID)
 	log.Info("received history id", "prevHistoryId", prevHistoryId)
 
-	if err := s.pennywise.UpdateUserHistoryId(ctx, eventData.Email, eventData.HistoryId); err != nil {
+	if err := s.pennywise.UpdateUserHistoryId(ctx, eventData.Email, userInfo.OAuthClientType, eventData.HistoryId); err != nil {
 		return err
 	}
 
@@ -113,7 +108,8 @@ func (s *Runner) ProcessGmailHistoryId(ctx context.Context, eventData EventData)
 			continue
 		}
 
-		isTransaction, defaultAccount := s.gmail.IsTransactionEmail(data.Headers)
+		isTransaction := s.gmail.IsTransactionEmail(data.Headers)
+		defaultAccount := ""
 		if !isTransaction {
 			log.Info("not a transaction, skipping")
 			continue

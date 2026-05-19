@@ -219,6 +219,11 @@ func InternalAuthTokenFromContext(ctx context.Context) string {
 	return ""
 }
 
+func DetachedRequestContext(ctx context.Context) context.Context {
+	backgroundCtx := WithRequestMetadata(context.Background(), RequestMetadataFromContext(ctx))
+	return WithInternalAuthToken(backgroundCtx, InternalAuthTokenFromContext(ctx))
+}
+
 func WithAPIKey(ctx context.Context, apiKey *model.APIKey) context.Context {
 	if apiKey == nil {
 		return ctx

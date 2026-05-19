@@ -65,10 +65,24 @@ const (
 )
 
 // Agent
+const (
+	CodeLLMNotConfigured              Code = "AGENT_LLM_NOT_CONFIGURED"
+	CodeAgentCreateFailed             Code = "AGENT_CREATE_FAILED"
+	CodeAgentRunNotFound              Code = "AGENT_RUN_NOT_FOUND"
+	CodeAgentRunLookupFailed          Code = "AGENT_RUN_LOOKUP_FAILED"
+	CodeAgentRunCreateFailed          Code = "AGENT_RUN_CREATE_FAILED"
+	CodeAgentRunUpdateFailed          Code = "AGENT_RUN_UPDATE_FAILED"
+	CodeAgentConversationNotFound     Code = "AGENT_CONVERSATION_NOT_FOUND"
+	CodeAgentConversationLookupFailed Code = "AGENT_CONVERSATION_LOOKUP_FAILED"
+	CodeAgentConversationCreateFailed Code = "AGENT_CONVERSATION_CREATE_FAILED"
+	CodeAgentMessageLookupFailed      Code = "AGENT_MESSAGE_LOOKUP_FAILED"
+	CodeAgentMessageCreateFailed      Code = "AGENT_MESSAGE_CREATE_FAILED"
+	CodeAgentDispatchFailed           Code = "AGENT_DISPATCH_FAILED"
+	CodeAgentCancelFailed             Code = "AGENT_CANCEL_FAILED"
+)
 
 // Tool
 const (
 	CodeToolNotFound    Code = "TOOL_NOT_FOUND"
 	CodeToolExecuteFail Code = "TOOL_EXECUTION_FAILED"
-
 )

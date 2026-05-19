@@ -10,6 +10,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/parser"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/prediction"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
+	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 	"github.com/google/uuid"
@@ -168,8 +169,8 @@ func TestCreateTransaction(t *testing.T) {
 				Category: prediction.PredictionResult{Label: "Some Category"},
 			},
 			mockResponses: map[string][]map[string]any{
-				"/api/accounts/search": {{"id": "acc-1"}},
-				"/api/payees/search":   {{"id": "payee-1"}},
+				"/api/accounts/search":   {{"id": "acc-1"}},
+				"/api/payees/search":     {{"id": "payee-1"}},
 				"/api/categories/search": nil, // Empty
 			},
 			expectError: true,
@@ -255,10 +256,10 @@ func TestCreateTransaction(t *testing.T) {
 				Category: prediction.PredictionResult{Label: "Groceries"},
 			},
 			mockResponses: map[string][]map[string]any{
-				"/api/accounts/search":    {{"id": "acc-1"}},
-				"/api/payees/search":      {{"id": "payee-1"}},
-				"/api/categories/search":  {{"id": "cat-1"}},
-				"/api/transactions":       {{"id": "txn-1", "amount": 100.0, "date": "2023-01-01", "accountId": "acc-1", "payeeId": "payee-1", "categoryId": "cat-1"}},
+				"/api/accounts/search":   {{"id": "acc-1"}},
+				"/api/payees/search":     {{"id": "payee-1"}},
+				"/api/categories/search": {{"id": "cat-1"}},
+				"/api/transactions":      {{"id": "txn-1", "amount": 100.0, "date": "2023-01-01", "accountId": "acc-1", "payeeId": "payee-1", "categoryId": "cat-1"}},
 			},
 			expectError: false,
 		},
@@ -444,7 +445,7 @@ func TestUpdateUserHistoryId(t *testing.T) {
 			defer server.Close()
 
 			svc := newTestService(server.URL)
-			err := svc.UpdateUserHistoryId(context.Background(), "user@example.com", 9999)
+			err := svc.UpdateUserHistoryId(context.Background(), "user@example.com", sharedModel.GoogleOAuthClientTypeAndroid, 9999)
 			if tt.expectError {
 				if err == nil {
 					t.Error("expected error, got nil")

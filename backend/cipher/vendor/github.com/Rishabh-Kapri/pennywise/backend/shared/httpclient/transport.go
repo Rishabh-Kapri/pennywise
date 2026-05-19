@@ -200,18 +200,20 @@ func (h *httpTransport) do(
 	headers map[string][]string,
 ) (doResult, error) {
 	log := logger.Logger(ctx)
-	var resp doResult
+	var result doResult
 
 	applyHeaders(ctx, req, headers)
+
+	log.Info("httpTransport.do", "method", req.Method, "url", req.URL.String(), "headers", headers)
 
 	res, err := h.client.Do(req)
 	if err != nil {
 		log.Error("error executing request", "method", req.Method, "url", req.URL.String(), "error", err)
-		resp.StatusCode = http.StatusInternalServerError
-		return resp, errs.Wrap(errs.CodeHTTPClientError, "error executing request", err)
+		result.StatusCode = http.StatusInternalServerError
+		return result, errs.Wrap(errs.CodeHTTPClientError, "error executing request", err)
 	}
 
-	resp.StatusCode = res.StatusCode
+	result.StatusCode = res.StatusCode
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		res.Body.Close()
 		// log.Error(
@@ -225,7 +227,7 @@ func (h *httpTransport) do(
 		// 	"body",
 		// 	string(body),
 		// )
-		return resp, errs.New(
+		return result, errs.New(
 			errs.CodeHTTPClientError,
 			"%s request for %s failed with status code: %d",
 			req.Method,
@@ -233,9 +235,9 @@ func (h *httpTransport) do(
 			res.StatusCode,
 		)
 	}
-	resp.Body = res.Body
-	resp.OriginalReq = req
-	return resp, nil
+	result.Body = res.Body
+	result.OriginalReq = req
+	return result, nil
 }
 
 // Send satisfies the transport interface

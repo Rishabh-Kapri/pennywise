@@ -83,7 +83,10 @@ func (s *apiKeyService) ParseKey(fullKey string) (prefix, version, base64String 
 }
 
 func (s *apiKeyService) ValidateFormat(fullKey string) bool {
+	log := logger.Logger(context.Background())
 	prefix, version, randomPart, err := s.ParseKey(fullKey)
+	log.Info("ValidateFormat", "prefix", prefix, "version", version, "randomPart", randomPart, "err", err)
+	log.Info("ValidateFormat", "prefix", s.prefix, "version", s.version, "randomPart", randomPart, "err", err)
 	if err != nil {
 		return false
 	}
