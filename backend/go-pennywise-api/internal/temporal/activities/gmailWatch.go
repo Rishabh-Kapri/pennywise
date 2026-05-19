@@ -28,10 +28,11 @@ func (a *FetchGoogleUsersActivity) ListGoogleUsersNeedingWatchRefresh(
 		}
 		if user.ExpiryAt == nil || *user.ExpiryAt < refreshBefore {
 			watchUsers = append(watchUsers, sharedModel.GoogleWatchUser{
-				ID:             user.ID,
-				Email:          user.Email,
-				GmailHistoryID: *user.GmailHistoryID,
-				RefreshToken:   user.RefreshToken,
+				ID:              user.ID,
+				OAuthClientType: user.OAuthClientType,
+				Email:           user.Email,
+				GmailHistoryID:  *user.GmailHistoryID,
+				RefreshToken:    user.RefreshToken,
 			})
 		}
 	}
@@ -53,7 +54,7 @@ func (a *FetchGoogleUsersActivity) UpdateGmailHistoryID(
 	ctx context.Context,
 	input sharedModel.UpdateGmailHistoryInput,
 ) error {
-	return a.AuthService.UpdateGmailHistoryID(ctx, input.Email, input.GmailHistoryID, nil)
+	return a.AuthService.UpdateGmailHistoryID(ctx, input.Email, input.OAuthClientType, input.GmailHistoryID, nil)
 }
 
 func (a *FetchGoogleUsersActivity) UpdateGmailWatchState(
@@ -61,7 +62,7 @@ func (a *FetchGoogleUsersActivity) UpdateGmailWatchState(
 	input []sharedModel.GoogleWatchUser,
 ) error {
 	for _, user := range input {
-		err := a.AuthService.UpdateGmailHistoryID(ctx, user.Email, user.GmailHistoryID, user.ExpiryAt)
+		err := a.AuthService.UpdateGmailHistoryID(ctx, user.Email, user.OAuthClientType, user.GmailHistoryID, user.ExpiryAt)
 		if err != nil {
 			return err
 		}

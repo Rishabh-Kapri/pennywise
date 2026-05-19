@@ -61,6 +61,7 @@ func (r *authRepo) GetUserWithProviders(ctx context.Context, id uuid.UUID) (*mod
 			au.updated_at,
 			ap.provider_type,
 			ap.provider_id,
+			ap.oauth_client_type,
 			ap.verified_at
 		FROM auth_users au
 		LEFT JOIN auth_providers ap ON ap.auth_user_id = au.id
@@ -80,6 +81,7 @@ func (r *authRepo) GetUserWithProviders(ctx context.Context, id uuid.UUID) (*mod
 		var userUpdatedAt time.Time
 		var providerType sql.NullString
 		var providerID sql.NullString
+		var oauthClientType sql.NullString
 		var verifiedAt sql.NullTime
 
 		if err := rows.Scan(
@@ -88,6 +90,7 @@ func (r *authRepo) GetUserWithProviders(ctx context.Context, id uuid.UUID) (*mod
 			&userUpdatedAt,
 			&providerType,
 			&providerID,
+			&oauthClientType,
 			&verifiedAt,
 		); err != nil {
 			return nil, err
@@ -109,6 +112,9 @@ func (r *authRepo) GetUserWithProviders(ctx context.Context, id uuid.UUID) (*mod
 		provider := model.AuthProviderUserResponse{
 			ProviderType: model.AuthProviderType(providerType.String),
 			ProviderID:   providerID.String,
+		}
+		if oauthClientType.Valid {
+			provider.OAuthClientType = model.NormalizeGoogleOAuthClientType(model.GoogleOAuthClientType(oauthClientType.String))
 		}
 		if verifiedAt.Valid {
 			provider.VerifiedAt = verifiedAt.Time

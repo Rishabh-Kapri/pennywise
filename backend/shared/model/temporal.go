@@ -55,15 +55,17 @@ type ParsedEmailsInput struct {
 }
 
 type FetchAndParseEmailsInput struct {
-	Email        string    `json:"email"`
-	HistoryID    uint64    `json:"historyId"`
-	RefreshToken string    `json:"refreshToken"`
-	BudgetID     uuid.UUID `json:"budgetId"`
+	Email           string                `json:"email"`
+	HistoryID       uint64                `json:"historyId"`
+	RefreshToken    string                `json:"refreshToken"`
+	OAuthClientType GoogleOAuthClientType `json:"oauthClientType"`
+	BudgetID        uuid.UUID             `json:"budgetId"`
 }
 
 type UpdateGmailHistoryInput struct {
-	Email          string `json:"email"`
-	GmailHistoryID uint64 `json:"gmailHistoryId"`
+	Email           string                `json:"email"`
+	OAuthClientType GoogleOAuthClientType `json:"oauthClientType"`
+	GmailHistoryID  uint64                `json:"gmailHistoryId"`
 }
 
 // CipherPredictionResult is the result of the Predict activity (cipher).
@@ -98,9 +100,10 @@ type CreateCipherPredictionInput struct {
 
 // ------ Google Watch ------
 type GoogleWatchUser struct {
-	ID             string `json:"id"`
-	Email          string `json:"email"`
-	GmailHistoryID uint64 `json:"gmailHistoryId"`
-	RefreshToken   string `json:"refreshToken"`
-	ExpiryAt       *int64 `json:"expiryAt"`
+	ID              string                `json:"id"`
+	OAuthClientType GoogleOAuthClientType `json:"oauthClientType"`
+	Email           string                `json:"email"`
+	GmailHistoryID  uint64                `json:"gmailHistoryId"`
+	RefreshToken    string                `json:"refreshToken"`
+	ExpiryAt        *int64                `json:"expiryAt"`
 }

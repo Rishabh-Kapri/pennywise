@@ -1421,8 +1421,8 @@ func (m *mockAuthService) GetGoogleUserByEmail(ctx context.Context, email string
 	}
 	return nil, args.Error(1)
 }
-func (m *mockAuthService) UpdateGmailHistoryID(ctx context.Context, email string, historyID uint64, expiryAt *int64) error {
-	return m.Called(ctx, email, historyID, expiryAt).Error(0)
+func (m *mockAuthService) UpdateGmailHistoryID(ctx context.Context, email string, oauthClientType model.GoogleOAuthClientType, historyID uint64, expiryAt *int64) error {
+	return m.Called(ctx, email, oauthClientType, historyID, expiryAt).Error(0)
 }
 func (m *mockAuthService) RefreshToken(ctx context.Context, refreshToken string) (*model.RefreshTokenResponse, error) {
 	args := m.Called(ctx, refreshToken)
@@ -1521,7 +1521,7 @@ func TestAuthHandler_UpdateProviderUser(t *testing.T) {
 	})
 	t.Run("google_updates_history_id", func(t *testing.T) {
 		svc := &mockAuthService{}
-		svc.On("UpdateGmailHistoryID", mock.Anything, "a@b.com", uint64(42), (*int64)(nil)).Return(nil)
+		svc.On("UpdateGmailHistoryID", mock.Anything, "a@b.com", model.GoogleOAuthClientTypeWeb, uint64(42), (*int64)(nil)).Return(nil)
 		w, c := makeReq("PATCH", "/auth/google/users", model.UpdateGmailHistoryRequest{Email: "a@b.com", GmailHistoryID: 42})
 		c.Params = gin.Params{{Key: "provider", Value: "google"}}
 		NewAuthHandler(svc).UpdateProviderUser(c)
@@ -1529,7 +1529,7 @@ func TestAuthHandler_UpdateProviderUser(t *testing.T) {
 	})
 	t.Run("google_service_error_returns_500", func(t *testing.T) {
 		svc := &mockAuthService{}
-		svc.On("UpdateGmailHistoryID", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(assert.AnError)
+		svc.On("UpdateGmailHistoryID", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(assert.AnError)
 		w, c := makeReq("PATCH", "/auth/google/users", model.UpdateGmailHistoryRequest{Email: "a@b.com", GmailHistoryID: 1})
 		c.Params = gin.Params{{Key: "provider", Value: "google"}}
 		NewAuthHandler(svc).UpdateProviderUser(c)
@@ -2026,8 +2026,8 @@ func (m *mockWebsocketService) GetSessions(ctx context.Context) service.Websocke
 	return args.Get(0).(service.WebsocketSessionsResponse)
 }
 
-func (m *mockWebsocketService) SendTestEvent(ctx context.Context, eventName string, data any) error {
-	return m.Called(ctx, eventName, data).Error(0)
+func (m *mockWebsocketService) SendTestEvent(ctx context.Context, eventName string, data any, roomID *string) error {
+	return m.Called(ctx, eventName, data, roomID).Error(0)
 }
 
 func TestWebsocketHandler_GetSessions(t *testing.T) {
@@ -2050,7 +2050,7 @@ func TestWebsocketHandler_SendTestEvent(t *testing.T) {
 	})
 	t.Run("service_error_returns_500", func(t *testing.T) {
 		svc := &mockWebsocketService{}
-		svc.On("SendTestEvent", mock.Anything, "test-event", mock.Anything).Return(assert.AnError)
+		svc.On("SendTestEvent", mock.Anything, "test-event", mock.Anything, (*string)(nil)).Return(assert.AnError)
 		body := map[string]any{"eventName": "test-event", "data": nil}
 		w, c := makeReq("POST", "/ws/test", body)
 		NewWebsocketHandler(svc).SendTestEvent(c)
@@ -2058,8 +2058,28 @@ func TestWebsocketHandler_SendTestEvent(t *testing.T) {
 	})
 	t.Run("success_returns_202", func(t *testing.T) {
 		svc := &mockWebsocketService{}
-		svc.On("SendTestEvent", mock.Anything, "ping", mock.Anything).Return(nil)
+		svc.On("SendTestEvent", mock.Anything, "ping", mock.Anything, (*string)(nil)).Return(nil)
 		body := map[string]any{"eventName": "ping", "data": "hello"}
+		w, c := makeReq("POST", "/ws/test", body)
+		NewWebsocketHandler(svc).SendTestEvent(c)
+		assert.Equal(t, http.StatusAccepted, w.Code)
+	})
+	t.Run("passes_room_id", func(t *testing.T) {
+		svc := &mockWebsocketService{}
+		svc.On(
+			"SendTestEvent",
+			mock.Anything,
+			"pennywise::agent::chat::stream",
+			mock.Anything,
+			mock.MatchedBy(func(roomID *string) bool {
+				return roomID != nil && *roomID == "chat/conversation-id"
+			}),
+		).Return(nil)
+		body := map[string]any{
+			"eventName": "pennywise::agent::chat::stream",
+			"data":      "hello",
+			"roomId":    "chat/conversation-id",
+		}
 		w, c := makeReq("POST", "/ws/test", body)
 		NewWebsocketHandler(svc).SendTestEvent(c)
 		assert.Equal(t, http.StatusAccepted, w.Code)
@@ -2286,7 +2306,7 @@ func TestAuthHandler_UpdateProviderUser_UnsupportedProvider(t *testing.T) {
 
 func TestAuthHandler_UpdateProviderUser_ServiceError(t *testing.T) {
 	svc := &mockAuthService{}
-	svc.On("UpdateGmailHistoryID", mock.Anything, "a@b.com", uint64(123), (*int64)(nil)).Return(assert.AnError)
+	svc.On("UpdateGmailHistoryID", mock.Anything, "a@b.com", model.GoogleOAuthClientTypeWeb, uint64(123), (*int64)(nil)).Return(assert.AnError)
 	body := model.UpdateGmailHistoryRequest{Email: "a@b.com", GmailHistoryID: 123}
 	w, c := makeReq("PATCH", "/auth/google/users", body)
 	c.Params = gin.Params{{Key: "provider", Value: "google"}}

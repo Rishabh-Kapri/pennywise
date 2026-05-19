@@ -10,6 +10,7 @@ type Config struct {
 	Environment                      string
 	GoogleClientId                   string
 	GoogleClientSecret               string
+	GoogleAndroidClientId            string
 	GoogleApplicationCredentialsJson string
 	CallbackUrl                      string
 	ProjectID                        string
@@ -42,6 +43,7 @@ func LoadConfig() *Config {
 		Environment:                      env,
 		GoogleClientId:                   os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret:               os.Getenv("GOOGLE_CLIENT_SECRET"),
+		GoogleAndroidClientId:            os.Getenv("GOOGLE_ANDROID_CLIENT_ID"),
 		GoogleApplicationCredentialsJson: os.Getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON"),
 		CallbackUrl:                      os.Getenv("CALLBACK_URL"),
 		ProjectID:                        os.Getenv("PROJECT_ID"),

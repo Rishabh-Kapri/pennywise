@@ -165,7 +165,7 @@ func (a *CreateTransactionActivity) sendTransactionCreatedNotification(
 		return
 	}
 
-	if err := a.WebsocketService.SendNotification(ctx, budgetId, "transaction::created", transactions); err != nil {
+	if err := a.WebsocketService.SendNotification(ctx, budgetId, "pennywise::transaction::created", transactions); err != nil {
 		log.Warn("failed to send transaction created websocket notification", "error", err)
 	}
 }
