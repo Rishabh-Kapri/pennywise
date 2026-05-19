@@ -1,14 +1,5 @@
 
-import {
-  ArrowLeft,
-  CalendarDays,
-  ChevronLeft,
-  ChevronRight,
-  FileText,
-  Info,
-  PencilLine,
-  ReceiptText,
-} from 'lucide-react';
+import { ArrowLeft, CalendarDots as CalendarDays, CaretLeft as ChevronLeft, CaretRight as ChevronRight, FileText, Info, PencilLine, Receipt as ReceiptText } from '@phosphor-icons/react';
 import { getCurrencyLocaleString } from '@/utils/date.utils';
 import type { Transaction } from '../../types/transaction.types';
 import styles from '../Transaction/Transaction.module.css';

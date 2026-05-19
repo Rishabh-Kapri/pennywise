@@ -1,11 +1,5 @@
 import { useState } from 'react';
-import {
-  Calendar as CalendarIcon,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  LoaderCircle,
-} from 'lucide-react';
+import { Calendar as CalendarIcon, CaretDown as ChevronDown, CaretLeft as ChevronLeft, CaretRight as ChevronRight, CircleNotch as LoaderCircle } from '@phosphor-icons/react';
 import { Popover, PopoverTrigger, PopoverContent } from '@heroui/popover';
 import { Calendar } from '@heroui/calendar';
 import { CalendarDate, type DateValue } from '@internationalized/date';

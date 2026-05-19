@@ -63,7 +63,7 @@ Important: `src/app` is a Redux/application folder, not an Expo Router route fol
 
 ### App infrastructure
 
-- `src/app/store.ts` registers Redux reducers: `accounts`, `auth`, `budgets`, `categories`, `loans`, `payees`, `tags`, and `transactions`.
+- `src/app/store.ts` registers Redux reducers: `accounts`, `agent`, `auth`, `budgets`, `categories`, `loans`, `payees`, `tags`, and `transactions`.
 - `src/app/hooks.ts` provides typed Redux hooks.
 - `src/app/middlewares.ts` coordinates cross-feature data loading when budgets or months change.
 - `src/utils/api.ts` is the only shared API transport. Do not create feature-specific fetch wrappers that bypass it.
@@ -85,6 +85,7 @@ Each feature folder should own its domain types and Redux slice. Screen files sh
 | Feature | Structure | Responsibility |
 |---------|-----------|----------------|
 | `accounts` | `types.ts`, `store/accountSlice.ts` | account records, tracking/loan selectors, selected-account state |
+| `agent` | `types.ts`, `store/agentSlice.ts`, `components/AgentChat.tsx` | Penny agent chat, model selection, conversation history, streaming response state |
 | `auth` | `types.ts`, `store/authSlice.ts`, `screens/LoginScreen.tsx` | auth hydration, Google login, refresh/logout, token persistence |
 | `budget` | `types.ts`, `constants.ts`, `store/budgetSlice.ts`, `screens/*` | budget list/selection, selected month, onboarding, monthly budget UI |
 | `category` | `types.ts`, `store/categorySlice.ts` | categories, category groups, inflow category, budgeted amount updates |

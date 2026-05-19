@@ -1,18 +1,31 @@
 import { NavLink } from 'react-router-dom';
-import { ChartPie, WalletCards, Banknote, Menu, X, ReceiptIndianRupee, UsersRound } from 'lucide-react';
+import { ChartPie, Wallet as WalletCards, Money as Banknote, List as Menu, X, Receipt as ReceiptIndianRupee, Users as UsersRound } from '@phosphor-icons/react';
+import type { IconProps } from '@phosphor-icons/react';
 import styles from './Navbar.module.css';
-import { useState, useEffect } from 'react';
+import { cloneElement, useState, useEffect, type ReactElement } from 'react';
 import { useLocation } from 'react-router-dom';
 import BudgetSwitcher from '@/features/budget/components/BudgetSwitcher';
 import { UserMenu } from './UserMenu';
 
-const NAV_ITEMS = [
+type NavIcon = ReactElement<IconProps>;
+
+const NAV_ITEMS: {
+  path: string;
+  key: string;
+  label: string;
+  icon: NavIcon;
+  exact: boolean;
+}[] = [
   { path: '/dashboard', key: 'home', label: 'Home', icon: <ChartPie size={16} strokeWidth={1.75} />, exact: true },
   { path: '/transactions', key: 'transactions', label: 'Transactions', icon: <ReceiptIndianRupee size={16} strokeWidth={1.75} />, exact: false },
   { path: '/budget', key: 'budget', label: 'Budget', icon: <WalletCards size={16} strokeWidth={1.75} />, exact: false },
   { path: '/loans', key: 'loans', label: 'Loans', icon: <Banknote size={16} strokeWidth={1.75} />, exact: false },
   { path: '/payees', key: 'payees', label: 'Payees', icon: <UsersRound size={16} strokeWidth={1.75} />, exact: false },
 ];
+
+function renderNavIcon(icon: NavIcon, isActive: boolean) {
+  return cloneElement(icon, { weight: isActive ? 'fill' : 'regular' });
+}
 
 export function Navbar() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -35,8 +48,12 @@ export function Navbar() {
               className={({ isActive }) =>
                 `${styles.navTab} ${isActive ? styles.navTabActive : ''}`
               }>
-              {item.icon}
-              <span>{item.label}</span>
+              {({ isActive }) => (
+                <>
+                  {renderNavIcon(item.icon, isActive)}
+                  <span>{item.label}</span>
+                </>
+              )}
             </NavLink>
           ))}
         </div>
@@ -73,8 +90,12 @@ export function Navbar() {
             className={({ isActive }) =>
               `${styles.mobileNavItem} ${isActive ? styles.mobileNavItemActive : ''}`
             }>
-            {item.icon}
-            <span>{item.label}</span>
+            {({ isActive }) => (
+              <>
+                {renderNavIcon(item.icon, isActive)}
+                <span>{item.label}</span>
+              </>
+            )}
           </NavLink>
         ))}
       </div>
@@ -89,8 +110,12 @@ export function Navbar() {
             className={({ isActive }) =>
               `${styles.bottomNavItem} ${isActive ? styles.bottomNavItemActive : ''}`
             }>
-            {item.icon}
-            <span>{item.label}</span>
+            {({ isActive }) => (
+              <>
+                {renderNavIcon(item.icon, isActive)}
+                <span>{item.label}</span>
+              </>
+            )}
           </NavLink>
         ))}
       </nav>

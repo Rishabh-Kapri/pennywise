@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { ReceiptText } from 'lucide-react';
+import { Receipt as ReceiptText } from '@phosphor-icons/react';
 import { Popover } from '@/components/common/Popover/Popover';
 import { useAppSelector } from '@/app/hooks';
 import { getCurrencyLocaleString } from '@/utils/date.utils';

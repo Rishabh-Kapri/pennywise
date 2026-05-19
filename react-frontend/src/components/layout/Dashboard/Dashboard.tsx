@@ -12,13 +12,7 @@ import {
   selectDashboardLoading,
   selectRecentTransactions,
 } from '@/features/dashboard/store';
-import {
-  ArrowDownLeft,
-  ArrowUpRight,
-  Landmark,
-  PieChart,
-  WalletCards,
-} from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Bank as Landmark, ChartPie as PieChart, Wallet as WalletCards } from '@phosphor-icons/react';
 import { LoadingState } from '@/utils';
 import styles from './Dashboard.module.css';
 

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
-import { Check, ChevronRight } from 'lucide-react';
+import { Check, CaretRight as ChevronRight } from '@phosphor-icons/react';
 import {
   createBudget,
   fetchAllBudgets,
@@ -125,7 +125,7 @@ export default function BudgetOnboarding() {
                 onClick={() => toggleGroup(group.name)}
                 disabled={isCreating}>
                 <span className={styles.checkCircle}>
-                  {selected && <Check size={16} />}
+                  {selected && <Check size={16} weight="fill" />}
                 </span>
                 <span className={styles.groupName}>{group.name}</span>
                 <span className={styles.categoryPreview}>

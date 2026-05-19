@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ArrowRight, ChartPie, ShieldCheck, Sparkles } from 'lucide-react';
+import { ArrowRight, ChartPie, ShieldCheck, Sparkle as Sparkles } from '@phosphor-icons/react';
 import styles from './Homepage.module.css';
 
 /* ── Inline vector glyphs used as floating decorations ── */

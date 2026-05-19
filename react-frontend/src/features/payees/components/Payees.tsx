@@ -3,7 +3,7 @@ import { useHeader } from '@/context/HeaderContext';
 import { fetchAllPayees } from '@/features/payees/store';
 import type { Payee, PayeeRule } from '@/features/payees/types/payee.types';
 import { apiClient, LoadingState, toast } from '@/utils';
-import { Edit2, Plus, Save, Search, Tags, Trash2, UsersRound, X } from 'lucide-react';
+import { PencilSimpleLine as Edit2, Plus, FloppyDisk as Save, MagnifyingGlass as Search, Tag as Tags, Trash as Trash2, Users as UsersRound, X } from '@phosphor-icons/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import styles from './Payees.module.css';
 
@@ -252,7 +252,7 @@ export default function Payees() {
                 <div key={payeeId} className={`${styles.payeeItem} ${isSelected ? styles.payeeItemSelected : ''}`}>
                   <button type="button" className={styles.payeeSelectButton} onClick={() => setSelectedPayeeId(payeeId)}>
                     <span className={styles.payeeIcon}>
-                      <UsersRound size={16} />
+                      <UsersRound size={16} weight={isSelected ? 'fill' : 'regular'} />
                     </span>
                     {isEditing ? (
                       <input

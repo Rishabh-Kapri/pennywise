@@ -1,4 +1,4 @@
-import { Mail } from 'lucide-react';
+import { Envelope as Mail } from '@phosphor-icons/react';
 import { useEffect, useState } from 'react';
 import { apiClient } from '@/utils';
 import styles from './Settings.module.css';

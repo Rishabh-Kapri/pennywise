@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Landmark, Pencil, Plus } from 'lucide-react';
+import { Bank as Landmark, Pencil, Plus } from '@phosphor-icons/react';
 import { useAppSelector, useAppDispatch } from '@/app/hooks';
 import { selectLoanAccounts } from '@/features/accounts/store/accountSlice';
 import { selectAllLoanMetadata } from '../store/loanSlice';

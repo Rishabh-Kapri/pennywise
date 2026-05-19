@@ -1,16 +1,4 @@
-import {
-  LucideCalendarDays,
-  LucideCheckCircle,
-  LucideHandCoins,
-  LucideMinus,
-  LucideNotebookPen,
-  LucidePlus,
-  LucideStore,
-  LucideThumbsDown,
-  LucideThumbsUp,
-  Trash2,
-  X,
-} from 'lucide-react';
+import { CalendarDots as CalendarDays, CheckCircle, HandCoins, Minus, NotePencil, Plus, Storefront, ThumbsDown, ThumbsUp, Trash as Trash2, X } from '@phosphor-icons/react';
 import type { ReactNode } from 'react';
 import { getCurrencyLocaleString, getLocaleDate, getTodaysDate } from '@/utils/date.utils';
 import {
@@ -192,7 +180,7 @@ function TransactionView({
     <div className={styles.panelBody}>
       <section className={styles.heroSection}>
         <div className={`${styles.heroAmount} ${isInflow ? styles.heroAmountInflow : styles.heroAmountOutflow}`}>
-          {isInflow ? <LucidePlus color="var(--color-text-secondary)" /> : <LucideMinus color="var(--color-text-secondary)" />}
+          {isInflow ? <Plus color="var(--color-text-secondary)" /> : <Minus color="var(--color-text-secondary)" />}
           {getCurrencyLocaleString(displayAmount)}
         </div>
         <div className={styles.heroCategoryControl}>
@@ -204,20 +192,20 @@ function TransactionView({
       </section>
 
       <section className={styles.metaGrid}>
-        <MetaItem icon={<LucideCalendarDays color="var(--color-text)" size={18} />}>
+        <MetaItem icon={<CalendarDays color="var(--color-text)" size={18} />}>
           {getLocaleDate(
             txn.date,
             { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' },
             ['en-US'],
           )}
         </MetaItem>
-        <MetaItem icon={<LucideStore color="var(--color-text)" size={18} />}>{txn.payeeName || '-'}</MetaItem>
-        <MetaItem icon={<LucideHandCoins color="var(--color-text)" size={18} />}>{txn.accountName || '-'}</MetaItem>
+        <MetaItem icon={<Storefront color="var(--color-text)" size={18} />}>{txn.payeeName || '-'}</MetaItem>
+        <MetaItem icon={<HandCoins color="var(--color-text)" size={18} />}>{txn.accountName || '-'}</MetaItem>
       </section>
 
       <section className={styles.statusSection}>
         <span className={styles.metaLabel}>
-          <LucideCheckCircle size={18} />
+          <CheckCircle size={18} />
           <span>Status</span>
         </span>
         <StatusControl status={txn.status} onStatusChange={onStatusChange} />
@@ -225,7 +213,7 @@ function TransactionView({
 
       <section className={styles.notesSection}>
         <span className={styles.metaLabel}>
-          <LucideNotebookPen color="var(--color-text)" size={18} />
+          <NotePencil color="var(--color-text)" size={18} />
           <span>Notes</span>
         </span>
         <textarea
@@ -259,11 +247,11 @@ function StatusControl({
     return (
       <div className={styles.statusActions}>
         <button type="button" className={styles.approveBtn} onClick={() => onStatusChange(TransactionStatus.APPROVED)} aria-label="Approve transaction">
-          <LucideThumbsUp size={13} />
+          <ThumbsUp size={13} />
           Approve
         </button>
         <button type="button" className={styles.rejectBtn} onClick={() => onStatusChange(TransactionStatus.REJECTED)} aria-label="Reject transaction">
-          <LucideThumbsDown size={13} />
+          <ThumbsDown size={13} />
           Reject
         </button>
       </div>

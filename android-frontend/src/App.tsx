@@ -25,6 +25,7 @@ import { PayeesScreen } from './features/payees/screens/PayeesScreen';
 import { LoansScreen } from './features/loans/screens/LoansScreen';
 import { SettingsScreen } from './features/settings/screens/SettingsScreen';
 import { WebSocketProvider } from './features/websocket/WebSocketProvider';
+import { AgentChat } from './features/agent/components/AgentChat';
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const Tab = createBottomTabNavigator<AppTabParamList>();
@@ -103,6 +104,7 @@ function AppTabs() {
         <Tab.Screen name="Loans" component={LoansScreen} />
         <Tab.Screen name="Settings" component={SettingsScreen} />
       </Tab.Navigator>
+      <AgentChat />
     </>
   );
 }

@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Banknote, CalendarDays, Plus, Search } from 'lucide-react';
+import { ArrowDown, ArrowUp, Money as Banknote, CalendarDots as CalendarDays, Plus, MagnifyingGlass as Search } from '@phosphor-icons/react';
 import { getCurrencyLocaleString } from '@/utils/date.utils';
 import styles from './TransactionHeader.module.css';
 
@@ -52,13 +52,15 @@ export function TransactionHeader({
         {(['incoming', 'outgoing', 'week'] as const).map((f) => {
           const Icon = f === 'incoming' ? ArrowDown : f === 'outgoing' ? ArrowUp : CalendarDays;
           const label = f === 'week' ? 'This week' : f.charAt(0).toUpperCase() + f.slice(1);
+          const isSelected = mobileFilter === f;
+
           return (
             <button
               key={f}
               type="button"
-              className={`${styles.filterChip} ${mobileFilter === f ? styles.activeFilterChip : ''}`}
+              className={`${styles.filterChip} ${isSelected ? styles.activeFilterChip : ''}`}
               onClick={() => onMobileFilterChange(mobileFilter === f ? 'all' : f)}>
-              <Icon size={16} />
+              <Icon size={16} weight={isSelected ? 'fill' : 'regular'} />
               <span>{label}</span>
             </button>
           );

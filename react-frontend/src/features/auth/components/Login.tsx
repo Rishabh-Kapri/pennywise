@@ -8,7 +8,7 @@ import {
   selectIsAuthenticated,
 } from '../store';
 import { LoadingState, toast } from '@/utils';
-import { Check } from 'lucide-react';
+import { Check } from '@phosphor-icons/react';
 import styles from './Login.module.css';
 import { useGoogleLogin } from '@react-oauth/google';
 

@@ -1,5 +1,6 @@
 import { configureStore } from '@reduxjs/toolkit';
 import accounts from '../features/accounts/store/accountSlice';
+import agent from '../features/agent/store/agentSlice';
 import auth from '../features/auth/store/authSlice';
 import budgets from '../features/budget/store/budgetSlice';
 import categories from '../features/category/store/categorySlice';
@@ -13,6 +14,7 @@ import { budgetUpdateMiddleware, dataFetchMiddleware, dateChangeMiddleware } fro
 export const store = configureStore({
   reducer: {
     accounts,
+    agent,
     auth,
     budgets,
     categories,

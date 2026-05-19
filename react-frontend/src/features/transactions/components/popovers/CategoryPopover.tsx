@@ -1,5 +1,5 @@
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { X } from '@phosphor-icons/react';
 import styles from './Popover.module.css';
 import { useAppSelector } from '@/app/hooks';
 import { selectCategoryGroups } from '@/features/category';
