@@ -13,7 +13,7 @@ import { toast } from '@/utils';
 import styles from './Transaction.module.css';
 import { useHeader } from '@/context/HeaderContext';
 import { useSidePanel } from '@/context/SidePanelContext';
-import { LucideMinus, LucidePlus } from 'lucide-react';
+import { Minus, Plus } from '@phosphor-icons/react';
 import { getCurrencyLocaleString } from '@/utils/date.utils';
 import { selectAccountInfoFromId } from '@/features/accounts/store/accountSlice';
 import {
@@ -66,13 +66,13 @@ function StickyMonthHeader({ stickyHeader }: { stickyHeader: NonNullable<StickyH
         </span>
         {stickyHeader.stats.totalOutflow > 0 && (
           <span className={styles.statOutflow}>
-            <LucideMinus color="var(--color-text-secondary)" size={14} />
+            <Minus color="var(--color-text-secondary)" size={14} />
             {getCurrencyLocaleString(stickyHeader.stats.totalOutflow)}
           </span>
         )}
         {stickyHeader.stats.totalInflow > 0 && (
           <span className={styles.statInflow}>
-            <LucidePlus color="var(--color-text-secondary)" size={14} />
+            <Plus color="var(--color-text-secondary)" size={14} />
             {getCurrencyLocaleString(stickyHeader.stats.totalInflow)}
           </span>
         )}

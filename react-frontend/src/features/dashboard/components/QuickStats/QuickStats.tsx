@@ -1,6 +1,6 @@
 import { useAppSelector } from '@/app/hooks';
 import { selectDashboardStats } from '../../store/dashboardSlice';
-import { TrendingUp, TrendingDown, Wallet } from 'lucide-react';
+import { TrendUp as TrendingUp, TrendDown as TrendingDown, Wallet } from '@phosphor-icons/react';
 import styles from './QuickStats.module.css';
 
 const formatCurrency = (amount: number): string => {

@@ -1,7 +1,7 @@
 import type { TransactionColumns } from '@/types/common.types';
 import styles from '../Transaction/Transaction.module.css';
 import { getCurrencyLocaleString, getLocaleDate } from '@/utils/date.utils';
-import { LucideMinus, LucidePlus } from 'lucide-react';
+import { Minus, Plus } from '@phosphor-icons/react';
 
 export const allAccountTxnCols: TransactionColumns[] = [
   {
@@ -53,7 +53,7 @@ export const allAccountTxnCols: TransactionColumns[] = [
       if ((txn.inflow ?? 0) !== 0) {
         return (
           <span className={`${styles.amountCell} ${styles.amountInflow}`}>
-            <LucidePlus color="var(--color-text-secondary)" size={14} />
+            <Plus color="var(--color-text-secondary)" size={14} />
             {getCurrencyLocaleString(txn.inflow ?? 0)}
           </span>
         );
@@ -61,7 +61,7 @@ export const allAccountTxnCols: TransactionColumns[] = [
       if ((txn.outflow ?? 0) !== 0) {
         return (
           <span className={`${styles.amountCell} ${styles.amountOutflow}`}>
-            <LucideMinus color="var(--color-text-secondary)" size={14} />
+            <Minus color="var(--color-text-secondary)" size={14} />
             <span>{getCurrencyLocaleString(txn.outflow ?? 0)}</span>
           </span>
         );

@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { CaretDown as ChevronDown, CaretRight as ChevronRight } from '@phosphor-icons/react';
 import styles from './CategoryGroup.module.css';
 import CategoryItemList from './CategoryItemList';
 import type { Category, CategoryGroup } from '../types/category.types';

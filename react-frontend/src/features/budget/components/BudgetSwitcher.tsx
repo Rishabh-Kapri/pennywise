@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Plus, WalletCards } from 'lucide-react';
+import { Check, CaretDown as ChevronDown, Plus, Wallet as WalletCards } from '@phosphor-icons/react';
 import { useEffect, useRef, useState } from 'react';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import {
@@ -59,7 +59,12 @@ export default function BudgetSwitcher() {
 
   return (
     <div className={styles.switcher} ref={containerRef}>
-      <WalletCards size={16} strokeWidth={1.8} className={styles.icon} />
+      <WalletCards
+        size={16}
+        strokeWidth={1.8}
+        weight={selectedBudget ? 'fill' : 'regular'}
+        className={styles.icon}
+      />
       <button
         type="button"
         className={styles.trigger}
@@ -90,7 +95,7 @@ export default function BudgetSwitcher() {
                 className={`${styles.option} ${isSelected ? styles.optionSelected : ''}`}
                 onClick={() => handleSelectBudget(budget.id)}>
                 <span>{budget.name}</span>
-                {isSelected && <Check size={15} strokeWidth={2.2} />}
+                {isSelected && <Check size={15} strokeWidth={2.2} weight="fill" />}
               </button>
             );
           })}

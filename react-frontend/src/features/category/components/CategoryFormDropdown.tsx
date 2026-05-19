@@ -3,7 +3,7 @@ import type { Category } from '../types/category.types';
 import { useEffect, useRef, useState } from 'react';
 import { useAppSelector } from '@/app/hooks';
 import { selectSelectedBudget } from '@/features/budget';
-import { Edit, Plus } from 'lucide-react';
+import { PencilSimple as Edit, Plus } from '@phosphor-icons/react';
 import styles from './CategoryFormDropdown.module.css';
 import { Dropdown } from '@/components/common/Dropdown/Dropdown';
 

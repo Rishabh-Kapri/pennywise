@@ -3,6 +3,7 @@
 # Compiled output
 **dist/
 **/dist/
+**/bin/
 /tmp
 /out-tsc
 /bazel-out
@@ -71,10 +72,12 @@ conjure-school.fnl
 
 # Credentials and secrets
 google-creds.json
+*.jks
+*.keystore
+**/android/credentials.json
 
 # Dummy files for testing
 *dump.sql
 
 # Tools
 mise.toml
-
