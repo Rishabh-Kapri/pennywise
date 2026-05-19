@@ -1,4 +1,4 @@
-import { Settings, UserCircle } from 'lucide-react';
+import { GearSix as Settings, UserCircle } from '@phosphor-icons/react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/utils';

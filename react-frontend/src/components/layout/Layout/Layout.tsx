@@ -13,6 +13,7 @@ import {
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import BudgetOnboarding from '@/features/budget/components/BudgetOnboarding';
 import { WebSocketProvider } from '@/features/websocket/WebSocketProvider';
+import { AgentChat } from '@/components/common';
 
 function MainWithSidePanel() {
   const { sidePanelContent } = useSidePanel();
@@ -29,6 +30,7 @@ function MainWithSidePanel() {
           {sidePanelContent}
         </aside>
       )}
+      <AgentChat />
     </div>
   );
 }

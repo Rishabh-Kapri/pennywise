@@ -8,6 +8,7 @@ import authSlice from '@/features/auth/store';
 import { dashboardSlice } from '@/features/dashboard/store';
 import loans from '@/features/loans/store/loanSlice';
 import tags from '@/features/tags/store';
+import agent from '@/features/agent/store';
 import { apiClient } from '@/utils';
 import {
   budgetUpdateMiddleware,
@@ -26,6 +27,7 @@ export const store = configureStore({
     transactions: transactions,
     loans: loans,
     tags: tags,
+    agent: agent,
   },
   middleware: (getDefaultMiddleWare) =>
     getDefaultMiddleWare({

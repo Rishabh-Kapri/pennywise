@@ -73,8 +73,8 @@ All Go commands run from the respective `backend/<service>` directory.
 
 ```bash
 cd backend/go-pennywise-api
-go run ./cmd/migrations -dir ./db/migrations up
-go run ./cmd/migrations -dir ./db/migrations status
+go run ./cmd/migrations -dir . up
+go run ./cmd/migrations -dir . status
 ```
 
 ## Ports

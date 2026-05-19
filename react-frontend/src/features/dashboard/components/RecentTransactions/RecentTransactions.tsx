@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useAppSelector } from '@/app/hooks';
 import { selectRecentTransactions } from '../../store/dashboardSlice';
-import { Receipt, ArrowUpRight, ArrowDownRight, ChevronRight } from 'lucide-react';
+import { Receipt, ArrowUpRight, ArrowDownRight, CaretRight as ChevronRight } from '@phosphor-icons/react';
 import styles from './RecentTransactions.module.css';
 
 const formatCurrency = (amount: number): string => {
