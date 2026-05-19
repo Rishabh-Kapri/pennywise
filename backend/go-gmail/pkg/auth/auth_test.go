@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/config"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 )
 
 func TestGetOauth2Config(t *testing.T) {
@@ -37,7 +38,7 @@ func TestGetTokenFromRefresh_InvalidToken(t *testing.T) {
 		CallbackUrl:        "http://localhost/callback",
 	}
 	svc := NewService(cfg)
-	_, err := svc.GetTokenFromRefresh("invalid-refresh-token")
+	_, err := svc.GetTokenFromRefresh("invalid-refresh-token", model.GoogleOAuthClientTypeWeb)
 	if err == nil {
 		t.Error("expected error for invalid refresh token, got nil")
 	}

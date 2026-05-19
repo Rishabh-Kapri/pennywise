@@ -33,7 +33,7 @@ type AuthService interface {
 	GetAllGoogleUsers(ctx context.Context) ([]model.GoogleProviderUser, error)
 	GetCurrentUser(ctx context.Context, userID uuid.UUID) (*model.CurrentAuthUserResponse, error)
 	GetGoogleUserByEmail(ctx context.Context, email string) (*model.GoogleUserInfo, error)
-	UpdateGmailHistoryID(ctx context.Context, email string, historyID uint64, expiryAt *int64) error
+	UpdateGmailHistoryID(ctx context.Context, email string, oauthClientType model.GoogleOAuthClientType, historyID uint64, expiryAt *int64) error
 	RefreshToken(ctx context.Context, refreshToken string) (*model.RefreshTokenResponse, error)
 }
 
@@ -90,17 +90,25 @@ func (s *authService) getMobileOauth2Config(req model.GoogleLoginRequest) (*oaut
 	}, []oauth2.AuthCodeOption{oauth2.SetAuthURLParam("code_verifier", req.CodeVerifier)}, nil
 }
 
-func (s *authService) getOauth2ConfigForLogin(req model.GoogleLoginRequest) (*oauth2.Config, []oauth2.AuthCodeOption, error) {
+func getOAuthClientTypeForLogin(req model.GoogleLoginRequest) model.GoogleOAuthClientType {
 	if req.RedirectURI != "" || req.CodeVerifier != "" {
+		return model.GoogleOAuthClientTypeAndroid
+	}
+	return model.GoogleOAuthClientTypeWeb
+}
+
+func (s *authService) getOauth2ConfigForLogin(req model.GoogleLoginRequest) (*oauth2.Config, []oauth2.AuthCodeOption, error) {
+	if getOAuthClientTypeForLogin(req) == model.GoogleOAuthClientTypeAndroid {
 		return s.getMobileOauth2Config(req)
 	}
 	return s.getOauth2Config(), nil, nil
 }
 
 type gmailSyncRequest struct {
-	RefreshToken string `json:"refreshToken"`
-	Email        string `json:"email"`
-	IsStop       bool   `json:"isStop"`
+	RefreshToken    string                      `json:"refreshToken"`
+	OAuthClientType model.GoogleOAuthClientType `json:"oauthClientType"`
+	Email           string                      `json:"email"`
+	IsStop          bool                        `json:"isStop"`
 }
 
 type gmailSyncResponse struct {
@@ -116,14 +124,22 @@ func NewAuthService(
 	return &authService{repo: r, googleProvider: googleProvider, config: config.Load(), transport: transport}
 }
 
-func (s *authService) SetupGmailWatch(ctx context.Context, googleID string, refreshToken string, email string) {
+func (s *authService) SetupGmailWatch(
+	ctx context.Context,
+	googleID string,
+	oauthClientType model.GoogleOAuthClientType,
+	refreshToken string,
+	email string,
+) {
+	oauthClientType = model.NormalizeGoogleOAuthClientType(oauthClientType)
 	logger := logger.Logger(ctx)
-	logger.Info("watching gmail", "email", email)
+	logger.Info("watching gmail", "email", email, "oauthClientType", oauthClientType)
 
 	reqData := gmailSyncRequest{
-		RefreshToken: refreshToken,
-		Email:        email,
-		IsStop:       false,
+		RefreshToken:    refreshToken,
+		OAuthClientType: oauthClientType,
+		Email:           email,
+		IsStop:          false,
 	}
 	var headers map[string][]string
 	res, err := transport.Post[gmailSyncResponse](ctx, s.transport, "/api/watch", headers, reqData)
@@ -133,7 +149,7 @@ func (s *authService) SetupGmailWatch(ctx context.Context, googleID string, refr
 		return
 	}
 	logger.Info("gmail watch done", "historyId", res.HistoryID)
-	if err = s.googleProvider.UpdateHistoryID(ctx, googleID, res.HistoryID, &res.Expiration); err != nil {
+	if err = s.googleProvider.UpdateHistoryID(ctx, googleID, oauthClientType, res.HistoryID, &res.Expiration); err != nil {
 		logger.Error("error updating gmail history id", "email", email, "error", err)
 		return
 	}
@@ -187,6 +203,7 @@ func (s *authService) LoginWithGoogle(
 	req model.GoogleLoginRequest,
 ) (*model.AuthUserResponse, string, string, error) {
 	logger := logger.Logger(ctx)
+	oauthClientType := getOAuthClientTypeForLogin(req)
 	oauthConfig, authCodeOptions, err := s.getOauth2ConfigForLogin(req)
 	if err != nil {
 		return nil, "", "", err
@@ -201,28 +218,51 @@ func (s *authService) LoginWithGoogle(
 		return nil, "", "", err
 	}
 
-	userWithCreds, err := s.googleProvider.GetUserByGoogleID(ctx, googleProfile.ID)
+	userWithCreds, err := s.googleProvider.GetUserByGoogleIDAndClientType(ctx, googleProfile.ID, oauthClientType)
 	if err != nil {
 		if !errors.Is(err, repository.ErrUserNotFound) {
 			return nil, "", "", errs.Wrap(errs.CodeAuthLookupFailed, "failed to find user", err)
 		}
 
-		// User not found — create auth_user + auth_provider + google_provider_user in a transaction
-		userWithCreds, err = s.createGoogleUser(ctx, googleProfile, oauthToken.RefreshToken)
+		existingUser, existingErr := s.googleProvider.GetUserByGoogleID(ctx, googleProfile.ID)
+		if existingErr != nil && !errors.Is(existingErr, repository.ErrUserNotFound) {
+			return nil, "", "", errs.Wrap(errs.CodeAuthLookupFailed, "failed to find existing google user", existingErr)
+		}
+
+		if existingUser != nil && existingUser.AuthUser != nil {
+			userWithCreds, err = s.createGoogleProviderForUser(
+				ctx,
+				existingUser.AuthUser,
+				googleProfile,
+				oauthToken.RefreshToken,
+				oauthClientType,
+			)
+		} else {
+			userWithCreds, err = s.createGoogleUser(ctx, googleProfile, oauthToken.RefreshToken, oauthClientType)
+		}
 		if err != nil {
 			return nil, "", "", err
 		}
 	} else {
 		data := model.GoogleProviderUser{
-			Name:    googleProfile.Name,
-			Picture: googleProfile.Picture,
+			OAuthClientType: oauthClientType,
+			Name:            googleProfile.Name,
+			Picture:         googleProfile.Picture,
 		}
 		if oauthToken.RefreshToken != "" {
 			data.RefreshToken = oauthToken.RefreshToken
 		}
-		err = s.googleProvider.UpdateUserByGoogleID(ctx, googleProfile.ID, &data)
+		err = s.googleProvider.UpdateUserByGoogleIDAndClientType(ctx, googleProfile.ID, oauthClientType, &data)
 		if err != nil {
 			return nil, "", "", err
+		}
+		if userWithCreds.GoogleProvider != nil {
+			userWithCreds.GoogleProvider.OAuthClientType = oauthClientType
+			userWithCreds.GoogleProvider.Name = googleProfile.Name
+			userWithCreds.GoogleProvider.Picture = googleProfile.Picture
+			if oauthToken.RefreshToken != "" {
+				userWithCreds.GoogleProvider.RefreshToken = oauthToken.RefreshToken
+			}
 		}
 	}
 	logger.Info("user found", "authUser", *userWithCreds.AuthUser, "googleProvider", *userWithCreds.GoogleProvider)
@@ -250,6 +290,7 @@ func (s *authService) LoginWithGoogle(
 		go s.SetupGmailWatch(
 			detachedCtx,
 			userWithCreds.GoogleProvider.ID,
+			userWithCreds.GoogleProvider.OAuthClientType,
 			googleRefreshToken,
 			userWithCreds.GoogleProvider.Email,
 		)
@@ -268,9 +309,11 @@ func (s *authService) createGoogleUser(
 	ctx context.Context,
 	profile *googleUser,
 	refreshToken string,
+	oauthClientType model.GoogleOAuthClientType,
 ) (*model.UserWithCredentials, error) {
 	log := logger.Logger(ctx)
-	log.Info("creating new google user", "googleId", profile.ID, "email", profile.Email)
+	oauthClientType = model.NormalizeGoogleOAuthClientType(oauthClientType)
+	log.Info("creating new google user", "googleId", profile.ID, "email", profile.Email, "oauthClientType", oauthClientType)
 
 	var result *model.UserWithCredentials
 	err := utils.WithTx(ctx, s.repo.GetDB(), func(tx pgx.Tx) error {
@@ -281,7 +324,7 @@ func (s *authService) createGoogleUser(
 
 		userWithCreds, err := s.googleProvider.Create(
 			ctx, tx, authUser.ID,
-			profile.ID, profile.Name, profile.Picture, profile.Email,
+			profile.ID, oauthClientType, profile.Name, profile.Picture, profile.Email,
 			refreshToken,
 			nil,
 		)
@@ -298,6 +341,41 @@ func (s *authService) createGoogleUser(
 	}
 
 	log.Info("google user created", "authUserId", result.AuthUser.ID, "email", profile.Email)
+	return result, nil
+}
+
+func (s *authService) createGoogleProviderForUser(
+	ctx context.Context,
+	authUser *model.AuthUser,
+	profile *googleUser,
+	refreshToken string,
+	oauthClientType model.GoogleOAuthClientType,
+) (*model.UserWithCredentials, error) {
+	oauthClientType = model.NormalizeGoogleOAuthClientType(oauthClientType)
+	log := logger.Logger(ctx)
+	log.Info("creating google provider for existing user", "authUserId", authUser.ID, "googleId", profile.ID, "email", profile.Email, "oauthClientType", oauthClientType)
+
+	var result *model.UserWithCredentials
+	err := utils.WithTx(ctx, s.repo.GetDB(), func(tx pgx.Tx) error {
+		userWithCreds, err := s.googleProvider.Create(
+			ctx, tx, authUser.ID,
+			profile.ID, oauthClientType, profile.Name, profile.Picture, profile.Email,
+			refreshToken,
+			nil,
+		)
+		if err != nil {
+			return errs.Wrap(errs.CodeAuthCreateFailed, "failed to create google provider user", err)
+		}
+
+		userWithCreds.AuthUser = authUser
+		result = userWithCreds
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	log.Info("google provider created", "authUserId", result.AuthUser.ID, "email", profile.Email, "oauthClientType", oauthClientType)
 	return result, nil
 }
 
@@ -370,7 +448,8 @@ func (s *authService) GetCurrentUser(ctx context.Context, userID uuid.UUID) (*mo
 		provider := &user.Providers[i]
 		switch provider.ProviderType {
 		case model.GoogleAuthProviderType:
-			googleUser, err := s.googleProvider.GetUserByGoogleID(ctx, provider.ProviderID)
+			provider.OAuthClientType = model.NormalizeGoogleOAuthClientType(provider.OAuthClientType)
+			googleUser, err := s.googleProvider.GetUserByGoogleIDAndClientType(ctx, provider.ProviderID, provider.OAuthClientType)
 			if err != nil {
 				return nil, err
 			}
@@ -453,6 +532,12 @@ func (s *authService) GetGoogleUserByEmail(ctx context.Context, email string) (*
 	return s.googleProvider.GetUserByEmail(ctx, email)
 }
 
-func (s *authService) UpdateGmailHistoryID(ctx context.Context, email string, historyID uint64, expiryAt *int64) error {
-	return s.googleProvider.UpdateHistoryIDByEmail(ctx, email, historyID, expiryAt)
+func (s *authService) UpdateGmailHistoryID(
+	ctx context.Context,
+	email string,
+	oauthClientType model.GoogleOAuthClientType,
+	historyID uint64,
+	expiryAt *int64,
+) error {
+	return s.googleProvider.UpdateHistoryIDByEmail(ctx, email, oauthClientType, historyID, expiryAt)
 }

@@ -58,7 +58,7 @@ func (m *mockMwAuthService) GetCurrentUser(ctx context.Context, userID uuid.UUID
 func (m *mockMwAuthService) GetGoogleUserByEmail(ctx context.Context, email string) (*model.GoogleUserInfo, error) {
 	panic("not used")
 }
-func (m *mockMwAuthService) UpdateGmailHistoryID(ctx context.Context, email string, historyID uint64, expiryAt *int64) error {
+func (m *mockMwAuthService) UpdateGmailHistoryID(ctx context.Context, email string, oauthClientType model.GoogleOAuthClientType, historyID uint64, expiryAt *int64) error {
 	panic("not used")
 }
 func (m *mockMwAuthService) RefreshToken(ctx context.Context, refreshToken string) (*model.RefreshTokenResponse, error) {

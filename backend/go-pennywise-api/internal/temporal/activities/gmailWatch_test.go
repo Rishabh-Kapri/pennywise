@@ -19,7 +19,7 @@ import (
 type fakeAuthService struct {
 	getAllGoogleUsers    func(context.Context) ([]model.GoogleProviderUser, error)
 	getGoogleUserByEmail func(context.Context, string) (*model.GoogleUserInfo, error)
-	updateGmailHistoryID func(context.Context, string, uint64, *int64) error
+	updateGmailHistoryID func(context.Context, string, model.GoogleOAuthClientType, uint64, *int64) error
 }
 
 func (f *fakeAuthService) LoginWithGoogle(context.Context, model.GoogleLoginRequest) (*model.AuthUserResponse, string, string, error) {
@@ -55,11 +55,11 @@ func (f *fakeAuthService) GetGoogleUserByEmail(ctx context.Context, email string
 	}
 	return f.getGoogleUserByEmail(ctx, email)
 }
-func (f *fakeAuthService) UpdateGmailHistoryID(ctx context.Context, email string, historyID uint64, expiryAt *int64) error {
+func (f *fakeAuthService) UpdateGmailHistoryID(ctx context.Context, email string, oauthClientType model.GoogleOAuthClientType, historyID uint64, expiryAt *int64) error {
 	if f.updateGmailHistoryID == nil {
 		return nil
 	}
-	return f.updateGmailHistoryID(ctx, email, historyID, expiryAt)
+	return f.updateGmailHistoryID(ctx, email, oauthClientType, historyID, expiryAt)
 }
 
 // helpers to run activities via Temporal test env
@@ -299,18 +299,19 @@ func TestUpdateGmailHistoryID_CallsService(t *testing.T) {
 	called := false
 	act := FetchGoogleUsersActivity{
 		AuthService: &fakeAuthService{
-			updateGmailHistoryID: func(_ context.Context, email string, historyID uint64, expiryAt *int64) error {
+			updateGmailHistoryID: func(_ context.Context, email string, oauthClientType model.GoogleOAuthClientType, historyID uint64, expiryAt *int64) error {
 				called = true
-				if email != "u@example.com" || historyID != 111 || expiryAt != nil {
-					t.Fatalf("unexpected args: email=%s historyID=%d expiryAt=%v", email, historyID, expiryAt)
+				if email != "u@example.com" || oauthClientType != model.GoogleOAuthClientTypeAndroid || historyID != 111 || expiryAt != nil {
+					t.Fatalf("unexpected args: email=%s oauthClientType=%s historyID=%d expiryAt=%v", email, oauthClientType, historyID, expiryAt)
 				}
 				return nil
 			},
 		},
 	}
 	err := executeUpdateGmailHistoryID(t, act, model.UpdateGmailHistoryInput{
-		Email:          "u@example.com",
-		GmailHistoryID: 111,
+		Email:           "u@example.com",
+		OAuthClientType: model.GoogleOAuthClientTypeAndroid,
+		GmailHistoryID:  111,
 	})
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -324,7 +325,7 @@ func TestUpdateGmailHistoryID_PropagatesError(t *testing.T) {
 	wantErr := errors.New("update failed")
 	act := FetchGoogleUsersActivity{
 		AuthService: &fakeAuthService{
-			updateGmailHistoryID: func(context.Context, string, uint64, *int64) error {
+			updateGmailHistoryID: func(context.Context, string, model.GoogleOAuthClientType, uint64, *int64) error {
 				return wantErr
 			},
 		},
@@ -341,7 +342,7 @@ func TestUpdateGmailWatchState_CallsServiceForEachUser(t *testing.T) {
 	calls := 0
 	act := FetchGoogleUsersActivity{
 		AuthService: &fakeAuthService{
-			updateGmailHistoryID: func(_ context.Context, email string, historyID uint64, expiryAt *int64) error {
+			updateGmailHistoryID: func(_ context.Context, email string, oauthClientType model.GoogleOAuthClientType, historyID uint64, expiryAt *int64) error {
 				calls++
 				return nil
 			},
@@ -349,8 +350,8 @@ func TestUpdateGmailWatchState_CallsServiceForEachUser(t *testing.T) {
 	}
 	expiry := int64(9999999)
 	input := []model.GoogleWatchUser{
-		{Email: "a@a.com", GmailHistoryID: 1, ExpiryAt: &expiry},
-		{Email: "b@b.com", GmailHistoryID: 2, ExpiryAt: nil},
+		{Email: "a@a.com", OAuthClientType: model.GoogleOAuthClientTypeWeb, GmailHistoryID: 1, ExpiryAt: &expiry},
+		{Email: "b@b.com", OAuthClientType: model.GoogleOAuthClientTypeAndroid, GmailHistoryID: 2, ExpiryAt: nil},
 	}
 	err := executeUpdateGmailWatchState(t, act, input)
 	if err != nil {
@@ -366,7 +367,7 @@ func TestUpdateGmailWatchState_StopsOnFirstError(t *testing.T) {
 	wantErr := errors.New("watch state update failed")
 	act := FetchGoogleUsersActivity{
 		AuthService: &fakeAuthService{
-			updateGmailHistoryID: func(context.Context, string, uint64, *int64) error {
+			updateGmailHistoryID: func(context.Context, string, model.GoogleOAuthClientType, uint64, *int64) error {
 				calls++
 				return wantErr
 			},
@@ -388,7 +389,7 @@ func TestUpdateGmailWatchState_StopsOnFirstError(t *testing.T) {
 func TestUpdateGmailWatchState_EmptyInput(t *testing.T) {
 	act := FetchGoogleUsersActivity{
 		AuthService: &fakeAuthService{
-			updateGmailHistoryID: func(context.Context, string, uint64, *int64) error {
+			updateGmailHistoryID: func(context.Context, string, model.GoogleOAuthClientType, uint64, *int64) error {
 				t.Fatal("should not be called with empty input")
 				return nil
 			},

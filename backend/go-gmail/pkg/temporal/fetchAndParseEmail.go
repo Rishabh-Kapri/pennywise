@@ -33,8 +33,8 @@ func (a *GmailActivities) FetchAndParseEmails(
 	log.Info("FetchAndParseEmails", "email", input.Email, "historyId", input.HistoryID, "budgetId", input.BudgetID)
 
 	// get access token from refresh token
-	oauthConfig := a.Auth.GetOauth2Config()
-	token, err := a.Auth.GetTokenFromRefresh(input.RefreshToken)
+	oauthConfig := a.Auth.GetOauth2ConfigForClientType(input.OAuthClientType)
+	token, err := a.Auth.GetTokenFromRefresh(input.RefreshToken, input.OAuthClientType)
 	if err != nil {
 		return result, err
 	}

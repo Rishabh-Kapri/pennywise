@@ -57,7 +57,7 @@ func (r *accountRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.A
 	}
 	defer rows.Close()
 
-	var accounts []model.Account
+	accounts := make([]model.Account, 0)
 	for rows.Next() {
 		var a model.Account
 		err := rows.Scan(
@@ -91,7 +91,7 @@ func (r *accountRepo) GetAllSimplified(ctx context.Context, budgetId uuid.UUID) 
 	}
 	defer rows.Close()
 
-	var accounts []model.AccountSimplified
+	accounts := make([]model.AccountSimplified, 0)
 	for rows.Next() {
 		var a model.AccountSimplified
 		if err := rows.Scan(&a.ID, &a.Name); err != nil {
@@ -179,7 +179,7 @@ func (r *accountRepo) Search(ctx context.Context, budgetId uuid.UUID, query stri
 	if err != nil {
 		return nil, err
 	}
-	var accounts []model.Account
+	accounts := make([]model.Account, 0)
 	defer rows.Close()
 	for rows.Next() {
 		var a model.Account

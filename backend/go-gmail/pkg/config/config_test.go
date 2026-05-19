@@ -25,6 +25,7 @@ func TestLoadConfig_EnvVarsSet(t *testing.T) {
 	os.Setenv("RAILWAY_ENVIRONMENT_NAME", "production")
 	os.Setenv("GOOGLE_CLIENT_ID", "test-client-id")
 	os.Setenv("GOOGLE_CLIENT_SECRET", "test-client-secret")
+	os.Setenv("GOOGLE_ANDROID_CLIENT_ID", "test-android-client-id")
 	os.Setenv("CALLBACK_URL", "http://localhost/callback")
 	os.Setenv("PROJECT_ID", "my-project")
 	os.Setenv("PUBSUB_TOPIC", "my-topic")
@@ -41,7 +42,7 @@ func TestLoadConfig_EnvVarsSet(t *testing.T) {
 
 	defer func() {
 		for _, k := range []string{
-			"PORT", "RAILWAY_ENVIRONMENT_NAME", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET",
+			"PORT", "RAILWAY_ENVIRONMENT_NAME", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_ANDROID_CLIENT_ID",
 			"CALLBACK_URL", "PROJECT_ID", "PUBSUB_TOPIC", "SUB_NAME", "DATABASE_URL",
 			"MLP_SERVICE_URL", "PENNYWISE_SERVICE_URL", "CIPHER_SERVICE_URL",
 			"INTERNAL_AUTH_TOKEN", "NTFY_TOPIC", "TEMPORAL_SERVER_HOST", "TEMPORAL_SERVER_PORT",
@@ -58,6 +59,7 @@ func TestLoadConfig_EnvVarsSet(t *testing.T) {
 		"Environment":                      "production",
 		"GoogleClientId":                   "test-client-id",
 		"GoogleClientSecret":               "test-client-secret",
+		"GoogleAndroidClientId":            "test-android-client-id",
 		"CallbackUrl":                      "http://localhost/callback",
 		"ProjectID":                        "my-project",
 		"PubsubTopic":                      "my-topic",
@@ -78,6 +80,7 @@ func TestLoadConfig_EnvVarsSet(t *testing.T) {
 		"Environment":                      cfg.Environment,
 		"GoogleClientId":                   cfg.GoogleClientId,
 		"GoogleClientSecret":               cfg.GoogleClientSecret,
+		"GoogleAndroidClientId":            cfg.GoogleAndroidClientId,
 		"CallbackUrl":                      cfg.CallbackUrl,
 		"ProjectID":                        cfg.ProjectID,
 		"PubsubTopic":                      cfg.PubsubTopic,

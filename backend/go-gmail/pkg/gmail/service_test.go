@@ -107,7 +107,7 @@ func TestNewService(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestGetOauth2Config(t *testing.T) {
-	cfg := getOauth2Config()
+	cfg := getOauth2Config("")
 	if cfg == nil {
 		t.Fatal("expected non-nil oauth2 config")
 	}

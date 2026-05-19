@@ -2,10 +2,16 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/websocket"
+
+	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 	"github.com/google/uuid"
 
@@ -16,7 +22,7 @@ type WebsocketService interface {
 	Connect(ctx context.Context, w http.ResponseWriter, r *http.Request) error
 	SendNotification(ctx context.Context, budgetId uuid.UUID, eventName string, data any) error
 	GetSessions(ctx context.Context) WebsocketSessionsResponse
-	SendTestEvent(ctx context.Context, eventName string, data any) error
+	SendTestEvent(ctx context.Context, eventName string, data any, roomID *string) error
 }
 
 type WebsocketSession struct {
@@ -70,12 +76,16 @@ func (s *websocketService) SendNotification(
 	eventName string,
 	data any,
 ) error {
-	message := websocket.Message{
-		EventName: eventName,
-		Data:      data,
-		BudgetId:  budgetId,
+	dataJSON, err := json.Marshal(data)
+	if err != nil {
+		return errs.Wrap(errs.CodeInternalError, "failed to marshal data for notification", err)
 	}
-	s.hub.Broadcast(message)
+	message := sharedModel.Message{
+		EventName: eventName,
+		Data:      dataJSON,
+		BudgetID:  budgetId,
+	}
+	s.hub.Broadcast(message, nil)
 	return nil
 }
 
@@ -89,8 +99,8 @@ func (s *websocketService) GetSessions(ctx context.Context) WebsocketSessionsRes
 			continue
 		}
 		sessions = append(sessions, WebsocketSession{
-			UserId:   client.UserId,
-			BudgetId: client.BudgetId,
+			UserId:   client.UserID,
+			BudgetId: client.BudgetID,
 		})
 	}
 
@@ -100,8 +110,46 @@ func (s *websocketService) GetSessions(ctx context.Context) WebsocketSessionsRes
 	}
 }
 
-func (s *websocketService) SendTestEvent(ctx context.Context, eventName string, data any) error {
+func (s *websocketService) SendTestEvent(ctx context.Context, eventName string, data any, roomID *string) error {
 	budgetId := utils.MustBudgetID(ctx)
-	_ = utils.MustUserID(ctx)
-	return s.SendNotification(ctx, budgetId, eventName, data)
+	dataJSON, err := json.Marshal(data)
+	if err != nil {
+		return errs.Wrap(errs.CodeInternalError, "failed to marshal data for notification", err)
+	}
+
+	message := sharedModel.Message{
+		EventName: eventName,
+		Data:      dataJSON,
+		BudgetID:  budgetId,
+	}
+
+	if roomID != nil {
+		userID := utils.MustUserID(ctx)
+		if resolvedRoomID := testEventRoomID(budgetId, userID, roomID); resolvedRoomID != nil {
+			message.UserID = &userID
+			message.RoomID = resolvedRoomID
+		}
+	}
+
+	s.hub.Broadcast(message, nil)
+	return nil
+}
+
+func testEventRoomID(budgetID uuid.UUID, userID uuid.UUID, roomID *string) *string {
+	if roomID == nil {
+		return nil
+	}
+
+	trimmedRoomID := strings.TrimSpace(*roomID)
+	if trimmedRoomID == "" {
+		return nil
+	}
+
+	roomSuffix := trimmedRoomID
+	if roomParts := strings.SplitN(trimmedRoomID, ":", 3); len(roomParts) == 3 {
+		roomSuffix = roomParts[2]
+	}
+
+	resolvedRoomID := fmt.Sprintf("%s:%s:%s", budgetID, userID, roomSuffix)
+	return &resolvedRoomID
 }

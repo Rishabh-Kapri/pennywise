@@ -35,7 +35,7 @@ func (f *fakeWebsocketService) SendNotification(ctx context.Context, budgetId uu
 func (f *fakeWebsocketService) GetSessions(_ context.Context) service.WebsocketSessionsResponse {
 	return service.WebsocketSessionsResponse{}
 }
-func (f *fakeWebsocketService) SendTestEvent(_ context.Context, _ string, _ any) error {
+func (f *fakeWebsocketService) SendTestEvent(_ context.Context, _ string, _ any, _ *string) error {
 	return nil
 }
 
@@ -792,8 +792,8 @@ func TestCreateTransactionSendsWebsocketNotification(t *testing.T) {
 	if notifiedBudget != budgetID {
 		t.Fatalf("expected budget id %s, got %s", budgetID, notifiedBudget)
 	}
-	if notifiedEvent != "transaction::created" {
-		t.Fatalf("expected event 'transaction::created', got %q", notifiedEvent)
+	if notifiedEvent != "pennywise::transaction::created" {
+		t.Fatalf("expected event 'pennywise::transaction::created', got %q", notifiedEvent)
 	}
 }
 
