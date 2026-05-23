@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react';
 import {
   CaretDownIcon,
   ChatsIcon,
@@ -6,6 +6,7 @@ import {
   RobotIcon as Bot,
   PaperPlaneRightIcon as Send,
   SparkleIcon as Sparkles,
+  TrashIcon,
   XIcon,
 } from '@phosphor-icons/react';
 import ReactMarkdown from 'react-markdown';
@@ -17,6 +18,7 @@ import {
   appendAgentTextDelta,
   clearAgentChat,
   createAgentRun,
+  deleteAgentConversation,
   fetchAgentConversationMessages,
   listAgentConversations,
   selectAgentChatHistory,
@@ -29,13 +31,14 @@ import {
 } from '@/features/agent/store';
 import { selectSelectedBudget } from '@/features/budget';
 import { AGENT_CHAT_WEBSOCKET_EVENT, type WebSocketMessage } from '@/features/websocket/events';
-import type { AgentChatMessage, AgentEventMessageData, MessagePart } from '@/features/agent';
+import type { AgentChatHistoryItem, AgentChatMessage, AgentEventMessageData, MessagePart } from '@/features/agent';
 import { LoadingState } from '@/utils';
 import styles from './AgentChat.module.css';
 
 const SUGGESTIONS = ['Summarize my spending', 'Find unusual transactions', 'Help plan next month'];
 const TEXT_DELTA_EVENT = 'agent::chat::text_delta';
 const AGENT_CHAT_STREAM_EVENT = 'pennywise::agent::chat::stream';
+const AGENT_LOADING_EVENT = 'agent::chat::loading';
 const TEXT_DELTA_CHARS_PER_SECOND = 90;
 const TEXT_DELTA_MAX_FRAME_CHARS = 8;
 const AUTO_SCROLL_BOTTOM_THRESHOLD_PX = 48;
@@ -108,6 +111,7 @@ function agentMessageLabel(eventName: string) {
     eventName === TEXT_DELTA_EVENT ||
     eventName === AGENT_CHAT_STREAM_EVENT ||
     eventName === 'agent::chat::message' ||
+    eventName === AGENT_LOADING_EVENT ||
     eventName === 'agent::chat::tool_call' ||
     eventName === 'agent::chat::tool_call_start'
   ) {
@@ -178,6 +182,15 @@ function toolCallStartPart(message: unknown): MessagePart {
 }
 
 function AgentMessageBody({ message }: { message: AgentChatMessage }) {
+  if (message.eventName === AGENT_LOADING_EVENT) {
+    return (
+      <div className={styles.loadingMessage}>
+        <span className={styles.loadingSpinner} aria-hidden />
+        <span className={styles.loadingText}>Thinking</span>
+      </div>
+    );
+  }
+
   if (!message.parts?.length) {
     return <MarkdownAgentText text={message.text} />;
   }
@@ -218,6 +231,9 @@ export function AgentChat() {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isModelOpen, setIsModelOpen] = useState(false);
   const [composerValue, setComposerValue] = useState('');
+  const [isAwaitingAgentResponse, setIsAwaitingAgentResponse] = useState(false);
+  const [conversationToDelete, setConversationToDelete] = useState<AgentChatHistoryItem | null>(null);
+  const [isDeletingConversation, setIsDeletingConversation] = useState(false);
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const composerInputRef = useRef<HTMLInputElement | null>(null);
   const historyMenuRef = useRef<HTMLDivElement | null>(null);
@@ -232,6 +248,19 @@ export function AgentChat() {
   const shouldAutoScrollRef = useRef(true);
   const isSending = createRunLoading === LoadingState.PENDING;
   const hasSelectedBudget = Boolean(selectedBudget?.id);
+  const lastMessage = agentMessages[agentMessages.length - 1];
+  const shouldShowResponseLoader = isAwaitingAgentResponse && lastMessage?.role === 'user';
+  const displayedAgentMessages = shouldShowResponseLoader
+    ? [
+        ...agentMessages,
+        {
+          id: 'agent-response-loader',
+          role: 'assistant' as const,
+          eventName: AGENT_LOADING_EVENT,
+          text: '',
+        },
+      ]
+    : agentMessages;
   const selectedConversation = currentConversationId
     ? chatHistory.find((conversation) => conversation.id === currentConversationId)
     : undefined;
@@ -239,6 +268,7 @@ export function AgentChat() {
   const headerTitle = selectedConversation?.title ?? 'Penny Agent';
   const canOpenHistory = !isSending && chatHistory.length > 0;
   const canOpenModels = !isSending && hasSelectedBudget;
+  const deleteConversationTitle = conversationToDelete?.title?.trim() || 'this chat';
 
   const focusComposerInput = useCallback(() => {
     if (!isOpen || !hasSelectedBudget) {
@@ -339,6 +369,10 @@ export function AgentChat() {
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        if (conversationToDelete && !isDeletingConversation) {
+          setConversationToDelete(null);
+          return;
+        }
         if (isHistoryOpen) {
           setIsHistoryOpen(false);
           return;
@@ -347,13 +381,14 @@ export function AgentChat() {
           setIsModelOpen(false);
           return;
         }
+        setIsAwaitingAgentResponse(false);
         setIsOpen(false);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isHistoryOpen, isModelOpen, isOpen]);
+  }, [conversationToDelete, isDeletingConversation, isHistoryOpen, isModelOpen, isOpen]);
 
   useEffect(() => {
     if (!isHistoryOpen) return;
@@ -504,7 +539,25 @@ export function AgentChat() {
     if (!isOpen || !shouldAutoScrollRef.current) return;
 
     scrollMessagesToBottom();
-  }, [agentMessages, isOpen, scrollMessagesToBottom]);
+  }, [agentMessages, isOpen, scrollMessagesToBottom, shouldShowResponseLoader]);
+
+  useEffect(() => {
+    if (!isAwaitingAgentResponse) {
+      return;
+    }
+
+    if (createRunLoading === LoadingState.ERROR) {
+      setIsAwaitingAgentResponse(false);
+      return;
+    }
+
+    if (
+      lastMessage?.role === 'assistant' &&
+      (lastMessage.text.trim() || (lastMessage.parts?.length ?? 0) > 0 || lastMessage.eventName === 'agent::chat::error')
+    ) {
+      setIsAwaitingAgentResponse(false);
+    }
+  }, [createRunLoading, isAwaitingAgentResponse, lastMessage]);
 
   const submitMessage = useCallback(
     (message: string) => {
@@ -516,6 +569,8 @@ export function AgentChat() {
       setComposerValue('');
       shouldRefocusComposerRef.current = true;
       focusComposerInput();
+      setIsHistoryOpen(false);
+      setIsAwaitingAgentResponse(true);
       dispatch(
         createAgentRun({
           message: trimmedMessage,
@@ -543,6 +598,7 @@ export function AgentChat() {
     setIsHistoryOpen(false);
     setIsModelOpen(false);
     setComposerValue('');
+    setIsAwaitingAgentResponse(false);
     dispatch(clearAgentChat());
   }, [dispatch, flushPendingTextDelta, isSending]);
 
@@ -556,6 +612,7 @@ export function AgentChat() {
       setIsHistoryOpen(false);
       setIsModelOpen(false);
       setComposerValue('');
+      setIsAwaitingAgentResponse(false);
       if (!conversationId) {
         dispatch(clearAgentChat());
         return;
@@ -566,6 +623,43 @@ export function AgentChat() {
     },
     [dispatch, flushPendingTextDelta, isSending],
   );
+
+  const handleRequestDeleteConversation = useCallback(
+    (event: MouseEvent<HTMLButtonElement>, conversation: AgentChatHistoryItem) => {
+      event.stopPropagation();
+      if (isSending || isDeletingConversation) {
+        return;
+      }
+
+      setConversationToDelete(conversation);
+    },
+    [isDeletingConversation, isSending],
+  );
+
+  const handleCancelDeleteConversation = useCallback(() => {
+    if (isDeletingConversation) {
+      return;
+    }
+
+    setConversationToDelete(null);
+  }, [isDeletingConversation]);
+
+  const handleConfirmDeleteConversation = useCallback(async () => {
+    if (!conversationToDelete || isDeletingConversation) {
+      return;
+    }
+
+    setIsDeletingConversation(true);
+    try {
+      flushPendingTextDelta();
+      await dispatch(deleteAgentConversation(conversationToDelete.id)).unwrap();
+      setConversationToDelete(null);
+      setIsHistoryOpen(false);
+      setIsAwaitingAgentResponse(false);
+    } finally {
+      setIsDeletingConversation(false);
+    }
+  }, [conversationToDelete, dispatch, flushPendingTextDelta, isDeletingConversation]);
 
   const handleSelectModel = useCallback(
     (modelKey: string) => {
@@ -620,15 +714,27 @@ export function AgentChat() {
               {isHistoryOpen && (
                 <div className={styles.historyPopover} role="menu" aria-label="Chat history">
                   {chatHistory.map((conversation) => (
-                    <button
+                    <div
                       key={conversation.id}
-                      type="button"
-                      role="menuitem"
-                      className={`${styles.historyOption} ${conversation.id === currentConversationId ? styles.historyOptionActive : ''
+                      className={`${styles.historyRow} ${conversation.id === currentConversationId ? styles.historyOptionActive : ''
                         }`}
-                      onClick={() => handleSelectChat(conversation.id)}>
-                      {conversation.title}
-                    </button>
+                    >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className={styles.historyOption}
+                        onClick={() => handleSelectChat(conversation.id)}>
+                        {conversation.title}
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.historyDeleteButton}
+                        aria-label={`Delete ${conversation.title}`}
+                        disabled={isDeletingConversation}
+                        onClick={(event) => handleRequestDeleteConversation(event, conversation)}>
+                        <TrashIcon size={15} aria-hidden />
+                      </button>
+                    </div>
                   ))}
                 </div>
               )}
@@ -646,15 +752,18 @@ export function AgentChat() {
               type="button"
               className={styles.closeButton}
               aria-label="Close agent chat"
-              onClick={() => setIsOpen(false)}>
+              onClick={() => {
+                setIsAwaitingAgentResponse(false);
+                setIsOpen(false);
+              }}>
               <XIcon size={18} />
             </button>
           </div>
         </header>
 
         <div ref={messagesRef} className={styles.messages} onScroll={handleMessagesScroll}>
-          {agentMessages.length === 0 && <div className={styles.emptyState}>ask questions about your budget</div>}
-          {agentMessages.map((message) => (
+          {displayedAgentMessages.length === 0 && <div className={styles.emptyState}>ask questions about your budget</div>}
+          {displayedAgentMessages.map((message) => (
             <div key={message.id} className={message.role === 'user' ? styles.userMessage : styles.agentMessage}>
               {message.role === 'assistant' && (
                 <span className={styles.messageLabel}>
@@ -728,6 +837,34 @@ export function AgentChat() {
           </div>
         </form>
       </section>
+      {conversationToDelete && (
+        <div className={styles.confirmOverlay} role="presentation">
+          <div
+            className={styles.confirmDialog}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-agent-chat-title">
+            <h3 id="delete-agent-chat-title">Delete chat?</h3>
+            <p>This will remove "{deleteConversationTitle}" from your chat history.</p>
+            <div className={styles.confirmActions}>
+              <button
+                type="button"
+                className={styles.confirmCancelButton}
+                disabled={isDeletingConversation}
+                onClick={handleCancelDeleteConversation}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={styles.confirmDeleteButton}
+                disabled={isDeletingConversation}
+                onClick={handleConfirmDeleteConversation}>
+                {isDeletingConversation ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }

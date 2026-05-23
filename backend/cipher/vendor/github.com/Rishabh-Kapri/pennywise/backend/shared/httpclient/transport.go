@@ -215,6 +215,7 @@ func (h *httpTransport) do(
 
 	result.StatusCode = res.StatusCode
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		// body, _ := io.ReadAll(res.Body)
 		res.Body.Close()
 		// log.Error(
 		// 	"request failed",

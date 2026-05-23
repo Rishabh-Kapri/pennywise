@@ -419,6 +419,14 @@ export const fetchAgentConversationMessages = createAsyncThunk<
   },
 );
 
+export const deleteAgentConversation = createAsyncThunk<string, string>(
+  'agent/deleteConversation',
+  async (conversationId) => {
+    await apiClient.delete<{ message: string }>(`agent/conversations/${conversationId}`);
+    return conversationId;
+  },
+);
+
 const agentSlice = createSlice({
   name: 'agent',
   initialState,
@@ -579,6 +587,17 @@ const agentSlice = createSlice({
           state.messages = cloneChatMessages(messages);
           state.currentRunId = lastRunId(messages);
           state.currentStreamId = state.chatHistoryById[action.payload.conversationId].streamId ?? null;
+        }
+      })
+      .addCase(deleteAgentConversation.fulfilled, (state, action) => {
+        delete state.chatHistoryById[action.payload];
+        state.chatHistoryOrder = state.chatHistoryOrder.filter((id) => id !== action.payload);
+        if (state.currentConversationId === action.payload) {
+          state.messages = [];
+          state.currentRunId = null;
+          state.currentConversationId = null;
+          state.currentStreamId = null;
+          state.createRunLoading = LoadingState.IDLE;
         }
       });
   },

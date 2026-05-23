@@ -1,4 +1,4 @@
-package llm
+package providers
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
@@ -82,7 +83,7 @@ type openAIUsage struct {
 	TotalTokens  int `json:"total_tokens"`
 }
 
-func NewOpenAIClient() (LLM, error) {
+func NewOpenAIClient() (llm.LLM, error) {
 	cfg := config.Load()
 	if cfg.OpenAIAPIKey == "" {
 		return nil, errs.New(errs.CodeInternalError, "no openai api key found")
@@ -425,6 +426,7 @@ func (c *openAIClient) Stream(ctx context.Context, req sharedModel.ChatRequest) 
 					Response struct {
 						ID                string `json:"id"`
 						Model             string `json:"model"`
+						Status            string `json:"status"`
 						IncompleteDetails *struct {
 							Reason string `json:"reason"`
 						} `json:"incomplete_details"`
@@ -441,14 +443,24 @@ func (c *openAIClient) Stream(ctx context.Context, req sharedModel.ChatRequest) 
 					} `json:"response"`
 				}
 				if json.Unmarshal(event.Data, &ev) == nil {
+					response := openAIRes{
+						Status: ev.Response.Status,
+						IncompleteDetails: func() *openAIIncompleteDetails {
+							if ev.Response.IncompleteDetails == nil {
+								return nil
+							}
+							return &openAIIncompleteDetails{Reason: ev.Response.IncompleteDetails.Reason}
+						}(),
+					}
 					usage := sharedModel.Usage{
 						InputTokens:  ev.Response.Usage.InputTokens,
 						OutputTokens: ev.Response.Usage.OutputTokens,
 						TotalTokens:  ev.Response.Usage.InputTokens + ev.Response.Usage.OutputTokens,
 					}
 					events <- sharedModel.StreamChunk{
-						Type:  sharedModel.ChunkEventCompleted,
-						Usage: usage,
+						Type:       sharedModel.ChunkEventCompleted,
+						Usage:      usage,
+						StopReason: toOpenAIStopReason(response),
 					}
 				} else {
 					return

@@ -1,10 +1,11 @@
-package llm
+package providers
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
@@ -64,7 +65,7 @@ type ollamaChatRes struct {
 	EvalCount       int           `json:"eval_count"`
 }
 
-func NewOllamaClient() (LLM, error) {
+func NewOllamaClient() (llm.LLM, error) {
 	cfg := config.Load()
 	if cfg.OllamaURL == "" {
 		return nil, errs.New(errs.CodeInternalError, "no ollama url found")

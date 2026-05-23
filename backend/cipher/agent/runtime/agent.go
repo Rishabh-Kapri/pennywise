@@ -6,13 +6,12 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"time"
 
 	agentContext "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/context"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/handler"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/memory"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/tools"
-	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
 
 	"github.com/redis/go-redis/v9"
 
@@ -29,8 +28,6 @@ import (
 const agentSpanContentLimit = 20_000
 
 type AgentConfig struct {
-	classifyLLM    llm.LLM
-	classifyModel  string
 	titleModel     string
 	telemetry      *otelSDK.Telemetry
 	redis          *redis.Client
@@ -39,6 +36,8 @@ type AgentConfig struct {
 	maxTurns       int
 	maxToolCalls   int
 	pennywiseAPI   *transport.Client
+	memoryEnabled  bool
+	memory         memory.Memory
 }
 
 type AgentOption func(*AgentConfig)
@@ -46,13 +45,6 @@ type AgentOption func(*AgentConfig)
 func WithRedis(r *redis.Client) AgentOption {
 	return func(ac *AgentConfig) {
 		ac.redis = r
-	}
-}
-
-func WithClassifyLLM(l llm.LLM, model string) AgentOption {
-	return func(ac *AgentConfig) {
-		ac.classifyLLM = l
-		ac.classifyModel = model
 	}
 }
 
@@ -86,9 +78,15 @@ func WithPennywiseAPI(client *transport.Client) AgentOption {
 	}
 }
 
+func WithMemory(ms memory.Memory) AgentOption {
+	return func(ac *AgentConfig) {
+		ac.memoryEnabled = true
+		ac.memory = ms
+	}
+}
+
 type Agent struct {
 	llmResolver    llm.LLMResolver
-	classifyLLM    llm.LLM // always cloud (Anthropic) — used for intent classification only
 	classifyModel  string
 	TitleModel     string  // model to use for title generation
 	localLLM       llm.LLM // always local (Ollama) — used for narrating raw SQL results
@@ -100,9 +98,11 @@ type Agent struct {
 	maxTurns       int
 	maxToolCalls   int
 	pennywiseAPI   *transport.Client
+	memoryEnabled  bool
+	memory         memory.Memory
 }
 
-func NewAgent(toolRegistry *tools.ToolRegistry, opts ...AgentOption) (*Agent, error) {
+func NewAgent(llmResolver llm.LLMResolver, toolRegistry *tools.ToolRegistry, opts ...AgentOption) (*Agent, error) {
 	cfg := &AgentConfig{
 		toolRegistry: toolRegistry,
 		maxTurns:     10,
@@ -111,59 +111,11 @@ func NewAgent(toolRegistry *tools.ToolRegistry, opts ...AgentOption) (*Agent, er
 	for _, o := range opts {
 		o(cfg)
 	}
-	if cfg.classifyLLM == nil {
-		return nil, errs.New(errs.CodeAgentCreateFailed, "agent needs classify llm")
-	}
-	appConfig := config.Load()
-	entries := map[string]llm.RegistryEntry{}
-	if appConfig.AnthropicAPIKey != "" {
-		c, err := llm.NewAnthropicClient("chat")
-		if err != nil {
-			return nil, err
-		}
-		oc := llm.NewObservedLLM(c, cfg.telemetry)
-		entries["anthropic"] = llm.RegistryEntry{Client: oc, DefaultModel: "claude-sonnet-4-6"}
-	}
-	if appConfig.OpenAIAPIKey != "" {
-		c, err := llm.NewOpenAIClient()
-		if err != nil {
-			return nil, err
-		}
-		oc := llm.NewObservedLLM(c, cfg.telemetry)
-		entries["openai"] = llm.RegistryEntry{Client: oc, DefaultModel: "gpt-4o"}
-	}
-	if appConfig.OpenRouterAPIKey != "" {
-		c, err := llm.NewOpenRouterClient()
-		if err != nil {
-			return nil, err
-		}
-		oc := llm.NewObservedLLM(c, cfg.telemetry)
-		entries["openrouter"] = llm.RegistryEntry{Client: oc, DefaultModel: "anthropic/claude-haiku-4.5"}
-	}
-	ollamaClient, err := llm.NewOllamaClient()
-	if err != nil {
-		return nil, err
-	}
-	ollamaObserved := llm.NewObservedLLM(ollamaClient, cfg.telemetry)
-	entries["ollama"] = llm.RegistryEntry{
-		Client:       ollamaObserved,
-		DefaultModel: "gemma4",
-	}
 
-	defaultProvider := appConfig.DefaultAgentProvider
-	if _, ok := entries[defaultProvider]; !ok {
-		defaultProvider = firstConfiguredProvider(entries)
-	}
-	llmResolver, err := llm.NewLLMRegistry(entries, defaultProvider, cfg.telemetry)
-	if err != nil {
-		return nil, err
-	}
 	return &Agent{
-		llmResolver:    llmResolver,
-		classifyLLM:    cfg.classifyLLM,
-		classifyModel:  cfg.classifyModel,
-		TitleModel:     "openai/gpt-5.4",
-		localLLM:       ollamaObserved,
+		llmResolver: llmResolver,
+		TitleModel:  "openai/gpt-5.4",
+		// localLLM:       ollamaObserved,
 		localModel:     "gemma4",
 		telemetry:      cfg.telemetry,
 		redisClient:    cfg.redis,
@@ -172,16 +124,9 @@ func NewAgent(toolRegistry *tools.ToolRegistry, opts ...AgentOption) (*Agent, er
 		maxTurns:       10,
 		maxToolCalls:   10,
 		pennywiseAPI:   cfg.pennywiseAPI,
+		memoryEnabled:  cfg.memoryEnabled,
+		memory:         cfg.memory,
 	}, nil
-}
-
-func firstConfiguredProvider(entries map[string]llm.RegistryEntry) string {
-	for _, provider := range []string{"openai", "anthropic", "openrouter", "ollama"} {
-		if _, ok := entries[provider]; ok {
-			return provider
-		}
-	}
-	return ""
 }
 
 const redisPubsubStream = "pubsub"
@@ -195,6 +140,7 @@ type AgentRunOptions struct {
 	updateRunMetadata bool
 	requiresContext   bool
 	systemPrompt      SystemPrompt
+	memoryEnabled     bool
 }
 
 type AgentRunOption func(*AgentRunOptions)
@@ -223,116 +169,10 @@ func WithSystemPrompt(prompt SystemPrompt) AgentRunOption {
 	}
 }
 
-// Classify sends the user query and category group names to the cloud LLM to
-// extract intent, date range, relevant category groups, and raw payee terms.
-// No entity IDs, balances, payee names, or account names are sent.
-func (a *Agent) Classify(
-	ctx context.Context,
-	query string,
-	groupNames []string,
-	modelName string,
-) (*sharedModel.IntentResult, error) {
-	groupList := strings.Join(groupNames, "\n")
-	userContent := fmt.Sprintf(
-		"current_date: %s\nquery: %q\n\ncategory groups:\n%s",
-		time.Now().Format("2006-01-02"),
-		query,
-		groupList,
-	)
-
-	req := sharedModel.ChatRequest{
-		Model: modelName,
-		Messages: []sharedModel.AgentMessage{
-			{
-				Role:    sharedModel.RoleSystem,
-				Content: []sharedModel.ContentBlock{{Type: "text", Text: agentContext.IntentClassificationPrompt}},
-			},
-			{
-				Role:    sharedModel.RoleUser,
-				Content: []sharedModel.ContentBlock{{Type: "text", Text: userContent}},
-			},
-		},
-		MaxTokens: 512,
-		Stream:    false,
+func WithRunMemoryEnabled(value bool) AgentRunOption {
+	return func(opts *AgentRunOptions) {
+		opts.memoryEnabled = value
 	}
-
-	res, err := a.classifyLLM.Chat(ctx, req)
-	if err != nil {
-		return nil, errs.Wrap(errs.CodeAgentRunCreateFailed, "failed to classify", err)
-	}
-
-	raw := stripMarkdownFence(messageContentText(res.Message.Content))
-	var result sharedModel.IntentResult
-	if err := json.Unmarshal([]byte(raw), &result); err != nil {
-		return nil, errs.Wrap(errs.CodeAgentRunCreateFailed, "failed to parse intent result", err)
-	}
-	return &result, nil
-}
-
-// stripMarkdownFence removes an optional ```json ... ``` (or ``` ... ```) wrapper
-// that some LLMs emit even when asked for raw JSON.
-func stripMarkdownFence(s string) string {
-	s = strings.TrimSpace(s)
-	if strings.HasPrefix(s, "```") {
-		// Drop the opening fence line.
-		if idx := strings.Index(s, "\n"); idx >= 0 {
-			s = s[idx+1:]
-		}
-		// Drop the closing fence.
-		if idx := strings.LastIndex(s, "```"); idx >= 0 {
-			s = s[:idx]
-		}
-		s = strings.TrimSpace(s)
-	}
-	return s
-}
-
-func (a *Agent) TestChat(ctx context.Context, req sharedModel.ChatRequest) (*sharedModel.ChatResponse, error) {
-	req.Stream = false
-
-	userQuery := messageContentText(req.Messages[len(req.Messages)-1].Content)
-	budgetID, _ := uuid.Parse("2166418d-3fa2-4acc-b92c-ab9f36c18d76")
-	log := logger.Logger(ctx)
-
-	// 1. Fetch category group names (safe to send to cloud — no IDs/balances).
-	var groupNames []string
-	if a.contextBuilder != nil {
-		var err error
-		groupNames, err = a.contextBuilder.GetCategoryGroupNames(ctx, budgetID)
-		if err != nil {
-			log.Warn("GetCategoryGroupNames failed, proceeding with empty list", "error", err)
-		}
-	}
-
-	// 2. Classify intent via cloud LLM.
-	intentResult, err := a.Classify(ctx, userQuery, groupNames, a.classifyModel)
-	if err != nil {
-		return nil, errs.Wrap(errs.CodeAgentRunCreateFailed, "test chat error", err)
-	}
-	log.Info("intent classification result", "intent", intentResult)
-
-	// 3. Resolve payee terms locally via vector search — names never leave the machine.
-	var resolvedPayeeIDs []string
-
-	// 4. Build the classification summary response.
-	summary := map[string]any{
-		"intent":           intentResult.Intent,
-		"dateRange":        intentResult.DateRange,
-		"categoryGroups":   intentResult.CategoryGroups,
-		"payeeTerms":       intentResult.PayeeTerms,
-		"resolvedPayeeIDs": resolvedPayeeIDs,
-		"confidence":       intentResult.Confidence,
-	}
-	b, _ := json.Marshal(summary)
-	log.Info("TestChat classification summary", "summary", string(b))
-
-	return &sharedModel.ChatResponse{
-		Model: req.Model,
-		Message: sharedModel.AgentMessage{
-			Role:    sharedModel.RoleAssistant,
-			Content: contentBlocksFromText(string(b)),
-		},
-	}, nil
 }
 
 func (a *Agent) executeTool(
@@ -511,6 +351,19 @@ func contentBlocksFromText(text string) []sharedModel.ContentBlock {
 	}
 }
 
+func nextAgentMessageSequence(messages []sharedModel.AgentMessage) int {
+	maxSequence := 0
+	for _, msg := range messages {
+		if msg.Role == sharedModel.RoleSystem {
+			continue
+		}
+		if msg.Sequence > maxSequence {
+			maxSequence = msg.Sequence
+		}
+	}
+	return maxSequence + 1
+}
+
 func appendMessageTextPart(messageParts *[]sharedModel.MessagePart, text string) {
 	if strings.TrimSpace(text) == "" {
 		return
@@ -571,6 +424,10 @@ func (a *Agent) publishChatStreamEvent(
 	eventType string,
 	message any,
 ) {
+	if a.redisClient == nil {
+		return
+	}
+
 	log := logger.Logger(ctx)
 	dataJSON, err := json.Marshal(map[string]any{
 		"id":      messageId,
@@ -678,7 +535,90 @@ func (a *Agent) runLLMStep(ctx context.Context, req sharedModel.ChatRequest) (sh
 		return sharedModel.StepResult{}, err
 	}
 
-	return chatResToStepResult(*chatRes), nil
+	stepResult := chatResToStepResult(*chatRes)
+	stepResult.MaxTokens = req.MaxTokens
+	return stepResult, nil
+}
+
+type runFinishedContext struct {
+	runOpts        AgentRunOptions
+	runID          string
+	conversationID string
+	messageID      string
+	enabledTools   []string
+	tokenUsage     map[string]int
+	maxTokens      int
+	traceID        string
+	agentToolCalls []map[string]any
+	messageParts   []sharedModel.MessagePart
+	allMessages    []sharedModel.AgentMessage
+}
+
+func (a *Agent) processRunFinish(ctx context.Context, payload runFinishedContext) {
+	log := logger.Logger(ctx)
+
+	if payload.runOpts.updateRunMetadata && payload.runID != "" {
+		runMetadata := map[string]any{
+			"enabledTools": payload.enabledTools,
+			"inputTokens":  payload.tokenUsage["input"],
+			"outputTokens": payload.tokenUsage["output"],
+			"totalTokens":  payload.tokenUsage["input"] + payload.tokenUsage["output"],
+			"maxTokens":    payload.maxTokens,
+			"traceId":      payload.traceID,
+			"toolCalls":    payload.agentToolCalls,
+		}
+		backgroundCtx := utils.DetachedRequestContext(ctx)
+		_, err := transport.Patch[any](
+			backgroundCtx,
+			a.pennywiseAPI,
+			"/api/agent/run/"+payload.runID+"/metadata",
+			nil,
+			runMetadata,
+		)
+		if err != nil {
+			// run metadata update failed, skip all further updates
+			log.Error("error while updating run metadata after run finished", "error", err)
+			return
+		}
+	}
+
+	if payload.conversationID != "" && payload.messageID != "" {
+		// dispatch message update
+		url := fmt.Sprintf("/api/agent/conversations/%s/message/%s", payload.conversationID, payload.messageID)
+		backgroundCtx := utils.DetachedRequestContext(ctx)
+
+		_, err := transport.Patch[any](backgroundCtx, a.pennywiseAPI, url, nil, payload.messageParts)
+		if err != nil {
+			// run metadata update failed, skip all further updates
+			log.Error("error while updating messages parts after run finished", "error", err)
+			return
+		}
+	}
+
+	if a.memoryEnabled && payload.runOpts.memoryEnabled {
+		// update memory
+		if payload.conversationID == "" {
+			return
+		}
+		backgroundCtx := utils.DetachedRequestContext(ctx)
+		conversationUUID, err := uuid.Parse(payload.conversationID)
+		if err != nil {
+			log.Error(
+				"error while parsing conversation id for memory persistence",
+				"conversationId",
+				payload.conversationID,
+				"error",
+				err,
+			)
+			return
+		}
+		a.memory.OnRunPersisted(backgroundCtx, memory.AgentRunData{
+			BudgetID:       utils.MustBudgetID(ctx),
+			UserID:         utils.MustUserID(ctx),
+			ConversationID: conversationUUID,
+			Messages:       payload.allMessages,
+		})
+	}
 }
 
 func (a *Agent) Run(
@@ -690,6 +630,7 @@ func (a *Agent) Run(
 		enableTools:       true,
 		updateRunMetadata: true,
 		requiresContext:   true,
+		memoryEnabled:     true,
 		systemPrompt: SystemPrompt{
 			Message: "",
 			Args:    []any{},
@@ -698,9 +639,8 @@ func (a *Agent) Run(
 	for _, opt := range opts {
 		opt(&runOpts)
 	}
-	log := logger.Logger(ctx)
-	log.Info("context", "userId", ctx)
 
+	log := logger.Logger(ctx)
 	ctx, span := a.telemetry.TraceStart(ctx, "agent.run")
 
 	log.Info("LLM run started", "req", req)
@@ -715,36 +655,26 @@ func (a *Agent) Run(
 		"input":  0,
 		"output": 0,
 	}
+	maxTokensUsed := req.MaxTokens
 
 	messageParts := make([]sharedModel.MessagePart, 0)
 	agentMetaToolCalls := make([]map[string]any, 0)
 
 	defer func() {
 		defer span.End()
-		if runOpts.updateRunMetadata && runID != "" {
-			runMetadata := map[string]any{
-				"enabledTools": enabledTools,
-				"inputTokens":  tokenUsage["input"],
-				"outputTokens": tokenUsage["output"],
-				"totalTokens":  tokenUsage["input"] + tokenUsage["output"],
-				"traceId":      span.SpanContext().SpanID(),
-				"toolCalls":    agentMetaToolCalls,
-			}
-			backgroundCtx := utils.DetachedRequestContext(ctx)
-			go transport.Patch[any](
-				backgroundCtx,
-				a.pennywiseAPI,
-				"/api/agent/run/"+runID+"/metadata",
-				nil,
-				runMetadata,
-			)
-		}
-		if conversationID != "" && messageID != "" {
-			// dispatch message update
-			url := fmt.Sprintf("/api/agent/conversations/%s/message/%s", conversationID, messageID)
-			backgroundCtx := utils.DetachedRequestContext(ctx)
-			go transport.Patch[any](backgroundCtx, a.pennywiseAPI, url, nil, messageParts)
-		}
+		go a.processRunFinish(ctx, runFinishedContext{
+			runOpts:        runOpts,
+			runID:          runID,
+			conversationID: conversationID,
+			messageID:      messageID,
+			enabledTools:   enabledTools,
+			tokenUsage:     tokenUsage,
+			maxTokens:      maxTokensUsed,
+			traceID:        span.SpanContext().SpanID().String(),
+			agentToolCalls: agentMetaToolCalls,
+			messageParts:   messageParts,
+			allMessages:    req.Messages,
+		})
 	}()
 
 	var err error
@@ -753,6 +683,7 @@ func (a *Agent) Run(
 
 	messages := make([]sharedModel.AgentMessage, len(req.Messages), len(req.Messages)+1)
 	copy(messages, req.Messages)
+	assistantSequence := nextAgentMessageSequence(messages)
 
 	// Enrich with tools
 	if runOpts.enableTools && len(a.toolRegistry.GetAllTools()) > 0 {
@@ -805,6 +736,9 @@ func (a *Agent) Run(
 
 		tokenUsage["input"] += stepResult.Usage.InputTokens
 		tokenUsage["output"] += stepResult.Usage.OutputTokens
+		if stepResult.MaxTokens > 0 {
+			maxTokensUsed = stepResult.MaxTokens
+		}
 
 		lastStepResult = stepResult
 		hasStepResult = true
@@ -891,22 +825,33 @@ func (a *Agent) Run(
 			// Preserve the assistant message that requested tools before appending
 			// provider-neutral tool result messages.
 			messages = append(messages, sharedModel.AgentMessage{
+				Sequence:  assistantSequence,
 				Role:      sharedModel.RoleAssistant,
 				Content:   contentBlocksFromText(stepResult.Text),
 				ToolCalls: stepResult.ToolCalls,
 			})
 			for i := range toolResults {
 				messages = append(messages, sharedModel.AgentMessage{
+					Sequence:   assistantSequence,
 					Role:       sharedModel.RoleTool,
 					ToolResult: &toolResults[i],
 				})
 			}
+			req.Messages = messages
 			continue
 
 		case sharedModel.StopReasonEndTurn:
 			appendMessageTextPart(&messageParts, stepResult.Text)
 
+			messages = append(messages, sharedModel.AgentMessage{
+				Sequence: assistantSequence,
+				Role:     sharedModel.RoleAssistant,
+				Content:  contentBlocksFromText(stepResult.Text),
+			})
+			req.Messages = messages
+
 			res := stepResultToChatResponse(req.Model, stepResult)
+			res.Message.Sequence = assistantSequence
 			log.Info("StopReasonEndTurn", "res", *res)
 			log.Info("llm response done: run loop is closing", "res", res)
 			recordAgentSuccess(span, res, turnCount, totalToolCalls)
