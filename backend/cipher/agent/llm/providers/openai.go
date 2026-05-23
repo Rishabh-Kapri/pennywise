@@ -442,6 +442,7 @@ func (c *openAIClient) Stream(ctx context.Context, req sharedModel.ChatRequest) 
 						} `json:"usage"`
 					} `json:"response"`
 				}
+
 				if json.Unmarshal(event.Data, &ev) == nil {
 					response := openAIRes{
 						Status: ev.Response.Status,
