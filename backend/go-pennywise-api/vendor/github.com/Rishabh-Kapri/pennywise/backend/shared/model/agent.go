@@ -28,6 +28,7 @@ type ContentBlock struct {
 }
 
 type AgentMessage struct {
+	Sequence   int
 	Role       Role
 	Content    []ContentBlock
 	ToolCalls  []ToolCall
@@ -129,7 +130,8 @@ type StreamChunk struct {
 
 	OutputIndex int
 
-	Usage Usage
+	Usage      Usage
+	StopReason StopReason
 }
 
 // Accumulated result of a single llm call
@@ -137,6 +139,7 @@ type StepResult struct {
 	Text       string
 	ToolCalls  []ToolCall
 	Usage      Usage
+	MaxTokens  int
 	Err        error
 	StopReason StopReason
 }
@@ -280,4 +283,37 @@ type AgentWorkingMemory struct {
 	CreatedAt *time.Time      `json:"created_at,omitempty"`
 	UpdatedAt *time.Time      `json:"updated_at,omitempty"`
 	DeletedAt *time.Time      `json:"deleted_at,omitempty"`
+}
+
+type ObservationPriority string
+
+const (
+	ObservationPriorityHigh      ObservationPriority = "high"
+	ObservationPriorityMedium    ObservationPriority = "medium"
+	ObservationPriorityLow       ObservationPriority = "low"
+	ObservationPriorityCompleted ObservationPriority = "completed"
+)
+
+type AgentObservations struct {
+	Date                string              `json:"date"`
+	Time                string              `json:"time"`
+	Priority            ObservationPriority `json:"priority"`
+	Text                string              `json:"text"`
+	SupportingDetails   []string            `json:"supportingDetails"`
+	ReferencedTimeRange string              `json:"referencedTimeRange"`
+}
+
+type AgentObservationalMemory struct {
+	ID                uuid.UUID           `json:"id"`
+	BudgetID          uuid.UUID           `json:"budgetId"`
+	UserID            uuid.UUID           `json:"userId"`
+	ConversationID    uuid.UUID           `json:"conversationId"`
+	SequenceStart     int                 `json:"sequenceStart"`
+	SequenceEnd       int                 `json:"sequenceEnd"`
+	Observations      []AgentObservations `json:"observations"`
+	CurrentTask       *string             `json:"currentTask"`
+	SuggestedResponse *string             `json:"suggestedResponse"`
+	CreatedAt         *time.Time          `json:"createdAt,omitempty"`
+	UpdatedAt         *time.Time          `json:"updatedAt,omitempty"`
+	DeletedAt         *time.Time          `json:"deletedAt,omitempty"`
 }

@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"encoding/json"
+
+	// "encoding/json"
 	stderrors "errors"
 	"fmt"
 	"strings"
@@ -10,6 +12,8 @@ import (
 	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+
+	// "github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
@@ -37,7 +41,10 @@ func NewCipherAgentClient(client *transport.Client) AgentClient {
 	return &cipherAgentClient{client: client}
 }
 
-func (c *cipherAgentClient) CreateRun(ctx context.Context, req sharedModel.AgentRunCreateRequest) (*sharedModel.AgentRun, error) {
+func (c *cipherAgentClient) CreateRun(
+	ctx context.Context,
+	req sharedModel.AgentRunCreateRequest,
+) (*sharedModel.AgentRun, error) {
 	return transport.Post[*sharedModel.AgentRun](ctx, c.client, "/api/agent/runs", nil, req)
 }
 
@@ -62,6 +69,7 @@ type AgentService interface {
 	GetRun(ctx context.Context, id uuid.UUID) (*sharedModel.AgentRun, error)
 	CancelRun(ctx context.Context, id uuid.UUID) (*sharedModel.AgentRun, error)
 	UpdateConversation(ctx context.Context, conversationID uuid.UUID, data sharedModel.AgentConversation) error
+	DeleteConversation(ctx context.Context, conversationID uuid.UUID) error
 	UpdateConversationMessageContent(ctx context.Context, messageID uuid.UUID, message []sharedModel.MessagePart) error
 	UpdateEntityMetadata(ctx context.Context, entity string, id uuid.UUID, data map[string]any) error
 }
@@ -82,14 +90,20 @@ func (s *agentService) GetConversations(ctx context.Context) ([]sharedModel.Agen
 	return s.repo.GetAllConversations(ctx, userID, budgetID)
 }
 
-func (s *agentService) GetConversationMessages(ctx context.Context, id uuid.UUID) ([]sharedModel.ConversationMessage, error) {
+func (s *agentService) GetConversationMessages(
+	ctx context.Context,
+	id uuid.UUID,
+) ([]sharedModel.ConversationMessage, error) {
 	_ = utils.MustBudgetID(ctx)
 	_ = utils.MustUserID(ctx)
 
 	return s.repo.ListConversationMessages(ctx, id, nil)
 }
 
-func (s *agentService) CreateRun(ctx context.Context, req sharedModel.AgentRunCreateRequest) (*sharedModel.AgentRun, error) {
+func (s *agentService) CreateRun(
+	ctx context.Context,
+	req sharedModel.AgentRunCreateRequest,
+) (*sharedModel.AgentRun, error) {
 	log := logger.Logger(ctx)
 	if s.client == nil {
 		return nil, errs.New(errs.CodeInternalError, "agent client is not configured")
@@ -354,8 +368,27 @@ func (s *agentService) CancelRun(ctx context.Context, id uuid.UUID) (*sharedMode
 	return s.setRunStatus(ctx, id, budgetID, sharedModel.AgentRunStatusCancelled, nil)
 }
 
-func (s *agentService) UpdateConversation(ctx context.Context, conversationID uuid.UUID, data sharedModel.AgentConversation) error {
+func (s *agentService) UpdateConversation(
+	ctx context.Context,
+	conversationID uuid.UUID,
+	data sharedModel.AgentConversation,
+) error {
 	return s.repo.UpdateConversation(ctx, nil, conversationID, data)
+}
+
+func (s *agentService) DeleteConversation(ctx context.Context, conversationID uuid.UUID) error {
+	if s.repo == nil {
+		return errs.New(errs.CodeInternalError, "agent repository is not configured")
+	}
+
+	userID, budgetID, err := agentContext(ctx)
+	if err != nil {
+		return err
+	}
+
+	return utils.WithTx(ctx, s.repo.GetDB(), func(tx pgx.Tx) error {
+		return s.repo.DeleteConversation(ctx, tx, conversationID, userID, budgetID)
+	})
 }
 
 func (s *agentService) UpdateConversationMessageContent(

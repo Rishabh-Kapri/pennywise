@@ -12,7 +12,7 @@ import {
   View,
   type ListRenderItem
 } from 'react-native';
-import { Bot, ChevronDown, MessagesSquare, Plus, Send, Sparkles, X } from 'lucide-react-native';
+import { Bot, ChevronDown, MessagesSquare, Plus, Send, Sparkles, Trash2, X } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppDispatch, useAppSelector } from '../../../app/hooks';
 import { AppText } from '../../../components/AppText';
@@ -22,6 +22,7 @@ import {
   AGENT_MODEL_OPTIONS,
   clearAgentChat,
   createAgentRun,
+  deleteAgentConversation,
   fetchAgentConversationMessages,
   listAgentConversations,
   selectAgentChatHistory,
@@ -32,7 +33,7 @@ import {
   selectSelectedAgentModelKey,
   setSelectedAgentModel
 } from '../store/agentSlice';
-import type { AgentChatMessage, MessagePart } from '../types';
+import type { AgentChatHistoryItem, AgentChatMessage, MessagePart } from '../types';
 import { selectSelectedBudget } from '../../budget/store/budgetSlice';
 
 const SUGGESTIONS = ['Summarize my spending', 'Find unusual transactions', 'Help plan next month'];
@@ -174,6 +175,8 @@ export function AgentChat() {
   const [isModelOpen, setIsModelOpen] = useState(false);
   const [composerValue, setComposerValue] = useState('');
   const [isAwaitingAgentResponse, setIsAwaitingAgentResponse] = useState(false);
+  const [conversationToDelete, setConversationToDelete] = useState<AgentChatHistoryItem | null>(null);
+  const [isDeletingConversation, setIsDeletingConversation] = useState(false);
   const metadataSyncedConversationRef = useRef<string | null>(null);
   const messagesListRef = useRef<FlatList<AgentChatMessage>>(null);
   const composerInputRef = useRef<TextInput>(null);
@@ -198,6 +201,7 @@ export function AgentChat() {
   const headerTitle = selectedConversation?.title ?? 'Penny Agent';
   const canOpenHistory = !isSending && chatHistory.length > 0;
   const canOpenModels = !isSending && hasSelectedBudget;
+  const deleteConversationTitle = conversationToDelete?.title?.trim() || 'this chat';
 
   const focusComposerInput = useCallback(() => {
     if (!isOpen || !hasSelectedBudget) {
@@ -339,6 +343,40 @@ export function AgentChat() {
     [dispatch, isSending]
   );
 
+  const handleRequestDeleteConversation = useCallback(
+    (conversation: AgentChatHistoryItem) => {
+      if (isSending || isDeletingConversation) {
+        return;
+      }
+
+      setConversationToDelete(conversation);
+    },
+    [isDeletingConversation, isSending]
+  );
+
+  const handleCancelDeleteConversation = useCallback(() => {
+    if (isDeletingConversation) {
+      return;
+    }
+
+    setConversationToDelete(null);
+  }, [isDeletingConversation]);
+
+  const handleConfirmDeleteConversation = useCallback(async () => {
+    if (!conversationToDelete || isDeletingConversation) {
+      return;
+    }
+
+    setIsDeletingConversation(true);
+    try {
+      await dispatch(deleteAgentConversation(conversationToDelete.id)).unwrap();
+      setConversationToDelete(null);
+      setIsHistoryOpen(false);
+    } finally {
+      setIsDeletingConversation(false);
+    }
+  }, [conversationToDelete, dispatch, isDeletingConversation]);
+
   const handleSelectModel = useCallback(
     (modelKey: string) => {
       if (isSending || !hasSelectedBudget) {
@@ -417,17 +455,34 @@ export function AgentChat() {
               <View style={styles.historyPanel}>
                 <ScrollView style={styles.historyScroll} showsVerticalScrollIndicator={false}>
                   {chatHistory.map((conversation) => (
-                    <Pressable
+                    <View
                       key={conversation.id}
-                      accessibilityRole="button"
                       style={[
-                        styles.historyOption,
+                        styles.historyRow,
                         conversation.id === currentConversationId && styles.optionActive
                       ]}
-                      onPress={() => handleSelectChat(conversation.id)}
                     >
-                      <AppText numberOfLines={2}>{conversation.title}</AppText>
-                    </Pressable>
+                      <Pressable
+                        accessibilityRole="button"
+                        style={({ pressed }) => [styles.historyOption, pressed && styles.pressed]}
+                        onPress={() => handleSelectChat(conversation.id)}
+                      >
+                        <AppText numberOfLines={2}>{conversation.title}</AppText>
+                      </Pressable>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Delete ${conversation.title}`}
+                        disabled={isDeletingConversation}
+                        style={({ pressed }) => [
+                          styles.historyDeleteButton,
+                          isDeletingConversation && styles.disabled,
+                          pressed && styles.pressed
+                        ]}
+                        onPress={() => handleRequestDeleteConversation(conversation)}
+                      >
+                        <Trash2 size={16} color={colors.danger} />
+                      </Pressable>
+                    </View>
                   ))}
                 </ScrollView>
               </View>
@@ -531,6 +586,52 @@ export function AgentChat() {
           </KeyboardAvoidingView>
         </SafeAreaView>
       </Modal>
+
+      <Modal
+        transparent
+        visible={Boolean(conversationToDelete)}
+        animationType="fade"
+        onRequestClose={handleCancelDeleteConversation}
+      >
+        <View style={styles.confirmBackdrop}>
+          <View style={styles.confirmDialog}>
+            <AppText weight="bold" style={styles.confirmTitle}>
+              Delete chat?
+            </AppText>
+            <AppText muted style={styles.confirmText}>
+              This will remove "{deleteConversationTitle}" from your chat history.
+            </AppText>
+            <View style={styles.confirmActions}>
+              <Pressable
+                accessibilityRole="button"
+                disabled={isDeletingConversation}
+                style={({ pressed }) => [styles.confirmCancelButton, isDeletingConversation && styles.disabled, pressed && styles.pressed]}
+                onPress={handleCancelDeleteConversation}
+              >
+                <AppText weight="semibold">Cancel</AppText>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                disabled={isDeletingConversation}
+                style={({ pressed }) => [
+                  styles.confirmDeleteButton,
+                  isDeletingConversation && styles.disabled,
+                  pressed && styles.pressed
+                ]}
+                onPress={handleConfirmDeleteConversation}
+              >
+                {isDeletingConversation ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <AppText weight="bold" style={styles.confirmDeleteText}>
+                    Delete
+                  </AppText>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
@@ -617,11 +718,25 @@ const styles = StyleSheet.create({
   historyScroll: {
     maxHeight: 168
   },
+  historyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 44,
+    borderRadius: radii.md
+  },
   historyOption: {
+    flex: 1,
     minHeight: 44,
     justifyContent: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingLeft: spacing.md,
+    paddingRight: spacing.sm,
+    paddingVertical: spacing.sm
+  },
+  historyDeleteButton: {
+    width: 38,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: radii.md
   },
   optionActive: {
@@ -798,5 +913,54 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.78
+  },
+  confirmBackdrop: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.lg,
+    backgroundColor: 'rgba(0, 0, 0, 0.48)'
+  },
+  confirmDialog: {
+    width: '100%',
+    maxWidth: 360,
+    gap: spacing.md,
+    padding: spacing.lg,
+    borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderMuted,
+    backgroundColor: colors.surface
+  },
+  confirmTitle: {
+    fontSize: 18,
+    lineHeight: 24
+  },
+  confirmText: {
+    lineHeight: 21
+  },
+  confirmActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.md
+  },
+  confirmCancelButton: {
+    minHeight: 42,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderMuted
+  },
+  confirmDeleteButton: {
+    minWidth: 88,
+    minHeight: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.lg,
+    borderRadius: radii.md,
+    backgroundColor: colors.danger
+  },
+  confirmDeleteText: {
+    color: '#ffffff'
   }
 });

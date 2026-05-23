@@ -64,7 +64,7 @@ func ProcessStream(
 	handlerCallback StreamHandler,
 ) sharedModel.StepResult {
 	log := logger.Logger(ctx)
-	var stepResult sharedModel.StepResult
+	stepResult := sharedModel.StepResult{MaxTokens: req.MaxTokens}
 	var text strings.Builder
 	var hasFunctionCall bool
 
@@ -143,6 +143,8 @@ func ProcessStream(
 				text.Reset()
 				if hasFunctionCall || len(stepResult.ToolCalls) > 0 {
 					stepResult.StopReason = sharedModel.StopReasonToolUse
+				} else if event.StopReason != "" {
+					stepResult.StopReason = event.StopReason
 				} else {
 					stepResult.StopReason = sharedModel.StopReasonEndTurn
 				}

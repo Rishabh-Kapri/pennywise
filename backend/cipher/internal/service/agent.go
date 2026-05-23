@@ -9,8 +9,11 @@ import (
 	"time"
 
 	agentPrompts "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/context"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/memory"
 	agent "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/runtime"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
+
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
@@ -36,17 +39,36 @@ func (e *ClarifyError) StatusCode() int { return http.StatusUnprocessableEntity 
 
 type agentService struct {
 	agent         *agent.Agent
+	agentMemoryRepo db.AgentMemoryRepository
 	pennywiseAPI  *transport.Client
 	memoryService memory.Memory
+	llmResolver   llm.LLMResolver
 }
 
-func NewAgentService(a *agent.Agent, pennywiseClient *transport.Client, memoryService memory.Memory) AgentService {
-	return &agentService{agent: a, pennywiseAPI: pennywiseClient, memoryService: memoryService}
+func NewAgentService(
+	a *agent.Agent,
+	pennywiseClient *transport.Client,
+	memoryService memory.Memory,
+	llmResolver llm.LLMResolver,
+) AgentService {
+	return &agentService{
+		agent:         a,
+		pennywiseAPI:  pennywiseClient,
+		memoryService: memoryService,
+		llmResolver:   llmResolver,
+	}
 }
 
 // title model is in format "provider/model"
 func titleChatRequest(model string, message string, metadata map[string]string) sharedModel.ChatRequest {
 	values := strings.Split(model, "/")
+
+	systemPrompt := sharedModel.AgentMessage{
+		Role: sharedModel.RoleSystem,
+		Content: []sharedModel.ContentBlock{
+			{Type: "text", Text: agentPrompts.TitleGenerationPrompt},
+		},
+	}
 
 	userMessage := sharedModel.AgentMessage{
 		Role: sharedModel.RoleUser,
@@ -60,7 +82,7 @@ func titleChatRequest(model string, message string, metadata map[string]string) 
 		MaxTokens:   24,
 		Temperature: 0,
 		Stream:      false,
-		Messages:    []sharedModel.AgentMessage{userMessage},
+		Messages:    []sharedModel.AgentMessage{systemPrompt, userMessage},
 		Metadata:    metadata,
 	}
 }
@@ -169,6 +191,7 @@ func agentRunToChatRequest(req sharedModel.AgentRunCreateRequest) sharedModel.Ch
 		maxTokens = *req.MaxTokens
 	}
 
+	latestSequence := 0
 	messages := make([]sharedModel.AgentMessage, 0, len(req.PrevMessages)+1)
 
 	runsByID := make(map[uuid.UUID]sharedModel.AgentRun, len(req.PrevRuns))
@@ -178,6 +201,9 @@ func agentRunToChatRequest(req sharedModel.AgentRunCreateRequest) sharedModel.Ch
 
 	if len(req.PrevMessages) > 0 {
 		for _, msg := range req.PrevMessages {
+			if msg.Sequence > latestSequence {
+				latestSequence = msg.Sequence
+			}
 			parts := conversationMessageParts(msg.Content)
 			switch msg.Role {
 			case sharedModel.RoleSystem:
@@ -187,6 +213,7 @@ func agentRunToChatRequest(req sharedModel.AgentRunCreateRequest) sharedModel.Ch
 					continue
 				}
 				messages = append(messages, sharedModel.AgentMessage{
+					Sequence: msg.Sequence,
 					Role:    msg.Role,
 					Content: content,
 				})
@@ -199,6 +226,7 @@ func agentRunToChatRequest(req sharedModel.AgentRunCreateRequest) sharedModel.Ch
 						if len(content) > 0 {
 							// append to the assistant messages
 							assistantMessages = append(assistantMessages, sharedModel.AgentMessage{
+								Sequence: msg.Sequence,
 								Role:    msg.Role,
 								Content: contentBlocksFromMessageParts(part),
 							})
@@ -239,11 +267,14 @@ func agentRunToChatRequest(req sharedModel.AgentRunCreateRequest) sharedModel.Ch
 
 				if len(toolCalls) > 0 {
 					messages = append(messages, sharedModel.AgentMessage{
+						Sequence: msg.Sequence,
 						Role:      sharedModel.RoleAssistant,
 						ToolCalls: toolCalls,
 					})
+
 					for i := range toolResults {
 						messages = append(messages, sharedModel.AgentMessage{
+							Sequence: msg.Sequence,
 							Role:       sharedModel.RoleTool,
 							ToolResult: &toolResults[i],
 						})
@@ -258,6 +289,7 @@ func agentRunToChatRequest(req sharedModel.AgentRunCreateRequest) sharedModel.Ch
 	}
 
 	messages = append(messages, sharedModel.AgentMessage{
+		Sequence: latestSequence+1,
 		Role: sharedModel.RoleUser,
 		Content: []sharedModel.ContentBlock{
 			{Type: "text", Text: req.Message},
@@ -293,17 +325,8 @@ func (s *agentService) CreateRun(
 	ctx context.Context,
 	req sharedModel.AgentRunCreateRequest,
 ) (*sharedModel.AgentRun, error) {
-	// Step 1 — Router: classify intent, resolve payees, load scoped context.
-	// If the date range is unresolved the router returns NeedsClarify; we stop
-	// here and return a typed error so the handler can surface the question to
-	// the user without starting an agent run.
-	// routerResult, err := s.router.Route(ctx, budgetID, req.Message)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("agent router: %w", err)
-	// }
-	// if routerResult.NeedsClarification {
-	// 	return nil, &ClarifyError{Prompt: routerResult.ClarifyPrompt}
-	// }
+	log := logger.Logger(ctx)
+
 	if req.RunID == nil {
 		return nil, &ClarifyError{Prompt: "runId is required"}
 	}
@@ -311,13 +334,21 @@ func (s *agentService) CreateRun(
 	budgetID := utils.MustBudgetID(ctx)
 	userID, _ := utils.UserIDFromContext(ctx)
 
-	// Step 2 — Build chat request and inject router-enriched context.
 	chatReq := agentRunToChatRequest(req)
-	// chatReq = injectRouterContext(chatReq, routerResult)
-	logger.Logger(ctx).Info(s.memoryService.GetWorkingMemory(ctx, budgetID))
 
+	context, err := s.memoryService.PrepareContext(ctx, memory.MemoryContextRequest{
+		Messages: chatReq.Messages,
+		BudgetID: budgetID,
+		UserID: userID,
+		ConversationID: *req.ConversationID,
+	})
+	if err != nil {
+		log.Error("error while getting context from memory", "error", err)
+		return nil, err
+	}
 
-	// Step 3 — Run the agent loop.
+	chatReq.Messages = context.Messages
+
 	systemPrompt := agent.SystemPrompt{
 		Message: agentPrompts.SystemPrompt,
 		Args: []any{
@@ -326,7 +357,12 @@ func (s *agentService) CreateRun(
 			budgetID.String(),
 		}, // current date, working memory, budgetID
 	}
-	res, err := s.agent.Run(ctx, chatReq, agent.WithSystemPrompt(systemPrompt))
+
+	res, err := s.agent.Run(
+		ctx,
+		chatReq,
+		agent.WithSystemPrompt(systemPrompt),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -340,18 +376,24 @@ func (s *agentService) CreateRun(
 		ctxBackground := utils.DetachedRequestContext(ctx)
 
 		go func() {
-			titleRes, err := s.agent.Run(
-				ctxBackground,
-				titleChatRequest(s.agent.TitleModel, req.Message, nil),
-				agent.WithToolsEnabled(false),
-				agent.WithUpdateMetadata(false),
-				agent.WithRequiresContext(false),
-				agent.WithSystemPrompt(agent.SystemPrompt{Message: agentPrompts.TitleGenerationPrompt}),
-			)
+			log := logger.Logger(ctxBackground)
+
+			titleReq := titleChatRequest(s.agent.TitleModel, req.Message, nil)
+
+			client, model, err := s.llmResolver.Resolve(titleReq.Provider, titleReq.Model)
 			if err != nil {
-				logger.Logger(ctxBackground).Error("error while generating title", "error", err)
+				log.Error("error while resolving llm for title request", "error", err)
+				return
 			}
-			logger.Logger(ctxBackground).Info("title res", "res", titleRes)
+
+			titleReq.Model = model
+			titleRes, err := client.Chat(ctxBackground, titleReq)
+			if err != nil {
+				log.Error("error while generating title", "error", err)
+			}
+
+			log.Info("title res", "res", titleRes)
+
 			if titleRes.Message.Content != nil {
 				title := strings.TrimSpace(string(titleRes.Message.Content[0].Text))
 				url := fmt.Sprintf("/api/agent/conversations/%s", req.ConversationID.String())
@@ -370,6 +412,7 @@ func (s *agentService) CreateRun(
 	if req.AgentKey != nil {
 		agentKey = *req.AgentKey
 	}
+
 	run := &sharedModel.AgentRun{
 		ID:             *req.RunID,
 		AgentKey:       agentKey,
@@ -392,72 +435,6 @@ func (s *agentService) CreateRun(
 	}
 	return run, nil
 }
-
-// injectRouterContext prepends a system message that summarises the router
-// result (intent, date range, scoped categories/payees/spend totals) so the
-// chat agent has structured context without touching raw DB rows.
-// func injectRouterContext(req sharedModel.ChatRequest, r *agentRouter.RouterResult) sharedModel.ChatRequest {
-// 	if r == nil {
-// 		return req
-// 	}
-//
-// 	routerCtx := fmt.Sprintf(
-// 		"[Router context]\nintent: %s\ndate_range: from=%s to=%s\ncategory_groups: %v",
-// 		r.Intent,
-// 		func() string {
-// 			if r.DateRange != nil {
-// 				return r.DateRange.From
-// 			}
-// 			return ""
-// 		}(),
-// 		func() string {
-// 			if r.DateRange != nil {
-// 				return r.DateRange.To
-// 			}
-// 			return ""
-// 		}(),
-// 		r.CategoryGroups,
-// 	)
-//
-// 	if r.ScopedContext != nil {
-// 		routerCtx += fmt.Sprintf(
-// 			"\n\nscoped_categories_spend (name → total):\n",
-// 		)
-// 		for _, cs := range r.ScopedContext.Categories {
-// 			routerCtx += fmt.Sprintf("  %s: %.2f\n", cs.Name, cs.TotalSpend)
-// 		}
-// 		if len(r.ScopedContext.PayeeNames) > 0 {
-// 			routerCtx += fmt.Sprintf("active_payees: %v\n", r.ScopedContext.PayeeNames)
-// 		}
-// 	}
-//
-// 	if len(r.ResolvedPayees) > 0 {
-// 		routerCtx += "\nresolved_payee_ids:\n"
-// 		for _, rp := range r.ResolvedPayees {
-// 			routerCtx += fmt.Sprintf("  term=%q id=%s score=%.3f\n", rp.Term, rp.ID, rp.Score)
-// 		}
-// 	}
-//
-// 	contextMsg := sharedModel.AgentMessage{
-// 		Role: sharedModel.RoleSystem,
-// 		Content: []sharedModel.ContentBlock{
-// 			{Type: "text", Text: routerCtx},
-// 		},
-// 	}
-//
-// 	// Insert after any existing system messages but before user turn.
-// 	messages := make([]sharedModel.AgentMessage, 0, len(req.Messages)+1)
-// 	insertAt := 0
-// 	for insertAt < len(req.Messages) && req.Messages[insertAt].Role == sharedModel.RoleSystem {
-// 		insertAt++
-// 	}
-// 	messages = append(messages, req.Messages[:insertAt]...)
-// 	messages = append(messages, contextMsg)
-// 	messages = append(messages, req.Messages[insertAt:]...)
-//
-// 	req.Messages = messages
-// 	return req
-// }
 
 func (s *agentService) GetRun(ctx context.Context, id uuid.UUID) (*sharedModel.AgentRun, error) {
 	return nil, nil

@@ -74,6 +74,10 @@ github.com/cloudwego/base64x/internal/rt
 # github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 ## explicit
 github.com/davecgh/go-spew/spew
+# github.com/dlclark/regexp2 v1.10.0
+## explicit; go 1.13
+github.com/dlclark/regexp2
+github.com/dlclark/regexp2/syntax
 # github.com/facebookgo/clock v0.0.0-20150410010913-600d898af40a
 ## explicit
 github.com/facebookgo/clock
@@ -227,6 +231,9 @@ github.com/pelletier/go-toml/v2
 github.com/pelletier/go-toml/v2/internal/characters
 github.com/pelletier/go-toml/v2/internal/tracker
 github.com/pelletier/go-toml/v2/unstable
+# github.com/pkoukk/tiktoken-go v0.1.8
+## explicit; go 1.19
+github.com/pkoukk/tiktoken-go
 # github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
 ## explicit
 github.com/pmezard/go-difflib/difflib

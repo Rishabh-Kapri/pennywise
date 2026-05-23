@@ -85,6 +85,13 @@ type AgentRepository interface {
 		runID *uuid.UUID,
 	) ([]model.ConversationMessage, error)
 	UpdateConversation(ctx context.Context, tx pgx.Tx, conversationID uuid.UUID, data model.AgentConversation) error
+	DeleteConversation(
+		ctx context.Context,
+		tx pgx.Tx,
+		conversationID uuid.UUID,
+		userID uuid.UUID,
+		budgetID uuid.UUID,
+	) error
 	// currently appends a whole message content object
 	// @TODO: support content message part append
 	UpdateConversationMessageContent(
@@ -580,6 +587,54 @@ func (r *agentRepo) UpdateConversation(
 		return nil
 	}
 	_, err = r.Executor(tx).Exec(ctx, sql, args...)
+	return err
+}
+
+func (r *agentRepo) DeleteConversation(
+	ctx context.Context,
+	tx pgx.Tx,
+	conversationID uuid.UUID,
+	userID uuid.UUID,
+	budgetID uuid.UUID,
+) error {
+	result, err := r.Executor(tx).Exec(
+		ctx,
+		`UPDATE conversations
+		SET deleted = now(), updated_at = now()
+		WHERE id = $1
+			AND user_id = $2
+			AND budget_id = $3
+			AND deleted IS NULL`,
+		conversationID,
+		userID,
+		budgetID,
+	)
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return errs.New(errs.CodeAgentConversationNotFound, "agent conversation not found")
+	}
+
+	if _, err := r.Executor(tx).Exec(
+		ctx,
+		`UPDATE conversation_messages
+		SET deleted = now(), updated_at = now()
+		WHERE conversation_id = $1
+			AND deleted IS NULL`,
+		conversationID,
+	); err != nil {
+		return err
+	}
+
+	_, err = r.Executor(tx).Exec(
+		ctx,
+		`UPDATE agent_runs
+		SET deleted = now(), updated_at = now()
+		WHERE conversation_id = $1
+			AND deleted IS NULL`,
+		conversationID,
+	)
 	return err
 }
 
