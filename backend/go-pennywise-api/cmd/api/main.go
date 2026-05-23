@@ -254,6 +254,11 @@ func main() {
 				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
 				agentHandler.UpdateConversation,
 			)
+			agentGroup.DELETE(
+				"/conversations/:conversationId",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				agentHandler.DeleteConversation,
+			)
 			agentGroup.PATCH(
 				"/conversations/:conversationId/message/:messageId",
 				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),

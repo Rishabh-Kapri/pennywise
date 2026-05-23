@@ -1,4 +1,4 @@
-package llm
+package providers
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
@@ -93,7 +94,7 @@ type openRouterStreamEvent struct {
 	Error       *openRouterError     `json:"error,omitempty"`
 }
 
-func NewOpenRouterClient() (LLM, error) {
+func NewOpenRouterClient() (llm.LLM, error) {
 	cfg := config.Load()
 	if cfg.OpenRouterAPIKey == "" {
 		return nil, errs.New(errs.CodeInternalError, "no openrouter api key found")
@@ -517,8 +518,9 @@ func (c *openRouterClient) Stream(ctx context.Context, req sharedModel.ChatReque
 			case "response.done", "response.completed":
 				usage = toOpenRouterUsage(ev.Response.Usage)
 				sendOpenRouterChunk(ctx, events, sharedModel.StreamChunk{
-					Type:  sharedModel.ChunkEventCompleted,
-					Usage: usage,
+					Type:       sharedModel.ChunkEventCompleted,
+					Usage:      usage,
+					StopReason: toOpenRouterStopReason(ev.Response),
 				})
 				return
 

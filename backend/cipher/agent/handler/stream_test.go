@@ -26,6 +26,31 @@ func TestProcessStreamIgnoresToolDoneWithoutStart(t *testing.T) {
 	}
 }
 
+func TestProcessStreamRecordsRequestMaxTokens(t *testing.T) {
+	events := make(chan sharedModel.StreamChunk, 1)
+	events <- sharedModel.StreamChunk{Type: sharedModel.ChunkEventCompleted}
+	close(events)
+
+	result := ProcessStream(context.Background(), &sharedModel.ChatRequest{MaxTokens: 4096}, events, StreamHandler{})
+	if got, want := result.MaxTokens, 4096; got != want {
+		t.Fatalf("max tokens = %d, want %d", got, want)
+	}
+}
+
+func TestProcessStreamUsesCompletedChunkStopReason(t *testing.T) {
+	events := make(chan sharedModel.StreamChunk, 1)
+	events <- sharedModel.StreamChunk{
+		Type:       sharedModel.ChunkEventCompleted,
+		StopReason: sharedModel.StopReasonMaxTokens,
+	}
+	close(events)
+
+	result := ProcessStream(context.Background(), &sharedModel.ChatRequest{}, events, StreamHandler{})
+	if result.StopReason != sharedModel.StopReasonMaxTokens {
+		t.Fatalf("stop reason = %s, want %s", result.StopReason, sharedModel.StopReasonMaxTokens)
+	}
+}
+
 func TestProcessStreamDefaultsEmptyToolArgsToObject(t *testing.T) {
 	events := make(chan sharedModel.StreamChunk, 3)
 	events <- sharedModel.StreamChunk{

@@ -1,9 +1,10 @@
-package llm
+package providers
 
 import (
 	"context"
 	"encoding/json"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
@@ -116,7 +117,7 @@ type anthropicStreamErrorEvent struct {
 	Message string `json:"message"`
 }
 
-func NewAnthropicClient(name string) (LLM, error) {
+func NewAnthropicClient(name string) (llm.LLM, error) {
 	config := config.Load()
 	if config.AnthropicAPIKey == "" {
 		return nil, errs.New(errs.CodeInternalError, "no api key found")
@@ -376,6 +377,7 @@ func (c *anthropicClient) Stream(ctx context.Context, req sharedModel.ChatReques
 		defer close(events)
 
 		usage := sharedModel.Usage{}
+		stopReason := sharedModel.StopReasonEndTurn
 
 		for event := range res.Events {
 			var ev anthropicStreamEvent
@@ -454,12 +456,16 @@ func (c *anthropicClient) Stream(ctx context.Context, req sharedModel.ChatReques
 				if ev.Usage.OutputTokens > 0 {
 					usage.OutputTokens = ev.Usage.OutputTokens
 				}
+				if ev.Delta.StopReason != "" {
+					stopReason = toModelStopReason(ev.Delta.StopReason)
+				}
 
 			case "message_stop":
 				usage.TotalTokens = usage.InputTokens + usage.OutputTokens
 				sendAnthropicChunk(ctx, events, sharedModel.StreamChunk{
-					Type:  sharedModel.ChunkEventCompleted,
-					Usage: usage,
+					Type:       sharedModel.ChunkEventCompleted,
+					Usage:      usage,
+					StopReason: stopReason,
 				})
 				return
 

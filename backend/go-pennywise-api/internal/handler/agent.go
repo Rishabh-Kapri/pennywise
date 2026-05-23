@@ -18,6 +18,7 @@ type AgentHandler interface {
 	GetRun(c *gin.Context)
 	CancelRun(c *gin.Context)
 	UpdateConversation(c *gin.Context)
+	DeleteConversation(c *gin.Context)
 	UpdateConversationMessageContent(c *gin.Context)
 	UpdateEntityMetadata(c *gin.Context)
 }
@@ -135,6 +136,23 @@ func (h *agentHandler) UpdateConversation(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, "updated")
+}
+
+func (h *agentHandler) DeleteConversation(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	conversationID, err := parseQueryID(c, "conversationId")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.service.DeleteConversation(ctx, conversationID); err != nil {
+		c.JSON(agentErrorStatus(err), gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "conversation deleted"})
 }
 
 func (h *agentHandler) UpdateConversationMessageContent(c *gin.Context) {

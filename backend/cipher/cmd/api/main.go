@@ -17,6 +17,7 @@ import (
 
 	agentContext "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/context"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm/providers"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/memory"
 	agent "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/runtime"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/tools"
@@ -30,6 +31,7 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
+	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedMiddleware "github.com/Rishabh-Kapri/pennywise/backend/shared/middleware"
@@ -70,6 +72,67 @@ func connectToTemporal(ctx context.Context, cfg config.Config) (tc.Client, error
 	}
 	logger.Logger(ctx).Info("connected to temporal")
 	return c, nil
+}
+
+func getLLMClients(tel otelSDK.TelemetryProvider) (map[string]llm.RegistryEntry, string, error) {
+	appConfig := config.Load()
+	entries := map[string]llm.RegistryEntry{}
+
+	if appConfig.AnthropicAPIKey != "" {
+		c, err := providers.NewAnthropicClient("chat")
+		if err != nil {
+			return nil, "", err
+		}
+		oc := llm.NewObservedLLM(c, tel)
+		entries["anthropic"] = llm.RegistryEntry{Client: oc, DefaultModel: "claude-sonnet-4-6"}
+	}
+
+	if appConfig.OpenAIAPIKey != "" {
+		c, err := providers.NewOpenAIClient()
+		if err != nil {
+			return nil, "", err
+		}
+		oc := llm.NewObservedLLM(c, tel)
+		entries["openai"] = llm.RegistryEntry{Client: oc, DefaultModel: "gpt-4o"}
+	}
+
+	if appConfig.OpenRouterAPIKey != "" {
+		c, err := providers.NewOpenRouterClient()
+		if err != nil {
+			return nil, "", err
+		}
+		oc := llm.NewObservedLLM(c, tel)
+		entries["openrouter"] = llm.RegistryEntry{Client: oc, DefaultModel: "anthropic/claude-haiku-4.5"}
+	}
+
+	ollamaClient, err := providers.NewOllamaClient()
+	if err != nil {
+		return nil, "", err
+	}
+	ollamaObserved := llm.NewObservedLLM(ollamaClient, tel)
+	entries["ollama"] = llm.RegistryEntry{
+		Client:       ollamaObserved,
+		DefaultModel: "gemma4",
+	}
+
+	defaultProvider := appConfig.DefaultAgentProvider
+	if _, ok := entries[defaultProvider]; !ok {
+		defaultProvider = func() string {
+			for _, provider := range []string{"openai", "anthropic", "openrouter", "ollama"} {
+				if _, ok := entries[provider]; ok {
+					return provider
+				}
+			}
+			return ""
+		}()
+	}
+
+	if _, ok := entries[defaultProvider]; !ok {
+		return nil, "", errs.New(errs.CodeInternalError,
+			"default provider %q is not present in registry entries", defaultProvider)
+	}
+
+	return entries, defaultProvider, nil
 }
 
 func main() {
@@ -142,10 +205,6 @@ func main() {
 		tel.Tracer,
 	)
 
-	anthropicClient, err := llm.NewAnthropicClient("classify")
-	if err != nil {
-		logger.Fatal("error while creating classify anthropicClient", "error", err)
-	}
 	toolRegistry := tools.NewToolRegistry()
 	toolRegistry.RegisterTool(tools.NewGetBudgetInfoTool(dbConn))
 	toolRegistry.RegisterTool(tools.NewGetSchemaTool())
@@ -160,29 +219,31 @@ func main() {
 		payeeRepo,
 		categoryGroupRepo,
 	)
+	llmClients, defaultProvider, err := getLLMClients(tel)
+	if err != nil {
+		logger.Fatal("error while getting llm clients", "error", err)
+	}
 
-	classifyLLM := llm.NewObservedLLM(anthropicClient, tel)
+	llmResolver, err := llm.NewLLMRegistry(llmClients, defaultProvider, tel)
+	if err != nil {
+		logger.Fatal("error whiel creating llm registry", "error", err)
+	}
+	memoryService := memory.NewMemoryService(agentMemoryRepo, llmResolver)
+
 	agent, err := agent.NewAgent(
+		llmResolver,
 		toolRegistry,
 		agent.WithTelemetry(tel),
 		agent.WithRedis(redisClient),
-		agent.WithClassifyLLM(classifyLLM, "claude-haiku-4-5"),
 		agent.WithContextBuilder(contextBuilder),
 		agent.WithPennywiseAPI(pennywiseHttpTransport),
+		agent.WithMemory(memoryService),
 	)
 	if err != nil {
 		logger.Fatal("error while creating agent", "error", err)
 	}
 
-	// agentRouterInst, err := agentRouter.NewRouter(
-	// 	agentRouter.WithClassifyLLM(classifyLLM, "claude-haiku-4-5"),
-	// 	agentRouter.WithContextBuilder(contextBuilder),
-	// )
-	// if err != nil {
-	// 	logger.Fatal("error while creating agent router", "error", err)
-	// }
-	memoryService := memory.NewMemoryService(agentMemoryRepo)
-	agentService := service.NewAgentService(agent, pennywiseHttpTransport, memoryService)
+	agentService := service.NewAgentService(agent, pennywiseHttpTransport, memoryService, llmResolver)
 
 	if cfg.Environment != "local" {
 		temporalClient, err = connectToTemporal(ctx, cfg)

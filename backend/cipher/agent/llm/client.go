@@ -19,13 +19,6 @@ type LLM interface {
 	Stream(ctx context.Context, req sharedModel.ChatRequest) <-chan sharedModel.StreamChunk
 }
 
-// LLMResolver resolves a provider + model name to a ready-to-use ObservedLLM.
-// It returns the resolved model name (applying defaults when the caller passes "")
-// so the caller can set req.Model correctly.
-type LLMResolver interface {
-	Resolve(provider, model string) (*ObservedLLM, string, error)
-}
-
 // ObservedLLM wraps any LLM with OpenTelemetry tracing.
 // It holds the TelemetryProvider interface so a no-op provider can be
 // substituted safely (avoids nil-dereference on zero-value Telemetry struct).
