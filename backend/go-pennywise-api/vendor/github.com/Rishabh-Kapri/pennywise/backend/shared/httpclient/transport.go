@@ -215,19 +215,19 @@ func (h *httpTransport) do(
 
 	result.StatusCode = res.StatusCode
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		// body, _ := io.ReadAll(res.Body)
+		body, _ := io.ReadAll(res.Body)
 		res.Body.Close()
-		// log.Error(
-		// 	"request failed",
-		// 	"method",
-		// 	req.Method,
-		// 	"url",
-		// 	req.URL.String(),
-		// 	"status",
-		// 	res.StatusCode,
-		// 	"body",
-		// 	string(body),
-		// )
+		log.Error(
+			"request failed",
+			"method",
+			req.Method,
+			"url",
+			req.URL.String(),
+			"status",
+			res.StatusCode,
+			"body",
+			string(body),
+		)
 		return result, errs.New(
 			errs.CodeHTTPClientError,
 			"%s request for %s failed with status code: %d",
