@@ -12,6 +12,7 @@ help:
 	@echo "  make build   Build binary into ./bin"
 	@echo "  make test    Run tests"
 	@echo "  make check   Run fmt, vet, and tests"
+	@echo "  make vendor  Run vendor to add the shared modules"
 
 run:
 	$(GO) run ./cmd
@@ -35,7 +36,7 @@ tidy:
 	$(GO) mod tidy
 
 vendor:
-	$(GO) mod vendor
+	GOWORK=off $(GO) mod vendor
 
 clean:
 	rm -rf $(BIN_DIR)

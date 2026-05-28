@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS working_memory (
     document JSONB NOT NULL DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    deleted_at TIMESTAMPTZ,
+    deleted_at TIMESTAMPTZ
 );
 
 -- +goose StatementEnd

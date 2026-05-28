@@ -12,8 +12,9 @@ COPY vendor/ ./vendor/
 # Copy source
 COPY . .
 
-# Build
+# Build runtime and migration binaries
 RUN go build -mod=vendor -o api ./cmd/api
+RUN go build -mod=vendor -o migrations ./cmd/migrations
 
 # Stage 2: Create a minimal image
 FROM alpine:latest
@@ -25,6 +26,7 @@ WORKDIR /root/
 
 # Copy binary from build-stage
 COPY --from=build-stage /app/api .
+COPY --from=build-stage /app/migrations .
 
 # Set timezone for logs and time library
 ENV TZ=Asia/Kolkata
