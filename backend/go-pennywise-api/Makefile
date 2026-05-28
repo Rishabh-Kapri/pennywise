@@ -9,7 +9,7 @@ MIGRATIONS_DIR ?= .
 
 help:
 	@echo "Go API targets:"
-	@echo "  make run              Run API server"
+	@echo "  make run               Run API server"
 	@echo "  make build            Build API binary into ./bin"
 	@echo "  make test             Run tests"
 	@echo "  make check            Run fmt, vet, and tests"
@@ -19,6 +19,7 @@ help:
 	@echo "  make migrate-status   Show migration status"
 	@echo "  make migrate-version  Show current migration version"
 	@echo "  make migrate-baseline Mark seed migrations as applied"
+	@echo "  make vendor           Run vendor to add the shared modules"
 
 run:
 	$(GO) run ./cmd/api
@@ -42,7 +43,7 @@ tidy:
 	$(GO) mod tidy
 
 vendor:
-	$(GO) mod vendor
+	GOWORK=off $(GO) mod vendor
 
 clean:
 	rm -rf $(BIN_DIR)

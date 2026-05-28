@@ -1,38 +1,216 @@
-version: '3.9'
-
 services:
-  gmail-watch:
-    build:
-      context: ./backend/go-gmail
-    ports:
-      - '5000:8080'
-    env_file:
-      - ./backend/go-gmail/.env
+  postgres:
+    image: pgvector/pgvector:pg17
     environment:
-      - GOOGLE_APPLICATION_CREDENTIALS=/secrets/service-account.json
+      POSTGRES_USER: ${POSTGRES_USER:-pennywise}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pennywise}
+      POSTGRES_DB: ${POSTGRES_DB:-pennywise}
     volumes:
-      - ./backend/go-gmail/pennywise-39654-c87f94721374.json:/secrets/service-account.json:ro
-    depends_on:
-      - python-mlp
-      - pennywise-api
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
     restart: unless-stopped
 
-  python-mlp:
-    build:
-      context: ./backend/python-mlp
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  temporal:
+    image: temporalio/auto-setup:${TEMPORAL_VERSION:-1.29.6.1}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      DBNAME: ${TEMPORAL_DB:-temporal}
+      VISIBILITY_DBNAME: ${TEMPORAL_VISIBILITY_DB:-temporal_visibility}
+      POSTGRES_SEEDS: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-pennywise}
+      POSTGRES_PWD: ${POSTGRES_PASSWORD:-pennywise}
+      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CLI_ADDRESS: temporal:7233
+    volumes:
+      - ./docker/temporal/dynamicconfig:/etc/temporal/config/dynamicconfig:ro
+    restart: unless-stopped
+
+  temporal-ui:
+    image: temporalio/ui:${TEMPORAL_UI_VERSION:-2.40.1}
+    depends_on:
+      - temporal
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:${TEMPORAL_UI_PORT:-8233}
     ports:
-      - '5050:8000'
+      - "${TEMPORAL_UI_PORT:-8233}:8080"
+    restart: unless-stopped
+
+  pennywise-migrate:
+    build:
+      context: ./backend/go-pennywise-api
+    entrypoint: ["./migrations"]
+    command: ["-dir", ".", "up"]
+    environment:
+      RAILWAY_ENVIRONMENT_NAME: ${RAILWAY_ENVIRONMENT_NAME:-local}
+      DATABASE_URL: postgres://${POSTGRES_USER:-pennywise}:${POSTGRES_PASSWORD:-pennywise}@postgres:5432/${POSTGRES_DB:-pennywise}?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-me}
+      DOMAIN: ${DOMAIN:-localhost}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_ANDROID_CLIENT_ID: ${GOOGLE_ANDROID_CLIENT_ID:-}
+      CALLBACK_URL: ${CALLBACK_URL:-http://localhost:5151/api/auth/google/callback}
+      REDIS_URL: redis://redis:6379/0
+      GMAIL_SERVICE_URL: http://gmail-watch:5170
+      CIPHER_SERVICE_URL: http://cipher:5160
+      INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-dev-internal-token-change-me}
+      TEMPORAL_SERVER_HOST: temporal
+      TEMPORAL_SERVER_PORT: 7233
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
 
   pennywise-api:
     build:
       context: ./backend/go-pennywise-api
+    environment:
+      RAILWAY_ENVIRONMENT_NAME: ${RAILWAY_ENVIRONMENT_NAME:-local}
+      SERVICE_NAME: pennywise-api
+      SERVICE_VERSION: ${SERVICE_VERSION:-0.0.1}
+      DATABASE_URL: postgres://${POSTGRES_USER:-pennywise}:${POSTGRES_PASSWORD:-pennywise}@postgres:5432/${POSTGRES_DB:-pennywise}?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-me}
+      DOMAIN: ${DOMAIN:-localhost}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_ANDROID_CLIENT_ID: ${GOOGLE_ANDROID_CLIENT_ID:-}
+      CALLBACK_URL: ${CALLBACK_URL:-http://localhost:5151/api/auth/google/callback}
+      REDIS_URL: redis://redis:6379/0
+      GMAIL_SERVICE_URL: http://gmail-watch:5170
+      CIPHER_SERVICE_URL: http://cipher:5160
+      INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-dev-internal-token-change-me}
+      TEMPORAL_SERVER_HOST: temporal
+      TEMPORAL_SERVER_PORT: 7233
     ports:
-      - '5151:5151'
-    # env_file:
-    #   - ./backend/go-pennywise-api/.env
+      - "${PENNYWISE_API_PORT:-5151}:5151"
+    depends_on:
+      pennywise-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5151/api >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
 
-  pennywise-app:
+  cipher:
     build:
-      context: ./frontend
+      context: ./backend/cipher
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      RAILWAY_ENVIRONMENT_NAME: ${RAILWAY_ENVIRONMENT_NAME:-local}
+      SERVICE_NAME: cipher
+      SERVICE_VERSION: ${SERVICE_VERSION:-0.0.1}
+      PORT: 5160
+      DATABASE_URL: postgres://${POSTGRES_USER:-pennywise}:${POSTGRES_PASSWORD:-pennywise}@postgres:5432/${POSTGRES_DB:-pennywise}?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      MLP_SERVICE_URL: ${MLP_SERVICE_URL:-}
+      PENNYWISE_SERVICE_URL: http://pennywise-api:5151
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      AGENT_PROVIDER: ${AGENT_PROVIDER:-ollama}
+      INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-dev-internal-token-change-me}
+      TEMPORAL_SERVER_HOST: temporal
+      TEMPORAL_SERVER_PORT: 7233
+      OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-true}
+      OTEL_TRACES_EXPORTER: ${OTEL_TRACES_EXPORTER:-none}
+      OTEL_METRICS_EXPORTER: ${OTEL_METRICS_EXPORTER:-none}
+      OTEL_LOGS_EXPORTER: ${OTEL_LOGS_EXPORTER:-none}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_URL: ${LANGFUSE_URL:-}
     ports:
-      - '5100:5000'
+      - "${CIPHER_PORT:-5160}:5160"
+    depends_on:
+      pennywise-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5160/api >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  gmail-watch:
+    build:
+      context: ./backend/go-gmail
+    environment:
+      RAILWAY_ENVIRONMENT_NAME: ${RAILWAY_ENVIRONMENT_NAME:-local}
+      PORT: 5170
+      DATABASE_URL: postgres://${POSTGRES_USER:-pennywise}:${POSTGRES_PASSWORD:-pennywise}@postgres:5432/${POSTGRES_DB:-pennywise}?sslmode=disable
+      MLP_SERVICE_URL: ${MLP_SERVICE_URL:-}
+      PENNYWISE_SERVICE_URL: http://pennywise-api:5151
+      CIPHER_SERVICE_URL: http://cipher:5160
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_ANDROID_CLIENT_ID: ${GOOGLE_ANDROID_CLIENT_ID:-}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${GOOGLE_APPLICATION_CREDENTIALS_JSON:-}
+      CALLBACK_URL: ${CALLBACK_URL:-http://localhost:5151/api/auth/google/callback}
+      PROJECT_ID: ${PROJECT_ID:-}
+      PUBSUB_TOPIC: ${PUBSUB_TOPIC:-}
+      SUB_NAME: ${SUB_NAME:-}
+      INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-dev-internal-token-change-me}
+      NTFY_TOPIC: ${NTFY_TOPIC:-}
+      TEMPORAL_SERVER_HOST: temporal
+      TEMPORAL_SERVER_PORT: 7233
+    ports:
+      - "${GMAIL_PORT:-5170}:5170"
+    depends_on:
+      pennywise-api:
+        condition: service_healthy
+      cipher:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5170/api >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  workflows:
+    build:
+      context: ./backend/workflows
+    entrypoint:
+      [
+        "sh",
+        "-c",
+        "until nc -z temporal 7233; do echo 'waiting for temporal'; sleep 2; done; ./worker",
+      ]
+    environment:
+      TEMPORAL_SERVER_HOST: temporal
+      TEMPORAL_SERVER_PORT: 7233
+    depends_on:
+      - temporal
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
