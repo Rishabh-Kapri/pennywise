@@ -27,6 +27,3 @@ check: fmt vet test
 
 tidy:
 	$(GO) mod tidy
-
-vendor:
-	$(GO) mod vendor

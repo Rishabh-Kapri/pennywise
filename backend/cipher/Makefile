@@ -16,6 +16,7 @@ help:
 	@echo "  make build                 Build API, agent, backfill, and embed-entities binaries into ./bin"
 	@echo "  make test                  Run tests"
 	@echo "  make check                 Run fmt, vet, and tests"
+	@echo "  make vendor                Run vendor to add the shared modules"
 
 run: run-api
 
@@ -51,6 +52,9 @@ build-embed-entities:
 
 test:
 	GOCACHE=$(GOCACHE) $(GO) test ./...
+
+vendor:
+	GOWORK=off $(GO) mod vendor
 
 fmt:
 	$(GO) fmt ./...

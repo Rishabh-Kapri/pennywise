@@ -8,7 +8,7 @@ Pennywise is a personal finance/budgeting monorepo. The repo currently contains 
 
 | Service | Path | Status | Responsibility |
 |---------|------|--------|----------------|
-| Go API | `backend/go-pennywise-api` | Active | Core REST API (Gin + PostgreSQL), auth, budgets, transactions, tags, loan metadata |
+| Go API | `backend/go-pennywise-api` | Active | Core REST API (Gin + PostgreSQL), auth, budgets, transactions, tags, loan metadata, websocket fanout |
 | Gmail watcher | `backend/go-gmail` | Active | Gmail Pub/Sub ingestion, email parsing, MLP prediction calls, transaction/prediction creation |
 | Python MLP | `backend/python-mlp` | Active | `/predict` inference and retraining/augmentation endpoints |
 | Cipher | `backend/cipher` | Active but partial integration | Prediction orchestrator (Ollama + pgvector + MLP/LLM fallback), corrections, embedding backfill |
@@ -45,7 +45,16 @@ cipher
   |- generates embeddings (Ollama/OpenAI-compatible model)
   |- checks pgvector similarity in transaction_embeddings
   |- falls back to MLP/LLM
-  `- handles correction upserts and backfill tooling
+  |- publishes agent stream deltas to Redis stream `pubsub`
+  |- handles correction upserts and backfill tooling
+
+Redis stream `pubsub`
+        |
+        v
+go-pennywise-api websocket listener
+        |
+        v
+budget-scoped browser websocket clients
 ```
 
 ## Key data and auth flow
@@ -56,6 +65,7 @@ cipher
 4. **Budget scoping**: budget-scoped routes require `X-Budget-ID`; middleware verifies ownership for user traffic and trusts only verified internal requests for service traffic.
 5. **Gmail ingestion**: Pub/Sub event -> parser -> 3-step MLP prediction (account/payee/category) -> create transaction + prediction via API.
 6. **Prediction corrections**: transaction updates on MLP-sourced records update `predictions.has_user_corrected` fields in API service logic.
+7. **Agent streaming**: Cipher writes `eventName`, `budgetId`, and `data` fields to Redis stream `pubsub`; Go API reads new stream entries and broadcasts them to websocket clients scoped to the same budget.
 
 ## Build, test, lint
 
@@ -71,10 +81,12 @@ cipher
 | Angular frontend | `cd frontend && npm start` / `npm run build` | `cd frontend && npm test` | TypeScript strict mode |
 | File parser | `cd backend/file-parser && clojure -M:run-m` | `cd backend/file-parser && clojure -T:build test` | - |
 
+Each Go module has a local `Makefile` with common aliases such as `make run`, `make build`, `make test`, `make fmt`, `make vet`, `make check`, `make tidy`, and `make vendor` where applicable. The Go API Makefile also exposes migration aliases such as `make migrate-up`, `make migrate-one`, `make migrate-down`, and `make migrate-status`.
+
 ### Database migrations (Go API)
 
-- `cd backend/go-pennywise-api && go run ./cmd/migrations -dir ./db/migrations up`
-- `cd backend/go-pennywise-api && go run ./cmd/migrations -dir ./db/migrations status`
+- `cd backend/go-pennywise-api && go run ./cmd/migrations -dir . up`
+- `cd backend/go-pennywise-api && go run ./cmd/migrations -dir . status`
 - `baseline` command exists for marking initial seed migrations as applied.
 
 ### Backfill command (Cipher)
@@ -85,13 +97,12 @@ cipher
 ## Runtime ports and local dev
 
 - Go API: `5151`
-- Go Gmail: `8080`
-- Python MLP: `8000`
+- Go Gmail: `5170`
 - Cipher: `5160` (default)
 - Angular dev server: `5000`
 - React dev server: Vite default (`5173`)
 
-`docker-compose.yml` currently defines `go-gmail`, `python-mlp`, `go-pennywise-api`, and Angular frontend.
+`docker-compose.yml` currently defines the backend/dev dependency stack: PostgreSQL with pgvector, Redis, Temporal + UI, `go-pennywise-api`, `go-gmail`, `cipher`, and `workflows`. Frontend, Android, Python MLP, file-parser, and Ollama are intentionally excluded from that compose stack. Cipher expects `OLLAMA_URL` to point at a reachable external Ollama endpoint.
 
 ## Code patterns and conventions
 
@@ -103,6 +114,9 @@ cipher
   - auth only for global user resources (`/api/budgets`, `/api/keys`)
   - auth + budget middleware for budget-scoped resources (`accounts`, `transactions`, `categories`, `payees`, `tags`, `loan-metadata`, etc.)
 - Transaction service contains side effects in one place (carryovers, transfers, prediction correction sync).
+- Websocket fanout uses `internal/websocket.ConnectionHub`; Redis stream events from Cipher are consumed by `RedisStreamListener` and rebroadcast through the same budget-scoped hub.
+- Agent run routes (`POST /api/agent/runs`, `GET /api/agent/runs/:id`, `POST /api/agent/runs/:id/cancel`) are budget-scoped API routes. The Go API owns conversation/run/message persistence and dispatches execution to Cipher through the shared transport client.
+- Agent persistence uses `conversations` for long-lived chat threads, `agent_runs` for per-prompt/per-agent executions, and `conversation_messages` for ordered transcript rows. Metadata is stored at all three levels as JSONB.
 - Errors increasingly use typed shared error wrappers from `backend/shared/errors`.
 
 ### Shared module (`backend/shared`)
@@ -150,10 +164,13 @@ cipher
 | Auth middleware | `backend/go-pennywise-api/internal/middleware/auth.go` |
 | Budget ownership middleware | `backend/go-pennywise-api/internal/middleware/budget.go` |
 | Transaction side effects/corrections | `backend/go-pennywise-api/internal/service/transaction.go` |
+| Agent run proxy handler/service | `backend/go-pennywise-api/internal/handler/agent.go`, `backend/go-pennywise-api/internal/service/agent.go` |
+| Redis-to-websocket stream listener | `backend/go-pennywise-api/internal/websocket/redis_stream_listener.go` |
 | Gmail pipeline orchestrator | `backend/go-gmail/pkg/runner/runner.go` |
 | Gmail email parser | `backend/go-gmail/pkg/parser/email.go` |
 | Python MLP server endpoints | `backend/python-mlp/mlp_predict_server.py` |
 | Cipher prediction orchestration | `backend/cipher/internal/service/prediction.go` |
+| Cipher agent streaming publisher | `backend/cipher/agent/runtime/agent.go` |
 | Shared transport abstraction | `backend/shared/transport/client.go` |
 | Shared HTTP transport implementation | `backend/shared/httpclient/transport.go` |
 - Shared internal request verifier | `backend/shared/middleware/internalRequestAuth.go` |
@@ -169,9 +186,9 @@ cipher
 
 ### Common env files
 
-- `backend/go-pennywise-api/.env`: `DATABASE_URL`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `DOMAIN`, `INTERNAL_AUTH_TOKEN`
+- `backend/go-pennywise-api/.env`: `DATABASE_URL`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `DOMAIN`, `INTERNAL_AUTH_TOKEN`, optional `REDIS_URL`
 - `backend/go-gmail/.env`: Gmail/PubSub credentials + `MLP_API`, `PENNYWISE_API`, Temporal host/port, `INTERNAL_AUTH_TOKEN`
-- `backend/cipher/.env`: `DATABASE_URL`, `OLLAMA_URL`, `MLP_API`, `OPENAI_API_KEY`, `PORT`, `INTERNAL_AUTH_TOKEN`
+- `backend/cipher/.env`: `DATABASE_URL`, `OLLAMA_URL`, `MLP_API`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `AGENT_PROVIDER`, `PORT`, `INTERNAL_AUTH_TOKEN`, optional `REDIS_URL`
 - `react-frontend/.env*`: `VITE_API_URL`, `VITE_GOOGLE_CLIENT_ID`
 
 `python-mlp` primarily uses runtime env vars (`PORT`, optional `VOLUME_DIR`) and data/model files.

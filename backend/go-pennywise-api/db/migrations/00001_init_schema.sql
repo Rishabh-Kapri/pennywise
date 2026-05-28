@@ -53,24 +53,6 @@ CREATE TABLE IF NOT EXISTS payees (
 -- Adding this constraint directly. accounts had transfer_payee_id as a UUID.
 ALTER TABLE accounts ADD CONSTRAINT fk_transfer_payee_id FOREIGN KEY (transfer_payee_id) REFERENCES payees(id);
 
-CREATE TABLE IF NOT EXISTS payee_rules (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  budget_id UUID NOT NULL REFERENCES budgets(id) ON DELETE CASCADE,
-  payee_id UUID NOT NULL REFERENCES payees(id) ON DELETE CASCADE,
-  category_id UUID REFERENCES categories(id),
-
-  match_string TEXT NOT NULL, -- upi handle or bank string
-  match_type PAYEE_MATCH_TYPE NOT NULL DEFAULT 'EXACT',
-
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  deleted BOOLEAN DEFAULT false,
-  -- A user cannot map the exact same string to two different payees in their budget.
-  UNIQUE (budget_id, match_string)
-);
-CREATE INDEX idx_payee_rules_lookup ON payee_rules(budget_id, match_string);
-
-
 CREATE TABLE IF NOT EXISTS category_groups (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
@@ -94,6 +76,23 @@ CREATE TABLE IF NOT EXISTS categories (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS payee_rules (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  budget_id UUID NOT NULL REFERENCES budgets(id) ON DELETE CASCADE,
+  payee_id UUID NOT NULL REFERENCES payees(id) ON DELETE CASCADE,
+  category_id UUID REFERENCES categories(id),
+
+  match_string TEXT NOT NULL, -- upi handle or bank string
+  match_type PAYEE_MATCH_TYPE NOT NULL DEFAULT 'EXACT',
+
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  deleted BOOLEAN DEFAULT false,
+  -- A user cannot map the exact same string to two different payees in their budget.
+  UNIQUE (budget_id, match_string)
+);
+CREATE INDEX idx_payee_rules_lookup ON payee_rules(budget_id, match_string);
 
 CREATE TABLE IF NOT EXISTS monthly_budgets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -201,7 +200,7 @@ CREATE TABLE IF NOT EXISTS tags (
     color TEXT NOT NULL DEFAULT '',
     deleted BOOLEAN DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE UNIQUE INDEX uniq_tags_budget_name_active ON tags(budget_id, name) WHERE deleted = false;
 

@@ -37,24 +37,23 @@ See [docs/cipher.md](docs/cipher.md) for the full classification pipeline.
 
 ## Quick Start
 
-**Prerequisites:** Go, Node.js + npm, PostgreSQL, Ollama, Docker (optional)
+**Prerequisites:** Docker and Docker Compose for the full backend stack.
 
 ```bash
-# Go API
-cd backend/go-pennywise-api && go run ./cmd/api
-
-# Gmail watcher
-cd backend/go-gmail && go run .
-
-# Cipher
-cd backend/cipher && go run ./cmd/api
-
-# React frontend
-cd react-frontend && npm run dev
-
-# Full stack (Docker)
-docker-compose up --build
+docker compose up --build
 ```
+
+The compose stack starts the backend services and their local dependencies:
+PostgreSQL with pgvector, Redis, Temporal + Temporal UI, Go API, Gmail watcher,
+Cipher, and workflows worker. Frontend, Android, file-parser, and the legacy
+Python MLP service are intentionally not part of this stack.
+
+Copy `.env.example` to `.env` only when you need to override defaults or add
+real Google/OAuth/LLM credentials.
+
+Cipher still needs Ollama for local extraction/embedding. Run Ollama on the
+host (`ollama serve`) and keep `OLLAMA_URL=http://host.docker.internal:11434`,
+or point `OLLAMA_URL` at another reachable Ollama endpoint.
 
 ## Common Commands
 
@@ -82,8 +81,9 @@ go run ./cmd/migrations -dir . status
 | Service | Port |
 |---------|------|
 | Go API | `5151` |
-| Go Gmail | `8080` |
+| Go Gmail | `5170` |
 | Cipher | `5160` |
+| Temporal UI | `8233` |
 | React dev | `5173` |
 | Angular dev | `5000` |
 
