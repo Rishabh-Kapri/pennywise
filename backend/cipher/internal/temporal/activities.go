@@ -2,6 +2,7 @@ package temporal
 
 import (
 	"context"
+	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/service"
 	"github.com/google/uuid"
@@ -43,15 +44,25 @@ func (a *PredictionActivity) Predict(
 
 	for _, email := range parsedEmails {
 		log.Info("Predicting", "email", email, "amount", email.Amount, "date", email.Date)
+
 		predictionInput := service.PredictRequest{
 			EmailText: email.EmailText,
 			Amount:    email.Amount,
 		}
+		if email.ExtractedMerchant != "" && email.ExtractedAccount != "" && email.Date != "" {
+			predictionInput.ExtractedInputs = &service.ExtractedInputs{
+				Merchant: email.ExtractedMerchant,
+				Account:  email.ExtractedAccount,
+				Date:     email.Date,
+			}
+		}
+
 		prediction, err := a.PredictionService.Predict(ctx, predictionInput)
 		if err != nil {
 			log.Error("Prediction failed", "error", err)
 			continue
 		}
+
 		log.Info("Prediction result", "result", prediction)
 		predictionResponse = append(predictionResponse, sharedModel.CipherPredictionResult{
 			OriginalRawText: email.EmailText,
@@ -71,4 +82,73 @@ func (a *PredictionActivity) Predict(
 	}
 
 	return predictionResponse, nil
+}
+
+func (a *PredictionActivity) ParseEmailData(
+	ctx context.Context,
+	input sharedModel.EmailDataInput,
+) (result sharedModel.ParsedEmailsInput, err error) {
+	ctx = utils.WithServiceName(ctx, "cipher")
+
+	activityInfo := activity.GetInfo(ctx)
+	log := logger.Logger(ctx).With(
+		"workflow_id", activityInfo.WorkflowExecution.ID,
+		"workflow_run_id", activityInfo.WorkflowExecution.RunID,
+		"activity_id", activityInfo.ActivityID,
+		"activity_type", activityInfo.ActivityType.Name,
+	)
+
+	budgetId := input.BudgetID
+	if budgetId == uuid.Nil {
+		return result, errs.New(errs.CodeInternalError, "Budget ID is required")
+	}
+
+	ctx = utils.WithBudgetID(ctx, budgetId)
+
+	parsedEmails := make([]sharedModel.ParsedEmail, 0, len(input.EmailData))
+
+	result = sharedModel.ParsedEmailsInput{
+		ParsedEmails: parsedEmails,
+		BudgetID:     input.BudgetID,
+	}
+
+	for _, emailData := range input.EmailData {
+		extracted, err := a.PredictionService.ExtractEmailData(
+			ctx,
+			service.ExtractEmailDataRequest{EmailHtml: emailData.Body},
+		)
+		if err != nil || extracted == nil {
+			log.Error("error extracting email", "error", err)
+			return result, err
+		}
+
+		if extracted.Amount == 0 || extracted.AccountCard == "" || extracted.Date == "" {
+			log.Info("email not a transaction", "email", emailData.Body, "extracted", *extracted)
+			continue
+		}
+
+		dateString := extracted.Date
+		date, err := time.Parse("2006-01-02", dateString)
+		if err != nil {
+			log.Error("error parsing date", "error", err)
+			return result, err
+		}
+		transactionType := "debit"
+		if extracted.Amount > 0 {
+			transactionType = "credit"
+		}
+
+		parsedEmails = append(parsedEmails, sharedModel.ParsedEmail{
+			MessageId:         emailData.MessageId,
+			EmailText:         extracted.EmailText,
+			ExtractedMerchant: extracted.Merchant,
+			ExtractedAccount:  extracted.AccountCard,
+			Amount:            extracted.Amount,
+			Date:              date.Format("2006-01-02"),
+			TransactionType:   transactionType,
+			Account:           "",
+		})
+	}
+
+	return result, nil
 }

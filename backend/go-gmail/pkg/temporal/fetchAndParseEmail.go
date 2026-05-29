@@ -2,7 +2,6 @@ package temporal
 
 import (
 	"context"
-	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/auth"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/client"
@@ -23,12 +22,14 @@ type GmailActivities struct {
 	Cipher *client.CipherClient
 }
 
-func (a *GmailActivities) FetchAndParseEmails(
+func (a *GmailActivities) FetchEmailData(
 	ctx context.Context,
 	input sharedModel.FetchAndParseEmailsInput,
-) (result sharedModel.ParsedEmailsInput, err error) {
+) (result sharedModel.EmailDataInput, err error) {
 	ctx = utils.WithServiceName(ctx, "gmail-pubsub")
+
 	activityInfo := activity.GetInfo(ctx)
+
 	log := logger.Logger(ctx).With(
 		"workflow_id", activityInfo.WorkflowExecution.ID,
 		"workflow_run_id", activityInfo.WorkflowExecution.RunID,
@@ -56,45 +57,18 @@ func (a *GmailActivities) FetchAndParseEmails(
 		return result, err
 	}
 
-	var results []sharedModel.ParsedEmail
+	result = sharedModel.EmailDataInput{
+		EmailData: make([]sharedModel.EmailData, 0, len(emailData)),
+		BudgetID:  input.BudgetID,
+	}
 	log.Info("Fetched emails", "count", len(emailData))
+
 	for _, data := range emailData {
-		extracted, err := a.Cipher.ExtractTransactionFromEmail(
-			ctx,
-			client.EmailExtractionRequest{EmailHtml: data.Body},
-		)
-		if err != nil || extracted == nil {
-			log.Error("error extracting email", "error", err)
-			continue
-		}
-
-		if extracted.Amount == 0 || extracted.AccountCard == "" || extracted.Date == "" {
-			log.Info("email not a transaction", "email", data.Body, "extracted", *extracted)
-			continue
-		}
-
-		dateString := extracted.Date
-		date, err := time.Parse("2006-01-02", dateString)
-		if err != nil {
-			log.Error("error parsing date", "error", err)
-			continue
-		}
-		transactionType := "debit"
-		if extracted.Amount > 0 {
-			transactionType = "credit"
-		}
-
-		results = append(results, sharedModel.ParsedEmail{
-			MessageId:       data.MessageId,
-			EmailText:       extracted.EmailText,
-			Amount:          extracted.Amount,
-			Date:            date.Format("2006-01-02"),
-			TransactionType: transactionType,
-			Account:         "",
+		result.EmailData = append(result.EmailData, sharedModel.EmailData{
+			MessageId: data.MessageId,
+			Body:      data.Body,
 		})
 	}
-	result.ParsedEmails = results
-	result.BudgetID = input.BudgetID
 
 	return result, nil
 }

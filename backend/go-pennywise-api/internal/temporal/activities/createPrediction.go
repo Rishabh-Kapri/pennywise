@@ -92,14 +92,17 @@ func buildCipherPredictionRecord(
 	if emailText == "" && txn.RawBankText != nil {
 		emailText = *txn.RawBankText
 	}
+
 	var emailTextPtr *string
 	if emailText != "" {
 		emailTextPtr = &emailText
 	}
+
 	var reasoning *string
 	if pred.Reasoning != "" {
 		reasoning = &pred.Reasoning
 	}
+
 	var metadata json.RawMessage
 	if len(pred.Metadata) > 0 {
 		data, err := json.Marshal(pred.Metadata)
@@ -125,18 +128,21 @@ func buildCipherPredictionRecord(
 		}
 		confidence = &parsed
 	}
+
 	var predictedPayeeID *uuid.UUID
 	if txn.PayeeID != nil && *txn.PayeeID != uuid.Nil {
 		predictedPayeeID = txn.PayeeID
 	} else if pred.PayeeID != uuid.Nil {
 		predictedPayeeID = &pred.PayeeID
 	}
+
 	var predictedCategoryID *uuid.UUID
 	if txn.CategoryID != nil && *txn.CategoryID != uuid.Nil {
 		predictedCategoryID = txn.CategoryID
 	} else if pred.CategoryID != uuid.Nil {
 		predictedCategoryID = &pred.CategoryID
 	}
+
 	accountConfidence := 100.0
 
 	return sharedModel.CipherPredictionRecord{

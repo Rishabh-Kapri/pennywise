@@ -44,9 +44,16 @@ type ExtractEmailDataRequest struct {
 	EmailHtml string `json:"emailHtml"`
 }
 
+type ExtractedInputs struct {
+	Merchant string `json:"merchant"`
+	Account  string `json:"account"`
+	Date     string `json:"date"`
+}
+
 type PredictRequest struct {
-	EmailText string  `json:"emailText"`
-	Amount    float64 `json:"amount"`
+	EmailText       string          `json:"emailText"`
+	Amount          float64         `json:"amount"`
+	ExtractedInputs *ExtractedInputs `json:"extractedInputs"`
 }
 
 type TransactionEmbeddingRequest struct {
@@ -317,14 +324,32 @@ func (s *predictionService) Predict(ctx context.Context, req PredictRequest) (*P
 	if req.Amount > 0 {
 		transactionType = "credit"
 	}
-	// Step 1: Extract email data using gemma4
-	extracted, err := s.ollama.ExtractEmailData(ctx, req.EmailText)
-	if extracted == nil {
-		return nil, errs.New(errs.CodeInternalError, "email extraction failed")
-	}
-	log.Info("email extraction", "extracted", extracted)
 
-	accountStr := utils.CleanAccountString(extracted.AccountCard)
+	extractedEmail := sharedModel.ExtractedEmailResponse{}
+
+	if req.ExtractedInputs != nil {
+		extractedEmail.Merchant = req.ExtractedInputs.Merchant
+		extractedEmail.AccountCard = req.ExtractedInputs.Account
+		extractedEmail.Date = req.ExtractedInputs.Date
+		extractedEmail.EmailText = req.EmailText
+	} else {
+		// Step 1: Extract email data using gemma4 if not provided
+		extracted, err := s.ollama.ExtractEmailData(ctx, req.EmailText)
+		if err != nil {
+			return nil, err
+		}
+		if extracted == nil {
+			return nil, errs.New(errs.CodeInternalError, "email extraction failed")
+		}
+		extractedEmail.Merchant = extracted.Merchant
+		extractedEmail.AccountCard = extracted.AccountCard
+		extractedEmail.Date = extracted.Date
+		extractedEmail.EmailText = extracted.EmailText
+	}
+	
+	log.Info("email extraction", "extracted", extractedEmail)
+
+	accountStr := utils.CleanAccountString(extractedEmail.AccountCard)
 	account, err := s.accountRepo.GetBySuffix(ctx, budgetId, accountStr)
 	if err != nil {
 		return nil, err
@@ -332,7 +357,6 @@ func (s *predictionService) Predict(ctx context.Context, req PredictRequest) (*P
 	if account == nil {
 		return nil, errs.New(errs.CodeInternalError, "account not found")
 	}
-
 	if err != nil {
 		logger.Logger(ctx).Warn("email extraction failed", "error", err)
 		return nil, err
@@ -340,8 +364,8 @@ func (s *predictionService) Predict(ctx context.Context, req PredictRequest) (*P
 
 	var predictResponse *PredictResponse = &PredictResponse{}
 
-	upiText, merchantName := utils.CleanUPIText(extracted.Merchant)
-	merchantName = utils.CleanMerchantString(extracted.Merchant)
+	upiText, merchantName := utils.CleanUPIText(extractedEmail.Merchant)
+	merchantName = utils.CleanMerchantString(extractedEmail.Merchant)
 	var matchString string
 	if upiText != "" {
 		matchString = upiText

@@ -62,7 +62,7 @@ func temporalHandler(c *gin.Context) {
 			TaskQueue: sharedModel.PennywiseTaskQueue,
 		},
 		sharedModel.EmailToTransactionWorkflowName,
-		sharedModel.EmailWorflowInput{
+		sharedModel.EmailToTransactionWorflowInput{
 			Email:     reqData.Email,
 			HistoryId: reqData.HistoryId,
 		},

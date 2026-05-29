@@ -15,6 +15,7 @@ const (
 	ParsedEmailToTransactionWorkflowName = "ParsedEmailToTransactionWorkflow"
 	RefreshGmailWatchWorkflowName        = "RefreshGmailWatchWorkflow"
 
+	RetryEmailParseSignal = "retry-email-parse"
 	// RetryPredictSignal is sent to a waiting workflow to trigger a manual retry
 	// of the Predict step (e.g. after Ollama comes back online).
 	RetryPredictSignal = "retry-predict"
@@ -28,23 +29,25 @@ const (
 	PredictRetryInterval = 10 * time.Minute
 )
 
-// EmailWorflowInput is the input to the EmailToTransactionWorkflow,
+// EmailToTransactionWorflowInput is the input to the EmailToTransactionWorkflow,
 // dispatched by go-gmail on receiving a Gmail Pub/Sub notification.
-type EmailWorflowInput struct {
+type EmailToTransactionWorflowInput struct {
 	Email     string `json:"email"`
 	HistoryId uint64 `json:"historyId"`
 }
 
 // ParsedEmail is a single parsed transaction email.
 type ParsedEmail struct {
-	MessageId       string  `json:"messageId"`
-	EmailText       string  `json:"emailText"`
-	Amount          float64 `json:"amount"`
-	Date            string  `json:"date"`
-	TransactionType string  `json:"transactionType"`
-	Account         string  `json:"account"`
-	Payee           string  `json:"payee"`
-	Category        string  `json:"category"`
+	MessageId         string  `json:"messageId"`
+	EmailText         string  `json:"emailText"`
+	ExtractedMerchant string  `json:"extractedMerchant"`
+	ExtractedAccount  string  `json:"extractedAccount"`
+	Amount            float64 `json:"amount"`
+	Date              string  `json:"date"`
+	TransactionType   string  `json:"transactionType"`
+	Account           string  `json:"account"`
+	Payee             string  `json:"payee"`
+	Category          string  `json:"category"`
 }
 
 // ExtractedEmail is the structured output from Phase 1 LLM extraction.
@@ -62,6 +65,16 @@ type ExtractedEmailResponse struct {
 type ParsedEmailsInput struct {
 	ParsedEmails []ParsedEmail `json:"parsedEmails"`
 	BudgetID     uuid.UUID     `json:"budgetId"`
+}
+
+type EmailData struct {
+	MessageId string
+	Body      string
+}
+
+type EmailDataInput struct {
+	EmailData []EmailData `json:"emailData"`
+	BudgetID  uuid.UUID   `json:"budgetId"`
 }
 
 type FetchAndParseEmailsInput struct {

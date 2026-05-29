@@ -126,7 +126,9 @@ func (a *CreateTransactionActivity) CreateTransactionAndCipherPrediction(
 	}
 
 	ctx = utils.WithBudgetID(ctx, input.BudgetID)
+
 	var createdTxns []sharedModel.Transaction
+
 	err := utils.WithTx(ctx, a.DB, func(tx pgx.Tx) error {
 		var err error
 		createdTxns, err = a.createTransactions(ctx, tx, input.Predictions, input.BudgetID, log)
@@ -151,6 +153,7 @@ func (a *CreateTransactionActivity) CreateTransactionAndCipherPrediction(
 	if err != nil {
 		return nil, err
 	}
+
 	a.sendTransactionCreatedNotification(ctx, input.BudgetID, createdTxns, log)
 	return createdTxns, nil
 }
