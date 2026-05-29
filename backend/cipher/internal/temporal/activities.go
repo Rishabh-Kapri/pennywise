@@ -105,10 +105,8 @@ func (a *PredictionActivity) ParseEmailData(
 
 	ctx = utils.WithBudgetID(ctx, budgetId)
 
-	parsedEmails := make([]sharedModel.ParsedEmail, 0, len(input.EmailData))
-
 	result = sharedModel.ParsedEmailsInput{
-		ParsedEmails: parsedEmails,
+		ParsedEmails: make([]sharedModel.ParsedEmail, 0, len(input.EmailData)),
 		BudgetID:     input.BudgetID,
 	}
 
@@ -138,7 +136,7 @@ func (a *PredictionActivity) ParseEmailData(
 			transactionType = "credit"
 		}
 
-		parsedEmails = append(parsedEmails, sharedModel.ParsedEmail{
+		result.ParsedEmails = append(result.ParsedEmails, sharedModel.ParsedEmail{
 			MessageId:         emailData.MessageId,
 			EmailText:         extracted.EmailText,
 			ExtractedMerchant: extracted.Merchant,
