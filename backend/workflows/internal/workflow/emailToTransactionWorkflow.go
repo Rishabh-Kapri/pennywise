@@ -10,7 +10,7 @@ import (
 	"go.temporal.io/sdk/workflow"
 )
 
-func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailWorflowInput) error {
+func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailToTransactionWorflowInput) error {
 	workflowInfo := workflow.GetInfo(ctx)
 	workflowMetadata := sharedTemporal.RequestMetadataFromWorkflowContext(ctx)
 	workflowLogFields := []interface{}{
@@ -46,7 +46,8 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailWor
 		OAuthClientType: googleUser.OAuthClientType,
 		GmailHistoryID:  input.HistoryId,
 	}
-	if err := workflow.ExecuteActivity(pennywiseCtx, "UpdateGmailHistoryID", updateHistoryInput).Get(pennywiseCtx, nil); err != nil {
+	if err := workflow.ExecuteActivity(pennywiseCtx, "UpdateGmailHistoryID", updateHistoryInput).
+		Get(pennywiseCtx, nil); err != nil {
 		return err
 	}
 
@@ -67,19 +68,15 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailWor
 		OAuthClientType: googleUser.OAuthClientType,
 		BudgetID:        googleUser.BudgetID,
 	}
-	var fetchAndParseEmailResult sharedModel.ParsedEmailsInput
-	err = workflow.ExecuteActivity(gmailCtx, "FetchAndParseEmails", fetchInput).Get(gmailCtx, &fetchAndParseEmailResult)
+
+	var emailDataInput sharedModel.EmailDataInput
+	err = workflow.ExecuteActivity(gmailCtx, "FetchEmailData", fetchInput).Get(gmailCtx, &emailDataInput)
 	if err != nil {
 		return err
 	}
 
-	parsedEmails := fetchAndParseEmailResult.ParsedEmails
-	workflow.GetLogger(ctx).Info("fetched emails", append(workflowLogFields, "count", len(parsedEmails))...)
-	if len(parsedEmails) == 0 {
-		return nil
-	}
-
-	if len(parsedEmails) == 0 {
+	workflow.GetLogger(ctx).Info("fetched emails", append(workflowLogFields, "count", len(emailDataInput.EmailData))...)
+	if len(emailDataInput.EmailData) == 0 {
 		return nil
 	}
 
@@ -91,7 +88,7 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailWor
 	workflow.GetLogger(ctx).Info("starting child workflow for parsed emails",
 		append(workflowLogFields, "child_workflow_id", childWorkflowID)...)
 
-	err = workflow.ExecuteChildWorkflow(childCtx, sharedModel.ParsedEmailToTransactionWorkflowName, fetchAndParseEmailResult).
+	err = workflow.ExecuteChildWorkflow(childCtx, sharedModel.ParsedEmailToTransactionWorkflowName, emailDataInput).
 		Get(childCtx, nil)
 	if err != nil {
 		return err
@@ -103,7 +100,7 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailWor
 
 // ParsedEmailToTransactionWorkflow runs steps 2-4 only: Predict, CreateTransaction,
 // CreateCipherPrediction. It accepts pre-parsed email data and skips the Gmail fetch.
-func ParsedEmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.ParsedEmailsInput) error {
+func ParsedEmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailDataInput) error {
 	workflowInfo := workflow.GetInfo(ctx)
 	workflowMetadata := sharedTemporal.RequestMetadataFromWorkflowContext(ctx)
 	workflowLogFields := []interface{}{
@@ -118,11 +115,64 @@ func ParsedEmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.Pa
 	}
 	workflow.GetLogger(ctx).Info("starting parsed-email-to-transaction workflow", workflowLogFields...)
 
-	if err := processParsedEmails(ctx, input, workflowLogFields); err != nil {
+	var parsedEmailsInput sharedModel.ParsedEmailsInput
+	if err := parseRawEmails(ctx, input, workflowLogFields, &parsedEmailsInput); err != nil {
+		return err
+	}
+
+	if err := processParsedEmails(ctx, parsedEmailsInput, workflowLogFields); err != nil {
 		return err
 	}
 
 	workflow.GetLogger(ctx).Info("parsed-email-to-transaction workflow completed", workflowLogFields...)
+	return nil
+}
+
+func parseRawEmails(
+	ctx workflow.Context,
+	input sharedModel.EmailDataInput,
+	workflowLogFields []interface{},
+	parsedEmailsInput *sharedModel.ParsedEmailsInput,
+) error {
+	retrySignalCh := workflow.GetSignalChannel(ctx, sharedModel.RetryEmailParseSignal)
+
+	for {
+		cipherCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+			TaskQueue:           sharedModel.CipherActivitiesTaskQueue,
+			StartToCloseTimeout: 120 * time.Second,
+			RetryPolicy: &temporal.RetryPolicy{
+				InitialInterval:    sharedModel.PredictRetryInterval,
+				BackoffCoefficient: 1.0, // fixed interval, not exponential
+				MaximumAttempts:    3,   // 3 total attempts (1 initial + 2 retries)
+			},
+			Summary: "Parse email data from the raw email text",
+		})
+
+		parseErr := workflow.ExecuteActivity(cipherCtx, "ParseEmailData", input).Get(cipherCtx, parsedEmailsInput)
+		if parseErr != nil {
+			break
+		}
+		workflow.GetLogger(ctx).
+			Info("Parsing email data failed after retries, waiting for retry signal", append(workflowLogFields, "error", parseErr)...)
+
+		var gotSignal bool
+		workflow.NewSelector(ctx).AddReceive(retrySignalCh, func(ch workflow.ReceiveChannel, _ bool) {
+			ch.Receive(ctx, nil)
+			gotSignal = true
+		}).AddFuture(workflow.NewTimer(ctx, sharedModel.RetryPredictWaitTimeout), func(_ workflow.Future) {}).Select(ctx)
+
+		if !gotSignal {
+			// Timer fired — no retry signal arrived within the wait window.
+			workflow.GetLogger(ctx).
+				Error("no retry signal received withing wait window, failing workflow", workflowLogFields...)
+			return parseErr
+		}
+		workflow.GetLogger(ctx).Info("retry-parse signal received, retrying ParseEmailData", workflowLogFields...)
+	}
+	workflow.GetLogger(ctx).
+		Info("parse-email-data workflow completed", append(workflowLogFields, "result", parsedEmailsInput)...)
+
+	// carry on with the rest of the workflow
 	return nil
 }
 

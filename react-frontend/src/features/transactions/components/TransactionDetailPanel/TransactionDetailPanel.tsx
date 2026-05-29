@@ -1,20 +1,20 @@
 import {
-  ArrowsLeftRight,
-  CalendarDots as CalendarDays,
-  CheckCircle,
-  Code,
-  Database,
-  HandCoins,
-  Minus,
-  NotePencil,
-  Plus,
-  Robot,
-  Storefront,
-  Tag as TagIcon,
-  ThumbsDown,
-  ThumbsUp,
-  Trash as Trash2,
-  X,
+  ArrowsLeftRightIcon,
+  CalendarDotsIcon as CalendarDays,
+  CheckCircleIcon,
+  CodeIcon,
+  DatabaseIcon,
+  HandCoinsIcon,
+  MinusIcon,
+  NotePencilIcon,
+  PlusIcon,
+  RobotIcon,
+  StorefrontIcon,
+  TagIcon,
+  ThumbsDownIcon,
+  ThumbsUpIcon,
+  TrashIcon as Trash2,
+  XIcon,
 } from '@phosphor-icons/react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useAppSelector } from '@/app/hooks';
@@ -105,7 +105,7 @@ function PanelFrame({
       <div className={styles.panelHeader}>
         <span className={styles.panelTitle}>{title}</span>
         <button type="button" className={styles.closeButton} onClick={onClose} aria-label="Close">
-          <X size={18} />
+          <XIcon size={18} />
         </button>
       </div>
       {children}
@@ -142,7 +142,7 @@ function AmountField({ txn, isInflow, onChange }: { txn: Transaction; isInflow: 
           </button>
         </div>
         <input
-          type="text"
+          type="number"
           className={styles.amountInput}
           placeholder="0"
           value={isInflow ? (txn.inflow ?? '') : (txn.outflow ?? '')}
@@ -256,7 +256,7 @@ function DetailTagPicker({
         aria-label="Edit tags"
         aria-expanded={isOpen}
         title="Edit tags">
-        <Plus size={18} />
+        <PlusIcon size={18} />
       </button>
       <Popover
         id="transaction-detail-tags"
@@ -418,7 +418,7 @@ function AdvancedDetails({
     <details className={styles.advancedSection}>
       <summary className={styles.advancedSummary}>
         <span>
-          <Database size={18} />
+          <DatabaseIcon size={18} />
           More Details
         </span>
       </summary>
@@ -426,7 +426,7 @@ function AdvancedDetails({
       <div className={styles.advancedContent}>
         <section className={styles.advancedGroup}>
           <span className={styles.metaLabel}>
-            <Robot size={18} />
+            <RobotIcon size={18} />
             <span>Prediction</span>
           </span>
           <PredictionDetails details={predictionDetails} isLoading={isPredictionLoading} error={predictionError} />
@@ -434,7 +434,7 @@ function AdvancedDetails({
 
         <section className={styles.advancedGroup}>
           <span className={styles.metaLabel}>
-            <Code size={18} />
+            <CodeIcon size={18} />
             <span>Raw Bank Text</span>
           </span>
           <pre className={styles.rawTextBlock}>{rawText}</pre>
@@ -522,7 +522,7 @@ function TransactionView({
     <div className={styles.panelBody}>
       <section className={styles.heroSection}>
         <div className={`${styles.heroAmount} ${isInflow ? styles.heroAmountInflow : styles.heroAmountOutflow}`}>
-          {isInflow ? <Plus color="var(--color-text-secondary)" /> : <Minus color="var(--color-text-secondary)" />}
+          {isInflow ? <PlusIcon color="var(--color-text-secondary)" /> : <MinusIcon color="var(--color-text-secondary)" />}
           {getCurrencyLocaleString(displayAmount)}
         </div>
         <div className={styles.heroCategoryControl}>
@@ -541,8 +541,8 @@ function TransactionView({
             ['en-US'],
           )}
         </MetaItem>
-        <MetaItem icon={<Storefront color="var(--color-text)" size={18} />}>{txn.payeeName || '-'}</MetaItem>
-        <MetaItem icon={<HandCoins color="var(--color-text)" size={18} />}>{txn.accountName || '-'}</MetaItem>
+        <MetaItem icon={<StorefrontIcon color="var(--color-text)" size={18} />}>{txn.payeeName || '-'}</MetaItem>
+        <MetaItem icon={<HandCoinsIcon color="var(--color-text)" size={18} />}>{txn.accountName || '-'}</MetaItem>
       </section>
 
       <section className={styles.tagsSection}>
@@ -563,7 +563,7 @@ function TransactionView({
       {hasLinkedTransfer && (
         <section className={styles.linkedSection}>
           <span className={styles.metaLabel}>
-            <ArrowsLeftRight size={18} />
+            <ArrowsLeftRightIcon size={18} />
             <span>Linked Transfer</span>
           </span>
           <div className={styles.detailRows}>
@@ -577,7 +577,7 @@ function TransactionView({
 
       <section className={styles.statusSection}>
         <span className={styles.metaLabel}>
-          <CheckCircle size={18} />
+          <CheckCircleIcon size={18} />
           <span>Status</span>
         </span>
         <StatusControl status={txn.status} onStatusChange={onStatusChange} />
@@ -585,7 +585,7 @@ function TransactionView({
 
       <section className={styles.notesSection}>
         <span className={styles.metaLabel}>
-          <NotePencil color="var(--color-text)" size={18} />
+          <NotePencilIcon color="var(--color-text)" size={18} />
           <span>Notes</span>
         </span>
         <textarea
@@ -626,11 +626,11 @@ function StatusControl({
     return (
       <div className={styles.statusActions}>
         <button type="button" className={styles.approveBtn} onClick={() => onStatusChange(TransactionStatus.APPROVED)} aria-label="Approve transaction">
-          <ThumbsUp size={13} />
+          <ThumbsUpIcon size={13} />
           Approve
         </button>
         <button type="button" className={styles.rejectBtn} onClick={() => onStatusChange(TransactionStatus.REJECTED)} aria-label="Reject transaction">
-          <ThumbsDown size={13} />
+          <ThumbsDownIcon size={13} />
           Reject
         </button>
       </div>

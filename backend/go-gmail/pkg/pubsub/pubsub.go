@@ -133,7 +133,7 @@ func (p *EventProcessor) processMessage(event *pubsub.Message) {
 			TaskQueue: sharedModel.PennywiseTaskQueue,
 		},
 		sharedModel.EmailToTransactionWorkflowName,
-		sharedModel.EmailWorflowInput{
+		sharedModel.EmailToTransactionWorflowInput{
 			Email:     email,
 			HistoryId: historyID,
 		},
@@ -256,6 +256,7 @@ func PullMessages(ctx context.Context) {
 		Cipher: c.NewCipherClient(cipherClient),
 	})
 	w.RegisterActivity(&temporal.WatchGmailActivity{Gmail: gmail.NewService()})
+
 	go func() {
 		if err := w.Run(worker.InterruptCh()); err != nil {
 			logger.Fatal("Temporal activity worker failed", "error", err)
