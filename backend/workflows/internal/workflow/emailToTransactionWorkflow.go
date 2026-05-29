@@ -116,7 +116,7 @@ func ParsedEmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.Em
 	workflow.GetLogger(ctx).Info("starting parsed-email-to-transaction workflow", workflowLogFields...)
 
 	var parsedEmailsInput sharedModel.ParsedEmailsInput
-	if err := parseRawEmails(ctx, input, workflowLogFields, &parsedEmailsInput); err != nil {
+	if err := parseRawEmails(ctx, input, &parsedEmailsInput, workflowLogFields); err != nil {
 		return err
 	}
 
@@ -131,8 +131,8 @@ func ParsedEmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.Em
 func parseRawEmails(
 	ctx workflow.Context,
 	input sharedModel.EmailDataInput,
-	workflowLogFields []interface{},
 	parsedEmailsInput *sharedModel.ParsedEmailsInput,
+	workflowLogFields []interface{},
 ) error {
 	retrySignalCh := workflow.GetSignalChannel(ctx, sharedModel.RetryEmailParseSignal)
 
@@ -149,7 +149,7 @@ func parseRawEmails(
 		})
 
 		parseErr := workflow.ExecuteActivity(cipherCtx, "ParseEmailData", input).Get(cipherCtx, parsedEmailsInput)
-		if parseErr != nil {
+		if parseErr == nil {
 			break
 		}
 		workflow.GetLogger(ctx).
