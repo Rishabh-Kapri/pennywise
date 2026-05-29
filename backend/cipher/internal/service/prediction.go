@@ -9,13 +9,14 @@ import (
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
+	"jaytaylor.com/html2text"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/client"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/model"
 	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
-	"go.opentelemetry.io/otel/attribute"
 
+	"go.opentelemetry.io/otel/attribute"
 	oteltrace "go.opentelemetry.io/otel/trace"
 
 	"github.com/google/uuid"
@@ -38,6 +39,10 @@ const (
 	SourceLLM       = sharedModel.PredictionSourceLLM
 	SourceFallback  = sharedModel.PredictionSource("FALLBACK") // FALLBACK is used internally
 )
+
+type ExtractEmailDataRequest struct {
+	EmailHtml string `json:"emailHtml"`
+}
 
 type PredictRequest struct {
 	EmailText string  `json:"emailText"`
@@ -84,6 +89,7 @@ type CorrectionRequest struct {
 }
 
 type PredictionService interface {
+	ExtractEmailData(ctx context.Context, req ExtractEmailDataRequest) (*sharedModel.ExtractedEmailResponse, error)
 	Predict(ctx context.Context, req PredictRequest) (*PredictResponse, error)
 	GenerateTransactionEmbedding(
 		ctx context.Context,
@@ -256,6 +262,41 @@ func (s *predictionService) handleLLM(
 	result.Metadata = metadata
 
 	return &result, nil
+}
+
+func (s *predictionService) ExtractEmailData(
+	ctx context.Context,
+	req ExtractEmailDataRequest,
+) (*sharedModel.ExtractedEmailResponse, error) {
+	log := logger.Logger(ctx)
+	log.Info("ExtractEmailData started")
+
+	ctx, span := s.tracer.Start(ctx, "extractEmailData")
+	defer span.End()
+
+	span.SetName("ExtractEmailData")
+	span.SetAttributes(
+		attribute.String("emailText", req.EmailHtml),
+	)
+
+	text, err := html2text.FromString(
+		req.EmailHtml,
+		html2text.Options{PrettyTables: false, OmitLinks: true, TextOnly: true},
+	)
+	if err != nil {
+		return nil, err
+	}
+	text = strings.ReplaceAll(text, "\n", "")
+	text = strings.TrimSpace(text)
+
+	extracted, err := s.ollama.ExtractEmailData(ctx, text)
+	if err != nil {
+		return nil, err
+	}
+	extracted.EmailText = text
+
+	log.Info("email extraction", "extracted", extracted)
+	return extracted, nil
 }
 
 func (s *predictionService) Predict(ctx context.Context, req PredictRequest) (*PredictResponse, error) {

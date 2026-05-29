@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 
 	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
@@ -13,6 +14,7 @@ import (
 
 type PredictionService interface {
 	GetAll(ctx context.Context) ([]model.Prediction, error)
+	GetByTransactionID(ctx context.Context, transactionID uuid.UUID) (*model.TransactionPredictionDetails, error)
 	Create(ctx context.Context, prediction model.Prediction) ([]model.Prediction, error)
 	Update(ctx context.Context, id uuid.UUID, prediction model.Prediction) error
 	DeleteById(ctx context.Context, id uuid.UUID) error
@@ -32,6 +34,29 @@ func NewPredictionService(r repository.PredictionRepository, cr repository.Ciphe
 func (s *predictionService) GetAll(ctx context.Context) ([]model.Prediction, error) {
 	budgetId := utils.MustBudgetID(ctx)
 	return s.repo.GetAll(ctx, budgetId)
+}
+
+func (s *predictionService) GetByTransactionID(ctx context.Context, transactionID uuid.UUID) (*model.TransactionPredictionDetails, error) {
+	budgetID := utils.MustBudgetID(ctx)
+	details := &model.TransactionPredictionDetails{}
+
+	cipherPrediction, err := s.cipherRepo.GetByTransactionID(ctx, budgetID, transactionID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
+	if err == nil {
+		details.CipherPrediction = cipherPrediction
+	}
+
+	prediction, err := s.repo.GetByTxnId(ctx, budgetID, transactionID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
+	if err == nil {
+		details.Prediction = prediction
+	}
+
+	return details, nil
 }
 
 func (s *predictionService) Create(ctx context.Context, prediction model.Prediction) ([]model.Prediction, error) {

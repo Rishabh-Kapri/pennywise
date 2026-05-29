@@ -7,10 +7,13 @@ import (
 
 	cfg "github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/model"
+
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
+
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	oteltrace "go.opentelemetry.io/otel/trace"
@@ -32,36 +35,59 @@ func NewOllamaClient(c *transport.Client, tracer oteltrace.Tracer) *OllamaClient
 
 const extractionModel = "gemma4"
 
-const extractionPrompt = `You are a financial data extractor. Output strictly JSON.
-RULE: Remove the extra invoice number.
-SCHEMA: {"merchant": "string", "amount": float, "account_card": "string (Bank name and last 4 digits only, no extra words)"}
+// const extractionPrompt = `You are a financial data extractor. Output strictly JSON.
+// RULE: Remove the extra invoice number.
+// SCHEMA: {"merchant": "string", "amount": float, "account_card": "string (Bank name and last 4 digits only, no extra words)"}
+//
+// EXAMPLES:
+// Input: "Alert: Rs 500 debited from HDFC CC XX1234 towards SWIGGY"
+// Output: {"merchant": "SWIGGY", "amount": 500.0, "account_card": "HDFC 1234"}
+//
+// Input: "Txn of INR 1540 on ICICI XX4444 at RAZORPAY* MAKE MY T"
+// Output: {"merchant": "RAZORPAY* MAKE MY T", "amount": 1540.0, "account_card": "ICICI 4444"}
+//
+// Input: "UPDATE: Your A/C XXXXXX1234 is debited by Rs 45.00 on 15-Apr-26 for Swiggy Genie via PTM*BUNDLE TECHNOL. Clear Bal Rs 12,345.67."
+// Output: {"merchant": "Swiggy Genie", "amount": 45.0, "account_card": "1234"}
+//
+// Input: "Dear Customer,\nRs.1000.00 has been debited from account 1234 to VPA johndoes@okicici HOTEL JOE AND JOHN on 29-10-25."
+// Output: {"merchant": "johndoes@okicici HOTEL JOE AND JOHN", "amount": 1000.0, "account_card": "1234"}
+//
+// Input: "Dear Customer,\nRs. 15000.00 is successfully credited to your account **9999 by VPA userhigh@okhdfcbank USER HIGH on 07-10-25."
+// Output: {"merchant": "userhigh@okhdfcbank USER HIGH", "amount": 15000.0, "account_card": "9999"}
+//
+// Now process this input:
+// Input: "`
+//
+// Input: "Dear Customer, Thank you for banking with HDFC Bank. Amount deducted Of Rs. 39,090.00 From your SBI Bank A/c XX1234 For NEFT transaction Via SBI Bank Online Banking. Not you? Call 18002586161 Warm Regards, HDFC BankFor more details on Service charges and Fees, click here.. © HDFC Bank"
+// Output: {"merchant": "", "amount": -39090.0, "account_card": "1234"}
+const extractionPrompt = `You are a financial data extractor. You will receive email text and you need to output strictly JSON. Do not wrap the response in markdown blocks.
+	RULE: 
+	- Remove the extra invoice number.
+	- Add negative sign if the amount is debited.
+	- When merchant name is empty or not found, use empty string as merchant name.
+	- When the email is not a transaction email, return empty JSON.
+	SCHEMA: {"merchant": "string", "amount": float, "date": "string (formatted as YYYY-MM-DD)", "account_card": "string (Bank name and last 4 digits only, no extra words)", "reasoning": "string (Brief 1 sentence explanation of why this classification is chosen)"}
 
-EXAMPLES:
-Input: "Alert: Rs 500 debited from HDFC CC XX1234 towards SWIGGY"
-Output: {"merchant": "SWIGGY", "amount": 500.0, "account_card": "HDFC 1234"}
+	EXAMPLES: 
+  Input: "Dear Customer, Rs.500.00 has been debited from account 4567 to VPA 9876543210@ybl JOHN DOE S O JAMES DOE on 14-07-25. Your UPI transaction reference number is 123456789012. If you did not authorize this transaction, please report it immediately by calling 18002586161 Or SMS BLOCK UPI to 7308080808. Warm Regards, HDFC BankFor more details on Service charges and Fees, click here.. © HDFC Bank"
+	Output: {"merchant": "JOHN DOE S O JAMES DOE", "amount": -500.0, "date": "2025-07-14", "account_card": "4567"}
 
-Input: "Txn of INR 1540 on ICICI XX4444 at RAZORPAY* MAKE MY T"
-Output: {"merchant": "RAZORPAY* MAKE MY T", "amount": 1540.0, "account_card": "ICICI 4444"}
+	Input: "Dear Customer, Rs. 3000.00 is successfully credited to your account **4567 by VPA 9876543210@ybl JOHN DOE S O JAMES DOE on 12-07-25. Your UPI transaction reference number is 987654321098. Thank you for banking with us. Warm Regards, HDFC BankFor more details on Service charges and Fees, click here.. © HDFC Bank}"
+	Output: {"merchant": "JOHN DOE S O JAMES DOE", "amount": 3000.0, "date": "2025-07-12", "account_card": "4567"}
 
-Input: "UPDATE: Your A/C XXXXXX1234 is debited by Rs 45.00 on 15-Apr-26 for Swiggy Genie via PTM*BUNDLE TECHNOL. Clear Bal Rs 12,345.67."
-Output: {"merchant": "Swiggy Genie", "amount": 45.0, "account_card": "1234"}
-
-Input: "Dear Customer,\nRs.1000.00 has been debited from account 1234 to VPA johndoes@okicici HOTEL JOE AND JOHN on 29-10-25."
-Output: {"merchant": "johndoes@okicici HOTEL JOE AND JOHN", "amount": 1000.0, "account_card": "1234"}
-
-Input: "Dear Customer,\nRs. 15000.00 is successfully credited to your account **9999 by VPA userhigh@okhdfcbank USER HIGH on 07-10-25."
-Output: {"merchant": "userhigh@okhdfcbank USER HIGH", "amount": 15000.0, "account_card": "9999"}
-
-Now process this input:
-Input: "`
+	Now process this input:
+	Input: "`
 
 // ExtractEmailData implements Phase 1 of the classification pipeline:
 // sends raw email text to a local SLM (Gemma via Ollama) in JSON mode
 // to extract structured {merchant, amount, account_card} from chaotic bank alerts.
-func (c *OllamaClient) ExtractEmailData(ctx context.Context, rawText string) (*model.ExtractedEmail, error) {
+func (c *OllamaClient) ExtractEmailData(
+	ctx context.Context,
+	rawText string,
+) (*sharedModel.ExtractedEmailResponse, error) {
 	prompt := extractionPrompt + rawText + "\"\nOutput:"
 
-	extracted, err := GenericLLMCall[model.ExtractedEmail](ctx, c, model.PromptReq{
+	extracted, err := GenericLLMCall[sharedModel.ExtractedEmailResponse](ctx, c, model.PromptReq{
 		Model:  extractionModel,
 		Prompt: prompt,
 	})
