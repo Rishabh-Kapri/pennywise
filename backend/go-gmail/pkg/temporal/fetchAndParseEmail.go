@@ -64,6 +64,7 @@ func (a *GmailActivities) FetchEmailData(
 	log.Info("Fetched emails", "count", len(emailData))
 
 	for _, data := range emailData {
+		log.Info("Email data", "messageId", data.MessageId, "body", data.Body, "headers", data.Headers)
 		result.EmailData = append(result.EmailData, sharedModel.EmailData{
 			MessageId: data.MessageId,
 			Body:      data.Body,
