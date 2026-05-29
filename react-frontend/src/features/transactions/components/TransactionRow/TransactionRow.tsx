@@ -56,7 +56,7 @@ export interface Props {
   inlineEditingTxnId: string | null;
   handleTxnSelect: (index: number, txn: Transaction | null) => void;
   handleInlineTxnEdit: (index: number, txn: Transaction | null) => void;
-  handleSelectedTxnChange: (key: keyof Transaction, value: string | number | null) => void;
+  handleSelectedTxnChange: (key: keyof Transaction, value: Transaction[keyof Transaction]) => void;
   handleInputBlur: (key: keyof Transaction, value: string | number) => void;
   onAutoSave?: (overrides: Partial<Transaction>) => void;
 }
@@ -135,7 +135,7 @@ export function TransactionRow({
 
   const handleTagsChange = useCallback(
     (tagIds: string[]) => {
-      handleSelectedTxnChange('tagIds' as keyof Transaction, tagIds as unknown as string | number);
+      handleSelectedTxnChange('tagIds', tagIds);
     },
     [handleSelectedTxnChange],
   );

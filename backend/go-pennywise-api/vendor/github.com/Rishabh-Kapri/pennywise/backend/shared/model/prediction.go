@@ -65,6 +65,11 @@ type CipherPredictionRecord struct {
 	Deleted             bool             `json:"deleted"`
 }
 
+type TransactionPredictionDetails struct {
+	Prediction       *Prediction             `json:"prediction,omitempty"`
+	CipherPrediction *CipherPredictionRecord `json:"cipherPrediction,omitempty"`
+}
+
 func (p *Prediction) String() string {
 	return fmt.Sprintf(`Prediction{
     ID: %v,

@@ -47,6 +47,16 @@ type ParsedEmail struct {
 	Category        string  `json:"category"`
 }
 
+// ExtractedEmail is the structured output from Phase 1 LLM extraction.
+type ExtractedEmailResponse struct {
+	EmailText   string  `json:"emailText"`
+	Merchant    string  `json:"merchant"`
+	Amount      float64 `json:"amount"`
+	Date        string  `json:"date"`
+	AccountCard string  `json:"account_card"`
+	Reasoning   string  `json:"reasoning"`
+}
+
 // ParsedEmailsInput is the result of FetchAndParseEmails (go-gmail)
 // and the input to Predict (cipher).
 type ParsedEmailsInput struct {

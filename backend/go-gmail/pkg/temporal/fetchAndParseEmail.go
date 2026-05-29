@@ -2,13 +2,17 @@ package temporal
 
 import (
 	"context"
+	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/auth"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/client"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/gmail"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/parser"
+
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
+
 	"go.temporal.io/sdk/activity"
 )
 
@@ -16,6 +20,7 @@ type GmailActivities struct {
 	Auth   *auth.Service
 	Gmail  *gmail.Service
 	Parser *parser.EmailParser
+	Cipher *client.CipherClient
 }
 
 func (a *GmailActivities) FetchAndParseEmails(
@@ -40,7 +45,13 @@ func (a *GmailActivities) FetchAndParseEmails(
 	}
 
 	// fetch new emails from Gmail using history id
-	emailData, err := a.Gmail.GetMessageHistory(ctx, input.Email, input.HistoryID, token, gmail.WrapOAuthConfig(oauthConfig))
+	emailData, err := a.Gmail.GetMessageHistory(
+		ctx,
+		input.Email,
+		input.HistoryID,
+		token,
+		gmail.WrapOAuthConfig(oauthConfig),
+	)
 	if err != nil {
 		return result, err
 	}
@@ -48,23 +59,37 @@ func (a *GmailActivities) FetchAndParseEmails(
 	var results []sharedModel.ParsedEmail
 	log.Info("Fetched emails", "count", len(emailData))
 	for _, data := range emailData {
-		isTransaction := a.Gmail.IsTransactionEmail(data.Headers)
-		if !isTransaction {
+		extracted, err := a.Cipher.ExtractTransactionFromEmail(
+			ctx,
+			client.EmailExtractionRequest{EmailHtml: data.Body},
+		)
+		if err != nil || extracted == nil {
+			log.Error("error extracting email", "error", err)
 			continue
 		}
-		parsed, err := a.Parser.ParseEmail(data.Body)
+
+		if extracted.Amount == 0 || extracted.AccountCard == "" || extracted.Date == "" {
+			log.Info("email not a transaction", "email", data.Body, "extracted", *extracted)
+			continue
+		}
+
+		dateString := extracted.Date
+		date, err := time.Parse("2006-01-02", dateString)
 		if err != nil {
+			log.Error("error parsing date", "error", err)
 			continue
 		}
-		if parsed.Amount == 0 {
-			continue
+		transactionType := "debit"
+		if extracted.Amount > 0 {
+			transactionType = "credit"
 		}
+
 		results = append(results, sharedModel.ParsedEmail{
 			MessageId:       data.MessageId,
-			EmailText:       parsed.Text,
-			Amount:          parsed.Amount,
-			Date:            parsed.Date,
-			TransactionType: parsed.TransactionType,
+			EmailText:       extracted.EmailText,
+			Amount:          extracted.Amount,
+			Date:            date.Format("2006-01-02"),
+			TransactionType: transactionType,
 			Account:         "",
 		})
 	}

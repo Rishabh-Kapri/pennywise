@@ -13,6 +13,7 @@ import (
 
 type PredictionHandler interface {
 	List(c *gin.Context)
+	GetByTransactionID(c *gin.Context)
 	Create(c *gin.Context)
 	Update(c *gin.Context)
 	DeleteById(c *gin.Context)
@@ -35,6 +36,28 @@ func (h *predictionHandler) List(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, predictions)
+}
+
+func (h *predictionHandler) GetByTransactionID(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	id, ok := c.Params.Get("transactionId")
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "transactionId is needed"})
+		return
+	}
+	parsedID, err := uuid.Parse(id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing transactionId"})
+		return
+	}
+
+	details, err := h.service.GetByTransactionID(ctx, parsedID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, details)
 }
 
 func (h *predictionHandler) Create(c *gin.Context) {

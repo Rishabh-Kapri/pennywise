@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 )
 
@@ -34,7 +34,7 @@ func (d *BackfillDeps) extractAndParse(ctx context.Context, p resolvedPrediction
 }
 
 // buildParsedEmail constructs a parsedEmailText from the Phase 1 LLM extraction output.
-func buildParsedEmail(extracted *model.ExtractedEmail, transactionType string) *parsedEmailText {
+func buildParsedEmail(extracted *sharedModel.ExtractedEmailResponse, transactionType string) *parsedEmailText {
 	if extracted.Merchant == "" {
 		return nil
 	}
