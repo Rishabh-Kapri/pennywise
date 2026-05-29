@@ -12,6 +12,7 @@ import (
 )
 
 type PredictionHandler interface {
+	ExtractEmailData(c *gin.Context)
 	Predict(c *gin.Context)
 	GenerateTransactionEmbedding(c *gin.Context)
 	HandleCorrection(c *gin.Context)
@@ -23,6 +24,25 @@ type predictionHandler struct {
 
 func NewPredictionHandler(ps service.PredictionService) PredictionHandler {
 	return &predictionHandler{predictionService: ps}
+}
+
+func (h *predictionHandler) ExtractEmailData(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	var req service.ExtractEmailDataRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	result, err := h.predictionService.ExtractEmailData(ctx, req)
+	if err != nil {
+		logger.Logger(ctx).Error("email data extraction failed", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "email data extraction failed"})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
 }
 
 func (h *predictionHandler) Predict(c *gin.Context) {

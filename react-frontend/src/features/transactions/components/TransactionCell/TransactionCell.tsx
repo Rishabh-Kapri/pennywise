@@ -104,7 +104,8 @@ export function TransactionCell({
   }
 
   // transaction is selected
-  const value = selectedTxn?.[col.key] ?? '';
+  const rawValue = selectedTxn?.[col.key] ?? '';
+  const value = typeof rawValue === 'string' || typeof rawValue === 'number' ? rawValue : '';
 
   // Dropdown fields (account, payee, category)
   if (isDropdownColumn(col.key)) {

@@ -4,8 +4,10 @@ import (
 	"context"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
+
 	"github.com/google/uuid"
 )
 
@@ -21,6 +23,10 @@ type PredictRequest struct {
 	EmailText string  `json:"emailText"`
 	Amount    float64 `json:"amount"`
 	Account   string  `json:"account"`
+}
+
+type EmailExtractionRequest struct {
+	EmailHtml string `json:"emailHtml"`
 }
 
 type PredictResponse struct {
@@ -40,4 +46,17 @@ func (c *CipherClient) Predict(ctx context.Context, req PredictRequest) (res *Pr
 
 	resp, err := transport.Post[PredictResponse](ctx, c.client, "/api/predict", headers, req)
 	return &resp, err
+}
+
+func (c *CipherClient) ExtractTransactionFromEmail(
+	ctx context.Context,
+	req EmailExtractionRequest,
+) (*model.ExtractedEmailResponse, error) {
+	header := utils.GetHeaders(ctx)
+
+	res, err := transport.Post[model.ExtractedEmailResponse](ctx, c.client, "/api/extract-email", header, req)
+	if err != nil {
+		return nil, err
+	}
+	return &res, nil
 }

@@ -47,6 +47,10 @@ func (f *fakePredictionService) GetAll(context.Context) ([]model.Prediction, err
 	return nil, nil
 }
 
+func (f *fakePredictionService) GetByTransactionID(context.Context, uuid.UUID) (*model.TransactionPredictionDetails, error) {
+	return &model.TransactionPredictionDetails{}, nil
+}
+
 func (f *fakePredictionService) Create(context.Context, model.Prediction) ([]model.Prediction, error) {
 	return nil, nil
 }

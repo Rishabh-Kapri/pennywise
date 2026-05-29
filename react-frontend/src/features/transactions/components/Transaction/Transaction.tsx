@@ -158,7 +158,7 @@ export function Transaction() {
     setSidePanelContent(null);
   }, [setSidePanelContent]);
 
-  const handleSelectedTxnChange = useCallback((key: keyof Transaction, value: string | number | null) => {
+  const handleSelectedTxnChange = useCallback((key: keyof Transaction, value: Transaction[keyof Transaction]) => {
     setSelectedTxn((prev) => {
       if (!prev) return null;
       return { ...prev, [key]: value };
@@ -398,6 +398,7 @@ export function Transaction() {
     inlineEditingTxnId,
     isDetailPanelOpen,
     isAddingNew,
+    paramId,
     setSidePanelContent,
     handleSelectedTxnChange,
     handlePanelSelectChange,

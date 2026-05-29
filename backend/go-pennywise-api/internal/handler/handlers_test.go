@@ -801,6 +801,13 @@ func (m *mockPredictionService) GetAll(ctx context.Context) ([]model.Prediction,
 	}
 	return nil, args.Error(1)
 }
+func (m *mockPredictionService) GetByTransactionID(ctx context.Context, transactionID uuid.UUID) (*model.TransactionPredictionDetails, error) {
+	args := m.Called(ctx, transactionID)
+	if v := args.Get(0); v != nil {
+		return v.(*model.TransactionPredictionDetails), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
 func (m *mockPredictionService) Create(ctx context.Context, p model.Prediction) ([]model.Prediction, error) {
 	args := m.Called(ctx, p)
 	if v := args.Get(0); v != nil {

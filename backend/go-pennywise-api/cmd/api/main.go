@@ -419,6 +419,11 @@ func main() {
 			predictionGroup := router.Group("/api/predictions")
 			predictionGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
 			predictionGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), predictionHandler.List)
+			predictionGroup.GET(
+				"/transactions/:transactionId",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				predictionHandler.GetByTransactionID,
+			)
 			predictionGroup.POST("", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), predictionHandler.Create)
 			predictionGroup.PATCH(
 				":id",

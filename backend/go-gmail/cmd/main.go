@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/auth"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/client"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/config"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/gmail"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/parser"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedMiddleware "github.com/Rishabh-Kapri/pennywise/backend/shared/middleware"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
@@ -168,6 +170,9 @@ func main() {
 		}
 		defer temporalClient.Close()
 
+		httpTransport := httpclient.NewHttpTransport(cfg.CipherServiceURL)
+		cipherClient := transport.NewClient("cipher", httpTransport)
+
 		w := worker.New(temporalClient, sharedModel.GmailActivitiesTaskQueue, worker.Options{
 			UseBuildIDForVersioning: false,
 			BackgroundActivityContext: utils.WithInternalAuthToken(
@@ -180,6 +185,7 @@ func main() {
 			Auth:   auth.NewService(cfg),
 			Gmail:  gmail.NewService(),
 			Parser: parser.NewEmailParser(),
+			Cipher: client.NewCipherClient(cipherClient),
 		})
 		go func() {
 			if err := w.Run(worker.InterruptCh()); err != nil {

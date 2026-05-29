@@ -11,13 +11,6 @@ type PromptReq struct {
 	UserPrompt string `json:"userPrompt"`
 }
 
-// ExtractedEmail is the structured output from Phase 1 LLM extraction.
-type ExtractedEmail struct {
-	Merchant    string  `json:"merchant"`
-	Amount      float64 `json:"amount"`
-	AccountCard string  `json:"account_card"`
-}
-
 // LLMPrediction is the structured output from Phase 4 LLM classification.
 type LLMPrediction struct {
 	MerchantName string `json:"merchantName"`
