@@ -230,7 +230,8 @@ export function Transaction() {
     if (!selectedTxn) return;
     try {
       if (isAddingNew) {
-        await dispatch(createTransaction(buildTransactionPayload(selectedTxn))).unwrap();
+        const payload = buildTransactionPayload(selectedTxn);
+        await dispatch(createTransaction(payload)).unwrap();
         toast.success('Transaction created');
         const accountIds = paramId ? [paramId] : [];
         const params = {
