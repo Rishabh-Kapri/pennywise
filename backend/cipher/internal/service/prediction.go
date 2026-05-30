@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
@@ -51,8 +52,8 @@ type ExtractedInputs struct {
 }
 
 type PredictRequest struct {
-	EmailText       string          `json:"emailText"`
-	Amount          float64         `json:"amount"`
+	EmailText       string           `json:"emailText"`
+	Amount          float64          `json:"amount"`
 	ExtractedInputs *ExtractedInputs `json:"extractedInputs"`
 }
 
@@ -73,6 +74,7 @@ type LLMRequest struct {
 }
 
 type PredictResponse struct {
+	Summary    string                       `json:"summary"`
 	Account    string                       `json:"account"`
 	AccountID  uuid.UUID                    `json:"accountId"`
 	PayeeID    uuid.UUID                    `json:"payeeId"`
@@ -96,6 +98,8 @@ type CorrectionRequest struct {
 }
 
 type PredictionService interface {
+	// Normalizes the email text using LLM to remove any formatting or other irrelevant information
+	SummarizeEmailText(ctx context.Context, text string) (string, error)
 	ExtractEmailData(ctx context.Context, req ExtractEmailDataRequest) (*sharedModel.ExtractedEmailResponse, error)
 	Predict(ctx context.Context, req PredictRequest) (*PredictResponse, error)
 	GenerateTransactionEmbedding(
@@ -271,6 +275,60 @@ func (s *predictionService) handleLLM(
 	return &result, nil
 }
 
+type summaryResponse struct {
+	Summary string `json:"summary"`
+}
+
+func cleanEmail(text string) string {
+	// Remove forwarded headers
+	if idx := strings.Index(text, "Dear Customer"); idx != -1 {
+		text = text[idx:]
+	}
+	// Remove from "Warm Regards" onwards
+	for _, marker := range []string{"Warm Regards", "warm regards", "Warm regards"} {
+		if idx := strings.Index(text, marker); idx != -1 {
+			text = text[:idx]
+		}
+	}
+	// Remove URLs
+	urlRegex := regexp.MustCompile(`https?://\S+`)
+	text = urlRegex.ReplaceAllString(text, "")
+	// Remove UPI ref
+	upiRegex := regexp.MustCompile(`(?i)UPI (transaction )?reference (no\.?|number)[^.]*\.`)
+	text = upiRegex.ReplaceAllString(text, "")
+	// Remove support sections
+	for _, marker := range []string{"If you did not auth", "Important Note", "What You Can Do", "Need Help"} {
+		if idx := strings.Index(text, marker); idx != -1 {
+			text = text[:idx]
+		}
+	}
+	return strings.TrimSpace(text)
+}
+
+func (s *predictionService) SummarizeEmailText(ctx context.Context, text string) (string, error) {
+	log := logger.Logger(ctx)
+	log.Info("NormalizeEmailText started", "text", text)
+
+	// text = cleanEmail(text)
+	htmlRegex := regexp.MustCompile(`<[^>]*>`)
+	text = htmlRegex.ReplaceAllString(text, "")
+
+	log.Info("NormalizeEmailText before prompt", "text", text)
+
+	prompt := client.EmailNormalizationPrompt + text + "\nOutput:"
+	temperature := float32(0.0)
+	res, err := client.GenericLLMCall[summaryResponse](ctx, s.ollama, model.PromptReq{
+		Model:       "gemma4",
+		Prompt:      prompt,
+		Temperature: &temperature,
+	})
+	if err != nil {
+		return "", err
+	}
+	log.Info("NormalizeEmailText completed", "summary", res)
+	return res.Summary, nil
+}
+
 func (s *predictionService) ExtractEmailData(
 	ctx context.Context,
 	req ExtractEmailDataRequest,
@@ -346,7 +404,7 @@ func (s *predictionService) Predict(ctx context.Context, req PredictRequest) (*P
 		extractedEmail.Date = extracted.Date
 		extractedEmail.EmailText = extracted.EmailText
 	}
-	
+
 	log.Info("email extraction", "extracted", extractedEmail)
 
 	accountStr := utils.CleanAccountString(extractedEmail.AccountCard)

@@ -118,6 +118,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     dedupe_hash VARCHAR(64),
     status transaction_status NOT NULL DEFAULT 'MANUAL',
     raw_bank_text TEXT,
+    summary TEXT,
 
     transfer_account_id UUID REFERENCES accounts(id),
     transfer_transaction_id UUID REFERENCES transactions(id),

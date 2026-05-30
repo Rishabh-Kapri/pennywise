@@ -12,6 +12,7 @@ import (
 )
 
 type PredictionHandler interface {
+	NormalizeEmailText(c *gin.Context)
 	ExtractEmailData(c *gin.Context)
 	Predict(c *gin.Context)
 	GenerateTransactionEmbedding(c *gin.Context)
@@ -24,6 +25,27 @@ type predictionHandler struct {
 
 func NewPredictionHandler(ps service.PredictionService) PredictionHandler {
 	return &predictionHandler{predictionService: ps}
+}
+
+func (h *predictionHandler) NormalizeEmailText(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	var req struct {
+		EmailText string `json:"emailText"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	res, err := h.predictionService.SummarizeEmailText(ctx, req.EmailText)
+	if err != nil {
+		logger.Logger(ctx).Error("email text normalization failed", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "email text normalization failed"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": res})
 }
 
 func (h *predictionHandler) ExtractEmailData(c *gin.Context) {
