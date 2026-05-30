@@ -82,6 +82,7 @@ func (a *CreateTransactionActivity) CreateTransaction(
 			Status:      sharedModel.TransactionStatusUnapproved,
 			DedupeHash:  &hash,
 			RawBankText: &p.OriginalRawText,
+			Summary:     &p.Summary,
 		}
 
 		createdTxn, err := a.TransactionService.Create(ctx, txn)

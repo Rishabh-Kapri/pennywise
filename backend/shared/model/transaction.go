@@ -54,6 +54,7 @@ type Transaction struct {
 	DedupeHash            *string           `json:"dedupeHash,omitempty"`
 	Status                TransactionStatus `json:"status"`
 	RawBankText           *string           `json:"rawBankText,omitempty"`
+	Summary               *string           `json:"summary,omitempty"`
 	TransferAccountID     *uuid.UUID        `json:"transferAccountId,omitempty"`
 	TransferTransactionID *uuid.UUID        `json:"transferTransactionId,omitempty"`
 	TagIDs                []uuid.UUID       `json:"tagIds"`

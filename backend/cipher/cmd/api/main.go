@@ -309,7 +309,8 @@ func main() {
 
 		budgetApi := api.Group("")
 		budgetApi.Use(sharedMiddleware.BudgetIdMiddleware(budgetRepo))
-		budgetApi.POST("/extract-email", predictionHandler.ExtractEmailData)
+		budgetApi.POST("/email/normalize", predictionHandler.NormalizeEmailText)
+		budgetApi.POST("/email/extract", predictionHandler.ExtractEmailData)
 		budgetApi.POST("/predict", predictionHandler.Predict)
 		budgetApi.POST("/embeddings/transaction", predictionHandler.GenerateTransactionEmbedding)
 		budgetApi.POST("/corrections", predictionHandler.HandleCorrection)

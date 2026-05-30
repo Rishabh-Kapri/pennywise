@@ -53,6 +53,7 @@ type ParsedEmail struct {
 // ExtractedEmail is the structured output from Phase 1 LLM extraction.
 type ExtractedEmailResponse struct {
 	EmailText   string  `json:"emailText"`
+	Summary     string  `json:"summary"`
 	Merchant    string  `json:"merchant"`
 	Amount      float64 `json:"amount"`
 	Date        string  `json:"date"`
@@ -94,6 +95,7 @@ type UpdateGmailHistoryInput struct {
 // CipherPredictionResult is the result of the Predict activity (cipher).
 type CipherPredictionResult struct {
 	OriginalRawText string           `json:"rawText"`
+	Summary         string           `json:"summary"`
 	AccountID       uuid.UUID        `json:"accountId"`
 	Account         string           `json:"account,omitempty"`
 	PayeeID         uuid.UUID        `json:"payeeId"`
