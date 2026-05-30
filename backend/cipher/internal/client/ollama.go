@@ -60,6 +60,33 @@ const extractionModel = "gemma4"
 //
 // Input: "Dear Customer, Thank you for banking with HDFC Bank. Amount deducted Of Rs. 39,090.00 From your SBI Bank A/c XX1234 For NEFT transaction Via SBI Bank Online Banking. Not you? Call 18002586161 Warm Regards, HDFC BankFor more details on Service charges and Fees, click here.. © HDFC Bank"
 // Output: {"merchant": "", "amount": -39090.0, "account_card": "1234"}
+const EmailNormalizationPrompt = `You are a bank email summarizer. Summarize the transaction in one sentence. Return only the sentence, nothing else.
+If not a transaction email, return empty string "".
+
+EXAMPLES:
+Input: "Dear Customer, We would like to inform you that Rs. 939.00 has been debited from your HDFC Bank Credit Card ending 4432 towards BEMINIMALIST on 29 May, 2026 at 21:04:11. To check your balance: https://mycards.hdfc.bank.in Important Note: Call 1800 258 6161. Warm Regards, HDFC Bank."
+	Output: { summary: "Rs. 939.00 debited from Credit Card 4432 to BEMINIMALIST on 29 May 2026." }
+
+Input: "Dear Customer, Rs.500.00 has been debited from account 4567 to VPA 9876543210@ybl (JOHN DOE S O JAMES DOE) on 14-07-25. UPI ref: 123456789012. If you did not authorize call 18002586161. Warm Regards, HDFC Bank."
+Output: { "summary": "Rs. 500.00 debited from account 4567 to 9876543210@ybl JOHN DOE on 14-07-25." }
+
+Input: "Dear Customer, Rs. 3000.00 is successfully credited to your account 4567 by VPA 9876543210@ybl JOHN DOE on 12-07-25. UPI ref: 987654321098. Warm Regards, HDFC Bank."
+Output: { "summary": "Rs. 3000.00 credited to account 4567 from 9876543210@ybl JOHN DOE on 12-07-25." }
+
+Input: "Dear Customer, Thank you for using your HDFC Bank Card XX1234 for Rs. 650.0 at GOOGLEPLAY on 14-05-2026."
+Output: { "summary": "Rs. 650.0 debited from Card 1234 at GOOGLEPLAY on 14-05-2026." }
+
+Input: "Dear Customer, Rs.250.00 is debited from your account ending 1234 towards VPA 9997181976-1@okbizaxis (SPARSH Physiotherapy and Wellness Center) on 30-05-26. UPI ref: 901444291862."
+Output: { "summary": "Rs. 250.00 debited from account 1234 to 9997181976-1@okbizaxis SPARSH Physiotherapy and Wellness Center on 30-05-26." }
+
+Input: "Dear Customer, Rs.900.00 has been successfully credited to your HDFC Bank account ending in 8936. Transaction Details: a. Date: 26-05-26 b. Sender: ANSHUL WAGADRE (VPA: 7999470042@yescred) c. UPI Reference No.: 651206303881. Need Help? India (Toll-Free): 1800 258 6161."
+Output: { "summary": "Rs. 900.00 credited to account 8936 from 7999470042@yescred ANSHUL WAGADRE on 26-05-26." }
+
+Input: "Dear Customer, You have successfully added a payee ITD with A/c XX5116 to your HDFC Bank Account via Online Banking. Not you? Call 18002586161."
+Output: { "summary": "" }
+
+Input: `
+
 const extractionPrompt = `You are a financial data extractor. You will receive email text and you need to output strictly JSON. Do not wrap the response in markdown blocks.
 	RULE: 
 	- Remove the extra invoice number.
@@ -76,7 +103,7 @@ const extractionPrompt = `You are a financial data extractor. You will receive e
 	Output: {"merchant": "JOHN DOE S O JAMES DOE", "amount": 3000.0, "date": "2025-07-12", "account_card": "4567"}
 
 	Now process this input:
-	Input: "`
+	Input: `
 
 // ExtractEmailData implements Phase 1 of the classification pipeline:
 // sends raw email text to a local SLM (Gemma via Ollama) in JSON mode
@@ -148,7 +175,7 @@ func (c *OllamaClient) Generate(
 		return c.doOpenAI(ctx, model.PromptReq{Model: ollamaModel, Prompt: prompt, UserPrompt: userPrompt})
 	}
 
-	return c.doLocalGenerate(ctx, ollamaModel, prompt)
+	return c.doLocalGenerate(ctx, ollamaModel, prompt, nil)
 }
 
 // GenericLLMCall sends a prompt and unmarshals the JSON response into type T.
@@ -160,7 +187,7 @@ func GenericLLMCall[T any](ctx context.Context, c *OllamaClient, req model.Promp
 	if strings.HasPrefix(req.Model, "openai") {
 		jsonStr, err = c.doOpenAI(ctx, req)
 	} else {
-		jsonStr, err = c.doLocalGenerate(ctx, req.Model, req.Prompt)
+		jsonStr, err = c.doLocalGenerate(ctx, req.Model, req.Prompt, req.Temperature)
 	}
 
 	var zero T
@@ -173,7 +200,12 @@ func GenericLLMCall[T any](ctx context.Context, c *OllamaClient, req model.Promp
 // ── Internal dispatch ───────────────────────────────────────────
 
 // doLocalGenerate calls the local Ollama /api/generate endpoint with deterministic settings.
-func (c *OllamaClient) doLocalGenerate(ctx context.Context, ollamaModel string, prompt string) (string, error) {
+func (c *OllamaClient) doLocalGenerate(
+	ctx context.Context,
+	ollamaModel string,
+	prompt string,
+	temperature *float32,
+) (string, error) {
 	ctx, span := c.tracer.Start(ctx, "chat "+ollamaModel,
 		oteltrace.WithSpanKind(oteltrace.SpanKindClient),
 	)
@@ -187,13 +219,18 @@ func (c *OllamaClient) doLocalGenerate(ctx context.Context, ollamaModel string, 
 		attribute.String("gen_ai.prompt", prompt),
 	)
 
+	modelTemp := float32(0.0)
+	if temperature != nil {
+		modelTemp = *temperature
+	}
+
 	resp, err := transport.Post[model.OllamaResponse](ctx, c.client, "/api/generate", nil, model.OllamaRequest{
 		Model:  ollamaModel,
 		Prompt: prompt,
 		Format: "json",
 		Stream: false,
 		Options: map[string]any{
-			"temperature": 0.0,
+			"temperature": modelTemp,
 			"top_p":       1.0,
 		},
 	})

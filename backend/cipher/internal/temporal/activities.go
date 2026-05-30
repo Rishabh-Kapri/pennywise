@@ -57,6 +57,11 @@ func (a *PredictionActivity) Predict(
 			}
 		}
 
+		summary, err := a.PredictionService.SummarizeEmailText(ctx, email.EmailText)
+		if err != nil {
+			return nil, err
+		}
+
 		prediction, err := a.PredictionService.Predict(ctx, predictionInput)
 		if err != nil {
 			log.Error("Prediction failed", "error", err)
@@ -66,6 +71,7 @@ func (a *PredictionActivity) Predict(
 		log.Info("Prediction result", "result", prediction)
 		predictionResponse = append(predictionResponse, sharedModel.CipherPredictionResult{
 			OriginalRawText: email.EmailText,
+			Summary:         summary,
 			AccountID:       prediction.AccountID,
 			Account:         prediction.Account,
 			PayeeID:         prediction.PayeeID,

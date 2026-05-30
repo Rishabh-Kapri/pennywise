@@ -6,9 +6,10 @@ package model
 // For OpenAI: if UserPrompt is set, Prompt becomes the system message
 // and UserPrompt the user message. Otherwise Prompt is sent as a single user message.
 type PromptReq struct {
-	Model      string `json:"model"`
-	Prompt     string `json:"prompt"`
-	UserPrompt string `json:"userPrompt"`
+	Model       string   `json:"model"`
+	Prompt      string   `json:"prompt"`
+	UserPrompt  string   `json:"userPrompt"`
+	Temperature *float32 `json:"temperature"`
 }
 
 // LLMPrediction is the structured output from Phase 4 LLM classification.

@@ -54,7 +54,7 @@ func (c *CipherClient) ExtractTransactionFromEmail(
 ) (*model.ExtractedEmailResponse, error) {
 	header := utils.GetHeaders(ctx)
 
-	res, err := transport.Post[model.ExtractedEmailResponse](ctx, c.client, "/api/extract-email", header, req)
+	res, err := transport.Post[model.ExtractedEmailResponse](ctx, c.client, "/api/email/extract", header, req)
 	if err != nil {
 		return nil, err
 	}
