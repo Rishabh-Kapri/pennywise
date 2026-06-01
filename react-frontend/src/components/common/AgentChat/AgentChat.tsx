@@ -560,7 +560,7 @@ export function AgentChat() {
   }, [createRunLoading, isAwaitingAgentResponse, lastMessage]);
 
   const submitMessage = useCallback(
-    (message: string) => {
+    async (message: string) => {
       const trimmedMessage = message.trim();
       if (!trimmedMessage || isSending || !hasSelectedBudget) {
         return;
@@ -571,12 +571,13 @@ export function AgentChat() {
       focusComposerInput();
       setIsHistoryOpen(false);
       setIsAwaitingAgentResponse(true);
-      dispatch(
+      const run = await dispatch(
         createAgentRun({
           message: trimmedMessage,
           conversationId: currentConversationId ?? undefined,
         }),
-      );
+      ).unwrap();
+      dispatch(selectAgentConversation(run.conversationId ?? ''));
     },
     [currentConversationId, dispatch, focusComposerInput, hasSelectedBudget, isSending],
   );
