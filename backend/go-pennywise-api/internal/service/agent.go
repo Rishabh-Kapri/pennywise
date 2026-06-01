@@ -100,102 +100,44 @@ func (s *agentService) GetConversationMessages(
 	return s.repo.ListConversationMessages(ctx, id, nil)
 }
 
-func (s *agentService) CreateRun(
+func (s *agentService) continueRun(
 	ctx context.Context,
 	req sharedModel.AgentRunCreateRequest,
-) (*sharedModel.AgentRun, error) {
+	userID uuid.UUID,
+	budgetID uuid.UUID,
+	conversation *sharedModel.AgentConversation,
+	agentKey string,
+) {
 	log := logger.Logger(ctx)
-	if s.client == nil {
-		return nil, errs.New(errs.CodeInternalError, "agent client is not configured")
-	}
-	if s.repo == nil {
-		return nil, errs.New(errs.CodeInternalError, "agent repository is not configured")
-	}
-
-	req.Message = strings.TrimSpace(req.Message)
-	if req.Message == "" {
-		return nil, errs.New(errs.CodeInvalidArgument, "message is required")
-	}
-
-	userID, budgetID, err := agentContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	agentKey, err := normalizeAgentKey(req.AgentKey)
-	if err != nil {
-		return nil, err
-	}
-	if err := normalizeAgentModel(&req); err != nil {
-		return nil, err
-	}
 
 	var run *sharedModel.AgentRun
 	var userMessage *sharedModel.ConversationMessage
-	var conversation *sharedModel.AgentConversation
 	var assistantMsg *sharedModel.ConversationMessage
 	var prevMessages []sharedModel.ConversationMessage
 	var prevAgentRuns []sharedModel.AgentRun
 
-	err = utils.WithTx(ctx, s.repo.GetDB(), func(tx pgx.Tx) error {
-		if req.ConversationID != nil {
-			conversation, err = s.repo.GetConversationForUpdate(
-				ctx,
-				tx,
-				*req.ConversationID,
-				userID,
-				budgetID,
-				agentKey,
+	err := utils.WithTx(ctx, s.repo.GetDB(), func(tx pgx.Tx) error {
+		var err error
+
+		prevMessages, err = s.repo.ListConversationMessages(ctx, *req.ConversationID, nil)
+		if err != nil {
+			return wrapAgentRepoError(
+				errs.CodeAgentMessageLookupFailed,
+				"failed to get previous conversation messages",
+				err,
 			)
-			if err != nil {
-				return wrapAgentRepoError(
-					errs.CodeAgentConversationLookupFailed,
-					"failed to get agent conversation",
-					err,
-				)
-			}
+		}
 
-			prevMessages, err = s.repo.ListConversationMessages(ctx, *req.ConversationID, nil)
-			if err != nil {
-				return wrapAgentRepoError(
-					errs.CodeAgentMessageLookupFailed,
-					"failed to get previous conversation messages",
-					err,
-				)
-			}
-
-			prevAgentRuns, err = s.repo.GetAllConversationRuns(ctx, tx, *req.ConversationID)
-			if err != nil {
-				return wrapAgentRepoError(
-					errs.CodeAgentRunLookupFailed,
-					"failed to get previous conversation runs",
-					err,
-				)
-			}
+		prevAgentRuns, err = s.repo.GetAllConversationRuns(ctx, tx, *req.ConversationID)
+		if err != nil {
+			return wrapAgentRepoError(
+				errs.CodeAgentRunLookupFailed,
+				"failed to get previous conversation runs",
+				err,
+			)
+		}
+		if req.ConversationID != nil {
 		} else {
-			conversationMetadata := req.ConversationMetadata
-			if conversationMetadata == nil {
-				conversationMetadata = map[string]any{}
-				conversationMetadata["defaultModel"] = *req.ModelProvider + "/" + *req.ModelName
-			}
-			if req.Title == nil {
-				conversationMetadata["titleSource"] = "auto"
-			}
-			req.ConversationMetadata = conversationMetadata
-			conversation, err = s.repo.CreateConversation(ctx, tx, repository.CreateAgentConversationParams{
-				UserID:   userID,
-				BudgetID: budgetID,
-				AgentKey: agentKey,
-				Title:    trimOptionalString(req.Title),
-				Metadata: conversationMetadata,
-			})
-			if err != nil {
-				return wrapAgentRepoError(
-					errs.CodeAgentConversationCreateFailed,
-					"failed to create agent conversation",
-					err,
-				)
-			}
 		}
 
 		runMetadata := req.Metadata
@@ -288,7 +230,8 @@ func (s *agentService) CreateRun(
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		log.Error("failed to create assistant conversation message", err)
+		return
 	}
 
 	run.Conversation = conversation
@@ -314,9 +257,12 @@ func (s *agentService) CreateRun(
 			ptrString(err.Error()),
 		)
 		if updateErr == nil {
-			return failedRun, errs.Wrap(errs.CodeAgentDispatchFailed, "failed to dispatch agent run", err)
+			log.Error("failed to update run status", "failedRun", failedRun, "error", updateErr)
+			// return failedRun, errs.Wrap(errs.CodeAgentDispatchFailed, "failed to dispatch agent run", err)
 		}
-		return run, errs.Wrap(errs.CodeAgentDispatchFailed, "failed to dispatch agent run", err)
+
+		log.Error("failed to dispatch agent run", "error", err)
+		// return run, errs.Wrap(errs.CodeAgentDispatchFailed, "failed to dispatch agent run", err)
 	}
 
 	status := sharedModel.AgentRunStatusRunning
@@ -325,9 +271,101 @@ func (s *agentService) CreateRun(
 	}
 	updatedRun, err := s.setRunStatus(ctx, run.ID, budgetID, status, nil)
 	if err != nil {
-		return run, err
+		log.Error("failed to update run status", "error", err)
+		return
 	}
-	return updatedRun, nil
+
+	log.Info("dispatched agent run", "run", updatedRun)
+	return
+}
+
+func (s *agentService) CreateRun(
+	ctx context.Context,
+	req sharedModel.AgentRunCreateRequest,
+) (*sharedModel.AgentRun, error) {
+	if s.client == nil {
+		return nil, errs.New(errs.CodeInternalError, "agent client is not configured")
+	}
+	if s.repo == nil {
+		return nil, errs.New(errs.CodeInternalError, "agent repository is not configured")
+	}
+
+	req.Message = strings.TrimSpace(req.Message)
+	if req.Message == "" {
+		return nil, errs.New(errs.CodeInvalidArgument, "message is required")
+	}
+
+	userID, budgetID, err := agentContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	agentKey, err := normalizeAgentKey(req.AgentKey)
+	if err != nil {
+		return nil, err
+	}
+	if err := normalizeAgentModel(&req); err != nil {
+		return nil, err
+	}
+
+	var conversation *sharedModel.AgentConversation
+
+	if req.ConversationID != nil {
+		conversation, err = s.repo.GetConversationForUpdate(
+			ctx,
+			nil,
+			*req.ConversationID,
+			userID,
+			budgetID,
+			agentKey,
+		)
+		if err != nil {
+			return nil, wrapAgentRepoError(
+				errs.CodeAgentConversationLookupFailed,
+				"failed to get agent conversation",
+				err,
+			)
+		}
+
+		req.ConversationMetadata = conversation.Metadata
+	} else {
+		conversationMetadata := req.ConversationMetadata
+
+		if conversationMetadata == nil {
+			conversationMetadata = map[string]any{}
+			conversationMetadata["defaultModel"] = *req.ModelProvider + "/" + *req.ModelName
+		}
+		if req.Title == nil {
+			conversationMetadata["titleSource"] = "auto"
+		}
+		req.ConversationMetadata = conversationMetadata
+
+		conversation, err = s.repo.CreateConversation(ctx, nil, repository.CreateAgentConversationParams{
+			UserID:   userID,
+			BudgetID: budgetID,
+			AgentKey: agentKey,
+			Title:    trimOptionalString(req.Title),
+			Metadata: conversationMetadata,
+		})
+		if err != nil {
+			return nil, wrapAgentRepoError(
+				errs.CodeAgentConversationCreateFailed,
+				"failed to create agent conversation",
+				err,
+			)
+		}
+	}
+
+	go s.continueRun(ctx, req, userID, budgetID, conversation, agentKey)
+
+	agentRun := sharedModel.AgentRun{
+		UserID:         &userID,
+		BudgetID:       &budgetID,
+		ConversationID: &conversation.ID,
+		Status:         sharedModel.AgentRunStatusQueued,
+	}
+
+	return &agentRun, nil
 }
 
 func (s *agentService) GetRun(ctx context.Context, id uuid.UUID) (*sharedModel.AgentRun, error) {
