@@ -4,10 +4,8 @@ import (
 	"net/http"
 	"strings"
 
-	"pennywise-api/internal/model"
-	"pennywise-api/internal/service"
-
-	utils "pennywise-api/pkg"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	"github.com/gin-gonic/gin"
 )
@@ -26,11 +24,7 @@ func NewUserHandler(service service.UserService) UserHandler {
 }
 
 func (h *userHandler) Search(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 	email := strings.TrimSpace(c.Query("email"))
 	users, err := h.service.Search(ctx, email)
 	if err != nil {
@@ -41,11 +35,7 @@ func (h *userHandler) Search(c *gin.Context) {
 }
 
 func (h *userHandler) Update(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 
 	var user model.User
 	if err := c.ShouldBindJSON(&user); err != nil {

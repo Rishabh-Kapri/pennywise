@@ -1,6 +1,6 @@
 import { useAppSelector } from '@/app/hooks';
 import { selectBudgetHealth } from '../../store/dashboardSlice';
-import { Activity } from 'lucide-react';
+import { ActivityIcon as Activity } from '@phosphor-icons/react';
 import styles from './BudgetHealth.module.css';
 
 const formatCurrency = (amount: number): string => {

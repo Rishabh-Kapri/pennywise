@@ -1,21 +1,23 @@
 import { Popover } from '@/components/common/Popover/Popover';
-import { useRef } from 'react';
+import { type KeyboardEvent, useCallback, useRef } from 'react';
 import styles from './Popover.module.css';
 import { useAppSelector } from '@/app/hooks';
 import type { Payee } from '@/features/payees/types/payee.types';
 import { useDropdown } from '../../hooks/useDropdown';
+import type { TransactionDropdownProps } from './types';
 
-interface PayeePopoverProps {
-  value: string;
-  onClick: (id: string, name: string) => void;
-}
 /*
  * This component handles rendering the payees list to be shown when adding or editing a transaction
  * The button element is the trigger which will open the popover as a portal
  * I need to handle the onClose function from the parent component as well, we need to close the dropdown when other dropdown is opened
  */
-export function PayeeDropdown({ value, onClick }: PayeePopoverProps) {
+export function PayeeDropdown({ value, onClick, autoFocus, variant = 'inline' }: TransactionDropdownProps) {
   const { allPayees } = useAppSelector((state) => state.payees);
+  const filterPayees = useCallback(
+    (payees: Payee[], filterQuery: string) =>
+      payees.filter((payee) => payee.name.trim().toLowerCase().includes(filterQuery)),
+    [],
+  );
   const {
     isOpen,
     setIsOpen,
@@ -23,11 +25,7 @@ export function PayeeDropdown({ value, onClick }: PayeePopoverProps) {
     setFilterQuery,
     filteredItems,
     filterValues,
-  } = useDropdown(value, allPayees, (allPayees, filterQuery) =>
-    allPayees.filter((payee) =>
-      payee.name.trim().toLowerCase().includes(filterQuery),
-    ),
-  );
+  } = useDropdown(value, allPayees, filterPayees);
 
   const triggerRef = useRef<HTMLInputElement | null>(null);
 
@@ -37,14 +35,28 @@ export function PayeeDropdown({ value, onClick }: PayeePopoverProps) {
     onClick(payee.id!, payee.name);
   };
 
+  const handleInputKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+
+    const firstPayee = filteredItems[0];
+    if (!firstPayee) return;
+
+    e.preventDefault();
+    handleOnClick(firstPayee);
+  };
+
+  const triggerClassName = variant === 'form' ? styles.formInput : styles.input;
+
   return (
     <div className={styles.popoverContainer}>
       <input
         ref={triggerRef}
         onFocus={() => setIsOpen(true)}
         onBlur={() => setIsOpen(false)}
-        className={`${styles.input} ${styles.trigger}`}
+        className={triggerClassName}
+        autoFocus={autoFocus}
         onChange={(e) => filterValues(e.target.value)}
+        onKeyDown={handleInputKeyDown}
         value={filterQuery}
         placeholder="Select Payee"
         aria-haspopup="true"

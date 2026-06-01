@@ -1,31 +1,32 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 @plugin '../../hero.ts';
 @source '../../node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}';
 /* @custom-variant dark (&:is(.dark *)); */
 
-*:not([data-slot="toast-region"], [data-slot="toast-region"] *) {
+*:not([data-slot='toast-region'], [data-slot='toast-region'] *) {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   height: 100%;
+  width: 100%;
   overflow: hidden;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 :root {
   /* font-family: system-ui, Avenir, Helvetica, Arial, sans-serif; */
   font-family:
-    Manrope,
+    'GT Walsheim Pro',
     -apple-system,
     BlinkMacSystemFont,
     Segoe UI,
     Roboto,
-    Oxygen,
-    Ubuntu,
-    Cantarell,
-    Open Sans,
     Helvetica Neue,
     sans-serif;
   line-height: 1.5;
@@ -44,14 +45,16 @@ html, body, #root {
   /* --color-primary: #81b2ca; */
   /* --color-primary: #5d9cbb; */
   --color-primary: #4483a2;
-  --color-primary-dark: #edf4f8;
+  --color-primary-light: #aec2dd;
+
+  /* --color-primary-dark: #edf4f8; */
 
   /* Secondary color */
   --color-secondary: #f6f6f6;
   --color-accent: #f6f6f6;
 
   /* Background color */
-  --color-background: #0d0d0d;
+  --color-background: #1f1f1e;
   --color-surface: #1f1f1f;
   --color-surface-secondary: #323232;
   --color-surface-tertiary: #424242;
@@ -70,6 +73,8 @@ html, body, #root {
 
   /* Borders and dividers */
   --color-border: #626262;
+  --color-border-light: #788dba;
+  --color-border-muted: color(srgb 0.384314 0.384314 0.384314 / 0.5);
 
   /* Budget specific colors */
 
@@ -94,8 +99,8 @@ html, body, #root {
   --skeleton-highlight: rgba(128, 128, 128, 0.1);
 }
 
-[data-theme="dark"] {
-  --color-background: #0d0d0d;
+[data-theme='dark'] {
+  --color-background: #1f1f1e;
   --skeleton-base: rgba(255, 255, 255, 0.1);
   --skeleton-highlight: rgba(255, 255, 255, 0.05);
 }
@@ -115,6 +120,7 @@ body {
   place-items: center;
   min-width: 320px;
   min-height: 100vh;
+  background-color: #1f1f1e;
 }
 
 h1 {
@@ -134,11 +140,11 @@ button {
   transition: border-color 0.25s;
 }
 button:hover {
-  border-color: #646cff;
+  border-color: transparent;
 }
 button:focus,
 button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+  outline: none;
 }
 
 input::-webkit-outer-spin-button,
@@ -147,8 +153,28 @@ input::-webkit-inner-spin-button {
   margin: 0;
 }
 
-input[type=number] {
+input[type='number'] {
   -moz-appearance: textfield;
+}
+
+/* ── Paddings ──*/
+.pl-2 {
+  padding-left: calc(var(--spacing) * 2);
+}
+.pl-3 {
+  padding-left: calc(var(--spacing) * 3);
+}
+.pl-4 {
+  padding-left: calc(var(--spacing) * 4);
+}
+.pl-5 {
+  padding-left: calc(var(--spacing) * 5);
+}
+.pr-2 {
+  padding-right: calc(var(--spacing) * 2);
+}
+.pr-3 {
+  padding-right: calc(var(--spacing) * 3);
 }
 
 @media (prefers-color-scheme: light) {

@@ -1,15 +1,18 @@
 package runner
 
 import (
-	"fmt"
-	"log/slog"
+	"context"
 	"sync"
 
-	"gmail-transactions/pkg/auth"
-	"gmail-transactions/pkg/gmail"
-	"gmail-transactions/pkg/parser"
-	"gmail-transactions/pkg/pennywise-api"
-	"gmail-transactions/pkg/prediction"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/auth"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/client"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/gmail"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/parser"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/prediction"
+
+	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 )
 
 const maxProcessedMsgIds = 1000
@@ -19,7 +22,7 @@ type Runner struct {
 	gmail           *gmail.Service
 	parser          *parser.EmailParser
 	prediction      *prediction.Service
-	pennywise       *pennywise.Service
+	pennywise       *client.PennywiseClient
 	mu              sync.Mutex
 	processedMsgIds map[string]bool
 }
@@ -34,7 +37,7 @@ func NewRunner(
 	gmailService *gmail.Service,
 	parserService *parser.EmailParser,
 	predictionService *prediction.Service,
-	pennywiseService *pennywise.Service,
+	pennywiseService *client.PennywiseClient,
 ) *Runner {
 	return &Runner{
 		auth:            authService,
@@ -45,7 +48,6 @@ func NewRunner(
 		processedMsgIds: make(map[string]bool),
 	}
 }
-
 
 // isProcessed checks if a Gmail message ID has already been processed.
 // Returns true if already seen, false otherwise (and marks it as seen).
@@ -58,6 +60,7 @@ func (s *Runner) isProcessed(messageId string) bool {
 	}
 
 	// Evict old entries if cache is too large
+	// @TODO: Evict based on LRU, not nuking the whole cache
 	if len(s.processedMsgIds) >= maxProcessedMsgIds {
 		s.processedMsgIds = make(map[string]bool)
 	}
@@ -65,71 +68,76 @@ func (s *Runner) isProcessed(messageId string) bool {
 	return false
 }
 
-func (s *Runner) ProcessGmailHistoryId(eventData EventData) error {
-	slog.Info("processing event", "eventData", eventData)
+func (s *Runner) ProcessGmailHistoryId(ctx context.Context, eventData EventData) error {
+	log := logger.Logger(ctx)
+	log.Info("processing event", "eventData", eventData)
 
-	refreshToken, err := s.pennywise.GetUserRefreshToken(eventData.Email)
+	// Fetch user info (including budgetId and refresh token) by email — no budget scoping needed
+	userInfo, err := s.pennywise.GetUser(ctx, eventData.Email)
 	if err != nil {
-		return fmt.Errorf("Failed to get refresh token: %w", err)
+		return err
 	}
+	log.Info("fetched user info", "budgetId", userInfo.BudgetID, "historyId", userInfo.GmailHistoryID)
 
-	oauthconfig := s.auth.GetOauth2Config()
-	token, err := s.auth.GetTokenFromRefresh(refreshToken)
+	// Set budget ID in context so all subsequent transport calls auto-inject X-Budget-ID
+	ctx = utils.WithBudgetID(ctx, userInfo.BudgetID)
+
+	oauthconfig := s.auth.GetOauth2ConfigForClientType(userInfo.OAuthClientType)
+	token, err := s.auth.GetTokenFromRefresh(userInfo.RefreshToken, userInfo.OAuthClientType)
 	if err != nil {
-		return fmt.Errorf("Failed to get access token: %w", err)
+		return errs.Wrap(errs.CodeAuthLookupFailed, "Failed to get access token", err)
 	}
 
-	prevHistoryId, err := s.pennywise.GetUserHistoryId(eventData.Email)
+	prevHistoryId := uint64(userInfo.GmailHistoryID)
+	log.Info("received history id", "prevHistoryId", prevHistoryId)
+
+	if err := s.pennywise.UpdateUserHistoryId(ctx, eventData.Email, userInfo.OAuthClientType, eventData.HistoryId); err != nil {
+		return err
+	}
+
+	emailData, err := s.gmail.GetMessageHistory(ctx, eventData.Email, prevHistoryId, token, gmail.WrapOAuthConfig(oauthconfig))
 	if err != nil {
-		return fmt.Errorf("Failed to get prev history id: %w", err)
-	}
-	slog.Info("received history id", "prevHistoryId", prevHistoryId)
-
-	if err := s.pennywise.UpdateUserHistoryId(eventData.Email, eventData.HistoryId); err != nil {
-		return fmt.Errorf("Failed to update history id: %w", err)
+		return errs.Wrap(errs.CodeInternalError, "Failed to get message history", err)
 	}
 
-	emailData, err := s.gmail.GetMessageHistory(eventData.Email, prevHistoryId, token, oauthconfig)
-	if err != nil {
-		return fmt.Errorf("Failed to get message history: %w", err)
-	}
-
-	slog.Info("email data fetched", "count", len(emailData))
+	log.Info("email data fetched", "count", len(emailData))
 	for _, data := range emailData {
 		// Skip already processed Gmail messages (cross-call dedup)
 		if s.isProcessed(data.MessageId) {
-			slog.Info("duplicate message ID detected, skipping", "messageId", data.MessageId)
+			log.Warn("duplicate message ID detected, skipping", "messageId", data.MessageId)
 			continue
 		}
 
-		isTransaction, defaultAccount := s.gmail.IsTransactionEmail(data.Headers)
+		isTransaction := s.gmail.IsTransactionEmail(data.Headers)
+		defaultAccount := ""
 		if !isTransaction {
-			slog.Info("not a transaction, skipping")
+			log.Info("not a transaction, skipping")
 			continue
 		}
 		parsedDetails, err := s.parser.ParseEmail(data.Body)
 		if err != nil {
-			slog.Error("failed to parse email", "error", err)
+			log.Error("failed to parse email", "error", err)
 			continue
 		}
-		slog.Info("parsed email details", "details", parsedDetails)
+		log.Info("parsed email details", "details", parsedDetails)
 		if parsedDetails.Amount == 0 {
-			slog.Info("amount is 0, skipping")
+			log.Info("amount is 0, skipping")
 			continue
 		}
-		predictedFields, err := s.prediction.GetPredictedFields(parsedDetails, defaultAccount)
+		// @TODO: call the cipher service here
+		predictedFields, err := s.prediction.GetPredictedFields(ctx, parsedDetails, defaultAccount)
 		if err != nil {
-			slog.Error("error getting predicted fields", "error", err)
+			log.Error("error getting predicted fields", "error", err)
 			return err
 		}
-		createdTxn, err := s.pennywise.CreateTransaction(parsedDetails, predictedFields)
+		createdTxn, err := s.pennywise.CreateTransaction(ctx, parsedDetails, predictedFields)
 		if err != nil {
-			slog.Error("error creating transaction", "error", err)
+			log.Error("error creating transaction", "error", err)
 			return err
 		}
-		err = s.pennywise.CreatePrediction(parsedDetails, predictedFields, createdTxn)
+		err = s.pennywise.CreatePrediction(ctx, parsedDetails, predictedFields, createdTxn)
 		if err != nil {
-			slog.Error("error creating prediction", "error", err)
+			log.Error("error creating prediction", "error", err)
 			return err
 		}
 	}

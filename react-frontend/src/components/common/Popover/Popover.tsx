@@ -103,7 +103,7 @@ export function Popover({
             left = triggerRect.left;
             break;
           case 'bottom':
-          default:
+          default: {
             // Check space below
             const spaceBelow = viewportHeight - triggerRect.bottom - gap;
             const spaceAbove = triggerRect.top - gap;
@@ -118,6 +118,7 @@ export function Popover({
               left = triggerRect.left;
             }
             break;
+          }
         }
         
         // Basic vertical overflow adjustment for side placements

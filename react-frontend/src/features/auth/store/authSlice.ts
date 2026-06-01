@@ -1,4 +1,8 @@
-import { createSlice, createAsyncThunk, type PayloadAction } from '@reduxjs/toolkit';
+import {
+  createSlice,
+  createAsyncThunk,
+  type PayloadAction,
+} from '@reduxjs/toolkit';
 import type { RootState } from '@/app';
 import { LoadingState } from '@/utils';
 import type {
@@ -12,16 +16,19 @@ import { apiClient } from '@/utils';
 const AUTH_STORAGE_KEY = 'pennywise_auth';
 
 // Helper to load auth state from localStorage
-const loadAuthFromStorage = (): { user: User | null; tokens: AuthTokens | null } => {
+const loadAuthFromStorage = (): {
+  user: User | null;
+  tokens: AuthTokens | null;
+} => {
   try {
     const stored = localStorage.getItem(AUTH_STORAGE_KEY);
     if (stored) {
       const data = JSON.parse(stored);
-      // Check if token is expired
-      if (data.tokens && data.tokens.expiresAt > Date.now()) {
+      // Keep auth if we have tokens — the interceptor will handle
+      // refreshing an expired access token via the refresh token
+      if (data.tokens?.refreshToken) {
         return data;
       }
-      // Clear expired auth
       localStorage.removeItem(AUTH_STORAGE_KEY);
     }
   } catch (e) {
@@ -64,10 +71,10 @@ export const loginWithGoogle = createAsyncThunk<
   LoginResponse,
   string, // Google credential (JWT token)
   { rejectValue: string }
->('auth/loginWithGoogle', async (credential, { rejectWithValue }) => {
+>('auth/loginWithGoogle', async (code, { rejectWithValue }) => {
   try {
     const response = await apiClient.post<LoginResponse>('auth/google', {
-      credential,
+      code,
     } as unknown as Partial<LoginResponse>);
     return response;
   } catch (error) {
@@ -87,13 +94,16 @@ export const refreshAccessToken = createAsyncThunk<
     if (!tokens?.refreshToken) {
       return rejectWithValue('No refresh token available');
     }
-    const response = await apiClient.post<{ accessToken: string; expiresIn: number }>(
-      'auth/refresh',
-      { refreshToken: tokens.refreshToken } as unknown as Partial<{ accessToken: string; expiresIn: number }>
-    );
+    const response = await apiClient.post<{
+      accessToken: string;
+      expiresIn: number;
+    }>('auth/refresh', {
+      refreshToken: tokens.refreshToken,
+    } as unknown as Partial<{ accessToken: string; expiresIn: number }>);
     return response;
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Token refresh failed';
+    const message =
+      error instanceof Error ? error.message : 'Token refresh failed';
     return rejectWithValue(message);
   }
 });
@@ -105,13 +115,15 @@ export const logout = createAsyncThunk<void, void, { state: RootState }>(
     try {
       const { tokens } = getState().auth;
       if (tokens?.refreshToken) {
-        await apiClient.post('auth/logout', { refreshToken: tokens.refreshToken });
+        await apiClient.post('auth/logout', {
+          refreshToken: tokens.refreshToken,
+        });
       }
     } catch (error) {
       // Ignore logout errors - we'll clear local state anyway
       console.error('Logout error:', error);
     }
-  }
+  },
 );
 
 const authSlice = createSlice({
@@ -139,20 +151,24 @@ const authSlice = createSlice({
         state.loading = LoadingState.PENDING;
         state.error = null;
       })
-      .addCase(loginWithGoogle.fulfilled, (state, action: PayloadAction<LoginResponse>) => {
-        const { user, accessToken, refreshToken, expiresIn } = action.payload;
-        const tokens: AuthTokens = {
-          accessToken,
-          refreshToken,
-          expiresAt: Date.now() + expiresIn * 1000,
-        };
-        state.user = user;
-        state.tokens = tokens;
-        state.isAuthenticated = true;
-        state.loading = LoadingState.SUCCESS;
-        state.error = null;
-        saveAuthToStorage(user, tokens);
-      })
+      .addCase(
+        loginWithGoogle.fulfilled,
+        (state, action: PayloadAction<LoginResponse>) => {
+          console.log('Login successful:', action.payload);
+          const { user, accessToken, refreshToken, expiresIn } = action.payload;
+          const tokens: AuthTokens = {
+            accessToken,
+            refreshToken,
+            expiresAt: Date.now() + expiresIn * 1000,
+          };
+          state.user = user;
+          state.tokens = tokens;
+          state.isAuthenticated = true;
+          state.loading = LoadingState.SUCCESS;
+          state.error = null;
+          saveAuthToStorage(user, tokens);
+        },
+      )
       .addCase(loginWithGoogle.rejected, (state, action) => {
         state.loading = LoadingState.ERROR;
         state.error = action.payload ?? 'Login failed';
@@ -205,10 +221,12 @@ const authSlice = createSlice({
 // Selectors
 export const selectAuth = (state: RootState) => state.auth;
 export const selectUser = (state: RootState) => state.auth.user;
-export const selectIsAuthenticated = (state: RootState) => state.auth.isAuthenticated;
+export const selectIsAuthenticated = (state: RootState) =>
+  state.auth.isAuthenticated;
 export const selectAuthLoading = (state: RootState) => state.auth.loading;
 export const selectAuthError = (state: RootState) => state.auth.error;
-export const selectAccessToken = (state: RootState) => state.auth.tokens?.accessToken;
+export const selectAccessToken = (state: RootState) =>
+  state.auth.tokens?.accessToken;
 
 export const { clearError, resetAuth } = authSlice.actions;
 export default authSlice.reducer;

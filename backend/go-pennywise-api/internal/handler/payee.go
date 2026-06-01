@@ -4,10 +4,8 @@ import (
 	"net/http"
 	"strings"
 
-	"pennywise-api/internal/model"
-	"pennywise-api/internal/service"
-
-	utils "pennywise-api/pkg"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -17,6 +15,10 @@ type PayeeHandler interface {
 	List(c *gin.Context)
 	Search(c *gin.Context)
 	GetById(c *gin.Context)
+	GetRules(c *gin.Context)
+	CreateRule(c *gin.Context)
+	UpdateRule(c *gin.Context)
+	DeleteRule(c *gin.Context)
 	Create(c *gin.Context)
 	Update(c *gin.Context)
 	DeleteById(c *gin.Context)
@@ -31,11 +33,7 @@ func NewPayeeHandler(service service.PayeeService) PayeeHandler {
 }
 
 func (h *payeeHandler) List(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 	payees, err := h.service.GetAll(ctx)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -45,11 +43,7 @@ func (h *payeeHandler) List(c *gin.Context) {
 }
 
 func (h *payeeHandler) Search(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 	name := strings.TrimSpace(c.Query("name"))
 	payees, err := h.service.Search(ctx, name)
 	if err != nil {
@@ -60,11 +54,7 @@ func (h *payeeHandler) Search(c *gin.Context) {
 }
 
 func (h *payeeHandler) Create(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 	var body model.Payee
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -79,11 +69,7 @@ func (h *payeeHandler) Create(c *gin.Context) {
 }
 
 func (h *payeeHandler) GetById(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 	id, ok := c.Params.Get("id")
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "id is required"})
@@ -102,12 +88,105 @@ func (h *payeeHandler) GetById(c *gin.Context) {
 	c.JSON(http.StatusOK, payee)
 }
 
-func (h *payeeHandler) Update(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
+func (h *payeeHandler) GetRules(c *gin.Context) {
+	ctx := c.Request.Context()
+	id, ok := c.Params.Get("id")
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "id is required"})
+		return
+	}
+	parsedId, err := uuid.Parse(id)
 	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing id"})
+		return
+	}
+	rules, err := h.service.GetRules(ctx, parsedId)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error while getting payee rules"})
+		return
+	}
+	c.JSON(http.StatusOK, rules)
+}
+
+func (h *payeeHandler) CreateRule(c *gin.Context) {
+	ctx := c.Request.Context()
+	id, ok := c.Params.Get("id")
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "id is required"})
+		return
+	}
+	parsedId, err := uuid.Parse(id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing id"})
+		return
+	}
+	var body model.PayeeRule
+	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if err := h.service.CreateRule(ctx, parsedId, body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"message": "Payee rule created"})
+}
+
+func (h *payeeHandler) UpdateRule(c *gin.Context) {
+	ctx := c.Request.Context()
+	id, ok := c.Params.Get("id")
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "id is required"})
+		return
+	}
+	ruleId, ok := c.Params.Get("ruleId")
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "rule id is required"})
+		return
+	}
+	parsedId, err := uuid.Parse(id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing id"})
+		return
+	}
+	parsedRuleId, err := uuid.Parse(ruleId)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing rule id"})
+		return
+	}
+	var body model.PayeeRule
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := h.service.UpdateRule(ctx, parsedId, parsedRuleId, body); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Payee rule updated"})
+}
+
+func (h *payeeHandler) DeleteRule(c *gin.Context) {
+	ctx := c.Request.Context()
+	ruleId, ok := c.Params.Get("ruleId")
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "rule id is required"})
+		return
+	}
+	parsedRuleId, err := uuid.Parse(ruleId)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing rule id"})
+		return
+	}
+	if err := h.service.DeleteRule(ctx, parsedRuleId); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Payee rule deleted"})
+}
+
+func (h *payeeHandler) Update(c *gin.Context) {
+	ctx := c.Request.Context()
 	id, ok := c.Params.Get("id")
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})
@@ -127,17 +206,14 @@ func (h *payeeHandler) Update(c *gin.Context) {
 	err = h.service.Update(ctx, parsedId, body)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError,
-			gin.H{"error": "Error while getting category"})
+			gin.H{"error": "Error while updating payee"})
 		return
 	}
+	c.JSON(http.StatusOK, gin.H{"message": "Payee updated"})
 }
 
 func (h *payeeHandler) DeleteById(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 	id, ok := c.Params.Get("id")
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})
@@ -153,5 +229,5 @@ func (h *payeeHandler) DeleteById(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "Category deleted"})
+	c.JSON(http.StatusOK, gin.H{"message": "Payee deleted"})
 }
