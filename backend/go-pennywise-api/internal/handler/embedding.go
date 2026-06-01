@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"pennywise-api/internal/model"
-	"pennywise-api/internal/service"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	"github.com/gin-gonic/gin"
 )

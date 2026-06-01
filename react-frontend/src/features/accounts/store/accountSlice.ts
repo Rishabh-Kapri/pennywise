@@ -55,7 +55,8 @@ function filterLoanAccounts(accounts: Account[]) {
 export const fetchAllAccounts = createAsyncThunk<Account[]>(
   'accounts/fetchAllAccounts',
   async () => {
-    return await apiClient.get('accounts');
+    const accounts = await apiClient.get<Account[] | null>('accounts');
+    return accounts ?? [];
   },
 );
 
@@ -132,4 +133,3 @@ export const selectAccountInfoFromId = (state: RootState, id: string) => {
 
 export const selectLoanAccounts = (state: RootState) =>
   state.accounts.loanAccounts;
-

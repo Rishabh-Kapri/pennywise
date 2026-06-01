@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"time"
 
-	"gmail-transactions/pkg/config"
-	"gmail-transactions/pkg/logger"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/config"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 
 	"cloud.google.com/go/firestore"
 	"google.golang.org/api/iterator"

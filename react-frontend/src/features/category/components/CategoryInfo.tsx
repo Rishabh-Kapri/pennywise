@@ -1,4 +1,4 @@
-import { Pencil } from 'lucide-react';
+import { Pencil } from '@phosphor-icons/react';
 import type { Category } from '../types/category.types';
 import styles from './CategoryInfo.module.css';
 import { Activity } from '@/features/budget/components/Activity';

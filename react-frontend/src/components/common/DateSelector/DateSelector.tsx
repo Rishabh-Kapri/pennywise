@@ -1,11 +1,5 @@
 import { useState } from 'react';
-import {
-  Calendar as CalendarIcon,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  LoaderCircle,
-} from 'lucide-react';
+import { Calendar as CalendarIcon, CaretDown as ChevronDown, CaretLeft as ChevronLeft, CaretRight as ChevronRight, CircleNotch as LoaderCircle } from '@phosphor-icons/react';
 import { Popover, PopoverTrigger, PopoverContent } from '@heroui/popover';
 import { Calendar } from '@heroui/calendar';
 import { CalendarDate, type DateValue } from '@internationalized/date';
@@ -42,7 +36,7 @@ export default function DateSelector({ monthYearOnly = false }: DateSelectorProp
       const [year, month] = monthKey.split('-');
       // Calendar expects first day of the month
       return new CalendarDate(parseInt(year, 10), parseInt(month, 10), 1);
-    } catch (e) {
+    } catch {
       return undefined;
     }
   };

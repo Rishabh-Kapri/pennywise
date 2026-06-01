@@ -1,34 +1,28 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import styles from './Sidebar.module.css';
-import {
-  Banknote,
-  ChartPie,
-  CircleDollarSign,
-  FileText,
-  Landmark,
-  PiggyBank,
-  WalletCards,
-  Lock,
-  PanelLeftClose,
-} from 'lucide-react';
+import { Money as Banknote, ChartPie, CurrencyCircleDollar as CircleDollarSign, FileText, Bank as Landmark, PiggyBank, Wallet as WalletCards, Lock, SidebarSimple as PanelLeftClose } from '@phosphor-icons/react';
+import type { IconProps } from '@phosphor-icons/react';
 import { useAppSelector } from '@/app/hooks';
 import {
+  cloneElement,
   Fragment,
   useCallback,
   useEffect,
   useMemo,
   useState,
-  type JSX,
+  type ReactElement,
 } from 'react';
 import { getCurrencyLocaleString } from '@/utils/date.utils';
 import { Tooltip } from '@heroui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@heroui/popover';
 
+type IconElement = ReactElement<IconProps>;
+
 interface NavItem {
   path: string;
   key: string;
   label: string;
-  icon?: JSX.Element;
+  icon?: IconElement;
   meta?: {
     balance: string;
   };
@@ -36,7 +30,21 @@ interface NavItem {
   isCollapsed?: boolean;
 }
 
-export default function Sidebar() {
+interface SidebarProps {
+  isMobileOpen?: boolean;
+  onNavigate?: () => void;
+}
+
+function renderIcon(icon: IconElement | undefined, isSelected: boolean) {
+  if (!icon) {
+    return null;
+  }
+
+  return cloneElement(icon, { weight: isSelected ? 'fill' : 'regular' });
+}
+
+export default function Sidebar({ isMobileOpen = false, onNavigate }: SidebarProps) {
+  const location = useLocation();
   const navItems: NavItem[] = useMemo(
     () => [
       {
@@ -69,6 +77,7 @@ export default function Sidebar() {
   const [dynamicNavItems, setDynamicNavItems] = useState<NavItem[]>([]);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [hoveredItemKey, setHoveredItemKey] = useState<string | null>(null);
+  const isEffectivelyCollapsed = isCollapsed && !isMobileOpen;
 
   const { trackingAccounts, budgetAccounts, loanAccounts, allAccounts } = useAppSelector(
     (state) => state.accounts,
@@ -81,7 +90,7 @@ export default function Sidebar() {
       label: string,
       meta = { balance: '0' },
       isCollapsed?: boolean,
-      icon?: JSX.Element,
+      icon?: IconElement,
     ): NavItem => {
       return {
         path,
@@ -233,9 +242,22 @@ export default function Sidebar() {
     );
   };
 
+  const isDynamicItemSelected = (item: NavItem) => {
+    if (
+      item.path &&
+      (location.pathname === item.path || location.pathname.startsWith(`${item.path}/`))
+    ) {
+      return true;
+    }
+
+    return item.children?.some((child) => child.path === location.pathname) ?? false;
+  };
+
   return (
     <aside
-      className={`${styles.sidebar} ${isCollapsed ? styles.collapsed : ''}`}>
+      className={`${styles.sidebar} ${isEffectivelyCollapsed ? styles.collapsed : ''} ${
+        isMobileOpen ? styles.open : ''
+      }`}>
       <div className={styles.logo}>
         <h2>Pennywise</h2>
         <PanelLeftClose
@@ -256,26 +278,34 @@ export default function Sidebar() {
             key={item.key}
             content={item.label}
             placement="right"
-            isDisabled={!isCollapsed}
+            isDisabled={!isEffectivelyCollapsed}
             classNames={{
               content: styles.tooltipContent,
             }}>
             <NavLink
               to={item.path}
+              onClick={onNavigate}
               className={({ isActive }) =>
                 isActive ? `${styles.active} ${styles.navItem}` : styles.navItem
               }>
-              {item.icon && item.icon}
-              <span className={styles.label}>{item.label}</span>
-              {item.meta && (
-                <span className={styles.meta}>{item.meta.balance}</span>
+              {({ isActive }) => (
+                <>
+                  {renderIcon(item.icon, isActive)}
+                  <span className={styles.label}>{item.label}</span>
+                  {item.meta && (
+                    <span className={styles.meta}>{item.meta.balance}</span>
+                  )}
+                </>
               )}
             </NavLink>
           </Tooltip>
         ))}
-        {dynamicNavItems.map((item) => (
-          <Fragment key={item.key}>
-            {isCollapsed && item.children ? (
+        {dynamicNavItems.map((item) => {
+          const isSelected = isDynamicItemSelected(item);
+
+          return (
+            <Fragment key={item.key}>
+            {isEffectivelyCollapsed && item.children ? (
               <Popover
                 placement="right"
                 isOpen={hoveredItemKey === item.key}
@@ -287,7 +317,7 @@ export default function Sidebar() {
                     className={styles.dynamicItem}
                     onMouseEnter={() => setHoveredItemKey(item.key)}
                     onMouseLeave={() => setHoveredItemKey(null)}>
-                    {item?.icon && item?.icon}
+                    {renderIcon(item.icon, isSelected)}
                     <span>{item.label}</span>
                   </div>
                 </PopoverTrigger>
@@ -299,6 +329,7 @@ export default function Sidebar() {
                     <NavLink
                       key={child.key}
                       to={child.path}
+                      onClick={onNavigate}
                       className={({ isActive }) =>
                         isActive
                           ? `${styles.navItem} ${styles.active}`
@@ -320,14 +351,14 @@ export default function Sidebar() {
               <Tooltip
                 content={item.label}
                 placement="right"
-                isDisabled={!isCollapsed}
+                isDisabled={!isEffectivelyCollapsed}
                 classNames={{
                   content: styles.tooltipContent,
                 }}>
                 <div
                   className={styles.dynamicItem}
                   onClick={() => handleCollapse(item.key)}>
-                  {item?.icon && item?.icon}
+                  {renderIcon(item.icon, isSelected)}
                   <span>{item.label}</span>
                   {item?.meta && (
                     <span className={styles.meta}>{item.meta.balance}</span>
@@ -336,40 +367,46 @@ export default function Sidebar() {
               </Tooltip>
             )}
 
-            {!item.isCollapsed && !isCollapsed && (
+            {!item.isCollapsed && !isEffectivelyCollapsed && (
               <div className={styles.childContainer}>
                 {item?.children?.map((child) => (
                   <Tooltip
                     key={child.key}
                     content={child.label}
                     placement="right"
-                    isDisabled={!isCollapsed}
+                    isDisabled={!isEffectivelyCollapsed}
                     classNames={{
                       content: styles.tooltipContent,
                     }}>
                     <NavLink
                       to={child.path}
+                      onClick={onNavigate}
                       className={({ isActive }) =>
                         isActive
                           ? `${styles.navItem} ${styles.active}`
                           : styles.navItem
                       }>
-                      {child.icon && child.icon}
-                      <span className={`${styles.label} ${styles.truncate}`}>
-                        {child.label}
-                      </span>
-                      {child.meta && (
-                        <span className={`${styles.meta} ${styles.truncate}`}>
-                          {child.meta.balance}
-                        </span>
+                      {({ isActive }) => (
+                        <>
+                          {renderIcon(child.icon, isActive)}
+                          <span className={`${styles.label} ${styles.truncate}`}>
+                            {child.label}
+                          </span>
+                          {child.meta && (
+                            <span className={`${styles.meta} ${styles.truncate}`}>
+                              {child.meta.balance}
+                            </span>
+                          )}
+                        </>
                       )}
                     </NavLink>
                   </Tooltip>
                 ))}
               </div>
             )}
-          </Fragment>
-        ))}
+            </Fragment>
+          );
+        })}
       </nav>
     </aside>
   );

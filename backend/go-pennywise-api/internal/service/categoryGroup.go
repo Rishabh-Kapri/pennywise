@@ -2,12 +2,11 @@ package service
 
 import (
 	"context"
-	"log"
 
-	"pennywise-api/internal/model"
-	"pennywise-api/internal/repository"
-
-	utils "pennywise-api/pkg"
+	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
 )
@@ -28,12 +27,12 @@ func NewCategoryGroupService(r repository.CategoryGroupRepository) CategoryGroup
 }
 
 func (s *categoryGroupService) GetAll(ctx context.Context, month string) ([]model.CategoryGroup, error) {
-	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	budgetId := utils.MustBudgetID(ctx)
 	groups, err := s.repo.GetAll(ctx, budgetId)
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("%v", month)
+	logger.Logger(ctx).Debug("listing category groups", "month", month)
 	if month != "" {
 		for _, group := range groups {
 			group.Balance = utils.FillCarryForward(group.Balance, month)
@@ -45,18 +44,21 @@ func (s *categoryGroupService) GetAll(ctx context.Context, month string) ([]mode
 	return groups, nil
 }
 
-func (s *categoryGroupService) Create(ctx context.Context, categoryGroup model.CategoryGroup) (*model.CategoryGroup, error) {
-	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+func (s *categoryGroupService) Create(
+	ctx context.Context,
+	categoryGroup model.CategoryGroup,
+) (*model.CategoryGroup, error) {
+	budgetId := utils.MustBudgetID(ctx)
 	categoryGroup.BudgetID = budgetId
 	return s.repo.Create(ctx, nil, categoryGroup)
 }
 
 func (s *categoryGroupService) Update(ctx context.Context, id uuid.UUID, categoryGroup model.CategoryGroup) error {
-	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	budgetId := utils.MustBudgetID(ctx)
 	return s.repo.Update(ctx, budgetId, id, categoryGroup)
 }
 
 func (s *categoryGroupService) DeleteById(ctx context.Context, id uuid.UUID) error {
-	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	budgetId := utils.MustBudgetID(ctx)
 	return s.repo.DeleteById(ctx, budgetId, id)
 }

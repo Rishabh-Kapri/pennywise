@@ -1,13 +1,11 @@
 package handler
 
 import (
-	"log"
 	"net/http"
 
-	"pennywise-api/internal/model"
-	"pennywise-api/internal/service"
-
-	utils "pennywise-api/pkg"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -15,6 +13,7 @@ import (
 
 type PredictionHandler interface {
 	List(c *gin.Context)
+	GetByTransactionID(c *gin.Context)
 	Create(c *gin.Context)
 	Update(c *gin.Context)
 	DeleteById(c *gin.Context)
@@ -29,33 +28,47 @@ func NewPredictionHandler(service service.PredictionService) PredictionHandler {
 }
 
 func (h *predictionHandler) List(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 
-	categories, err := h.service.GetAll(ctx)
+	predictions, err := h.service.GetAll(ctx)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, categories)
+	c.JSON(http.StatusOK, predictions)
+}
+
+func (h *predictionHandler) GetByTransactionID(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	id, ok := c.Params.Get("transactionId")
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "transactionId is needed"})
+		return
+	}
+	parsedID, err := uuid.Parse(id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing transactionId"})
+		return
+	}
+
+	details, err := h.service.GetByTransactionID(ctx, parsedID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, details)
 }
 
 func (h *predictionHandler) Create(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 
 	var body model.Prediction
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	log.Println(body)
+	logger.Logger(ctx).Info("creating prediction")
 	createdPredictions, err := h.service.Create(ctx, body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -65,11 +78,7 @@ func (h *predictionHandler) Create(c *gin.Context) {
 }
 
 func (h *predictionHandler) Update(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 	id, ok := c.Params.Get("id")
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})
@@ -95,11 +104,7 @@ func (h *predictionHandler) Update(c *gin.Context) {
 }
 
 func (h *predictionHandler) DeleteById(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 
 	id, ok := c.Params.Get("id")
 	if !ok {

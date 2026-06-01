@@ -10,6 +10,10 @@ import LegalPage from '@/features/home/components/LegalPage';
 
 const Dashboard = lazy(() => import('@/components/layout/Dashboard/Dashboard'));
 const Budget = lazy(() => import('@/features/budget/components/Budget'));
+const BudgetOnboarding = lazy(
+  () => import('@/features/budget/components/BudgetOnboarding'),
+);
+const Settings = lazy(() => import('@/features/settings/components/Settings'));
 const Transaction = lazy(() =>
   import('@/features/transactions/components/Transaction').then((module) => ({
     default: module.Transaction,
@@ -18,6 +22,7 @@ const Transaction = lazy(() =>
 const LoanOverview = lazy(() =>
   import('@/features/loans/components/LoanOverview'),
 );
+const Payees = lazy(() => import('@/features/payees/components/Payees'));
 
 function App() {
   return (
@@ -46,6 +51,17 @@ function App() {
             }
           />
 
+          <Route
+            path="/budget/new"
+            element={
+              <ProtectedRoute>
+                <Suspense fallback={<div>Loading...</div>}>
+                  <BudgetOnboarding />
+                </Suspense>
+              </ProtectedRoute>
+            }
+          />
+
           {/* Protected routes - require authentication */}
           <Route
             element={
@@ -70,6 +86,14 @@ function App() {
               }
             />
             <Route
+              path="/settings"
+              element={
+                <Suspense fallback={<div>Loading...</div>}>
+                  <Settings />
+                </Suspense>
+              }
+            />
+            <Route
               path="/transactions/:id?"
               element={
                 <Suspense fallback={<div>Loading...</div>}>
@@ -82,6 +106,14 @@ function App() {
               element={
                 <Suspense fallback={<div>Loading...</div>}>
                   <LoanOverview />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/payees"
+              element={
+                <Suspense fallback={<div>Loading...</div>}>
+                  <Payees />
                 </Suspense>
               }
             />

@@ -1,0 +1,32 @@
+Conversation opened. 2 messages. All messages read.
+
+Skip to content
+Using Gmail with screen readers
+in:trash 
+
+3 of 237
+View: Account update for your HDFC Bank A/c
+Trash
+
+HDFC Bank InstaAlerts <alerts@hdfcbank.net>
+1:16 PM (1 hour ago)
+to me
+
+
+
+Dear Customer,
+Greetings from HDFC Bank!
+
+Your Google Cloud bill, set up through E-mandate (Auto payment), has been successfully paid using your HDFC Bank Credit Card ending 9876.
+
+Transaction Details:
+Amount: INR 16.56
+Date: 04/04/2026.
+
+
+Dear Customer, Thank you for using HDFC Bank Card XX9876 for Rs. 16.56 at GOOGLE CLOUD CYBS SI on 04-04-2026.
+
+For more details on Service charges and Fees, click here.
+© HDFC Bank
+
+
