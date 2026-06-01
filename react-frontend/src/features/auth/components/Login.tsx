@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import {
@@ -6,42 +6,16 @@ import {
   selectAuthLoading,
   selectAuthError,
   selectIsAuthenticated,
-  clearError,
 } from '../store';
 import { LoadingState, toast } from '@/utils';
-import { Check } from 'lucide-react';
+import { Check } from '@phosphor-icons/react';
 import styles from './Login.module.css';
+import { useGoogleLogin } from '@react-oauth/google';
 
 // Google OAuth Client ID
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
 // Google Identity Services types
-declare global {
-  interface Window {
-    google?: {
-      accounts: {
-        id: {
-          initialize: (config: {
-            client_id: string;
-            callback: (response: { credential: string }) => void;
-            auto_select?: boolean;
-          }) => void;
-          renderButton: (
-            element: HTMLElement,
-            options: {
-              theme?: 'outline' | 'filled_blue' | 'filled_black';
-              size?: 'large' | 'medium' | 'small';
-              text?: 'signin_with' | 'signup_with' | 'continue_with' | 'signin';
-              width?: number;
-              logo_alignment?: 'left' | 'center';
-            }
-          ) => void;
-          prompt: () => void;
-        };
-      };
-    };
-  }
-}
 
 // Logo SVG component matching the design
 const LogoIcon = () => (
@@ -52,11 +26,37 @@ const LogoIcon = () => (
     strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"
-    className={styles.logoIcon}
-  >
+    className={styles.logoIcon}>
     <path d="M12 2L2 7l10 5 10-5-10-5z" />
     <path d="M2 17l10 5 10-5" />
     <path d="M2 12l10 5 10-5" />
+  </svg>
+);
+
+/* ── Floating vector glyph SVGs ── */
+
+const GlyphRing = ({ size = 36 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="18" cy="18" r="15" stroke="currentColor" strokeWidth="1.5" />
+    <circle cx="18" cy="18" r="7" stroke="currentColor" strokeWidth="1" opacity="0.4" />
+  </svg>
+);
+
+const GlyphCross = ({ size = 22 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M11 3v16M3 11h16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+  </svg>
+);
+
+const GlyphDiamond = ({ size = 28 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect x="14" y="2" width="16" height="16" rx="2.5" transform="rotate(45 14 2)" stroke="currentColor" strokeWidth="1.5" />
+  </svg>
+);
+
+const GlyphHex = ({ size = 30 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M15 3L26 9.5v11L15 27 4 20.5v-11L15 3Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
   </svg>
 );
 
@@ -73,72 +73,78 @@ export function Login() {
     }
   }, [isAuthenticated, navigate]);
 
-  const handleGoogleCallback = useCallback(
-    (response: { credential: string }) => {
-      dispatch(loginWithGoogle(response.credential))
+  // const handleGoogleCallback = useCallback(
+  //   (response: { credential: string }) => {
+  //     dispatch(loginWithGoogle(response.credential))
+  //       .unwrap()
+  //       .catch((err: unknown) => {
+  //         const message =
+  //           err instanceof Error
+  //             ? err.message
+  //             : typeof err === 'string'
+  //               ? err
+  //               : 'Login failed';
+  //         toast.error(message);
+  //       });
+  //   },
+  //   [dispatch],
+  // );
+
+  const onGoogleLogin = useGoogleLogin({
+    flow: 'auth-code',
+    scope: 'https://mail.google.com/',
+    onSuccess: async (codeResponse) => {
+      dispatch(loginWithGoogle(codeResponse.code))
         .unwrap()
         .catch((err: unknown) => {
-          const message = err instanceof Error ? err.message : typeof err === 'string' ? err : 'Login failed';
+          const message =
+            err instanceof Error
+              ? err.message
+              : typeof err === 'string'
+                ? err
+                : 'Login failed';
           toast.error(message);
         });
     },
-    [dispatch]
-  );
+    onError: (error) => {
+      console.log('inside onError', error);
+    },
+  });
 
-  useEffect(() => {
-    dispatch(clearError());
-
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.defer = true;
-    script.onload = () => {
-      if (window.google && GOOGLE_CLIENT_ID) {
-        window.google.accounts.id.initialize({
-          client_id: GOOGLE_CLIENT_ID,
-          callback: handleGoogleCallback,
-        });
-
-        const buttonContainer = document.getElementById('google-signin-button');
-        if (buttonContainer) {
-          window.google.accounts.id.renderButton(buttonContainer, {
-            theme: 'filled_black',
-            size: 'large',
-            text: 'continue_with',
-            width: 320,
-          });
-        }
-      }
-    };
-    document.body.appendChild(script);
-
-    return () => {
-      const existingScript = document.querySelector(
-        'script[src="https://accounts.google.com/gsi/client"]'
-      );
-      if (existingScript) {
-        existingScript.remove();
-      }
-    };
-  }, [dispatch, handleGoogleCallback]);
-
-  const isLoading = loading === LoadingState.PENDING;
+const isLoading = loading === LoadingState.PENDING;
 
   return (
     <div className={styles.container}>
-      <div className={styles.orbOne} aria-hidden="true" />
-      <div className={styles.orbTwo} aria-hidden="true" />
+      {/* Dot-grid background */}
+      <div className={styles.bgDots} aria-hidden="true" />
+
+      {/* Floating vector glyphs */}
+      <div className={`${styles.glyphFloat} ${styles.glyph1}`} aria-hidden="true">
+        <GlyphRing size={40} />
+      </div>
+      <div className={`${styles.glyphFloat} ${styles.glyph2}`} aria-hidden="true">
+        <GlyphCross size={22} />
+      </div>
+      <div className={`${styles.glyphFloat} ${styles.glyph3}`} aria-hidden="true">
+        <GlyphDiamond size={30} />
+      </div>
+      <div className={`${styles.glyphFloat} ${styles.glyph4}`} aria-hidden="true">
+        <GlyphHex size={34} />
+      </div>
+
       <div className={styles.card}>
         {/* Logo */}
         <div className={styles.logoContainer}>
-          <LogoIcon />
+          <span className={styles.logoMark}>P</span>
           <span className={styles.logoText}>Pennywise</span>
         </div>
 
         {/* Welcome text */}
         <div className={styles.welcome}>
-          <h1 className={styles.welcomeTitle}>Welcome back</h1>
-          <p className={styles.welcomeSubtitle}>Sign in to manage your budget</p>
+          <h1 className={styles.welcomeTitle}>Welcome <span className={styles.welcomeAccent}>back</span></h1>
+          <p className={styles.welcomeSubtitle}>
+            Sign in to place, track, and trust every rupee.
+          </p>
         </div>
 
         {/* Loading or Sign-in button */}
@@ -149,20 +155,20 @@ export function Login() {
           </div>
         ) : (
           <div className={styles.googleButtonContainer}>
-            <div id="google-signin-button" />
-            
             {!GOOGLE_CLIENT_ID && (
-              <div className={styles.error}>
-                ⚠️ Set VITE_GOOGLE_CLIENT_ID in environment
-              </div>
+              <div className={styles.error}>Google Login Not Enabled</div>
+            )}
+            {GOOGLE_CLIENT_ID && (
+              <button className={styles.googleButton} onClick={onGoogleLogin}>
+                <LogoIcon />
+                Sign In with Google
+              </button>
             )}
           </div>
         )}
 
         {/* Error */}
-        {error && (
-          <div className={styles.error}>⚠️ {error}</div>
-        )}
+        {error && <div className={styles.error}>⚠️ {error}</div>}
 
         {/* Features */}
         <div className={styles.features}>
@@ -188,6 +194,10 @@ export function Login() {
           By continuing, you agree to our <Link to="/terms">Terms of Service</Link> and{' '}
           <Link to="/privacy">Privacy Policy</Link>
         </div>
+
+        <Link to="/" className={styles.homeLink}>
+          Back to homepage
+        </Link>
       </div>
     </div>
   );

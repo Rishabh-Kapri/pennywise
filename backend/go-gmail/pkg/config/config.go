@@ -7,33 +7,56 @@ import (
 )
 
 type Config struct {
-	GoogleClientId                  string
-	GoogleClientSecret              string
+	Environment                      string
+	GoogleClientId                   string
+	GoogleClientSecret               string
+	GoogleAndroidClientId            string
 	GoogleApplicationCredentialsJson string
-	CallbackUrl                     string
-	ProjectID                       string
-	PubsubTopic                     string
-	SubscriptionName                string
-	DatabaseURL                     string
-	MLPApi                          string
-	PennywiseApi                    string
-	NtfyTopic                       string
+	CallbackUrl                      string
+	ProjectID                        string
+	PubsubTopic                      string
+	SubscriptionName                 string
+	DatabaseURL                      string
+	MLPServiceURL                    string
+	PennywiseServiceURL              string
+	CipherServiceURL                 string
+	InternalAuthToken                string
+	NtfyTopic                        string
+	TemporalServerHost               string
+	TemporalServerPort               string
+	Port                             string
 }
 
 func LoadConfig() *Config {
 	_ = godotenv.Load(".env")
 
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "5170"
+	}
+	env := os.Getenv("RAILWAY_ENVIRONMENT_NAME")
+	if env == "" {
+		env = "local"
+	}
+
 	return &Config{
-		GoogleClientId:                  os.Getenv("GOOGLE_CLIENT_ID"),
-		GoogleClientSecret:              os.Getenv("GOOGLE_CLIENT_SECRET"),
+		Environment:                      env,
+		GoogleClientId:                   os.Getenv("GOOGLE_CLIENT_ID"),
+		GoogleClientSecret:               os.Getenv("GOOGLE_CLIENT_SECRET"),
+		GoogleAndroidClientId:            os.Getenv("GOOGLE_ANDROID_CLIENT_ID"),
 		GoogleApplicationCredentialsJson: os.Getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON"),
-		CallbackUrl:                     os.Getenv("CALLBACK_URL"),
-		ProjectID:                       os.Getenv("PROJECT_ID"),
-		PubsubTopic:                     os.Getenv("PUBSUB_TOPIC"),
-		SubscriptionName:                os.Getenv("SUB_NAME"),
-		DatabaseURL:                     os.Getenv("DATABASE_URL"),
-		MLPApi:                          os.Getenv("MLP_API"),
-		PennywiseApi:                    os.Getenv("PENNYWISE_API"),
-		NtfyTopic:                       os.Getenv("NTFY_TOPIC"),
+		CallbackUrl:                      os.Getenv("CALLBACK_URL"),
+		ProjectID:                        os.Getenv("PROJECT_ID"),
+		PubsubTopic:                      os.Getenv("PUBSUB_TOPIC"),
+		SubscriptionName:                 os.Getenv("SUB_NAME"),
+		DatabaseURL:                      os.Getenv("DATABASE_URL"),
+		MLPServiceURL:                    os.Getenv("MLP_SERVICE_URL"),
+		PennywiseServiceURL:              os.Getenv("PENNYWISE_SERVICE_URL"),
+		CipherServiceURL:                 os.Getenv("CIPHER_SERVICE_URL"),
+		InternalAuthToken:                os.Getenv("INTERNAL_AUTH_TOKEN"),
+		NtfyTopic:                        os.Getenv("NTFY_TOPIC"),
+		TemporalServerHost:               os.Getenv("TEMPORAL_SERVER_HOST"),
+		TemporalServerPort:               os.Getenv("TEMPORAL_SERVER_PORT"),
+		Port:                             port,
 	}
 }

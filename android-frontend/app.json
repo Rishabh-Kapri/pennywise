@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "Pennywise",
+    "slug": "pennywise-android",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "dev.pennywise.cloud",
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "dev.pennywise.cloud",
+      "adaptiveIcon": {
+        "backgroundColor": "#1f1f1e"
+      }
+    },
+    "extra": {
+      "apiUrl": "${EXPO_PUBLIC_API_URL}",
+      "googleClientId": "${EXPO_PUBLIC_GOOGLE_CLIENT_ID}",
+      "androidGoogleClientId": "${EXPO_PUBLIC_ANDROID_GOOGLE_CLIENT_ID}",
+      "router": {
+        "root": "app"
+      },
+      "eas": {
+        "projectId": "285e8ad2-57bb-47e7-85f4-331d05616208"
+      }
+    }
+  }
+}

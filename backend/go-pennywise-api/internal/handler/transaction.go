@@ -1,14 +1,13 @@
 package handler
 
 import (
-	"log"
 	"net/http"
+	"strconv"
 	"strings"
 
-	"pennywise-api/internal/model"
-	"pennywise-api/internal/service"
-
-	utils "pennywise-api/pkg"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -19,6 +18,7 @@ type TransactionHandler interface {
 	ListNormalized(c *gin.Context)
 	Create(c *gin.Context)
 	Update(c *gin.Context)
+	UpdateStatus(c *gin.Context)
 	// DeleteById deletes a transaction by its ID.
 	// It retrieves the budget context and the transaction ID from the request parameters,
 	// parses the ID, and then calls the service to perform the deletion.
@@ -35,11 +35,7 @@ func NewTransactionHandler(service service.TransactionService) TransactionHandle
 }
 
 func (h *transactionHandler) List(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 
 	transactions, err := h.service.GetAll(ctx)
 	if err != nil {
@@ -50,24 +46,49 @@ func (h *transactionHandler) List(c *gin.Context) {
 }
 
 func (h *transactionHandler) ListNormalized(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 	accountIdParam := strings.TrimSpace(c.Query("accountId"))
 
-	log.Printf("accountIdParam: %v", accountIdParam)
-	var accountId *uuid.UUID
-	if accountIdParam != "" {
-		parsedId, err := uuid.Parse(accountIdParam)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing accountId"})
-			return
-		}
-		accountId = &parsedId
+	limit := c.DefaultQuery("limit", "30")
+	limitInt, err := strconv.ParseUint(limit, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing limit"})
+		return
 	}
-	transactions, err := h.service.GetAllNormalized(ctx, accountId)
+	groupBy := c.DefaultQuery("groupBy", "month")
+	sortOrder := c.DefaultQuery("sortOrder", "DESC")
+	accountIds := c.QueryArray("accountId[]")
+	cursor := c.Query("cursor")
+	if len(accountIds) == 0 && accountIdParam != "" {
+		accountIds = strings.Split(accountIdParam, ",")
+	}
+
+	logger.Logger(ctx).Info("listing normalized transactions", "accountIdParam", accountIdParam)
+	var accountIdsFilter []uuid.UUID
+	if len(accountIds) > 0 {
+		for _, id := range accountIds {
+			id = strings.TrimSpace(id)
+			if id == "" {
+				continue
+			}
+			parsedId, err := uuid.Parse(id)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing accountId"})
+				return
+			}
+			accountIdsFilter = append(accountIdsFilter, parsedId)
+		}
+	}
+
+	txnFilter := model.TransactionFilter{
+		AccountIDs:   accountIdsFilter,
+		Limit:        limitInt,
+		GroupBy:      &groupBy,
+		SortOrder:    sortOrder,
+		CursorString: cursor,
+	}
+
+	transactions, err := h.service.GetAllNormalized(ctx, &txnFilter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -76,11 +97,7 @@ func (h *transactionHandler) ListNormalized(c *gin.Context) {
 }
 
 func (h *transactionHandler) Create(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 
 	var body model.Transaction
 	if err := c.ShouldBindJSON(&body); err != nil {
@@ -96,11 +113,7 @@ func (h *transactionHandler) Create(c *gin.Context) {
 }
 
 func (h *transactionHandler) Update(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
+	ctx := c.Request.Context()
 	id, ok := c.Params.Get("id")
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})
@@ -125,12 +138,33 @@ func (h *transactionHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, body)
 }
 
-func (h *transactionHandler) DeleteById(c *gin.Context) {
-	ctx, err := utils.GetBudgetId(c)
+func (h *transactionHandler) UpdateStatus(c *gin.Context) {
+	ctx := c.Request.Context()
+	id, ok := c.Params.Get("id")
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})
+		return
+	}
+	parsedId, err := uuid.Parse(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error while parsing id"})
+	}
+
+	var body model.TransactionStatusReq
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	err = h.service.UpdateStatus(ctx, parsedId, body.Status)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	c.JSON(http.StatusOK, nil)
+}
+
+func (h *transactionHandler) DeleteById(c *gin.Context) {
+	ctx := c.Request.Context()
 
 	id, ok := c.Params.Get("id")
 	if !ok {

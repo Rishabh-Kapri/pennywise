@@ -1,30 +1,63 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import Header from '../Header/Header';
-import Sidebar from '../Sidebar/Sidebar';
+import { Navbar } from '../Navbar/Navbar';
 import styles from './Layout.module.css';
 import { HeaderProvider } from '../../../context/HeaderProvider';
-import { useEffect } from 'react';
-import { fetchAllBudgets } from '@/features/budget';
-import { useAppDispatch } from '@/app/hooks';
+import { SidePanelProvider } from '../../../context/SidePanelProvider';
+import { useSidePanel } from '../../../context/SidePanelContext';
+import { useEffect, useState } from 'react';
+import {
+  fetchAllBudgets,
+  selectAllBudgets,
+} from '@/features/budget';
+import { useAppDispatch, useAppSelector } from '@/app/hooks';
+import BudgetOnboarding from '@/features/budget/components/BudgetOnboarding';
+import { WebSocketProvider } from '@/features/websocket/WebSocketProvider';
+import { AgentChat } from '@/components/common';
+
+function MainWithSidePanel() {
+  const { sidePanelContent } = useSidePanel();
+  const location = useLocation();
+  const isDashboard = location.pathname === '/dashboard' || location.pathname === '/';
+
+  return (
+    <div className={styles.mainWrapper}>
+      <main className={`${styles.mainContent} ${isDashboard ? styles.dashboardMainContent : ''}`}>
+        <Outlet />
+      </main>
+      {sidePanelContent && (
+        <aside className={styles.sidePanel}>
+          {sidePanelContent}
+        </aside>
+      )}
+      <AgentChat />
+    </div>
+  );
+}
 
 export default function Layout() {
   const dispatch = useAppDispatch();
+  const budgets = useAppSelector(selectAllBudgets);
+  const [hasLoadedBudgets, setHasLoadedBudgets] = useState(false);
 
   useEffect(() => {
-    dispatch(fetchAllBudgets());
+    dispatch(fetchAllBudgets()).finally(() => setHasLoadedBudgets(true));
   }, [dispatch]);
+
+  if (hasLoadedBudgets && budgets.length === 0) {
+    return <BudgetOnboarding />;
+  }
 
   return (
     <div className={styles.layout}>
-      <Sidebar />
-      <div className={styles.mainWrapper}>
-        <HeaderProvider>
+      <WebSocketProvider />
+      <Navbar />
+      <HeaderProvider>
+        <SidePanelProvider>
           <Header />
-          <main className={styles.mainContent}>
-            <Outlet />
-          </main>
-        </HeaderProvider>
-      </div>
+          <MainWithSidePanel />
+        </SidePanelProvider>
+      </HeaderProvider>
     </div>
   );
 }

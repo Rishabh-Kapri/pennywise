@@ -1,0 +1,12 @@
+node_modules/
+.expo/
+dist/
+android/
+ios/
+*.log
+
+# Android signing credentials
+*.jks
+*.keystore
+credentials.json
+android/credentials.json

@@ -3,21 +3,28 @@ package pubsub
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"sync"
 	"time"
 
-	"gmail-transactions/pkg/auth"
-	"gmail-transactions/pkg/config"
-	"gmail-transactions/pkg/gmail"
-	"gmail-transactions/pkg/logger"
-	"gmail-transactions/pkg/parser"
-	"gmail-transactions/pkg/pennywise-api"
-	"gmail-transactions/pkg/prediction"
-	"gmail-transactions/pkg/runner"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/auth"
+	c "github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/client"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/config"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/gmail"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/parser"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/temporal"
+
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	sharedTemporal "github.com/Rishabh-Kapri/pennywise/backend/shared/temporal"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"cloud.google.com/go/pubsub"
 	"google.golang.org/api/option"
+
+	tc "go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/worker"
 )
 
 type GmailPushPayload struct {
@@ -25,23 +32,32 @@ type GmailPushPayload struct {
 	HistoryID    uint64 `json:"historyId"`
 }
 
+type historyIDMap map[uint64]bool
+
 type EventProcessor struct {
 	mu              sync.Mutex
 	processingQueue map[uint64]bool
 	pendingEvents   chan *pubsub.Message
-	processed       map[uint64]bool
-	lastProcessed   uint64
-	runner          *runner.Runner
+	processed       map[string]historyIDMap
+	lastProcessed   map[string]uint64
+	temporalClient  tc.Client
+	internalToken   string
 }
 
-func NewEventProcessor(runner *runner.Runner) *EventProcessor {
+func NewEventProcessor(tc *tc.Client, internalToken string) *EventProcessor {
 	return &EventProcessor{
 		processingQueue: make(map[uint64]bool),
 		pendingEvents:   make(chan *pubsub.Message, 1), // buffered channel for pending historyIds
-		processed:       make(map[uint64]bool),
-		lastProcessed:   0,
-		runner:          runner,
+		processed:       make(map[string]historyIDMap),
+		lastProcessed:   make(map[string]uint64),
+		temporalClient:  *tc,
+		internalToken:   internalToken,
 	}
+}
+
+type EventData struct {
+	Email     string `json:"emailAddress"`
+	HistoryId uint64 `json:"historyId"`
 }
 
 func (p *EventProcessor) startProcessing(ctx context.Context) {
@@ -51,7 +67,7 @@ func (p *EventProcessor) startProcessing(ctx context.Context) {
 		case event := <-p.pendingEvents:
 			p.processMessage(event)
 		case <-ctx.Done():
-			slog.Info("channel done")
+			logger.Logger(ctx).Info("channel done")
 			return
 		}
 	}
@@ -60,51 +76,74 @@ func (p *EventProcessor) startProcessing(ctx context.Context) {
 func (p *EventProcessor) processMessage(event *pubsub.Message) {
 	// lock the mutex
 	p.mu.Lock()
+	// Create a context with a correlation ID for this message
+	ctx := utils.WithInternalAuthToken(utils.WithServiceName(context.Background(), "gmail-pubsub"), p.internalToken)
+	ctx = utils.WithOriginService(ctx, "gmail-pubsub")
+	ctx = utils.WithCorrelationID(ctx, utils.NewCorrelationID())
+	log := logger.Logger(ctx)
 
-	var m runner.EventData
+	var m EventData
 	err := json.Unmarshal(event.Data, &m)
 	if err != nil {
-		slog.Error("failed to unmarshal pubsub msg data", "error", err)
+		log.Error("failed to unmarshal pubsub msg data", "error", err)
 		p.mu.Unlock()
 		event.Nack()
 		return
 	}
 
-	if p.processed[m.HistoryId] {
+	email := m.Email
+	historyID := m.HistoryId
+	historyIDMap := p.processed[email]
+	if historyIDMap == nil {
+		historyIDMap = make(map[uint64]bool)
+		p.processed[email] = historyIDMap
+	}
+	if historyIDMap[historyID] {
 		p.mu.Unlock()
-		slog.Info("duplicate historyId detected, skipping", "historyId", m.HistoryId)
+		log.Info("duplicate historyId detected, skipping", "historyId", m.HistoryId)
 		event.Ack()
 		return
 	}
-	if m.HistoryId < p.lastProcessed {
+	if m.HistoryId < p.lastProcessed[email] {
 		p.mu.Unlock()
-		slog.Info("outdated historyId detected, skipping", "historyId", m.HistoryId)
+		log.Info("outdated historyId detected, skipping", "historyId", m.HistoryId)
 		event.Ack()
 		return
 	}
 	p.processingQueue[m.HistoryId] = true
-	p.processed[m.HistoryId] = true
+	historyIDMap[historyID] = true
 	p.mu.Unlock()
 
 	defer func() {
 		p.mu.Lock()
-		slog.Debug("defer func", "lastProcessed", p.lastProcessed)
+		logger.Logger(ctx).Debug("defer func", "lastProcessed", p.lastProcessed)
 		delete(p.processingQueue, m.HistoryId)
-		if m.HistoryId > p.lastProcessed {
-			p.lastProcessed = m.HistoryId
+		if m.HistoryId > p.lastProcessed[email] {
+			p.lastProcessed[email] = m.HistoryId
 		}
-		slog.Debug("defer func after", "lastProcessed", p.lastProcessed)
+		logger.Logger(ctx).Debug("defer func after", "lastProcessed", p.lastProcessed)
 		p.mu.Unlock()
 
 		event.Ack()
 	}()
 
-	err = p.runner.ProcessGmailHistoryId(m)
+	we, err := p.temporalClient.ExecuteWorkflow(
+		ctx,
+		tc.StartWorkflowOptions{
+			TaskQueue: sharedModel.PennywiseTaskQueue,
+		},
+		sharedModel.EmailToTransactionWorkflowName,
+		sharedModel.EmailToTransactionWorflowInput{
+			Email:     email,
+			HistoryId: historyID,
+		},
+	)
 	if err != nil {
-		slog.Error("error processing gmail historyId", "historyId", m.HistoryId, "error", err)
+		log.Error("error starting workflow", "error", err)
 		event.Nack()
 		return
 	}
+	log.Info("workflow started", "workflowId", we.GetID(), "runId", we.GetRunID())
 	// FakeProcessHistoryId(m)
 }
 
@@ -113,8 +152,8 @@ func (p *EventProcessor) addEventDataToQueue(event *pubsub.Message) {
 	p.pendingEvents <- event
 }
 
-func FakeProcessHistoryId(event runner.EventData) {
-	slog.Info("fake processing history ID", "event", event)
+func FakeProcessHistoryId(event EventData) {
+	logger.Logger(context.Background()).Info("fake processing history ID", "event", event)
 	time.Sleep(3 * time.Second)
 }
 
@@ -122,10 +161,10 @@ func TestMessages() {
 	// ctx := context.Background()
 	ctx, cancel := context.WithCancel(context.Background())
 
-	processor := NewEventProcessor(nil)
+	processor := NewEventProcessor(nil, "")
 	go processor.startProcessing(ctx)
 
-	eventData1 := gmail.EventData{
+	eventData1 := EventData{
 		HistoryId: 1,
 		Email:     "rishabhkapri@gmail.com",
 	}
@@ -133,7 +172,7 @@ func TestMessages() {
 	msg := pubsub.Message{
 		Data: []byte(data),
 	}
-	eventData2 := gmail.EventData{
+	eventData2 := EventData{
 		HistoryId: 2,
 		Email:     "rishabhkapri@gmail.com",
 	}
@@ -141,7 +180,7 @@ func TestMessages() {
 	msg2 := pubsub.Message{
 		Data: []byte(data2),
 	}
-	eventData3 := gmail.EventData{
+	eventData3 := EventData{
 		HistoryId: 3,
 		Email:     "rishabhkapri@gmail.com",
 	}
@@ -157,23 +196,30 @@ func TestMessages() {
 	cancel()
 }
 
-func PullMessages() {
+func connectToTemporal(ctx context.Context, cfg config.Config) (tc.Client, error) {
+	logger.Logger(ctx).Info("temporal", "host", cfg.TemporalServerHost, "port", cfg.TemporalServerPort)
+	c, err := tc.Dial(tc.Options{
+		HostPort:           cfg.TemporalServerHost + ":" + cfg.TemporalServerPort,
+		Logger:             logger.Logger(ctx),
+		ContextPropagators: sharedTemporal.ContextPropagators(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	logger.Logger(ctx).Info("connected to temporal")
+	return c, nil
+}
+
+func PullMessages(ctx context.Context) {
 	config := config.LoadConfig()
-
-	runnerInstance := runner.NewRunner(
-		auth.NewService(config),
-		gmail.NewService(config),
-		parser.NewEmailParser(),
-		prediction.NewService(config),
-		pennywise.NewService(config),
-	)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	projectId := config.ProjectID
 	subName := config.SubscriptionName
-	client, err := pubsub.NewClient(ctx, projectId, option.WithCredentialsJSON([]byte(config.GoogleApplicationCredentialsJson)))
+	client, err := pubsub.NewClient(
+		ctx,
+		projectId,
+		option.WithCredentialsJSON([]byte(config.GoogleApplicationCredentialsJson)),
+	)
 	if err != nil {
 		logger.Fatal("failed to create pubsub client", "error", err)
 	}
@@ -188,12 +234,41 @@ func PullMessages() {
 		logger.Fatal("sub does not exist", "sub", subName)
 	}
 
-	processor := NewEventProcessor(runnerInstance)
+	tc, err := connectToTemporal(ctx, *config)
+	if err != nil {
+		logger.Fatal("Unable to connect to Temporal", "error", err)
+	}
+
+	httpTransport := httpclient.NewHttpTransport(config.CipherServiceURL)
+	cipherClient := transport.NewClient("cipher", httpTransport)
+
+	w := worker.New(tc, sharedModel.GmailActivitiesTaskQueue, worker.Options{
+		UseBuildIDForVersioning: false,
+		BackgroundActivityContext: utils.WithInternalAuthToken(
+			utils.WithServiceName(context.Background(), "gmail-pubsub"),
+			config.InternalAuthToken,
+		),
+	})
+	w.RegisterActivity(&temporal.GmailActivities{
+		Auth:   auth.NewService(config),
+		Gmail:  gmail.NewService(),
+		Parser: parser.NewEmailParser(),
+		Cipher: c.NewCipherClient(cipherClient),
+	})
+	w.RegisterActivity(&temporal.WatchGmailActivity{Gmail: gmail.NewService()})
+
+	go func() {
+		if err := w.Run(worker.InterruptCh()); err != nil {
+			logger.Fatal("Temporal activity worker failed", "error", err)
+		}
+	}()
+
+	processor := NewEventProcessor(&tc, config.InternalAuthToken)
 	// start a goroutine to process events
 	go processor.startProcessing(ctx)
 
 	err = sub.Receive(ctx, func(ctx context.Context, msg *pubsub.Message) {
-		slog.Info("received event data", "msg", msg)
+		logger.Logger(ctx).Info("received event data", "msg", msg)
 		processor.addEventDataToQueue(msg)
 	})
 }

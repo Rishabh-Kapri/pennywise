@@ -35,8 +35,8 @@ class MLP:
         self.iterations = 0
         self.l1_weight_lambda = l1_l2_lambdas["l1w"] if "l1w" in l1_l2_lambdas else 0
         self.l1_bias_lambda = l1_l2_lambdas["l1b"] if "l1b" in l1_l2_lambdas else 0
-        self.l2_weight_lambda = l1_l2_lambdas["l2w"] if "l11" in l1_l2_lambdas else 0
-        self.l2_bias_lambda = l1_l2_lambdas["l2b"] if "l1b" in l1_l2_lambdas else 0
+        self.l2_weight_lambda = l1_l2_lambdas["l2w"] if "l2w" in l1_l2_lambdas else 0
+        self.l2_bias_lambda = l1_l2_lambdas["l2b"] if "l2b" in l1_l2_lambdas else 0
         self.weights = {}
         self.biases = {}
         self.activations = {}
@@ -162,7 +162,7 @@ class MLP:
                 )
 
             if self.l2_bias_lambda > 0:
-                regularization_loss += self.l1_bias_lambda * np.sum(
+                regularization_loss += self.l2_bias_lambda * np.sum(
                     self.biases[i] * self.biases[i]
                 )
 
@@ -362,9 +362,9 @@ class HyperParameters(TypedDict):
 
 
 class PennywiseMLP:
-    def __init__(self, type, is_new=True, model="all-MiniLM-L6-v2", data_path=None):
+    def __init__(self, mlp_type, is_new=True, model="all-MiniLM-L6-v2", data_path=None):
         # load_model method will handle loading these params for existing model
-        self.type = type
+        self.mlp_type = mlp_type
         self.model = SentenceTransformer(model, trust_remote_code=True)
         if is_new:
             (
@@ -376,7 +376,7 @@ class PennywiseMLP:
                 unique_accounts,
                 amounts,
                 unique_labels,
-            ) = self.get_labels_and_email(type, data_path=data_path)
+            ) = self.get_labels_and_email(mlp_type, data_path=data_path)
             self.account_to_index = {
                 account: i for i, account in enumerate(unique_accounts)
             }
@@ -390,32 +390,12 @@ class PennywiseMLP:
 
             inputs = []
             for i in range(len(emails)):
-                email_vector = self.model.encode(emails[i])
-                payee_vector = self.model.encode(payee_labels[i])
-                account_vector = self.one_hot_encode_account(account_labels[i])
-                amount_normalized = (
-                    2
-                    * (signed_logs[i] - self.min_signed_log)
-                    / (self.max_signed_log - self.min_signed_log)
-                    - 1
+                input_vector = self._build_input_vector(
+                    email_text=emails[i],
+                    amount=amounts[i],
+                    account=account_labels[i],
+                    payee=payee_labels[i],
                 )
-                if self.type == "payee":
-                    input_vector = np.concatenate(
-                        [email_vector, [amount_normalized], account_vector]
-                    )
-                elif self.type == "category":
-                    input_vector = np.concatenate(
-                        [
-                            email_vector,
-                            payee_vector,
-                            [amount_normalized],
-                            account_vector,
-                        ]
-                    )
-                elif self.type == "account":
-                    input_vector = np.concatenate([email_vector, [amount_normalized]])
-                else:
-                    raise Exception("Wrong type")
                 inputs.append(input_vector)
 
             self.X = np.array(inputs)
@@ -427,6 +407,28 @@ class PennywiseMLP:
         if account in self.account_to_index:
             vec[self.account_to_index[account]] = 1.0
         return vec
+
+    def _build_input_vector(self, email_text, amount, account=None, payee=None):
+        """Single source of truth for constructing MLP input vectors."""
+        email_vec = self.model.encode(email_text)
+        account_vec = self.one_hot_encode_account(account)
+        signed_log = np.sign(amount) * np.log1p(abs(amount))
+        amount_norm = (
+            2
+            * (signed_log - self.min_signed_log)
+            / (self.max_signed_log - self.min_signed_log)
+            - 1
+        )
+
+        if self.mlp_type == "payee" and account is not None:
+            return np.concatenate([email_vec, [amount_norm], account_vec])
+        elif self.mlp_type == "category" and payee is not None and account is not None:
+            payee_vec = self.model.encode(payee)
+            return np.concatenate([email_vec, payee_vec, [amount_norm], account_vec])
+        elif self.mlp_type == "account":
+            return np.concatenate([email_vec, [amount_norm]])
+        else:
+            raise ValueError(f"Invalid mlp_type '{self.mlp_type}' or missing required fields")
 
     def get_labels_and_email(self, label_type: str, data_path: str | None = None) -> tuple[
         list[str],
@@ -533,7 +535,11 @@ class PennywiseMLP:
                     self.account_to_index = data["extras"]["account_to_index"]
                     self.min_signed_log = data["extras"]["min_signed_log"]
                     self.max_signed_log = data["extras"]["max_signed_log"]
-                    self.Y = self.one_hot_encode_labels(data["extras"]["labels"])
+                    # Restore label encoder without re-fitting to preserve saved class mappings
+                    if not hasattr(self, "label_encoder"):
+                        self.label_encoder = LabelEncoder()
+                    self.label_encoder.classes_ = np.array(data["extras"]["labels"])
+                    self.Y = np.eye(len(self.label_encoder.classes_))
                 else:
                     raise Exception("extra config not present in saved model")
         except FileNotFoundError:
@@ -665,28 +671,13 @@ class PennywiseMLP:
         )
         self.mlp.train(self.X, self.Y, hyper_parameters["epochs"])
 
-    def predict(self, type, email_text, amount, account=None, payee=None):
-        email_vec = self.model.encode(email_text)
-        account_vec = self.one_hot_encode_account(account)
-        amount_signed_log = np.sign(amount) * np.log1p(abs(amount))
-        amount_norm = (
-            2
-            * (amount_signed_log - self.min_signed_log)
-            / (self.max_signed_log - self.min_signed_log)
-            - 1
+    def predict(self, mlp_type, email_text, amount, account=None, payee=None):
+        input_vec = self._build_input_vector(
+            email_text=email_text,
+            amount=amount,
+            account=account,
+            payee=payee,
         )
-        if type == "payee" and account is not None:
-            input_vec = np.concatenate([email_vec, [amount_norm], account_vec])
-        elif type == "category" and payee is not None and account is not None:
-            payee_vec = self.model.encode(payee)
-            input_vec = np.concatenate(
-                [email_vec, payee_vec, [amount_norm], account_vec]
-            )
-        elif type == "account":
-            input_vec = np.concatenate([email_vec, [amount_norm]])
-        else:
-            print("Wrong MLP type")
-            return
         raw_output, predicted_indices = self.mlp.predict(input_vec)
         print(input_vec.shape, raw_output.shape, predicted_indices)
         confidences = np.max(raw_output, axis=1)
@@ -700,29 +691,12 @@ class PennywiseMLP:
         print(":::::TEST:::::", self.Y.shape)
         X_test = []
         for data in test_data:
-            email_vec = self.model.encode(data[key])
-            payee_vec = self.model.encode(data["payee"])
-            account_vec = self.one_hot_encode_account(data["account"])
-            signed_log = np.sign(data["amount"]) * np.log1p(abs(data["amount"]))
-            amount_normalized = (
-                2
-                * (signed_log - self.min_signed_log)
-                / (self.max_signed_log - self.min_signed_log)
-                - 1
+            input_vector = self._build_input_vector(
+                email_text=data[key],
+                amount=data["amount"],
+                account=data.get("account"),
+                payee=data.get("payee"),
             )
-
-            if self.type == "payee":
-                input_vector = np.concatenate(
-                    [email_vec, [amount_normalized], account_vec]
-                )
-            elif self.type == "category":
-                input_vector = np.concatenate(
-                    [email_vec, payee_vec, [amount_normalized], account_vec]
-                )
-            elif self.type == "account":
-                input_vector = np.concatenate([email_vec, [amount_normalized]])
-            else:
-                raise Exception("Wrong type")
             X_test.append(input_vector)
 
         X_test = np.array(X_test)
@@ -744,10 +718,10 @@ class PennywiseMLP:
             confidence = confidences[i] * 100
             if confidence >= 70:
                 confident_predictions += 1
-                if label == test_data[i][self.type]:
+                if label == test_data[i][self.mlp_type]:
                     correct += 1
             print(
-                f"Predicted {self.type}: {label} and Expected: {test_data[i][self.type]} with Confidence: {confidence:.2f}"
+                f"Predicted {self.mlp_type}: {label} and Expected: {test_data[i][self.mlp_type]} with Confidence: {confidence:.2f}"
             )
 
         coverage = confident_predictions / len(test_data)
@@ -844,7 +818,7 @@ def run_train(mlp_type: str, params_index: int, model: str | None, save: bool):
         return
 
     sbert_model = model or DEFAULT_MODELS[mlp_type]
-    mlp = PennywiseMLP(type=mlp_type, is_new=True, model=sbert_model)
+    mlp = PennywiseMLP(mlp_type=mlp_type, is_new=True, model=sbert_model)
     mlp.train(hyper_parameters=params_list[params_index])
 
     test_data = load_test_data()
@@ -858,7 +832,7 @@ def run_train(mlp_type: str, params_index: int, model: str | None, save: bool):
 def run_test(mlp_type: str, model: str | None):
     """Load an existing model and run test evaluation."""
     sbert_model = model or DEFAULT_MODELS[mlp_type]
-    mlp = PennywiseMLP(type=mlp_type, is_new=False, model=sbert_model)
+    mlp = PennywiseMLP(mlp_type=mlp_type, is_new=False, model=sbert_model)
     mlp.load_model(path=MODEL_PATHS[mlp_type])
 
     test_data = load_test_data()
@@ -869,11 +843,11 @@ def run_predict(mlp_type: str, email_text: str, amount: float, model: str | None
                 account: str | None = None, payee: str | None = None):
     """Load an existing model and predict on a single input."""
     sbert_model = model or DEFAULT_MODELS[mlp_type]
-    mlp = PennywiseMLP(type=mlp_type, is_new=False, model=sbert_model)
+    mlp = PennywiseMLP(mlp_type=mlp_type, is_new=False, model=sbert_model)
     mlp.load_model(path=MODEL_PATHS[mlp_type])
 
     prediction = mlp.predict(
-        type=mlp_type,
+        mlp_type=mlp_type,
         email_text=email_text,
         amount=amount,
         account=account,
@@ -885,7 +859,7 @@ def run_predict(mlp_type: str, email_text: str, amount: float, model: str | None
 def run_kfold(mlp_type: str, model: str | None, folds: int):
     """Run K-fold cross-validation across all param configs for a type."""
     sbert_model = model or DEFAULT_MODELS[mlp_type]
-    mlp = PennywiseMLP(type=mlp_type, is_new=True, model=sbert_model)
+    mlp = PennywiseMLP(mlp_type=mlp_type, is_new=True, model=sbert_model)
     results = mlp.k_fold_train_validate(hyper_parameters=PARAMS[mlp_type], cv_folds=folds)
     return results
 

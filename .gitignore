@@ -3,6 +3,7 @@
 # Compiled output
 **dist/
 **/dist/
+**/bin/
 /tmp
 /out-tsc
 /bazel-out
@@ -22,7 +23,7 @@ yarn-error.log
 *.sublime-workspace
 
 # Visual Studio Code
-.vscode/*
+.vscode/
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
@@ -34,7 +35,7 @@ yarn-error.log
 .sass-cache/
 /connect.lock
 /coverage
-coverage*
+coverage.out
 /libpeerconnection.log
 testem.log
 /typings
@@ -71,6 +72,12 @@ conjure-school.fnl
 
 # Credentials and secrets
 google-creds.json
+*.jks
+*.keystore
+**/android/credentials.json
 
 # Dummy files for testing
 *dump.sql
+
+# Tools
+mise.toml

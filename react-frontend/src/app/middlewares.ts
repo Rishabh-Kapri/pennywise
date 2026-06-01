@@ -1,5 +1,5 @@
 import { fetchAllAccounts } from '@/features/accounts/store/accountSlice';
-import { fetchAllBudgets, setSelectedMonth } from '@/features/budget';
+import { fetchAllBudgets, setSelectedBudget, setSelectedMonth } from '@/features/budget';
 import type { Middleware } from '@reduxjs/toolkit';
 import { fetchAllCategoryGroups, fetchInflowAmount } from '@/features';
 import type { AppDispatch, RootState } from '.';
@@ -25,7 +25,7 @@ export const dataFetchMiddleware: Middleware =
     const month = (store.getState() as RootState).budgets.selectedMonth;
     if (fetchAllBudgets.fulfilled.match(action)) {
       dispatch(fetchAllAccounts());
-      dispatch(fetchAllTransaction(''));
+      dispatch(fetchAllTransaction());
       dispatch(fetchAllCategoryGroups(month));
       dispatch(fetchInflowAmount());
       dispatch(fetchAllPayees());
@@ -36,6 +36,19 @@ export const dataFetchMiddleware: Middleware =
         .selectedBudget;
       if (selectedBudget?.metadata?.inflowCategoryId) {
         dispatch(fetchCategoryById(selectedBudget.metadata.inflowCategoryId));
+      }
+    }
+
+    if (setSelectedBudget.match(action)) {
+      dispatch(fetchAllAccounts());
+      dispatch(fetchAllTransaction());
+      dispatch(fetchAllCategoryGroups(month));
+      dispatch(fetchInflowAmount());
+      dispatch(fetchAllPayees());
+      dispatch(fetchAllLoanMetadata());
+      dispatch(fetchAllTags());
+      if (action.payload.metadata?.inflowCategoryId) {
+        dispatch(fetchCategoryById(action.payload.metadata.inflowCategoryId));
       }
     }
     return result;

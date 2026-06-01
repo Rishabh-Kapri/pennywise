@@ -1,5 +1,5 @@
 import { Popover } from '@/components/common/Popover/Popover';
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import styles from './Popover.module.css';
 import tagStyles from './TagPopover.module.css';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
@@ -29,6 +29,10 @@ export function TagDropdown({ selectedTagIds, onChange }: TagPopoverProps) {
   const { allTags } = useAppSelector((state) => state.tags);
   const dispatch = useAppDispatch();
   const [isCreating, setIsCreating] = useState(false);
+  const filterTags = useCallback(
+    (tags: Tag[], query: string) => tags.filter((tag) => tag.name.trim().toLowerCase().includes(query)),
+    [],
+  );
 
   const {
     isOpen,
@@ -36,11 +40,7 @@ export function TagDropdown({ selectedTagIds, onChange }: TagPopoverProps) {
     filterQuery,
     filteredItems,
     filterValues,
-  } = useDropdown('', allTags, (allTags, query) =>
-    allTags.filter((tag) =>
-      tag.name.trim().toLowerCase().includes(query),
-    ),
-  );
+  } = useDropdown('', allTags, filterTags);
 
   const triggerRef = useRef<HTMLInputElement | null>(null);
 
