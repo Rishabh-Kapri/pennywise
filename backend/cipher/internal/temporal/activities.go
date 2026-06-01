@@ -119,6 +119,10 @@ func (a *PredictionActivity) ParseEmailData(
 	}
 
 	for _, emailData := range input.EmailData {
+		if emailData.Body == "" {
+			continue
+		}
+
 		extracted, err := a.PredictionService.ExtractEmailData(
 			ctx,
 			service.ExtractEmailDataRequest{EmailHtml: emailData.Body},
