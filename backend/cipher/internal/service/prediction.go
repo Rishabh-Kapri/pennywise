@@ -307,16 +307,17 @@ func cleanEmail(text string) string {
 
 func (s *predictionService) SummarizeEmailText(ctx context.Context, text string) (string, error) {
 	log := logger.Logger(ctx)
-	log.Info("NormalizeEmailText started", "text", text)
+	log.Info("SummarizeEmailText started", "text", text)
 
 	// text = cleanEmail(text)
 	htmlRegex := regexp.MustCompile(`<[^>]*>`)
 	text = htmlRegex.ReplaceAllString(text, "")
 
-	log.Info("NormalizeEmailText before prompt", "text", text)
+	log.Info("SummarizeEmailText before prompt", "text", text)
 
 	prompt := client.EmailNormalizationPrompt + text + "\nOutput:"
 	temperature := float32(0.0)
+
 	res, err := client.GenericLLMCall[summaryResponse](ctx, s.ollama, model.PromptReq{
 		Model:       "gemma4",
 		Prompt:      prompt,
@@ -325,7 +326,9 @@ func (s *predictionService) SummarizeEmailText(ctx context.Context, text string)
 	if err != nil {
 		return "", err
 	}
-	log.Info("NormalizeEmailText completed", "summary", res)
+
+	log.Info("SummarizeEmailText completed", "summary", res.Summary)
+
 	return res.Summary, nil
 }
 

@@ -68,10 +68,12 @@ func (a *PredictionActivity) Predict(
 			continue
 		}
 
+		prediction.Summary = summary
 		log.Info("Prediction result", "result", prediction)
+
 		predictionResponse = append(predictionResponse, sharedModel.CipherPredictionResult{
 			OriginalRawText: email.EmailText,
-			Summary:         summary,
+			Summary:         prediction.Summary,
 			AccountID:       prediction.AccountID,
 			Account:         prediction.Account,
 			PayeeID:         prediction.PayeeID,
@@ -137,6 +139,7 @@ func (a *PredictionActivity) ParseEmailData(
 			log.Error("error parsing date", "error", err)
 			return result, err
 		}
+
 		transactionType := "debit"
 		if extracted.Amount > 0 {
 			transactionType = "credit"

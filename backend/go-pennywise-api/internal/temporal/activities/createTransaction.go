@@ -136,6 +136,7 @@ func (a *CreateTransactionActivity) CreateTransactionAndCipherPrediction(
 		if err != nil {
 			return err
 		}
+
 		for i, txn := range createdTxns {
 			log.Info("creating cipher prediction", "transactionId", txn.ID, "source", input.Predictions[i].Source)
 			if err = createCipherPredictionWithTx(
@@ -149,6 +150,7 @@ func (a *CreateTransactionActivity) CreateTransactionAndCipherPrediction(
 				return err
 			}
 		}
+
 		return nil
 	})
 	if err != nil {
@@ -156,6 +158,7 @@ func (a *CreateTransactionActivity) CreateTransactionAndCipherPrediction(
 	}
 
 	a.sendTransactionCreatedNotification(ctx, input.BudgetID, createdTxns, log)
+
 	return createdTxns, nil
 }
 
@@ -169,7 +172,12 @@ func (a *CreateTransactionActivity) sendTransactionCreatedNotification(
 		return
 	}
 
-	if err := a.WebsocketService.SendNotification(ctx, budgetId, "pennywise::transaction::created", transactions); err != nil {
+	if err := a.WebsocketService.SendNotification(
+		ctx,
+		budgetId,
+		"pennywise::transaction::created",
+		transactions,
+	); err != nil {
 		log.Warn("failed to send transaction created websocket notification", "error", err)
 	}
 }
@@ -182,6 +190,7 @@ func (a *CreateTransactionActivity) createTransactions(
 	log *slog.Logger,
 ) ([]sharedModel.Transaction, error) {
 	createdTxns := make([]sharedModel.Transaction, 0, len(predictions))
+
 	for _, p := range predictions {
 		payeeID := p.PayeeID
 		if payeeID == uuid.Nil {
@@ -198,6 +207,7 @@ func (a *CreateTransactionActivity) createTransactions(
 		}
 
 		log.Info("creating transaction", "prediction", p)
+
 		hash := utils.Hash(p.AccountID.String() + p.Date + fmt.Sprintf("%.2f", p.Amount) + p.OriginalRawText)
 		txn := sharedModel.Transaction{
 			BudgetID:    budgetId,
@@ -209,6 +219,7 @@ func (a *CreateTransactionActivity) createTransactions(
 			Status:      sharedModel.TransactionStatusUnapproved,
 			DedupeHash:  &hash,
 			RawBankText: &p.OriginalRawText,
+			Summary:     &p.Summary,
 		}
 
 		createdTxn, err := a.TransactionService.CreateWithTx(ctx, tx, txn)
@@ -218,7 +229,9 @@ func (a *CreateTransactionActivity) createTransactions(
 		if len(createdTxn) == 0 {
 			return nil, errs.New(errs.CodeTransactionNotCreated, "no transaction was created")
 		}
+
 		createdTxns = append(createdTxns, createdTxn[0])
 	}
+
 	return createdTxns, nil
 }
