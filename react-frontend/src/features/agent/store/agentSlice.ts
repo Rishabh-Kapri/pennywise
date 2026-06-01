@@ -536,8 +536,10 @@ const agentSlice = createSlice({
       .addCase(createAgentRun.fulfilled, (state, action) => {
         state.createRunLoading = LoadingState.SUCCESS;
         state.error = null;
-        state.runsById[action.payload.id] = action.payload;
-        state.currentRunId = action.payload.id;
+        if (action.payload.id) {
+          state.runsById[action.payload.id] = action.payload;
+          state.currentRunId = action.payload.id;
+        }
         state.currentConversationId = action.payload.conversationId ?? state.currentConversationId;
         state.currentStreamId = resolveAgentRunStreamId(action.payload) ?? state.currentStreamId;
 
