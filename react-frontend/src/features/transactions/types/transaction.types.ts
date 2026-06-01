@@ -21,6 +21,7 @@ export interface Transaction {
   status?: TransactionStatus;
   dedupeHash?: string | null;
   rawBankText?: string | null;
+  summary?: string | null;
   transferTransactionId: string | null,
   transferAccountId: string | null,
   tagIds: string[];

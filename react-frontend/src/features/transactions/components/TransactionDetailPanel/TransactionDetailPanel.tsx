@@ -99,9 +99,7 @@ function PanelFrame({
   footer: ReactNode;
 }) {
   return (
-    <div
-      className={`${styles.panel} ${isClosing ? styles.panelClosing : ''}`}
-      onAnimationEnd={onAnimationEnd}>
+    <div className={`${styles.panel} ${isClosing ? styles.panelClosing : ''}`} onAnimationEnd={onAnimationEnd}>
       <div className={styles.panelHeader}>
         <span className={styles.panelTitle}>{title}</span>
         <button type="button" className={styles.closeButton} onClick={onClose} aria-label="Close">
@@ -114,7 +112,15 @@ function PanelFrame({
   );
 }
 
-function AmountField({ txn, isInflow, onChange }: { txn: Transaction; isInflow: boolean; onChange: TransactionChangeHandler }) {
+function AmountField({
+  txn,
+  isInflow,
+  onChange,
+}: {
+  txn: Transaction;
+  isInflow: boolean;
+  onChange: TransactionChangeHandler;
+}) {
   const setAmountType = (nextType: 'inflow' | 'outflow') => {
     const current = isInflow ? (txn.inflow ?? 0) : (txn.outflow ?? 0);
     onChange(nextType, Math.abs(current));
@@ -180,7 +186,11 @@ function AddTransactionForm({
 
       <div className={styles.formGroup}>
         <label className={styles.label}>Category</label>
-        <CategoryDropdown value={txn.categoryName ?? ''} onClick={onSelectChange('categoryId', 'categoryName')} variant="form" />
+        <CategoryDropdown
+          value={txn.categoryName ?? ''}
+          onClick={onSelectChange('categoryId', 'categoryName')}
+          variant="form"
+        />
       </div>
 
       <div className={styles.formGroup}>
@@ -212,10 +222,7 @@ function TagList({ tags }: { tags: DisplayTag[] }) {
   return (
     <div className={styles.tagList}>
       {tags.map((tag) => (
-        <span
-          key={tag.id}
-          className={styles.tagBadge}
-          style={{ backgroundColor: tag.color || '#6366f1' }}>
+        <span key={tag.id} className={styles.tagBadge} style={{ backgroundColor: tag.color || '#6366f1' }}>
           {tag.name}
         </span>
       ))}
@@ -267,20 +274,9 @@ function DetailTagPicker({
         <div className={styles.tagPickerMenu}>
           {allTags.length === 0 && <div className={styles.emptyValue}>No tags yet</div>}
           {allTags.map((tag) => (
-            <button
-              key={tag.id}
-              type="button"
-              className={styles.tagPickerItem}
-              onClick={() => toggleTag(tag.id)}>
-              <input
-                type="checkbox"
-                checked={selectedSet.has(tag.id)}
-                readOnly
-                className={styles.tagPickerCheckbox}
-              />
-              <span
-                className={styles.tagBadge}
-                style={{ backgroundColor: tag.color || '#6366f1' }}>
+            <button key={tag.id} type="button" className={styles.tagPickerItem} onClick={() => toggleTag(tag.id)}>
+              <input type="checkbox" checked={selectedSet.has(tag.id)} readOnly className={styles.tagPickerCheckbox} />
+              <span className={styles.tagBadge} style={{ backgroundColor: tag.color || '#6366f1' }}>
                 {tag.name}
               </span>
             </button>
@@ -291,15 +287,7 @@ function DetailTagPicker({
   );
 }
 
-function DetailRow({
-  label,
-  children,
-  mono = false,
-}: {
-  label: string;
-  children: ReactNode;
-  mono?: boolean;
-}) {
+function DetailRow({ label, children, mono = false }: { label: string; children: ReactNode; mono?: boolean }) {
   return (
     <div className={styles.detailRow}>
       <span className={styles.detailLabel}>{label}</span>
@@ -319,8 +307,10 @@ function PredictionMetric({
 }) {
   return (
     <div className={styles.predictionMetric}>
-      <span className={styles.detailLabel}>{label}</span>
-      <strong>{value || '-'}</strong>
+      <span className={styles.predictionValue}>
+        <span className={styles.detailLabel}>{label}</span>
+        <strong>{value || '-'}</strong>
+      </span>
       <span className={styles.predictionConfidence}>{formatConfidence(confidence)}</span>
     </div>
   );
@@ -363,8 +353,16 @@ function CipherPredictionDetails({ prediction }: { prediction: CipherPrediction 
   return (
     <div className={styles.predictionDetails}>
       <div className={styles.predictionGrid}>
-        <PredictionMetric label="Account" value={prediction.extractedAccount} confidence={prediction.accountConfidence} />
-        <PredictionMetric label="Payee" value={predictedPayee?.name || prediction.extractedPayee} confidence={prediction.payeeConfidence} />
+        <PredictionMetric
+          label="Account"
+          value={prediction.extractedAccount}
+          confidence={prediction.accountConfidence}
+        />
+        <PredictionMetric
+          label="Payee"
+          value={predictedPayee?.name || prediction.extractedPayee}
+          confidence={prediction.payeeConfidence}
+        />
         <PredictionMetric label="Category" value={predictedCategory?.name} confidence={prediction.categoryConfidence} />
       </div>
       <div className={styles.detailRows}>
@@ -372,9 +370,7 @@ function CipherPredictionDetails({ prediction }: { prediction: CipherPrediction 
         <DetailRow label="Source">{prediction.source || '-'}</DetailRow>
         <DetailRow label="User corrected">{prediction.hasUserCorrected ? 'Yes' : 'No'}</DetailRow>
       </div>
-      {prediction.llmReasoning && (
-        <pre className={styles.rawTextBlock}>{prediction.llmReasoning}</pre>
-      )}
+      {prediction.llmReasoning && <pre className={styles.rawTextBlock}>{prediction.llmReasoning}</pre>}
     </div>
   );
 }
@@ -394,9 +390,7 @@ function LegacyPredictionDetails({ prediction }: { prediction: TransactionPredic
         <DetailRow label="Corrected payee">{prediction.userCorrectedPayee || '-'}</DetailRow>
         <DetailRow label="Corrected category">{prediction.userCorrectedCategory || '-'}</DetailRow>
       </div>
-      {prediction.emailText && (
-        <pre className={styles.rawTextBlock}>{prediction.emailText}</pre>
-      )}
+      {prediction.emailText && <pre className={styles.rawTextBlock}>{prediction.emailText}</pre>}
     </div>
   );
 }
@@ -412,8 +406,6 @@ function AdvancedDetails({
   isPredictionLoading: boolean;
   predictionError: string | null;
 }) {
-  const rawText = txn.rawBankText || predictionDetails?.cipherPrediction?.emailText || predictionDetails?.prediction?.emailText || '-';
-
   return (
     <details className={styles.advancedSection}>
       <summary className={styles.advancedSummary}>
@@ -432,13 +424,15 @@ function AdvancedDetails({
           <PredictionDetails details={predictionDetails} isLoading={isPredictionLoading} error={predictionError} />
         </section>
 
-        <section className={styles.advancedGroup}>
-          <span className={styles.metaLabel}>
-            <CodeIcon size={18} />
-            <span>Raw Bank Text</span>
-          </span>
-          <pre className={styles.rawTextBlock}>{rawText}</pre>
-        </section>
+        {txn.summary && (
+          <section className={styles.advancedGroup}>
+            <span className={styles.metaLabel}>
+              <CodeIcon size={18} />
+              <span>Summary</span>
+            </span>
+            <pre className={styles.rawTextBlock}>{txn?.summary ?? '-'}</pre>
+          </section>
+        )}
       </div>
     </details>
   );
@@ -522,24 +516,21 @@ function TransactionView({
     <div className={styles.panelBody}>
       <section className={styles.heroSection}>
         <div className={`${styles.heroAmount} ${isInflow ? styles.heroAmountInflow : styles.heroAmountOutflow}`}>
-          {isInflow ? <PlusIcon color="var(--color-text-secondary)" /> : <MinusIcon color="var(--color-text-secondary)" />}
+          {isInflow ? (
+            <PlusIcon color="var(--color-text-secondary)" />
+          ) : (
+            <MinusIcon color="var(--color-text-secondary)" />
+          )}
           {getCurrencyLocaleString(displayAmount)}
         </div>
         <div className={styles.heroCategoryControl}>
-          <CategoryDropdown
-            value={txn.categoryName ?? ''}
-            onClick={onSelectChange('categoryId', 'categoryName')}
-          />
+          <CategoryDropdown value={txn.categoryName ?? ''} onClick={onSelectChange('categoryId', 'categoryName')} />
         </div>
       </section>
 
       <section className={styles.metaGrid}>
         <MetaItem icon={<CalendarDays color="var(--color-text)" size={18} />}>
-          {getLocaleDate(
-            txn.date,
-            { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' },
-            ['en-US'],
-          )}
+          {getLocaleDate(txn.date, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }, ['en-US'])}
         </MetaItem>
         <MetaItem icon={<StorefrontIcon color="var(--color-text)" size={18} />}>{txn.payeeName || '-'}</MetaItem>
         <MetaItem icon={<HandCoinsIcon color="var(--color-text)" size={18} />}>{txn.accountName || '-'}</MetaItem>
@@ -625,11 +616,19 @@ function StatusControl({
   if (status === TransactionStatus.UNAPPROVED) {
     return (
       <div className={styles.statusActions}>
-        <button type="button" className={styles.approveBtn} onClick={() => onStatusChange(TransactionStatus.APPROVED)} aria-label="Approve transaction">
+        <button
+          type="button"
+          className={styles.approveBtn}
+          onClick={() => onStatusChange(TransactionStatus.APPROVED)}
+          aria-label="Approve transaction">
           <ThumbsUpIcon size={13} />
           Approve
         </button>
-        <button type="button" className={styles.rejectBtn} onClick={() => onStatusChange(TransactionStatus.REJECTED)} aria-label="Reject transaction">
+        <button
+          type="button"
+          className={styles.rejectBtn}
+          onClick={() => onStatusChange(TransactionStatus.REJECTED)}
+          aria-label="Reject transaction">
           <ThumbsDownIcon size={13} />
           Reject
         </button>
@@ -641,7 +640,11 @@ function StatusControl({
     return <span className={styles.metaValue}>-</span>;
   }
 
-  return <span className={`${styles.statusPill} ${styles[`status${status}`]}`}>{status.charAt(0) + status.slice(1).toLowerCase()}</span>;
+  return (
+    <span className={`${styles.statusPill} ${styles[`status${status}`]}`}>
+      {status.charAt(0) + status.slice(1).toLowerCase()}
+    </span>
+  );
 }
 
 export function TransactionDetailPanel({
@@ -667,7 +670,7 @@ export function TransactionDetailPanel({
         isClosing={isClosing}
         onClose={onClose}
         onAnimationEnd={onAnimationEnd}
-        footer={(
+        footer={
           <>
             <button type="button" className={styles.cancelBtn} onClick={onClose}>
               Cancel
@@ -676,7 +679,7 @@ export function TransactionDetailPanel({
               Save
             </button>
           </>
-        )}>
+        }>
         <AddTransactionForm txn={selectedTxn} isInflow={isInflow} onChange={onChange} onSelectChange={onSelectChange} />
       </PanelFrame>
     );
@@ -688,7 +691,7 @@ export function TransactionDetailPanel({
       isClosing={isClosing}
       onClose={onClose}
       onAnimationEnd={onAnimationEnd}
-      footer={(
+      footer={
         <>
           <button type="button" className={styles.deleteBtn} onClick={onDelete}>
             <Trash2 size={16} />
@@ -698,7 +701,7 @@ export function TransactionDetailPanel({
             Save
           </button>
         </>
-      )}>
+      }>
       <TransactionView
         txn={selectedTxn}
         displayAmount={displayAmount}
