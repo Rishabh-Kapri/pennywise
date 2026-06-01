@@ -169,6 +169,7 @@ func parseRawEmails(
 		}
 		workflow.GetLogger(ctx).Info("retry-parse signal received, retrying ParseEmailData", workflowLogFields...)
 	}
+
 	workflow.GetLogger(ctx).
 		Info("parse-email-data workflow completed", append(workflowLogFields, "result", parsedEmailsInput)...)
 

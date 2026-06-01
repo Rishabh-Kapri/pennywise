@@ -96,7 +96,6 @@ func (r *transactionRepo) GetAll(
 			&txn.Status,
 			&txn.RawBankText,
 			&txn.Summary,
-			&txn.Summary,
 			&txn.TransferAccountID,
 			&txn.TransferTransactionID,
 			&txn.TagIDs,
@@ -465,11 +464,12 @@ func (r *transactionRepo) Create(ctx context.Context, tx pgx.Tx, txn model.Trans
 		  amount,
 		  dedupe_hash,
 		  status,
+			raw_bank_text,
 			summary,
 		  transfer_account_id,
 		  transfer_transaction_id,
 		  tag_ids
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING id, amount, budget_id, status, summary`,
 		txn.BudgetID,
 		txn.Date,
@@ -480,6 +480,7 @@ func (r *transactionRepo) Create(ctx context.Context, tx pgx.Tx, txn model.Trans
 		txn.Amount,
 		txn.DedupeHash,
 		txn.Status,
+		txn.RawBankText,
 		txn.Summary,
 		txn.TransferAccountID,
 		txn.TransferTransactionID,
