@@ -1260,8 +1260,8 @@
 }
 
 .predictionGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 0.75rem;
   padding: 1rem 1rem 0;
 }
