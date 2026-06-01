@@ -14,13 +14,13 @@ to me
 
 
 
-Dear Customer, Greetings from HDFC Bank! Your Spotify bill, set up through E-mandate (Auto payment), has been successfully paid using your HDFC Bank Credit Card ending 4432. Transaction Details: Amount: INR 149.00 Date: 12/08/2025 SI Hub ID: XXsqPnC8UX To manage your e-Mandates, please visit: https://www.sihub.in/managesi/hdfcbank Thank you for banking with us. Warm regards, HDFC Bank
+Dear Customer, Greetings from HDFC Bank! Your Spotify bill, set up through E-mandate (Auto payment), has been successfully paid using your HDFC Bank Credit Card ending 9876. Transaction Details: Amount: INR 149.00 Date: 12/08/2025 SI Hub ID: ABCDEFGHIJ To manage your e-Mandates, please visit: https://www.sihub.in/managesi/hdfcbank Thank you for banking with us. Warm regards, HDFC Bank
 
 For more details on Service charges and Fees, click here.
 © HDFC Bank
 
 
-Rishabh Kapri <rishabhkapri@gmail.com>
-1:28 PM (1 hour ago)
-to Lance
+Test User <testuser@example.com>
+1:28 PM (1 hour ago)
+to someone
 

@@ -1,4 +1,4 @@
-import type { LoadingState } from "@/utils";
+import type { LoadingState } from '@/utils';
 
 export interface Payee {
   id?: string;
@@ -14,4 +14,16 @@ export interface PayeeState {
   allPayees: Payee[];
   loading: LoadingState;
   error: string | null;
+}
+
+export interface PayeeRule {
+  id: string;
+  budgetId: string;
+  payeeId: string;
+  categoryId?: string;
+  categoryName?: string;
+  matchString: string;
+  matchType: string;
+  createdAt?: string;
+  updatedAt?: string;
 }

@@ -2,48 +2,89 @@ package service
 
 import (
 	"context"
+	"errors"
 
-	"pennywise-api/internal/model"
-	"pennywise-api/internal/repository"
+	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 type PredictionService interface {
 	GetAll(ctx context.Context) ([]model.Prediction, error)
+	GetByTransactionID(ctx context.Context, transactionID uuid.UUID) (*model.TransactionPredictionDetails, error)
 	Create(ctx context.Context, prediction model.Prediction) ([]model.Prediction, error)
 	Update(ctx context.Context, id uuid.UUID, prediction model.Prediction) error
 	DeleteById(ctx context.Context, id uuid.UUID) error
+	CreateCipherPrediction(ctx context.Context, p model.CipherPredictionRecord) (*model.CipherPredictionRecord, error)
+	CreateCipherPredictionWithTx(ctx context.Context, tx pgx.Tx, p model.CipherPredictionRecord) (*model.CipherPredictionRecord, error)
 }
 
 type predictionService struct {
-	repo repository.PredictionRepository
+	repo       repository.PredictionRepository
+	cipherRepo repository.CipherPredictionRepository
 }
 
-func NewPredictionService(r repository.PredictionRepository) PredictionService {
-	return &predictionService{repo: r}
+func NewPredictionService(r repository.PredictionRepository, cr repository.CipherPredictionRepository) PredictionService {
+	return &predictionService{repo: r, cipherRepo: cr}
 }
 
 func (s *predictionService) GetAll(ctx context.Context) ([]model.Prediction, error) {
-	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	budgetId := utils.MustBudgetID(ctx)
 	return s.repo.GetAll(ctx, budgetId)
 }
 
+func (s *predictionService) GetByTransactionID(ctx context.Context, transactionID uuid.UUID) (*model.TransactionPredictionDetails, error) {
+	budgetID := utils.MustBudgetID(ctx)
+	details := &model.TransactionPredictionDetails{}
+
+	cipherPrediction, err := s.cipherRepo.GetByTransactionID(ctx, budgetID, transactionID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
+	if err == nil {
+		details.CipherPrediction = cipherPrediction
+	}
+
+	prediction, err := s.repo.GetByTxnId(ctx, budgetID, transactionID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
+	if err == nil {
+		details.Prediction = prediction
+	}
+
+	return details, nil
+}
+
 func (s *predictionService) Create(ctx context.Context, prediction model.Prediction) ([]model.Prediction, error) {
-	budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	budgetId := utils.MustBudgetID(ctx)
 	prediction.BudgetID = budgetId
 	return s.repo.Create(ctx, prediction)
 }
 
 func (s *predictionService) Update(ctx context.Context, id uuid.UUID, prediction model.Prediction) error {
-	// budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
+	// budgetId := utils.MustBudgetID(ctx)
 	// INFO: prediction update for now will only be done through transactions update
 	// return s.repo.Update(ctx, budgetId, id, prediction)
 	return nil
 }
 
 func (s *predictionService) DeleteById(ctx context.Context, id uuid.UUID) error {
-	// budgetId, _ := ctx.Value("budgetId").(uuid.UUID)
-	// return s.repo.Delete(ctx, budgetId, id)
-	return nil
+	budgetId := utils.MustBudgetID(ctx)
+	return s.repo.DeleteByTxnId(ctx, nil, budgetId, id)
+}
+
+func (s *predictionService) CreateCipherPrediction(ctx context.Context, p model.CipherPredictionRecord) (*model.CipherPredictionRecord, error) {
+	budgetId := utils.MustBudgetID(ctx)
+	p.BudgetID = budgetId
+	return s.CreateCipherPredictionWithTx(ctx, nil, p)
+}
+
+func (s *predictionService) CreateCipherPredictionWithTx(ctx context.Context, tx pgx.Tx, p model.CipherPredictionRecord) (*model.CipherPredictionRecord, error) {
+	budgetID := utils.MustBudgetID(ctx)
+	p.BudgetID = budgetID
+	return s.cipherRepo.Create(ctx, tx, p)
 }

@@ -1,0 +1,9 @@
+go 1.25.1
+
+use (
+	./cipher
+	./go-gmail
+	./go-pennywise-api
+	./shared
+	./workflows
+)

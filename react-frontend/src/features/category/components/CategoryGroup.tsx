@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { CaretDown as ChevronDown, CaretRight as ChevronRight } from '@phosphor-icons/react';
 import styles from './CategoryGroup.module.css';
 import CategoryItemList from './CategoryItemList';
 import type { Category, CategoryGroup } from '../types/category.types';
@@ -6,8 +6,9 @@ import { CategoryFormDropdown } from './CategoryFormDropdown';
 import { useCallback, useState } from 'react';
 import { CategoryInfo } from './CategoryInfo';
 import { useAppDispatch } from '@/app/hooks';
-import { toggleGroupCollapse } from '../store';
+import { createCategory, toggleGroupCollapse } from '../store';
 import { AmountCell } from './AmountCell';
+import { toast } from '@/utils';
 
 interface CategoryGroupProps {
   groups: CategoryGroup[];
@@ -37,8 +38,24 @@ export default function CategoryGroup({ groups, month }: CategoryGroupProps) {
     }
   }, []);
 
-  const handleAddCategory = () => {
-    setOpenDropdownId(null);
+  const handleAddCategory = async (category: Category) => {
+    try {
+      await dispatch(
+        createCategory({
+          name: category.name.trim(),
+          budgetId: category.budgetId,
+          categoryGroupId: category.categoryGroupId,
+          budgeted: category.budgeted,
+        }),
+      ).unwrap();
+      setOpenDropdownId(null);
+      toast.success('Category created');
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to create category';
+      toast.error(message);
+      throw error;
+    }
   };
 
   const handleGroupClose = (group: CategoryGroup) => {

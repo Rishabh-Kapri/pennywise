@@ -1,16 +1,16 @@
 import type React from 'react';
 import type { Category } from '../types/category.types';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAppSelector } from '@/app/hooks';
 import { selectSelectedBudget } from '@/features/budget';
-import { Edit, Plus } from 'lucide-react';
+import { PencilSimple as Edit, Plus } from '@phosphor-icons/react';
 import styles from './CategoryFormDropdown.module.css';
 import { Dropdown } from '@/components/common/Dropdown/Dropdown';
 
 interface CategoryFormDropdownProps {
   category?: Category;
   groupId?: string;
-  onSave: (category: Category) => void;
+  onSave: (category: Category) => Promise<void> | void;
   isOpen?: boolean; // allows the parent to hide the dropdown
   onOpenChange?: (open: boolean) => void;
   trigger?: React.ReactNode;
@@ -26,7 +26,7 @@ export function CategoryFormDropdown({
   const [internalIsOpen, setIsInternalIsOpen] = useState(false);
   const selectedBudget = useAppSelector(selectSelectedBudget);
   const [formData, setFormData] = useState<Category>(
-    category || {
+    category ?? {
       name: '',
       categoryGroupId: groupId ?? '',
       budgetId: selectedBudget?.id ?? '',
@@ -36,8 +36,22 @@ export function CategoryFormDropdown({
   const triggerRef = useRef<HTMLDivElement>(null);
 
   const isOpen = parentIsOpen !== undefined ? parentIsOpen : internalIsOpen;
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+    setFormData(
+      category ?? {
+        name: '',
+        categoryGroupId: groupId ?? '',
+        budgetId: selectedBudget?.id ?? '',
+        budgeted: {},
+      },
+    );
+  }, [category, groupId, isOpen, selectedBudget?.id]);
+
   const setIsOpen = (open: boolean) => {
-    console.trace('setIsOpen:', open);
     if (onOpenChange) {
       onOpenChange(open);
     } else {
@@ -45,23 +59,34 @@ export function CategoryFormDropdown({
     }
   };
 
-  const handleSubmit = (event: React.FormEvent) => {
+  const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    onSave(formData);
-    setIsOpen(false);
-    if (!category) {
-      setFormData({
-        name: '',
-        categoryGroupId: '',
-        budgetId: selectedBudget?.id ?? '',
-        budgeted: {},
-      });
+    const payload: Category = {
+      ...formData,
+      name: formData.name.trim(),
+      categoryGroupId: formData.categoryGroupId || groupId || '',
+      budgetId: formData.budgetId || selectedBudget?.id || '',
+      budgeted: formData.budgeted ?? {},
+    };
+
+    try {
+      await onSave(payload);
+      setIsOpen(false);
+      if (!category) {
+        setFormData({
+          name: '',
+          categoryGroupId: groupId ?? '',
+          budgetId: selectedBudget?.id ?? '',
+          budgeted: {},
+        });
+      }
+    } catch {
+      return;
     }
   };
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = event.target;
-    console.log('handleChange:', name, value);
     setFormData((prev) => ({
       ...prev,
       [name]: value,
@@ -69,7 +94,6 @@ export function CategoryFormDropdown({
   };
 
   return (
-    
     <>
       <div
         ref={triggerRef}

@@ -1,5 +1,5 @@
-import { useEffect, useMemo } from 'react';
-import { ReceiptText } from 'lucide-react';
+import { useMemo } from 'react';
+import { Receipt as ReceiptText } from '@phosphor-icons/react';
 import { Popover } from '@/components/common/Popover/Popover';
 import { useAppSelector } from '@/app/hooks';
 import { getCurrencyLocaleString } from '@/utils/date.utils';
@@ -25,8 +25,6 @@ export function ActivityPopover({
   activityAmount,
 }: ActivityPopoverProps) {
   const { transactions } = useAppSelector((state) => state.transactions);
-
-
   const filteredTransactions = useMemo(() => {
     return transactions.filter((txn) => {
       if (txn.categoryId !== categoryId) return false;
@@ -34,13 +32,6 @@ export function ActivityPopover({
       return txnMonth === month;
     });
   }, [transactions, categoryId, month]);
-
-  useEffect(() => {
-    if (categoryName === '🛒 Groceries') {
-      console.log('Groceries ActivityPopover transactions:', transactions);
-      console.log('Groceries transactions for categoryId', categoryId, 'and month', month, ':', filteredTransactions);
-    }
-  }, [categoryName, transactions, filteredTransactions, categoryId, month]);
 
   if (!isOpen) return null;
 

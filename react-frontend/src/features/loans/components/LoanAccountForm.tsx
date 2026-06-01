@@ -1,5 +1,5 @@
 import { useState, useEffect, type FormEvent } from 'react';
-import { X } from 'lucide-react';
+import { X } from '@phosphor-icons/react';
 import { useAppDispatch } from '@/app/hooks';
 import { fetchAllAccounts } from '@/features/accounts/store/accountSlice';
 import { createLoanMetadata, updateLoanMetadata } from '../store/loanSlice';

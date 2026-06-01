@@ -12,6 +12,21 @@ import type {
 import { apiClient, LoadingState } from '@/utils';
 import type { RootState } from '@/app';
 
+interface CreateCategoryPayload {
+  name: string;
+  budgetId: string;
+  categoryGroupId: string;
+  note?: string | null;
+  hidden?: boolean;
+  budgeted?: Record<string, number>;
+}
+
+interface CreateCategoryResponse {
+  id: string;
+  name: string;
+  categoryGroupId: string;
+}
+
 const initialCategoryState: CategoryState = {
   allCategories: [],
   allCategoryGroups: [],
@@ -43,6 +58,13 @@ export const fetchCategoryById = createAsyncThunk<Category, string>(
     return res;
   },
 );
+
+export const createCategory = createAsyncThunk<
+  CreateCategoryResponse,
+  CreateCategoryPayload
+>('categories/createCategory', async (category) => {
+  return await apiClient.post<CreateCategoryResponse>('categories', category);
+});
 
 export const updateCategoryBudget = createAsyncThunk<
   { budgeted: number },
@@ -116,6 +138,34 @@ const categoriesSlice = createSlice({
         state.loading = LoadingState.ERROR;
         state.allCategories = [];
         state.error = action.error.message ?? 'Failed to load categories';
+      })
+      .addCase(createCategory.fulfilled, (state, action) => {
+        const { id, name, categoryGroupId } = action.payload;
+        const { budgetId, note, hidden, budgeted } = action.meta.arg;
+
+        const newCategory: Category = {
+          id,
+          name,
+          categoryGroupId,
+          budgetId,
+          note,
+          hidden,
+          budgeted: budgeted ?? {},
+          activity: {},
+          balance: {},
+        };
+
+        state.allCategories.push(newCategory);
+
+        const group = state.allCategoryGroups.find((g) => g.id === categoryGroupId);
+        if (group) {
+          group.categories.push(newCategory);
+        }
+
+        state.error = null;
+      })
+      .addCase(createCategory.rejected, (state, action) => {
+        state.error = action.error.message ?? 'Failed to create category';
       })
       .addCase(updateCategoryBudget.fulfilled, (state, action) => {
         const { budgeted, categoryId, month } = action.meta.arg;

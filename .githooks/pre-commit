@@ -1,0 +1,25 @@
+#!/bin/sh
+# Re-vendor Go modules whenever their go.mod/go.sum or shared/ changes.
+
+STAGED=$(git diff --cached --name-only)
+
+vendor_module() {
+  module=$1
+  echo "Vendoring $module..."
+  (cd "$module" && GOWORK=off go mod vendor) || exit 1
+  git add "$module/vendor/"
+}
+
+SHARED_CHANGED=false
+echo "$STAGED" | grep -qE "^backend/shared/" && SHARED_CHANGED=true
+
+for module in \
+  backend/go-pennywise-api \
+  backend/go-gmail \
+  backend/cipher \
+  backend/workflows
+do
+  if [ "$SHARED_CHANGED" = "true" ] || echo "$STAGED" | grep -qE "^$module/go\.(mod|sum)$"; then
+    vendor_module "$module"
+  fi
+done

@@ -1,7 +1,7 @@
 import { useAppSelector } from '@/app/hooks';
 import { selectBudgetHealth } from '../../store/dashboardSlice';
 import { selectInflowAmount } from '@/features/category/store';
-import { PieChart, CheckCircle } from 'lucide-react';
+import { ChartPie as PieChart, CheckCircle } from '@phosphor-icons/react';
 import styles from './BudgetOverview.module.css';
 
 const formatCurrency = (amount: number): string => {

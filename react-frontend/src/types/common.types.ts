@@ -5,9 +5,12 @@ export interface TransactionColumns {
   key: keyof Transaction;
   label: string;
   layout: {
-    gridColumn: string;
+    flex: string;
     textAlign: 'left' | 'right' | 'center' | 'justify';
+    minWidth?: number | string;
+    overflow?: string;
   };
   className?: string[];
+  headerClassName?: string[];
   render?: (txn: Transaction) => React.ReactNode;
 }

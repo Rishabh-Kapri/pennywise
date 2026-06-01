@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAppSelector } from '@/app/hooks';
 import { selectSpendingTrends } from '../../store/dashboardSlice';
-import { BarChart3 } from 'lucide-react';
+import { ChartBar as BarChart3 } from '@phosphor-icons/react';
 import styles from './SpendingTrends.module.css';
 
 const formatCurrency = (amount: number): string => {
