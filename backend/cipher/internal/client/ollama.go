@@ -60,7 +60,7 @@ const extractionModel = "gemma4"
 //
 // Input: "Dear Customer, Thank you for banking with HDFC Bank. Amount deducted Of Rs. 39,090.00 From your SBI Bank A/c XX1234 For NEFT transaction Via SBI Bank Online Banking. Not you? Call 18002586161 Warm Regards, HDFC BankFor more details on Service charges and Fees, click here.. © HDFC Bank"
 // Output: {"merchant": "", "amount": -39090.0, "account_card": "1234"}
-const EmailNormalizationPrompt = `You are a bank email summarizer. Summarize the transaction in one sentence. Return only the sentence, nothing else.
+const EmailSummarizationPrompt = `You are a bank email summarizer. Summarize the transaction in one sentence. Return only the sentence, nothing else.
 If not a transaction email, return empty string "".
 
 EXAMPLES:
@@ -93,6 +93,7 @@ const extractionPrompt = `You are a financial data extractor. You will receive e
 	- Add negative sign if the amount is debited.
 	- When merchant name is empty or not found, use empty string as merchant name.
 	- When the email is not a transaction email, return empty JSON.
+	- Skip the e-mandate email.
 	SCHEMA: {"merchant": "string", "amount": float, "date": "string (formatted as YYYY-MM-DD)", "account_card": "string (Bank name and last 4 digits only, no extra words)", "reasoning": "string (Brief 1 sentence explanation of why this classification is chosen)"}
 
 	EXAMPLES: 
