@@ -102,7 +102,7 @@ func (s *agentService) GetConversationMessages(
 
 func (s *agentService) continueRun(
 	ctx context.Context,
-	req sharedModel.AgentRunCreateRequest,
+	req *sharedModel.AgentRunCreateRequest,
 	userID uuid.UUID,
 	budgetID uuid.UUID,
 	conversation *sharedModel.AgentConversation,
@@ -239,7 +239,7 @@ func (s *agentService) continueRun(
 	run.Messages = []sharedModel.ConversationMessage{*userMessage}
 	run.UserMessage = req.Message
 
-	dispatchReq := req
+	dispatchReq := *req
 	dispatchReq.RunID = &run.ID
 	dispatchReq.AgentKey = &agentKey
 	dispatchReq.ConversationID = &conversation.ID
@@ -358,7 +358,7 @@ func (s *agentService) CreateRun(
 
 	// pass a detached context to not close the conntext after the request is done
 	backgroundCtx := utils.DetachedRequestContext(ctx)
-	go s.continueRun(backgroundCtx, req, userID, budgetID, conversation, agentKey)
+	go s.continueRun(backgroundCtx, &req, userID, budgetID, conversation, agentKey)
 
 	agentRun := sharedModel.AgentRun{
 		UserID:         &userID,
