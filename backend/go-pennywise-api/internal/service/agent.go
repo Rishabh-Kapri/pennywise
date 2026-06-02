@@ -102,7 +102,7 @@ func (s *agentService) GetConversationMessages(
 
 func (s *agentService) continueRun(
 	ctx context.Context,
-	req *sharedModel.AgentRunCreateRequest,
+	req sharedModel.AgentRunCreateRequest,
 	userID uuid.UUID,
 	budgetID uuid.UUID,
 	conversation *sharedModel.AgentConversation,
@@ -135,9 +135,6 @@ func (s *agentService) continueRun(
 				"failed to get previous conversation runs",
 				err,
 			)
-		}
-		if req.ConversationID != nil {
-		} else {
 		}
 
 		runMetadata := req.Metadata
@@ -191,13 +188,13 @@ func (s *agentService) continueRun(
 		if err != nil {
 			return errs.Wrap(errs.CodeInternalError, "failed to marshal user message", err)
 		}
+
 		userMessage, err = s.repo.CreateConversationMessage(ctx, tx, repository.CreateConversationMessageParams{
 			ConversationID: conversation.ID,
 			RunID:          &run.ID,
 			Role:           sharedModel.RoleUser,
 			Content:        json.RawMessage(userMessageJSON),
 		})
-		log.Info("usermessage", "message", userMessage, "err", err)
 		if err != nil {
 			return wrapAgentRepoError(
 				errs.CodeAgentMessageCreateFailed,
@@ -239,7 +236,7 @@ func (s *agentService) continueRun(
 	run.Messages = []sharedModel.ConversationMessage{*userMessage}
 	run.UserMessage = req.Message
 
-	dispatchReq := *req
+	dispatchReq := req
 	dispatchReq.RunID = &run.ID
 	dispatchReq.AgentKey = &agentKey
 	dispatchReq.ConversationID = &conversation.ID
@@ -338,7 +335,6 @@ func (s *agentService) CreateRun(
 		if req.Title == nil {
 			conversationMetadata["titleSource"] = "auto"
 		}
-		req.ConversationMetadata = conversationMetadata
 
 		conversation, err = s.repo.CreateConversation(ctx, nil, repository.CreateAgentConversationParams{
 			UserID:   userID,
@@ -354,11 +350,14 @@ func (s *agentService) CreateRun(
 				err,
 			)
 		}
+
+		req.ConversationID = &conversation.ID
+		req.ConversationMetadata = conversationMetadata
 	}
 
 	// pass a detached context to not close the conntext after the request is done
 	backgroundCtx := utils.DetachedRequestContext(ctx)
-	go s.continueRun(backgroundCtx, &req, userID, budgetID, conversation, agentKey)
+	go s.continueRun(backgroundCtx, req, userID, budgetID, conversation, agentKey)
 
 	agentRun := sharedModel.AgentRun{
 		UserID:         &userID,
