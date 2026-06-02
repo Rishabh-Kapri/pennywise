@@ -28,6 +28,7 @@ import {
   selectAgentConversation,
   selectSelectedAgentModelKey,
   setSelectedAgentModel,
+  updateAgentConversationTitle,
 } from '@/features/agent/store';
 import { selectSelectedBudget } from '@/features/budget';
 import { AGENT_CHAT_WEBSOCKET_EVENT, type WebSocketMessage } from '@/features/websocket/events';
@@ -365,6 +366,10 @@ export function AgentChat() {
   }, [appendTextDelta]);
 
   useEffect(() => {
+    setHeaderTitle(selectedConversation?.title ?? 'Penny Agent');
+  }, [selectedConversation?.title]);
+
+  useEffect(() => {
     if (!isOpen) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -469,9 +474,18 @@ export function AgentChat() {
       }
 
       if (message.eventName === AGENT_CHAT_STREAM_EVENT && parsedMsgData?.type === 'title_update') {
-        setHeaderTitle(parsedMsgData.message as string);
-        // if (selectedConversation && selectedConversation?.id === message.conversationId) {
-        // }
+        const title = parsedMsgData.message as string;
+        setHeaderTitle(title);
+        let conversationId = currentConversationId;
+        if (message.roomId && message.roomId.includes(':chat/')) {
+          conversationId = message.roomId.split(':chat/')[1];
+        } else if (message.streamId) {
+          conversationId = message.streamId;
+        }
+        if (conversationId) {
+          dispatch(updateAgentConversationTitle({ conversationId, title }));
+        }
+        return;
       }
 
       const text = formatAgentEventData(message.data);
@@ -491,7 +505,13 @@ export function AgentChat() {
       textDeltaFrameTimeRef.current = null;
       textDeltaCharBudgetRef.current = 0;
     };
-  }, [dispatch, flushPendingTextDelta, scheduleTextDeltaAnimation, selectedConversation]);
+  }, [
+    dispatch,
+    flushPendingTextDelta,
+    scheduleTextDeltaAnimation,
+    selectedConversation,
+    currentConversationId,
+  ]);
 
   useEffect(() => {
     if (!isOpen) return;

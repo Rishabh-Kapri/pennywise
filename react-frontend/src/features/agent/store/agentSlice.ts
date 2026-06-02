@@ -505,6 +505,16 @@ const agentSlice = createSlice({
         state.selectedModelKey = action.payload;
       }
     },
+    updateAgentConversationTitle: (
+      state,
+      action: PayloadAction<{ conversationId: string; title: string }>,
+    ) => {
+      const { conversationId, title } = action.payload;
+      const conversation = state.chatHistoryById[conversationId];
+      if (conversation) {
+        conversation.title = title;
+      }
+    },
     selectAgentConversation: (state, action: PayloadAction<string>) => {
       const conversation = state.chatHistoryById[action.payload];
       if (!conversation) {
@@ -612,6 +622,7 @@ export const {
   clearAgentChat,
   selectAgentConversation,
   setSelectedAgentModel,
+  updateAgentConversationTitle,
 } =
   agentSlice.actions;
 
