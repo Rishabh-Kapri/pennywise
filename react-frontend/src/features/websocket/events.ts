@@ -7,6 +7,7 @@ export type WebSocketMessage = {
   userId?: string;
   streamId?: string;
   roomId?: string;
+  conversationId?: string;
   data?: string;
 };
 
