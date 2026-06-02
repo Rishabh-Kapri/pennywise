@@ -243,7 +243,7 @@ func main() {
 		logger.Fatal("error while creating agent", "error", err)
 	}
 
-	agentService := service.NewAgentService(agent, pennywiseHttpTransport, memoryService, llmResolver)
+	agentService := service.NewAgentService(redisClient, agent, pennywiseHttpTransport, memoryService, llmResolver)
 
 	if cfg.Environment != "local" {
 		temporalClient, err = connectToTemporal(ctx, cfg)
