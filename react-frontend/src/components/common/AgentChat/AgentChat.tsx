@@ -265,7 +265,7 @@ export function AgentChat() {
     ? chatHistory.find((conversation) => conversation.id === currentConversationId)
     : undefined;
   const selectedModel = AGENT_MODEL_OPTIONS.find((option) => option.key === selectedModelKey) ?? AGENT_MODEL_OPTIONS[0];
-  const headerTitle = selectedConversation?.title ?? 'Penny Agent';
+  const [headerTitle, setHeaderTitle] = useState(selectedConversation?.title ?? 'Penny Agent');
   const canOpenHistory = !isSending && chatHistory.length > 0;
   const canOpenModels = !isSending && hasSelectedBudget;
   const deleteConversationTitle = conversationToDelete?.title?.trim() || 'this chat';
@@ -468,6 +468,12 @@ export function AgentChat() {
         return;
       }
 
+      if (message.eventName === AGENT_CHAT_STREAM_EVENT && parsedMsgData?.type === 'title_update') {
+        setHeaderTitle(parsedMsgData.message as string);
+        // if (selectedConversation && selectedConversation?.id === message.conversationId) {
+        // }
+      }
+
       const text = formatAgentEventData(message.data);
       flushPendingTextDelta();
       dispatch(appendAgentEvent({ eventName: message.eventName, text }));
@@ -485,7 +491,7 @@ export function AgentChat() {
       textDeltaFrameTimeRef.current = null;
       textDeltaCharBudgetRef.current = 0;
     };
-  }, [dispatch, flushPendingTextDelta, scheduleTextDeltaAnimation]);
+  }, [dispatch, flushPendingTextDelta, scheduleTextDeltaAnimation, selectedConversation]);
 
   useEffect(() => {
     if (!isOpen) return;
