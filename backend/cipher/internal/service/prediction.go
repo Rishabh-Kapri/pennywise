@@ -315,7 +315,7 @@ func (s *predictionService) SummarizeEmailText(ctx context.Context, text string)
 
 	log.Info("SummarizeEmailText before prompt", "text", text)
 
-	prompt := client.EmailNormalizationPrompt + text + "\nOutput:"
+	prompt := client.EmailSummarizationPrompt + text + "\nOutput:"
 	temperature := float32(0.0)
 
 	res, err := client.GenericLLMCall[summaryResponse](ctx, s.ollama, model.PromptReq{
