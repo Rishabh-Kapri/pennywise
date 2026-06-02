@@ -13,10 +13,10 @@ import (
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 
-	// "github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -356,7 +356,9 @@ func (s *agentService) CreateRun(
 		}
 	}
 
-	go s.continueRun(ctx, req, userID, budgetID, conversation, agentKey)
+	// pass a detached context to not close the conntext after the request is done
+	backgroundCtx := utils.DetachedRequestContext(ctx)
+	go s.continueRun(backgroundCtx, req, userID, budgetID, conversation, agentKey)
 
 	agentRun := sharedModel.AgentRun{
 		UserID:         &userID,
