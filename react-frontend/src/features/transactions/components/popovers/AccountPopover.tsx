@@ -64,6 +64,7 @@ export function AccountDropdown({
   };
 
   const triggerClassName = variant === 'form' ? styles.formTrigger : styles.input;
+  const inputClassName = variant === 'form' ? styles.formInput : styles.input;
 
   if (multiple) {
     const displayValue = value || 'Select Account';
