@@ -69,6 +69,8 @@ type TransactionStatusReq struct {
 
 type TransactionFilter struct {
 	AccountIDs   []uuid.UUID
+	CategoryIDs  []uuid.UUID
+	PayeeIDs     []uuid.UUID
 	StartDate    *string
 	EndDate      *string
 	Note         *string

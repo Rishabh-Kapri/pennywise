@@ -79,17 +79,11 @@ export function groupTransactions(txns: Transaction[]): ListItem[] {
   return items;
 }
 
-export function filterTransactions(transactions: Transaction[], searchTerm: string, mobileFilter: MobileFilter) {
-  const search = searchTerm.trim().toLowerCase();
-
+export function filterTransactions(
+  transactions: Transaction[],
+  mobileFilter: MobileFilter,
+) {
   return transactions.filter((txn) => {
-    const matchesSearch =
-      !search ||
-      [txn.accountName, txn.payeeName, txn.categoryName, txn.note, String(txn.outflow ?? ''), String(txn.inflow ?? '')]
-        .filter(Boolean)
-        .some((value) => value?.toLowerCase().includes(search));
-
-    if (!matchesSearch) return false;
     if (mobileFilter === 'incoming') return (txn.inflow ?? 0) > 0;
     if (mobileFilter === 'outgoing') return (txn.outflow ?? 0) > 0;
     if (mobileFilter === 'week') return isThisWeek(txn);
