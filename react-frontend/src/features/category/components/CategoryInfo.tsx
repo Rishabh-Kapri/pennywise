@@ -44,7 +44,7 @@ export function CategoryInfo({ category }: CategoryInfoProps) {
   const [showActivityModal, setShowActivityModal] = useState(false);
   const activityTriggerRef = useRef<HTMLDivElement | null>(null);
 
-  const debouncedNote = useDebounce(note);
+  const [debouncedNote] = useDebounce(note);
 
   // useRef for AbortController for cancelling previous request.
   // useRef doesn't re-render even if the value changes.

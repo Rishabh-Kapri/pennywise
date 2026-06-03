@@ -4,9 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"strconv"
+	"sync"
 
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
+
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -18,8 +22,15 @@ type CategorySpend struct {
 }
 
 type BudgetInfo struct {
-	Categories []CategorySpend `json:"categories"`
+	Categories []string `json:"categories"`
 	PayeeNames []string        `json:"payeeNames"`
+}
+
+type BudgetToolArgs struct {
+	DateRange struct {
+		Start string `json:"start"`
+		End   string `json:"end"`
+	} `json:"dateRange"`
 }
 
 type GetBudgetInfoTool struct {
@@ -37,10 +48,6 @@ func (t GetBudgetInfoTool) Definition() sharedModel.ToolDefiniton {
 		InputSchema: sharedModel.ToolSchema{
 			Type: "object",
 			Properties: map[string]sharedModel.ToolSchema{
-				"budgetId": {
-					Type:        "string",
-					Description: "The id of the budget for which to fetch the budget info for.",
-				},
 				"dateRange": {
 					Type: "object",
 					Properties: map[string]sharedModel.ToolSchema{
@@ -56,55 +63,52 @@ func (t GetBudgetInfoTool) Definition() sharedModel.ToolDefiniton {
 					Required: []string{"start", "end"},
 				},
 			},
-			Required: []string{"budgetId", "dateRange"},
+			Required: []string{"dateRange"},
 		},
 	}
 }
 
-func (t GetBudgetInfoTool) Execute(ctx context.Context, call sharedModel.ToolCall) (*sharedModel.ToolResult, error) {
-	var args struct {
-		BudgetID  string `json:"budgetId"`
-		DateRange struct {
-			Start string `json:"start"`
-			End   string `json:"end"`
-		} `json:"dateRange"`
-	}
-	if err := json.Unmarshal(call.Arguments, &args); err != nil {
-		return nil, errs.Wrap(errs.CodeInternalError, "parse get_budget_info arguments", err)
-	}
-	if args.DateRange.Start == "" || args.DateRange.End == "" {
-		return nil, errs.New(errs.CodeToolExecuteFail, "date range is required")
-	}
+func (t GetBudgetInfoTool) fetchCategories(
+	ctx context.Context,
+	budgetID uuid.UUID,
+	args BudgetToolArgs,
+) (categories []string, err error) {
 	categoryRows, err := t.db.Query(ctx, `
-		SELECT
+			SELECT
 			c.name,
 			COALESCE(SUM(t.amount), 0) AS total_spend
-		FROM transactions t
-		JOIN categories c ON t.category_id = c.id AND c.is_system = false AND c.deleted = false
-		WHERE t.budget_id = $1
-		  AND t.date >= $2
-		  AND t.date <= $3
-		  AND t.deleted = false
-		GROUP BY c.name
-		ORDER BY total_spend ASC
-	`, args.BudgetID, args.DateRange.Start, args.DateRange.End)
+			FROM transactions t
+			JOIN categories c ON t.category_id = c.id AND c.is_system = false AND c.deleted = false
+			WHERE t.budget_id = $1
+			AND t.date >= $2
+			AND t.date <= $3
+			AND t.deleted = false
+			GROUP BY c.name
+			ORDER BY total_spend ASC
+			`, budgetID, args.DateRange.Start, args.DateRange.End)
 	if err != nil {
 		return nil, errs.Wrap(errs.CodeToolExecuteFail, "failed to execute tool get_budget_info", err)
 	}
 	defer categoryRows.Close()
-
-	var categories []CategorySpend
 	for categoryRows.Next() {
-		var cs CategorySpend
-		if err := categoryRows.Scan(&cs.Name, &cs.TotalSpend); err != nil {
+		var name string
+		if err := categoryRows.Scan(&name); err != nil {
 			return nil, errs.Wrap(errs.CodeToolExecuteFail, "failed to scan category row", err)
 		}
-		categories = append(categories, cs)
+		categories = append(categories, name)
 	}
 	if err := categoryRows.Err(); err != nil {
 		return nil, errs.Wrap(errs.CodeToolExecuteFail, "failed to scan category rows", err)
 	}
 
+	return categories, nil
+}
+
+func (t GetBudgetInfoTool) fetchPayees(
+	ctx context.Context,
+	budgetID uuid.UUID,
+	args BudgetToolArgs,
+) (payeeNames []string, err error) {
 	payeeRows, err := t.db.Query(ctx, `
 		SELECT DISTINCT p.name
 		FROM transactions t
@@ -115,13 +119,12 @@ func (t GetBudgetInfoTool) Execute(ctx context.Context, call sharedModel.ToolCal
 		  AND t.deleted = false
 		  AND p.name IS NOT NULL
 		ORDER BY p.name
-	`, args.BudgetID, args.DateRange.Start, args.DateRange.End)
+	`, budgetID, args.DateRange.Start, args.DateRange.End)
 	if err != nil {
 		return nil, errs.Wrap(errs.CodeToolExecuteFail, "failed to execute tool get_budget_info", err)
 	}
 	defer payeeRows.Close()
 
-	var payeeNames []string
 	for payeeRows.Next() {
 		var name string
 		if err := payeeRows.Scan(&name); err != nil {
@@ -133,6 +136,46 @@ func (t GetBudgetInfoTool) Execute(ctx context.Context, call sharedModel.ToolCal
 		return nil, errs.Wrap(errs.CodeToolExecuteFail, "failed to scan payee rows", err)
 	}
 
+	return payeeNames, nil
+}
+
+func (t GetBudgetInfoTool) Execute(ctx context.Context, call sharedModel.ToolCall) (*sharedModel.ToolResult, error) {
+	var args BudgetToolArgs
+	if err := json.Unmarshal(call.Arguments, &args); err != nil {
+		return nil, errs.Wrap(errs.CodeInternalError, "parse get_budget_info arguments", err)
+	}
+	if args.DateRange.Start == "" || args.DateRange.End == "" {
+		return nil, errs.New(errs.CodeToolExecuteFail, "date range is required")
+	}
+
+	budgetID := utils.MustBudgetID(ctx)
+
+	var categories []string
+	var payeeNames []string
+	var catErr, payeeErr error
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		categories, catErr = t.fetchCategories(ctx, budgetID, args)
+	}()
+
+	go func() {
+		defer wg.Done()
+		payeeNames, payeeErr = t.fetchPayees(ctx, budgetID, args)
+	}()
+
+	wg.Wait()
+
+	if catErr != nil {
+		return nil, errs.Wrap(errs.CodeToolExecuteFail, "failed to fetch categories", catErr)
+	}
+	if payeeErr != nil {
+		return nil, errs.Wrap(errs.CodeToolExecuteFail, "failed to fetch payees", payeeErr)
+	}
+
 	return jsonToolResult(call, getBudgetToolName, BudgetInfo{
 		Categories: categories,
 		PayeeNames: payeeNames,
@@ -140,13 +183,16 @@ func (t GetBudgetInfoTool) Execute(ctx context.Context, call sharedModel.ToolCal
 }
 
 func (t GetBudgetInfoTool) GetNormalizedName(isDone bool) string {
-	if (isDone) {
+	if isDone {
 		return "Loaded budget context"
 	}
 	return "Loading budget context..."
 }
 
-func (t GetBudgetInfoTool) Normalize(call sharedModel.ToolCall, result json.RawMessage) (*sharedModel.ToolResultNormalized, error) {
+func (t GetBudgetInfoTool) Normalize(
+	call sharedModel.ToolCall,
+	result json.RawMessage,
+) (*sharedModel.ToolResultNormalized, error) {
 	var args struct {
 		DateRange struct {
 			Start string `json:"start"`
