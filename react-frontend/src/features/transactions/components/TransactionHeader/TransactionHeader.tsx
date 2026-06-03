@@ -1,4 +1,11 @@
-import { ArrowDown, ArrowUp, Money as Banknote, CalendarDots as CalendarDays, Plus, MagnifyingGlass as Search } from '@phosphor-icons/react';
+import {
+  ArrowDownIcon as ArrowDown,
+  ArrowUpIcon as ArrowUp,
+  MoneyIcon as Banknote,
+  CalendarDotsIcon as CalendarDays,
+  PlusIcon as Plus,
+  MagnifyingGlassIcon as Search,
+} from '@phosphor-icons/react';
 import { getCurrencyLocaleString } from '@/utils/date.utils';
 import styles from './TransactionHeader.module.css';
 

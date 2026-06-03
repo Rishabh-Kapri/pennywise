@@ -1,0 +1,125 @@
+/* ══════════════════════════════════════════════════════════════
+   TransactionFilterPanel — CSS Module (always-visible inline row)
+   ══════════════════════════════════════════════════════════════ */
+
+.filterRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.5rem 0;
+  flex-wrap: wrap;
+}
+
+/* ── Filter groups ─────────────────────────────────────────── */
+
+.filterGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+  flex: 1 1 8rem;
+  max-width: 12rem;
+}
+
+.filterLabel {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.filterInput {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.5rem;
+  background: var(--color-surface-secondary);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.88rem;
+}
+
+.filterInput:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+/* ── Actions (logic toggle + clear) ────────────────────────── */
+
+.filterActions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 0 0 auto;
+  padding-bottom: 0.1rem;
+}
+
+.logicToggle {
+  display: inline-flex;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 0.15rem;
+  background: var(--color-surface-secondary);
+}
+
+.logicBtn {
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.logicBtn:hover {
+  color: var(--color-text);
+}
+
+.logicBtnActive {
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+}
+
+.clearBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid color-mix(in srgb, var(--color-budget-negative) 30%, transparent);
+  border-radius: 0.375rem;
+  background: color-mix(in srgb, var(--color-budget-negative) 8%, transparent);
+  color: var(--color-budget-negative);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.clearBtn:hover {
+  background: color-mix(in srgb, var(--color-budget-negative) 15%, transparent);
+}
+
+/* ── Mobile ────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .filterRow {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+
+  .filterGroup {
+    max-width: 100%;
+    flex: 1 1 100%;
+  }
+
+  .filterActions {
+    justify-content: flex-end;
+  }
+}

@@ -4,8 +4,261 @@
   min-width: 18rem;
 }
 
+.spacer {
+  height: 1.65rem;
+}
+
 .infoContainer {
   flex: 0.75;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ── Panel frame ── */
+.panel {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border-muted);
+  background: color-mix(in srgb, var(--color-surface) 88%, transparent);
+  border-radius: 1rem;
+  overflow: hidden;
+  animation: slideIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.panel *,
+.panel *::before,
+.panel *::after {
+  box-sizing: border-box;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.25rem 0.75rem;
+  border-bottom: 1px solid var(--color-border-muted);
+}
+
+.panelTitle {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.editButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  color: var(--color-text-secondary);
+  border-radius: 0.375rem;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.editButton:hover {
+  background: var(--color-surface-secondary);
+  color: var(--color-text);
+}
+
+/* ── Panel body ── */
+.panelBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  scrollbar-color: color-mix(in srgb, var(--color-text-secondary) 65%, transparent) transparent;
+  scrollbar-width: thin;
+}
+
+.panelBody::-webkit-scrollbar {
+  width: 0.5rem;
+}
+
+.panelBody::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.panelBody::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-text-secondary) 55%, transparent);
+  border-radius: 999px;
+}
+
+.panelBody::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--color-text-secondary) 75%, transparent);
+}
+
+/* ── Hero section ── */
+.heroSection {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 1.25rem 1rem 1rem;
+}
+
+.heroLabel {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.heroAmount {
+  display: flex;
+  align-items: center;
+  font-size: 2rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.heroAmountPositive {
+  color: var(--color-budget-positive);
+}
+
+.heroAmountNegative {
+  color: var(--color-budget-negative);
+}
+
+.heroAmountZero {
+  color: var(--color-text-secondary);
+}
+
+.heroMonth {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+  margin-top: 0.15rem;
+}
+
+/* ── Meta grid (budget breakdown) ── */
+.metaGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1.25rem;
+  border-bottom: 1px solid var(--color-border-muted);
+}
+
+.metaItem {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.metaLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1rem;
+  color: var(--color-text);
+}
+
+.metaLabel > span {
+  margin-top: 2px;
+}
+
+.metaValue {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 1px;
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  text-align: right;
+}
+
+/* ── Activity section ── */
+.activitySection {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0 1.25rem 1rem;
+  border-bottom: 1px solid var(--color-border-muted);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.activitySection:hover {
+  background: color-mix(in srgb, var(--color-surface) 50%, transparent);
+}
+
+.activityAmount {
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+/* ── Goal section ── */
+.goalSection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 0 1.25rem 1rem;
+  border-bottom: 1px solid var(--color-border-muted);
+}
+
+.goalCard {
+  padding: 0.5rem 0;
+  color: var(--color-text-secondary);
+  font-size: 0.92rem;
+}
+
+/* ── Notes section ── */
+.notesSection {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 0 1.25rem 1rem;
+}
+
+.notesInput {
+  width: 100%;
+  min-height: 6rem;
+  max-width: 100%;
+  resize: vertical;
+  padding: 0.75rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.65rem;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.notesInput:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+/* ── Default (no category) state ── */
+.defaultContent {
   padding: 1.5rem;
   height: 100%;
   border: 1px solid var(--color-border-muted);
@@ -16,113 +269,21 @@
   scrollbar-width: thin;
 }
 
-.infoContainer::-webkit-scrollbar {
+.defaultContent::-webkit-scrollbar {
   width: 0.5rem;
 }
 
-.infoContainer::-webkit-scrollbar-track {
+.defaultContent::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.infoContainer::-webkit-scrollbar-thumb {
+.defaultContent::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--color-text-secondary) 55%, transparent);
   border-radius: 999px;
 }
 
-.infoContainer::-webkit-scrollbar-thumb:hover  {
+.defaultContent::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--color-text-secondary) 75%, transparent);
-}
-
-.spacer {
-  height: 1.65rem;
-}
-
-.info {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-.title {
-  font-size: 1.2rem;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.icon {
-  cursor: pointer;
-  color: var(--color-text-secondary);
-}
-
-.icon:hover {
-  color: var(--color-text);
-}
-
-.budgetInfo {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--color-border-muted);
-  background: var(--color-background);
-  padding: 1rem;
-  padding-top: 1.5rem;
-  border-radius: 0.9rem;
-}
-
-.header {
-  display: flex;
-  justify-content: space-between;
-  font-size: 1.05rem;
-  font-weight: 700;
-  align-items: center;
-}
-
-.budgetInfo > .divider {
-  border: 0;
-  border-bottom: 1px solid var(--color-border-muted);
-  margin: 1rem 0;
-}
-
-.budgetInfo > .infoItem {
-  margin: 0.35rem 0;
-  display: flex;
-  justify-content: space-between; 
-  font-size: 0.9rem;
-}
-
-.note {
-  border: 1px solid var(--color-border-muted);
-  background: var(--color-background);
-  padding: 1rem;
-  border-radius: 0.9rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.note > textarea {
-  width: 100%;
-  padding: 0.65rem 0.75rem;
-  border: 1px solid var(--color-border-muted);
-  border-radius: 0.65rem;
-  background: var(--color-surface);
-  color: var(--color-text);
-  font: inherit;
-  resize: vertical;
-}
-
-.note > textarea:focus {
-  outline: none;
-  border: 1px solid var(--color-primary);
-}
-
-.activityItemTitle {
-  color: var(--color-text-secondary);
-}
-
-.activityItemAmount {
-  color: var(--color-text);
 }
 
 @media (max-width: 768px) {
