@@ -235,6 +235,7 @@ func (r *transactionRepo) GetAllNormalized(
 	filter *model.TransactionFilter,
 ) (model.PaginatedResponse[model.Transaction], error) {
 	balanceExpr := "0 AS balance"
+
 	if filter != nil && len(filter.AccountIDs) > 0 {
 		balanceExpr = `SUM(transactions.amount) OVER (
 			ORDER BY transactions.date ASC, transactions.updated_at ASC
@@ -249,11 +250,13 @@ func (r *transactionRepo) GetAllNormalized(
 
 	isFirstPage := filter == nil || filter.CursorString == ""
 	pointsNext := false
+
 	var cursorDate model.Date
 	var cursorUpdatedAt time.Time
 	var cursorID uuid.UUID
 
 	logger.Logger(ctx).Info("filter", "filter", filter)
+
 	if filter != nil && filter.CursorString != "" {
 		decodedCursor, err := utils.DecodeCursor(filter.CursorString)
 		if err != nil {
@@ -263,15 +266,19 @@ func (r *transactionRepo) GetAllNormalized(
 				err,
 			)
 		}
+
 		pointsNext = decodedCursor.PointsNext
+
 		cursorDate, err = utils.CursorDateValue(decodedCursor)
 		if err != nil {
 			return model.PaginatedResponse[model.Transaction]{}, err
 		}
+
 		cursorUpdatedAt, err = utils.CursorTime(decodedCursor)
 		if err != nil {
 			return model.PaginatedResponse[model.Transaction]{}, err
 		}
+
 		cursorID, err = utils.CursorUUID(decodedCursor)
 		if err != nil {
 			return model.PaginatedResponse[model.Transaction]{}, err
@@ -310,6 +317,7 @@ func (r *transactionRepo) GetAllNormalized(
 		LeftJoin("categories ON transactions.category_id = categories.id").
 		Where(sq.Eq{"transactions.budget_id": budgetId}).
 		Where(sq.Eq{"transactions.deleted": false})
+
 	countQuery := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
 		Select("COUNT(*)").
 		From("transactions").
@@ -323,6 +331,7 @@ func (r *transactionRepo) GetAllNormalized(
 	if err != nil {
 		return model.PaginatedResponse[model.Transaction]{}, err
 	}
+
 	var total int
 	if err := r.Executor(nil).QueryRow(ctx, countSQL, countArgs...).Scan(&total); err != nil {
 		return model.PaginatedResponse[model.Transaction]{}, err
@@ -426,18 +435,31 @@ func applyTransactionFilters(query sq.SelectBuilder, filter *model.TransactionFi
 	if filter == nil {
 		return query
 	}
+
 	if len(filter.AccountIDs) > 0 {
 		query = query.Where(sq.Eq{"transactions.account_id": filter.AccountIDs})
 	}
+
+	if len(filter.CategoryIDs) > 0 {
+		query = query.Where(sq.Eq{"transactions.category_id": filter.CategoryIDs})
+	}
+
+	if len(filter.PayeeIDs) > 0 {
+		query = query.Where(sq.Eq{"transactions.payee_id": filter.PayeeIDs})
+	}
+
 	if filter.StartDate != nil {
 		query = query.Where(sq.GtOrEq{"transactions.date": *filter.StartDate})
 	}
+
 	if filter.EndDate != nil {
 		query = query.Where(sq.LtOrEq{"transactions.date": *filter.EndDate})
 	}
+
 	if filter.Note != nil {
 		query = query.Where(sq.Expr("transactions.note ILIKE ?", "%"+*filter.Note+"%"))
 	}
+
 	return query
 }
 

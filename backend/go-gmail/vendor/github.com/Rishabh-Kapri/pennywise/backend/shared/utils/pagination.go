@@ -27,7 +27,13 @@ func GeneratePager(next sharedModel.Cursor, prev sharedModel.Cursor) sharedModel
 	}
 }
 
-func GenerateCursorPager[T any](items []T, isFirstPage bool, pointsNext bool, hasMore bool, cursorFn func(T, bool) sharedModel.Cursor) sharedModel.Pagination {
+func GenerateCursorPager[T any](
+	items []T,
+	isFirstPage bool,
+	pointsNext bool,
+	hasMore bool,
+	cursorFn func(T, bool) sharedModel.Cursor,
+) sharedModel.Pagination {
 	if len(items) == 0 {
 		return sharedModel.Pagination{}
 	}
@@ -40,6 +46,7 @@ func GenerateCursorPager[T any](items []T, isFirstPage bool, pointsNext bool, ha
 	if !isFirstPage && (pointsNext || hasMore) {
 		prev = cursorFn(first, false)
 	}
+
 	if hasMore || (!isFirstPage && !pointsNext) {
 		next = cursorFn(last, true)
 	}
@@ -71,10 +78,12 @@ func encodeCursor(cursor sharedModel.Cursor) string {
 	if cursor.ID == uuid.Nil && cursor.Date == "" && cursor.UpdatedAt.IsZero() {
 		return ""
 	}
+
 	serialized, err := json.Marshal(cursor)
 	if err != nil {
 		return ""
 	}
+
 	encoded := base64.StdEncoding.EncodeToString(serialized)
 	return string(encoded)
 }
@@ -84,10 +93,12 @@ func DecodeCursor(cursor string) (sharedModel.Cursor, error) {
 	if err != nil {
 		return sharedModel.Cursor{}, err
 	}
+
 	var cur sharedModel.Cursor
 	if err := json.Unmarshal(decoded, &cur); err != nil {
 		return sharedModel.Cursor{}, err
 	}
+
 	return cur, nil
 }
 
@@ -103,6 +114,7 @@ func CursorTime(cursor sharedModel.Cursor) (time.Time, error) {
 	if cursor.UpdatedAt.IsZero() {
 		return time.Time{}, errs.New(errs.CodeInvalidArgument, "invalid cursor")
 	}
+
 	return cursor.UpdatedAt, nil
 }
 

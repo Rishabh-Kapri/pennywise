@@ -123,6 +123,170 @@
   margin: 0;
 }
 
+.dangerZone {
+  border-color: rgba(239, 68, 68, 0.25);
+  background: rgba(239, 68, 68, 0.02);
+}
+
+.dangerContent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.dangerInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+}
+
+.dangerInfo strong {
+  color: var(--color-error);
+  font-size: 0.98rem;
+}
+
+.dangerInfo span {
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.deleteButton {
+  background-color: transparent;
+  color: var(--color-error);
+  border: 1px solid var(--color-error);
+  padding: 0.6rem 1.2rem;
+  font-weight: 600;
+  border-radius: 0.5rem;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.deleteButton:hover {
+  background-color: var(--color-error);
+  color: white;
+  border-color: var(--color-error);
+}
+
+.deleteForm {
+  color: var(--color-text);
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.modalHeader h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: var(--color-text);
+}
+
+.warningIcon {
+  color: var(--color-error);
+}
+
+.modalDescription {
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  line-height: 1.45;
+}
+
+.modalDescription strong {
+  color: var(--color-text);
+}
+
+.confirmPrompt {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.confirmPrompt label {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+}
+
+.confirmInput {
+  width: 100%;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-background);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.95rem;
+}
+
+.confirmInput:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.confirmInput:disabled {
+  opacity: 0.6;
+}
+
+.errorMessage {
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  background-color: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: var(--color-error);
+  font-size: 0.88rem;
+  margin-bottom: 1.5rem;
+}
+
+.modalActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.cancelButton,
+.confirmDeleteButton {
+  padding: 0.65rem 1.25rem;
+  font-weight: 600;
+  border-radius: 0.5rem;
+  font-size: 0.95rem;
+  transition: all 0.2s ease;
+}
+
+.cancelButton {
+  background-color: var(--color-surface-secondary);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
+.cancelButton:hover:not(:disabled) {
+  background-color: var(--color-surface-tertiary);
+}
+
+.confirmDeleteButton {
+  background-color: var(--color-error);
+  color: white;
+  border: none;
+}
+
+.confirmDeleteButton:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.confirmDeleteButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 @media (max-width: 768px) {
   .page {
     padding: 0.5rem;
@@ -175,6 +339,26 @@
   .providerInfo span,
   .providerInfo small {
     font-size: 0.8rem;
+  }
+
+  .dangerContent {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .deleteButton {
+    width: 100%;
+  }
+
+  .modalActions {
+    flex-direction: column-reverse;
+    gap: 0.5rem;
+  }
+
+  .cancelButton,
+  .confirmDeleteButton {
+    width: 100%;
   }
 }
 

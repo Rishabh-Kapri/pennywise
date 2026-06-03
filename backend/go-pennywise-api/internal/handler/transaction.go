@@ -45,9 +45,33 @@ func (h *transactionHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, transactions)
 }
 
+func stringToUUIDs(ids []string) ([]uuid.UUID, error) {
+	var filterIds []uuid.UUID
+
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		parsedId, err := uuid.Parse(id)
+		if err != nil {
+			return nil, err
+		}
+		filterIds = append(filterIds, parsedId)
+	}
+
+	return filterIds, nil
+}
+
 func (h *transactionHandler) ListNormalized(c *gin.Context) {
 	ctx := c.Request.Context()
+
 	accountIdParam := strings.TrimSpace(c.Query("accountId"))
+	categoryIdParam := strings.TrimSpace(c.Query("categoryId"))
+	payeeIdParam := strings.TrimSpace(c.Query("payeeId"))
+	startDateParam := strings.TrimSpace(c.DefaultQuery("startDate", ""))
+	endDateParam := strings.TrimSpace(c.DefaultQuery("endDate", ""))
+	noteParam := strings.TrimSpace(c.DefaultQuery("note", ""))
 
 	limit := c.DefaultQuery("limit", "30")
 	limitInt, err := strconv.ParseUint(limit, 10, 64)
@@ -55,37 +79,72 @@ func (h *transactionHandler) ListNormalized(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing limit"})
 		return
 	}
+
 	groupBy := c.DefaultQuery("groupBy", "month")
 	sortOrder := c.DefaultQuery("sortOrder", "DESC")
-	accountIds := c.QueryArray("accountId[]")
 	cursor := c.Query("cursor")
+
+	accountIds := c.QueryArray("accountId[]")
 	if len(accountIds) == 0 && accountIdParam != "" {
 		accountIds = strings.Split(accountIdParam, ",")
 	}
 
-	logger.Logger(ctx).Info("listing normalized transactions", "accountIdParam", accountIdParam)
-	var accountIdsFilter []uuid.UUID
-	if len(accountIds) > 0 {
-		for _, id := range accountIds {
-			id = strings.TrimSpace(id)
-			if id == "" {
-				continue
-			}
-			parsedId, err := uuid.Parse(id)
-			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing accountId"})
-				return
-			}
-			accountIdsFilter = append(accountIdsFilter, parsedId)
-		}
+	categoryIds := c.QueryArray("categoryId[]")
+	if len(categoryIds) == 0 && categoryIdParam != "" {
+		categoryIds = strings.Split(categoryIdParam, ",")
 	}
 
+	payeeIds := c.QueryArray("payeeId[]")
+	if len(payeeIds) == 0 && payeeIdParam != "" {
+		payeeIds = strings.Split(payeeIdParam, ",")
+	}
+
+	logger.Logger(ctx).Info("listing normalized transactions", "accountIdParam", accountIdParam)
+
 	txnFilter := model.TransactionFilter{
-		AccountIDs:   accountIdsFilter,
 		Limit:        limitInt,
 		GroupBy:      &groupBy,
 		SortOrder:    sortOrder,
 		CursorString: cursor,
+	}
+
+	if len(accountIds) > 0 {
+		ids, err := stringToUUIDs(accountIds)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing accountId"})
+			return
+		}
+		txnFilter.AccountIDs = ids
+	}
+
+	if len(categoryIds) > 0 {
+		ids, err := stringToUUIDs(categoryIds)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing categoryId"})
+			return
+		}
+		txnFilter.CategoryIDs = ids
+	}
+
+	if len(payeeIds) > 0 {
+		ids, err := stringToUUIDs(payeeIds)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing payeeId"})
+			return
+		}
+		txnFilter.PayeeIDs = ids
+	}
+
+	if noteParam != "" {
+		txnFilter.Note = &noteParam
+	}
+
+	if startDateParam != "" {
+		txnFilter.StartDate = &startDateParam
+	}
+
+	if endDateParam != "" {
+		txnFilter.EndDate = &endDateParam
 	}
 
 	transactions, err := h.service.GetAllNormalized(ctx, &txnFilter)
