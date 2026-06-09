@@ -653,7 +653,8 @@ func (s *predictionService) llmFallback(
 	budgetId uuid.UUID,
 	req LLMRequest,
 ) (*model.LLMPrediction, uuid.UUID, map[string]any, error) {
-	llmModel := "openai/gpt-5.4"
+	// llmModel := "openai/gpt-5.4"
+	llmModel := "gemma4:12b"
 
 	userCategories, err := s.categoryRepo.GetAllSimplified(ctx, budgetId)
 	if err != nil {
