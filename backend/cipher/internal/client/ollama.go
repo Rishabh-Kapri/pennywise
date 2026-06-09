@@ -33,7 +33,7 @@ func NewOllamaClient(c *transport.Client, tracer oteltrace.Tracer) *OllamaClient
 
 // ── Phase 1: Email data extraction ──────────────────────────────
 
-const extractionModel = "gemma4"
+const extractionModel = "gemma4:12b"
 
 // const extractionPrompt = `You are a financial data extractor. Output strictly JSON.
 // RULE: Remove the extra invoice number.
