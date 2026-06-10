@@ -243,6 +243,19 @@ func main() {
 		logger.Fatal("error while creating agent", "error", err)
 	}
 
+	predictionService := service.NewPredictionService(
+		agent,
+		llmResolver,
+		ollamaClient,
+		mlpClient,
+		txnEmbeddingRepo,
+		accountRepo,
+		payeeRepo,
+		payeeRuleRepo,
+		categoryRepo,
+		tel.Tracer,
+	)
+
 	agentService := service.NewAgentService(redisClient, agent, pennywiseHttpTransport, memoryService, llmResolver)
 
 	if cfg.Environment != "local" {

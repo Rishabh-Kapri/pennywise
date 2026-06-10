@@ -87,7 +87,7 @@ Output: { "summary": "" }
 
 Input: `
 
-const extractionPrompt = `You are a financial data extractor. You will receive email text and you need to output strictly JSON. Do not wrap the response in markdown blocks.
+const ExtractionPrompt = `You are a financial data extractor. You will receive email text and you need to output strictly JSON. Do not wrap the response in markdown blocks.
 	RULE: 
 	- Remove the extra invoice number.
 	- Add negative sign if the amount is debited.
@@ -121,7 +121,7 @@ func (c *OllamaClient) ExtractEmailData(
 	ctx context.Context,
 	rawText string,
 ) (*sharedModel.ExtractedEmailResponse, error) {
-	prompt := extractionPrompt + rawText + "\"\nOutput:"
+	prompt := ExtractionPrompt + rawText + "\"\nOutput:"
 
 	extracted, err := GenericLLMCall[sharedModel.ExtractedEmailResponse](ctx, c, model.PromptReq{
 		Model:  extractionModel,

@@ -12,6 +12,8 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 	"jaytaylor.com/html2text"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
+	agent "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/runtime"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/client"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/model"
 	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
@@ -110,6 +112,8 @@ type PredictionService interface {
 }
 
 type predictionService struct {
+	agent         *agent.Agent
+	llmResolver   llm.LLMResolver
 	ollama        *client.OllamaClient
 	mlp           *client.MLPClient
 	embeddingRepo repository.TransactionEmbeddingRepository
@@ -121,6 +125,8 @@ type predictionService struct {
 }
 
 func NewPredictionService(
+	agent *agent.Agent,
+	llmResolver llm.LLMResolver,
 	ollama *client.OllamaClient,
 	mlp *client.MLPClient,
 	embeddingRepo repository.TransactionEmbeddingRepository,
@@ -131,6 +137,8 @@ func NewPredictionService(
 	tracer oteltrace.Tracer,
 ) PredictionService {
 	return &predictionService{
+		agent:         agent,
+		llmResolver:   llmResolver,
 		ollama:        ollama,
 		mlp:           mlp,
 		embeddingRepo: embeddingRepo,
@@ -357,14 +365,57 @@ func (s *predictionService) ExtractEmailData(
 	text = strings.ReplaceAll(text, "\n", "")
 	text = strings.TrimSpace(text)
 
-	extracted, err := s.ollama.ExtractEmailData(ctx, text)
+	lc, model, err := s.llmResolver.Resolve("ollama", "gemma4:12b")
 	if err != nil {
 		return nil, err
 	}
+
+	chatReq := sharedModel.ChatRequest{
+		Provider: "ollama",
+		Model:    model,
+		Messages: []sharedModel.AgentMessage{
+			{
+				Role: sharedModel.RoleSystem,
+				Content: []sharedModel.ContentBlock{
+					{
+						Type: "text",
+						Text: client.ExtractionPrompt,
+					},
+				},
+			},
+			{
+				Role: sharedModel.RoleUser,
+				Content: []sharedModel.ContentBlock{
+					{
+						Type: "text",
+						Text: text,
+					},
+				},
+			},
+		},
+		Temperature: 0.0,
+		MaxTokens:   1024,
+		Stream:      false,
+		Format:      "json",
+	}
+	chatRes, err := lc.Chat(ctx, chatReq)
+	if err != nil {
+		return nil, err
+	}
+	if chatRes.Message.Content == nil {
+		return nil, errs.New(errs.CodeInternalError, "no content in response")
+	}
+	extracted, err := utils.UnmarshalResponse[sharedModel.ExtractedEmailResponse](
+		[]byte(chatRes.Message.Content[0].Text),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	extracted.EmailText = text
 
 	log.Info("email extraction", "extracted", extracted)
-	return extracted, nil
+	return &extracted, nil
 }
 
 func (s *predictionService) Predict(ctx context.Context, req PredictRequest) (*PredictResponse, error) {
