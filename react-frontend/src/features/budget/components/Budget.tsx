@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react';
 import { useHeader } from '../../../context/HeaderContext';
 import { DateSelector, Skeleton } from '@/components/common';
 import styles from './Budget.module.css';
-import { Check, CurrencyCircleDollar as CircleDollarSign, Stack as Layers3, Wallet as WalletCards } from '@phosphor-icons/react';
+import { CheckIcon as Check, CurrencyCircleDollarIcon as CircleDollarSign, StackIcon as Layers3, WalletIcon as WalletCards } from '@phosphor-icons/react';
 import { CategoryGroup } from '@/features/category';
 import { useAppSelector } from '@/app/hooks';
 import {

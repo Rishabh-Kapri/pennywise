@@ -13,7 +13,7 @@ import { toast } from '@/utils';
 import styles from './Transaction.module.css';
 import { useHeader } from '@/context/HeaderContext';
 import { useSidePanel } from '@/context/SidePanelContext';
-import { Minus, Plus } from '@phosphor-icons/react';
+import { MinusIcon as Minus, PlusIcon as Plus } from '@phosphor-icons/react';
 import { getCurrencyLocaleString } from '@/utils/date.utils';
 import { selectAccountInfoFromId } from '@/features/accounts/store/accountSlice';
 import {
@@ -22,10 +22,12 @@ import {
   type MonthGroupStats,
   type TransactionStatus as TransactionStatusType,
 } from '../../types/transaction.types';
+import { EMPTY_FILTERS, type TransactionFilters } from '../../types/filter.types';
 import { TransactionSkeleton } from '../TransactionSkeleton';
 import { List } from 'react-window';
 import { TransactionRow } from '../TransactionRow';
 import { TransactionDetailPanel } from '../TransactionDetailPanel';
+import { TransactionFilterPanel } from '../TransactionFilterPanel';
 import { selectSelectedBudget } from '@/features/budget';
 import { TransactionMobile } from '../TransactionMobile';
 import { TransactionHeader, type MobileFilter } from '../TransactionHeader';
@@ -39,6 +41,7 @@ import {
   getTransactionRowHeight,
   groupTransactions,
 } from './transaction.helpers';
+import { useDebounce } from '@/hooks/useDebounce';
 
 type StickyHeaderState = { label: string; stats: MonthGroupStats } | null;
 
@@ -89,9 +92,7 @@ export function Transaction() {
   const { id } = useParams();
   const paramId = id ?? '';
   const dispatch = useAppDispatch();
-  const { loading, transactions, loadingMore, nextCursor, error } = useAppSelector(
-    (state) => state.transactions,
-  );
+  const { loading, transactions, loadingMore, nextCursor, error } = useAppSelector((state) => state.transactions);
   const { name: accountName, balance: accountBal } = useAppSelector((state) =>
     selectAccountInfoFromId(state, paramId ?? ''),
   );
@@ -103,6 +104,7 @@ export function Transaction() {
   const [isAddingNew, setIsAddingNew] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [mobileFilter, setMobileFilter] = useState<MobileFilter>('all');
+  const [filters, setFilters] = useDebounce<TransactionFilters>(EMPTY_FILTERS, 250);
   const [stickyHeader, setStickyHeader] = useState<StickyHeaderState>(null);
   const cols = useMemo(() => getTransactionColumns(paramId), [paramId]);
   const isMobile = useIsMobile();
@@ -299,8 +301,8 @@ export function Transaction() {
   );
 
   const filteredTransactions = useMemo(() => {
-    return filterTransactions(transactions, searchTerm, mobileFilter);
-  }, [transactions, searchTerm, mobileFilter]);
+    return filterTransactions(transactions, mobileFilter);
+  }, [transactions, mobileFilter]);
 
   const listItems = useMemo(() => groupTransactions(filteredTransactions), [filteredTransactions]);
   const isLoadingMore = loadingMore === LoadingState.PENDING;
@@ -343,13 +345,26 @@ export function Transaction() {
     if (!nextCursor || loadingMore === LoadingState.PENDING || loading === LoadingState.PENDING) {
       return;
     }
-    const accountIds = paramId ? [paramId] : [];
+    const { accountIds, categoryIds, payeeIds, note, dateFrom, dateTo } = filters;
+    const paramAccountIds = paramId ? [paramId] : [];
+
+    const args = {
+      accountIds,
+      categoryIds,
+      payeeIds,
+      note,
+      startDate: dateFrom,
+      endDate: dateTo,
+    };
+
     const params = {
-      ...(accountIds.length && { accountIds: accountIds }),
+      ...args,
       cursor: nextCursor,
     };
+    params.accountIds = [...(paramAccountIds ?? []), ...(accountIds ?? [])];
+
     dispatch(fetchAllTransaction(params));
-  }, [dispatch, loading, loadingMore, nextCursor, paramId]);
+  }, [dispatch, filters, loading, loadingMore, nextCursor, paramId]);
 
   const handleRowsRendered = useCallback(
     ({ startIndex, stopIndex }: { startIndex: number; stopIndex: number }) => {
@@ -362,19 +377,39 @@ export function Transaction() {
   );
 
   useEffect(() => {
+    const { accountIds, categoryIds, payeeIds, note, dateFrom, dateTo } = filters;
+    const args = {
+      accountIds,
+      categoryIds,
+      payeeIds,
+      note,
+      startDate: dateFrom,
+      endDate: dateTo,
+    };
+    const timer = setTimeout(() => dispatch(fetchAllTransaction(args)), 500);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [filters, dispatch]);
+
+  useEffect(() => {
     setHeaderContent(
-      <TransactionHeader
-        name={accountName}
-        balance={accountBal}
-        onTxnAdd={addTransaction}
-        searchTerm={searchTerm}
-        onSearchChange={setSearchTerm}
-        mobileFilter={mobileFilter}
-        onMobileFilterChange={setMobileFilter}
-      />,
+      <>
+        <TransactionHeader
+          name={accountName}
+          balance={accountBal}
+          onTxnAdd={addTransaction}
+          searchTerm={searchTerm}
+          onSearchChange={setSearchTerm}
+          mobileFilter={mobileFilter}
+          onMobileFilterChange={setMobileFilter}
+        />
+        <TransactionFilterPanel filters={filters} onChange={setFilters} />
+      </>,
     );
     return () => setHeaderContent(null);
-  }, [setHeaderContent, accountName, accountBal, searchTerm, mobileFilter, addTransaction]);
+  }, [setHeaderContent, accountName, accountBal, searchTerm, mobileFilter, filters, addTransaction, setFilters]);
 
   // Sync detail panel into the side panel slot whenever selected txn changes
   useEffect(() => {
@@ -443,7 +478,11 @@ export function Transaction() {
                   onRowsRendered={handleRowsRendered}
                 />
                 {isLoadingMore && (
-                  <div className={styles.bottomLoader} role="status" aria-live="polite" aria-label="Loading more transactions">
+                  <div
+                    className={styles.bottomLoader}
+                    role="status"
+                    aria-live="polite"
+                    aria-label="Loading more transactions">
                     <span className={styles.loaderSpinner} />
                   </div>
                 )}

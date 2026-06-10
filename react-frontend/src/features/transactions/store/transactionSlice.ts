@@ -15,6 +15,11 @@ const initialState: TransactionState = {
 
 type FetchTransactionArgs = {
   accountIds?: string[];
+  categoryIds?: string[];
+  payeeIds?: string[];
+  note?: string;
+  startDate?: string;
+  endDate?: string;
   cursor?: string;
   limit?: number;
 };
@@ -38,17 +43,32 @@ export const fetchAllTransaction = createAsyncThunk<
 >('transactions/fetchAllTransactions', async (args = {}) => {
   let url = `transactions/normalized`;
   const params = new URLSearchParams();
-  
-  if (args?.accountIds) {
-    params.set('accountId[]', args.accountIds.join(','))
+
+  if (args?.accountIds && args.accountIds.length > 0) {
+    params.set('accountId[]', args.accountIds.join(','));
+  }
+  if (args?.categoryIds && args.categoryIds.length > 0) {
+    params.set('categoryId[]', args.categoryIds.join(','));
+  }
+  if (args?.payeeIds && args.payeeIds.length > 0) {
+    params.set('payeeId[]', args.payeeIds.join(','));
+  }
+  if (args?.note && args.note.trim()) {
+    params.set('note', args.note);
+  }
+  if (args?.startDate && args.startDate.trim()) {
+    params.set('startDate', args.startDate);
+  }
+  if (args?.endDate && args.endDate.trim()) {
+    params.set('endDate', args.endDate);
   }
   if (args?.cursor) {
-    params.set('cursor', args.cursor)
+    params.set('cursor', args.cursor);
   }
-  params.set('limit', String(args?.limit ?? 30))
+  params.set('limit', String(args?.limit ?? 30));
 
-  const queryParams = params.toString()
-  url = `${url}${queryParams ? `?${queryParams}` : ''}`
+  const queryParams = params.toString();
+  url = `${url}${queryParams ? `?${queryParams}` : ''}`;
 
   return await apiClient.get<PaginationResponse<Transaction[]>>(url);
 });

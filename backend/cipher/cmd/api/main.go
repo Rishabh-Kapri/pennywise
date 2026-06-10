@@ -194,16 +194,6 @@ func main() {
 	agentMemoryRepo := repository.NewAgentMemoryRepository(dbConn)
 
 	// Service
-	predictionService := service.NewPredictionService(
-		ollamaClient,
-		mlpClient,
-		txnEmbeddingRepo,
-		accountRepo,
-		payeeRepo,
-		payeeRuleRepo,
-		categoryRepo,
-		tel.Tracer,
-	)
 
 	toolRegistry := tools.NewToolRegistry()
 	toolRegistry.RegisterTool(tools.NewGetBudgetInfoTool(dbConn))
@@ -243,7 +233,20 @@ func main() {
 		logger.Fatal("error while creating agent", "error", err)
 	}
 
-	agentService := service.NewAgentService(agent, pennywiseHttpTransport, memoryService, llmResolver)
+	predictionService := service.NewPredictionService(
+		agent,
+		llmResolver,
+		ollamaClient,
+		mlpClient,
+		txnEmbeddingRepo,
+		accountRepo,
+		payeeRepo,
+		payeeRuleRepo,
+		categoryRepo,
+		tel.Tracer,
+	)
+
+	agentService := service.NewAgentService(redisClient, agent, pennywiseHttpTransport, memoryService, llmResolver)
 
 	if cfg.Environment != "local" {
 		temporalClient, err = connectToTemporal(ctx, cfg)

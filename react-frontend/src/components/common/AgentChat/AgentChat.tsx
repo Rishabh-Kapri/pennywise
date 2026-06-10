@@ -28,6 +28,7 @@ import {
   selectAgentConversation,
   selectSelectedAgentModelKey,
   setSelectedAgentModel,
+  updateAgentConversationTitle,
 } from '@/features/agent/store';
 import { selectSelectedBudget } from '@/features/budget';
 import { AGENT_CHAT_WEBSOCKET_EVENT, type WebSocketMessage } from '@/features/websocket/events';
@@ -265,7 +266,7 @@ export function AgentChat() {
     ? chatHistory.find((conversation) => conversation.id === currentConversationId)
     : undefined;
   const selectedModel = AGENT_MODEL_OPTIONS.find((option) => option.key === selectedModelKey) ?? AGENT_MODEL_OPTIONS[0];
-  const headerTitle = selectedConversation?.title ?? 'Penny Agent';
+  const [headerTitle, setHeaderTitle] = useState(selectedConversation?.title ?? 'Penny Agent');
   const canOpenHistory = !isSending && chatHistory.length > 0;
   const canOpenModels = !isSending && hasSelectedBudget;
   const deleteConversationTitle = conversationToDelete?.title?.trim() || 'this chat';
@@ -363,6 +364,10 @@ export function AgentChat() {
     appendTextDelta(text, pendingTextDeltaMessageIdRef.current);
     pendingTextDeltaMessageIdRef.current = undefined;
   }, [appendTextDelta]);
+
+  useEffect(() => {
+    setHeaderTitle(selectedConversation?.title ?? 'Penny Agent');
+  }, [selectedConversation?.title]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -468,6 +473,21 @@ export function AgentChat() {
         return;
       }
 
+      if (message.eventName === AGENT_CHAT_STREAM_EVENT && parsedMsgData?.type === 'title_update') {
+        const title = parsedMsgData.message as string;
+        setHeaderTitle(title);
+        let conversationId = currentConversationId;
+        if (message.roomId && message.roomId.includes(':chat/')) {
+          conversationId = message.roomId.split(':chat/')[1];
+        } else if (message.streamId) {
+          conversationId = message.streamId;
+        }
+        if (conversationId) {
+          dispatch(updateAgentConversationTitle({ conversationId, title }));
+        }
+        return;
+      }
+
       const text = formatAgentEventData(message.data);
       flushPendingTextDelta();
       dispatch(appendAgentEvent({ eventName: message.eventName, text }));
@@ -485,7 +505,13 @@ export function AgentChat() {
       textDeltaFrameTimeRef.current = null;
       textDeltaCharBudgetRef.current = 0;
     };
-  }, [dispatch, flushPendingTextDelta, scheduleTextDeltaAnimation]);
+  }, [
+    dispatch,
+    flushPendingTextDelta,
+    scheduleTextDeltaAnimation,
+    selectedConversation,
+    currentConversationId,
+  ]);
 
   useEffect(() => {
     if (!isOpen) return;

@@ -13,10 +13,10 @@ import (
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 
-	// "github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -136,9 +136,6 @@ func (s *agentService) continueRun(
 				err,
 			)
 		}
-		if req.ConversationID != nil {
-		} else {
-		}
 
 		runMetadata := req.Metadata
 
@@ -191,13 +188,13 @@ func (s *agentService) continueRun(
 		if err != nil {
 			return errs.Wrap(errs.CodeInternalError, "failed to marshal user message", err)
 		}
+
 		userMessage, err = s.repo.CreateConversationMessage(ctx, tx, repository.CreateConversationMessageParams{
 			ConversationID: conversation.ID,
 			RunID:          &run.ID,
 			Role:           sharedModel.RoleUser,
 			Content:        json.RawMessage(userMessageJSON),
 		})
-		log.Info("usermessage", "message", userMessage, "err", err)
 		if err != nil {
 			return wrapAgentRepoError(
 				errs.CodeAgentMessageCreateFailed,
@@ -338,7 +335,6 @@ func (s *agentService) CreateRun(
 		if req.Title == nil {
 			conversationMetadata["titleSource"] = "auto"
 		}
-		req.ConversationMetadata = conversationMetadata
 
 		conversation, err = s.repo.CreateConversation(ctx, nil, repository.CreateAgentConversationParams{
 			UserID:   userID,
@@ -354,9 +350,14 @@ func (s *agentService) CreateRun(
 				err,
 			)
 		}
+
+		req.ConversationID = &conversation.ID
+		req.ConversationMetadata = conversationMetadata
 	}
 
-	go s.continueRun(ctx, req, userID, budgetID, conversation, agentKey)
+	// pass a detached context to not close the conntext after the request is done
+	backgroundCtx := utils.DetachedRequestContext(ctx)
+	go s.continueRun(backgroundCtx, req, userID, budgetID, conversation, agentKey)
 
 	agentRun := sharedModel.AgentRun{
 		UserID:         &userID,
