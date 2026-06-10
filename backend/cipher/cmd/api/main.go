@@ -194,16 +194,6 @@ func main() {
 	agentMemoryRepo := repository.NewAgentMemoryRepository(dbConn)
 
 	// Service
-	predictionService := service.NewPredictionService(
-		ollamaClient,
-		mlpClient,
-		txnEmbeddingRepo,
-		accountRepo,
-		payeeRepo,
-		payeeRuleRepo,
-		categoryRepo,
-		tel.Tracer,
-	)
 
 	toolRegistry := tools.NewToolRegistry()
 	toolRegistry.RegisterTool(tools.NewGetBudgetInfoTool(dbConn))
