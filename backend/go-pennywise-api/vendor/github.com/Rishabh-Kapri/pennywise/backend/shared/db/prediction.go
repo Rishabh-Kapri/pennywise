@@ -119,6 +119,7 @@ func (r *predictionRepo) GetByTxnId(ctx context.Context, budgetId uuid.UUID, txn
 		&p.UserCorrectedCategory,
 		&p.CreatedAt,
 		&p.UpdatedAt,
+		&p.Deleted,
 	)
 	if err != nil {
 		return nil, err

@@ -1,10 +1,17 @@
-import { Pencil } from '@phosphor-icons/react';
+import {
+  CalendarDotsIcon as CalendarDays,
+  CurrencyCircleDollarIcon,
+  NotePencilIcon,
+  Pencil,
+  TrendUpIcon,
+  WalletIcon,
+} from '@phosphor-icons/react';
 import type { Category } from '../types/category.types';
 import styles from './CategoryInfo.module.css';
 import { Activity } from '@/features/budget/components/Activity';
 import { ActivityPopover } from './ActivityModal';
 import type React from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useAppSelector } from '@/app/hooks';
 import { selectSelectedMonth } from '@/features/budget';
@@ -14,18 +21,19 @@ interface CategoryInfoProps {
   category: Category | null;
 }
 
-interface ActivityInfoItemProps {
-  title: string;
-  amount: string;
-}
-
-function ActivityInfoItem({ title, amount }: ActivityInfoItemProps) {
+function MetaItem({ icon, children }: { icon: ReactNode; children: ReactNode }) {
   return (
-    <div className={styles.infoItem}>
-      <div className={styles.activityItemTitle}>{title}</div>
-      <div className={styles.activityItemAmount}>{amount}</div>
+    <div className={styles.metaItem}>
+      {icon}
+      <strong className={styles.metaValue}>{children}</strong>
     </div>
   );
+}
+
+function getAmountClass(value: number) {
+  if (value > 0) return styles.heroAmountPositive;
+  if (value < 0) return styles.heroAmountNegative;
+  return styles.heroAmountZero;
 }
 
 export function CategoryInfo({ category }: CategoryInfoProps) {
@@ -35,9 +43,8 @@ export function CategoryInfo({ category }: CategoryInfoProps) {
   const previousMonth = getPreviousMonthKey(month);
   const [showActivityModal, setShowActivityModal] = useState(false);
   const activityTriggerRef = useRef<HTMLDivElement | null>(null);
-  console.log('CategoryInfo', month, previousMonth, localeMonth);
 
-  const debouncedNote = useDebounce(note);
+  const [debouncedNote] = useDebounce(note);
 
   // useRef for AbortController for cancelling previous request.
   // useRef doesn't re-render even if the value changes.
@@ -77,50 +84,97 @@ export function CategoryInfo({ category }: CategoryInfoProps) {
     setNote(event.target.value);
   };
 
+  const available = category?.balance?.[month] ?? 0;
+  const leftOver = category?.balance?.[previousMonth] ?? 0;
+  const assigned = category?.budgeted?.[month] ?? 0;
+  const activity = category?.activity?.[month] ?? 0;
+
   return (
     <div className={styles.wrapper}>
       <div className={styles.spacer}></div>
       <div className={styles.infoContainer}>
-        {!category && <Activity />}
+        {!category && (
+          <div className={styles.defaultContent}>
+            <Activity />
+          </div>
+        )}
         {category && (
-          <div className={styles.info}>
-            <div className={styles.title}>
-              <div>{category.name}</div>
-              <Pencil className={styles.icon} />
+          <div className={styles.panel}>
+            {/* ── Header ── */}
+            <div className={styles.panelHeader}>
+              <span className={styles.panelTitle}>{category.name}</span>
+              <button type="button" className={styles.editButton} aria-label="Edit category">
+                <Pencil size={18} />
+              </button>
             </div>
-            <div className={styles.goalCard}></div>
-            <div className={styles.budgetInfo}>
-              <div className={styles.header}>
-                <div>Available in {localeMonth}</div>
-                <div>
-                  {getCurrencyLocaleString(category.balance?.[month] ?? 0)}
+
+            {/* ── Body ── */}
+            <div className={styles.panelBody}>
+              {/* Hero: Available balance */}
+              <section className={styles.heroSection}>
+                <span className={styles.heroLabel}>Available in {localeMonth}</span>
+                <div className={`${styles.heroAmount} ${getAmountClass(available)}`}>
+                  {getCurrencyLocaleString(available)}
                 </div>
-              </div>
-              <hr className={styles.divider} />
-              <ActivityInfoItem
-                title="Left Over from Last Month"
-                amount={getCurrencyLocaleString(category.balance?.[previousMonth] ?? 0)}
-              />
-              <ActivityInfoItem
-                title={`Assigned in ${localeMonth}`}
-                amount={getCurrencyLocaleString(
-                  category.budgeted?.[month] ?? 0,
-                )}
-              />
-              <div
+              </section>
+
+              {/* Meta grid: Budget breakdown */}
+              <section className={styles.metaGrid}>
+                <MetaItem icon={<CalendarDays color="var(--color-text)" size={18} />}>
+                  {getCurrencyLocaleString(leftOver)}
+                  <span style={{ fontWeight: 400, fontSize: '0.82rem', color: 'var(--color-text-secondary)', marginLeft: '0.4rem' }}>
+                    left over
+                  </span>
+                </MetaItem>
+                <MetaItem icon={<CurrencyCircleDollarIcon color="var(--color-text)" size={18} />}>
+                  {getCurrencyLocaleString(assigned)}
+                  <span style={{ fontWeight: 400, fontSize: '0.82rem', color: 'var(--color-text-secondary)', marginLeft: '0.4rem' }}>
+                    assigned
+                  </span>
+                </MetaItem>
+              </section>
+
+              {/* Activity */}
+              <section
                 ref={activityTriggerRef}
-                className={styles.infoItem}
-                style={{ cursor: 'pointer' }}
+                className={styles.activitySection}
                 onClick={() => setShowActivityModal(true)}
               >
-                <div className={styles.activityItemTitle}>Activity</div>
-                <div className={styles.activityItemAmount}>
-                  {getCurrencyLocaleString(
-                    category.activity?.[month] ?? 0,
-                  )}
-                </div>
-              </div>
+                <span className={styles.metaLabel}>
+                  <TrendUpIcon size={18} />
+                  <span>Activity</span>
+                </span>
+                <span className={styles.activityAmount}>
+                  {getCurrencyLocaleString(activity)}
+                </span>
+              </section>
+
+              {/* Goal placeholder */}
+              <section className={styles.goalSection}>
+                <span className={styles.metaLabel}>
+                  <WalletIcon size={18} />
+                  <span>Goal</span>
+                </span>
+                <div className={styles.goalCard}>No goal set</div>
+              </section>
+
+              {/* Notes */}
+              <section className={styles.notesSection}>
+                <span className={styles.metaLabel}>
+                  <NotePencilIcon color="var(--color-text)" size={18} />
+                  <span>Notes</span>
+                </span>
+                <textarea
+                  className={styles.notesInput}
+                  placeholder="Add a note about this category..."
+                  rows={5}
+                  value={note ?? ''}
+                  onChange={handleNoteChange}
+                />
+              </section>
             </div>
+
+            {/* Activity popover */}
             <ActivityPopover
               isOpen={showActivityModal}
               onClose={() => setShowActivityModal(false)}
@@ -128,16 +182,8 @@ export function CategoryInfo({ category }: CategoryInfoProps) {
               categoryId={category.id ?? ''}
               categoryName={category.name}
               month={month}
-              activityAmount={category?.activity?.[month] ?? 0}
+              activityAmount={activity}
             />
-            <div className={styles.note}>
-              <div className={styles.header}>Note</div>
-              <textarea
-                placeholder="Add a note"
-                rows={7}
-                value={note ?? ''}
-                onChange={handleNoteChange}></textarea>
-            </div>
           </div>
         )}
       </div>

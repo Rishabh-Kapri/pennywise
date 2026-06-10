@@ -12,6 +12,8 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 	"jaytaylor.com/html2text"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
+	agent "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/runtime"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/client"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/model"
 	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
@@ -110,6 +112,8 @@ type PredictionService interface {
 }
 
 type predictionService struct {
+	agent         *agent.Agent
+	llmResolver   llm.LLMResolver
 	ollama        *client.OllamaClient
 	mlp           *client.MLPClient
 	embeddingRepo repository.TransactionEmbeddingRepository
@@ -121,6 +125,8 @@ type predictionService struct {
 }
 
 func NewPredictionService(
+	agent *agent.Agent,
+	llmResolver llm.LLMResolver,
 	ollama *client.OllamaClient,
 	mlp *client.MLPClient,
 	embeddingRepo repository.TransactionEmbeddingRepository,
@@ -131,6 +137,8 @@ func NewPredictionService(
 	tracer oteltrace.Tracer,
 ) PredictionService {
 	return &predictionService{
+		agent:         agent,
+		llmResolver:   llmResolver,
 		ollama:        ollama,
 		mlp:           mlp,
 		embeddingRepo: embeddingRepo,
@@ -357,14 +365,58 @@ func (s *predictionService) ExtractEmailData(
 	text = strings.ReplaceAll(text, "\n", "")
 	text = strings.TrimSpace(text)
 
-	extracted, err := s.ollama.ExtractEmailData(ctx, text)
+	lc, model, err := s.llmResolver.Resolve("ollama", "gemma4:12b")
 	if err != nil {
 		return nil, err
 	}
+
+	chatReq := sharedModel.ChatRequest{
+		Provider: "ollama",
+		Model:    model,
+		Messages: []sharedModel.AgentMessage{
+			{
+				Role: sharedModel.RoleSystem,
+				Content: []sharedModel.ContentBlock{
+					{
+						Type: "text",
+						Text: client.ExtractionPrompt,
+					},
+				},
+			},
+			{
+				Role: sharedModel.RoleUser,
+				Content: []sharedModel.ContentBlock{
+					{
+						Type: "text",
+						Text: text,
+					},
+				},
+			},
+		},
+		Temperature: 0.0,
+		MaxTokens:   1024,
+		Stream:      false,
+		Format:      "json",
+	}
+	chatRes, err := lc.Chat(ctx, chatReq)
+	if err != nil {
+		return nil, err
+	}
+	if chatRes.Message.Content == nil {
+		return nil, errs.New(errs.CodeInternalError, "no content in response")
+	}
+
+	extracted, err := utils.UnmarshalResponse[sharedModel.ExtractedEmailResponse](
+		[]byte(chatRes.Message.Content[0].Text),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	extracted.EmailText = text
 
 	log.Info("email extraction", "extracted", extracted)
-	return extracted, nil
+	return &extracted, nil
 }
 
 func (s *predictionService) Predict(ctx context.Context, req PredictRequest) (*PredictResponse, error) {
@@ -653,7 +705,8 @@ func (s *predictionService) llmFallback(
 	budgetId uuid.UUID,
 	req LLMRequest,
 ) (*model.LLMPrediction, uuid.UUID, map[string]any, error) {
-	llmModel := "openai/gpt-5.4"
+	// llmModel := "openai/gpt-5.4"
+	llmModel := "gemma4:12b"
 
 	userCategories, err := s.categoryRepo.GetAllSimplified(ctx, budgetId)
 	if err != nil {
@@ -669,15 +722,49 @@ func (s *predictionService) llmFallback(
 
 	prompt := strings.ReplaceAll(promptV2, "{categories}", userCategoriesText)
 
-	resp, err := s.ollama.Generate(ctx, llmModel, prompt, req.Text, req.Amount)
+	lc, m, err := s.llmResolver.Resolve("ollama", "gemma4:12b")
+	if err != nil {
+		return nil, uuid.Nil, nil, err
+	}
+
+	chatReq := sharedModel.ChatRequest{
+		Provider: "ollama",
+		Model:    m,
+		Messages: []sharedModel.AgentMessage{
+			{
+				Role: sharedModel.RoleSystem,
+				Content: []sharedModel.ContentBlock{
+					{
+						Type: "text",
+						Text: prompt,
+					},
+				},
+			},
+			{
+				Role: sharedModel.RoleUser,
+				Content: []sharedModel.ContentBlock{
+					{
+						Type: "text",
+						Text: req.Text,
+					},
+				},
+			},
+		},
+		Temperature: 0.0,
+		MaxTokens:   1024,
+		Stream:      false,
+		Format:      "json",
+	}
+
+	chatRes, err := lc.Chat(ctx, chatReq)
 	if err != nil {
 		return nil, uuid.Nil, nil, errs.Wrap(errs.CodeInternalError, "error in llm fallback", err)
 	}
-	if resp == "" {
-		return nil, uuid.Nil, nil, errs.New(errs.CodeInternalError, "LLM fallback: no result returned")
+	if chatRes.Message.Content == nil {
+		return nil, uuid.Nil, nil, errs.New(errs.CodeInternalError, "LLM fallback: no content returned")
 	}
 
-	parsed, err := utils.UnmarshalResponse[model.LLMPrediction]([]byte(resp))
+	parsed, err := utils.UnmarshalResponse[model.LLMPrediction]([]byte(chatRes.Message.Content[0].Text))
 	if err != nil {
 		return nil, uuid.Nil, nil, err
 	}
@@ -694,7 +781,7 @@ func (s *predictionService) llmFallback(
 		"prompt":            prompt,
 		"input_text":        req.Text,
 		"input_amount":      req.Amount,
-		"response":          resp,
+		"response":          chatRes.Message.Content[0].Text,
 		"categories_count":  len(userCategories),
 		"prompt_template":   "promptV2",
 		"response_category": parsed.SuggestedTag,

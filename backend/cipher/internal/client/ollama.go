@@ -33,7 +33,7 @@ func NewOllamaClient(c *transport.Client, tracer oteltrace.Tracer) *OllamaClient
 
 // ── Phase 1: Email data extraction ──────────────────────────────
 
-const extractionModel = "gemma4"
+const extractionModel = "gemma4:12b"
 
 // const extractionPrompt = `You are a financial data extractor. Output strictly JSON.
 // RULE: Remove the extra invoice number.
@@ -87,21 +87,29 @@ Output: { "summary": "" }
 
 Input: `
 
-const extractionPrompt = `You are a financial data extractor. You will receive email text and you need to output strictly JSON. Do not wrap the response in markdown blocks.
+const ExtractionPrompt = `You are a financial data extractor. You will receive email text and you need to output strictly JSON. Do not wrap the response in markdown blocks.
 	RULE: 
 	- Remove the extra invoice number.
 	- Add negative sign if the amount is debited.
 	- When merchant name is empty or not found, use empty string as merchant name.
 	- When the email is not a transaction email, return empty JSON.
 	- Skip the e-mandate email.
-	SCHEMA: {"merchant": "string", "amount": float, "date": "string (formatted as YYYY-MM-DD)", "account_card": "string (Bank name and last 4 digits only, no extra words)", "reasoning": "string (Brief 1 sentence explanation of why this classification is chosen)"}
+	- Output field names must match the schema exactly. Do not rename, add, or omit any fields.
+	- date is always required if present in the email. Date formats like "3 Apr, 2023" must be parsed as 2023-04-03.
+	SCHEMA: {"merchant": "string", "amount": float, "date": "string (formatted as YYYY-MM-DD)", "time": string | null, "account_card": "string (Bank name and last 4 digits only, no extra words)", "reasoning": "string (Brief 1 sentence explanation of why this classification is chosen)"}
 
 	EXAMPLES: 
   Input: "Dear Customer, Rs.500.00 has been debited from account 4567 to VPA 9876543210@ybl JOHN DOE S O JAMES DOE on 14-07-25. Your UPI transaction reference number is 123456789012. If you did not authorize this transaction, please report it immediately by calling 18002586161 Or SMS BLOCK UPI to 7308080808. Warm Regards, HDFC BankFor more details on Service charges and Fees, click here.. © HDFC Bank"
-	Output: {"merchant": "JOHN DOE S O JAMES DOE", "amount": -500.0, "date": "2025-07-14", "account_card": "4567"}
+	Output: {"merchant": "JOHN DOE S O JAMES DOE", "amount": -500.0, "date": "2025-07-14", time: null, "account_card": "4567", "reasoning": "The transaction is a debit of 500.00 from an HDFC Bank acocunt ending in 4567 for the merchant JOHN DOE SO JAMES DOE."}
 
 	Input: "Dear Customer, Rs. 3000.00 is successfully credited to your account **4567 by VPA 9876543210@ybl JOHN DOE S O JAMES DOE on 12-07-25. Your UPI transaction reference number is 987654321098. Thank you for banking with us. Warm Regards, HDFC BankFor more details on Service charges and Fees, click here.. © HDFC Bank}"
-	Output: {"merchant": "JOHN DOE S O JAMES DOE", "amount": 3000.0, "date": "2025-07-12", "account_card": "4567"}
+	Output: {"merchant": "JOHN DOE S O JAMES DOE", "amount": 3000.0, "date": "2025-07-12", "account_card": "4567", "reasoning": "The transaction is a credit of 500.00 to HDFC Bank account Card ending in 4432 from the merchant JOHN DOE SO JAMES DOE."}
+
+	Input: "Dear Customer, Rs.1200.00 has been debited from your HDFC Bank Credit Card ending 9876 towards NETFLIX on 05 Jan, 2025 at 10:22:11."
+	Output: {"merchant": "NETFLIX", "amount": -1200.0, "date": "2025-01-05", "time": "10:22:11", "account_card": "HDFC 9876", "reasoning": "Debit from HDFC credit card ending 9876 to Netflix."}
+
+	Input: "Dear Customer, Greetings from HDFC Bank! Your Canva Pty Ltd bill, set up through E-mandate (Auto payment), has been successfully paid using your HDFC Bank Credit Card ending 1234. Transaction Details: Amount: INR 500.00 Date: 10/06/2026 SI Hub ID: Y8Inwhnbjn To manage your e-Mandates, please visit: https://www.sihub.in/managesi/hdfcbank Thank you for banking with us. Warm regards, HDFC BankFor more details on Service charges and Fees, click here.. © HDFC Bank"
+	Output: {"merchant": "", "amount": 0.0, "date": "", "time": "", "account_card": "", "reasoning": "Skipping e-mandate payment from HDFC credit card ending 1234"}
 
 	Now process this input:
 	Input: `
@@ -113,7 +121,7 @@ func (c *OllamaClient) ExtractEmailData(
 	ctx context.Context,
 	rawText string,
 ) (*sharedModel.ExtractedEmailResponse, error) {
-	prompt := extractionPrompt + rawText + "\"\nOutput:"
+	prompt := ExtractionPrompt + rawText + "\"\nOutput:"
 
 	extracted, err := GenericLLMCall[sharedModel.ExtractedEmailResponse](ctx, c, model.PromptReq{
 		Model:  extractionModel,

@@ -20,6 +20,7 @@ import (
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 )
 
 type AgentService interface {
@@ -38,20 +39,23 @@ func (e *ClarifyError) Error() string   { return e.Prompt }
 func (e *ClarifyError) StatusCode() int { return http.StatusUnprocessableEntity }
 
 type agentService struct {
-	agent         *agent.Agent
+	redis           *redis.Client
+	agent           *agent.Agent
 	agentMemoryRepo db.AgentMemoryRepository
-	pennywiseAPI  *transport.Client
-	memoryService memory.Memory
-	llmResolver   llm.LLMResolver
+	pennywiseAPI    *transport.Client
+	memoryService   memory.Memory
+	llmResolver     llm.LLMResolver
 }
 
 func NewAgentService(
+	redis *redis.Client,
 	a *agent.Agent,
 	pennywiseClient *transport.Client,
 	memoryService memory.Memory,
 	llmResolver llm.LLMResolver,
 ) AgentService {
 	return &agentService{
+		redis:         redis,
 		agent:         a,
 		pennywiseAPI:  pennywiseClient,
 		memoryService: memoryService,
@@ -214,8 +218,8 @@ func agentRunToChatRequest(req sharedModel.AgentRunCreateRequest) sharedModel.Ch
 				}
 				messages = append(messages, sharedModel.AgentMessage{
 					Sequence: msg.Sequence,
-					Role:    msg.Role,
-					Content: content,
+					Role:     msg.Role,
+					Content:  content,
 				})
 			case sharedModel.RoleAssistant:
 				// for assistant message loop over
@@ -227,8 +231,8 @@ func agentRunToChatRequest(req sharedModel.AgentRunCreateRequest) sharedModel.Ch
 							// append to the assistant messages
 							assistantMessages = append(assistantMessages, sharedModel.AgentMessage{
 								Sequence: msg.Sequence,
-								Role:    msg.Role,
-								Content: contentBlocksFromMessageParts(part),
+								Role:     msg.Role,
+								Content:  contentBlocksFromMessageParts(part),
 							})
 						}
 					}
@@ -267,14 +271,14 @@ func agentRunToChatRequest(req sharedModel.AgentRunCreateRequest) sharedModel.Ch
 
 				if len(toolCalls) > 0 {
 					messages = append(messages, sharedModel.AgentMessage{
-						Sequence: msg.Sequence,
+						Sequence:  msg.Sequence,
 						Role:      sharedModel.RoleAssistant,
 						ToolCalls: toolCalls,
 					})
 
 					for i := range toolResults {
 						messages = append(messages, sharedModel.AgentMessage{
-							Sequence: msg.Sequence,
+							Sequence:   msg.Sequence,
 							Role:       sharedModel.RoleTool,
 							ToolResult: &toolResults[i],
 						})
@@ -289,8 +293,8 @@ func agentRunToChatRequest(req sharedModel.AgentRunCreateRequest) sharedModel.Ch
 	}
 
 	messages = append(messages, sharedModel.AgentMessage{
-		Sequence: latestSequence+1,
-		Role: sharedModel.RoleUser,
+		Sequence: latestSequence + 1,
+		Role:     sharedModel.RoleUser,
 		Content: []sharedModel.ContentBlock{
 			{Type: "text", Text: req.Message},
 		},
@@ -321,6 +325,47 @@ func agentRunToChatRequest(req sharedModel.AgentRunCreateRequest) sharedModel.Ch
 	}
 }
 
+func (s *agentService) publishTitleUpdate(
+	ctx context.Context,
+	budgetID uuid.UUID,
+	userID uuid.UUID,
+	conversationID uuid.UUID,
+	title string,
+) {
+	log := logger.Logger(ctx)
+
+	if s.redis == nil {
+		log.Warn("redis is not configured")
+		return
+	}
+
+	dataJSON, err := json.Marshal(map[string]any{
+		"message": title,
+		"type":    "title_update",
+	})
+	if err != nil {
+		log.Error("error while marshaling redis pubsub event data", "type", "title_update", "error", err)
+		return
+	}
+
+	values := map[string]any{
+		"eventName":      string(sharedModel.AgentEventChatStream),
+		"budgetId":       budgetID.String(),
+		"userId":         userID.String(),
+		"conversationId": conversationID.String(),
+		"data":           string(dataJSON),
+	}
+
+	pipe := s.redis.Pipeline()
+	pipe.XAdd(ctx, &redis.XAddArgs{
+		Stream: "pubsub",
+		Values: values,
+	})
+	if _, err := pipe.Exec(ctx); err != nil {
+		log.Error("error while sending redis pubsub event", "type", "title_update", "error", err)
+	}
+}
+
 func (s *agentService) CreateRun(
 	ctx context.Context,
 	req sharedModel.AgentRunCreateRequest,
@@ -337,9 +382,9 @@ func (s *agentService) CreateRun(
 	chatReq := agentRunToChatRequest(req)
 
 	context, err := s.memoryService.PrepareContext(ctx, memory.MemoryContextRequest{
-		Messages: chatReq.Messages,
-		BudgetID: budgetID,
-		UserID: userID,
+		Messages:       chatReq.Messages,
+		BudgetID:       budgetID,
+		UserID:         userID,
 		ConversationID: *req.ConversationID,
 	})
 	if err != nil {
@@ -396,13 +441,28 @@ func (s *agentService) CreateRun(
 
 			if titleRes.Message.Content != nil {
 				title := strings.TrimSpace(string(titleRes.Message.Content[0].Text))
+
 				url := fmt.Sprintf("/api/agent/conversations/%s", req.ConversationID.String())
+
 				data := map[string]any{
 					"title": title,
 				}
+
 				if title != "" {
 					patchRes, err := transport.Patch[any](ctxBackground, s.pennywiseAPI, url, nil, data)
 					logger.Logger(ctxBackground).Info("title patch", "res", patchRes, "error", err)
+					if err != nil {
+						logger.Logger(ctxBackground).Error("error while patching title", "error", err)
+						return
+					}
+
+					s.publishTitleUpdate(
+						utils.DetachedRequestContext(ctxBackground),
+						budgetID,
+						userID,
+						*req.ConversationID,
+						title,
+					)
 				}
 			}
 		}()
