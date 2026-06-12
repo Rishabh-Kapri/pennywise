@@ -394,7 +394,7 @@ func (s *predictionService) ExtractEmailData(
 			},
 		},
 		Temperature: 0.0,
-		MaxTokens:   1024,
+		MaxTokens:   10000,
 		Stream:      false,
 		Format:      "json",
 	}
@@ -402,7 +402,7 @@ func (s *predictionService) ExtractEmailData(
 	if err != nil {
 		return nil, err
 	}
-	if chatRes.Message.Content == nil {
+	if chatRes.Message.Content == nil || len(chatRes.Message.Content) == 0 {
 		return nil, errs.New(errs.CodeInternalError, "no content in response")
 	}
 
