@@ -28,7 +28,7 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailToT
 	// ----- Step 1: Fetch user data and update history id in Pennywise -----
 	pennywiseCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 		TaskQueue:           sharedModel.PennywiseActivitiesTaskQueue,
-		StartToCloseTimeout: 30 * time.Second,
+		StartToCloseTimeout: 300 * time.Second,
 		RetryPolicy: &temporal.RetryPolicy{
 			InitialInterval: time.Second,
 			MaximumAttempts: 5,
@@ -54,7 +54,7 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailToT
 	// ----- Step 2: Fetch emails data from Gmail using Pennywise-owned user data -----
 	gmailCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 		TaskQueue:           sharedModel.GmailActivitiesTaskQueue,
-		StartToCloseTimeout: 30 * time.Second,
+		StartToCloseTimeout: 300 * time.Second,
 		RetryPolicy: &temporal.RetryPolicy{
 			InitialInterval: time.Second,
 			MaximumAttempts: 5,
@@ -139,7 +139,7 @@ func parseRawEmails(
 	for {
 		cipherCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 			TaskQueue:           sharedModel.CipherActivitiesTaskQueue,
-			StartToCloseTimeout: 120 * time.Second,
+			StartToCloseTimeout: 300 * time.Second,
 			RetryPolicy: &temporal.RetryPolicy{
 				InitialInterval:    sharedModel.PredictRetryInterval,
 				BackoffCoefficient: 1.0, // fixed interval, not exponential
@@ -193,7 +193,7 @@ func processParsedEmails(
 	for {
 		cipherCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 			TaskQueue:           sharedModel.CipherActivitiesTaskQueue,
-			StartToCloseTimeout: 90 * time.Second,
+			StartToCloseTimeout: 300 * time.Second,
 			RetryPolicy: &temporal.RetryPolicy{
 				InitialInterval:    sharedModel.PredictRetryInterval,
 				BackoffCoefficient: 1.0, // fixed interval, not exponential
@@ -231,7 +231,7 @@ func processParsedEmails(
 	// ----- Step 3: Create transactions and cipher predictions atomically -----
 	pennywiseCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 		TaskQueue:           sharedModel.PennywiseActivitiesTaskQueue,
-		StartToCloseTimeout: 30 * time.Second,
+		StartToCloseTimeout: 300 * time.Second,
 		RetryPolicy: &temporal.RetryPolicy{
 			InitialInterval: time.Second,
 			MaximumAttempts: 5,
