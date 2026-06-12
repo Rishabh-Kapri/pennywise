@@ -57,8 +57,11 @@ type ExtractedEmailResponse struct {
 	Merchant    string  `json:"merchant"`
 	Amount      float64 `json:"amount"`
 	Date        string  `json:"date"`
+	Time        string  `json:"time"`
 	AccountCard string  `json:"account_card"`
 	Reasoning   string  `json:"reasoning"`
+	// When skipped
+	Skipped bool `json:"skipped,omitempty"`
 }
 
 // ParsedEmailsInput is the result of FetchAndParseEmails (go-gmail)

@@ -109,9 +109,17 @@ func (r *categoryRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.
 
 func (r *categoryRepo) GetAllSimplified(ctx context.Context, budgetId uuid.UUID) ([]model.CategorySimplified, error) {
 	rows, err := r.Executor(nil).Query(
-		ctx,
-		`SELECT id, name FROM categories WHERE budget_id = $1 AND deleted = FALSE AND hidden = FALSE`,
-		budgetId,
+		ctx, `
+			SELECT categories.id, categories.name 
+			FROM categories 
+			LEFT JOIN budgets ON categories.budget_id = budgets.id
+			WHERE categories.budget_id = '2166418d-3fa2-4acc-b92c-ab9f36c18d76' AND 
+					categories.deleted = FALSE AND 
+					categories.hidden = FALSE AND 
+					categories.is_system = FALSE AND
+					categories.id != (budgets.metadata ->> 'inflowCategoryId')::uuid AND
+					categories.category_group_id != (budgets.metadata ->> 'ccGroupId')::uuid
+		`, budgetId,
 	)
 	if err != nil {
 		return nil, err

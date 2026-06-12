@@ -254,7 +254,7 @@ func (s *predictionService) handleLLM(
 	req PredictRequest,
 ) (*PredictResponse, error) {
 	llmReq := LLMRequest{
-		Text:   embeddingText,
+		Text:   req.EmailText,
 		Amount: req.Amount,
 	}
 	parsed, categoryID, metadata, err := s.llmFallback(ctx, budgetId, llmReq)
@@ -394,7 +394,7 @@ func (s *predictionService) ExtractEmailData(
 			},
 		},
 		Temperature: 0.0,
-		MaxTokens:   10000,
+		MaxTokens:   100000,
 		Stream:      false,
 		Format:      "json",
 	}
@@ -751,7 +751,7 @@ func (s *predictionService) llmFallback(
 			},
 		},
 		Temperature: 0.0,
-		MaxTokens:   1024,
+		MaxTokens:   10000,
 		Stream:      false,
 		Format:      "json",
 	}
