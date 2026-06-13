@@ -73,16 +73,27 @@ function messageMatchesAgentRoom(
     return false;
   }
 
+  // If we don't have a known streamId yet (e.g. the run was just dispatched
+  // and the fulfilled action hasn't propagated to the ref), allow the message
+  // through on a budget+user match alone so we don't drop early stream events.
+  if (!streamId) {
+    return true;
+  }
+
   const messageStreamId = message.streamId ?? valueFromData(message.data, 'streamId');
   const messageRoomId = message.roomId ?? valueFromData(message.data, 'roomId');
-  if (!streamId) {
-    return false;
-  }
 
   const expectedRoomId = userId ? getAgentRoomId(budgetId, userId, streamId) : undefined;
 
+  // Only reject on a stream/room mismatch when the incoming message explicitly
+  // carries those fields — if they are absent, fall through and allow.
   if (messageStreamId && messageStreamId !== streamId) {
-    return false;
+    // Also accept if the message room contains our streamId (handles cases
+    // where the message carries the new run's streamId before our ref updates).
+    const roomContainsStream = messageRoomId?.includes(streamId) ?? false;
+    if (!roomContainsStream) {
+      return false;
+    }
   }
 
   if (expectedRoomId && messageRoomId && messageRoomId !== expectedRoomId) {
