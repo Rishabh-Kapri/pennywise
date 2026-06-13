@@ -14,6 +14,7 @@ import (
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
 	"github.com/pkoukk/tiktoken-go"
@@ -208,27 +209,6 @@ func contentBlocksText(blocks []sharedModel.ContentBlock) string {
 		}
 	}
 	return strings.Join(parts, "\n\n")
-}
-
-func stripMarkdownFence(text string) string {
-	text = strings.TrimSpace(text)
-	if !strings.HasPrefix(text, "```") {
-		return text
-	}
-
-	// Drop the opening fence line, including optional language labels like
-	// ```json. If the response is malformed and has no newline, leave it as-is.
-	firstNewline := strings.IndexByte(text, '\n')
-	if firstNewline == -1 {
-		return text
-	}
-	text = strings.TrimSpace(text[firstNewline+1:])
-
-	if endFence := strings.LastIndex(text, "```"); endFence != -1 {
-		text = strings.TrimSpace(text[:endFence])
-	}
-
-	return text
 }
 
 func countTokens(messages []sharedModel.AgentMessage, lastSequence int) (int, error) {
@@ -468,7 +448,7 @@ func (m *memory) OnRunPersisted(ctx context.Context, data AgentRunData) error {
 	msg := res.Message.Content[0]
 	var observation sharedModel.AgentObservationalMemory
 
-	observerJSON := stripMarkdownFence(msg.Text)
+	observerJSON := utils.StripMarkdownFence(msg.Text)
 	if err := json.Unmarshal([]byte(observerJSON), &observation); err != nil {
 		log.Error(
 			"failed to unmarshal llm observation res",
