@@ -509,7 +509,6 @@ export function AgentChat() {
     dispatch,
     flushPendingTextDelta,
     scheduleTextDeltaAnimation,
-    selectedConversation,
     currentConversationId,
   ]);
 
