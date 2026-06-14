@@ -75,21 +75,22 @@ func (t GetBudgetInfoTool) fetchCategories(
 ) (categories []string, err error) {
 	categoryRows, err := t.db.Query(ctx, `
 			SELECT
-			c.name,
-			COALESCE(SUM(t.amount), 0) AS total_spend
+				c.name,
 			FROM transactions t
 			JOIN categories c ON t.category_id = c.id AND c.is_system = false AND c.deleted = false
 			WHERE t.budget_id = $1
-			AND t.date >= $2
-			AND t.date <= $3
-			AND t.deleted = false
+				AND t.date >= $2
+				AND t.date <= $3
+				AND t.deleted = false
 			GROUP BY c.name
 			ORDER BY total_spend ASC
 			`, budgetID, args.DateRange.Start, args.DateRange.End)
 	if err != nil {
 		return nil, errs.Wrap(errs.CodeToolExecuteFail, "failed to execute tool get_budget_info", err)
 	}
+
 	defer categoryRows.Close()
+
 	for categoryRows.Next() {
 		var name string
 		if err := categoryRows.Scan(&name); err != nil {
