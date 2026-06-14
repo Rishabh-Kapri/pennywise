@@ -75,7 +75,7 @@ func (t GetBudgetInfoTool) fetchCategories(
 ) (categories []string, err error) {
 	categoryRows, err := t.db.Query(ctx, `
 			SELECT
-				c.name,
+				c.name
 			FROM transactions t
 			JOIN categories c ON t.category_id = c.id AND c.is_system = false AND c.deleted = false
 			WHERE t.budget_id = $1
