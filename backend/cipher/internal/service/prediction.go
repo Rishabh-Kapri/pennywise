@@ -718,6 +718,7 @@ func (s *predictionService) llmFallback(
 	if err != nil {
 		return nil, uuid.Nil, nil, err
 	}
+	log.Info("categories found", "userCategories", userCategories, "err", err)
 
 	userCategoriesMap := make(map[string]uuid.UUID, len(userCategories))
 	userCategoriesText := ""
@@ -725,6 +726,8 @@ func (s *predictionService) llmFallback(
 		userCategoriesText += c.Name + ", "
 		userCategoriesMap[c.Name] = c.ID
 	}
+
+	log.Info("categories map", "map", userCategoriesMap, "text", userCategoriesText, "prompt", promptV2)
 
 	prompt := strings.ReplaceAll(promptV2, "{categories}", userCategoriesText)
 	log.Info("llmFallback", "prompt", prompt)
