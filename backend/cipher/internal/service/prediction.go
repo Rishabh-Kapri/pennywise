@@ -253,11 +253,16 @@ func (s *predictionService) handleLLM(
 	embeddingText string,
 	req PredictRequest,
 ) (*PredictResponse, error) {
+	log := logger.Logger(ctx)
+
 	llmReq := LLMRequest{
 		Text:   req.EmailText,
 		Amount: req.Amount,
 	}
+	log.Info("handleLLm", "llmReq", llmReq)
+
 	parsed, categoryID, metadata, err := s.llmFallback(ctx, budgetId, llmReq)
+	log.Info("after llmFallback", "parsed", parsed, "categoryID", categoryID, "metadata", metadata, "err", err)
 	if err != nil {
 		return nil, err
 	}
@@ -705,6 +710,7 @@ func (s *predictionService) llmFallback(
 	budgetId uuid.UUID,
 	req LLMRequest,
 ) (*model.LLMPrediction, uuid.UUID, map[string]any, error) {
+	log := logger.Logger(ctx)
 	// llmModel := "openai/gpt-5.4"
 	llmModel := "gemma4:12b"
 
@@ -721,8 +727,10 @@ func (s *predictionService) llmFallback(
 	}
 
 	prompt := strings.ReplaceAll(promptV2, "{categories}", userCategoriesText)
+	log.Info("llmFallback", "prompt", prompt)
 
 	lc, m, err := s.llmResolver.Resolve("ollama", "gemma4:12b")
+	log.Info("llmResolver", "lc", lc, "m", m, "err", err)
 	if err != nil {
 		return nil, uuid.Nil, nil, err
 	}
