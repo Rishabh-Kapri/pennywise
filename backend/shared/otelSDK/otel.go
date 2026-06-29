@@ -3,7 +3,6 @@ package otelSDK
 import (
 	"context"
 	"errors"
-	"log/slog"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/gin-gonic/gin"
@@ -47,7 +46,8 @@ type Telemetry struct {
 // providers (Tracer, Meter, Logger) and the context propagator. It returns a fully configured
 // Telemetry struct or an error if provider initialization fails.
 func NewTelemetry(ctx context.Context, cfg Config) (*Telemetry, error) {
-	slog.Info("telemetry init", "cfg", cfg)
+	logs := logger.Logger(ctx)
+	logs.Info("telemetry init", "cfg", cfg)
 	rp := newResource(cfg.ServiceName, cfg.ServiceVersion, cfg.Environment)
 
 	// Set up propagator for cross-service trace context (W3C traceparent + baggage headers)
@@ -62,7 +62,7 @@ func NewTelemetry(ctx context.Context, cfg Config) (*Telemetry, error) {
 	var err error
 
 	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) {
-		logger.Fatal("otel error", "error", err)
+		logs.Error("otel error", "error", err)
 	}))
 	// Always initialize providers. The providers themselves check OTEL_*_EXPORTER
 	// environment variables to determine which exporters (if any) to attach.
