@@ -1,76 +1,50 @@
 import { useAppSelector } from '@/app/hooks';
 import { selectBudgetHealth } from '../../store/dashboardSlice';
-import { selectInflowAmount } from '@/features/category/store';
-import { ChartPie as PieChart, CheckCircle } from '@phosphor-icons/react';
+import { ChartPie } from '@phosphor-icons/react';
+import { formatCurrency } from '../../utils';
 import styles from './BudgetOverview.module.css';
 
-const formatCurrency = (amount: number): string => {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
-};
-
 export default function BudgetOverview() {
-  const inflowAmount = useAppSelector(selectInflowAmount);
   const budgetHealth = useAppSelector(selectBudgetHealth);
 
-  // Show top 5 categories by budget percentage used
   const topCategories = [...budgetHealth.categories]
-    .filter((c) => c.budgeted > 0)
-    .sort((a, b) => b.percentUsed - a.percentUsed)
+    .filter((category) => category.spent > 0)
+    .sort((a, b) => b.spent - a.spent)
     .slice(0, 5);
-
-  const getReadyToAssignClass = () => {
-    if (inflowAmount > 0) return styles.positive;
-    if (inflowAmount < 0) return styles.negative;
-    return styles.zero;
-  };
+  const maxSpent = topCategories[0]?.spent ?? 0;
+  const totalSpent = budgetHealth.categories.reduce((sum, category) => sum + category.spent, 0);
 
   return (
     <div className={styles.container}>
       <div className={styles.header}>
         <h2 className={styles.title}>
-          <PieChart size={20} className={styles.titleIcon} />
-          Budget Overview
+          <ChartPie size={18} />
+          Top spending
         </h2>
-        <div className={`${styles.readyToAssign} ${getReadyToAssignClass()}`}>
-          {inflowAmount === 0 ? (
-            <>
-              <CheckCircle size={16} />
-              All Assigned
-            </>
-          ) : (
-            <>{formatCurrency(inflowAmount)} to assign</>
-          )}
-        </div>
+        {totalSpent > 0 && (
+          <span className={styles.headerTotal}>{formatCurrency(totalSpent)} total</span>
+        )}
       </div>
 
       {topCategories.length > 0 ? (
         <div className={styles.categoryList}>
           {topCategories.map((category) => (
-            <div key={category.id} className={styles.categoryItem}>
-              <div className={styles.categoryHeader}>
+            <div key={category.id} className={styles.categoryRow}>
+              <div className={styles.categoryTopLine}>
                 <span className={styles.categoryName}>{category.name}</span>
-                <span className={styles.categoryValues}>
-                  {formatCurrency(category.spent)} / {formatCurrency(category.budgeted)}
-                </span>
+                <span className={styles.categoryAmount}>{formatCurrency(category.spent)}</span>
               </div>
-              <div className={styles.progressBar}>
+              <div className={styles.barTrack}>
                 <div
-                  className={`${styles.progressFill} ${styles[category.status]}`}
-                  style={{ width: `${Math.min(category.percentUsed, 100)}%` }}
+                  className={styles.barFill}
+                  style={{ width: `${maxSpent > 0 ? (category.spent / maxSpent) * 100 : 0}%` }}
                 />
               </div>
             </div>
           ))}
         </div>
       ) : (
-        <div className={styles.emptyState}>
-          No budget data for this month yet.
-        </div>
+        <div className={styles.emptyState}>No spending this month</div>
       )}
     </div>
   );
