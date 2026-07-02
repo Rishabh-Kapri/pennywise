@@ -13,6 +13,7 @@ import (
 
 type PredictionHandler interface {
 	List(c *gin.Context)
+	ListCipherPredictions(c *gin.Context)
 	GetByTransactionID(c *gin.Context)
 	Create(c *gin.Context)
 	Update(c *gin.Context)
@@ -34,6 +35,20 @@ func (h *predictionHandler) List(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
+	}
+	c.JSON(http.StatusOK, predictions)
+}
+
+func (h *predictionHandler) ListCipherPredictions(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	predictions, err := h.service.GetAllCipherPredictions(ctx)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if predictions == nil {
+		predictions = []model.CipherPredictionRecord{}
 	}
 	c.JSON(http.StatusOK, predictions)
 }

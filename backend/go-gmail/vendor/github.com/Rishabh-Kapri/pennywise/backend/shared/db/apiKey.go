@@ -13,6 +13,7 @@ import (
 type APIKeyRepository interface {
 	BaseRepositoryInterface
 	Create(ctx context.Context, tx pgx.Tx, apiKey *model.APIKey) error
+	GetAll(ctx context.Context, userID uuid.UUID) ([]model.APIKey, error)
 	GetByKeyID(ctx context.Context, tx pgx.Tx, keyID string) (*model.APIKey, error)
 	GetByHash(ctx context.Context, tx pgx.Tx, keyHash string) (*model.APIKey, error)
 	UpdateLastUsed(ctx context.Context, tx pgx.Tx, id uuid.UUID) error
@@ -54,6 +55,76 @@ func (r *apiKeyRepo) Create(ctx context.Context, tx pgx.Tx, key *model.APIKey) e
 	return nil
 }
 
+// Return a list of all API keys for a user
+func (r *apiKeyRepo) GetAll(ctx context.Context, userID uuid.UUID) ([]model.APIKey, error) {
+	rows, err := r.Executor(nil).Query(
+		ctx, `
+		  SELECT 
+		    id,
+		    key_id,
+		    hashed_key,
+		    masked_key,
+		    name,
+				description,
+			  user_id,
+			  scopes,
+			  allowed_ips,
+			  allowed_referers,
+			  rate_limit,
+			  expires_at,
+			  rotation_due_at,
+			  created_at,
+			  expires_at,
+			  last_used_at,
+			  revoked_at,
+			  rotation_enabled,
+			  rotated_from_id,
+			  rotation_due_at,
+			  is_active
+		  FROM api_keys
+		  WHERE user_id = $1
+		  ORDER BY created_at DESC
+		`, userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var keys []model.APIKey
+	for rows.Next() {
+		var key model.APIKey
+		err := rows.Scan(
+			&key.ID,
+			&key.KeyID,
+			&key.HashedKey,
+			&key.MaskedKey,
+			&key.Name,
+			&key.Description,
+			&key.UserID,
+			&key.Scopes,
+			&key.AllowedIPs,
+			&key.AllowedReferers,
+			&key.RateLimit,
+			&key.ExpiresAt,
+			&key.RotationDueAt,
+			&key.CreatedAt,
+			&key.ExpiresAt,
+			&key.LastUsedAt,
+			&key.RevokedAt,
+			&key.RotationEnabled,
+			&key.RotatedFromID,
+			&key.RotationDueAt,
+			&key.IsActive,
+		)
+		if err != nil {
+			return nil, err
+		}
+		keys = append(keys, key)
+	}
+	return keys, nil
+}
+
 func (r *apiKeyRepo) GetByKeyID(ctx context.Context, tx pgx.Tx, keyID string) (*model.APIKey, error) {
 	var key model.APIKey
 	err := r.Executor(tx).QueryRow(
@@ -62,6 +133,7 @@ func (r *apiKeyRepo) GetByKeyID(ctx context.Context, tx pgx.Tx, keyID string) (*
 		  id,
 		  key_id,
 		  hashed_key,
+	    masked_key,
 		  name,
 			description,
 		  user_id,
@@ -86,6 +158,7 @@ func (r *apiKeyRepo) GetByKeyID(ctx context.Context, tx pgx.Tx, keyID string) (*
 		&key.ID,
 		&key.KeyID,
 		&key.HashedKey,
+		&key.MaskedKey,
 		&key.Name,
 		&key.Description,
 		&key.UserID,

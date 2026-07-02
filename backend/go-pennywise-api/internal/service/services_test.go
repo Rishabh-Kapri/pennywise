@@ -336,6 +336,13 @@ type svcAPIKeyRepo struct {
 func (m *svcAPIKeyRepo) Create(ctx context.Context, tx pgx.Tx, apiKey *model.APIKey) error {
 	return m.Called(ctx, tx, apiKey).Error(0)
 }
+func (m *svcAPIKeyRepo) GetAll(ctx context.Context, userID uuid.UUID) ([]model.APIKey, error) {
+	args := m.Called(ctx, userID)
+	if v := args.Get(0); v != nil {
+		return v.([]model.APIKey), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
 func (m *svcAPIKeyRepo) GetByKeyID(ctx context.Context, tx pgx.Tx, keyID string) (*model.APIKey, error) {
 	args := m.Called(ctx, tx, keyID)
 	if v := args.Get(0); v != nil {

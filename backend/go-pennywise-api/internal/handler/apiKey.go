@@ -11,6 +11,7 @@ import (
 
 type APIKeyHandler interface {
 	Create(c *gin.Context)
+	GetAll(c *gin.Context)
 	GetByKeyID(c *gin.Context)
 }
 
@@ -38,6 +39,18 @@ func (h *apiKeyHandler) Create(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, createdKey)
+}
+
+func (h *apiKeyHandler) GetAll(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	keys, err := h.service.GetAll(ctx)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, keys)
 }
 
 func (h *apiKeyHandler) GetByKeyID(c *gin.Context) {
