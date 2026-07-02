@@ -4,6 +4,7 @@ import type {
   DashboardState,
   DashboardStats,
   SpendingTrend,
+  MonthlyComparison,
   BudgetHealthSummary,
   CategoryHealth,
 } from '../types';
@@ -107,6 +108,30 @@ export const selectSpendingTrends = createSelector(
         expenses: data.expenses,
       };
     });
+  }
+);
+
+/**
+ * Cash flow for the selected month vs the previous month.
+ * Falls back to the latest trend point when the selected month is
+ * outside the 6-month trend window.
+ */
+export const selectMonthlyComparison = createSelector(
+  [selectSpendingTrends, selectSelectedMonth],
+  (trends, selectedMonth): MonthlyComparison => {
+    let index = trends.findIndex((trend) => trend.month === selectedMonth);
+    if (index === -1) index = trends.length - 1;
+
+    const current = index >= 0 ? trends[index] : undefined;
+    const previous = index > 0 ? trends[index - 1] : undefined;
+
+    return {
+      income: current?.income ?? 0,
+      expenses: current?.expenses ?? 0,
+      prevIncome: previous?.income ?? 0,
+      prevExpenses: previous?.expenses ?? 0,
+      hasPrevious: Boolean(previous),
+    };
   }
 );
 
