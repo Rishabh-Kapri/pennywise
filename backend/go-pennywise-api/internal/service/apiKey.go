@@ -28,6 +28,7 @@ type APIKeyService interface {
 	ValidateFormat(fullKey string) bool
 	// repository methods
 	Create(ctx context.Context, apiKey *model.APIKey) (string, error)
+	GetAll(ctx context.Context) ([]model.APIKey, error)
 	GetByKeyID(ctx context.Context, keyID string) (*model.APIKey, error)
 	GetByHash(ctx context.Context, fullKey string) (*model.APIKey, error)
 	UpdateLastUsed(ctx context.Context, id uuid.UUID) error
@@ -138,6 +139,11 @@ func (s *apiKeyService) Create(ctx context.Context, apiKey *model.APIKey) (strin
 		return "", errs.Wrap(errs.CodeInternalError, "failed to create api key", err)
 	}
 	return fullKey, nil
+}
+
+func (s *apiKeyService) GetAll(ctx context.Context) ([]model.APIKey, error) {
+	userID := utils.MustUserID(ctx)
+	return s.repo.GetAll(ctx, userID)
 }
 
 func (s *apiKeyService) GetByKeyID(ctx context.Context, keyID string) (*model.APIKey, error) {

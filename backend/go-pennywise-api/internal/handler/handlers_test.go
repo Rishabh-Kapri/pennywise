@@ -163,6 +163,13 @@ func (m *mockAPIKeyService) Create(ctx context.Context, apiKey *model.APIKey) (s
 	args := m.Called(ctx, apiKey)
 	return args.String(0), args.Error(1)
 }
+func (m *mockAPIKeyService) GetAll(ctx context.Context) ([]model.APIKey, error) {
+	args := m.Called(ctx)
+	if v := args.Get(0); v != nil {
+		return v.([]model.APIKey), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
 func (m *mockAPIKeyService) GetByKeyID(ctx context.Context, keyID string) (*model.APIKey, error) {
 	args := m.Called(ctx, keyID)
 	if v := args.Get(0); v != nil {

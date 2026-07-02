@@ -280,7 +280,8 @@ func main() {
 		{
 			apiKeyGroup := router.Group("/api/keys")
 			apiKeyGroup.Use(authMiddleware, rateLimitMiddleware)
-			apiKeyGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), apiKeyHandler.GetByKeyID)
+			apiKeyGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), apiKeyHandler.GetAll)
+			apiKeyGroup.GET("/:keyID", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), apiKeyHandler.GetByKeyID)
 			apiKeyGroup.POST("", middleware.RouteAuthMiddleware(sharedModel.ScopeAdmin), apiKeyHandler.Create)
 		}
 		{
@@ -419,6 +420,11 @@ func main() {
 			predictionGroup := router.Group("/api/predictions")
 			predictionGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
 			predictionGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), predictionHandler.List)
+			predictionGroup.GET(
+				"/cipher",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				predictionHandler.ListCipherPredictions,
+			)
 			predictionGroup.GET(
 				"/transactions/:transactionId",
 				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
