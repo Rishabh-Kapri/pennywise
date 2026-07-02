@@ -13,6 +13,7 @@ import (
 type CipherPredictionRepository interface {
 	BaseRepositoryInterface
 	Create(ctx context.Context, tx pgx.Tx, p model.CipherPredictionRecord) (*model.CipherPredictionRecord, error)
+	GetAll(ctx context.Context, budgetID uuid.UUID) ([]model.CipherPredictionRecord, error)
 	GetByTransactionID(ctx context.Context, budgetID uuid.UUID, txnID uuid.UUID) (*model.CipherPredictionRecord, error)
 	MarkUserCorrected(ctx context.Context, tx pgx.Tx, budgetID uuid.UUID, txnID uuid.UUID, actualPayeeID *uuid.UUID, actualCategoryID *uuid.UUID) error
 }
@@ -110,6 +111,64 @@ func (r *cipherPredictionRepo) Create(
 		return nil, err
 	}
 	return &created, nil
+}
+
+func (r *cipherPredictionRepo) GetAll(
+	ctx context.Context,
+	budgetID uuid.UUID,
+) ([]model.CipherPredictionRecord, error) {
+	rows, err := r.Executor(nil).Query(
+		ctx,
+		`SELECT
+			id, budget_id, transaction_id, email_text, llm_reasoning, metadata, amount,
+			extracted_account, extracted_payee,
+			predicted_payee_id, predicted_category_id,
+			account_confidence, payee_confidence, category_confidence,
+			source, has_user_corrected,
+			actual_payee_id, actual_category_id,
+			created_at, updated_at, deleted
+		FROM cipher_predictions
+		WHERE budget_id = $1 AND deleted = FALSE
+		ORDER BY created_at DESC`,
+		budgetID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []model.CipherPredictionRecord
+	for rows.Next() {
+		var p model.CipherPredictionRecord
+		err := rows.Scan(
+			&p.ID,
+			&p.BudgetID,
+			&p.TransactionID,
+			&p.EmailText,
+			&p.LLMReasoning,
+			&p.Metadata,
+			&p.Amount,
+			&p.ExtractedAccount,
+			&p.ExtractedPayee,
+			&p.PredictedPayeeID,
+			&p.PredictedCategoryID,
+			&p.AccountConfidence,
+			&p.PayeeConfidence,
+			&p.CategoryConfidence,
+			&p.Source,
+			&p.HasUserCorrected,
+			&p.ActualPayeeID,
+			&p.ActualCategoryID,
+			&p.CreatedAt,
+			&p.UpdatedAt,
+			&p.Deleted,
+		)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, p)
+	}
+	return results, nil
 }
 
 func (r *cipherPredictionRepo) GetByTransactionID(

@@ -14,6 +14,7 @@ import (
 
 type PredictionService interface {
 	GetAll(ctx context.Context) ([]model.Prediction, error)
+	GetAllCipherPredictions(ctx context.Context) ([]model.CipherPredictionRecord, error)
 	GetByTransactionID(ctx context.Context, transactionID uuid.UUID) (*model.TransactionPredictionDetails, error)
 	Create(ctx context.Context, prediction model.Prediction) ([]model.Prediction, error)
 	Update(ctx context.Context, id uuid.UUID, prediction model.Prediction) error
@@ -34,6 +35,11 @@ func NewPredictionService(r repository.PredictionRepository, cr repository.Ciphe
 func (s *predictionService) GetAll(ctx context.Context) ([]model.Prediction, error) {
 	budgetId := utils.MustBudgetID(ctx)
 	return s.repo.GetAll(ctx, budgetId)
+}
+
+func (s *predictionService) GetAllCipherPredictions(ctx context.Context) ([]model.CipherPredictionRecord, error) {
+	budgetId := utils.MustBudgetID(ctx)
+	return s.cipherRepo.GetAll(ctx, budgetId)
 }
 
 func (s *predictionService) GetByTransactionID(ctx context.Context, transactionID uuid.UUID) (*model.TransactionPredictionDetails, error) {
