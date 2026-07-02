@@ -74,6 +74,7 @@ export function getCurrencyLocaleString(
   value: number,
   currency: string = 'INR',
   locale = 'en-IN',
+  options: Intl.NumberFormatOptions = {},
 ) {
-  return value.toLocaleString(locale, { style: 'currency', currency });
+  return value.toLocaleString(locale, { style: 'currency', currency, ...options });
 }
