@@ -1,23 +1,22 @@
 import { Link } from 'react-router-dom';
 import { useAppSelector } from '@/app/hooks';
 import { selectRecentTransactions } from '../../store/dashboardSlice';
-import { Receipt, ArrowUpRight, ArrowDownRight, CaretRight as ChevronRight } from '@phosphor-icons/react';
+import { ArrowDownLeft, ArrowUpRight, Receipt } from '@phosphor-icons/react';
+import { formatCurrency } from '../../utils';
 import styles from './RecentTransactions.module.css';
 
-const formatCurrency = (amount: number): string => {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(Math.abs(amount));
-};
-
-const formatDate = (dateStr: string): string => {
+const formatShortDate = (dateStr: string): string => {
   const date = new Date(dateStr);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+
+  if (date.toDateString() === today.toDateString()) return 'Today';
+  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+
   return date.toLocaleDateString('en-IN', {
-    day: 'numeric',
     month: 'short',
+    day: 'numeric',
   });
 };
 
@@ -28,49 +27,34 @@ export default function RecentTransactions() {
     <div className={styles.container}>
       <div className={styles.header}>
         <h2 className={styles.title}>
-          <Receipt size={20} className={styles.titleIcon} />
-          Recent Transactions
+          <Receipt size={18} />
+          Recent transactions
         </h2>
-        <Link to="/transactions" className={styles.viewAll}>
-          View All <ChevronRight size={16} />
+        <Link to="/transactions" className={styles.seeAll}>
+          See all
         </Link>
       </div>
 
       {transactions.length > 0 ? (
-        <div className={styles.transactionList}>
+        <div className={styles.list}>
           {transactions.map((txn) => {
             const isInflow = (txn.inflow ?? 0) > 0;
             const amount = isInflow ? txn.inflow : txn.outflow;
 
             return (
-              <div key={txn.id} className={styles.transactionItem}>
-                <div
-                  className={`${styles.transactionIcon} ${
-                    isInflow ? styles.inflow : styles.outflow
-                  }`}
-                >
-                  {isInflow ? (
-                    <ArrowDownRight size={18} />
-                  ) : (
-                    <ArrowUpRight size={18} />
-                  )}
+              <div key={txn.id} className={styles.row}>
+                <span className={`${styles.directionIcon} ${isInflow ? styles.inflowIcon : ''}`}>
+                  {isInflow ? <ArrowDownLeft size={16} /> : <ArrowUpRight size={16} />}
+                </span>
+                <div className={styles.rowBody}>
+                  <span className={styles.payee}>{txn.payeeName || 'Unknown payee'}</span>
+                  <span className={styles.category}>{txn.categoryName || 'Uncategorized'}</span>
                 </div>
-                <div className={styles.transactionDetails}>
-                  <div className={styles.payeeName}>
-                    {txn.payeeName || 'Unknown Payee'}
-                  </div>
-                  <div className={styles.categoryDate}>
-                    <span>{txn.categoryName || 'Uncategorized'}</span>
-                    <span>•</span>
-                    <span>{formatDate(txn.date)}</span>
-                  </div>
-                </div>
-                <div
-                  className={`${styles.transactionAmount} ${
-                    isInflow ? styles.inflow : styles.outflow
-                  }`}
-                >
-                  {isInflow ? '+' : '-'}{formatCurrency(amount ?? 0)}
+                <div className={styles.rowMeta}>
+                  <span className={`${styles.amount} ${isInflow ? styles.amountInflow : ''}`}>
+                    {isInflow ? '+' : '-'}{formatCurrency(amount ?? 0)}
+                  </span>
+                  <time className={styles.date}>{formatShortDate(txn.date)}</time>
                 </div>
               </div>
             );

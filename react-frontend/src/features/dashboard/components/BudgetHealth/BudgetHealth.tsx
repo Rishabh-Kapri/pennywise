@@ -1,77 +1,80 @@
 import { useAppSelector } from '@/app/hooks';
 import { selectBudgetHealth } from '../../store/dashboardSlice';
-import { ActivityIcon as Activity } from '@phosphor-icons/react';
+import { Heartbeat } from '@phosphor-icons/react';
+import type { CategoryHealth } from '../../types';
+import { formatCurrency } from '../../utils';
 import styles from './BudgetHealth.module.css';
 
-const formatCurrency = (amount: number): string => {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(Math.abs(amount));
+const STATUS_ORDER: Record<CategoryHealth['status'], number> = {
+  danger: 0,
+  warning: 1,
+  healthy: 2,
+};
+
+const statusClass = (status: CategoryHealth['status']) => {
+  if (status === 'danger') return styles.danger;
+  if (status === 'warning') return styles.warning;
+  return styles.healthy;
 };
 
 export default function BudgetHealth() {
   const budgetHealth = useAppSelector(selectBudgetHealth);
 
-  // Show categories that need attention (warning or danger first)
-  const attentionCategories = [...budgetHealth.categories]
-    .filter((c) => c.status === 'danger' || c.status === 'warning')
-    .slice(0, 5);
+  const categories = [...budgetHealth.categories]
+    .sort((a, b) =>
+      STATUS_ORDER[a.status] !== STATUS_ORDER[b.status]
+        ? STATUS_ORDER[a.status] - STATUS_ORDER[b.status]
+        : b.percentUsed - a.percentUsed,
+    )
+    .slice(0, 6);
 
   return (
     <div className={styles.container}>
       <div className={styles.header}>
         <h2 className={styles.title}>
-          <Activity size={20} className={styles.titleIcon} />
-          Budget Health
+          <Heartbeat size={18} />
+          Budget health
         </h2>
       </div>
 
-      {/* Summary Cards */}
-      <div className={styles.summaryCards}>
-        <div className={`${styles.summaryCard} ${styles.healthy}`}>
-          <div className={styles.summaryCount}>{budgetHealth.healthyCount}</div>
-          <div className={styles.summaryLabel}>On Track</div>
-        </div>
-        <div className={`${styles.summaryCard} ${styles.warning}`}>
-          <div className={styles.summaryCount}>{budgetHealth.warningCount}</div>
-          <div className={styles.summaryLabel}>Nearing Limit</div>
-        </div>
-        <div className={`${styles.summaryCard} ${styles.danger}`}>
-          <div className={styles.summaryCount}>{budgetHealth.dangerCount}</div>
-          <div className={styles.summaryLabel}>Over Budget</div>
-        </div>
+      <div className={styles.summaryRow}>
+        <span className={`${styles.summaryChip} ${styles.healthy}`}>
+          <span className={styles.summaryDot} />
+          {budgetHealth.healthyCount} healthy
+        </span>
+        <span className={`${styles.summaryChip} ${styles.warning}`}>
+          <span className={styles.summaryDot} />
+          {budgetHealth.warningCount} near limit
+        </span>
+        <span className={`${styles.summaryChip} ${styles.danger}`}>
+          <span className={styles.summaryDot} />
+          {budgetHealth.dangerCount} over
+        </span>
       </div>
 
-      {/* Categories Needing Attention */}
-      {attentionCategories.length > 0 ? (
+      {categories.length > 0 ? (
         <div className={styles.categoryList}>
-          {attentionCategories.map((category) => (
-            <div key={category.id} className={styles.categoryItem}>
-              <div
-                className={`${styles.statusIndicator} ${styles[category.status]}`}
-              />
-              <span className={styles.categoryName}>{category.name}</span>
-              <span
-                className={`${styles.categoryRemaining} ${
-                  category.remaining >= 0 ? styles.positive : styles.negative
-                }`}
-              >
-                {category.remaining >= 0
-                  ? `${formatCurrency(category.remaining)} left`
-                  : `${formatCurrency(category.remaining)} over`}
-              </span>
+          {categories.map((category) => (
+            <div key={category.id} className={styles.categoryRow}>
+              <div className={styles.categoryTopLine}>
+                <span className={styles.categoryName}>{category.name}</span>
+                <span
+                  className={`${styles.categoryAmount} ${category.remaining < 0 ? styles.amountOver : ''}`}
+                >
+                  {formatCurrency(category.remaining)} {category.remaining < 0 ? 'over' : 'left'}
+                </span>
+              </div>
+              <div className={`${styles.meterTrack} ${statusClass(category.status)}`}>
+                <div
+                  className={styles.meterFill}
+                  style={{ width: `${Math.max(category.percentUsed, 2)}%` }}
+                />
+              </div>
             </div>
           ))}
         </div>
       ) : (
-        <div className={styles.emptyState}>
-          {budgetHealth.categories.length > 0
-            ? '✨ All categories are on track!'
-            : 'No budget data for this month yet.'}
-        </div>
+        <div className={styles.emptyState}>No budgeted categories this month</div>
       )}
     </div>
   );

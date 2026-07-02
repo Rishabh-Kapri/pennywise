@@ -5,6 +5,7 @@ import { fetchAllCategoryGroups, fetchInflowAmount } from '@/features';
 import type { AppDispatch, RootState } from '.';
 import { fetchAllPayees } from '@/features/payees/store/payeeSlice';
 import {
+    fetchAllCategories,
   fetchCategoryById,
   updateCategoryBudget,
 } from '@/features/category/store/categorySlice';
@@ -27,6 +28,7 @@ export const dataFetchMiddleware: Middleware =
       dispatch(fetchAllAccounts());
       dispatch(fetchAllTransaction());
       dispatch(fetchAllCategoryGroups(month));
+      dispatch(fetchAllCategories());
       dispatch(fetchInflowAmount());
       dispatch(fetchAllPayees());
       dispatch(fetchAllLoanMetadata());
@@ -43,6 +45,7 @@ export const dataFetchMiddleware: Middleware =
       dispatch(fetchAllAccounts());
       dispatch(fetchAllTransaction());
       dispatch(fetchAllCategoryGroups(month));
+      dispatch(fetchAllCategories());
       dispatch(fetchInflowAmount());
       dispatch(fetchAllPayees());
       dispatch(fetchAllLoanMetadata());

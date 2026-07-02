@@ -8,7 +8,7 @@ import { selectSelectedMonth } from '@/features/budget';
 import { useEffect, useRef, useState } from 'react';
 
 interface Props {
-  triggerRef: React.RefObject<HTMLDivElement | null>;
+  triggerRef: React.RefObject<HTMLElement | null>;
   isOpen: boolean;
   categoryId: string;
   categoryName: string;
