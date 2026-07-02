@@ -10,7 +10,7 @@
 
 .heading {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 1rem;
 }
@@ -18,68 +18,59 @@
 .heading h1 {
   margin: 0;
   color: var(--color-text);
-  font-size: clamp(2rem, 4vw, 3.25rem);
-  letter-spacing: -0.06em;
+  font-size: 1.4rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
 }
 
 .heading p {
   color: var(--color-text-secondary);
-  margin: 0.25rem 0 0;
-}
-
-.kicker {
-  color: var(--color-primary-light);
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.countBadge,
-.summaryCard {
-  border: 1px solid var(--color-border-muted);
-  background: color-mix(in srgb, var(--color-surface) 88%, transparent);
-  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+  font-weight: 500;
+  margin: 0.15rem 0 0;
 }
 
 .countBadge {
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
   border-radius: 999px;
-  padding: 0.5rem 0.85rem;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.9rem;
+  font-weight: 600;
   white-space: nowrap;
 }
 
 .summaryGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.75rem;
+  gap: 1rem;
 }
 
 .summaryCard {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 0.2rem 0.65rem;
-  border-radius: 0.9rem;
-  padding: 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 1.1rem 1.25rem;
+  background: var(--color-surface);
+  border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  border-radius: 0.75rem;
+}
+
+.summaryCard > span {
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  font-weight: 500;
 }
 
 .summaryCard strong {
   color: var(--color-text);
-  font-size: 1.1rem;
-  font-weight: 700;
-}
-
-.summaryIcon {
-  grid-row: span 2;
-  width: 2.25rem;
-  height: 2.25rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid color-mix(in srgb, var(--color-primary) 45%, var(--color-border-muted));
-  border-radius: 0.75rem;
-  background: color-mix(in srgb, var(--color-primary) 22%, transparent);
-  color: var(--color-primary-light);
+  font-size: 1.5rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
 }
 
 .budgetPanel {
@@ -164,8 +155,8 @@
   }
 
   .heading h1 {
-    font-size: 2rem;
-    line-height: 1;
+    font-size: 1.3rem;
+    line-height: 1.3;
   }
 
   .heading p {
@@ -184,15 +175,12 @@
   }
 
   .summaryCard {
-    min-height: 5.2rem;
     padding: 0.95rem 1rem;
-    border-radius: 1rem;
-    background: transparent;
   }
 
   .summaryCard strong {
     overflow: hidden;
-    font-size: 1.05rem;
+    font-size: 1.3rem;
     text-overflow: ellipsis;
     white-space: nowrap;
   }

@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react';
 import { useHeader } from '../../../context/HeaderContext';
 import { DateSelector, Skeleton } from '@/components/common';
 import styles from './Budget.module.css';
-import { CheckIcon as Check, CurrencyCircleDollarIcon as CircleDollarSign, StackIcon as Layers3, WalletIcon as WalletCards } from '@phosphor-icons/react';
+import { CheckIcon as Check } from '@phosphor-icons/react';
 import { CategoryGroup } from '@/features/category';
 import { useAppSelector } from '@/app/hooks';
 import {
@@ -20,6 +20,12 @@ interface BudgetProps {
   inflowAmount: number;
   inflowLoading: LoadingState;
 }
+
+const formatSummaryAmount = (value: number): string =>
+  getCurrencyLocaleString(value || 0, 'INR', 'en-IN', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
 
 const BudgetHeaderContent = ({ inflowAmount, inflowLoading }: BudgetProps) => (
   <div className={styles.container}>
@@ -96,7 +102,6 @@ export default function Budget() {
     <section className={styles.page}>
       <div className={styles.heading}>
         <div>
-          <span className={styles.kicker}>Monthly plan</span>
           <h1>Budget</h1>
           <p>Assign your inflow, track category activity, and keep available money in view.</p>
         </div>
@@ -105,19 +110,16 @@ export default function Budget() {
 
       <div className={styles.summaryGrid}>
         <div className={styles.summaryCard}>
-          <span className={styles.summaryIcon}><CircleDollarSign size={18} /></span>
           <span>Assigned</span>
-          <strong>{getCurrencyLocaleString(budgetSummary.assigned)}</strong>
+          <strong>{formatSummaryAmount(budgetSummary.assigned)}</strong>
         </div>
         <div className={styles.summaryCard}>
-          <span className={styles.summaryIcon}><WalletCards size={18} /></span>
           <span>Activity</span>
-          <strong>{getCurrencyLocaleString(budgetSummary.activity)}</strong>
+          <strong>{formatSummaryAmount(budgetSummary.activity)}</strong>
         </div>
         <div className={styles.summaryCard}>
-          <span className={styles.summaryIcon}><Layers3 size={18} /></span>
           <span>Available</span>
-          <strong>{getCurrencyLocaleString(budgetSummary.available)}</strong>
+          <strong>{formatSummaryAmount(budgetSummary.available)}</strong>
         </div>
       </div>
 

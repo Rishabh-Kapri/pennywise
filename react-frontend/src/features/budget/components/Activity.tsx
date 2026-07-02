@@ -18,11 +18,16 @@ function ActivityInfoItem({ title, amount }: ActivityInfoItemProps) {
   );
 }
 
+const formatAmount = (value: number): string =>
+  getCurrencyLocaleString(value || 0, 'INR', 'en-IN', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+
 export function Activity() {
   const { allCategoryGroups: groups } = useAppSelector(selectCategoryGroups);
   const month = useAppSelector(selectSelectedMonth);
   const localeMonth = getLocaleDate(month, { month: 'long' });
-  console.log('Rendering Activity component with groups:', groups, 'and month:', month, 'localeMonth:', localeMonth);
 
   const totalAssigned = groups.reduce(
     (sum, group) => sum + (group.budgeted?.[month] ?? 0),
@@ -45,16 +50,16 @@ export function Activity() {
       <div className={styles.budgetInfo}>
         <div className={styles.header}>
           <div>Total Available</div>
-          <div>{getCurrencyLocaleString(totalAvailable)}</div>
+          <div>{formatAmount(totalAvailable)}</div>
         </div>
         <hr className={styles.divider} />
         <ActivityInfoItem
           title="Total Assigned"
-          amount={getCurrencyLocaleString(totalAssigned)}
+          amount={formatAmount(totalAssigned)}
         />
         <ActivityInfoItem
           title="Total Activity"
-          amount={getCurrencyLocaleString(totalActivity)}
+          amount={formatAmount(totalActivity)}
         />
       </div>
     </div>
