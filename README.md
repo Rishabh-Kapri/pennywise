@@ -1,4 +1,6 @@
-# Pennywise
+[#](#) Pennywise
+
+Live Demo: [dev.pennywise.cloud](https://dev.pennywise.cloud)
 
 **A self-hosted personal finance app that reads your bank emails and turns them into a clean, categorized budget — automatically, using AI that runs on your own hardware.**
 
@@ -58,6 +60,15 @@ Cipher (the AI service) classifies every extracted transaction through a strict 
 Every prediction is recorded with its source (`RULE` / `VECTOR` / `LLM` / `MANUAL`), confidence, and any later user correction — so the pipeline's accuracy is measurable, and corrections feed straight back into the vector memory as ground truth.
 
 The details (schemas, thresholds, the "Megamart problem" of super-apps spanning categories) are in [docs/cipher.md](docs/cipher.md).
+
+## Supported banks
+
+| Bank | Status | Alert types exercised |
+|------|--------|-----------------------|
+| HDFC Bank | ✅ Tested end-to-end | UPI debits/credits (VPA), credit-card spends, forex transactions, e-mandate/auto-pay confirmations, InstaAlert notifications |
+| Others | Untested | Should extract cleanly — see below |
+
+There are no per-bank templates or keyword filters in the pipeline: every new email is handed to the extraction LLM, and whatever comes back without an amount, account, and date is discarded as "not a transaction". So alert emails from other banks are expected to work with zero new code — at most, the few-shot examples in the extraction prompt (`ExtractionPrompt` in `backend/cipher/internal/client/ollama.go`) may need a nudge for an unusual template. If you try another bank, open an issue with a redacted sample email.
 
 ## Ask your budget anything
 

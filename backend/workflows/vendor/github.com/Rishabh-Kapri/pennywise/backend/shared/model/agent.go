@@ -46,7 +46,7 @@ type ChatRequest struct {
 	MaxTokens   int
 	Metadata    map[string]string
 	Stream      bool
-	Format      string // "json" forces JSON output (Ollama only for now)
+	Format      any // "json" forces JSON output; a JSON-schema map constrains the output shape via structured outputs (Ollama only for now)
 }
 
 type ChatResponse struct {

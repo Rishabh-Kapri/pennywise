@@ -93,9 +93,9 @@ func (c *ollamaClient) toOllamaReq(req sharedModel.ChatRequest) ollamaChatReq {
 		options = nil
 	}
 
-	var format any
-	if req.Format == "json" {
-		format = "json"
+	format := req.Format
+	if s, ok := format.(string); ok && s != "json" {
+		format = nil
 	}
 
 	return ollamaChatReq{
@@ -210,7 +210,10 @@ func toOllamaStopReason(res ollamaChatRes) sharedModel.StopReason {
 
 func (c *ollamaClient) Chat(ctx context.Context, req sharedModel.ChatRequest) (*sharedModel.ChatResponse, error) {
 	log := logger.Logger(ctx)
-	log.Info("ollama", "req", c.toOllamaReq(req))
+
+	reqJson, err := json.Marshal(c.toOllamaReq(req))
+	log.Info("ollama", "req", string(reqJson))
+
 	res, err := transport.Post[ollamaChatRes](ctx, c.httpClient, ollamaChatPath, nil, c.toOllamaReq(req))
 	if err != nil {
 		log.Error("error while sending /api/chat", "error", err)

@@ -16,7 +16,7 @@ Every prediction is recorded in `cipher_predictions` with its source (`RULE`/`VE
 - `POST /api/predict`, `POST /api/corrections`
 - `POST /api/email/normalize`, `POST /api/email/extract`
 - `POST /api/embeddings/transaction`
-- `POST /api/workflows/parsed-to-transaction`, `POST /api/workflows/:workflowId/retry-predict` (nudge a parked Temporal workflow)
+- `POST /api/workflows/parsed-to-transaction`, `POST /api/workflows/:workflowId/retry-predict`, `POST /api/workflows/:workflowId/retry-parse` (nudge a Temporal workflow parked at the predict/parse step)
 - `/api/agent/runs` — agent run execution (dispatched from `go-pennywise-api`, which owns persistence)
 
 Agent streaming deltas are published to the Redis stream `pubsub`; the Go API rebroadcasts them to budget-scoped websocket clients.
