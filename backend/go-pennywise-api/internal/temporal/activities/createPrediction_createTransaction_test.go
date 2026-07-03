@@ -63,6 +63,10 @@ func (f *fakePredictionService) DeleteById(context.Context, uuid.UUID) error {
 	return nil
 }
 
+func (f *fakePredictionService) GetAllCipherPredictions(context.Context) ([]model.CipherPredictionRecord, error) {
+	return nil, nil
+}
+
 func (f *fakePredictionService) CreateCipherPrediction(
 	ctx context.Context,
 	p model.CipherPredictionRecord,

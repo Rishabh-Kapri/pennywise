@@ -1,6 +1,7 @@
 import { Check, CaretDown as ChevronDown, Plus, Wallet as WalletCards } from '@phosphor-icons/react';
 import { useEffect, useRef, useState } from 'react';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
+import { selectIsDemoUser } from '@/features/auth/store';
 import {
   selectAllBudgets,
   selectSelectedBudget,
@@ -15,6 +16,7 @@ export default function BudgetSwitcher() {
   const navigate = useNavigate();
   const budgets = useAppSelector(selectAllBudgets);
   const selectedBudget = useAppSelector(selectSelectedBudget);
+  const isDemoUser = useAppSelector(selectIsDemoUser);
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -105,7 +107,11 @@ export default function BudgetSwitcher() {
           <button
             type="button"
             className={styles.createOption}
+            disabled={isDemoUser}
+            title={isDemoUser ? 'Creating budgets is disabled for the demo account' : undefined}
+            style={isDemoUser ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
             onClick={() => {
+              if (isDemoUser) return;
               setIsOpen(false);
               navigate('/budget/new');
             }}>

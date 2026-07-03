@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
+import { selectIsDemoUser } from '@/features/auth/store';
 import { Check, CaretRight as ChevronRight } from '@phosphor-icons/react';
 import {
   createBudget,
@@ -36,6 +37,14 @@ export default function BudgetOnboarding() {
   );
 
   const isCreating = loading === LoadingState.PENDING;
+
+  const isDemoUser = useAppSelector(selectIsDemoUser);
+  useEffect(() => {
+    // budget creation is disabled for the shared demo account
+    if (isDemoUser && budgets.length > 0) {
+      navigate('/', { replace: true });
+    }
+  }, [isDemoUser, budgets.length, navigate]);
 
   const toggleGroup = (groupName: string) => {
     setSelectedGroups((current) =>

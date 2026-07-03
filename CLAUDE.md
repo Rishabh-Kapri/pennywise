@@ -2,14 +2,18 @@
 
 ## Project Overview
 
-Pennywise is a personal finance/budgeting app with ML-powered transaction classification from email parsing. Monorepo with 5 services:
+Pennywise is a personal finance/budgeting app with AI-powered transaction classification from email parsing. Monorepo services (each directory has its own README.md):
 
-- **go-pennywise-api** (`backend/go-pennywise-api`): Core REST API (Gin, PostgreSQL/pgx). Handler → service → repository layers.
-- **go-gmail** (`backend/go-gmail`): Gmail Pub/Sub watcher, parses bank emails with regex, creates transactions.
-- **python-mlp** (`backend/python-mlp`): MLP + sentence-transformer models for payee/category/account prediction.
-- **frontend** (`frontend`): Angular 17 + NGXS state management.
+- **go-pennywise-api** (`backend/go-pennywise-api`): Core REST API (Gin, PostgreSQL/pgx). Handler → service → repository layers (repos in `backend/shared/db`).
+- **cipher** (`backend/cipher`): Classification pipeline (Ollama extraction → payee rules → pgvector → LLM fallback) + budget agent runtime.
+- **go-gmail** (`backend/go-gmail`): Gmail Pub/Sub watcher, parses bank emails with regex, starts Temporal ingestion workflows.
+- **workflows** (`backend/workflows`): Temporal worker + workflow definitions for email → transaction ingestion.
+- **shared** (`backend/shared`): Shared Go module: repositories, models, transport, middleware, logging.
 - **react-frontend** (`react-frontend`): React 19 + Vite + Redux Toolkit (active development).
-- **file-parser** (`backend/file-parser`): Clojure service for bulk transaction uploads.
+- **android-frontend** (`android-frontend`): Expo React Native client mirroring react-frontend.
+- **frontend** (`frontend`): Angular 17 + NGXS state management (legacy/maintenance).
+- **python-mlp** (`backend/python-mlp`): Deprecated former prediction service, replaced by cipher.
+- **file-parser** (`backend/file-parser`): Experimental Clojure service for bulk transaction uploads.
 
 ## Build & Test Commands
 
@@ -21,15 +25,19 @@ cd backend/go-pennywise-api && go test -run TestName ./internal/service
 cd backend/go-pennywise-api && go fmt ./... && go vet ./...
 
 # Go Gmail
-cd backend/go-gmail && go build
+cd backend/go-gmail && go build ./cmd
 cd backend/go-gmail && go test ./...
 cd backend/go-gmail && go test -run TestName ./pkg/parser
 cd backend/go-gmail && go fmt ./... && go vet ./...
 
-# React Frontend
+# Cipher / Workflows / Shared
+cd backend/cipher && go build ./cmd/api && go test ./...
+cd backend/workflows && go build ./cmd/worker && go test ./...
+cd backend/shared && go test ./...
+
+# React Frontend (no test suite; build type-checks)
 cd react-frontend && npm run build
-cd react-frontend && npm test
-cd react-frontend && npm test -- filename
+cd react-frontend && npm run lint
 
 # Angular Frontend
 cd frontend && npm run build
@@ -42,7 +50,7 @@ docker-compose up --build
 
 ## Key Data Flow
 
-1. Gmail push → `go-gmail` parses email (regex in `pkg/parser/email.go`) → calls `python-mlp /predict` → creates transaction via `go-pennywise-api`
+1. Gmail push → `go-gmail` starts Temporal `EmailToTransactionWorkflow` and its `FetchEmailData` activity returns raw email bodies → cipher `ParseEmailData` extracts merchant/amount/account via local LLM (Ollama; the old regex parser in `pkg/parser/email.go` is deprecated, legacy `pkg/runner` path only) → cipher `PredictionActivity` classifies → transaction + cipher prediction created via `go-pennywise-api` activities
 2. All API calls require `X-Budget-ID` header — extracted via `utils.GetBudgetId(c)` in handlers
 3. Internal service calls use shared request metadata headers (`X-Correlation-ID`, `X-Caller-Service`, `X-Origin-Service`, `X-Internal-Token`) and are trusted only after shared internal-request verification marks context as verified.
 4. Temporal workflow/activity hops propagate `correlation_id` and `origin_service` through `backend/shared/temporal/propagator.go`; each activity restamps its local service name before downstream HTTP calls.
@@ -76,9 +84,9 @@ docker-compose up --build
 - Explicit interfaces for all models
 
 ### Cross-Service Communication
-- `go-gmail` → `python-mlp`: HTTP POST to `/predict` with `{type, email_text, amount}`
-- `go-gmail` → `go-pennywise-api`: HTTP calls via `pkg/pennywise-api/`
+- `go-gmail` → Temporal → `cipher` → `go-pennywise-api`: email ingestion runs through the `EmailToTransactionWorkflow`; classification is cipher's `PredictionActivity`
 - Go services → Go services: shared HTTP transport injects canonical correlation/caller/origin headers plus `X-Internal-Token` from context
+- `cipher` → frontends: agent stream deltas via Redis stream `pubsub`, rebroadcast by the API's websocket hub
 - Frontend → API: REST with budget ID in header interceptor
 
 ## Key Files
@@ -86,7 +94,7 @@ docker-compose up --build
 | Purpose | Path |
 |---------|------|
 | API routes | `backend/go-pennywise-api/cmd/api/main.go` |
-| Email parsing | `backend/go-gmail/pkg/parser/email.go` |
+| Email extraction (local LLM) | `backend/cipher/internal/client/ollama.go` (`ExtractEmailData`) |
 | Transaction model (Go) | `backend/go-pennywise-api/internal/model/transaction.go` |
 | Transaction model (TS) | `frontend/src/app/models/transaction.model.ts` |
 | React API client | `react-frontend/src/utils/api.ts` |
@@ -100,8 +108,10 @@ After completing any new feature, bug fix, or task, update this CLAUDE.md file i
 
 ## Environment
 
-- **Database**: PostgreSQL via pgx (`internal/db/db.go`)
-- **Auth**: None currently. Google OAuth planned.
+- **Database**: PostgreSQL via pgx (`internal/db/db.go`). Migrations via goose (`make migrate-up` in `backend/go-pennywise-api`).
+- **Auth**: Google OAuth (auth-code flow) + JWT. `POST /api/auth/google` issues 15-min access / 30-day refresh tokens; `AuthMiddleware` accepts Bearer header, `access_token` cookie, or `X-API-Key`. Budget ownership enforced by `BudgetIdMiddleware` (`budgets.user_id` must match the authenticated `auth_users` row).
+- **Demo mode**: `DEMO_MODE=true` (API) enables `POST /api/auth/demo` — logs into a persistent seeded demo user (`demo@pennywise.local`, budget + categories + accounts + ~4 months of transactions + payee rules + cipher predictions across all sources, seeded idempotently in a single DB transaction on first login by `internal/service/demo.go`/`demo_seed.go`). Frontend shows a "Try Demo" login button when `VITE_DEMO_MODE=true`; for the demo user (`selectIsDemoUser` in `features/auth/store/authSlice.ts`) AI config editing and budget creation are disabled. No Google account needed.
+- **API port**: `PORT` env var (default 5151).
 - **Deployment**: Docker Compose on self-hosted Unraid, deployed via GitHub Actions CI. Secondary: Railway.app for Go API.
 - **Env files**: `backend/go-gmail/.env`, `backend/go-pennywise-api/.env`, `backend/cipher/.env`
 - **Internal service auth**: Go services now expect a shared `INTERNAL_AUTH_TOKEN` for verified service-to-service HTTP calls

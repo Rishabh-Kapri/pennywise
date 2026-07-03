@@ -5,6 +5,7 @@ import type { CipherPrediction } from '@/features/transactions/types/transaction
 import settingsStyles from './Settings.module.css';
 import styles from './AISettings.module.css';
 import { useAppSelector } from '@/app/hooks';
+import { selectIsDemoUser } from '@/features/auth/store';
 import { Popover } from '@/components/common/Popover/Popover';
 
 /* ────────────────────────────────────────────────────────────── */
@@ -358,6 +359,7 @@ function CustomSelect({ value, options, onChange, placeholder }: { value: string
 }
 
 function AIConfigSection({ predictions }: { predictions: CipherPrediction[] }) {
+  const isDemoUser = useAppSelector(selectIsDemoUser);
   const ruleConf = computeAvgConfidenceBySource(predictions, 'RULE');
   const vectorConf = computeAvgConfidenceBySource(predictions, 'VECTOR');
   const llmConf = computeAvgConfidenceBySource(predictions, 'LLM');
@@ -403,7 +405,11 @@ function AIConfigSection({ predictions }: { predictions: CipherPrediction[] }) {
         <div className={settingsStyles.cardHeader} style={{ padding: 0, border: 'none', margin: 0, paddingBottom: '1rem' }}>
           <h2>AI Configuration</h2>
         </div>
-        {!isEditing ? (
+        {isDemoUser ? (
+          <button className={styles.editButton} disabled title="Editing the AI configuration is disabled for the demo account" style={{ opacity: 0.5, cursor: 'not-allowed' }}>
+            Edit Config
+          </button>
+        ) : !isEditing ? (
           <button className={styles.editButton} onClick={handleEdit}>Edit Config</button>
         ) : (
           <div className={styles.actionButtonGroup}>
@@ -589,7 +595,7 @@ function APIKeysSection() {
   useEffect(() => {
     apiClient
       .get<APIKey[]>('keys')
-      .then(setKeys)
+      .then((res) => setKeys(res ?? []))
       .catch(() => setKeys([]))
       .finally(() => setLoading(false));
   }, []);
@@ -607,7 +613,7 @@ function APIKeysSection() {
         // Reload keys list
         apiClient
           .get<APIKey[]>('keys')
-          .then(setKeys)
+          .then((res) => setKeys(res ?? []))
           .catch(() => { });
       } catch (err) {
         console.error('Failed to create API key:', err);

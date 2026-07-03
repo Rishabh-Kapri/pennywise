@@ -3,4 +3,5 @@ export const config = {
   isDevelopment: import.meta.env.DEV,
   isProduction: import.meta.env.PROD,
   mode: import.meta.env.MODE,
+  demoMode: import.meta.env.VITE_DEMO_MODE === 'true',
 } as const;

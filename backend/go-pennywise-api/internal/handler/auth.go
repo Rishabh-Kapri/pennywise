@@ -71,13 +71,12 @@ func (h *authHandler) RefreshToken(c *gin.Context) {
 
 	response, err := h.service.RefreshToken(c.Request.Context(), req.RefreshToken)
 	logger.Logger(c.Request.Context()).Debug("refresh token response", "response", response, "error", err)
-	logger.Logger(c.Request.Context()).Warn("not implemented")
-	c.SetCookie("access_token", response.AccessToken, 3600, "/", h.config.Domain, false, true)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
+	c.SetCookie("access_token", response.AccessToken, 3600, "/", h.config.Domain, false, true)
 	c.JSON(http.StatusOK, response)
 	// c.JSON(http.StatusOK, "ok")
 }

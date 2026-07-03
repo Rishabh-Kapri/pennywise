@@ -8,17 +8,18 @@ Pennywise is a personal finance/budgeting monorepo. The repo currently contains 
 
 | Service | Path | Status | Responsibility |
 |---------|------|--------|----------------|
-| Go API | `backend/go-pennywise-api` | Active | Core REST API (Gin + PostgreSQL), auth, budgets, transactions, tags, loan metadata, websocket fanout |
-| Gmail watcher | `backend/go-gmail` | Active | Gmail Pub/Sub ingestion, email parsing, MLP prediction calls, transaction/prediction creation |
-| Python MLP | `backend/python-mlp` | Active | `/predict` inference and retraining/augmentation endpoints |
-| Cipher | `backend/cipher` | Active but partial integration | Prediction orchestrator (Ollama + pgvector + MLP/LLM fallback), corrections, embedding backfill |
-| Shared Go module | `backend/shared` | Active | Common logging, context propagation, transport abstraction, DB base repository |
-| Temporal workflows | `backend/workflows` | Experimental | Workflow definitions and worker scaffolding |
+| Go API | `backend/go-pennywise-api` | Active | Core REST API (Gin + PostgreSQL), auth (incl. demo mode), budgets, transactions, tags, loan metadata, agent run persistence, websocket fanout |
+| Gmail watcher | `backend/go-gmail` | Active | Gmail Pub/Sub ingestion, email parsing, starts Temporal `EmailToTransactionWorkflow`, runs Gmail activity worker |
+| Cipher | `backend/cipher` | Active | Classification pipeline (Ollama extraction → payee rules → pgvector → LLM fallback), corrections, agent runtime, embedding backfill |
+| Shared Go module | `backend/shared` | Active | Repositories, models, logging, context propagation, transport abstraction, internal auth middleware, Temporal propagator |
+| Temporal workflows | `backend/workflows` | Active | Worker + workflow definitions (`EmailToTransactionWorkflow`, `ParsedEmailToTransactionWorkflow`, `RefreshGmailWatchWorkflow`) |
 | React frontend | `react-frontend` | Active development | Main web app (React 19 + Redux Toolkit + Vite) |
+| Android app | `android-frontend` | Active development | Expo React Native client mirroring `react-frontend` |
 | Angular frontend | `frontend` | Legacy/maintenance | Older app (Angular 17 + NGXS + Firestore remnants) |
+| Python MLP | `backend/python-mlp` | Deprecated | Former `/predict` inference path, replaced by Cipher |
 | File parser | `backend/file-parser` | Experimental | Clojure service scaffold for bulk upload flows |
 
-`backend/setu` currently exists as a placeholder module.
+Each service directory has its own `README.md` with commands, routes, and env details.
 
 ## High-level architecture
 
@@ -28,14 +29,18 @@ Pennywise is a personal finance/budgeting monorepo. The repo currently contains 
 Gmail Push (Pub/Sub)
         |
         v
-    go-gmail
+    go-gmail  -- parses email, starts Temporal EmailToTransactionWorkflow
         |
-        | parse email + call /predict (python-mlp)
         v
- go-pennywise-api (PostgreSQL)
+ workflows worker (PennywiseTaskQueue)
+        |
+        | cipher PredictionActivity (CipherActivitiesTaskQueue):
+        | Ollama extraction -> payee rules -> pgvector -> LLM fallback
+        v
+ go-pennywise-api activities create transaction + cipher prediction (PostgreSQL)
         ^
         |
- React frontend / Angular frontend
+ React frontend / Android app / Angular frontend
 ```
 
 ### Additional AI flow (newer path)
@@ -59,12 +64,12 @@ budget-scoped browser websocket clients
 
 ## Key data and auth flow
 
-1. **React auth**: Google credential -> `POST /api/auth/google` -> access + refresh tokens.
+1. **React auth**: Google credential -> `POST /api/auth/google` -> access + refresh tokens. With `DEMO_MODE=true`, `POST /api/auth/demo` logs into a persistent seeded demo user (`demo@pennywise.local`) — first login seeds a full budget (transactions, payee rules, cipher predictions) in one DB transaction via `internal/service/demo.go`.
 2. **Internal service auth**: service-to-service HTTP calls propagate `X-Correlation-ID`, `X-Caller-Service`, `X-Origin-Service`, `X-Budget-ID`, and `X-Internal-Token`; shared middleware verifies internal requests and sets `VerifiedInternal` in context.
 3. **API auth middleware**: accepts `Authorization: Bearer ...` or `X-API-Key` for user traffic, and trusts only shared `VerifiedInternal` context for internal bypass.
 4. **Budget scoping**: budget-scoped routes require `X-Budget-ID`; middleware verifies ownership for user traffic and trusts only verified internal requests for service traffic.
-5. **Gmail ingestion**: Pub/Sub event -> parser -> 3-step MLP prediction (account/payee/category) -> create transaction + prediction via API.
-6. **Prediction corrections**: transaction updates on MLP-sourced records update `predictions.has_user_corrected` fields in API service logic.
+5. **Gmail ingestion**: Pub/Sub event -> parser -> Temporal `EmailToTransactionWorkflow` -> cipher `PredictionActivity` -> create transaction + cipher prediction via API activities.
+6. **Prediction corrections**: transaction updates on predicted records update `has_user_corrected`/actual-ID fields (`predictions` and `cipher_predictions`) in API service logic and via cipher `POST /api/corrections`.
 7. **Agent streaming**: Cipher writes `eventName`, `budgetId`, and `data` fields to Redis stream `pubsub`; Go API reads new stream entries and broadcasts them to websocket clients scoped to the same budget.
 
 ## Build, test, lint
@@ -72,7 +77,7 @@ budget-scoped browser websocket clients
 | Component | Build/Run | Test | Lint/Format |
 |-----------|-----------|------|-------------|
 | Go API | `cd backend/go-pennywise-api && go build ./cmd/api` | `cd backend/go-pennywise-api && go test ./...` | `cd backend/go-pennywise-api && go fmt ./... && go vet ./...` |
-| Go Gmail | `cd backend/go-gmail && go build .` | `cd backend/go-gmail && go test ./...` | `cd backend/go-gmail && go fmt ./... && go vet ./...` |
+| Go Gmail | `cd backend/go-gmail && go build ./cmd` | `cd backend/go-gmail && go test ./...` | `cd backend/go-gmail && go fmt ./... && go vet ./...` |
 | Cipher | `cd backend/cipher && go build ./cmd/api` | `cd backend/cipher && go test ./...` | `cd backend/cipher && go fmt ./... && go vet ./...` |
 | Shared | - | `cd backend/shared && go test ./...` | `cd backend/shared && go fmt ./... && go vet ./...` |
 | Workflows | `cd backend/workflows && go build ./cmd/worker` | `cd backend/workflows && go test ./...` | `cd backend/workflows && go fmt ./... && go vet ./...` |
@@ -130,7 +135,7 @@ Each Go module has a local `Makefile` with common aliases such as `make run`, `m
 
 - Main operational path uses Pub/Sub + `runner.ProcessGmailHistoryId`.
 - Email parsing is regex-based in `pkg/parser/email.go`; extraction order matters (type before amount sign).
-- Predictions are currently 3 sequential calls to Python MLP (`account -> payee -> category`) with confidence gating.
+- Parsed emails are handed to the Temporal `EmailToTransactionWorkflow`; classification happens in cipher's `PredictionActivity`. `cmd/main.go` also runs the Gmail activity worker (`GmailActivitiesTaskQueue`).
 
 ### React frontend (`react-frontend`)
 
@@ -173,8 +178,9 @@ Each Go module has a local `Makefile` with common aliases such as `make run`, `m
 | Cipher agent streaming publisher | `backend/cipher/agent/runtime/agent.go` |
 | Shared transport abstraction | `backend/shared/transport/client.go` |
 | Shared HTTP transport implementation | `backend/shared/httpclient/transport.go` |
-- Shared internal request verifier | `backend/shared/middleware/internalRequestAuth.go` |
-- Shared Temporal propagator | `backend/shared/temporal/propagator.go` |
+| Shared internal request verifier | `backend/shared/middleware/internalRequestAuth.go` |
+| Shared Temporal propagator | `backend/shared/temporal/propagator.go` |
+| Demo mode seeding | `backend/go-pennywise-api/internal/service/demo.go`, `demo_seed.go` |
 | React app routes | `react-frontend/src/app/App.tsx` |
 | React API client | `react-frontend/src/utils/api.ts` |
 | React store | `react-frontend/src/app/store.ts` |
@@ -187,9 +193,9 @@ Each Go module has a local `Makefile` with common aliases such as `make run`, `m
 ### Common env files
 
 - `backend/go-pennywise-api/.env`: `DATABASE_URL`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `DOMAIN`, `INTERNAL_AUTH_TOKEN`, optional `REDIS_URL`
-- `backend/go-gmail/.env`: Gmail/PubSub credentials + `MLP_API`, `PENNYWISE_API`, Temporal host/port, `INTERNAL_AUTH_TOKEN`
-- `backend/cipher/.env`: `DATABASE_URL`, `OLLAMA_URL`, `MLP_API`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `AGENT_PROVIDER`, `PORT`, `INTERNAL_AUTH_TOKEN`, optional `REDIS_URL`
-- `react-frontend/.env*`: `VITE_API_URL`, `VITE_GOOGLE_CLIENT_ID`
+- `backend/go-gmail/.env`: Gmail/PubSub credentials + `PENNYWISE_SERVICE_URL`, `CIPHER_SERVICE_URL`, Temporal host/port, `INTERNAL_AUTH_TOKEN`
+- `backend/cipher/.env`: `DATABASE_URL`, `OLLAMA_URL`, `PENNYWISE_SERVICE_URL`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `AGENT_PROVIDER`, `PORT`, `INTERNAL_AUTH_TOKEN`, Temporal host/port, optional `REDIS_URL`
+- `react-frontend/.env*`: `VITE_API_URL`, `VITE_GOOGLE_CLIENT_ID`, `VITE_DEMO_MODE`
 
 `python-mlp` primarily uses runtime env vars (`PORT`, optional `VOLUME_DIR`) and data/model files.
 
@@ -205,18 +211,15 @@ Each Go module has a local `Makefile` with common aliases such as `make run`, `m
 
 ## Current caveats (important for agents)
 
-- `go-gmail/pkg/pennywise-api/service.go` currently hardcodes `X-Budget-ID`.
-- `cipher/internal/service/prediction.go` currently hardcodes a budget ID in `Predict` and does not yet use request budget header.
-- Temporal integration is partial:
-  - `go-gmail/main.go` registers workflow/activity but does not start worker run loop.
-  - `backend/workflows/cmd/worker/main.go` references `HelloWorldWorkflow` which is not present.
 - API embedding service (`internal/service/embedding.go`) is mostly stubbed.
-- React frontend calls `POST /auth/logout`, but logout endpoint is currently commented out in API routes.
-- `file-parser` and `setu` are not production-ready.
+- React frontend calls `POST /auth/logout`, but the logout endpoint is currently commented out in API routes (local state is cleared regardless).
+- Legacy Go seed migrations (00002/00003) fail on a fresh database; use `up` → `baseline` → `up` and create the pgvector extension first.
+- The AI Configuration card in React settings is display-only (local state, not yet persisted to the API).
+- `file-parser` is not production-ready.
 
 ## Testing snapshot
 
-- Go API tests are focused in service/repository/handler packages (notably transaction and loan metadata flows).
+- Go API tests are focused in service/repository/handler packages (notably transaction, loan metadata, and demo seeding flows).
 - Go Gmail has parser and API client tests.
 - Shared module has text-cleaning utility tests.
 - React frontend currently has no committed automated test suite.

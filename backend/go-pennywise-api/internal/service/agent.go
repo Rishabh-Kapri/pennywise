@@ -227,7 +227,7 @@ func (s *agentService) continueRun(
 		return nil
 	})
 	if err != nil {
-		log.Error("failed to create assistant conversation message", err)
+		log.Error("failed to create assistant conversation message", "error", err)
 		return
 	}
 

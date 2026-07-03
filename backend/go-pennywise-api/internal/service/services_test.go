@@ -977,6 +977,13 @@ func (m *svcCipherPredictionRepo) Create(ctx context.Context, tx pgx.Tx, p model
 	}
 	return nil, args.Error(1)
 }
+func (m *svcCipherPredictionRepo) GetAll(ctx context.Context, budgetID uuid.UUID) ([]model.CipherPredictionRecord, error) {
+	args := m.Called(ctx, budgetID)
+	if v := args.Get(0); v != nil {
+		return v.([]model.CipherPredictionRecord), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
 func (m *svcCipherPredictionRepo) GetByTransactionID(ctx context.Context, budgetID uuid.UUID, txnID uuid.UUID) (*model.CipherPredictionRecord, error) {
 	args := m.Called(ctx, budgetID, txnID)
 	if v := args.Get(0); v != nil {

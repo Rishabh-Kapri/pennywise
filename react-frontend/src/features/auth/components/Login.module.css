@@ -190,6 +190,38 @@
   height: 18px;
 }
 
+/* ─── Demo button (secondary outline variant) ─── */
+.demoButton {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  padding: 0.9rem 1rem;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 45%, transparent);
+  border-radius: 999px;
+  color: var(--color-primary);
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.demoButton:hover {
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  border-color: var(--color-primary);
+  transform: translateY(-2px);
+}
+
+.demoButton:active {
+  transform: scale(0.99);
+}
+
 /* ─── Error ─── */
 .error {
   margin-top: 1rem;
