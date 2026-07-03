@@ -146,6 +146,24 @@ const ExtractionPrompt = `You are a financial data extractor. You will receive e
 	Now process this input:
 	Input: `
 
+// ExtractionSchema is the Ollama structured-outputs JSON schema for ExtractionPrompt.
+// It grammar-constrains generation so the model can never reply with an empty
+// string or a bare array for non-transaction emails — every field is forced to
+// exist, and skips must use Shape B (skipped: true).
+var ExtractionSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"merchant":     map[string]any{"type": "string"},
+		"amount":       map[string]any{"type": "number"},
+		"date":         map[string]any{"type": "string"},
+		"time":         map[string]any{"type": "string"},
+		"account_card": map[string]any{"type": "string"},
+		"reasoning":    map[string]any{"type": "string"},
+		"skipped":      map[string]any{"type": "boolean"},
+	},
+	"required": []string{"merchant", "amount", "date", "time", "account_card", "reasoning", "skipped"},
+}
+
 // ExtractEmailData implements Phase 1 of the classification pipeline:
 // sends raw email text to a local SLM (Gemma via Ollama) in JSON mode
 // to extract structured {merchant, amount, account_card} from chaotic bank alerts.
