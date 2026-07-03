@@ -401,14 +401,22 @@ func (s *predictionService) ExtractEmailData(
 		Temperature: 0.0,
 		MaxTokens:   100000,
 		Stream:      false,
-		Format:      "json",
+		Format:      client.ExtractionSchema,
 	}
 	chatRes, err := lc.Chat(ctx, chatReq)
 	if err != nil {
 		return nil, err
 	}
-	if chatRes.Message.Content == nil || len(chatRes.Message.Content) == 0 {
-		return nil, errs.New(errs.CodeInternalError, "no content in response")
+	if len(chatRes.Message.Content) == 0 {
+		// The model replies with nothing for some non-transaction emails despite
+		// the prompt; treat it as a skip so the batch survives — retrying at
+		// temperature 0 would deterministically fail again.
+		log.Warn("empty extraction response, treating email as non-transaction", "emailText", text)
+		return &sharedModel.ExtractedEmailResponse{
+			EmailText: text,
+			Skipped:   true,
+			Reasoning: "extractor returned no content",
+		}, nil
 	}
 
 	extracted, err := utils.UnmarshalResponse[sharedModel.ExtractedEmailResponse](

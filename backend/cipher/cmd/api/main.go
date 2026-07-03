@@ -319,6 +319,7 @@ func main() {
 		budgetApi.POST("/corrections", predictionHandler.HandleCorrection)
 
 		api.POST("/workflows/:workflowId/retry-predict", workflowHandler.RetryPredict)
+		api.POST("/workflows/:workflowId/retry-parse", workflowHandler.RetryParse)
 		api.POST("/workflows/parsed-to-transaction", workflowHandler.StartParsedEmailToTransaction)
 
 		{
