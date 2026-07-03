@@ -828,6 +828,13 @@ func (m *mockPredictionService) Update(ctx context.Context, id uuid.UUID, p mode
 func (m *mockPredictionService) DeleteById(ctx context.Context, id uuid.UUID) error {
 	return m.Called(ctx, id).Error(0)
 }
+func (m *mockPredictionService) GetAllCipherPredictions(ctx context.Context) ([]model.CipherPredictionRecord, error) {
+	args := m.Called(ctx)
+	if v := args.Get(0); v != nil {
+		return v.([]model.CipherPredictionRecord), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
 func (m *mockPredictionService) CreateCipherPrediction(ctx context.Context, p model.CipherPredictionRecord) (*model.CipherPredictionRecord, error) {
 	args := m.Called(ctx, p)
 	if v := args.Get(0); v != nil {

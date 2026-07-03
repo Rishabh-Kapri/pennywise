@@ -1,27 +1,21 @@
-# Pennywise
+# frontend (Angular, legacy)
 
-This project was generated with [Angular CLI](https://github.com/angular/angular-cli) version 16.1.4.
+> **Status: legacy/maintenance.** Active UI development happens in [`react-frontend`](../react-frontend). This Angular 17 app predates it and still contains Firestore remnants from an earlier architecture.
 
-## Development server
+Angular 17 + NGXS state management + SCSS/Tailwind.
 
-Run `ng serve` for a dev server. Navigate to `http://localhost:4200/`. The application will automatically reload if you change any of the source files.
+## Run
 
-## Code scaffolding
+```bash
+npm install
+npm start         # ng serve on port 5000 (0.0.0.0)
+npm run build     # production build into dist/
+npm test          # Karma/Jasmine unit tests
+```
 
-Run `ng generate component component-name` to generate a new component. You can also use `ng generate directive|pipe|service|class|guard|interface|enum|module`.
+## Conventions
 
-## Build
-
-Run `ng build` to build the project. The build artifacts will be stored in the `dist/` directory.
-
-## Running unit tests
-
-Run `ng test` to execute the unit tests via [Karma](https://karma-runner.github.io).
-
-## Running end-to-end tests
-
-Run `ng e2e` to execute the end-to-end tests via a platform of your choice. To use this command, you need to first add a package that implements end-to-end testing capabilities.
-
-## Further help
-
-To get more help on the Angular CLI use `ng help` or go check out the [Angular CLI Overview and Command Reference](https://angular.io/cli) page.
+- NGXS actions/selectors/states in `src/app/store/dashboard/states/`
+- Constructor-based dependency injection (not `inject()`)
+- Explicit model interfaces in `src/app/models/` (e.g. `transaction.model.ts`)
+- `HeadersInterceptor` injects `X-Budget-ID` on API calls

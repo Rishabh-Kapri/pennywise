@@ -3,11 +3,13 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import {
   loginWithGoogle,
+  loginAsDemo,
   selectAuthLoading,
   selectAuthError,
   selectIsAuthenticated,
 } from '../store';
 import { LoadingState, toast } from '@/utils';
+import { config } from '@/config/env';
 import { Check } from '@phosphor-icons/react';
 import styles from './Login.module.css';
 import { useGoogleLogin } from '@react-oauth/google';
@@ -111,6 +113,20 @@ export function Login() {
     },
   });
 
+  const onDemoLogin = () => {
+    dispatch(loginAsDemo())
+      .unwrap()
+      .catch((err: unknown) => {
+        const message =
+          err instanceof Error
+            ? err.message
+            : typeof err === 'string'
+              ? err
+              : 'Demo login failed';
+        toast.error(message);
+      });
+  };
+
 const isLoading = loading === LoadingState.PENDING;
 
   return (
@@ -155,13 +171,18 @@ const isLoading = loading === LoadingState.PENDING;
           </div>
         ) : (
           <div className={styles.googleButtonContainer}>
-            {!GOOGLE_CLIENT_ID && (
+            {!GOOGLE_CLIENT_ID && !config.demoMode && (
               <div className={styles.error}>Google Login Not Enabled</div>
             )}
             {GOOGLE_CLIENT_ID && (
               <button className={styles.googleButton} onClick={onGoogleLogin}>
                 <LogoIcon />
                 Sign In with Google
+              </button>
+            )}
+            {config.demoMode && (
+              <button className={styles.demoButton} onClick={onDemoLogin}>
+                Try Demo
               </button>
             )}
           </div>

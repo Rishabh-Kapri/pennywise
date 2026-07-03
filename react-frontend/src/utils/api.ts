@@ -45,7 +45,11 @@ class ApiClient {
   }
 
   private isPublicAuthEndpoint(endpoint: string): boolean {
-    return endpoint === 'auth/google' || endpoint === 'auth/refresh';
+    return (
+      endpoint === 'auth/google' ||
+      endpoint === 'auth/refresh' ||
+      endpoint === 'auth/demo'
+    );
   }
 
   private isRefreshEndpoint(endpoint: string): boolean {
