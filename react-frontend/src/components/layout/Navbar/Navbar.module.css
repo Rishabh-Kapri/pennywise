@@ -179,6 +179,10 @@
   background: var(--color-surface-secondary);
 }
 
+.dropdownActionDanger {
+  color: var(--color-error);
+}
+
 /* Mobile */
 .mobileMenuButton {
   display: none;

@@ -184,6 +184,22 @@ func main() {
 	authService := service.NewAuthService(authRepo, googleProviderRepo, gmailClient)
 	authHandler := handler.NewAuthHandler(authService)
 
+	var demoHandler handler.DemoHandler
+	if config.DemoMode {
+		demoService := service.NewDemoService(
+			authService,
+			authRepo,
+			googleProviderRepo,
+			budgetRepo,
+			categoryGroupRepo,
+			categoryRepo,
+			payeeRepo,
+			accountRepo,
+			payeeRuleRepo,
+		)
+		demoHandler = handler.NewDemoHandler(demoService)
+	}
+
 	apiKeyService := service.NewApiKeyService(apiKeyRepo)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 
@@ -219,6 +235,9 @@ func main() {
 			authGroup := router.Group("/api/auth")
 			authGroup.POST("/google", authHandler.LoginWithGoogle)
 			authGroup.POST("/refresh", authHandler.RefreshToken)
+			if config.DemoMode {
+				authGroup.POST("/demo", demoHandler.LoginAsDemo)
+			}
 			// authGroup.POST("/logout", authHandler.Logout)
 		}
 
@@ -541,8 +560,12 @@ func main() {
 		}()
 	}
 
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "5151"
+	}
 	go func() {
-		if err := router.Run("0.0.0.0:5151"); err != nil && err != http.ErrServerClosed {
+		if err := router.Run("0.0.0.0:" + port); err != nil && err != http.ErrServerClosed {
 			logger.Logger(ctx).Error("http server error", "error", err)
 		}
 	}()

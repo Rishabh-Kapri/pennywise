@@ -1,6 +1,8 @@
-import { GearSix as Settings, UserCircle } from '@phosphor-icons/react';
+import { GearSix as Settings, SignOut, UserCircle } from '@phosphor-icons/react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAppDispatch } from '@/app/hooks';
+import { logout } from '@/features/auth';
 import { apiClient } from '@/utils';
 import styles from './Navbar.module.css';
 
@@ -20,6 +22,7 @@ interface CurrentAuthUser {
 
 export function UserMenu() {
   const navigate = useNavigate();
+  const dispatch = useAppDispatch();
   const [user, setUser] = useState<CurrentAuthUser | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -97,6 +100,17 @@ export function UserMenu() {
             }}>
             <Settings size={16} strokeWidth={1.8} />
             <span>Settings</span>
+          </button>
+          <button
+            type="button"
+            className={`${styles.dropdownAction} ${styles.dropdownActionDanger}`}
+            role="menuitem"
+            onClick={() => {
+              setIsOpen(false);
+              dispatch(logout());
+            }}>
+            <SignOut size={16} strokeWidth={1.8} />
+            <span>Log out</span>
           </button>
         </div>
       )}

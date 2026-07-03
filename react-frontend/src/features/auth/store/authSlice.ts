@@ -83,6 +83,25 @@ export const loginWithGoogle = createAsyncThunk<
   }
 });
 
+// Async thunk to log into the seeded demo account (no Google required)
+export const loginAsDemo = createAsyncThunk<
+  LoginResponse,
+  void,
+  { rejectValue: string }
+>('auth/loginAsDemo', async (_, { rejectWithValue }) => {
+  try {
+    const response = await apiClient.post<LoginResponse>(
+      'auth/demo',
+      {} as Partial<LoginResponse>,
+    );
+    return response;
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : 'Demo login failed';
+    return rejectWithValue(message);
+  }
+});
+
 // Async thunk to refresh access token
 export const refreshAccessToken = createAsyncThunk<
   { accessToken: string; expiresIn: number },
@@ -145,35 +164,49 @@ const authSlice = createSlice({
     },
   },
   extraReducers: (builder) => {
+    // Shared login handlers (Google and demo logins behave identically)
+    const loginPending = (state: AuthState) => {
+      state.loading = LoadingState.PENDING;
+      state.error = null;
+    };
+    const loginFulfilled = (
+      state: AuthState,
+      action: PayloadAction<LoginResponse>,
+    ) => {
+      console.log('Login successful:', action.payload);
+      const { user, accessToken, refreshToken, expiresIn } = action.payload;
+      const tokens: AuthTokens = {
+        accessToken,
+        refreshToken,
+        expiresAt: Date.now() + expiresIn * 1000,
+      };
+      state.user = user;
+      state.tokens = tokens;
+      state.isAuthenticated = true;
+      state.loading = LoadingState.SUCCESS;
+      state.error = null;
+      saveAuthToStorage(user, tokens);
+    };
+    const loginRejected = (
+      state: AuthState,
+      action: { payload?: string },
+    ) => {
+      state.loading = LoadingState.ERROR;
+      state.error = action.payload ?? 'Login failed';
+      state.isAuthenticated = false;
+    };
+
     // Login with Google
     builder
-      .addCase(loginWithGoogle.pending, (state) => {
-        state.loading = LoadingState.PENDING;
-        state.error = null;
-      })
-      .addCase(
-        loginWithGoogle.fulfilled,
-        (state, action: PayloadAction<LoginResponse>) => {
-          console.log('Login successful:', action.payload);
-          const { user, accessToken, refreshToken, expiresIn } = action.payload;
-          const tokens: AuthTokens = {
-            accessToken,
-            refreshToken,
-            expiresAt: Date.now() + expiresIn * 1000,
-          };
-          state.user = user;
-          state.tokens = tokens;
-          state.isAuthenticated = true;
-          state.loading = LoadingState.SUCCESS;
-          state.error = null;
-          saveAuthToStorage(user, tokens);
-        },
-      )
-      .addCase(loginWithGoogle.rejected, (state, action) => {
-        state.loading = LoadingState.ERROR;
-        state.error = action.payload ?? 'Login failed';
-        state.isAuthenticated = false;
-      });
+      .addCase(loginWithGoogle.pending, loginPending)
+      .addCase(loginWithGoogle.fulfilled, loginFulfilled)
+      .addCase(loginWithGoogle.rejected, loginRejected);
+
+    // Login as demo user
+    builder
+      .addCase(loginAsDemo.pending, loginPending)
+      .addCase(loginAsDemo.fulfilled, loginFulfilled)
+      .addCase(loginAsDemo.rejected, loginRejected);
 
     // Refresh token
     builder
@@ -227,6 +260,10 @@ export const selectAuthLoading = (state: RootState) => state.auth.loading;
 export const selectAuthError = (state: RootState) => state.auth.error;
 export const selectAccessToken = (state: RootState) =>
   state.auth.tokens?.accessToken;
+/** The shared demo account: destructive/config actions are disabled for it. */
+export const DEMO_USER_EMAIL = 'demo@pennywise.local';
+export const selectIsDemoUser = (state: RootState) =>
+  state.auth.user?.email === DEMO_USER_EMAIL;
 
 export const { clearError, resetAuth } = authSlice.actions;
 export default authSlice.reducer;
