@@ -1,4 +1,4 @@
-[#](#) Pennywise
+# Pennywise
 
 Live Demo: [dev.pennywise.cloud](https://dev.pennywise.cloud)
 
