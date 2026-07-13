@@ -207,6 +207,10 @@ func main() {
 	loanMetadataService := service.NewLoanMetadataService(loanMetadataRepo)
 	loanMetadataHandler := handler.NewLoanMetadataHandler(loanMetadataService)
 
+	reportRepo := repository.NewReportRepository(dbConn)
+	reportService := service.NewReportService(reportRepo)
+	reportHandler := handler.NewReportHandler(reportService)
+
 	websocketHub := websocket.NewConnectionHub()
 	websocketService := service.NewWebsocketService(websocketHub)
 	websocketHandler := handler.NewWebsocketHandler(websocketService)
@@ -495,6 +499,17 @@ func main() {
 				middleware.RouteAuthMiddleware(sharedModel.ScopeDelete),
 				loanMetadataHandler.Delete,
 			)
+		}
+		{
+			reportGroup := router.Group("/api/reports")
+			reportGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
+			reportGroup.GET("/spending", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), reportHandler.GetSpending)
+			reportGroup.GET(
+				"/income-expense",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				reportHandler.GetIncomeExpense,
+			)
+			reportGroup.GET("/networth", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), reportHandler.GetNetWorth)
 		}
 	}
 	quit := make(chan os.Signal, 1)

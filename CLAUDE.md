@@ -71,7 +71,7 @@ docker-compose up --build
 - **API**: `apiClient` singleton in `src/utils/api.ts` auto-injects `x-budget-id` header
 - **Structure**: Feature folders (`features/transactions/`, `features/budget/`) with `components/`, `hooks/`, `store/`, `types/`
 - **Hooks**: Use typed `useAppDispatch` and `useAppSelector` from `src/app/hooks.ts`
-- **UI**: HeroUI components, Lucide icons, Tailwind CSS v4, Recharts for charts
+- **UI**: HeroUI components, Phosphor icons (`@phosphor-icons/react`), Tailwind CSS v4, Recharts for charts
 
 ### Angular Frontend
 - **State**: NGXS actions/selectors in `store/dashboard/states/`
@@ -98,6 +98,8 @@ docker-compose up --build
 | Transaction model (Go) | `backend/go-pennywise-api/internal/model/transaction.go` |
 | Transaction model (TS) | `frontend/src/app/models/transaction.model.ts` |
 | React API client | `react-frontend/src/utils/api.ts` |
+| Reports API (`/api/reports/{spending,income-expense,networth}`) | `backend/shared/db/report.go`, `backend/go-pennywise-api/internal/service/report.go` |
+| Reports UI (donut/bar/net-worth charts) | `react-frontend/src/features/reports/` |
 | React Redux store | `react-frontend/src/app/store.ts` |
 | Docker Compose | `docker-compose.yml` |
 | CI/CD | `.github/workflows/workflow.yml` |

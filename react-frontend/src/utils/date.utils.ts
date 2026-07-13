@@ -60,6 +60,26 @@ export function getTodaysDate(): string {
   return `${date.getFullYear()}-${month}-${day}`;
 }
 
+/**
+ * Shifts a month key (yyyy-mm) by delta months, handling year rollover
+ */
+export function addMonths(monthKey: string, delta: number): string {
+  const [year, month] = monthKey.split('-');
+  const date = new Date(parseInt(year, 10), parseInt(month, 10) - 1 + delta);
+  return getMonthKey(date.getFullYear(), date.getMonth());
+}
+
+/**
+ * Returns every month key from startKey to endKey inclusive (yyyy-mm)
+ */
+export function getMonthRange(startKey: string, endKey: string): string[] {
+  const months: string[] = [];
+  for (let key = startKey; key <= endKey; key = addMonths(key, 1)) {
+    months.push(key);
+  }
+  return months;
+}
+
 export function getSelectedMonthInHumanFormat(key: string): string {
   const [year, month] = key.split('-');
 
