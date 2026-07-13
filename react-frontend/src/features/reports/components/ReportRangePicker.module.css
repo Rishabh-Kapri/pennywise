@@ -1,0 +1,58 @@
+.container {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.presets {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.2rem;
+  background: var(--color-surface-secondary);
+  border-radius: 10px;
+}
+
+.preset {
+  background: none;
+  border: none;
+  padding: 0.3rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+
+.preset:hover {
+  color: var(--color-text);
+}
+
+.presetActive {
+  composes: preset;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.custom {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.monthInput {
+  background: var(--color-surface-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 0.3rem 0.5rem;
+  color: var(--color-text);
+  font-size: 0.85rem;
+  color-scheme: dark;
+}
+
+.rangeSeparator {
+  color: var(--color-text-secondary);
+}
