@@ -55,6 +55,7 @@ docker-compose up --build
 3. Internal service calls use shared request metadata headers (`X-Correlation-ID`, `X-Caller-Service`, `X-Origin-Service`, `X-Internal-Token`) and are trusted only after shared internal-request verification marks context as verified.
 4. Temporal workflow/activity hops propagate `correlation_id` and `origin_service` through `backend/shared/temporal/propagator.go`; each activity restamps its local service name before downstream HTTP calls.
 5. ML prediction corrections tracked in `internal/service/transaction.go` (`UserCorrectedPayee`, `UserCorrectedCategory`, etc.)
+6. Pipeline observability: the email workflows report progress via `StartPipelineRun`/`ReportPipelineStatus` activities (hosted by the go-pennywise-api worker) into `pipeline_runs` + `pipeline_run_events`; each change is broadcast budget-wide as the `pennywise::pipeline::update` websocket event. The React `/activity` page lists runs, shows per-email extraction/prediction detail, and can retry parked workflows through `POST /api/pipeline/runs/:id/retry` (signals Temporal directly). Reporting is best-effort — status write failures never fail the pipeline.
 
 ## Code Conventions
 
@@ -99,6 +100,9 @@ docker-compose up --build
 | Transaction model (TS) | `frontend/src/app/models/transaction.model.ts` |
 | React API client | `react-frontend/src/utils/api.ts` |
 | React Redux store | `react-frontend/src/app/store.ts` |
+| Pipeline run tracking (workflow side) | `backend/workflows/internal/workflow/pipelineStatus.go` |
+| Pipeline status activity | `backend/go-pennywise-api/internal/temporal/activities/reportPipelineStatus.go` |
+| Pipeline UI (Activity page) | `react-frontend/src/features/pipeline/` |
 | Docker Compose | `docker-compose.yml` |
 | CI/CD | `.github/workflows/workflow.yml` |
 

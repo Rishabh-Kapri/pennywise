@@ -79,6 +79,10 @@ type EmailData struct {
 type EmailDataInput struct {
 	EmailData []EmailData `json:"emailData"`
 	BudgetID  uuid.UUID   `json:"budgetId"`
+	// PipelineRunID links a child workflow back to the pipeline_runs row created
+	// by its parent. Nil when the workflow is started standalone; the child then
+	// creates its own run row with trigger "manual".
+	PipelineRunID uuid.UUID `json:"pipelineRunId,omitempty"`
 }
 
 type FetchAndParseEmailsInput struct {
@@ -97,6 +101,7 @@ type UpdateGmailHistoryInput struct {
 
 // CipherPredictionResult is the result of the Predict activity (cipher).
 type CipherPredictionResult struct {
+	MessageId       string           `json:"messageId,omitempty"`
 	OriginalRawText string           `json:"rawText"`
 	Summary         string           `json:"summary"`
 	AccountID       uuid.UUID        `json:"accountId"`

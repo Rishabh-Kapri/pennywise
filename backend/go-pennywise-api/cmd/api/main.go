@@ -63,6 +63,21 @@ func main() {
 	redisClient := redis.NewClient(redisOptions)
 	defer redisClient.Close()
 
+	// Temporal client — nil when Temporal is not configured (e.g. local dev).
+	// Shared by the pipeline retry endpoint and the activity worker below.
+	var temporalClient client.Client
+	if config.Environment != "local" && config.TemporalServerHost != "" {
+		tcl, err := client.Dial(client.Options{
+			HostPort:           fmt.Sprintf("%s:%s", config.TemporalServerHost, config.TemporalServerPort),
+			ContextPropagators: sharedTemporal.ContextPropagators(),
+		})
+		if err != nil {
+			logger.Logger(ctx).Error("failed to create temporal client", "error", err)
+			panic(err)
+		}
+		temporalClient = tcl
+	}
+
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(gzip.Gzip(gzip.DefaultCompression))
@@ -118,6 +133,7 @@ func main() {
 	googleProviderRepo := repository.NewGoogleProviderRepository(dbConn)
 	apiKeyRepo := repository.NewAPIKeyRepository(dbConn)
 	agentRepo := repository.NewAgentRepository(dbConn)
+	pipelineRunRepo := repository.NewPipelineRunRepository(dbConn)
 
 	budgetService := service.NewBudgetService(budgetRepo, payeeRepo, categoryRepo, categoryGroupRepo)
 	budgetHandler := handler.NewBudgetHandler(budgetService)
@@ -206,6 +222,9 @@ func main() {
 	loanMetadataRepo := repository.NewLoanMetadataRepository(dbConn)
 	loanMetadataService := service.NewLoanMetadataService(loanMetadataRepo)
 	loanMetadataHandler := handler.NewLoanMetadataHandler(loanMetadataService)
+
+	pipelineService := service.NewPipelineService(pipelineRunRepo, temporalClient)
+	pipelineHandler := handler.NewPipelineHandler(pipelineService)
 
 	websocketHub := websocket.NewConnectionHub()
 	websocketService := service.NewWebsocketService(websocketHub)
@@ -496,21 +515,32 @@ func main() {
 				loanMetadataHandler.Delete,
 			)
 		}
+		{
+			pipelineGroup := router.Group("/api/pipeline")
+			pipelineGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
+			pipelineGroup.GET(
+				"/runs",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				pipelineHandler.ListRuns,
+			)
+			pipelineGroup.GET(
+				"/runs/:id",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				pipelineHandler.GetRun,
+			)
+			pipelineGroup.POST(
+				"/runs/:id/retry",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				pipelineHandler.RetryRun,
+			)
+		}
 	}
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 
 	// Temporal worker — skipped if TEMPORAL_SERVER_HOST is not set
-	if config.Environment != "local" && config.TemporalServerHost != "" {
-		temporalClient, err := client.Dial(client.Options{
-			HostPort:           fmt.Sprintf("%s:%s", config.TemporalServerHost, config.TemporalServerPort),
-			ContextPropagators: sharedTemporal.ContextPropagators(),
-		})
-		if err != nil {
-			logger.Logger(ctx).Error("failed to create temporal client", "error", err)
-			panic(err)
-		}
-		_, err = temporalClient.ScheduleClient().Create(ctx, client.ScheduleOptions{
+	if temporalClient != nil {
+		_, err := temporalClient.ScheduleClient().Create(ctx, client.ScheduleOptions{
 			ID: "sync-gmail-watch-workflow-schedule",
 			Spec: client.ScheduleSpec{
 				CronExpressions: []string{"0 12 */2 * *"}, // every 2 days at 12:00 PM
@@ -544,6 +574,10 @@ func main() {
 		})
 		w.RegisterActivity(&temporalActivities.FetchGoogleUsersActivity{
 			AuthService: authService,
+		})
+		w.RegisterActivity(&temporalActivities.PipelineStatusActivity{
+			PipelineRunRepo:  pipelineRunRepo,
+			WebsocketService: websocketService,
 		})
 
 		if err := w.Start(); err != nil {
