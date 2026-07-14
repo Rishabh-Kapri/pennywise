@@ -15,6 +15,7 @@ type AgentHandler interface {
 	CreateRun(c *gin.Context)
 	GetRun(c *gin.Context)
 	CancelRun(c *gin.Context)
+	Search(c *gin.Context)
 }
 
 type agentHandler struct {
@@ -53,4 +54,25 @@ func (h *agentHandler) GetRun(c *gin.Context) {
 }
 
 func (h *agentHandler) CancelRun(c *gin.Context) {
+}
+
+func (h *agentHandler) Search(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	var req struct {
+		Query string `json:"query"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	res, err := h.service.Search(ctx, req.Query)
+	if err != nil {
+		logger.Logger(ctx).Error("search failed", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "search failed"})
+		return
+	}
+
+	c.JSON(http.StatusOK, res)
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/memory"
 	agent "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/runtime"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
+	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
@@ -27,6 +28,37 @@ type AgentService interface {
 	CreateRun(ctx context.Context, req sharedModel.AgentRunCreateRequest) (*sharedModel.AgentRun, error)
 	GetRun(ctx context.Context, id uuid.UUID) (*sharedModel.AgentRun, error)
 	CancelRun(ctx context.Context, id uuid.UUID) (*sharedModel.AgentRun, error)
+	Search(ctx context.Context, query string) (*IntentResult, error)
+}
+
+type DateRange struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+type Filters struct {
+	Categories struct {
+		Include []string `json:"include"`
+		Exclude []string `json:"exclude"`
+	} `json:"categories"`
+	Payees struct {
+		Include []string `json:"include"`
+		Exclude []string `json:"exclude"`
+	} `json:"payees"`
+}
+
+type AmountFilter struct {
+	Operator string `json:"operator"`
+	Value    int    `json:"value"`
+}
+
+type IntentResult struct {
+	Intent       string         `json:"intent"`
+	DateRange    *DateRange     `json:"dateRange"`
+	Filters      *Filters       `json:"filters"`
+	AmountFilter []AmountFilter `json:"amountFilter"`
+	Confidence   float64        `json:"confidence"`
+	Reason       string         `json:"reason"`
 }
 
 // ClarifyError is returned by CreateRun when the router needs more information
@@ -502,4 +534,63 @@ func (s *agentService) GetRun(ctx context.Context, id uuid.UUID) (*sharedModel.A
 
 func (s *agentService) CancelRun(ctx context.Context, id uuid.UUID) (*sharedModel.AgentRun, error) {
 	return nil, nil
+}
+
+func (s *agentService) Search(ctx context.Context, query string) (*IntentResult, error) {
+	log := logger.Logger(ctx)
+
+	provider := "openrouter"
+	model := "google/gemini-2.5-flash"
+
+	today := time.Now().Format("2006-01-02")
+	systemPrompt := sharedModel.AgentMessage{
+		Role: sharedModel.RoleSystem,
+		Content: []sharedModel.ContentBlock{
+			{Type: "text", Text: fmt.Sprintf(agentPrompts.NERPrompt, today)},
+		},
+	}
+	userMessage := sharedModel.AgentMessage{
+		Role: sharedModel.RoleUser,
+		Content: []sharedModel.ContentBlock{
+			{Type: "text", Text: "Query: " + query},
+		},
+	}
+
+	client, model, err := s.llmResolver.Resolve(provider, model)
+	if err != nil {
+		log.Error("error while resolving llm for title request", "error", err)
+		return nil, err
+	}
+
+	req := sharedModel.ChatRequest{
+		Provider:    provider,
+		Model:       model,
+		MaxTokens:   1024,
+		Temperature: 0.0,
+		Stream:      false,
+		Messages:    []sharedModel.AgentMessage{systemPrompt, userMessage},
+	}
+
+	res, err := client.Chat(ctx, req)
+	if err != nil {
+		log.Error("error while generating title", "error", err)
+		return nil, err
+	}
+
+	if res.Message.Content == nil {
+		return nil, errs.New(errs.CodeInternalError, "no content in response")
+	}
+
+	var intentResult IntentResult
+	msg := res.Message.Content[0]
+
+	strippedMsg := utils.StripMarkdownFence(msg.Text)
+
+	if err := json.Unmarshal([]byte(strippedMsg), &intentResult); err != nil {
+		log.Error("error while unmarshalling intent result", "error", err)
+		return nil, err
+	}
+
+	log.Info("search res", "res", res)
+	return &intentResult, nil
 }

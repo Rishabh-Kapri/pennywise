@@ -25,7 +25,7 @@ WORKDIR /root/
 
 # Copy binary from build-stage
 COPY --from=build-stage /app/worker .
-  
+
 # Set timezone for logs and time library
 ENV TZ=Asia/Kolkata
 

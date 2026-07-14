@@ -328,6 +328,7 @@ func main() {
 			agentApi.GET("/runs", agentHandler.GetRun)
 			agentApi.POST("/runs", agentHandler.CreateRun)
 			agentApi.GET("/runs/cancel/:id", agentHandler.CancelRun)
+			agentApi.POST("/search", agentHandler.Search)
 		}
 	}
 
