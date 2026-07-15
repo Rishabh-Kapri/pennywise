@@ -55,6 +55,7 @@ docker-compose up --build
 3. Internal service calls use shared request metadata headers (`X-Correlation-ID`, `X-Caller-Service`, `X-Origin-Service`, `X-Internal-Token`) and are trusted only after shared internal-request verification marks context as verified.
 4. Temporal workflow/activity hops propagate `correlation_id` and `origin_service` through `backend/shared/temporal/propagator.go`; each activity restamps its local service name before downstream HTTP calls.
 5. ML prediction corrections tracked in `internal/service/transaction.go` (`UserCorrectedPayee`, `UserCorrectedCategory`, etc.)
+6. Pipeline observability: the email workflows report progress via `StartPipelineRun`/`ReportPipelineStatus` activities (hosted by the go-pennywise-api worker) into `pipeline_runs` + `pipeline_run_events`; the per-email loop emits one timeline event per email (parse/predict succeeded/skipped/failed, keyed by `messageId`) and each run change is broadcast budget-wide as the `pennywise::pipeline::update` websocket event (`sharedModel.EventPipelineUpdate`). The React `/activity` page lists runs, shows per-email extraction/prediction detail, and can retry parked workflows through `POST /api/pipeline/runs/:id/retry` (signals Temporal directly, choosing `retry-email-parse` vs `retry-predict` from the run's `current_step`). Reporting is best-effort — status write failures never fail the pipeline — and is gated by `workflow.GetVersion` marker "pipeline-observability" so pre-rollout in-flight workflows replay unchanged.
 
 ## Code Conventions
 
@@ -101,6 +102,10 @@ docker-compose up --build
 | Reports API (`/api/reports/{spending,income-expense,networth}`) | `backend/shared/db/report.go`, `backend/go-pennywise-api/internal/service/report.go` |
 | Reports UI (donut/bar/net-worth charts) | `react-frontend/src/features/reports/` |
 | React Redux store | `react-frontend/src/app/store.ts` |
+| Pipeline run tracking (workflow side) | `backend/workflows/internal/workflow/pipelineStatus.go` |
+| Pipeline status activity | `backend/go-pennywise-api/internal/temporal/activities/reportPipelineStatus.go` |
+| Pipeline runs repo / API (`/api/pipeline/runs`) | `backend/shared/db/pipelineRun.go`, `backend/go-pennywise-api/internal/service/pipeline.go` |
+| Pipeline UI (Activity page, `/activity`) | `react-frontend/src/features/pipeline/` |
 | Docker Compose | `docker-compose.yml` |
 | CI/CD | `.github/workflows/workflow.yml` |
 
