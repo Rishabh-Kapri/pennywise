@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"fmt"
 	"time"
 
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
@@ -115,17 +116,207 @@ func ParsedEmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.Em
 	}
 	workflow.GetLogger(ctx).Info("starting parsed-email-to-transaction workflow", workflowLogFields...)
 
-	var parsedEmailsInput sharedModel.ParsedEmailsInput
-	if err := parseRawEmails(ctx, input, &parsedEmailsInput, workflowLogFields); err != nil {
-		return err
+	// Workflows started before the per-email rollout (possibly parked on a
+	// retry signal for up to RetryPredictWaitTimeout) must replay the legacy
+	// batch path; new executions process one email at a time.
+	version := workflow.GetVersion(ctx, "per-email-pipeline", workflow.DefaultVersion, 1)
+	if version == workflow.DefaultVersion {
+		var parsedEmailsInput sharedModel.ParsedEmailsInput
+		if err := parseRawEmails(ctx, input, &parsedEmailsInput, workflowLogFields); err != nil {
+			return err
+		}
+
+		if err := processParsedEmails(ctx, parsedEmailsInput, workflowLogFields); err != nil {
+			return err
+		}
+
+		workflow.GetLogger(ctx).Info("parsed-email-to-transaction workflow completed", workflowLogFields...)
+		return nil
 	}
 
-	if err := processParsedEmails(ctx, parsedEmailsInput, workflowLogFields); err != nil {
+	if err := processEmailsIndividually(ctx, input, workflowLogFields); err != nil {
 		return err
 	}
 
 	workflow.GetLogger(ctx).Info("parsed-email-to-transaction workflow completed", workflowLogFields...)
 	return nil
+}
+
+// perEmailCipherOptions returns activity options for the per-email cipher
+// activities: shorter, exponential retries (the old 10-minute fixed interval
+// would serialize badly when applied per email). The activities heartbeat
+// before every LLM/embedding step, so a hung ollama call surfaces at the
+// HeartbeatTimeout instead of the full StartToCloseTimeout.
+func perEmailCipherOptions(ctx workflow.Context, summary string) workflow.Context {
+	return workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+		TaskQueue: sharedModel.CipherActivitiesTaskQueue,
+		// Worst case per email: ~4 LLM round-trips at up to 3m each (cold model).
+		StartToCloseTimeout: 15 * time.Minute,
+		// Must exceed the per-LLM-call timeout (CIPHER_LLM_CALL_TIMEOUT, 3m default).
+		HeartbeatTimeout: 4 * time.Minute,
+		RetryPolicy: &temporal.RetryPolicy{
+			InitialInterval:    time.Minute,
+			BackoffCoefficient: 2.0,
+			MaximumAttempts:    3,
+		},
+		Summary: summary,
+	})
+}
+
+// processEmailsIndividually parses and predicts one email per activity so a
+// bad email is skipped or retried on its own. Successful predictions are
+// committed (idempotently) as soon as their round completes; only emails that
+// exhausted activity retries park the workflow on a retry signal, and only
+// those emails are re-run when the signal arrives.
+func processEmailsIndividually(
+	ctx workflow.Context,
+	input sharedModel.EmailDataInput,
+	workflowLogFields []interface{},
+) error {
+	logger := workflow.GetLogger(ctx)
+	budgetID := input.BudgetID
+
+	var skips []sharedModel.EmailSkip
+	pendingParse := input.EmailData
+	var pendingPredict []sharedModel.ParsedEmail
+
+	for {
+		// ----- Parse pending raw emails, one activity each -----
+		var failedParse []sharedModel.EmailData
+		parseCtx := perEmailCipherOptions(ctx, "Extract transaction data from one email")
+		for _, email := range pendingParse {
+			var result sharedModel.ParseEmailResult
+			err := workflow.ExecuteActivity(parseCtx, "ParseEmail", sharedModel.ParseEmailInput{
+				Email:    email,
+				BudgetID: budgetID,
+			}).Get(parseCtx, &result)
+			switch {
+			case err != nil:
+				logger.Warn("email parse failed after retries",
+					append(workflowLogFields, "step", sharedModel.PipelineStepParse, "message_id", email.MessageId, "error", err)...)
+				failedParse = append(failedParse, email)
+			case result.Skipped:
+				skips = append(skips, sharedModel.EmailSkip{
+					MessageId: email.MessageId,
+					Step:      sharedModel.PipelineStepParse,
+					Reason:    result.SkipReason,
+				})
+			case result.Parsed != nil:
+				pendingPredict = append(pendingPredict, *result.Parsed)
+			}
+		}
+
+		// ----- Predict pending parsed emails, one activity each -----
+		var failedPredict []sharedModel.ParsedEmail
+		var predictions []sharedModel.CipherPredictionResult
+		predictCtx := perEmailCipherOptions(ctx, "Predict transaction for one email")
+		for _, parsed := range pendingPredict {
+			var result sharedModel.PredictEmailResult
+			err := workflow.ExecuteActivity(predictCtx, "PredictEmail", sharedModel.PredictEmailInput{
+				Email:    parsed,
+				BudgetID: budgetID,
+			}).Get(predictCtx, &result)
+			switch {
+			case err != nil:
+				logger.Warn("email predict failed after retries",
+					append(workflowLogFields, "step", sharedModel.PipelineStepPredict, "message_id", parsed.MessageId, "error", err)...)
+				failedPredict = append(failedPredict, parsed)
+			case result.Skipped:
+				skips = append(skips, sharedModel.EmailSkip{
+					MessageId: parsed.MessageId,
+					Step:      sharedModel.PipelineStepPredict,
+					Reason:    result.SkipReason,
+				})
+			case result.Prediction != nil:
+				predictions = append(predictions, *result.Prediction)
+			}
+		}
+
+		// ----- Commit this round's successes; the insert is deduped, so a
+		// retried round can never create duplicate transactions -----
+		if len(predictions) > 0 {
+			pennywiseCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+				TaskQueue:           sharedModel.PennywiseActivitiesTaskQueue,
+				StartToCloseTimeout: 300 * time.Second,
+				RetryPolicy: &temporal.RetryPolicy{
+					InitialInterval: time.Second,
+					MaximumAttempts: 5,
+				},
+			})
+			var createdTransactions []sharedModel.Transaction
+			err := workflow.ExecuteActivity(pennywiseCtx, "CreateTransactionAndCipherPrediction", sharedModel.PredictionResultInput{
+				Predictions: predictions,
+				BudgetID:    budgetID,
+			}).Get(pennywiseCtx, &createdTransactions)
+			if err != nil {
+				return err
+			}
+			logger.Info("created transactions and cipher predictions",
+				append(workflowLogFields, "step", sharedModel.PipelineStepCreateTxns, "count", len(createdTransactions))...)
+		}
+
+		pendingParse = failedParse
+		pendingPredict = failedPredict
+		if len(pendingParse) == 0 && len(pendingPredict) == 0 {
+			break
+		}
+
+		// ----- Park only the failed emails and wait for a manual retry -----
+		logger.Warn("emails failed after retries, waiting for retry signal",
+			append(workflowLogFields,
+				"failed_parse", messageIDs(pendingParse),
+				"failed_predict", parsedMessageIDs(pendingPredict))...)
+		if !awaitRetrySignal(ctx) {
+			return temporal.NewApplicationError(
+				fmt.Sprintf("emails unprocessed after retry window: parse=%v predict=%v",
+					messageIDs(pendingParse), parsedMessageIDs(pendingPredict)),
+				"emails_unprocessed",
+			)
+		}
+		logger.Info("retry signal received, retrying failed emails", workflowLogFields...)
+	}
+
+	if len(skips) > 0 {
+		logger.Info("emails skipped", append(workflowLogFields, "skips", skips)...)
+	}
+	return nil
+}
+
+// awaitRetrySignal parks the workflow until either retry signal arrives or the
+// wait window expires. Returns true when signaled.
+func awaitRetrySignal(ctx workflow.Context) bool {
+	parseCh := workflow.GetSignalChannel(ctx, sharedModel.RetryEmailParseSignal)
+	predictCh := workflow.GetSignalChannel(ctx, sharedModel.RetryPredictSignal)
+
+	var signaled bool
+	workflow.NewSelector(ctx).
+		AddReceive(parseCh, func(ch workflow.ReceiveChannel, _ bool) {
+			ch.Receive(ctx, nil)
+			signaled = true
+		}).
+		AddReceive(predictCh, func(ch workflow.ReceiveChannel, _ bool) {
+			ch.Receive(ctx, nil)
+			signaled = true
+		}).
+		AddFuture(workflow.NewTimer(ctx, sharedModel.RetryPredictWaitTimeout), func(_ workflow.Future) {}).
+		Select(ctx)
+	return signaled
+}
+
+func messageIDs(emails []sharedModel.EmailData) []string {
+	ids := make([]string, 0, len(emails))
+	for _, email := range emails {
+		ids = append(ids, email.MessageId)
+	}
+	return ids
+}
+
+func parsedMessageIDs(emails []sharedModel.ParsedEmail) []string {
+	ids := make([]string, 0, len(emails))
+	for _, email := range emails {
+		ids = append(ids, email.MessageId)
+	}
+	return ids
 }
 
 func parseRawEmails(

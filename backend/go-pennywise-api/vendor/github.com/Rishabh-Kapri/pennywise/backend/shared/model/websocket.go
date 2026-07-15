@@ -6,6 +6,12 @@ import (
 	"github.com/google/uuid"
 )
 
+// Websocket event names. Must stay in sync with
+// react-frontend/src/features/websocket/events.ts.
+const (
+	EventTransactionCreated = "pennywise::transaction::created"
+)
+
 type Message struct {
 	EventName string          `json:"eventName"`
 	Data      json.RawMessage `json:"data"`

@@ -1249,6 +1249,14 @@ func (m *mockTransactionService) Create(ctx context.Context, txn model.Transacti
 	}
 	return nil, args.Error(1)
 }
+func (m *mockTransactionService) CreateWithTxDeduped(ctx context.Context, tx pgx.Tx, txn model.Transaction) (*model.Transaction, bool, error) {
+	args := m.Called(ctx, tx, txn)
+	if v := args.Get(0); v != nil {
+		return v.(*model.Transaction), args.Bool(1), args.Error(2)
+	}
+	return nil, args.Bool(1), args.Error(2)
+}
+
 func (m *mockTransactionService) CreateWithTx(ctx context.Context, tx pgx.Tx, txn model.Transaction) ([]model.Transaction, error) {
 	args := m.Called(ctx, tx, txn)
 	if v := args.Get(0); v != nil {

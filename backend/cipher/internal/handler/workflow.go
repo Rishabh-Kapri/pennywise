@@ -35,7 +35,9 @@ func (h *workflowHandler) StartParsedEmailToTransaction(c *gin.Context) {
 	ctx := c.Request.Context()
 	log := logger.Logger(ctx)
 
-	var input sharedModel.ParsedEmailsInput
+	// The workflow's parameter is EmailDataInput (raw emails); binding
+	// ParsedEmailsInput here silently produced zero-email runs.
+	var input sharedModel.EmailDataInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		log.Error("error unmarshalling request body", "error", err)
 		wrappedErr := errs.Wrap(errs.CodeInternalError, "error unmarshalling request body", err)
