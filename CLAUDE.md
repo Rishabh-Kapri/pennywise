@@ -87,7 +87,7 @@ docker-compose up --build
 ### Cross-Service Communication
 - `go-gmail` → Temporal → `cipher` → `go-pennywise-api`: email ingestion runs through the `EmailToTransactionWorkflow`; classification is cipher's `PredictionActivity`
 - Go services → Go services: shared HTTP transport injects canonical correlation/caller/origin headers plus `X-Internal-Token` from context
-- `cipher` → frontends: agent stream deltas via Redis stream `pubsub`, rebroadcast by the API's websocket hub
+- `cipher` → frontends: agent stream deltas via Redis stream `pubsub`, rebroadcast by the API's websocket hub. Run failures publish an `error`-type chat stream event on the same path; `AgentChat.tsx` renders it as a red error bubble and stops the loader. The failed run's stored `error` field carries the real upstream message (cipher returns it in its 500 body; the shared HTTP transport appends non-2xx response bodies to its errors).
 - Frontend → API: REST with budget ID in header interceptor
 
 ## Key Files

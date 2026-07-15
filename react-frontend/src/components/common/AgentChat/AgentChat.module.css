@@ -297,6 +297,13 @@
   color: var(--color-text);
 }
 
+.errorMessage {
+  border: 1px solid color-mix(in srgb, var(--color-error) 45%, transparent);
+  background: color-mix(in srgb, var(--color-error) 12%, #2c2c2a);
+  color: color-mix(in srgb, var(--color-error) 55%, var(--color-text));
+  word-break: break-word;
+}
+
 .userMessage {
   align-self: flex-end;
   border-top-right-radius: 0.35rem;
