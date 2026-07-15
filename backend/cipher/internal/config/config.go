@@ -2,9 +2,14 @@ package config
 
 import (
 	"os"
+	"time"
 
 	"github.com/joho/godotenv"
 )
+
+// DefaultLLMCallTimeout bounds a single LLM/embedding round-trip. A cold local
+// ollama model can take 1-2 minutes, so this must stay comfortably above that.
+const DefaultLLMCallTimeout = 3 * time.Minute
 
 type Config struct {
 	Environment          string
@@ -21,6 +26,8 @@ type Config struct {
 	TemporalServerHost   string
 	TemporalServerPort   string
 	Port                 string
+	// LLMCallTimeout bounds each individual LLM/embedding HTTP call.
+	LLMCallTimeout time.Duration
 }
 
 func Load() Config {
@@ -34,6 +41,13 @@ func Load() Config {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "5160"
+	}
+
+	llmCallTimeout := DefaultLLMCallTimeout
+	if raw := os.Getenv("CIPHER_LLM_CALL_TIMEOUT"); raw != "" {
+		if parsed, err := time.ParseDuration(raw); err == nil && parsed > 0 {
+			llmCallTimeout = parsed
+		}
 	}
 
 	return Config{
@@ -51,5 +65,6 @@ func Load() Config {
 		TemporalServerHost:   os.Getenv("TEMPORAL_SERVER_HOST"),
 		TemporalServerPort:   os.Getenv("TEMPORAL_SERVER_PORT"),
 		Port:                 port,
+		LLMCallTimeout:       llmCallTimeout,
 	}
 }
