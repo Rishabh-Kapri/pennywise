@@ -131,24 +131,25 @@ func (a *CreateTransactionActivity) CreateTransactionAndCipherPrediction(
 	var createdTxns []sharedModel.Transaction
 
 	err := utils.WithTx(ctx, a.DB, func(tx pgx.Tx) error {
-		var err error
-		createdTxns, err = a.createTransactions(ctx, tx, input.Predictions, input.BudgetID, log)
+		created, err := a.createTransactions(ctx, tx, input.Predictions, input.BudgetID, log)
 		if err != nil {
 			return err
 		}
 
-		for i, txn := range createdTxns {
-			log.Info("creating cipher prediction", "transactionId", txn.ID, "source", input.Predictions[i].Source)
+		createdTxns = createdTxns[:0]
+		for _, pair := range created {
+			log.Info("creating cipher prediction", "transactionId", pair.Txn.ID, "source", pair.Prediction.Source)
 			if err = createCipherPredictionWithTx(
 				ctx,
 				tx,
 				a.PredictionService,
 				input.BudgetID,
-				txn,
-				input.Predictions[i],
+				pair.Txn,
+				pair.Prediction,
 			); err != nil {
 				return err
 			}
+			createdTxns = append(createdTxns, pair.Txn)
 		}
 
 		return nil
@@ -175,11 +176,19 @@ func (a *CreateTransactionActivity) sendTransactionCreatedNotification(
 	if err := a.WebsocketService.SendNotification(
 		ctx,
 		budgetId,
-		"pennywise::transaction::created",
+		sharedModel.EventTransactionCreated,
 		transactions,
 	); err != nil {
 		log.Warn("failed to send transaction created websocket notification", "error", err)
 	}
+}
+
+// createdTransaction pairs a newly inserted transaction with the prediction
+// that produced it, so cipher predictions are only written for rows this
+// attempt actually created (duplicates from earlier attempts are skipped).
+type createdTransaction struct {
+	Txn        sharedModel.Transaction
+	Prediction sharedModel.CipherPredictionResult
 }
 
 func (a *CreateTransactionActivity) createTransactions(
@@ -188,8 +197,8 @@ func (a *CreateTransactionActivity) createTransactions(
 	predictions []sharedModel.CipherPredictionResult,
 	budgetId uuid.UUID,
 	log *slog.Logger,
-) ([]sharedModel.Transaction, error) {
-	createdTxns := make([]sharedModel.Transaction, 0, len(predictions))
+) ([]createdTransaction, error) {
+	createdTxns := make([]createdTransaction, 0, len(predictions))
 
 	for _, p := range predictions {
 		payeeID := p.PayeeID
@@ -206,7 +215,7 @@ func (a *CreateTransactionActivity) createTransactions(
 			payeeID = newPayee.ID
 		}
 
-		log.Info("creating transaction", "prediction", p)
+		log.Info("creating transaction", "step", sharedModel.PipelineStepCreateTxns, "messageId", p.MessageId, "prediction", p)
 
 		hash := utils.Hash(p.AccountID.String() + p.Date + fmt.Sprintf("%.2f", p.Amount) + p.OriginalRawText)
 		txn := sharedModel.Transaction{
@@ -222,15 +231,20 @@ func (a *CreateTransactionActivity) createTransactions(
 			Summary:     &p.Summary,
 		}
 
-		createdTxn, err := a.TransactionService.CreateWithTx(ctx, tx, txn)
+		createdTxn, created, err := a.TransactionService.CreateWithTxDeduped(ctx, tx, txn)
 		if err != nil {
 			return nil, err
 		}
-		if len(createdTxn) == 0 {
-			return nil, errs.New(errs.CodeTransactionNotCreated, "no transaction was created")
+		if !created {
+			log.Info("duplicate transaction skipped",
+				"step", sharedModel.PipelineStepCreateTxns,
+				"messageId", p.MessageId,
+				"existingTransactionId", createdTxn.ID,
+			)
+			continue
 		}
 
-		createdTxns = append(createdTxns, createdTxn[0])
+		createdTxns = append(createdTxns, createdTransaction{Txn: *createdTxn, Prediction: p})
 	}
 
 	return createdTxns, nil

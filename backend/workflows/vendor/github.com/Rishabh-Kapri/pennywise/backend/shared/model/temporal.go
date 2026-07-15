@@ -29,6 +29,16 @@ const (
 	PredictRetryInterval = 10 * time.Minute
 )
 
+// Pipeline step names. Stable identifiers used as "step" log fields today and
+// as pipeline_runs step keys once run tracking lands — do not rename.
+const (
+	PipelineStepFetchUser   = "fetch_user"
+	PipelineStepFetchEmails = "fetch_emails"
+	PipelineStepParse       = "parse"
+	PipelineStepPredict     = "predict"
+	PipelineStepCreateTxns  = "create_transactions"
+)
+
 // EmailToTransactionWorflowInput is the input to the EmailToTransactionWorkflow,
 // dispatched by go-gmail on receiving a Gmail Pub/Sub notification.
 type EmailToTransactionWorflowInput struct {
@@ -97,6 +107,9 @@ type UpdateGmailHistoryInput struct {
 
 // CipherPredictionResult is the result of the Predict activity (cipher).
 type CipherPredictionResult struct {
+	// MessageId is the Gmail message this prediction came from; carried through
+	// to transaction creation for logging and future pipeline run tracking.
+	MessageId       string           `json:"messageId,omitempty"`
 	OriginalRawText string           `json:"rawText"`
 	Summary         string           `json:"summary"`
 	AccountID       uuid.UUID        `json:"accountId"`

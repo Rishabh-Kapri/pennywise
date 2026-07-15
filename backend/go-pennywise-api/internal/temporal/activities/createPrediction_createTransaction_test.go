@@ -86,7 +86,8 @@ func (f *fakePredictionService) CreateCipherPredictionWithTx(
 }
 
 type fakeTransactionService struct {
-	create func(context.Context, model.Transaction) ([]model.Transaction, error)
+	create        func(context.Context, model.Transaction) ([]model.Transaction, error)
+	createDeduped func(context.Context, model.Transaction) (*model.Transaction, bool, error)
 }
 
 func (f *fakeTransactionService) GetAll(context.Context) ([]model.Transaction, error) {
@@ -114,6 +115,22 @@ func (f *fakeTransactionService) CreateWithTx(ctx context.Context, _ pgx.Tx, txn
 		return []model.Transaction{txn}, nil
 	}
 	return f.create(ctx, txn)
+}
+
+// CreateWithTxDeduped delegates to createDeduped when set, otherwise adapts
+// the create hook so existing tests keep working unchanged.
+func (f *fakeTransactionService) CreateWithTxDeduped(ctx context.Context, tx pgx.Tx, txn model.Transaction) (*model.Transaction, bool, error) {
+	if f.createDeduped != nil {
+		return f.createDeduped(ctx, txn)
+	}
+	created, err := f.CreateWithTx(ctx, tx, txn)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(created) == 0 {
+		return nil, false, nil
+	}
+	return &created[0], true, nil
 }
 
 func (f *fakeTransactionService) DeleteById(context.Context, uuid.UUID) error {
