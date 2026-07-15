@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"net/http"
 	"strings"
@@ -86,7 +87,8 @@ func (f *fakePredictionService) CreateCipherPredictionWithTx(
 }
 
 type fakeTransactionService struct {
-	create func(context.Context, model.Transaction) ([]model.Transaction, error)
+	create        func(context.Context, model.Transaction) ([]model.Transaction, error)
+	createDeduped func(context.Context, model.Transaction) (*model.Transaction, bool, error)
 }
 
 func (f *fakeTransactionService) GetAll(context.Context) ([]model.Transaction, error) {
@@ -114,6 +116,22 @@ func (f *fakeTransactionService) CreateWithTx(ctx context.Context, _ pgx.Tx, txn
 		return []model.Transaction{txn}, nil
 	}
 	return f.create(ctx, txn)
+}
+
+// CreateWithTxDeduped delegates to createDeduped when set, otherwise adapts
+// the create hook so existing tests keep working unchanged.
+func (f *fakeTransactionService) CreateWithTxDeduped(ctx context.Context, tx pgx.Tx, txn model.Transaction) (*model.Transaction, bool, error) {
+	if f.createDeduped != nil {
+		return f.createDeduped(ctx, txn)
+	}
+	created, err := f.CreateWithTx(ctx, tx, txn)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(created) == 0 {
+		return nil, false, nil
+	}
+	return &created[0], true, nil
 }
 
 func (f *fakeTransactionService) DeleteById(context.Context, uuid.UUID) error {
@@ -900,4 +918,43 @@ func TestCreateTransactionAndCipherPrediction_RequiresBudgetID(t *testing.T) {
 		t.Fatal("expected error")
 	}
 	assertErrorCode(t, err, errs.CodeInvalidArgument)
+}
+
+// TestCreateTransactionsSkipsDuplicates: a prediction whose transaction was
+// already committed by an earlier attempt (dedupe hash conflict) is returned
+// as created=false and must be excluded from the created pairs — so no cipher
+// prediction row and no websocket event are produced for it.
+func TestCreateTransactionsSkipsDuplicates(t *testing.T) {
+	budgetID := uuid.New()
+	payeeID := uuid.New()
+	dupRaw := "duplicate email"
+	newRaw := "new email"
+
+	act := CreateTransactionActivity{
+		TransactionService: &fakeTransactionService{
+			createDeduped: func(_ context.Context, txn model.Transaction) (*model.Transaction, bool, error) {
+				txn.ID = uuid.New()
+				if txn.RawBankText != nil && *txn.RawBankText == dupRaw {
+					return &txn, false, nil // already exists from a previous attempt
+				}
+				return &txn, true, nil
+			},
+		},
+	}
+
+	ctx := utils.WithBudgetID(context.Background(), budgetID)
+	created, err := act.createTransactions(ctx, nil, []model.CipherPredictionResult{
+		{MessageId: "msg-dup", OriginalRawText: dupRaw, PayeeID: payeeID, Amount: -10, Date: "2026-07-14"},
+		{MessageId: "msg-new", OriginalRawText: newRaw, PayeeID: payeeID, Amount: -20, Date: "2026-07-14"},
+	}, budgetID, slog.Default())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(created) != 1 {
+		t.Fatalf("expected 1 created pair, got %d", len(created))
+	}
+	if created[0].Prediction.MessageId != "msg-new" {
+		t.Fatalf("expected only msg-new to be created, got %s", created[0].Prediction.MessageId)
+	}
 }
