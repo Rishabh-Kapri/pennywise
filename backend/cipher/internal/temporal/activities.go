@@ -73,13 +73,12 @@ func (a *PredictionActivity) Predict(
 		}
 
 		if prediction == nil {
-    		log.Warn("No prediction result", "email", email)
-    		continue
+			log.Warn("No prediction result", "email", email)
+			continue
 		}
 
 		prediction.Summary = summary
 		log.Info("Prediction result", "result", prediction)
-		
 
 		predictionResponse = append(predictionResponse, sharedModel.CipherPredictionResult{
 			MessageId:       email.MessageId,
