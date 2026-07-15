@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 )
@@ -77,9 +78,12 @@ func ProcessStream(
 		case event, ok := <-events:
 			// log.Info("received event from channel", "event", event)
 			if !ok {
-				log.Info("channel closed")
 				if stepResult.StopReason == "" {
+					log.Error("llm stream closed without a completion or error event")
 					stepResult.StopReason = sharedModel.StopReasonError
+					stepResult.Err = errs.New(errs.CodeInternalError, "llm stream closed without a completion event")
+				} else {
+					log.Info("channel closed")
 				}
 				return stepResult
 			}
@@ -151,10 +155,14 @@ func ProcessStream(
 				return stepResult
 
 			case sharedModel.ChunkEventError:
+				log.Error("llm stream returned an error chunk", "error", event.Text)
 				if handlerCallback.OnError != nil {
 					handlerCallback.OnError()
 				}
 				stepResult.StopReason = sharedModel.StopReasonError
+				if event.Text != "" {
+					stepResult.Err = errs.New(errs.CodeInternalError, "llm stream error: %s", event.Text)
+				}
 				return stepResult
 			}
 		case <-ctx.Done():

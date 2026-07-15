@@ -687,14 +687,13 @@ func (a *Agent) Run(
 
 	// Enrich with tools
 	if runOpts.enableTools && len(a.toolRegistry.GetAllTools()) > 0 {
-		log.Info("enriching with tools", "tools", a.toolRegistry.GetAllTools())
-
 		req.Tools = make([]sharedModel.ToolDefiniton, 0)
 
 		for _, tool := range a.toolRegistry.GetAllTools() {
 			req.Tools = append(req.Tools, tool.Definition())
 			enabledTools = append(enabledTools, tool.Definition().Name)
 		}
+		log.Info("enriching with tools", "tools", enabledTools)
 	}
 	log.Info("context builder", "builder", a.contextBuilder)
 
@@ -864,6 +863,9 @@ func (a *Agent) Run(
 
 		case sharedModel.StopReasonError:
 			err := errs.New(errs.CodeInternalError, "llm responded with error")
+			if stepResult.Err != nil {
+				err = errs.Wrap(errs.CodeInternalError, "llm responded with error", stepResult.Err)
+			}
 			log.Error("llm responded with error", "error", err)
 			setSpanError(span, err)
 			return stepResultToChatResponse(req.Model, stepResult), err
