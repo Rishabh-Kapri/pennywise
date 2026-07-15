@@ -229,12 +229,26 @@ func (h *httpTransport) do(
 			"body",
 			string(body),
 		)
+		errBody := strings.TrimSpace(string(body))
+		if len(errBody) > 512 {
+			errBody = errBody[:512] + "..."
+		}
+		if errBody == "" {
+			return result, errs.New(
+				errs.CodeHTTPClientError,
+				"%s request for %s failed with status code: %d",
+				req.Method,
+				req.URL.String(),
+				res.StatusCode,
+			)
+		}
 		return result, errs.New(
 			errs.CodeHTTPClientError,
-			"%s request for %s failed with status code: %d",
+			"%s request for %s failed with status code: %d: %s",
 			req.Method,
 			req.URL.String(),
 			res.StatusCode,
+			errBody,
 		)
 	}
 	result.Body = res.Body
