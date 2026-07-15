@@ -144,11 +144,16 @@ func ParsedEmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.Em
 
 // perEmailCipherOptions returns activity options for the per-email cipher
 // activities: shorter, exponential retries (the old 10-minute fixed interval
-// would serialize badly when applied per email).
+// would serialize badly when applied per email). The activities heartbeat
+// before every LLM/embedding step, so a hung ollama call surfaces at the
+// HeartbeatTimeout instead of the full StartToCloseTimeout.
 func perEmailCipherOptions(ctx workflow.Context, summary string) workflow.Context {
 	return workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
-		TaskQueue:           sharedModel.CipherActivitiesTaskQueue,
-		StartToCloseTimeout: 300 * time.Second,
+		TaskQueue: sharedModel.CipherActivitiesTaskQueue,
+		// Worst case per email: ~4 LLM round-trips at up to 3m each (cold model).
+		StartToCloseTimeout: 15 * time.Minute,
+		// Must exceed the per-LLM-call timeout (CIPHER_LLM_CALL_TIMEOUT, 3m default).
+		HeartbeatTimeout: 4 * time.Minute,
 		RetryPolicy: &temporal.RetryPolicy{
 			InitialInterval:    time.Minute,
 			BackoffCoefficient: 2.0,

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/progress"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/service"
 	"github.com/google/uuid"
 
@@ -189,6 +190,16 @@ func activityLogger(ctx context.Context) *slog.Logger {
 	)
 }
 
+// withHeartbeats forwards service-level progress reports (fired before each
+// LLM/embedding step) to Temporal heartbeats, so a hung ollama call is
+// detected at the HeartbeatTimeout instead of the whole StartToCloseTimeout.
+func withHeartbeats(ctx context.Context) context.Context {
+	activity.RecordHeartbeat(ctx, "started")
+	return progress.With(ctx, func(step string) {
+		activity.RecordHeartbeat(ctx, step)
+	})
+}
+
 // ParseEmail extracts transaction data from a single raw email. Data problems
 // (empty body, non-transaction email, unparseable date) come back as Skipped
 // results; only infrastructure errors (ollama down) are returned as errors so
@@ -210,6 +221,7 @@ func (a *PredictionActivity) ParseEmail(
 		return sharedModel.ParseEmailResult{Skipped: true, SkipReason: "empty email body"}, nil
 	}
 
+	ctx = withHeartbeats(ctx)
 	extracted, err := a.PredictionService.ExtractEmailData(
 		ctx,
 		service.ExtractEmailDataRequest{EmailHtml: input.Email.Body},
@@ -271,6 +283,7 @@ func (a *PredictionActivity) PredictEmail(
 	email := input.Email
 	log.Info("predicting", "amount", email.Amount, "date", email.Date)
 
+	ctx = withHeartbeats(ctx)
 	predictionInput := service.PredictRequest{
 		EmailText: email.EmailText,
 		Amount:    email.Amount,

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
@@ -15,7 +16,9 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
 	agent "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/runtime"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/client"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/progress"
 	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
@@ -122,6 +125,9 @@ type predictionService struct {
 	payeeRuleRepo repository.PayeeRuleRepository
 	categoryRepo  repository.CategoryRepository
 	tracer        oteltrace.Tracer
+	// llmCallTimeout bounds each chat-endpoint LLM call made through the
+	// llmResolver (the OllamaClient bounds its own calls).
+	llmCallTimeout time.Duration
 }
 
 func NewPredictionService(
@@ -137,17 +143,27 @@ func NewPredictionService(
 	tracer oteltrace.Tracer,
 ) PredictionService {
 	return &predictionService{
-		agent:         agent,
-		llmResolver:   llmResolver,
-		ollama:        ollama,
-		mlp:           mlp,
-		embeddingRepo: embeddingRepo,
-		accountRepo:   accountRepo,
-		payeeRepo:     payeeRepo,
-		payeeRuleRepo: payeeRuleRepo,
-		categoryRepo:  categoryRepo,
-		tracer:        tracer,
+		agent:          agent,
+		llmResolver:    llmResolver,
+		ollama:         ollama,
+		mlp:            mlp,
+		embeddingRepo:  embeddingRepo,
+		accountRepo:    accountRepo,
+		payeeRepo:      payeeRepo,
+		payeeRuleRepo:  payeeRuleRepo,
+		categoryRepo:   categoryRepo,
+		tracer:         tracer,
+		llmCallTimeout: config.Load().LLMCallTimeout,
 	}
+}
+
+// withLLMTimeout bounds a single chat-endpoint LLM call.
+func (s *predictionService) withLLMTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	timeout := s.llmCallTimeout
+	if timeout <= 0 {
+		timeout = config.DefaultLLMCallTimeout
+	}
+	return context.WithTimeout(ctx, timeout)
 }
 
 func (s *predictionService) getPayeeAndCategory(
@@ -217,6 +233,7 @@ func (s *predictionService) handleSemanticSearch(
 ) (*PredictResponse, error) {
 	log := logger.Logger(ctx)
 
+	progress.Report(ctx, "predict:semantic_search")
 	embedding, err := s.ollama.Embed(ctx, EmbeddingModel, embeddingText)
 	if err != nil {
 		log.Warn("ollama embed failed, falling back to MLP", "error", err)
@@ -331,6 +348,7 @@ func (s *predictionService) SummarizeEmailText(ctx context.Context, text string)
 	prompt := client.EmailSummarizationPrompt + text + "\nOutput:"
 	temperature := float32(0.0)
 
+	progress.Report(ctx, "predict:summarize")
 	res, err := client.GenericLLMCall[summaryResponse](ctx, s.ollama, model.PromptReq{
 		Model:       "gemma4",
 		Prompt:      prompt,
@@ -403,7 +421,10 @@ func (s *predictionService) ExtractEmailData(
 		Stream:      false,
 		Format:      client.ExtractionSchema,
 	}
-	chatRes, err := lc.Chat(ctx, chatReq)
+	progress.Report(ctx, "parse:extract")
+	chatCtx, chatCancel := s.withLLMTimeout(ctx)
+	chatRes, err := lc.Chat(chatCtx, chatReq)
+	chatCancel()
 	if err != nil {
 		return nil, err
 	}
@@ -777,7 +798,10 @@ func (s *predictionService) llmFallback(
 		Format:      "json",
 	}
 
-	chatRes, err := lc.Chat(ctx, chatReq)
+	progress.Report(ctx, "predict:llm_fallback")
+	chatCtx, chatCancel := s.withLLMTimeout(ctx)
+	chatRes, err := lc.Chat(chatCtx, chatReq)
+	chatCancel()
 	if err != nil {
 		return nil, uuid.Nil, nil, errs.Wrap(errs.CodeInternalError, "error in llm fallback", err)
 	}
