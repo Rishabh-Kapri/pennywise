@@ -6,6 +6,7 @@ import (
 
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	sharedTemporal "github.com/Rishabh-Kapri/pennywise/backend/shared/temporal"
+	"github.com/google/uuid"
 
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/workflow"
@@ -42,6 +43,20 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailToT
 		return err
 	}
 
+	// Budget is known now — start pipeline run tracking for the UI. Gated on a
+	// version marker so in-flight pre-observability workflows replay without
+	// the extra activity calls (reporter stays disabled at DefaultVersion).
+	reporter := pipelineReporter{}
+	if workflow.GetVersion(ctx, "pipeline-observability", workflow.DefaultVersion, 1) >= 1 {
+		reporter = startPipelineRun(ctx, sharedModel.StartPipelineRunInput{
+			BudgetID:      googleUser.BudgetID,
+			WorkflowID:    workflowInfo.WorkflowExecution.ID,
+			WorkflowRunID: workflowInfo.WorkflowExecution.RunID,
+			Trigger:       sharedModel.PipelineTriggerGmailPush,
+			EmailAccount:  input.Email,
+		})
+	}
+
 	updateHistoryInput := sharedModel.UpdateGmailHistoryInput{
 		Email:           input.Email,
 		OAuthClientType: googleUser.OAuthClientType,
@@ -49,10 +64,19 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailToT
 	}
 	if err := workflow.ExecuteActivity(pennywiseCtx, "UpdateGmailHistoryID", updateHistoryInput).
 		Get(pennywiseCtx, nil); err != nil {
+		reporter.reportFailed(ctx, sharedModel.PipelineStepFetchUser, err)
 		return err
 	}
 
 	// ----- Step 2: Fetch emails data from Gmail using Pennywise-owned user data -----
+	reporter.report(ctx, sharedModel.ReportPipelineStatusInput{
+		CurrentStep: sharedModel.PipelineStepFetchEmails,
+		Events: []sharedModel.PipelineEventInput{{
+			Step:   sharedModel.PipelineStepFetchEmails,
+			Status: sharedModel.PipelineEventStarted,
+		}},
+	})
+
 	gmailCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 		TaskQueue:           sharedModel.GmailActivitiesTaskQueue,
 		StartToCloseTimeout: 300 * time.Second,
@@ -73,25 +97,55 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailToT
 	var emailDataInput sharedModel.EmailDataInput
 	err = workflow.ExecuteActivity(gmailCtx, "FetchEmailData", fetchInput).Get(gmailCtx, &emailDataInput)
 	if err != nil {
+		reporter.reportFailed(ctx, sharedModel.PipelineStepFetchEmails, err)
 		return err
 	}
 
-	workflow.GetLogger(ctx).Info("fetched emails", append(workflowLogFields, "count", len(emailDataInput.EmailData))...)
-	if len(emailDataInput.EmailData) == 0 {
+	emailCount := len(emailDataInput.EmailData)
+	workflow.GetLogger(ctx).Info("fetched emails", append(workflowLogFields, "count", emailCount)...)
+	if emailCount == 0 {
+		reporter.report(ctx, sharedModel.ReportPipelineStatusInput{
+			RunStatus:     sharedModel.PipelineRunStatusCompleted,
+			CurrentStep:   sharedModel.PipelineStepDone,
+			EmailsFetched: &emailCount,
+			Events: []sharedModel.PipelineEventInput{{
+				Step:   sharedModel.PipelineStepFetchEmails,
+				Status: sharedModel.PipelineEventSucceeded,
+				Detail: map[string]any{"count": emailCount},
+			}},
+		})
 		return nil
 	}
 
 	// Start child workflow for steps 2-4 (Predict -> CreateTransaction -> CreateCipherPrediction)
 	childWorkflowID := workflowInfo.WorkflowExecution.ID + "-parsed"
+	reporter.report(ctx, sharedModel.ReportPipelineStatusInput{
+		ChildWorkflowID: childWorkflowID,
+		EmailsFetched:   &emailCount,
+		Events: []sharedModel.PipelineEventInput{{
+			Step:   sharedModel.PipelineStepFetchEmails,
+			Status: sharedModel.PipelineEventSucceeded,
+			Detail: map[string]any{"count": emailCount},
+		}},
+	})
+
 	childCtx := workflow.WithChildOptions(ctx, workflow.ChildWorkflowOptions{
 		WorkflowID: childWorkflowID,
 	})
 	workflow.GetLogger(ctx).Info("starting child workflow for parsed emails",
 		append(workflowLogFields, "child_workflow_id", childWorkflowID)...)
 
+	emailDataInput.PipelineRunID = reporter.runID
 	err = workflow.ExecuteChildWorkflow(childCtx, sharedModel.ParsedEmailToTransactionWorkflowName, emailDataInput).
 		Get(childCtx, nil)
 	if err != nil {
+		// The child reports its own step-level failures; this catches the case
+		// where the child could not run (or report) at all.
+		msg := err.Error()
+		reporter.report(ctx, sharedModel.ReportPipelineStatusInput{
+			RunStatus: sharedModel.PipelineRunStatusFailed,
+			Error:     &msg,
+		})
 		return err
 	}
 
@@ -134,7 +188,28 @@ func ParsedEmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.Em
 		return nil
 	}
 
-	if err := processEmailsIndividually(ctx, input, workflowLogFields); err != nil {
+	// When started by the parent workflow the run row already exists; when
+	// started standalone this workflow owns its own run with trigger "manual".
+	// Same version gate as the parent: pre-observability in-flight executions
+	// (possibly parked on retry signals) replay with reporting disabled.
+	reporter := pipelineReporter{}
+	if workflow.GetVersion(ctx, "pipeline-observability", workflow.DefaultVersion, 1) >= 1 {
+		reporter = pipelineReporter{runID: input.PipelineRunID, budgetID: input.BudgetID}
+		if input.PipelineRunID == uuid.Nil {
+			reporter = startPipelineRun(ctx, sharedModel.StartPipelineRunInput{
+				BudgetID:      input.BudgetID,
+				WorkflowID:    workflowInfo.WorkflowExecution.ID,
+				WorkflowRunID: workflowInfo.WorkflowExecution.RunID,
+				Trigger:       sharedModel.PipelineTriggerManual,
+			})
+			emailCount := len(input.EmailData)
+			reporter.report(ctx, sharedModel.ReportPipelineStatusInput{
+				EmailsFetched: &emailCount,
+			})
+		}
+	}
+
+	if err := processEmailsIndividually(ctx, input, reporter, workflowLogFields); err != nil {
 		return err
 	}
 
@@ -171,6 +246,7 @@ func perEmailCipherOptions(ctx workflow.Context, summary string) workflow.Contex
 func processEmailsIndividually(
 	ctx workflow.Context,
 	input sharedModel.EmailDataInput,
+	reporter pipelineReporter,
 	workflowLogFields []interface{},
 ) error {
 	logger := workflow.GetLogger(ctx)
@@ -179,10 +255,22 @@ func processEmailsIndividually(
 	var skips []sharedModel.EmailSkip
 	pendingParse := input.EmailData
 	var pendingPredict []sharedModel.ParsedEmail
+	totalCreated := 0
 
 	for {
 		// ----- Parse pending raw emails, one activity each -----
 		var failedParse []sharedModel.EmailData
+		var parseEvents []sharedModel.PipelineEventInput
+		if len(pendingParse) > 0 {
+			reporter.report(ctx, sharedModel.ReportPipelineStatusInput{
+				CurrentStep: sharedModel.PipelineStepParse,
+				Events: []sharedModel.PipelineEventInput{{
+					Step:   sharedModel.PipelineStepParse,
+					Status: sharedModel.PipelineEventStarted,
+					Detail: map[string]any{"count": len(pendingParse)},
+				}},
+			})
+		}
 		parseCtx := perEmailCipherOptions(ctx, "Extract transaction data from one email")
 		for _, email := range pendingParse {
 			var result sharedModel.ParseEmailResult
@@ -195,20 +283,62 @@ func processEmailsIndividually(
 				logger.Warn("email parse failed after retries",
 					append(workflowLogFields, "step", sharedModel.PipelineStepParse, "message_id", email.MessageId, "error", err)...)
 				failedParse = append(failedParse, email)
+				parseEvents = append(parseEvents, sharedModel.PipelineEventInput{
+					Step:      sharedModel.PipelineStepParse,
+					Status:    sharedModel.PipelineEventFailed,
+					MessageID: email.MessageId,
+					Detail:    map[string]any{"error": err.Error()},
+				})
 			case result.Skipped:
 				skips = append(skips, sharedModel.EmailSkip{
 					MessageId: email.MessageId,
 					Step:      sharedModel.PipelineStepParse,
 					Reason:    result.SkipReason,
 				})
+				parseEvents = append(parseEvents, sharedModel.PipelineEventInput{
+					Step:      sharedModel.PipelineStepParse,
+					Status:    sharedModel.PipelineEventSkipped,
+					MessageID: email.MessageId,
+					Detail:    map[string]any{"reason": result.SkipReason},
+				})
 			case result.Parsed != nil:
 				pendingPredict = append(pendingPredict, *result.Parsed)
+				parseEvents = append(parseEvents, sharedModel.PipelineEventInput{
+					Step:      sharedModel.PipelineStepParse,
+					Status:    sharedModel.PipelineEventSucceeded,
+					MessageID: email.MessageId,
+					Detail: map[string]any{
+						"merchant":        result.Parsed.ExtractedMerchant,
+						"account":         result.Parsed.ExtractedAccount,
+						"amount":          result.Parsed.Amount,
+						"date":            result.Parsed.Date,
+						"transactionType": result.Parsed.TransactionType,
+					},
+				})
 			}
+		}
+		if len(parseEvents) > 0 {
+			skippedCount := len(skips)
+			reporter.report(ctx, sharedModel.ReportPipelineStatusInput{
+				EmailsSkipped: &skippedCount,
+				Events:        parseEvents,
+			})
 		}
 
 		// ----- Predict pending parsed emails, one activity each -----
 		var failedPredict []sharedModel.ParsedEmail
 		var predictions []sharedModel.CipherPredictionResult
+		var predictEvents []sharedModel.PipelineEventInput
+		if len(pendingPredict) > 0 {
+			reporter.report(ctx, sharedModel.ReportPipelineStatusInput{
+				CurrentStep: sharedModel.PipelineStepPredict,
+				Events: []sharedModel.PipelineEventInput{{
+					Step:   sharedModel.PipelineStepPredict,
+					Status: sharedModel.PipelineEventStarted,
+					Detail: map[string]any{"count": len(pendingPredict)},
+				}},
+			})
+		}
 		predictCtx := perEmailCipherOptions(ctx, "Predict transaction for one email")
 		for _, parsed := range pendingPredict {
 			var result sharedModel.PredictEmailResult
@@ -221,20 +351,62 @@ func processEmailsIndividually(
 				logger.Warn("email predict failed after retries",
 					append(workflowLogFields, "step", sharedModel.PipelineStepPredict, "message_id", parsed.MessageId, "error", err)...)
 				failedPredict = append(failedPredict, parsed)
+				predictEvents = append(predictEvents, sharedModel.PipelineEventInput{
+					Step:      sharedModel.PipelineStepPredict,
+					Status:    sharedModel.PipelineEventFailed,
+					MessageID: parsed.MessageId,
+					Detail:    map[string]any{"error": err.Error()},
+				})
 			case result.Skipped:
 				skips = append(skips, sharedModel.EmailSkip{
 					MessageId: parsed.MessageId,
 					Step:      sharedModel.PipelineStepPredict,
 					Reason:    result.SkipReason,
 				})
+				predictEvents = append(predictEvents, sharedModel.PipelineEventInput{
+					Step:      sharedModel.PipelineStepPredict,
+					Status:    sharedModel.PipelineEventSkipped,
+					MessageID: parsed.MessageId,
+					Detail:    map[string]any{"reason": result.SkipReason},
+				})
 			case result.Prediction != nil:
 				predictions = append(predictions, *result.Prediction)
+				predictEvents = append(predictEvents, sharedModel.PipelineEventInput{
+					Step:      sharedModel.PipelineStepPredict,
+					Status:    sharedModel.PipelineEventSucceeded,
+					MessageID: parsed.MessageId,
+					Detail: map[string]any{
+						"payee":      result.Prediction.Payee,
+						"category":   result.Prediction.Category,
+						"account":    result.Prediction.Account,
+						"source":     result.Prediction.Source,
+						"confidence": result.Prediction.Confidence,
+						"reasoning":  result.Prediction.Reasoning,
+						"amount":     result.Prediction.Amount,
+						"date":       result.Prediction.Date,
+					},
+				})
 			}
+		}
+		if len(predictEvents) > 0 {
+			skippedCount := len(skips)
+			reporter.report(ctx, sharedModel.ReportPipelineStatusInput{
+				EmailsSkipped: &skippedCount,
+				Events:        predictEvents,
+			})
 		}
 
 		// ----- Commit this round's successes; the insert is deduped, so a
 		// retried round can never create duplicate transactions -----
 		if len(predictions) > 0 {
+			reporter.report(ctx, sharedModel.ReportPipelineStatusInput{
+				CurrentStep: sharedModel.PipelineStepCreateTxns,
+				Events: []sharedModel.PipelineEventInput{{
+					Step:   sharedModel.PipelineStepCreateTxns,
+					Status: sharedModel.PipelineEventStarted,
+					Detail: map[string]any{"count": len(predictions)},
+				}},
+			})
 			pennywiseCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 				TaskQueue:           sharedModel.PennywiseActivitiesTaskQueue,
 				StartToCloseTimeout: 300 * time.Second,
@@ -249,10 +421,25 @@ func processEmailsIndividually(
 				BudgetID:    budgetID,
 			}).Get(pennywiseCtx, &createdTransactions)
 			if err != nil {
+				reporter.reportFailed(ctx, sharedModel.PipelineStepCreateTxns, err)
 				return err
 			}
 			logger.Info("created transactions and cipher predictions",
 				append(workflowLogFields, "step", sharedModel.PipelineStepCreateTxns, "count", len(createdTransactions))...)
+
+			transactionIDs := make([]string, 0, len(createdTransactions))
+			for _, txn := range createdTransactions {
+				transactionIDs = append(transactionIDs, txn.ID.String())
+			}
+			totalCreated += len(createdTransactions)
+			reporter.report(ctx, sharedModel.ReportPipelineStatusInput{
+				TransactionsCreated: &totalCreated,
+				Events: []sharedModel.PipelineEventInput{{
+					Step:   sharedModel.PipelineStepCreateTxns,
+					Status: sharedModel.PipelineEventSucceeded,
+					Detail: map[string]any{"transactionIds": transactionIDs, "count": len(createdTransactions)},
+				}},
+			})
 		}
 
 		pendingParse = failedParse
@@ -266,19 +453,58 @@ func processEmailsIndividually(
 			append(workflowLogFields,
 				"failed_parse", messageIDs(pendingParse),
 				"failed_predict", parsedMessageIDs(pendingPredict))...)
+
+		// The parked step decides which retry signal the API's retry endpoint
+		// sends; the workflow accepts either signal, so parse wins when both
+		// steps have failures.
+		var parkedStep sharedModel.PipelineStep = sharedModel.PipelineStepPredict
+		retrySignal := sharedModel.RetryPredictSignal
+		if len(pendingParse) > 0 {
+			parkedStep = sharedModel.PipelineStepParse
+			retrySignal = sharedModel.RetryEmailParseSignal
+		}
+		parkMsg := fmt.Sprintf("emails failed after retries: parse=%v predict=%v",
+			messageIDs(pendingParse), parsedMessageIDs(pendingPredict))
+		reporter.report(ctx, sharedModel.ReportPipelineStatusInput{
+			RunStatus:   sharedModel.PipelineRunStatusWaitingRetry,
+			CurrentStep: parkedStep,
+			Error:       &parkMsg,
+			Events: []sharedModel.PipelineEventInput{{
+				Step:   parkedStep,
+				Status: sharedModel.PipelineEventWaitingRetry,
+				Detail: map[string]any{
+					"error":         parkMsg,
+					"retrySignal":   retrySignal,
+					"failedParse":   messageIDs(pendingParse),
+					"failedPredict": parsedMessageIDs(pendingPredict),
+				},
+			}},
+		})
+
 		if !awaitRetrySignal(ctx) {
-			return temporal.NewApplicationError(
+			parkErr := temporal.NewApplicationError(
 				fmt.Sprintf("emails unprocessed after retry window: parse=%v predict=%v",
 					messageIDs(pendingParse), parsedMessageIDs(pendingPredict)),
 				"emails_unprocessed",
 			)
+			reporter.reportFailed(ctx, parkedStep, parkErr)
+			return parkErr
 		}
 		logger.Info("retry signal received, retrying failed emails", workflowLogFields...)
+		reporter.reportRetrySignaled(ctx, parkedStep)
 	}
 
 	if len(skips) > 0 {
 		logger.Info("emails skipped", append(workflowLogFields, "skips", skips)...)
 	}
+
+	skippedCount := len(skips)
+	reporter.report(ctx, sharedModel.ReportPipelineStatusInput{
+		RunStatus:           sharedModel.PipelineRunStatusCompleted,
+		CurrentStep:         sharedModel.PipelineStepDone,
+		EmailsSkipped:       &skippedCount,
+		TransactionsCreated: &totalCreated,
+	})
 	return nil
 }
 

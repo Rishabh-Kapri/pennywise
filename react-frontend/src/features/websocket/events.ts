@@ -1,5 +1,7 @@
 export const AGENT_CHAT_WEBSOCKET_EVENT = 'pennywise:agent::chat::message';
 export const AGENT_CHAT_SUBSCRIBE_EVENT = 'pennywise::agent::chat::subscribe'
+// Mirrors EventPipelineUpdate in backend/shared/model/websocket.go
+export const PIPELINE_UPDATE_EVENT = 'pennywise::pipeline::update';
 
 export type WebSocketMessage = {
   eventName: string;

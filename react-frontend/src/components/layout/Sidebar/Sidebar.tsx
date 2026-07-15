@@ -1,6 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import styles from './Sidebar.module.css';
-import { Money as Banknote, ChartPie, CurrencyCircleDollar as CircleDollarSign, FileText, Bank as Landmark, PiggyBank, Wallet as WalletCards, Lock, SidebarSimple as PanelLeftClose } from '@phosphor-icons/react';
+import { Money as Banknote, ChartPie, CurrencyCircleDollar as CircleDollarSign, FileText, Bank as Landmark, PiggyBank, Pulse, Wallet as WalletCards, Lock, SidebarSimple as PanelLeftClose } from '@phosphor-icons/react';
 import type { IconProps } from '@phosphor-icons/react';
 import { useAppSelector } from '@/app/hooks';
 import {
@@ -13,6 +13,7 @@ import {
   type ReactElement,
 } from 'react';
 import { getCurrencyLocaleString } from '@/utils/date.utils';
+import { selectActivePipelineRunCount } from '@/features/pipeline/store';
 import { Tooltip } from '@heroui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@heroui/popover';
 
@@ -45,6 +46,7 @@ function renderIcon(icon: IconElement | undefined, isSelected: boolean) {
 
 export default function Sidebar({ isMobileOpen = false, onNavigate }: SidebarProps) {
   const location = useLocation();
+  const activePipelineRunCount = useAppSelector(selectActivePipelineRunCount);
   const navItems: NavItem[] = useMemo(
     () => [
       {
@@ -71,8 +73,17 @@ export default function Sidebar({ isMobileOpen = false, onNavigate }: SidebarPro
         label: 'All Accounts',
         icon: <Landmark strokeWidth={1.5} />,
       },
+      {
+        path: '/activity',
+        key: 'activity',
+        label: 'Activity',
+        icon: <Pulse strokeWidth={1.5} />,
+        ...(activePipelineRunCount > 0
+          ? { meta: { balance: String(activePipelineRunCount) } }
+          : {}),
+      },
     ],
-    [],
+    [activePipelineRunCount],
   );
   const [dynamicNavItems, setDynamicNavItems] = useState<NavItem[]>([]);
   const [isCollapsed, setIsCollapsed] = useState(false);

@@ -26,6 +26,10 @@ type pipelineFakes struct {
 	// createBatches records the predictions passed to each
 	// CreateTransactionAndCipherPrediction invocation.
 	createBatches [][]sharedModel.CipherPredictionResult
+	// pipelineRunID is the run id handed out by the fake StartPipelineRun;
+	// statusReports records every ReportPipelineStatus payload.
+	pipelineRunID uuid.UUID
+	statusReports []sharedModel.ReportPipelineStatusInput
 }
 
 func (f *pipelineFakes) failPredict(messageID string) {
@@ -88,6 +92,47 @@ func (f *pipelineFakes) register(t *testing.T, env *testsuite.TestWorkflowEnviro
 		txns := make([]sharedModel.Transaction, len(input.Predictions))
 		return txns, nil
 	}, activity.RegisterOptions{Name: "CreateTransactionAndCipherPrediction"})
+
+	f.pipelineRunID = uuid.New()
+	env.RegisterActivityWithOptions(func(ctx context.Context, input sharedModel.StartPipelineRunInput) (uuid.UUID, error) {
+		return f.pipelineRunID, nil
+	}, activity.RegisterOptions{Name: "StartPipelineRun"})
+
+	env.RegisterActivityWithOptions(func(ctx context.Context, input sharedModel.ReportPipelineStatusInput) error {
+		f.mu.Lock()
+		f.statusReports = append(f.statusReports, input)
+		f.mu.Unlock()
+		return nil
+	}, activity.RegisterOptions{Name: "ReportPipelineStatus"})
+}
+
+// lastRunStatus returns the most recent non-empty RunStatus reported.
+func (f *pipelineFakes) lastRunStatus() sharedModel.PipelineRunStatus {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := len(f.statusReports) - 1; i >= 0; i-- {
+		if f.statusReports[i].RunStatus != "" {
+			return f.statusReports[i].RunStatus
+		}
+	}
+	return ""
+}
+
+// eventStatuses collects every reported (step, messageId, status) triple.
+func (f *pipelineFakes) eventStatuses() map[string][]sharedModel.PipelineEventStatus {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	byKey := map[string][]sharedModel.PipelineEventStatus{}
+	for _, report := range f.statusReports {
+		for _, event := range report.Events {
+			key := string(event.Step)
+			if event.MessageID != "" {
+				key += ":" + event.MessageID
+			}
+			byKey[key] = append(byKey[key], event.Status)
+		}
+	}
+	return byKey
 }
 
 func (f *pipelineFakes) batchMessageIDs(batch int) []string {
@@ -129,6 +174,15 @@ func TestPerEmailPipelineHappyPath(t *testing.T) {
 	require.NoError(t, env.GetWorkflowError())
 	require.Len(t, fakes.createBatches, 1)
 	require.ElementsMatch(t, []string{"msg-2", "msg-3"}, fakes.batchMessageIDs(0))
+
+	// Observability: the run completed and the per-email timeline recorded the
+	// skip and both successes.
+	require.Equal(t, sharedModel.PipelineRunStatus("completed"), fakes.lastRunStatus())
+	events := fakes.eventStatuses()
+	require.Contains(t, events["parse:msg-1"], sharedModel.PipelineEventSkipped)
+	require.Contains(t, events["parse:msg-2"], sharedModel.PipelineEventSucceeded)
+	require.Contains(t, events["predict:msg-3"], sharedModel.PipelineEventSucceeded)
+	require.Contains(t, events["create_transactions"], sharedModel.PipelineEventSucceeded)
 }
 
 // TestPerEmailPipelineIsolatesFailures: one email permanently failing predict
@@ -153,6 +207,13 @@ func TestPerEmailPipelineIsolatesFailures(t *testing.T) {
 	// msg-3's transaction was committed before the failure surfaced.
 	require.Len(t, fakes.createBatches, 1)
 	require.ElementsMatch(t, []string{"msg-3"}, fakes.batchMessageIDs(0))
+
+	// Observability: the failing email's predict failure and the parked state
+	// were reported, and the run ended failed.
+	require.Equal(t, sharedModel.PipelineRunStatus("failed"), fakes.lastRunStatus())
+	events := fakes.eventStatuses()
+	require.Contains(t, events["predict:msg-2"], sharedModel.PipelineEventFailed)
+	require.Contains(t, events["predict"], sharedModel.PipelineEventWaitingRetry)
 }
 
 // TestPerEmailPipelineRetrySignal: a parked workflow re-runs ONLY the failed
@@ -184,4 +245,17 @@ func TestPerEmailPipelineRetrySignal(t *testing.T) {
 	require.Len(t, fakes.createBatches, 2)
 	require.ElementsMatch(t, []string{"msg-3"}, fakes.batchMessageIDs(0))
 	require.ElementsMatch(t, []string{"msg-2"}, fakes.batchMessageIDs(1))
+
+	// Observability: parked → retry signaled → completed, with the created
+	// count accumulated across both rounds.
+	require.Equal(t, sharedModel.PipelineRunStatus("completed"), fakes.lastRunStatus())
+	events := fakes.eventStatuses()
+	require.Contains(t, events["predict"], sharedModel.PipelineEventWaitingRetry)
+	require.Contains(t, events["predict"], sharedModel.PipelineEventRetrySignaled)
+	require.Contains(t, events["predict:msg-2"], sharedModel.PipelineEventFailed)
+	require.Contains(t, events["predict:msg-2"], sharedModel.PipelineEventSucceeded)
+
+	final := fakes.statusReports[len(fakes.statusReports)-1]
+	require.NotNil(t, final.TransactionsCreated)
+	require.Equal(t, 2, *final.TransactionsCreated)
 }
