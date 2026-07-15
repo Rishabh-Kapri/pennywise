@@ -4,11 +4,13 @@ import { config } from '@/config/env';
 import { selectCurrentAgentStreamId } from '@/features/agent/store';
 import { refreshAccessToken, selectAccessToken, selectUser } from '@/features/auth/store';
 import { selectSelectedBudget } from '@/features/budget';
+import { pipelineRunUpdated, type PipelineRun } from '@/features/pipeline';
 import { fetchAllTransaction } from '@/features/transactions/store';
 import { parseJWT } from '@/utils/auth.utils';
 import {
   AGENT_CHAT_WEBSOCKET_EVENT,
   AGENT_CHAT_SUBSCRIBE_EVENT,
+  PIPELINE_UPDATE_EVENT,
   type WebSocketMessage,
   type WebSocketSubscriptionMessage,
 } from './events';
@@ -210,6 +212,15 @@ export function WebSocketProvider() {
 
           if (message.eventName === 'pennywise::transaction::created') {
             dispatch(fetchAllTransaction());
+          }
+
+          if (message.eventName === PIPELINE_UPDATE_EVENT && message.data) {
+            const run = (
+              typeof message.data === 'string' ? JSON.parse(message.data) : message.data
+            ) as PipelineRun;
+            if (run?.id) {
+              dispatch(pipelineRunUpdated(run));
+            }
           }
 
           if (

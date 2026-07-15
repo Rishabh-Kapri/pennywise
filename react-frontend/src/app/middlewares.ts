@@ -12,6 +12,7 @@ import {
 import { fetchAllLoanMetadata } from '@/features/loans/store/loanSlice';
 import { fetchAllTransaction } from '@/features/transactions/store/transactionSlice';
 import { fetchAllTags } from '@/features/tags/store/tagSlice';
+import { fetchPipelineRuns } from '@/features/pipeline/store/pipelineSlice';
 
 /*
  * Fetch all data on app start
@@ -33,6 +34,7 @@ export const dataFetchMiddleware: Middleware =
       dispatch(fetchAllPayees());
       dispatch(fetchAllLoanMetadata());
       dispatch(fetchAllTags());
+      dispatch(fetchPipelineRuns());
       // fetch inflow category from selected budget metadata
       const selectedBudget = (store.getState() as RootState).budgets
         .selectedBudget;
@@ -50,6 +52,7 @@ export const dataFetchMiddleware: Middleware =
       dispatch(fetchAllPayees());
       dispatch(fetchAllLoanMetadata());
       dispatch(fetchAllTags());
+      dispatch(fetchPipelineRuns());
       if (action.payload.metadata?.inflowCategoryId) {
         dispatch(fetchCategoryById(action.payload.metadata.inflowCategoryId));
       }

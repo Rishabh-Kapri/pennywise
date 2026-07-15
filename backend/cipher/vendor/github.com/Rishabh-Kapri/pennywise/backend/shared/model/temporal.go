@@ -37,6 +37,7 @@ const (
 	PipelineStepParse       = "parse"
 	PipelineStepPredict     = "predict"
 	PipelineStepCreateTxns  = "create_transactions"
+	PipelineStepDone        = "done"
 )
 
 // EmailToTransactionWorflowInput is the input to the EmailToTransactionWorkflow,
@@ -124,6 +125,10 @@ type EmailSkip struct {
 type EmailDataInput struct {
 	EmailData []EmailData `json:"emailData"`
 	BudgetID  uuid.UUID   `json:"budgetId"`
+	// PipelineRunID links a child workflow back to the pipeline_runs row created
+	// by its parent. Nil when the workflow is started standalone; the child then
+	// creates its own run row with trigger "manual".
+	PipelineRunID uuid.UUID `json:"pipelineRunId,omitempty"`
 }
 
 type FetchAndParseEmailsInput struct {
