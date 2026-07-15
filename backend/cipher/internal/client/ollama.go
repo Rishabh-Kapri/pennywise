@@ -31,6 +31,16 @@ func NewOllamaClient(c *transport.Client, tracer oteltrace.Tracer) *OllamaClient
 	return &OllamaClient{client: c, config: cfg.Load(), tracer: tracer}
 }
 
+// withCallTimeout bounds a single LLM/embedding round-trip so a hung ollama
+// call fails fast instead of eating the whole activity timeout.
+func (c *OllamaClient) withCallTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	timeout := c.config.LLMCallTimeout
+	if timeout <= 0 {
+		timeout = cfg.DefaultLLMCallTimeout
+	}
+	return context.WithTimeout(ctx, timeout)
+}
+
 // ── Phase 1: Email data extraction ──────────────────────────────
 
 const extractionModel = "gemma4:12b"
@@ -197,6 +207,8 @@ func (c *OllamaClient) Embed(ctx context.Context, ollamaModel string, text strin
 		attribute.String("gen_ai.request.model", ollamaModel),
 		attribute.String("gen_ai.prompt", text),
 	)
+	ctx, cancel := c.withCallTimeout(ctx)
+	defer cancel()
 	resp, err := transport.Post[model.EmbedResponse](ctx, c.client, "/api/embed", nil, model.EmbedRequest{
 		Model: ollamaModel,
 		Input: text,
@@ -283,6 +295,8 @@ func (c *OllamaClient) doLocalGenerate(
 		modelTemp = *temperature
 	}
 
+	ctx, cancel := c.withCallTimeout(ctx)
+	defer cancel()
 	resp, err := transport.Post[model.OllamaResponse](ctx, c.client, "/api/generate", nil, model.OllamaRequest{
 		Model:  ollamaModel,
 		Prompt: prompt,
@@ -358,6 +372,8 @@ func (c *OllamaClient) doOpenAI(ctx context.Context, req model.PromptReq) (strin
 	}
 	reqData.ResponseFormat.Type = "json_object"
 
+	ctx, cancel := c.withCallTimeout(ctx)
+	defer cancel()
 	resp, err := transport.Post[model.OpenAIResponse](ctx, c.client, openaiEndpoint, headers, reqData)
 	if err != nil {
 		span.RecordError(err)

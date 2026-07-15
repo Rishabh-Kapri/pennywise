@@ -46,6 +46,19 @@ func (m *mockTransactionRepo) Create(
 	return nil, args.Error(1)
 }
 
+// CreateDeduped implements repository.TransactionRepository.
+func (m *mockTransactionRepo) CreateDeduped(
+	ctx context.Context,
+	tx pgx.Tx,
+	txn model.Transaction,
+) (*model.Transaction, bool, error) {
+	args := m.Called(ctx, tx, txn)
+	if obj := args.Get(0); obj != nil {
+		return obj.(*model.Transaction), args.Bool(1), args.Error(2)
+	}
+	return nil, args.Bool(1), args.Error(2)
+}
+
 // DeleteById implements repository.TransactionRepository.
 func (m *mockTransactionRepo) DeleteById(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID) error {
 	args := m.Called(ctx, tx, budgetId, id)

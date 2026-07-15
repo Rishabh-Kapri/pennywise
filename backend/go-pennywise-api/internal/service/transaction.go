@@ -28,6 +28,7 @@ type TransactionService interface {
 	UpdateStatus(ctx context.Context, id uuid.UUID, status model.TransactionStatus) error
 	Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error)
 	CreateWithTx(ctx context.Context, tx pgx.Tx, txn model.Transaction) ([]model.Transaction, error)
+	CreateWithTxDeduped(ctx context.Context, tx pgx.Tx, txn model.Transaction) (*model.Transaction, bool, error)
 	DeleteById(ctx context.Context, id uuid.UUID) error
 }
 
@@ -663,6 +664,76 @@ func (s *transactionService) CreateWithTx(
 	createdTxn[0] = *final
 
 	return createdTxn, nil
+}
+
+// CreateWithTxDeduped behaves like CreateWithTx, but when a transaction with
+// the same (budget_id, dedupe_hash) already exists it returns the existing row
+// with created=false instead of failing — and skips budget side effects, which
+// already ran when the row was first created. Used by the email pipeline so
+// activity retries and duplicate Gmail pushes are idempotent.
+func (s *transactionService) CreateWithTxDeduped(
+	ctx context.Context,
+	tx pgx.Tx,
+	txn model.Transaction,
+) (*model.Transaction, bool, error) {
+	budgetID := utils.MustBudgetID(ctx)
+	txn.BudgetID = budgetID
+	if txn.Status == "" {
+		txn.Status = model.TransactionStatusManual
+	}
+
+	if err := s.validateTransactionPayload(txn, budgetID); err != nil {
+		return nil, false, err
+	}
+
+	budget, account, payee, transferAccount, err := s.loadDependencies(ctx, tx, budgetID, txn)
+	if err != nil {
+		return nil, false, err
+	}
+
+	if err = s.validateCategory(
+		txn.CategoryID,
+		budget.Metadata.InflowCategoryID,
+		*account,
+		*payee,
+		transferAccount,
+		txn.Amount,
+	); err != nil {
+		return nil, false, err
+	}
+
+	// clear transfer fields in case they are set
+	txn.TransferAccountID = nil
+	txn.TransferTransactionID = nil
+
+	createdTxn, created, err := s.repo.CreateDeduped(ctx, tx, txn)
+	if err != nil {
+		return nil, false, errs.Wrap(errs.CodeTransactionCreateFailed, "failed to create transaction", err)
+	}
+	if !created {
+		return createdTxn, false, nil
+	}
+
+	txn.ID = createdTxn.ID
+
+	if err = s.applySideEffects(ctx, tx, sideEffectInput{
+		budgetId: budgetID,
+		oldTxn:   nil,
+		newTxn:   &txn,
+		budget:   budget,
+		account:  account,
+		payee:    payee,
+	}); err != nil {
+		return nil, false, err
+	}
+
+	// Reload to pick up any mutations from side effects (e.g., transfer linking)
+	final, err := s.repo.GetByIdTx(ctx, tx, budgetID, txn.ID)
+	if err != nil {
+		return nil, false, errs.Wrap(errs.CodeTransactionLookupFailed, "error reloading created transaction", err)
+	}
+
+	return final, true, nil
 }
 
 func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model.Transaction) error {
