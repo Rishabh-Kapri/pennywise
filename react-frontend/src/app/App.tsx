@@ -24,6 +24,7 @@ const LoanOverview = lazy(() =>
 );
 const Payees = lazy(() => import('@/features/payees/components/Payees'));
 const Reports = lazy(() => import('@/features/reports/components/Reports'));
+const Activity = lazy(() => import('@/features/pipeline/components/Activity'));
 
 function App() {
   return (
@@ -123,6 +124,14 @@ function App() {
               element={
                 <Suspense fallback={<div>Loading...</div>}>
                   <Reports />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/activity"
+              element={
+                <Suspense fallback={<div>Loading...</div>}>
+                  <Activity />
                 </Suspense>
               }
             />
