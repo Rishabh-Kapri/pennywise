@@ -12,6 +12,7 @@ import (
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 )
 
 // Private struct that satisfies the transport interface
@@ -204,7 +205,7 @@ func (h *httpTransport) do(
 
 	applyHeaders(ctx, req, headers)
 
-	log.Info("httpTransport.do", "method", req.Method, "url", req.URL.String(), "headers", headers)
+	log.Info("httpTransport.do", "method", req.Method, "url", req.URL.String(), "headers", utils.SanitizeHeadersForLogging(headers))
 
 	res, err := h.client.Do(req)
 	if err != nil {
