@@ -86,6 +86,41 @@ type EmailData struct {
 	Body      string
 }
 
+// ParseEmailInput is the input to the per-email ParseEmail activity (cipher).
+type ParseEmailInput struct {
+	Email    EmailData `json:"email"`
+	BudgetID uuid.UUID `json:"budgetId"`
+}
+
+// ParseEmailResult is the outcome of parsing a single email. Skipped results
+// (non-transaction emails, unparseable dates) are recorded, never retried.
+type ParseEmailResult struct {
+	Parsed     *ParsedEmail `json:"parsed,omitempty"`
+	Skipped    bool         `json:"skipped,omitempty"`
+	SkipReason string       `json:"skipReason,omitempty"`
+}
+
+// PredictEmailInput is the input to the per-email PredictEmail activity (cipher).
+type PredictEmailInput struct {
+	Email    ParsedEmail `json:"email"`
+	BudgetID uuid.UUID   `json:"budgetId"`
+}
+
+// PredictEmailResult is the outcome of predicting a single parsed email.
+type PredictEmailResult struct {
+	Prediction *CipherPredictionResult `json:"prediction,omitempty"`
+	Skipped    bool                    `json:"skipped,omitempty"`
+	SkipReason string                  `json:"skipReason,omitempty"`
+}
+
+// EmailSkip records an email the pipeline could not turn into a transaction,
+// keyed by Gmail message ID and the step that dropped it.
+type EmailSkip struct {
+	MessageId string `json:"messageId"`
+	Step      string `json:"step"`
+	Reason    string `json:"reason"`
+}
+
 type EmailDataInput struct {
 	EmailData []EmailData `json:"emailData"`
 	BudgetID  uuid.UUID   `json:"budgetId"`

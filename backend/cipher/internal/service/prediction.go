@@ -481,7 +481,9 @@ func (s *predictionService) Predict(ctx context.Context, req PredictRequest) (*P
 		return nil, err
 	}
 	if account == nil {
-		return nil, errs.New(errs.CodeInternalError, "account not found")
+		// Distinct code so activities can classify this as a per-email skip
+		// rather than a retryable infrastructure failure.
+		return nil, errs.New(errs.CodeAccountLookupFailed, "account not found for suffix %q", accountStr)
 	}
 	if err != nil {
 		logger.Logger(ctx).Warn("email extraction failed", "error", err)
