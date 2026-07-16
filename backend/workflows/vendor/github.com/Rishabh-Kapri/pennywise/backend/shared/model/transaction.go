@@ -58,9 +58,33 @@ type Transaction struct {
 	TransferAccountID     *uuid.UUID        `json:"transferAccountId,omitempty"`
 	TransferTransactionID *uuid.UUID        `json:"transferTransactionId,omitempty"`
 	TagIDs                []uuid.UUID       `json:"tagIds"`
+	LocationLat           *float64          `json:"locationLat,omitempty"`
+	LocationLng           *float64          `json:"locationLng,omitempty"`
+	LocationName          *string           `json:"locationName,omitempty"`
+	LocationSource        *LocationSource   `json:"locationSource,omitempty"`
 	Deleted               bool              `json:"deleted"`
 	CreatedAt             time.Time         `json:"createdAt"`
 	UpdatedAt             time.Time         `json:"updatedAt"`
+}
+
+type LocationSource string
+
+const (
+	LocationSourceAuto   LocationSource = "auto"
+	LocationSourceManual LocationSource = "manual"
+)
+
+func (s LocationSource) Valid() bool {
+	return s == LocationSourceAuto || s == LocationSourceManual
+}
+
+// TransactionLocationReq is the payload for PATCH /transactions/:id/location.
+// Nil lat/lng clears the location.
+type TransactionLocationReq struct {
+	Lat    *float64       `json:"lat"`
+	Lng    *float64       `json:"lng"`
+	Name   *string        `json:"name,omitempty"`
+	Source LocationSource `json:"source"`
 }
 
 type TransactionStatusReq struct {
@@ -71,6 +95,7 @@ type TransactionFilter struct {
 	AccountIDs   []uuid.UUID
 	CategoryIDs  []uuid.UUID
 	PayeeIDs     []uuid.UUID
+	TagIDs       []uuid.UUID
 	StartDate    *string
 	EndDate      *string
 	Note         *string
@@ -151,5 +176,32 @@ func (t *Transaction) Compare(other *Transaction) bool {
 		}
 	}
 
+	if !ptrFloatEqual(t.LocationLat, other.LocationLat) {
+		return false
+	}
+	if !ptrFloatEqual(t.LocationLng, other.LocationLng) {
+		return false
+	}
+	if ptrToString(t.LocationName) != ptrToString(other.LocationName) {
+		return false
+	}
+	if ptrLocationSourceString(t.LocationSource) != ptrLocationSourceString(other.LocationSource) {
+		return false
+	}
+
 	return true
+}
+
+func ptrFloatEqual(a, b *float64) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+func ptrLocationSourceString(s *LocationSource) string {
+	if s == nil {
+		return ""
+	}
+	return string(*s)
 }
