@@ -1,11 +1,13 @@
 import {
   GearSix,
   Robot,
+  Tag,
 } from '@phosphor-icons/react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { apiClient } from '@/utils';
 import { GeneralSettings } from './GeneralSettings';
 import { AISettings } from './AISettings';
+import { TagSettings } from './TagSettings';
 import styles from './Settings.module.css';
 
 /* ────────────────────────────────────────────────────────────── */
@@ -29,7 +31,7 @@ interface CurrentUser {
   providers: ConnectedProvider[];
 }
 
-type SectionId = 'general' | 'ai';
+type SectionId = 'general' | 'tags' | 'ai';
 
 interface SectionDef {
   id: SectionId;
@@ -44,6 +46,12 @@ const SECTIONS: SectionDef[] = [
     label: 'General',
     icon: <GearSix size={18} />,
     description: 'Providers, account, and preferences',
+  },
+  {
+    id: 'tags',
+    label: 'Tags',
+    icon: <Tag size={18} />,
+    description: 'Create, rename, and recolor transaction tags',
   },
   {
     id: 'ai',
@@ -109,6 +117,7 @@ export default function Settings() {
 
         <div className={styles.sectionContent}>
           {activeSection === 'general' && <GeneralSettings user={user} />}
+          {activeSection === 'tags' && <TagSettings />}
           {activeSection === 'ai' && <AISettings />}
         </div>
       </div>

@@ -101,6 +101,7 @@ docker-compose up --build
 | React API client | `react-frontend/src/utils/api.ts` |
 | Reports API (`/api/reports/{spending,income-expense,networth}`) | `backend/shared/db/report.go`, `backend/go-pennywise-api/internal/service/report.go` |
 | Reports UI (donut/bar/net-worth charts) | `react-frontend/src/features/reports/` |
+| Tag manager UI (Settings → Tags) | `react-frontend/src/features/settings/components/TagSettings.tsx` |
 | React Redux store | `react-frontend/src/app/store.ts` |
 | Pipeline run tracking (workflow side) | `backend/workflows/internal/workflow/pipelineStatus.go` |
 | Pipeline status activity | `backend/go-pennywise-api/internal/temporal/activities/reportPipelineStatus.go` |

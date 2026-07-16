@@ -17,6 +17,7 @@ type FetchTransactionArgs = {
   accountIds?: string[];
   categoryIds?: string[];
   payeeIds?: string[];
+  tagIds?: string[];
   note?: string;
   startDate?: string;
   endDate?: string;
@@ -52,6 +53,9 @@ export const fetchAllTransaction = createAsyncThunk<
   }
   if (args?.payeeIds && args.payeeIds.length > 0) {
     params.set('payeeId[]', args.payeeIds.join(','));
+  }
+  if (args?.tagIds && args.tagIds.length > 0) {
+    params.set('tagId[]', args.tagIds.join(','));
   }
   if (args?.note && args.note.trim()) {
     params.set('note', args.note);

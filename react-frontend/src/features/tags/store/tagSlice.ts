@@ -22,10 +22,11 @@ export const createTag = createAsyncThunk<Tag, Partial<Tag>>(
   },
 );
 
-export const updateTag = createAsyncThunk<void, { id: string; tag: Partial<Tag> }>(
+export const updateTag = createAsyncThunk<{ id: string; tag: Partial<Tag> }, { id: string; tag: Partial<Tag> }>(
   'tags/updateTag',
   async ({ id, tag }) => {
     await apiClient.patch(`tags/${id}`, tag);
+    return { id, tag };
   },
 );
 
@@ -58,10 +59,27 @@ const tagSlice = createSlice({
       .addCase(createTag.fulfilled, (state, action) => {
         state.allTags.push(action.payload);
       })
+      .addCase(updateTag.fulfilled, (state, action) => {
+        const existing = state.allTags.find((t) => t.id === action.payload.id);
+        if (existing) {
+          Object.assign(existing, action.payload.tag);
+        }
+      })
+      .addCase(updateTag.rejected, (state, action) => {
+        state.error = action.error.message ?? 'Failed to update tag';
+      })
       .addCase(deleteTag.fulfilled, (state, action) => {
         state.allTags = state.allTags.filter((t) => t.id !== action.meta.arg);
+      })
+      .addCase(deleteTag.rejected, (state, action) => {
+        state.error = action.error.message ?? 'Failed to delete tag';
       });
   },
 });
 
 export default tagSlice.reducer;
+
+// Selectors
+export const selectAllTags = (state: { tags: TagState }) => state.tags.allTags;
+export const selectTagsLoading = (state: { tags: TagState }) => state.tags.loading;
+export const selectTagsError = (state: { tags: TagState }) => state.tags.error;
