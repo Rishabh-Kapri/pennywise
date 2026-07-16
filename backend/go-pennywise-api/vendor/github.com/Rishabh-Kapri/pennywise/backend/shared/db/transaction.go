@@ -448,6 +448,11 @@ func applyTransactionFilters(query sq.SelectBuilder, filter *model.TransactionFi
 		query = query.Where(sq.Eq{"transactions.payee_id": filter.PayeeIDs})
 	}
 
+	if len(filter.TagIDs) > 0 {
+		// uuid[] overlap: matches transactions carrying any of the tags
+		query = query.Where(sq.Expr("transactions.tag_ids && ?", filter.TagIDs))
+	}
+
 	if filter.StartDate != nil {
 		query = query.Where(sq.GtOrEq{"transactions.date": *filter.StartDate})
 	}

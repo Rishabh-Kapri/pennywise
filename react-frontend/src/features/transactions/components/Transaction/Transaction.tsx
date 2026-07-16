@@ -345,13 +345,14 @@ export function Transaction() {
     if (!nextCursor || loadingMore === LoadingState.PENDING || loading === LoadingState.PENDING) {
       return;
     }
-    const { accountIds, categoryIds, payeeIds, note, dateFrom, dateTo } = filters;
+    const { accountIds, categoryIds, payeeIds, tagIds, note, dateFrom, dateTo } = filters;
     const paramAccountIds = paramId ? [paramId] : [];
 
     const args = {
       accountIds,
       categoryIds,
       payeeIds,
+      tagIds,
       note,
       startDate: dateFrom,
       endDate: dateTo,
@@ -377,11 +378,12 @@ export function Transaction() {
   );
 
   useEffect(() => {
-    const { accountIds, categoryIds, payeeIds, note, dateFrom, dateTo } = filters;
+    const { accountIds, categoryIds, payeeIds, tagIds, note, dateFrom, dateTo } = filters;
     const args = {
       accountIds,
       categoryIds,
       payeeIds,
+      tagIds,
       note,
       startDate: dateFrom,
       endDate: dateTo,
