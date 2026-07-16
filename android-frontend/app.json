@@ -16,8 +16,31 @@
       "package": "dev.pennywise.cloud",
       "adaptiveIcon": {
         "backgroundColor": "#1f1f1e"
-      }
+      },
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.POST_NOTIFICATIONS"
+      ]
     },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Pennywise attaches your current location to new transactions so you can remember where they happened."
+        }
+      ],
+      "expo-notifications",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Pennywise uses the camera to photograph receipts for your transactions."
+        }
+      ],
+      "expo-document-picker"
+    ],
     "extra": {
       "apiUrl": "${EXPO_PUBLIC_API_URL}",
       "googleClientId": "${EXPO_PUBLIC_GOOGLE_CLIENT_ID}",
