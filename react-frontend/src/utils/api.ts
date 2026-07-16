@@ -175,6 +175,75 @@ class ApiClient {
     return this.handleResponse<T>(res, 'DELETE', endpoint);
   }
 
+  /**
+   * POST multipart/form-data (file uploads). Content-Type is left unset so the
+   * browser adds the boundary itself.
+   */
+  async postForm<T>(endpoint: string, form: FormData): Promise<T> {
+    const headers = this.getHeaders(endpoint) as Record<string, string>;
+    delete headers['Content-Type'];
+
+    let res = await fetch(`${this.baseUrl}/${endpoint}`, {
+      method: 'POST',
+      headers,
+      body: form,
+      credentials: 'include',
+    });
+
+    if (res.status === 401 && !this.isRefreshEndpoint(endpoint)) {
+      const newAccessToken = await this.tryRefreshToken();
+      headers['Authorization'] = `Bearer ${newAccessToken}`;
+      res = await fetch(`${this.baseUrl}/${endpoint}`, {
+        method: 'POST',
+        headers,
+        body: form,
+        credentials: 'include',
+      });
+    }
+
+    return this.parseResponse<T>(res);
+  }
+
+  /**
+   * Fetch a binary endpoint with auth headers and return an object URL for use
+   * in <img>/<a> (plain src URLs can't carry the Authorization header).
+   * Callers must URL.revokeObjectURL when done.
+   */
+  async fetchBlobUrl(endpoint: string): Promise<string> {
+    const headers = this.getHeaders(endpoint) as Record<string, string>;
+    delete headers['Content-Type'];
+
+    let res = await fetch(`${this.baseUrl}/${endpoint}`, {
+      method: 'GET',
+      headers,
+      credentials: 'include',
+    });
+
+    if (res.status === 401 && !this.isRefreshEndpoint(endpoint)) {
+      const newAccessToken = await this.tryRefreshToken();
+      headers['Authorization'] = `Bearer ${newAccessToken}`;
+      res = await fetch(`${this.baseUrl}/${endpoint}`, {
+        method: 'GET',
+        headers,
+        credentials: 'include',
+      });
+    }
+
+    if (!res.ok) {
+      let message = res.statusText;
+      try {
+        const data = await res.json();
+        message = String(data?.error ?? message);
+      } catch {
+        // non-JSON error body, keep statusText
+      }
+      throw new Error(message);
+    }
+
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  }
+
   async patch<T>(endpoint: string, data: Partial<T>): Promise<T> {
     const res = await fetch(`${this.baseUrl}/${endpoint}`, {
       method: 'PATCH',
