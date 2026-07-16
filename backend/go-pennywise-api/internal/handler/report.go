@@ -95,6 +95,10 @@ func parseReportParams(c *gin.Context) (model.ReportParams, bool) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid categoryIds"})
 		return params, false
 	}
+	if params.TagIDs, err = parseUUIDList(c.Query("tagIds")); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid tagIds"})
+		return params, false
+	}
 	return params, true
 }
 
