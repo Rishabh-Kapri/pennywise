@@ -9,11 +9,13 @@ import (
 	"syscall"
 	"time"
 
+	apiClient "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/client"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/config"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/handler"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/middleware"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/storage"
 	temporalActivities "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/temporal/activities"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/websocket"
 
@@ -171,6 +173,7 @@ func main() {
 	agentService := service.NewAgentService(agentClient, agentRepo)
 	agentHandler := handler.NewAgentHandler(agentService)
 
+	geocodeService := service.NewGeocodeService(config.NominatimURL)
 	transactionService := service.NewTransactionService(
 		transactionRepo,
 		budgetRepo,
@@ -183,8 +186,25 @@ func main() {
 		payeeRepo,
 		categoryRepo,
 		monthlyBudgetService,
+		geocodeService,
 	)
 	transactionHandler := handler.NewTransactionHandler(transactionService)
+
+	documentStore, err := storage.NewLocalStore(config.UploadsDir)
+	if err != nil {
+		logger.Logger(ctx).Error("failed to init uploads storage", "error", err)
+		panic(err)
+	}
+	transactionDocumentRepo := repository.NewTransactionDocumentRepository(dbConn)
+	documentService := service.NewDocumentService(transactionDocumentRepo, transactionRepo, documentStore)
+	documentHandler := handler.NewDocumentHandler(documentService)
+
+	devicePushTokenRepo := repository.NewDevicePushTokenRepository(dbConn)
+	pushNotificationService := service.NewPushNotificationService(
+		devicePushTokenRepo,
+		apiClient.NewExpoPushClient(config.ExpoPushURL),
+	)
+	deviceHandler := handler.NewDeviceHandler(pushNotificationService)
 
 	categoryService := service.NewCategoryService(categoryRepo, monthlyBudgetRepo, transactionRepo)
 	categoryHandler := handler.NewCategoryHandler(categoryService)
@@ -277,6 +297,21 @@ func main() {
 			authUserGroup := router.Group("/api/auth/users")
 			authUserGroup.Use(authMiddleware, rateLimitMiddleware)
 			authUserGroup.GET("/me", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), authHandler.GetCurrentUser)
+		}
+		{
+			// push tokens are user-scoped, not budget-scoped
+			deviceGroup := router.Group("/api/devices")
+			deviceGroup.Use(authMiddleware, rateLimitMiddleware)
+			deviceGroup.POST(
+				"/push-token",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				deviceHandler.RegisterPushToken,
+			)
+			deviceGroup.DELETE(
+				"/push-token",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				deviceHandler.UnregisterPushToken,
+			)
 		}
 		{
 			agentGroup := router.Group("/api/agent")
@@ -417,10 +452,39 @@ func main() {
 				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
 				transactionHandler.UpdateStatus,
 			)
+			transactionGroup.PATCH(
+				":id/location",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				transactionHandler.UpdateLocation,
+			)
 			transactionGroup.DELETE(
 				":id",
 				middleware.RouteAuthMiddleware(sharedModel.ScopeDelete),
 				transactionHandler.DeleteById,
+			)
+			transactionGroup.POST(
+				":id/documents",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				documentHandler.Upload,
+			)
+			transactionGroup.GET(
+				":id/documents",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				documentHandler.ListByTransaction,
+			)
+		}
+		{
+			documentGroup := router.Group("/api/documents")
+			documentGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
+			documentGroup.GET(
+				":docId/content",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				documentHandler.Content,
+			)
+			documentGroup.DELETE(
+				":docId",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeDelete),
+				documentHandler.Delete,
 			)
 		}
 		{
@@ -582,6 +646,7 @@ func main() {
 			PayeeService:       payeeService,
 			PredictionService:  predictionService,
 			WebsocketService:   websocketService,
+			PushService:        pushNotificationService,
 			DB:                 dbConn,
 		})
 		w.RegisterActivity(&temporalActivities.CreateCipherPredictionActivity{
