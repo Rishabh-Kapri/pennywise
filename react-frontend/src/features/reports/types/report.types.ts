@@ -76,6 +76,30 @@ export interface ReportRange {
   endMonth: string;
 }
 
+export interface ReportFilters {
+  accountIds: string[];
+  accountNames: string[];
+  categoryIds: string[];
+  categoryNames: string[];
+  tagIds: string[];
+  tagNames: string[];
+}
+
+export const EMPTY_REPORT_FILTERS: ReportFilters = {
+  accountIds: [],
+  accountNames: [],
+  categoryIds: [],
+  categoryNames: [],
+  tagIds: [],
+  tagNames: [],
+};
+
+export function hasActiveReportFilters(filters: ReportFilters): boolean {
+  return (
+    filters.accountIds.length > 0 || filters.categoryIds.length > 0 || filters.tagIds.length > 0
+  );
+}
+
 export type ReportPreset = '3m' | '6m' | '12m' | 'ytd' | 'all' | 'custom';
 
 export type ReportTab = 'spending' | 'incomeExpense' | 'networth';
@@ -83,6 +107,7 @@ export type ReportTab = 'spending' | 'incomeExpense' | 'networth';
 export interface ReportState {
   range: ReportRange;
   preset: ReportPreset;
+  filters: ReportFilters;
   spending: SpendingReport | null;
   spendingLoading: LoadingState;
   incomeExpense: IncomeExpenseReport | null;
