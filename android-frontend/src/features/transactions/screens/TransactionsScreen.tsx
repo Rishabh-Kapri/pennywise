@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { FlatList, Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { FlatList, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { Check, CirclePlus, Search, X } from 'lucide-react-native';
 import { useAppDispatch, useAppSelector } from '../../../app/hooks';
 import { Button } from '../../../components/Button';
@@ -10,8 +10,10 @@ import { SectionHeader } from '../../../components/SectionHeader';
 import { formatCurrency, formatShortDate, getCurrentMonthKey } from '../../../utils/date';
 import { colors, radii, spacing } from '../../../theme';
 import type { Transaction, TransactionDTO } from '../types';
-import { TransactionStatus } from '../types';
+import { LocationSource, TransactionStatus } from '../types';
 import { createTransaction, fetchAllTransactions, updateTransaction, updateTransactionStatus } from '../store/transactionSlice';
+import { TransactionAttachments } from '../components/TransactionAttachments';
+import { TransactionLocationRow, getCurrentCoords, type DraftLocation } from '../components/TransactionLocationRow';
 
 type TxnDraft = {
   id?: string;
@@ -22,6 +24,7 @@ type TxnDraft = {
   amount: string;
   note: string;
   status?: TransactionStatus;
+  location: DraftLocation;
 };
 
 function createDraft(txn?: Transaction): TxnDraft {
@@ -34,7 +37,13 @@ function createDraft(txn?: Transaction): TxnDraft {
     date: txn?.date ?? new Date().toISOString().slice(0, 10),
     amount: txn ? String(normalizedAmount) : '',
     note: txn?.note ?? '',
-    status: txn?.status
+    status: txn?.status,
+    location: {
+      lat: txn?.locationLat ?? null,
+      lng: txn?.locationLng ?? null,
+      name: txn?.locationName ?? null,
+      source: txn?.locationSource ?? null
+    }
   };
 }
 
@@ -58,6 +67,7 @@ function TransactionEditor({
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalBackdrop}>
         <View style={styles.sheet}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.sheetContent}>
           <View style={styles.rowBetween}>
             <AppText weight="bold" style={styles.sheetTitle}>{draft.id ? 'Edit Transaction' : 'New Transaction'}</AppText>
             <Pressable onPress={onClose}><X size={22} color={colors.text} /></Pressable>
@@ -115,7 +125,16 @@ function TransactionEditor({
             )}
           />
 
+          <TransactionLocationRow
+            transactionId={draft.id}
+            location={draft.location}
+            onDraftChange={(location) => setDraft({ ...draft, location })}
+          />
+
+          {draft.id ? <TransactionAttachments transactionId={draft.id} /> : null}
+
           <Button onPress={onSave}>Save</Button>
+          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -128,6 +147,18 @@ export function TransactionsScreen() {
   const { transactions, nextCursor, loadingMore } = useAppSelector((state) => state.transactions);
   const [search, setSearch] = useState('');
   const [draft, setDraft] = useState<TxnDraft | null>(null);
+
+  // new transactions auto-attach the phone's location (removable before save)
+  const openNewDraft = () => {
+    setDraft(createDraft());
+    void getCurrentCoords().then((coords) => {
+      if (!coords) return;
+      setDraft((current) => {
+        if (!current || current.id || current.location.lat != null) return current;
+        return { ...current, location: { lat: coords.lat, lng: coords.lng, name: null, source: LocationSource.AUTO } };
+      });
+    });
+  };
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -151,7 +182,13 @@ export function TransactionsScreen() {
       amount,
       note: draft.note,
       status: draft.status,
-      tagIds: []
+      tagIds: [],
+      // pass location through so edits don't wipe an existing pin; the server
+      // reverse-geocodes a place name when one is missing
+      locationLat: draft.location.lat,
+      locationLng: draft.location.lng,
+      locationName: draft.location.name,
+      locationSource: draft.location.lat != null ? (draft.location.source ?? LocationSource.MANUAL) : null
     };
     if (draft.id) await dispatch(updateTransaction(payload)).unwrap();
     else await dispatch(createTransaction(payload)).unwrap();
@@ -163,7 +200,7 @@ export function TransactionsScreen() {
     <Screen scroll={false} style={styles.screen}>
       <View style={styles.header}>
         <SectionHeader title="Transactions" subtitle={`${transactions.length} loaded`} />
-        <Pressable style={styles.iconButton} onPress={() => setDraft(createDraft())}>
+        <Pressable style={styles.iconButton} onPress={openNewDraft}>
           <CirclePlus size={24} color="#fff" />
         </Pressable>
       </View>
@@ -304,7 +341,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceStrong,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
-    padding: spacing.lg,
+    padding: spacing.lg
+  },
+  sheetContent: {
     gap: spacing.md
   },
   sheetTitle: {
