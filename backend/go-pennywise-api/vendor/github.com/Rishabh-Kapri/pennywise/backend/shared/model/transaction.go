@@ -71,6 +71,7 @@ type TransactionFilter struct {
 	AccountIDs   []uuid.UUID
 	CategoryIDs  []uuid.UUID
 	PayeeIDs     []uuid.UUID
+	TagIDs       []uuid.UUID
 	StartDate    *string
 	EndDate      *string
 	Note         *string
