@@ -63,6 +63,13 @@ export const refreshAccessToken = createAsyncThunk<RefreshTokenResponse, void, {
 export const logout = createAsyncThunk('auth/logout', async (_, { getState }) => {
   const state = getState() as RootState;
   try {
+    // stop transaction pushes for this device (dynamic import avoids a cycle)
+    const { unregisterDevicePushToken } = await import('../../notifications/push');
+    await unregisterDevicePushToken();
+  } catch {
+    // best-effort; logout proceeds regardless
+  }
+  try {
     if (state.auth.tokens?.refreshToken) {
       await apiClient.post('auth/logout', { refreshToken: state.auth.tokens.refreshToken });
     }

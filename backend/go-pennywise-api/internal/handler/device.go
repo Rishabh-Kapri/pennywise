@@ -42,10 +42,14 @@ func (h *deviceHandler) RegisterPushToken(c *gin.Context) {
 func (h *deviceHandler) UnregisterPushToken(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	var body model.DevicePushTokenReq
-	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
+	// token comes as a query param (DELETEs don't reliably carry bodies) with a
+	// JSON body fallback
+	body := model.DevicePushTokenReq{ExpoPushToken: c.Query("expoPushToken")}
+	if body.ExpoPushToken == "" {
+		if err := c.ShouldBindJSON(&body); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 	}
 
 	if err := h.service.UnregisterToken(ctx, body); err != nil {

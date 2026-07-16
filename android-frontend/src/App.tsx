@@ -26,6 +26,12 @@ import { LoansScreen } from './features/loans/screens/LoansScreen';
 import { SettingsScreen } from './features/settings/screens/SettingsScreen';
 import { WebSocketProvider } from './features/websocket/WebSocketProvider';
 import { AgentChat } from './features/agent/components/AgentChat';
+import { registerDevicePushToken } from './features/notifications/push';
+import { setupLocationSnap } from './features/notifications/locationSnapTask';
+
+// defines the background notification task; must happen at module scope so the
+// task exists when Android wakes the app headlessly
+setupLocationSnap();
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const Tab = createBottomTabNavigator<AppTabParamList>();
@@ -162,6 +168,7 @@ function RootContent() {
   useEffect(() => {
     if (auth.hydrated && auth.isAuthenticated) {
       dispatch(fetchAllBudgets());
+      void registerDevicePushToken();
     }
   }, [auth.hydrated, auth.isAuthenticated, dispatch]);
 
