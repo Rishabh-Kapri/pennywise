@@ -25,6 +25,7 @@ type TransactionService interface {
 	) (model.PaginatedResponse[model.Transaction], error)
 	// GetById(ctx context.Context, id uuid.UUID) (*model.Transaction, error)
 	Update(ctx context.Context, id uuid.UUID, txn model.Transaction) error
+	UpdateLocation(ctx context.Context, id uuid.UUID, req model.TransactionLocationReq) (*model.Transaction, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status model.TransactionStatus) error
 	Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error)
 	CreateWithTx(ctx context.Context, tx pgx.Tx, txn model.Transaction) ([]model.Transaction, error)
@@ -44,6 +45,7 @@ type transactionService struct {
 	payeeRepo            repository.PayeesRepository
 	categoryRepo         repository.CategoryRepository
 	mbService            MonthlyBudgetService
+	geocodeService       GeocodeService
 }
 
 func NewTransactionService(
@@ -58,6 +60,7 @@ func NewTransactionService(
 	payeeRepo repository.PayeesRepository,
 	catRepo repository.CategoryRepository,
 	mbService MonthlyBudgetService,
+	geocodeService GeocodeService,
 ) TransactionService {
 	return &transactionService{
 		repo:                 r,
@@ -71,6 +74,7 @@ func NewTransactionService(
 		payeeRepo:            payeeRepo,
 		categoryRepo:         catRepo,
 		mbService:            mbService,
+		geocodeService:       geocodeService,
 	}
 }
 
@@ -587,6 +591,8 @@ func (s *transactionService) Create(ctx context.Context, txn model.Transaction) 
 		return nil, err
 	}
 
+	s.enrichLocation(txCtx, &txn)
+
 	var createdTxn []model.Transaction
 	err := withTx(txCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
 		var err error
@@ -751,6 +757,8 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 		return err
 	}
 
+	s.enrichLocation(txCtx, &toUpdate)
+
 	var learningTxn *model.Transaction
 	err := withTx(txCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
 		foundTxn, err := s.repo.GetByIdTx(txCtx, tx, budgetId, id)
@@ -821,6 +829,89 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 	}
 
 	return nil
+}
+
+// enrichLocation fills in a missing place name via reverse geocoding and
+// defaults the source to manual. Best-effort: geocoding failures leave the
+// coordinates as-is and never fail the write.
+func (s *transactionService) enrichLocation(ctx context.Context, txn *model.Transaction) {
+	if txn.LocationLat == nil || txn.LocationLng == nil {
+		return
+	}
+	if txn.LocationSource == nil || !txn.LocationSource.Valid() {
+		src := model.LocationSourceManual
+		txn.LocationSource = &src
+	}
+	if txn.LocationName != nil && *txn.LocationName != "" {
+		return
+	}
+	if s.geocodeService == nil {
+		return
+	}
+	geoCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	name, err := s.geocodeService.Reverse(geoCtx, *txn.LocationLat, *txn.LocationLng)
+	if err != nil {
+		logger.Logger(ctx).Warn("reverse geocoding failed, keeping coordinates only", "err", err)
+		return
+	}
+	txn.LocationName = &name
+}
+
+// UpdateLocation sets or clears just the location of a transaction. Used by the
+// mobile app's push-triggered auto-tagging and by the manual pin editors.
+func (s *transactionService) UpdateLocation(
+	ctx context.Context,
+	id uuid.UUID,
+	req model.TransactionLocationReq,
+) (*model.Transaction, error) {
+	txCtx, txCancel := context.WithTimeout(ctx, 30*time.Second)
+	defer txCancel()
+	budgetId := utils.MustBudgetID(txCtx)
+
+	clearing := req.Lat == nil && req.Lng == nil
+	if !clearing && (req.Lat == nil || req.Lng == nil) {
+		return nil, errs.New(errs.CodeInvalidArgument, "lat and lng must both be set or both be null")
+	}
+	if !clearing && (*req.Lat < -90 || *req.Lat > 90 || *req.Lng < -180 || *req.Lng > 180) {
+		return nil, errs.New(errs.CodeInvalidArgument, "lat/lng out of range")
+	}
+
+	var lat, lng *float64
+	var name *string
+	var source *model.LocationSource
+	if !clearing {
+		lat, lng, name = req.Lat, req.Lng, req.Name
+		src := req.Source
+		if !src.Valid() {
+			src = model.LocationSourceManual
+		}
+		source = &src
+
+		if (name == nil || *name == "") && s.geocodeService != nil {
+			geoCtx, cancel := context.WithTimeout(txCtx, 8*time.Second)
+			resolved, err := s.geocodeService.Reverse(geoCtx, *lat, *lng)
+			cancel()
+			if err != nil {
+				logger.Logger(ctx).Warn("reverse geocoding failed, keeping coordinates only", "err", err)
+			} else {
+				name = &resolved
+			}
+		}
+	}
+
+	err := withTx(txCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
+		return s.repo.UpdateLocation(txCtx, tx, budgetId, id, lat, lng, name, source)
+	})
+	if err != nil {
+		return nil, errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating transaction location", err)
+	}
+
+	updated, err := s.repo.GetById(txCtx, budgetId, id)
+	if err != nil {
+		return nil, errs.Wrap(errs.CodeTransactionLookupFailed, "error reloading transaction", err)
+	}
+	return updated, nil
 }
 
 func (s *transactionService) UpdateStatus(ctx context.Context, id uuid.UUID, status model.TransactionStatus) error {
