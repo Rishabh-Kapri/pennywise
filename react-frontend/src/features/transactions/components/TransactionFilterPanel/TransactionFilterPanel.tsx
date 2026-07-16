@@ -1,9 +1,12 @@
 import { useCallback } from 'react';
 import { TrashIcon } from '@phosphor-icons/react';
+import { useAppSelector } from '@/app/hooks';
+import { selectAllTags } from '@/features/tags/store/tagSlice';
 import { AccountDropdown } from '../popovers/AccountPopover';
 import { PayeeDropdown } from '../popovers/PayeePopover';
 import { CategoryDropdown } from '../popovers/CategoryPopover';
 import { DateDropdown } from '../popovers/DatePopover';
+import { TagDropdown } from '../popovers/TagPopover';
 import {
   EMPTY_FILTERS,
   hasActiveFilters,
@@ -19,6 +22,7 @@ interface TransactionFilterPanelProps {
 
 export function TransactionFilterPanel({ filters, onChange }: TransactionFilterPanelProps) {
   const isActive = hasActiveFilters(filters);
+  const allTags = useAppSelector(selectAllTags);
 
   const update = useCallback(
     (patch: Partial<TransactionFilters>) => onChange({ ...filters, ...patch }),
@@ -91,6 +95,22 @@ export function TransactionFilterPanel({ filters, onChange }: TransactionFilterP
           onChangeMultiple={(ids, names) => update({ categoryIds: ids, categoryNames: names })}
           onClick={() => { }}
           variant="form"
+        />
+      </div>
+
+      {/* Tags */}
+      <div className={styles.filterGroup}>
+        <label className={styles.filterLabel}>Tags</label>
+        <TagDropdown
+          selectedTagIds={filters.tagIds}
+          allowCreate={false}
+          placeholder={filters.tagNames.length > 0 ? filters.tagNames.join(', ') : 'Search tags'}
+          onChange={(tagIds) =>
+            update({
+              tagIds,
+              tagNames: allTags.filter((tag) => tagIds.includes(tag.id)).map((tag) => tag.name),
+            })
+          }
         />
       </div>
 

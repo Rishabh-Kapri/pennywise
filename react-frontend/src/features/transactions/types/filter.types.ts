@@ -10,6 +10,8 @@ export interface TransactionFilters {
   payeeNames: string[];
   categoryIds: string[];
   categoryNames: string[];
+  tagIds: string[];
+  tagNames: string[];
   logicMode: FilterLogicMode;
 }
 
@@ -23,6 +25,8 @@ export const EMPTY_FILTERS: TransactionFilters = {
   payeeNames: [],
   categoryIds: [],
   categoryNames: [],
+  tagIds: [],
+  tagNames: [],
   logicMode: 'AND',
 };
 
@@ -33,7 +37,8 @@ export function hasActiveFilters(filters: TransactionFilters): boolean {
     filters.dateTo !== '' ||
     filters.accountIds.length > 0 ||
     filters.payeeIds.length > 0 ||
-    filters.categoryIds.length > 0
+    filters.categoryIds.length > 0 ||
+    filters.tagIds.length > 0
   );
 }
 
@@ -44,5 +49,6 @@ export function countActiveFilters(filters: TransactionFilters): number {
   if (filters.accountIds.length > 0) count++;
   if (filters.payeeIds.length > 0) count++;
   if (filters.categoryIds.length > 0) count++;
+  if (filters.tagIds.length > 0) count++;
   return count;
 }
