@@ -42,7 +42,7 @@ func (s *reportService) GetSpending(ctx context.Context, params model.ReportPara
 	}
 	startDate, endDateExcl := monthBounds(startMonth, endMonth)
 
-	rows, err := s.repo.GetSpendingRows(ctx, budgetId, startDate, endDateExcl, params.AccountIDs, params.CategoryIDs)
+	rows, err := s.repo.GetSpendingRows(ctx, budgetId, startDate, endDateExcl, params.AccountIDs, params.CategoryIDs, params.TagIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -61,11 +61,11 @@ func (s *reportService) GetIncomeExpense(ctx context.Context, params model.Repor
 	}
 	startDate, endDateExcl := monthBounds(startMonth, endMonth)
 
-	incomeRows, err := s.repo.GetIncomeRows(ctx, budgetId, startDate, endDateExcl, params.AccountIDs)
+	incomeRows, err := s.repo.GetIncomeRows(ctx, budgetId, startDate, endDateExcl, params.AccountIDs, params.TagIDs)
 	if err != nil {
 		return nil, err
 	}
-	expenseRows, err := s.repo.GetExpenseRows(ctx, budgetId, startDate, endDateExcl, params.AccountIDs, params.CategoryIDs)
+	expenseRows, err := s.repo.GetExpenseRows(ctx, budgetId, startDate, endDateExcl, params.AccountIDs, params.CategoryIDs, params.TagIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +84,7 @@ func (s *reportService) GetNetWorth(ctx context.Context, params model.ReportPara
 	}
 	startDate, endDateExcl := monthBounds(startMonth, endMonth)
 
-	points, err := s.repo.GetNetWorthByMonth(ctx, budgetId, startMonth+"-01", endMonth+"-01", startDate, endDateExcl)
+	points, err := s.repo.GetNetWorthByMonth(ctx, budgetId, startMonth+"-01", endMonth+"-01", startDate, endDateExcl, params.AccountIDs)
 	if err != nil {
 		return nil, err
 	}

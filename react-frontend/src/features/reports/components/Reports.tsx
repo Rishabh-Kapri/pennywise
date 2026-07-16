@@ -8,10 +8,12 @@ import {
   selectIncomeExpenseLoading,
   selectNetWorthLoading,
   selectReportError,
+  selectReportFilters,
   selectReportRange,
   selectSpendingLoading,
 } from '../store/reportSlice';
 import type { ReportTab } from '../types/report.types';
+import ReportFilterPanel from './ReportFilterPanel';
 import ReportRangePicker from './ReportRangePicker';
 import SpendingReport from './SpendingReport';
 import IncomeExpenseReport from './IncomeExpenseReport';
@@ -28,22 +30,24 @@ export default function Reports() {
   const dispatch = useAppDispatch();
   const [activeTab, setActiveTab] = useState<ReportTab>('spending');
   const range = useAppSelector(selectReportRange);
+  const filters = useAppSelector(selectReportFilters);
   const spendingLoading = useAppSelector(selectSpendingLoading);
   const incomeExpenseLoading = useAppSelector(selectIncomeExpenseLoading);
   const netWorthLoading = useAppSelector(selectNetWorthLoading);
   const error = useAppSelector(selectReportError);
 
   useEffect(() => {
-    // setRange resets each report's loading state to IDLE, so a range
-    // change (or first visit) refetches only the visible tab
+    // setRange/setReportFilters reset each report's loading state to IDLE,
+    // so a range or filter change (or first visit) refetches only the
+    // visible tab
     if (activeTab === 'spending' && spendingLoading === LoadingState.IDLE) {
-      dispatch(fetchSpendingReport(range));
+      dispatch(fetchSpendingReport({ range, filters }));
     } else if (activeTab === 'incomeExpense' && incomeExpenseLoading === LoadingState.IDLE) {
-      dispatch(fetchIncomeExpenseReport(range));
+      dispatch(fetchIncomeExpenseReport({ range, filters }));
     } else if (activeTab === 'networth' && netWorthLoading === LoadingState.IDLE) {
-      dispatch(fetchNetWorthReport(range));
+      dispatch(fetchNetWorthReport({ range, filters }));
     }
-  }, [dispatch, activeTab, range, spendingLoading, incomeExpenseLoading, netWorthLoading]);
+  }, [dispatch, activeTab, range, filters, spendingLoading, incomeExpenseLoading, netWorthLoading]);
 
   return (
     <div className={styles.container}>
@@ -62,6 +66,8 @@ export default function Reports() {
           </button>
         ))}
       </div>
+
+      <ReportFilterPanel />
 
       {error && <div className={styles.error}>{error}</div>}
 

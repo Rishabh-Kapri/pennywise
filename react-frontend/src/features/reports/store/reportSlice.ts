@@ -1,38 +1,57 @@
 import { createAsyncThunk, createSlice, type PayloadAction } from '@reduxjs/toolkit';
-import type {
-  IncomeExpenseReport,
-  NetWorthReport,
-  ReportPreset,
-  ReportRange,
-  ReportState,
-  SpendingReport,
+import {
+  EMPTY_REPORT_FILTERS,
+  type IncomeExpenseReport,
+  type NetWorthReport,
+  type ReportFilters,
+  type ReportPreset,
+  type ReportRange,
+  type ReportState,
+  type SpendingReport,
 } from '../types/report.types';
 import { apiClient, LoadingState } from '@/utils';
 import { addMonths, getCurrentMonthKey } from '@/utils/date.utils';
 import type { RootState } from '@/app';
 
-function rangeQuery({ startMonth, endMonth }: ReportRange): string {
-  return `startMonth=${startMonth}&endMonth=${endMonth}`;
+export interface ReportQueryArgs {
+  range: ReportRange;
+  filters: ReportFilters;
 }
 
-export const fetchSpendingReport = createAsyncThunk<SpendingReport, ReportRange>(
+function reportQuery({ range, filters }: ReportQueryArgs): string {
+  const params = new URLSearchParams();
+  params.set('startMonth', range.startMonth);
+  params.set('endMonth', range.endMonth);
+  if (filters.accountIds.length > 0) {
+    params.set('accountIds', filters.accountIds.join(','));
+  }
+  if (filters.categoryIds.length > 0) {
+    params.set('categoryIds', filters.categoryIds.join(','));
+  }
+  if (filters.tagIds.length > 0) {
+    params.set('tagIds', filters.tagIds.join(','));
+  }
+  return params.toString();
+}
+
+export const fetchSpendingReport = createAsyncThunk<SpendingReport, ReportQueryArgs>(
   'reports/fetchSpending',
-  async (range) => {
-    return await apiClient.get<SpendingReport>(`reports/spending?${rangeQuery(range)}`);
+  async (args) => {
+    return await apiClient.get<SpendingReport>(`reports/spending?${reportQuery(args)}`);
   },
 );
 
-export const fetchIncomeExpenseReport = createAsyncThunk<IncomeExpenseReport, ReportRange>(
+export const fetchIncomeExpenseReport = createAsyncThunk<IncomeExpenseReport, ReportQueryArgs>(
   'reports/fetchIncomeExpense',
-  async (range) => {
-    return await apiClient.get<IncomeExpenseReport>(`reports/income-expense?${rangeQuery(range)}`);
+  async (args) => {
+    return await apiClient.get<IncomeExpenseReport>(`reports/income-expense?${reportQuery(args)}`);
   },
 );
 
-export const fetchNetWorthReport = createAsyncThunk<NetWorthReport, ReportRange>(
+export const fetchNetWorthReport = createAsyncThunk<NetWorthReport, ReportQueryArgs>(
   'reports/fetchNetWorth',
-  async (range) => {
-    return await apiClient.get<NetWorthReport>(`reports/networth?${rangeQuery(range)}`);
+  async (args) => {
+    return await apiClient.get<NetWorthReport>(`reports/networth?${reportQuery(args)}`);
   },
 );
 
@@ -42,6 +61,7 @@ const initialState: ReportState = {
     endMonth: getCurrentMonthKey(),
   },
   preset: '6m',
+  filters: EMPTY_REPORT_FILTERS,
   spending: null,
   spendingLoading: LoadingState.IDLE,
   incomeExpense: null,
@@ -55,17 +75,16 @@ const reportSlice = createSlice({
   name: 'reports',
   initialState,
   reducers: {
-    // changing the range invalidates all cached reports so the active tab refetches
+    // changing the range or filters invalidates all cached reports so the
+    // active tab refetches
     setRange: (state, action: PayloadAction<{ range: ReportRange; preset: ReportPreset }>) => {
       state.range = action.payload.range;
       state.preset = action.payload.preset;
-      state.spending = null;
-      state.spendingLoading = LoadingState.IDLE;
-      state.incomeExpense = null;
-      state.incomeExpenseLoading = LoadingState.IDLE;
-      state.netWorth = null;
-      state.netWorthLoading = LoadingState.IDLE;
-      state.error = null;
+      invalidateReports(state);
+    },
+    setReportFilters: (state, action: PayloadAction<ReportFilters>) => {
+      state.filters = action.payload;
+      invalidateReports(state);
     },
   },
   extraReducers: (builder) => {
@@ -109,12 +128,23 @@ const reportSlice = createSlice({
   },
 });
 
-export const { setRange } = reportSlice.actions;
+function invalidateReports(state: ReportState) {
+  state.spending = null;
+  state.spendingLoading = LoadingState.IDLE;
+  state.incomeExpense = null;
+  state.incomeExpenseLoading = LoadingState.IDLE;
+  state.netWorth = null;
+  state.netWorthLoading = LoadingState.IDLE;
+  state.error = null;
+}
+
+export const { setRange, setReportFilters } = reportSlice.actions;
 
 export default reportSlice.reducer;
 
 // Selectors
 export const selectReportRange = (state: RootState) => state.reports.range;
+export const selectReportFilters = (state: RootState) => state.reports.filters;
 export const selectReportPreset = (state: RootState) => state.reports.preset;
 export const selectSpendingReport = (state: RootState) => state.reports.spending;
 export const selectSpendingLoading = (state: RootState) => state.reports.spendingLoading;
