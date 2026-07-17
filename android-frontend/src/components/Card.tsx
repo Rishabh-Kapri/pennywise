@@ -8,10 +8,8 @@ export function Card({ children, style }: PropsWithChildren<{ style?: StyleProp<
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.surfaceStrong,
-    borderColor: colors.border,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: radii.md,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
     padding: spacing.lg
   }
 });

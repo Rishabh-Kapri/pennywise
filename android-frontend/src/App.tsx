@@ -36,7 +36,7 @@ const navigationTheme = {
     ...DarkTheme.colors,
     primary: colors.primary,
     background: colors.background,
-    card: colors.surfaceStrong,
+    card: colors.surface,
     text: colors.text,
     border: colors.border,
     notification: colors.danger
@@ -71,11 +71,11 @@ function iconForRoute(routeName: keyof AppTabParamList, color: string, size: num
 }
 
 function TabIcon({ routeName, focused }: { routeName: keyof AppTabParamList; focused: boolean }) {
-  const iconColor = focused ? colors.primary : colors.muted;
+  const iconColor = focused ? colors.primary : colors.faint;
 
   return (
     <View style={[styles.tabIconPill, focused && styles.tabIconPillFocused]}>
-      {iconForRoute(routeName, iconColor, focused ? 31 : 30)}
+      {iconForRoute(routeName, iconColor, 22)}
     </View>
   );
 }
@@ -112,41 +112,41 @@ function AppTabs() {
 const styles = StyleSheet.create({
   tabBar: {
     position: 'absolute',
-    left: 18,
-    right: 18,
-    bottom: 18,
-    height: 72,
+    left: 20,
+    right: 20,
+    bottom: 20,
+    height: 64,
     borderTopWidth: 0,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderMuted,
-    borderRadius: 36,
-    backgroundColor: colors.surfaceStrong,
+    borderColor: colors.border,
+    borderRadius: 32,
+    backgroundColor: colors.surface,
     paddingHorizontal: 8,
     paddingTop: 8,
     paddingBottom: 8,
-    elevation: 16,
+    elevation: 20,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
-    shadowRadius: 18
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.35,
+    shadowRadius: 24
   },
   tabBarItem: {
-    height: 56,
-    borderRadius: 28
+    height: 48,
+    borderRadius: 24
   },
   tabBarIcon: {
-    width: 60,
-    height: 56
+    width: 52,
+    height: 48
   },
   tabIconPill: {
-    width: 56,
-    height: 52,
+    width: 50,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 28
+    borderRadius: 22
   },
   tabIconPillFocused: {
-    backgroundColor: colors.surfaceTertiary
+    backgroundColor: colors.primaryMuted
   }
 });
 

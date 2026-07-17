@@ -4,9 +4,11 @@ import { useAppSelector } from '../../../app/hooks';
 import { Card } from '../../../components/Card';
 import { Screen } from '../../../components/Screen';
 import { AppText } from '../../../components/AppText';
+import { EmptyState } from '../../../components/EmptyState';
+import { ProgressBar } from '../../../components/ProgressBar';
 import { SectionHeader } from '../../../components/SectionHeader';
 import { formatCurrency } from '../../../utils/date';
-import { colors, spacing } from '../../../theme';
+import { colors, radii, spacing } from '../../../theme';
 import { getLoanProjection } from '../utils/payoffCalculator';
 
 export function LoansScreen() {
@@ -15,13 +17,13 @@ export function LoansScreen() {
 
   return (
     <Screen style={styles.screen}>
-      <SectionHeader title="Loans" subtitle="Track payoff progress, remaining balance, and interest projection." />
+      <SectionHeader title="Loans" subtitle="Payoff progress, balances, and interest projections" />
       {loanAccounts.length === 0 ? (
-        <Card style={styles.empty}>
-          <Landmark size={34} color={colors.primary} />
-          <AppText weight="semibold">No loan accounts yet</AppText>
-          <AppText muted>Add loan accounts from the web or API, then track payoff progress here.</AppText>
-        </Card>
+        <EmptyState
+          icon={<Landmark size={26} color={colors.primary} />}
+          title="No loan accounts yet"
+          body="Add loan accounts from the web or API, then track payoff progress here."
+        />
       ) : null}
 
       {loanAccounts.map((account) => {
@@ -29,8 +31,8 @@ export function LoansScreen() {
         if (!loan) {
           return (
             <Card key={account.id ?? account.name} style={styles.cardGap}>
-              <AppText weight="semibold">{account.name}</AppText>
-              <AppText muted>Loan details missing.</AppText>
+              <AppText variant="heading">{account.name}</AppText>
+              <AppText variant="caption" muted>Loan details missing.</AppText>
             </Card>
           );
         }
@@ -38,27 +40,25 @@ export function LoansScreen() {
         return (
           <Card key={account.id ?? account.name} style={styles.cardGap}>
             <View style={styles.rowBetween}>
-              <View>
-                <AppText weight="semibold" style={styles.cardTitle}>{account.name}</AppText>
-                <AppText muted>{projection.percentPaid}% paid off</AppText>
+              <View style={styles.titleBlock}>
+                <AppText variant="heading">{account.name}</AppText>
+                <AppText variant="caption" tone="success">{projection.percentPaid}% paid off</AppText>
               </View>
-              <AppText weight="bold">{formatCurrency(projection.currentBalance)}</AppText>
+              <AppText variant="heading" tabular>{formatCurrency(projection.currentBalance)}</AppText>
             </View>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${projection.percentPaid}%` }]} />
-            </View>
+            <ProgressBar percent={projection.percentPaid} color={colors.success} />
             <View style={styles.metricRow}>
-              <View>
-                <AppText muted>Monthly payment</AppText>
-                <AppText weight="semibold">{formatCurrency(loan.monthlyPayment)}</AppText>
+              <View style={styles.metric}>
+                <AppText variant="label" tone="faint">Monthly</AppText>
+                <AppText variant="caption" weight="semibold" tabular>{formatCurrency(loan.monthlyPayment)}</AppText>
               </View>
-              <View>
-                <AppText muted>Interest</AppText>
-                <AppText weight="semibold">{loan.interestRate}%</AppText>
+              <View style={styles.metric}>
+                <AppText variant="label" tone="faint">Interest</AppText>
+                <AppText variant="caption" weight="semibold" tabular>{loan.interestRate}%</AppText>
               </View>
-              <View>
-                <AppText muted>Payoff</AppText>
-                <AppText weight="semibold">{projection.months} mo</AppText>
+              <View style={styles.metric}>
+                <AppText variant="label" tone="faint">Payoff</AppText>
+                <AppText variant="caption" weight="semibold" tabular>{projection.months} mo</AppText>
               </View>
             </View>
           </Card>
@@ -72,34 +72,28 @@ const styles = StyleSheet.create({
   screen: {
     gap: spacing.lg
   },
-  empty: {
-    alignItems: 'center',
-    gap: spacing.sm
-  },
   cardGap: {
-    gap: spacing.md
-  },
-  cardTitle: {
-    fontSize: 18
+    gap: spacing.lg
   },
   rowBetween: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: spacing.md
   },
-  progressTrack: {
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.border,
-    overflow: 'hidden'
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: colors.primary
+  titleBlock: {
+    flex: 1,
+    gap: 2
   },
   metricRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between'
+    gap: spacing.sm
+  },
+  metric: {
+    flex: 1,
+    gap: spacing.xs,
+    backgroundColor: colors.surfaceStrong,
+    borderRadius: radii.sm,
+    padding: spacing.md
   }
 });

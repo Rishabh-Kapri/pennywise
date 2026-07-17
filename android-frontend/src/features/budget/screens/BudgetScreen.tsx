@@ -2,11 +2,9 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Check } from 'lucide-react-native';
 import { useAppDispatch, useAppSelector } from '../../../app/hooks';
-import { Button } from '../../../components/Button';
 import { Card } from '../../../components/Card';
 import { Screen } from '../../../components/Screen';
 import { AppText } from '../../../components/AppText';
-import { SectionHeader } from '../../../components/SectionHeader';
 import { fetchAllCategoryGroups, toggleGroupCollapse, updateCategoryBudget } from '../../category/store/categorySlice';
 import { selectMonthInHumanFormat, selectSelectedMonth, setSelectedMonth } from '../store/budgetSlice';
 import { formatCurrency, shiftMonth } from '../../../utils/date';
@@ -30,8 +28,22 @@ function BudgetInput({ categoryId, value, month }: { categoryId: string; value: 
       onSubmitEditing={commit}
       keyboardType="numeric"
       placeholder="0"
+      placeholderTextColor={colors.faint}
       style={styles.input}
     />
+  );
+}
+
+function AvailablePill({ amount }: { amount: number }) {
+  const tone = amount < 0 ? styles.pillNegative : amount > 0 ? styles.pillPositive : styles.pillNeutral;
+  const toneText = amount < 0 ? styles.pillNegativeText : amount > 0 ? styles.pillPositiveText : styles.pillNeutralText;
+
+  return (
+    <View style={[styles.pill, tone]}>
+      <AppText variant="caption" weight="semibold" tabular style={toneText}>
+        {formatCurrency(amount)}
+      </AppText>
+    </View>
   );
 }
 
@@ -54,49 +66,54 @@ export function BudgetScreen() {
 
   return (
     <Screen style={styles.screen}>
-      <SectionHeader title="Budget" subtitle="Assign inflow, track activity, and keep available money visible." />
-
-      <View style={styles.monthRow}>
-        <Button variant="secondary" onPress={() => moveMonth(-1)}>
-          <ChevronLeft size={16} color={colors.text} />
-        </Button>
-        <AppText weight="bold" style={styles.monthText}>{monthLabel}</AppText>
-        <Button variant="secondary" onPress={() => moveMonth(1)}>
-          <ChevronRight size={16} color={colors.text} />
-        </Button>
+      <View style={styles.headerRow}>
+        <AppText variant="title">Budget</AppText>
+        <View style={styles.monthStepper}>
+          <Pressable style={({ pressed }) => [styles.stepButton, pressed && styles.pressed]} onPress={() => moveMonth(-1)}>
+            <ChevronLeft size={18} color={colors.muted} />
+          </Pressable>
+          <AppText variant="caption" weight="semibold" style={styles.monthText}>{monthLabel}</AppText>
+          <Pressable style={({ pressed }) => [styles.stepButton, pressed && styles.pressed]} onPress={() => moveMonth(1)}>
+            <ChevronRight size={18} color={colors.muted} />
+          </Pressable>
+        </View>
       </View>
 
-      <Card style={[styles.assignCard, inflowAmount === 0 ? styles.assignedCard : undefined]}>
-        <View>
-          <AppText weight="bold" style={styles.readyAmount}>{formatCurrency(inflowAmount)}</AppText>
-          <AppText muted>{inflowAmount === 0 ? 'All assigned' : 'Ready to assign'}</AppText>
+      <View style={[styles.assignCard, inflowAmount === 0 && styles.assignCardDone]}>
+        <View style={styles.assignMain}>
+          <AppText variant="label" tone={inflowAmount === 0 ? 'success' : 'primary'}>
+            {inflowAmount === 0 ? 'All assigned' : 'Ready to assign'}
+          </AppText>
+          <AppText variant="display" tabular style={styles.assignAmount}>{formatCurrency(inflowAmount)}</AppText>
         </View>
-        {inflowAmount === 0 ? <Check color={colors.success} size={24} /> : null}
-      </Card>
+        {inflowAmount === 0 ? <Check color={colors.success} size={28} /> : null}
+      </View>
 
       <View style={styles.summaryRow}>
-        <Card style={styles.summaryCard}>
-          <AppText muted>Assigned</AppText>
-          <AppText weight="bold">{formatCurrency(assigned)}</AppText>
-        </Card>
-        <Card style={styles.summaryCard}>
-          <AppText muted>Activity</AppText>
-          <AppText weight="bold">{formatCurrency(activity)}</AppText>
-        </Card>
-        <Card style={styles.summaryCard}>
-          <AppText muted>Available</AppText>
-          <AppText weight="bold">{formatCurrency(available)}</AppText>
-        </Card>
+        <View style={styles.summaryCell}>
+          <AppText variant="caption" muted>Assigned</AppText>
+          <AppText weight="semibold" tabular>{formatCurrency(assigned)}</AppText>
+        </View>
+        <View style={styles.summaryDivider} />
+        <View style={styles.summaryCell}>
+          <AppText variant="caption" muted>Activity</AppText>
+          <AppText weight="semibold" tabular>{formatCurrency(activity)}</AppText>
+        </View>
+        <View style={styles.summaryDivider} />
+        <View style={styles.summaryCell}>
+          <AppText variant="caption" muted>Available</AppText>
+          <AppText weight="semibold" tabular>{formatCurrency(available)}</AppText>
+        </View>
       </View>
 
       {groups.map((group) => (
         <Card key={group.id ?? group.name} style={styles.groupCard}>
           <Pressable style={styles.groupHeader} onPress={() => group.id && dispatch(toggleGroupCollapse(group.id))}>
             <View style={styles.groupTitle}>
-              {group.collapsed ? <ChevronDown size={18} color={colors.muted} /> : <ChevronUp size={18} color={colors.muted} />}
-              <AppText weight="semibold">{group.name}</AppText>
+              <AppText variant="heading">{group.name}</AppText>
+              {group.collapsed ? <ChevronDown size={16} color={colors.faint} /> : <ChevronUp size={16} color={colors.faint} />}
             </View>
-            <AppText weight="semibold">{formatCurrency(group.balance?.[month] ?? 0)}</AppText>
+            <AppText variant="caption" weight="semibold" muted tabular>{formatCurrency(group.balance?.[month] ?? 0)}</AppText>
           </Pressable>
 
           {!group.collapsed && group.categories.map((category) => {
@@ -105,9 +122,12 @@ export function BudgetScreen() {
             const balance = category.balance?.[month] ?? 0;
             return (
               <View key={category.id ?? category.name} style={styles.categoryRow}>
-                <View style={styles.categoryName}>
+                <View style={styles.categoryMain}>
                   <AppText numberOfLines={1}>{category.name}</AppText>
-                  <AppText muted>{formatCurrency(spent)} activity · {formatCurrency(balance)} left</AppText>
+                  <View style={styles.categoryMeta}>
+                    <AppText variant="caption" tone="faint" tabular>{formatCurrency(spent)} spent</AppText>
+                    <AvailablePill amount={balance} />
+                  </View>
                 </View>
                 {category.id ? <BudgetInput categoryId={category.id} month={month} value={budgeted} /> : null}
               </View>
@@ -123,37 +143,70 @@ const styles = StyleSheet.create({
   screen: {
     gap: spacing.lg
   },
-  monthRow: {
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: spacing.md
+    gap: spacing.md,
+    marginBottom: spacing.xs
+  },
+  monthStepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radii.full,
+    paddingHorizontal: spacing.xs
+  },
+  stepButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radii.full
   },
   monthText: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 18
+    minWidth: 92,
+    textAlign: 'center'
+  },
+  pressed: {
+    opacity: 0.6
   },
   assignCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between'
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    backgroundColor: colors.primaryMuted,
+    borderRadius: radii.lg,
+    padding: spacing.xl
   },
-  assignedCard: {
-    borderColor: colors.success,
-    backgroundColor: colors.surfaceStrong
+  assignCardDone: {
+    backgroundColor: colors.successMuted
   },
-  readyAmount: {
-    fontSize: 26,
-    lineHeight: 32
+  assignMain: {
+    gap: spacing.xs
+  },
+  assignAmount: {
+    fontSize: 32,
+    lineHeight: 38
   },
   summaryRow: {
     flexDirection: 'row',
-    gap: spacing.sm
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg
   },
-  summaryCard: {
+  summaryCell: {
     flex: 1,
-    padding: spacing.md
+    gap: 2
+  },
+  summaryDivider: {
+    width: StyleSheet.hairlineWidth,
+    alignSelf: 'stretch',
+    backgroundColor: colors.border,
+    marginHorizontal: spacing.md
   },
   groupCard: {
     gap: spacing.sm
@@ -161,7 +214,9 @@ const styles = StyleSheet.create({
   groupHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center'
+    alignItems: 'center',
+    gap: spacing.md,
+    minHeight: 32
   },
   groupTitle: {
     flexDirection: 'row',
@@ -173,22 +228,50 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border
   },
-  categoryName: {
-    flex: 1
+  categoryMain: {
+    flex: 1,
+    gap: spacing.xs
+  },
+  categoryMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm
+  },
+  pill: {
+    borderRadius: radii.full,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2
+  },
+  pillPositive: {
+    backgroundColor: colors.successMuted
+  },
+  pillPositiveText: {
+    color: colors.success
+  },
+  pillNegative: {
+    backgroundColor: colors.dangerMuted
+  },
+  pillNegativeText: {
+    color: colors.danger
+  },
+  pillNeutral: {
+    backgroundColor: colors.surfaceTertiary
+  },
+  pillNeutralText: {
+    color: colors.muted
   },
   input: {
-    width: 86,
-    minHeight: 38,
+    width: 88,
+    minHeight: 40,
     borderRadius: radii.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceStrong,
     textAlign: 'right',
-    paddingHorizontal: spacing.sm,
-    color: colors.text
+    paddingHorizontal: spacing.md,
+    color: colors.text,
+    fontVariant: ['tabular-nums']
   }
 });
