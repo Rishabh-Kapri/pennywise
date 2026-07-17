@@ -100,6 +100,8 @@ func (s *pushNotificationService) NotifyTransactionsCreated(
 					"type":          "transaction.created",
 					"transactionId": txn.ID.String(),
 					"budgetId":      budgetId.String(),
+					// lets the app's stale-fix prompt name the transaction
+					"summary": body,
 				},
 			})
 		}
