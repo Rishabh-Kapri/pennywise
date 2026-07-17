@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import * as Google from 'expo-auth-session/providers/google';
 import { Prompt, ResponseType } from 'expo-auth-session';
@@ -34,13 +34,21 @@ export function LoginScreen() {
     }
   });
 
+  const [flowMessage, setFlowMessage] = useState<string | null>(null);
+
   useEffect(() => {
-    if (response?.type === 'success' && response.params.code) {
+    if (!response) return;
+    if (response.type === 'success' && response.params.code) {
+      setFlowMessage(null);
       dispatch(loginWithGoogle({
         code: response.params.code,
         redirectUri: request?.redirectUri,
         codeVerifier: request?.codeVerifier
       }));
+    } else if (response.type === 'error') {
+      setFlowMessage(`Google sign-in failed: ${response.error?.message ?? response.params.error ?? 'unknown error'}`);
+    } else if (response.type === 'dismiss' || response.type === 'cancel') {
+      setFlowMessage('Sign-in did not complete — the browser closed before returning to the app.');
     }
   }, [dispatch, request?.codeVerifier, request?.redirectUri, response]);
 
@@ -59,9 +67,9 @@ export function LoginScreen() {
       </View>
 
       <View style={styles.footer}>
-        {googleConfigError || error ? (
+        {googleConfigError || error || flowMessage ? (
           <AppText variant="caption" tone="danger" style={styles.error}>
-            {googleConfigError ?? error}
+            {googleConfigError ?? error ?? flowMessage}
           </AppText>
         ) : null}
         <Button disabled={isLoading || Boolean(googleConfigError) || !request} onPress={() => void promptAsync()}>
