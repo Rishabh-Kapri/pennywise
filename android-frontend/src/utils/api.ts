@@ -98,7 +98,9 @@ class ApiClient {
     endpoint: string,
     body?: unknown
   ): Promise<T> {
-    if (res.status === 401 && !this.isRefreshEndpoint(endpoint)) {
+    // Public auth endpoints (login, refresh) return 401 for their own failures;
+    // there is no session to refresh, so surface the server's error directly.
+    if (res.status === 401 && !this.isPublicAuthEndpoint(endpoint)) {
       let newAccessToken: string;
       try {
         newAccessToken = await this.tryRefreshToken();
