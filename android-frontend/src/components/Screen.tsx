@@ -1,7 +1,7 @@
 import type { PropsWithChildren } from 'react';
 import { ScrollView, StyleSheet, View, type ScrollViewProps, type StyleProp, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { colors, spacing } from '../theme';
+import { colors, spacing, tabBarClearance } from '../theme';
 
 type Props = PropsWithChildren<{
   scroll?: boolean;
@@ -13,7 +13,7 @@ export function Screen({ children, scroll = true, style, refreshControl }: Props
   const content = <View style={[styles.content, style]}>{children}</View>;
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       {scroll ? (
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} refreshControl={refreshControl}>
           {content}
@@ -31,12 +31,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background
   },
   scrollContent: {
-    flexGrow: 1
+    flexGrow: 1,
+    paddingBottom: tabBarClearance
   },
   content: {
     flex: 1,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.lg
   }
 });

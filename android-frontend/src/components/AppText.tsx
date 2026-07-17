@@ -1,16 +1,30 @@
 import type { PropsWithChildren } from 'react';
 import { StyleSheet, Text, type TextProps } from 'react-native';
-import { colors } from '../theme';
+import { colors, typography } from '../theme';
 
-type Props = PropsWithChildren<TextProps & { muted?: boolean; weight?: 'regular' | 'medium' | 'semibold' | 'bold' }>;
+type Variant = 'display' | 'title' | 'heading' | 'body' | 'caption' | 'label';
+type Tone = 'default' | 'muted' | 'faint' | 'primary' | 'success' | 'danger' | 'onPrimary';
 
-export function AppText({ children, muted, weight = 'regular', style, ...props }: Props) {
+type Props = PropsWithChildren<
+  TextProps & {
+    variant?: Variant;
+    tone?: Tone;
+    muted?: boolean;
+    tabular?: boolean;
+    weight?: 'regular' | 'medium' | 'semibold' | 'bold';
+  }
+>;
+
+export function AppText({ children, variant = 'body', tone, muted, tabular, weight, style, ...props }: Props) {
   return (
     <Text
       {...props}
       style={[
-        styles.text,
-        muted && styles.muted,
+        styles.base,
+        typography[variant],
+        tone && toneStyles[tone],
+        !tone && muted && toneStyles.muted,
+        tabular && styles.tabular,
         weight === 'medium' && styles.medium,
         weight === 'semibold' && styles.semibold,
         weight === 'bold' && styles.bold,
@@ -23,13 +37,11 @@ export function AppText({ children, muted, weight = 'regular', style, ...props }
 }
 
 const styles = StyleSheet.create({
-  text: {
-    color: colors.text,
-    fontSize: 15,
-    lineHeight: 21
+  base: {
+    color: colors.text
   },
-  muted: {
-    color: colors.muted
+  tabular: {
+    fontVariant: ['tabular-nums']
   },
   medium: {
     fontWeight: '500'
@@ -39,5 +51,29 @@ const styles = StyleSheet.create({
   },
   bold: {
     fontWeight: '700'
+  }
+});
+
+const toneStyles = StyleSheet.create({
+  default: {
+    color: colors.text
+  },
+  muted: {
+    color: colors.muted
+  },
+  faint: {
+    color: colors.faint
+  },
+  primary: {
+    color: colors.primary
+  },
+  success: {
+    color: colors.success
+  },
+  danger: {
+    color: colors.danger
+  },
+  onPrimary: {
+    color: colors.onPrimary
   }
 });

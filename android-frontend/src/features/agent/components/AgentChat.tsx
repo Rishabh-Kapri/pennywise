@@ -84,7 +84,7 @@ function AgentToolPart({ part }: { part: MessagePart }) {
 
   return (
     <View style={[styles.toolPart, !summary && styles.toolPartPending]}>
-      <Sparkles size={14} color={colors.primaryLight} />
+      <Sparkles size={14} color={colors.primary} />
       <View style={styles.toolText}>
         <AppText weight="semibold" style={styles.toolName}>
           {displayName}
@@ -107,7 +107,7 @@ function AgentMessageBody({ message }: { message: AgentChatMessage }) {
   if (message.eventName === AGENT_LOADING_EVENT) {
     return (
       <View style={styles.loadingMessage}>
-        <ActivityIndicator size="small" color={colors.primaryLight} />
+        <ActivityIndicator size="small" color={colors.primary} />
         <AppText muted style={styles.loadingText}>
           Thinking
         </AppText>
@@ -407,10 +407,7 @@ export function AgentChat() {
           style={({ pressed }) => [styles.launcher, pressed && styles.pressed]}
           onPress={() => setIsOpen(true)}
         >
-          <Sparkles size={18} color="#ffffff" />
-          <AppText weight="bold" style={styles.launcherText}>
-            Ask Penny
-          </AppText>
+          <Sparkles size={22} color={colors.onPrimary} />
         </Pressable>
       ) : null}
 
@@ -419,7 +416,7 @@ export function AgentChat() {
           <KeyboardAvoidingView style={styles.panel} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <View style={styles.header}>
               <View style={styles.agentMark}>
-                <Bot size={20} color="#ffffff" />
+                <Bot size={20} color={colors.primary} />
               </View>
               <View style={styles.headerText}>
                 <AppText weight="bold" numberOfLines={1} style={styles.headerTitle}>
@@ -579,7 +576,7 @@ export function AgentChat() {
                   ]}
                   onPress={() => submitMessage(composerValue)}
                 >
-                  <Send size={17} color="#ffffff" />
+                  <Send size={17} color={colors.onPrimary} />
                 </Pressable>
               </View>
             </View>
@@ -621,7 +618,7 @@ export function AgentChat() {
                 onPress={handleConfirmDeleteConversation}
               >
                 {isDeletingConversation ? (
-                  <ActivityIndicator size="small" color="#ffffff" />
+                  <ActivityIndicator size="small" color={colors.danger} />
                 ) : (
                   <AppText weight="bold" style={styles.confirmDeleteText}>
                     Delete
@@ -639,24 +636,20 @@ export function AgentChat() {
 const styles = StyleSheet.create({
   launcher: {
     position: 'absolute',
-    right: spacing.lg,
-    bottom: 104,
+    right: spacing.xl,
+    bottom: 100,
     zIndex: 50,
     elevation: 18,
-    flexDirection: 'row',
+    width: 54,
+    height: 54,
     alignItems: 'center',
-    gap: spacing.sm,
-    minHeight: 48,
-    paddingHorizontal: spacing.lg,
-    borderRadius: 999,
+    justifyContent: 'center',
+    borderRadius: 27,
     backgroundColor: colors.primary,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.28,
+    shadowOpacity: 0.3,
     shadowRadius: 16
-  },
-  launcherText: {
-    color: '#ffffff'
   },
   modalSafe: {
     flex: 1,
@@ -664,7 +657,7 @@ const styles = StyleSheet.create({
   },
   panel: {
     flex: 1,
-    backgroundColor: colors.surface
+    backgroundColor: colors.background
   },
   header: {
     flexDirection: 'row',
@@ -674,15 +667,15 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.borderMuted,
-    backgroundColor: colors.surface
+    backgroundColor: colors.background
   },
   agentMark: {
-    width: 42,
-    height: 42,
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: radii.lg,
-    backgroundColor: colors.primary
+    borderRadius: 20,
+    backgroundColor: colors.primaryMuted
   },
   headerText: {
     flex: 1,
@@ -702,9 +695,7 @@ const styles = StyleSheet.create({
     height: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: radii.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderMuted,
+    borderRadius: 18,
     backgroundColor: colors.surfaceStrong
   },
   historyPanel: {
@@ -744,7 +735,7 @@ const styles = StyleSheet.create({
   },
   messages: {
     flex: 1,
-    backgroundColor: colors.surface
+    backgroundColor: colors.background
   },
   messagesContent: {
     flexGrow: 1,
@@ -765,18 +756,18 @@ const styles = StyleSheet.create({
   },
   messageBubble: {
     maxWidth: '86%',
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    borderRadius: 18
+    borderRadius: 20
   },
   agentMessage: {
     alignSelf: 'flex-start',
-    borderTopLeftRadius: radii.sm,
-    backgroundColor: '#2c2c2a'
+    borderTopLeftRadius: 6,
+    backgroundColor: colors.surface
   },
   userMessage: {
     alignSelf: 'flex-end',
-    borderTopRightRadius: radii.sm,
+    borderTopRightRadius: 6,
     backgroundColor: colors.primary
   },
   messageLabel: {
@@ -790,7 +781,7 @@ const styles = StyleSheet.create({
     lineHeight: 21
   },
   userMessageText: {
-    color: '#ffffff',
+    color: colors.onPrimary,
     lineHeight: 21
   },
   messageParts: {
@@ -811,13 +802,11 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: spacing.sm,
     padding: spacing.sm,
-    borderRadius: radii.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderMuted,
-    backgroundColor: colors.background
+    borderRadius: radii.sm,
+    backgroundColor: colors.surfaceStrong
   },
   toolPartPending: {
-    borderColor: colors.primaryLight
+    backgroundColor: colors.primaryMuted
   },
   toolText: {
     flex: 1,
@@ -835,15 +824,14 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    backgroundColor: colors.surface
+    backgroundColor: colors.background
   },
   suggestionButton: {
     minHeight: 36,
     justifyContent: 'center',
     paddingHorizontal: spacing.md,
     borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderMuted
+    backgroundColor: colors.surfaceStrong
   },
   suggestionText: {
     fontSize: 13,
@@ -853,10 +841,8 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     margin: spacing.md,
     padding: spacing.lg,
-    borderRadius: 22,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderMuted,
-    backgroundColor: '#2c2c2a'
+    borderRadius: 24,
+    backgroundColor: colors.surface
   },
   composerInput: {
     minHeight: 42,
@@ -875,10 +861,8 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     maxHeight: 184,
     padding: spacing.sm,
-    borderRadius: radii.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderMuted,
-    backgroundColor: colors.background
+    borderRadius: radii.md,
+    backgroundColor: colors.surfaceStrong
   },
   modelOption: {
     minHeight: 38,
@@ -925,10 +909,8 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 360,
     gap: spacing.md,
-    padding: spacing.lg,
-    borderRadius: radii.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderMuted,
+    padding: spacing.xl,
+    borderRadius: radii.xl,
     backgroundColor: colors.surface
   },
   confirmTitle: {
@@ -947,9 +929,8 @@ const styles = StyleSheet.create({
     minHeight: 42,
     justifyContent: 'center',
     paddingHorizontal: spacing.lg,
-    borderRadius: radii.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderMuted
+    borderRadius: radii.full,
+    backgroundColor: colors.surfaceStrong
   },
   confirmDeleteButton: {
     minWidth: 88,
@@ -957,10 +938,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.lg,
-    borderRadius: radii.md,
-    backgroundColor: colors.danger
+    borderRadius: radii.full,
+    backgroundColor: colors.dangerMuted
   },
   confirmDeleteText: {
-    color: '#ffffff'
+    color: colors.danger
   }
 });

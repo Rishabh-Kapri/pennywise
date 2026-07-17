@@ -71,12 +71,13 @@ Important: `src/app` is a Redux/application folder, not an Expo Router route fol
 
 ### Shared UI
 
-- `src/components/AppText.tsx` centralizes text styling.
-- `src/components/Button.tsx` is the shared command button.
-- `src/components/Card.tsx` is for individual grouped content, not full page sections.
-- `src/components/Screen.tsx` is the scroll/safe-area page wrapper.
+- `src/components/AppText.tsx` centralizes text styling via `variant` (display/title/heading/body/caption/label), `tone` (muted/faint/primary/success/danger/onPrimary), and `tabular` (tabular-nums for money).
+- `src/components/Button.tsx` is the shared command button: pill-shaped, `primary`/`secondary`/`ghost`/`danger` (danger is tonal, not solid), `size="sm" | "md"`.
+- `src/components/Card.tsx` is for individual grouped content, not full page sections. Cards are borderless raised surfaces.
+- `src/components/Screen.tsx` is the scroll/safe-area page wrapper; scrollable content is padded with `tabBarClearance` so it never hides behind the floating tab bar.
 - `src/components/SectionHeader.tsx` and `LoadingStateView.tsx` are shared display helpers.
-- `src/theme.ts` is the single source for colors, spacing, radii, typography, and shadows.
+- `src/components/IconTile.tsx` is a tonal rounded icon container; `InitialAvatar.tsx` renders deterministic colored initial avatars; `ProgressBar.tsx` and `EmptyState.tsx` are shared display helpers.
+- `src/theme.ts` is the single source for colors, spacing, radii, typography, and `tabBarClearance`.
 
 ### Feature folders
 
@@ -242,19 +243,19 @@ The SHA-1 fingerprint is safe to put in Google Cloud. The keystore file itself i
 
 ## Theme
 
-`src/theme.ts` should match `react-frontend/src/styles/index.css`.
+`src/theme.ts` is a minimal dark design system: near-black canvas, borderless raised surfaces, one soft-indigo accent, and tonal (translucent) fills for states instead of solid chips.
 
 Current core tokens:
 
-- primary: `#4483a2`
-- background: `#1f1f1e`
-- surface: `#1f1f1f`
-- surfaceStrong: `#323232`
-- text: `#f6f6f6`
-- muted: `#a9a9a9`
-- border: `#626262`
+- primary: `#8B93FF` (dark text `onPrimary` on top, never white)
+- primaryMuted / successMuted / dangerMuted / warningMuted: 14%-alpha tonal fills
+- background: `#0B0B0F`
+- surface: `#15151A` (cards/rows)
+- surfaceStrong: `#1E1E25` (inputs, nested chips)
+- text: `#F4F4F6`, muted: `#9C9CA6`, faint: `#5F5F6B`
+- border: `rgba(255,255,255,0.08)` — used only for hairline row dividers, not around cards
 
-Avoid reintroducing the old green/beige Android-only palette.
+Conventions: pill-shaped buttons/search/inputs, `radii.lg` (20) cards, type scale via `AppText` variants, tabular numerals for all currency values. Avoid reintroducing the old green/beige Android-only palette or the gray-bordered card look.
 
 ## Dependency caveats
 
