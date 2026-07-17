@@ -80,6 +80,18 @@ class ApiClient {
     return data as T;
   }
 
+  // When a 401 can't be recovered by refreshing, the session is dead: clear it
+  // so the app returns to the login screen instead of staying "authenticated"
+  // with tokens that can never work again.
+  private async handleSessionExpired() {
+    const { clearAuthFromStorage } = await import('./storage');
+    await clearAuthFromStorage().catch(() => undefined);
+    if (this.dispatch) {
+      const { resetAuth } = await import('../features/auth/store/authSlice');
+      this.dispatch(resetAuth());
+    }
+  }
+
   private async handleResponse<T>(
     res: Response,
     method: string,
@@ -87,7 +99,13 @@ class ApiClient {
     body?: unknown
   ): Promise<T> {
     if (res.status === 401 && !this.isRefreshEndpoint(endpoint)) {
-      const newAccessToken = await this.tryRefreshToken();
+      let newAccessToken: string;
+      try {
+        newAccessToken = await this.tryRefreshToken();
+      } catch (error) {
+        await this.handleSessionExpired();
+        throw error;
+      }
       const headers = this.getHeaders(endpoint) as Record<string, string>;
       headers.Authorization = `Bearer ${newAccessToken}`;
       const retryRes = await fetch(`${this.baseUrl}/${endpoint}`, {
