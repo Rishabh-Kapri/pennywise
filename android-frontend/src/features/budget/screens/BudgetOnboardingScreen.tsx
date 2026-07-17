@@ -24,43 +24,63 @@ export function BudgetOnboardingScreen() {
 
   return (
     <Screen style={styles.screen}>
-      <SectionHeader title="Create Budget" subtitle="Start with a practical category template. You can edit everything later." />
-      <Card style={styles.card}>
-        <AppText weight="semibold">Budget name</AppText>
-        <TextInput value={name} onChangeText={setName} style={styles.input} placeholder="Personal Budget" />
-        <View style={styles.templateList}>
-          {budgetTemplates.map((group) => (
-            <View key={group.name}>
+      <SectionHeader title="Create your budget" subtitle="Start with a practical category template — everything is editable later." />
+
+      <View style={styles.field}>
+        <AppText variant="label" tone="faint">Budget name</AppText>
+        <TextInput
+          value={name}
+          onChangeText={setName}
+          style={styles.input}
+          placeholder="Personal Budget"
+          placeholderTextColor={colors.faint}
+        />
+      </View>
+
+      <View style={styles.field}>
+        <AppText variant="label" tone="faint">Starter categories</AppText>
+        <Card style={styles.templateList}>
+          {budgetTemplates.map((group, index) => (
+            <View key={group.name} style={[styles.templateRow, index > 0 && styles.rowDivider]}>
               <AppText weight="semibold">{group.name}</AppText>
-              <AppText muted>{group.categories.map((category) => category.name).join(', ')}</AppText>
+              <AppText variant="caption" muted>{group.categories.map((category) => category.name).join(', ')}</AppText>
             </View>
           ))}
-        </View>
-        <Button disabled={loading === LoadingState.PENDING} onPress={create}>
-          {loading === LoadingState.PENDING ? 'Creating...' : 'Create budget'}
-        </Button>
-      </Card>
+        </Card>
+      </View>
+
+      <Button disabled={loading === LoadingState.PENDING} onPress={create}>
+        {loading === LoadingState.PENDING ? 'Creating...' : 'Create budget'}
+      </Button>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   screen: {
-    gap: spacing.lg
+    gap: spacing.xl
   },
-  card: {
-    gap: spacing.lg
+  field: {
+    gap: spacing.sm
   },
   input: {
-    minHeight: 48,
-    borderRadius: radii.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md,
+    minHeight: 50,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.lg,
     color: colors.text,
-    backgroundColor: colors.surface
+    backgroundColor: colors.surfaceStrong,
+    fontSize: 15
   },
   templateList: {
-    gap: spacing.md
+    gap: 0,
+    paddingVertical: spacing.xs
+  },
+  templateRow: {
+    gap: spacing.xs,
+    paddingVertical: spacing.md
+  },
+  rowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border
   }
 });
