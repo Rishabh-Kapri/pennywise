@@ -11,7 +11,9 @@ import { updateTransactionLocation } from '../../store/transactionSlice';
 import { LocationSource, type Transaction } from '../../types/transaction.types';
 import styles from './TransactionDetailPanel.module.css';
 
-// Vite bundling breaks leaflet's default icon path resolution
+// Vite bundling breaks leaflet's default icon path resolution; the legacy
+// _getIconUrl ignores merged options, so it has to go first
+delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: markerIcon2x,
   iconUrl: markerIcon,
