@@ -1,14 +1,14 @@
 import { useMemo, useState } from 'react';
 import { FlatList, Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
-import { Check, CirclePlus, Search, X } from 'lucide-react-native';
+import { Check, Plus, ReceiptText, Search, X } from 'lucide-react-native';
 import { useAppDispatch, useAppSelector } from '../../../app/hooks';
 import { Button } from '../../../components/Button';
-import { Card } from '../../../components/Card';
 import { Screen } from '../../../components/Screen';
 import { AppText } from '../../../components/AppText';
-import { SectionHeader } from '../../../components/SectionHeader';
-import { formatCurrency, formatShortDate, getCurrentMonthKey } from '../../../utils/date';
-import { colors, radii, spacing } from '../../../theme';
+import { EmptyState } from '../../../components/EmptyState';
+import { InitialAvatar } from '../../../components/InitialAvatar';
+import { formatCurrency, formatShortDate } from '../../../utils/date';
+import { colors, radii, spacing, tabBarClearance } from '../../../theme';
 import type { Transaction, TransactionDTO } from '../types';
 import { TransactionStatus } from '../types';
 import { createTransaction, fetchAllTransactions, updateTransaction, updateTransactionStatus } from '../store/transactionSlice';
@@ -58,16 +58,38 @@ function TransactionEditor({
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.modalBackdrop}>
         <View style={styles.sheet}>
+          <View style={styles.sheetHandle} />
           <View style={styles.rowBetween}>
-            <AppText weight="bold" style={styles.sheetTitle}>{draft.id ? 'Edit Transaction' : 'New Transaction'}</AppText>
-            <Pressable onPress={onClose}><X size={22} color={colors.text} /></Pressable>
+            <AppText variant="title" style={styles.sheetTitle}>{draft.id ? 'Edit transaction' : 'New transaction'}</AppText>
+            <Pressable style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]} onPress={onClose}>
+              <X size={18} color={colors.muted} />
+            </Pressable>
           </View>
 
-          <TextInput value={draft.date} onChangeText={(date) => setDraft({ ...draft, date })} style={styles.input} placeholder="YYYY-MM-DD" />
-          <TextInput value={draft.amount} onChangeText={(amount) => setDraft({ ...draft, amount })} style={styles.input} keyboardType="numeric" placeholder="-500" />
-          <TextInput value={draft.note} onChangeText={(note) => setDraft({ ...draft, note })} style={styles.input} placeholder="Note" />
+          <TextInput
+            value={draft.date}
+            onChangeText={(date) => setDraft({ ...draft, date })}
+            style={styles.input}
+            placeholder="YYYY-MM-DD"
+            placeholderTextColor={colors.faint}
+          />
+          <TextInput
+            value={draft.amount}
+            onChangeText={(amount) => setDraft({ ...draft, amount })}
+            style={styles.input}
+            keyboardType="numeric"
+            placeholder="-500"
+            placeholderTextColor={colors.faint}
+          />
+          <TextInput
+            value={draft.note}
+            onChangeText={(note) => setDraft({ ...draft, note })}
+            style={styles.input}
+            placeholder="Note"
+            placeholderTextColor={colors.faint}
+          />
 
-          <AppText weight="semibold">Account</AppText>
+          <AppText variant="label" tone="faint">Account</AppText>
           <FlatList
             horizontal
             data={accounts}
@@ -78,12 +100,14 @@ function TransactionEditor({
                 style={[styles.choice, draft.accountId === item.id && styles.choiceSelected]}
                 onPress={() => item.id && setDraft({ ...draft, accountId: item.id })}
               >
-                <AppText weight="medium">{item.name}</AppText>
+                <AppText variant="caption" weight="medium" style={draft.accountId === item.id ? styles.choiceSelectedText : styles.choiceText}>
+                  {item.name}
+                </AppText>
               </Pressable>
             )}
           />
 
-          <AppText weight="semibold">Payee</AppText>
+          <AppText variant="label" tone="faint">Payee</AppText>
           <FlatList
             horizontal
             data={payees}
@@ -94,12 +118,14 @@ function TransactionEditor({
                 style={[styles.choice, draft.payeeId === item.id && styles.choiceSelected]}
                 onPress={() => item.id && setDraft({ ...draft, payeeId: item.id })}
               >
-                <AppText weight="medium">{item.name}</AppText>
+                <AppText variant="caption" weight="medium" style={draft.payeeId === item.id ? styles.choiceSelectedText : styles.choiceText}>
+                  {item.name}
+                </AppText>
               </Pressable>
             )}
           />
 
-          <AppText weight="semibold">Category</AppText>
+          <AppText variant="label" tone="faint">Category</AppText>
           <FlatList
             horizontal
             data={categories}
@@ -110,7 +136,9 @@ function TransactionEditor({
                 style={[styles.choice, draft.categoryId === item.id && styles.choiceSelected]}
                 onPress={() => item.id && setDraft({ ...draft, categoryId: item.id })}
               >
-                <AppText weight="medium">{item.name}</AppText>
+                <AppText variant="caption" weight="medium" style={draft.categoryId === item.id ? styles.choiceSelectedText : styles.choiceText}>
+                  {item.name}
+                </AppText>
               </Pressable>
             )}
           />
@@ -162,15 +190,24 @@ export function TransactionsScreen() {
   return (
     <Screen scroll={false} style={styles.screen}>
       <View style={styles.header}>
-        <SectionHeader title="Transactions" subtitle={`${transactions.length} loaded`} />
-        <Pressable style={styles.iconButton} onPress={() => setDraft(createDraft())}>
-          <CirclePlus size={24} color="#fff" />
+        <View style={styles.headerText}>
+          <AppText variant="title">Transactions</AppText>
+          <AppText variant="caption" muted>{transactions.length} loaded</AppText>
+        </View>
+        <Pressable style={({ pressed }) => [styles.addButton, pressed && styles.pressed]} onPress={() => setDraft(createDraft())}>
+          <Plus size={22} color={colors.onPrimary} />
         </Pressable>
       </View>
 
       <View style={styles.searchBox}>
-        <Search size={18} color={colors.muted} />
-        <TextInput value={search} onChangeText={setSearch} placeholder="Search transactions" style={styles.searchInput} />
+        <Search size={17} color={colors.faint} />
+        <TextInput
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Search transactions"
+          placeholderTextColor={colors.faint}
+          style={styles.searchInput}
+        />
       </View>
 
       <FlatList
@@ -178,6 +215,13 @@ export function TransactionsScreen() {
         keyExtractor={(item) => item.id ?? `${item.date}-${item.payeeName}-${item.amount}`}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          <EmptyState
+            icon={<ReceiptText size={26} color={colors.primary} />}
+            title="No transactions"
+            body="Transactions from your accounts and Gmail imports will show up here."
+          />
+        }
         onEndReached={() => {
           if (nextCursor && loadingMore !== 'pending') dispatch(fetchAllTransactions({ cursor: nextCursor }));
         }}
@@ -185,30 +229,29 @@ export function TransactionsScreen() {
           const amount = (item.inflow ?? 0) || -(item.outflow ?? 0);
           const unapproved = item.status === TransactionStatus.UNAPPROVED;
           return (
-            <Pressable onPress={() => setDraft(createDraft(item))}>
-              <Card style={styles.txnCard}>
-                <View style={styles.rowBetween}>
-                  <View style={styles.txnMain}>
-                    <View style={styles.rowStart}>
-                      {unapproved ? <View style={styles.unapprovedDot} /> : null}
-                      <AppText weight="semibold" numberOfLines={1}>{item.payeeName || 'Unknown payee'}</AppText>
-                    </View>
-                    <AppText muted numberOfLines={1}>{formatShortDate(item.date)} · {item.accountName}</AppText>
-                    <AppText muted numberOfLines={1}>{item.categoryName ?? 'Uncategorized'}{item.note ? ` · ${item.note}` : ''}</AppText>
-                  </View>
-                  <View style={styles.amountBlock}>
-                    <AppText weight="bold" style={amount > 0 ? styles.positive : undefined}>{formatCurrency(amount, { signed: true })}</AppText>
-                    {unapproved ? (
-                      <Pressable
-                        style={styles.approveButton}
-                        onPress={() => item.id && dispatch(updateTransactionStatus({ id: item.id, status: TransactionStatus.APPROVED }))}
-                      >
-                        <Check size={14} color="#fff" />
-                      </Pressable>
-                    ) : null}
-                  </View>
-                </View>
-              </Card>
+            <Pressable style={({ pressed }) => [styles.txnRow, pressed && styles.rowPressed]} onPress={() => setDraft(createDraft(item))}>
+              <InitialAvatar name={item.payeeName || '?'} size={42} />
+              <View style={styles.txnMain}>
+                <AppText weight="medium" numberOfLines={1}>{item.payeeName || 'Unknown payee'}</AppText>
+                <AppText variant="caption" muted numberOfLines={1}>
+                  {formatShortDate(item.date)} · {item.categoryName ?? 'Uncategorized'}
+                </AppText>
+                {item.note ? <AppText variant="caption" tone="faint" numberOfLines={1}>{item.note}</AppText> : null}
+              </View>
+              <View style={styles.amountBlock}>
+                <AppText weight="semibold" tone={amount > 0 ? 'success' : 'default'} tabular>
+                  {formatCurrency(amount, { signed: true })}
+                </AppText>
+                {unapproved ? (
+                  <Pressable
+                    style={({ pressed }) => [styles.approveButton, pressed && styles.pressed]}
+                    onPress={() => item.id && dispatch(updateTransactionStatus({ id: item.id, status: TransactionStatus.APPROVED }))}
+                  >
+                    <Check size={13} color={colors.success} />
+                    <AppText variant="caption" weight="semibold" tone="success">Approve</AppText>
+                  </Pressable>
+                ) : null}
+              </View>
             </Pressable>
           );
         }}
@@ -221,18 +264,21 @@ export function TransactionsScreen() {
 
 const styles = StyleSheet.create({
   screen: {
-    gap: spacing.md
+    gap: spacing.lg
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md
   },
-  iconButton: {
-    width: 48,
-    height: 48,
-    borderRadius: radii.md,
+  headerText: {
+    gap: 2
+  },
+  addButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center'
@@ -242,22 +288,49 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     minHeight: 46,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceStrong,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.md
+    backgroundColor: colors.surface,
+    borderRadius: radii.full,
+    paddingHorizontal: spacing.lg
   },
   searchInput: {
     flex: 1,
-    color: colors.text
+    color: colors.text,
+    fontSize: 15
   },
   listContent: {
-    gap: spacing.md,
-    paddingBottom: spacing.xl
+    gap: spacing.xs,
+    paddingBottom: tabBarClearance
   },
-  txnCard: {
+  txnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
     padding: spacing.md
+  },
+  rowPressed: {
+    backgroundColor: colors.surfaceStrong
+  },
+  txnMain: {
+    flex: 1,
+    gap: 1
+  },
+  amountBlock: {
+    alignItems: 'flex-end',
+    gap: spacing.sm
+  },
+  approveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderRadius: radii.full,
+    backgroundColor: colors.successMuted,
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 4
+  },
+  pressed: {
+    opacity: 0.7
   },
   rowBetween: {
     flexDirection: 'row',
@@ -265,72 +338,63 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.md
   },
-  rowStart: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs
-  },
-  txnMain: {
-    flex: 1
-  },
-  amountBlock: {
-    alignItems: 'flex-end',
-    gap: spacing.sm
-  },
-  positive: {
-    color: colors.success
-  },
-  unapprovedDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.accent
-  },
-  approveButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.success
-  },
   modalBackdrop: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.35)'
+    backgroundColor: 'rgba(0,0,0,0.55)'
   },
   sheet: {
     maxHeight: '88%',
-    backgroundColor: colors.surfaceStrong,
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    padding: spacing.lg,
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
+    padding: spacing.xl,
+    paddingTop: spacing.md,
     gap: spacing.md
   },
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.surfaceTertiary,
+    marginBottom: spacing.sm
+  },
   sheetTitle: {
-    fontSize: 20
+    fontSize: 20,
+    lineHeight: 26
+  },
+  closeButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceStrong
   },
   input: {
-    minHeight: 44,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    borderRadius: radii.sm,
-    paddingHorizontal: spacing.md,
+    minHeight: 48,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.lg,
     color: colors.text,
-    backgroundColor: colors.surface
+    backgroundColor: colors.surfaceStrong,
+    fontSize: 15
   },
   choice: {
-    minHeight: 40,
+    minHeight: 36,
     justifyContent: 'center',
     paddingHorizontal: spacing.md,
     marginRight: spacing.sm,
-    borderRadius: radii.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.surface
+    borderRadius: radii.full,
+    backgroundColor: colors.surfaceStrong
   },
   choiceSelected: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primaryLight
+    backgroundColor: colors.primaryMuted
+  },
+  choiceText: {
+    color: colors.muted
+  },
+  choiceSelectedText: {
+    color: colors.primary
   }
 });

@@ -6,12 +6,11 @@ import * as WebBrowser from 'expo-web-browser';
 import { WalletCards } from 'lucide-react-native';
 import { useAppDispatch, useAppSelector } from '../../../app/hooks';
 import { Button } from '../../../components/Button';
-import { Card } from '../../../components/Card';
 import { Screen } from '../../../components/Screen';
 import { AppText } from '../../../components/AppText';
 import { LoadingState } from '../../../utils/constants';
 import { config } from '../../../config/env';
-import { colors, spacing } from '../../../theme';
+import { colors, radii, spacing } from '../../../theme';
 import { loginWithGoogle } from '../store/authSlice';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -51,63 +50,67 @@ export function LoginScreen() {
     <Screen scroll={false} style={styles.screen}>
       <View style={styles.brand}>
         <View style={styles.logo}>
-          <WalletCards size={30} color="#fff" />
+          <WalletCards size={30} color={colors.primary} />
         </View>
-        <AppText weight="bold" style={styles.title}>
-          Pennywise
-        </AppText>
+        <AppText variant="display" style={styles.title}>Pennywise</AppText>
         <AppText muted style={styles.subtitle}>
-          Budget, track, and classify transactions from Gmail.
+          Budget, track, and classify transactions — automatically.
         </AppText>
       </View>
 
-      <Card style={styles.card}>
-        <AppText weight="semibold" style={styles.cardTitle}>
-          Continue with Google
-        </AppText>
-        <AppText muted>
-          The API exchanges your Google auth code for Pennywise access and refresh tokens, matching the web login flow.
-        </AppText>
-        {googleConfigError || error ? <AppText style={styles.error}>{googleConfigError ?? error}</AppText> : null}
+      <View style={styles.footer}>
+        {googleConfigError || error ? (
+          <AppText variant="caption" tone="danger" style={styles.error}>
+            {googleConfigError ?? error}
+          </AppText>
+        ) : null}
         <Button disabled={isLoading || Boolean(googleConfigError) || !request} onPress={() => void promptAsync()}>
-          {isLoading ? 'Signing in...' : 'Sign in'}
+          {isLoading ? 'Signing in...' : 'Continue with Google'}
         </Button>
-      </Card>
+        <AppText variant="caption" tone="faint" style={styles.hint}>
+          Your Google account connects Gmail imports and syncs with the web app.
+        </AppText>
+      </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
   screen: {
-    justifyContent: 'center',
-    gap: spacing.xl
+    justifyContent: 'space-between',
+    paddingBottom: spacing.xxl
   },
   brand: {
-    alignItems: 'center',
-    gap: spacing.sm
-  },
-  logo: {
-    width: 64,
-    height: 64,
-    borderRadius: 16,
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.primary
+    gap: spacing.md
+  },
+  logo: {
+    width: 72,
+    height: 72,
+    borderRadius: radii.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primaryMuted,
+    marginBottom: spacing.sm
   },
   title: {
-    fontSize: 36,
-    lineHeight: 42
+    fontSize: 34,
+    lineHeight: 40
   },
   subtitle: {
-    textAlign: 'center'
+    textAlign: 'center',
+    maxWidth: 260
   },
-  card: {
-    gap: spacing.lg
-  },
-  cardTitle: {
-    fontSize: 18
+  footer: {
+    gap: spacing.md
   },
   error: {
-    color: colors.danger
+    textAlign: 'center'
+  },
+  hint: {
+    textAlign: 'center',
+    paddingHorizontal: spacing.lg
   }
 });
