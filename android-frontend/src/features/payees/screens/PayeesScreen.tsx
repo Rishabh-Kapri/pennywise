@@ -1,14 +1,14 @@
 import { useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native';
-import { CirclePlus, Search } from 'lucide-react-native';
+import { Plus, Search, Tags } from 'lucide-react-native';
 import { useAppDispatch, useAppSelector } from '../../../app/hooks';
 import { Button } from '../../../components/Button';
-import { Card } from '../../../components/Card';
 import { Screen } from '../../../components/Screen';
 import { AppText } from '../../../components/AppText';
-import { SectionHeader } from '../../../components/SectionHeader';
+import { EmptyState } from '../../../components/EmptyState';
+import { InitialAvatar } from '../../../components/InitialAvatar';
 import { createPayee, fetchAllPayees } from '../store/payeeSlice';
-import { colors, radii, spacing } from '../../../theme';
+import { colors, radii, spacing, tabBarClearance } from '../../../theme';
 
 export function PayeesScreen() {
   const dispatch = useAppDispatch();
@@ -32,20 +32,33 @@ export function PayeesScreen() {
 
   return (
     <Screen scroll={false} style={styles.screen}>
-      <SectionHeader title="Payees" subtitle="Manage merchants and transfer payees used by transactions." />
+      <View style={styles.headerText}>
+        <AppText variant="title">Payees</AppText>
+        <AppText variant="caption" muted>{payees.length} merchants and transfer payees</AppText>
+      </View>
 
-      <Card style={styles.createCard}>
-        <View style={styles.createRow}>
-          <TextInput value={newPayee} onChangeText={setNewPayee} placeholder="New payee name" style={styles.input} />
-          <Pressable style={styles.iconButton} onPress={() => void create()}>
-            <CirclePlus size={22} color="#fff" />
-          </Pressable>
-        </View>
-      </Card>
+      <View style={styles.createRow}>
+        <TextInput
+          value={newPayee}
+          onChangeText={setNewPayee}
+          placeholder="New payee name"
+          placeholderTextColor={colors.faint}
+          style={styles.input}
+        />
+        <Pressable style={({ pressed }) => [styles.addButton, pressed && styles.pressed]} onPress={() => void create()}>
+          <Plus size={20} color={colors.onPrimary} />
+        </Pressable>
+      </View>
 
       <View style={styles.searchBox}>
-        <Search size={18} color={colors.muted} />
-        <TextInput value={query} onChangeText={setQuery} placeholder="Search payees" style={styles.searchInput} />
+        <Search size={17} color={colors.faint} />
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search payees"
+          placeholderTextColor={colors.faint}
+          style={styles.searchInput}
+        />
       </View>
 
       <FlatList
@@ -53,17 +66,22 @@ export function PayeesScreen() {
         keyExtractor={(item) => item.id ?? item.name}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          <EmptyState
+            icon={<Tags size={26} color={colors.primary} />}
+            title="No payees yet"
+            body="Add a payee above, or let Gmail imports create them automatically."
+          />
+        }
         renderItem={({ item }) => (
-          <Card style={styles.payeeCard}>
-            <View style={styles.initial}>
-              <AppText weight="bold" style={styles.initialText}>{item.name.charAt(0).toUpperCase()}</AppText>
-            </View>
+          <View style={styles.payeeRow}>
+            <InitialAvatar name={item.name} size={42} />
             <View style={styles.payeeMain}>
-              <AppText weight="semibold">{item.name}</AppText>
-              <AppText muted>{item.transferAccountId ? 'Transfer payee' : 'Merchant payee'}</AppText>
+              <AppText weight="medium" numberOfLines={1}>{item.name}</AppText>
+              <AppText variant="caption" muted>{item.transferAccountId ? 'Transfer payee' : 'Merchant'}</AppText>
             </View>
-            <Button variant="ghost">Rules</Button>
-          </Card>
+            <Button variant="ghost" size="sm">Rules</Button>
+          </View>
         )}
       />
     </Screen>
@@ -72,71 +90,64 @@ export function PayeesScreen() {
 
 const styles = StyleSheet.create({
   screen: {
-    gap: spacing.md
+    gap: spacing.lg
   },
-  createCard: {
-    padding: spacing.md
+  headerText: {
+    gap: 2
   },
   createRow: {
     flexDirection: 'row',
-    gap: spacing.md,
+    gap: spacing.sm,
     alignItems: 'center'
   },
   input: {
     flex: 1,
-    minHeight: 44,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    borderRadius: radii.sm,
-    paddingHorizontal: spacing.md,
+    minHeight: 46,
+    borderRadius: radii.full,
+    paddingHorizontal: spacing.lg,
     color: colors.text,
-    backgroundColor: colors.surface
+    backgroundColor: colors.surfaceStrong,
+    fontSize: 15
   },
-  iconButton: {
+  addButton: {
     width: 44,
     height: 44,
-    borderRadius: radii.sm,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.primary
+  },
+  pressed: {
+    opacity: 0.7
   },
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
     minHeight: 46,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceStrong,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.md
+    backgroundColor: colors.surface,
+    borderRadius: radii.full,
+    paddingHorizontal: spacing.lg
   },
   searchInput: {
     flex: 1,
-    color: colors.text
+    color: colors.text,
+    fontSize: 15
   },
   listContent: {
-    gap: spacing.md,
-    paddingBottom: spacing.xl
+    gap: spacing.xs,
+    paddingBottom: tabBarClearance
   },
-  payeeCard: {
+  payeeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
     padding: spacing.md
   },
-  initial: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primaryLight
-  },
-  initialText: {
-    color: colors.primary
-  },
   payeeMain: {
-    flex: 1
+    flex: 1,
+    gap: 1
   }
 });

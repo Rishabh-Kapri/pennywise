@@ -1,10 +1,11 @@
 import { Pressable, StyleSheet, View } from 'react-native';
-import { LogOut, UserRound } from 'lucide-react-native';
+import { Check, LogOut, UserRound } from 'lucide-react-native';
 import { useAppDispatch, useAppSelector } from '../../../app/hooks';
 import { Button } from '../../../components/Button';
 import { Card } from '../../../components/Card';
 import { Screen } from '../../../components/Screen';
 import { AppText } from '../../../components/AppText';
+import { IconTile } from '../../../components/IconTile';
 import { SectionHeader } from '../../../components/SectionHeader';
 import { logout } from '../../auth/store/authSlice';
 import { selectAllBudgets, selectSelectedBudget, setSelectedBudget, updateBudgetSelection } from '../../budget/store/budgetSlice';
@@ -25,38 +26,48 @@ export function SettingsScreen() {
 
   return (
     <Screen style={styles.screen}>
-      <SectionHeader title="Settings" subtitle="Account, budget switching, and local session controls." />
+      <SectionHeader title="Settings" />
 
       <Card style={styles.profileCard}>
-        <View style={styles.avatar}>
+        <IconTile size={52}>
           <UserRound color={colors.primary} size={24} />
-        </View>
+        </IconTile>
         <View style={styles.profileMain}>
-          <AppText weight="semibold">{user?.name ?? 'Pennywise user'}</AppText>
-          <AppText muted>{user?.email ?? 'Signed in'}</AppText>
+          <AppText variant="heading">{user?.name ?? 'Pennywise user'}</AppText>
+          <AppText variant="caption" muted>{user?.email ?? 'Signed in'}</AppText>
         </View>
       </Card>
 
-      <Card style={styles.cardGap}>
-        <AppText weight="semibold" style={styles.cardTitle}>Budgets</AppText>
-        {budgets.map((budget) => {
-          const selected = budget.id === selectedBudget?.id;
-          return (
-            <Pressable key={budget.id ?? budget.name} onPress={() => chooseBudget(budget.id)} style={styles.budgetRow}>
-              <View>
-                <AppText weight="semibold">{budget.name}</AppText>
-                <AppText muted>{selected ? 'Selected budget' : 'Tap to switch'}</AppText>
-              </View>
-              {selected ? <View style={styles.selectedDot} /> : null}
-            </Pressable>
-          );
-        })}
-      </Card>
+      <View style={styles.section}>
+        <AppText variant="label" tone="faint" style={styles.sectionLabel}>Budgets</AppText>
+        <Card style={styles.listCard}>
+          {budgets.map((budget, index) => {
+            const selected = budget.id === selectedBudget?.id;
+            return (
+              <Pressable
+                key={budget.id ?? budget.name}
+                onPress={() => chooseBudget(budget.id)}
+                style={({ pressed }) => [styles.budgetRow, index > 0 && styles.rowDivider, pressed && styles.pressed]}
+              >
+                <View style={styles.budgetMain}>
+                  <AppText weight="medium">{budget.name}</AppText>
+                  <AppText variant="caption" muted>{selected ? 'Selected budget' : 'Tap to switch'}</AppText>
+                </View>
+                {selected ? (
+                  <View style={styles.selectedBadge}>
+                    <Check size={13} color={colors.primary} />
+                  </View>
+                ) : null}
+              </Pressable>
+            );
+          })}
+        </Card>
+      </View>
 
       <Button variant="danger" onPress={() => void dispatch(logout())}>
         <View style={styles.logoutContent}>
-          <LogOut size={18} color="#fff" />
-          <AppText weight="semibold" style={styles.logoutLabel}>Log out</AppText>
+          <LogOut size={17} color={colors.danger} />
+          <AppText weight="semibold" tone="danger">Log out</AppText>
         </View>
       </Button>
     </Screen>
@@ -65,50 +76,55 @@ export function SettingsScreen() {
 
 const styles = StyleSheet.create({
   screen: {
-    gap: spacing.lg
+    gap: spacing.xl
   },
   profileCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md
-  },
-  avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center'
+    gap: spacing.lg
   },
   profileMain: {
-    flex: 1
+    flex: 1,
+    gap: 2
   },
-  cardGap: {
-    gap: spacing.md
+  section: {
+    gap: spacing.sm
   },
-  cardTitle: {
-    fontSize: 18
+  sectionLabel: {
+    marginLeft: spacing.xs
+  },
+  listCard: {
+    paddingVertical: spacing.xs
   },
   budgetRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: spacing.md,
+    gap: spacing.md,
+    paddingVertical: spacing.md
+  },
+  rowDivider: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border
   },
-  selectedDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.primary
+  budgetMain: {
+    flex: 1,
+    gap: 1
+  },
+  selectedBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primaryMuted
+  },
+  pressed: {
+    opacity: 0.7
   },
   logoutContent: {
     flexDirection: 'row',
     gap: spacing.sm,
     alignItems: 'center'
-  },
-  logoutLabel: {
-    color: '#fff'
   }
 });
