@@ -7,13 +7,13 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { BarChart3, Landmark, LayoutDashboard, ReceiptText, Settings, Tags } from 'lucide-react-native';
+import { BarChart3, Landmark, LayoutDashboard, ReceiptText, Sparkles, Tags } from 'lucide-react-native';
 import { useAppDispatch, useAppSelector } from './app/hooks';
 import { store } from './app/store';
 import { LoadingStateView } from './components/LoadingStateView';
 import { colors } from './theme';
 import { apiClient } from './utils/api';
-import type { AppTabParamList, AuthStackParamList } from './navigation/types';
+import type { AppTabParamList, AuthStackParamList, RootStackParamList } from './navigation/types';
 import { hydrateAuth } from './features/auth/store/authSlice';
 import { LoginScreen } from './features/auth/screens/LoginScreen';
 import { fetchAllBudgets } from './features/budget/store/budgetSlice';
@@ -28,6 +28,7 @@ import { WebSocketProvider } from './features/websocket/WebSocketProvider';
 import { AgentChat } from './features/agent/components/AgentChat';
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
+const RootStack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<AppTabParamList>();
 
 const navigationTheme = {
@@ -63,8 +64,8 @@ function iconForRoute(routeName: keyof AppTabParamList, color: string, size: num
       return <Tags color={color} size={size} />;
     case 'Loans':
       return <Landmark color={color} size={size} />;
-    case 'Settings':
-      return <Settings color={color} size={size} />;
+    case 'Penny':
+      return <Sparkles color={color} size={size} />;
     default:
       return null;
   }
@@ -82,29 +83,37 @@ function TabIcon({ routeName, focused }: { routeName: keyof AppTabParamList; foc
 
 function AppTabs() {
   return (
+    <Tab.Navigator
+      initialRouteName="Dashboard"
+      screenOptions={({ route }) => ({
+        headerShown: false,
+        tabBarShowLabel: false,
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.muted,
+        tabBarStyle: styles.tabBar,
+        tabBarItemStyle: styles.tabBarItem,
+        tabBarIconStyle: styles.tabBarIcon,
+        tabBarIcon: ({ focused }) => <TabIcon routeName={route.name as keyof AppTabParamList} focused={focused} />
+      })}
+    >
+      <Tab.Screen name="Dashboard" component={DashboardScreen} />
+      <Tab.Screen name="Budget" component={BudgetScreen} />
+      <Tab.Screen name="Transactions" component={TransactionsScreen} />
+      <Tab.Screen name="Payees" component={PayeesScreen} />
+      <Tab.Screen name="Loans" component={LoansScreen} />
+      <Tab.Screen name="Penny" component={AgentChat} />
+    </Tab.Navigator>
+  );
+}
+
+function AppNavigator() {
+  return (
     <>
       <WebSocketProvider />
-      <Tab.Navigator
-        initialRouteName="Dashboard"
-        screenOptions={({ route }) => ({
-          headerShown: false,
-          tabBarShowLabel: false,
-          tabBarActiveTintColor: colors.primary,
-          tabBarInactiveTintColor: colors.muted,
-          tabBarStyle: styles.tabBar,
-          tabBarItemStyle: styles.tabBarItem,
-          tabBarIconStyle: styles.tabBarIcon,
-          tabBarIcon: ({ focused }) => <TabIcon routeName={route.name as keyof AppTabParamList} focused={focused} />
-        })}
-      >
-        <Tab.Screen name="Dashboard" component={DashboardScreen} />
-        <Tab.Screen name="Budget" component={BudgetScreen} />
-        <Tab.Screen name="Transactions" component={TransactionsScreen} />
-        <Tab.Screen name="Payees" component={PayeesScreen} />
-        <Tab.Screen name="Loans" component={LoansScreen} />
-        <Tab.Screen name="Settings" component={SettingsScreen} />
-      </Tab.Navigator>
-      <AgentChat />
+      <RootStack.Navigator screenOptions={{ headerShown: false }}>
+        <RootStack.Screen name="Main" component={AppTabs} />
+        <RootStack.Screen name="Settings" component={SettingsScreen} />
+      </RootStack.Navigator>
     </>
   );
 }
@@ -181,7 +190,7 @@ function RootContent() {
     return <BudgetOnboardingScreen />;
   }
 
-  return <AppTabs />;
+  return <AppNavigator />;
 }
 
 function AppShell() {

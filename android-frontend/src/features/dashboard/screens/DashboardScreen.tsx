@@ -1,5 +1,8 @@
-import { RefreshControl, StyleSheet, View } from 'react-native';
-import { ArrowDownLeft, ArrowUpRight, Landmark, WalletCards } from 'lucide-react-native';
+import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { ArrowDownLeft, ArrowUpRight, Landmark, UserRound, WalletCards } from 'lucide-react-native';
+import type { RootStackParamList } from '../../../navigation/types';
 import { useAppDispatch, useAppSelector } from '../../../app/hooks';
 import { Card } from '../../../components/Card';
 import { Screen } from '../../../components/Screen';
@@ -23,6 +26,7 @@ function greeting() {
 
 export function DashboardScreen() {
   const dispatch = useAppDispatch();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const selectedMonth = useAppSelector(selectSelectedMonth);
   const monthLabel = useAppSelector(selectMonthInHumanFormat);
   const accounts = useAppSelector((state) => [...state.accounts.budgetAccounts, ...state.accounts.trackingAccounts]);
@@ -61,11 +65,21 @@ export function DashboardScreen() {
       style={styles.screen}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} />}
     >
-      <View style={styles.header}>
-        <AppText variant="caption" muted>
-          {new Intl.DateTimeFormat('en-IN', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}
-        </AppText>
-        <AppText variant="title">{`${greeting()}${user?.name ? `, ${user.name.split(' ')[0]}` : ''}`}</AppText>
+      <View style={styles.headerRow}>
+        <View style={styles.header}>
+          <AppText variant="caption" muted>
+            {new Intl.DateTimeFormat('en-IN', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}
+          </AppText>
+          <AppText variant="title">{`${greeting()}${user?.name ? `, ${user.name.split(' ')[0]}` : ''}`}</AppText>
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open settings"
+          style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}
+          onPress={() => navigation.navigate('Settings')}
+        >
+          <UserRound size={20} color={colors.primary} />
+        </Pressable>
       </View>
 
       <View style={styles.hero}>
@@ -188,8 +202,26 @@ const styles = StyleSheet.create({
   screen: {
     gap: spacing.xl
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md
+  },
   header: {
+    flex: 1,
     gap: spacing.xs
+  },
+  settingsButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primaryMuted
+  },
+  pressed: {
+    opacity: 0.7
   },
   hero: {
     gap: spacing.sm

@@ -12,12 +12,12 @@ import {
   View,
   type ListRenderItem
 } from 'react-native';
-import { Bot, ChevronDown, MessagesSquare, Plus, Send, Sparkles, Trash2, X } from 'lucide-react-native';
+import { Bot, ChevronDown, MessagesSquare, Plus, Send, Sparkles, Trash2 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppDispatch, useAppSelector } from '../../../app/hooks';
 import { AppText } from '../../../components/AppText';
 import { LoadingState } from '../../../utils/constants';
-import { colors, radii, spacing } from '../../../theme';
+import { colors, radii, spacing, tabBarClearance } from '../../../theme';
 import {
   AGENT_MODEL_OPTIONS,
   clearAgentChat,
@@ -170,7 +170,6 @@ export function AgentChat() {
   const currentConversationId = useAppSelector(selectCurrentAgentConversationId);
   const selectedModelKey = useAppSelector(selectSelectedAgentModelKey);
   const selectedBudget = useAppSelector(selectSelectedBudget);
-  const [isOpen, setIsOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isModelOpen, setIsModelOpen] = useState(false);
   const [composerValue, setComposerValue] = useState('');
@@ -204,22 +203,14 @@ export function AgentChat() {
   const deleteConversationTitle = conversationToDelete?.title?.trim() || 'this chat';
 
   const focusComposerInput = useCallback(() => {
-    if (!isOpen || !hasSelectedBudget) {
+    if (!hasSelectedBudget) {
       return;
     }
 
     requestAnimationFrame(() => {
       composerInputRef.current?.focus();
     });
-  }, [hasSelectedBudget, isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    focusComposerInput();
-  }, [focusComposerInput, isOpen]);
+  }, [hasSelectedBudget]);
 
   useEffect(() => {
     if (!shouldRefocusComposerRef.current || isSending) {
@@ -231,12 +222,12 @@ export function AgentChat() {
   }, [focusComposerInput, isSending]);
 
   useEffect(() => {
-    if (!isOpen || !selectedBudget?.id) {
+    if (!selectedBudget?.id) {
       return;
     }
 
     dispatch(listAgentConversations());
-  }, [dispatch, isOpen, selectedBudget?.id]);
+  }, [dispatch, selectedBudget?.id]);
 
   useEffect(() => {
     if (!currentConversationId) {
@@ -264,7 +255,7 @@ export function AgentChat() {
   ]);
 
   useEffect(() => {
-    if (!isOpen || displayedAgentMessages.length === 0) {
+    if (displayedAgentMessages.length === 0) {
       return;
     }
 
@@ -273,7 +264,7 @@ export function AgentChat() {
     }, 40);
 
     return () => clearTimeout(timer);
-  }, [displayedAgentMessages.length, isOpen]);
+  }, [displayedAgentMessages.length]);
 
   useEffect(() => {
     if (!isAwaitingAgentResponse) {
@@ -389,30 +380,11 @@ export function AgentChat() {
     [dispatch, hasSelectedBudget, isSending]
   );
 
-  const closePanel = useCallback(() => {
-    setIsHistoryOpen(false);
-    setIsModelOpen(false);
-    setIsAwaitingAgentResponse(false);
-    setIsOpen(false);
-  }, []);
-
   const renderMessage = useCallback<ListRenderItem<AgentChatMessage>>(({ item }) => <ChatMessage message={item} />, []);
 
   return (
     <>
-      {!isOpen ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Ask Penny"
-          style={({ pressed }) => [styles.launcher, pressed && styles.pressed]}
-          onPress={() => setIsOpen(true)}
-        >
-          <Sparkles size={22} color={colors.onPrimary} />
-        </Pressable>
-      ) : null}
-
-      <Modal visible={isOpen} animationType="slide" presentationStyle="fullScreen" onRequestClose={closePanel}>
-        <SafeAreaView style={styles.modalSafe}>
+      <SafeAreaView style={styles.modalSafe} edges={['top', 'left', 'right']}>
           <KeyboardAvoidingView style={styles.panel} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <View style={styles.header}>
               <View style={styles.agentMark}>
@@ -441,9 +413,6 @@ export function AgentChat() {
                   onPress={handleNewChat}
                 >
                   <Plus size={18} color={colors.text} />
-                </Pressable>
-                <Pressable accessibilityRole="button" accessibilityLabel="Close agent chat" style={styles.iconButton} onPress={closePanel}>
-                  <X size={18} color={colors.text} />
                 </Pressable>
               </View>
             </View>
@@ -581,8 +550,7 @@ export function AgentChat() {
               </View>
             </View>
           </KeyboardAvoidingView>
-        </SafeAreaView>
-      </Modal>
+      </SafeAreaView>
 
       <Modal
         transparent
@@ -634,23 +602,6 @@ export function AgentChat() {
 }
 
 const styles = StyleSheet.create({
-  launcher: {
-    position: 'absolute',
-    right: spacing.xl,
-    bottom: 100,
-    zIndex: 50,
-    elevation: 18,
-    width: 54,
-    height: 54,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 27,
-    backgroundColor: colors.primary,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16
-  },
   modalSafe: {
     flex: 1,
     backgroundColor: colors.background
@@ -839,7 +790,10 @@ const styles = StyleSheet.create({
   },
   composer: {
     gap: spacing.md,
-    margin: spacing.md,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.md,
+    // Clear the floating tab bar, which overlays the bottom of every tab screen.
+    marginBottom: tabBarClearance - spacing.xl,
     padding: spacing.lg,
     borderRadius: 24,
     backgroundColor: colors.surface
