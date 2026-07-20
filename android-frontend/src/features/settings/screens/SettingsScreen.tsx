@@ -1,18 +1,19 @@
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Check, LogOut, UserRound } from 'lucide-react-native';
+import { useNavigation } from '@react-navigation/native';
+import { Check, ChevronLeft, LogOut, UserRound } from 'lucide-react-native';
 import { useAppDispatch, useAppSelector } from '../../../app/hooks';
 import { Button } from '../../../components/Button';
 import { Card } from '../../../components/Card';
 import { Screen } from '../../../components/Screen';
 import { AppText } from '../../../components/AppText';
 import { IconTile } from '../../../components/IconTile';
-import { SectionHeader } from '../../../components/SectionHeader';
 import { logout } from '../../auth/store/authSlice';
 import { selectAllBudgets, selectSelectedBudget, setSelectedBudget, updateBudgetSelection } from '../../budget/store/budgetSlice';
 import { colors, spacing } from '../../../theme';
 
 export function SettingsScreen() {
   const dispatch = useAppDispatch();
+  const navigation = useNavigation();
   const user = useAppSelector((state) => state.auth.user);
   const budgets = useAppSelector(selectAllBudgets);
   const selectedBudget = useAppSelector(selectSelectedBudget);
@@ -26,7 +27,17 @@ export function SettingsScreen() {
 
   return (
     <Screen style={styles.screen}>
-      <SectionHeader title="Settings" />
+      <View style={styles.headerRow}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+          onPress={() => navigation.goBack()}
+        >
+          <ChevronLeft size={20} color={colors.text} />
+        </Pressable>
+        <AppText variant="title">Settings</AppText>
+      </View>
 
       <Card style={styles.profileCard}>
         <IconTile size={52}>
@@ -77,6 +88,19 @@ export function SettingsScreen() {
 const styles = StyleSheet.create({
   screen: {
     gap: spacing.xl
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md
+  },
+  backButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceStrong
   },
   profileCard: {
     flexDirection: 'row',
