@@ -48,7 +48,9 @@ export function LoginScreen() {
     } else if (response.type === 'error') {
       setFlowMessage(`Google sign-in failed: ${response.error?.message ?? response.params.error ?? 'unknown error'}`);
     } else if (response.type === 'dismiss' || response.type === 'cancel') {
-      setFlowMessage('Sign-in did not complete — the browser closed before returning to the app.');
+      setFlowMessage(
+        `Sign-in did not complete — the browser closed before returning to the app. Expected redirect: ${request?.redirectUri ?? 'unknown'}`
+      );
     }
   }, [dispatch, request?.codeVerifier, request?.redirectUri, response]);
 
