@@ -58,8 +58,9 @@ Important: `src/app` is a Redux/application folder, not an Expo Router route fol
 
 - `index.js` registers the app with Expo.
 - `App.tsx` re-exports `src/App.tsx`.
-- `src/App.tsx` owns top-level providers, auth hydration, budget loading, onboarding fallback, bottom tabs, and the WebSocket provider.
+- `src/App.tsx` owns top-level providers, auth hydration, budget loading, onboarding fallback, navigation, and the WebSocket provider.
 - `src/navigation/types.ts` defines the stack/tab route names and params.
+- Navigation shape: a root native stack (`Main` = bottom tabs, `Settings`). The tabs are Dashboard, Budget, Transactions, Payees, Loans, and Penny (the agent chat, rendered inline by `AgentChat` — there is no floating launcher). Settings is opened from the avatar button in the Dashboard header, not from the tab bar.
 
 ### App infrastructure
 
