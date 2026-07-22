@@ -49,6 +49,30 @@ DECLARE
     con record;
     pk_cols int;
 BEGIN
+    -- Standalone unique indexes can carry the old shape too: CREATE UNIQUE
+    -- INDEX IF NOT EXISTS matches by name only, so a pre-existing index with
+    -- the same name but pre-oauth_client_type columns was kept. Drop any
+    -- unique index on these tables that doesn't cover oauth_client_type
+    -- (constraint-backed indexes are handled with their constraints below).
+    FOR con IN
+        SELECT i.indexrelid::regclass::text AS idxname
+        FROM pg_index i
+        JOIN pg_class t ON t.oid = i.indrelid
+        WHERE t.relname IN ('auth_providers', 'google_provider_users')
+          AND i.indisunique
+          AND NOT EXISTS (
+              SELECT 1 FROM pg_constraint c WHERE c.conindid = i.indexrelid
+          )
+          AND NOT EXISTS (
+              SELECT 1
+              FROM unnest(i.indkey) AS k
+              JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = k
+              WHERE a.attname = 'oauth_client_type'
+          )
+    LOOP
+        EXECUTE format('DROP INDEX %s', con.idxname);
+    END LOOP;
+
     -- Old single-column FKs from google_provider_users depend on the old
     -- unique(provider_id); drop them before dropping that constraint.
     FOR con IN
@@ -147,6 +171,17 @@ BEGIN
             ADD CONSTRAINT google_provider_users_id_oauth_client_type_fkey
             FOREIGN KEY (id, oauth_client_type)
             REFERENCES auth_providers (provider_id, oauth_client_type);
+    END IF;
+
+    -- Recreate the canonical unique indexes if the drops above removed
+    -- old-shaped versions of them.
+    IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = 'idx_auth_providers_user_provider') THEN
+        CREATE UNIQUE INDEX idx_auth_providers_user_provider
+            ON auth_providers (auth_user_id, provider_id, oauth_client_type);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = 'idx_google_provider_users_id') THEN
+        CREATE UNIQUE INDEX idx_google_provider_users_id
+            ON google_provider_users (id, oauth_client_type);
     END IF;
 END $$;
 -- +goose StatementEnd
