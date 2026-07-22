@@ -1,6 +1,7 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Check, ChevronLeft, LogOut, UserRound } from 'lucide-react-native';
+import appConfig from '../../../../app.json';
 import { useAppDispatch, useAppSelector } from '../../../app/hooks';
 import { Button } from '../../../components/Button';
 import { Card } from '../../../components/Card';
@@ -9,7 +10,17 @@ import { AppText } from '../../../components/AppText';
 import { IconTile } from '../../../components/IconTile';
 import { logout } from '../../auth/store/authSlice';
 import { selectAllBudgets, selectSelectedBudget, setSelectedBudget, updateBudgetSelection } from '../../budget/store/budgetSlice';
+import { config } from '../../../config/env';
 import { colors, spacing } from '../../../theme';
+
+function StatCell({ label, value }: { label: string; value: number | string }) {
+  return (
+    <View style={styles.statCell}>
+      <AppText variant="heading" tabular>{value}</AppText>
+      <AppText variant="caption" muted>{label}</AppText>
+    </View>
+  );
+}
 
 export function SettingsScreen() {
   const dispatch = useAppDispatch();
@@ -17,6 +28,10 @@ export function SettingsScreen() {
   const user = useAppSelector((state) => state.auth.user);
   const budgets = useAppSelector(selectAllBudgets);
   const selectedBudget = useAppSelector(selectSelectedBudget);
+  const accountCount = useAppSelector((state) => state.accounts.allAccounts.length);
+  const payeeCount = useAppSelector((state) => state.payees.allPayees.length);
+  const tagCount = useAppSelector((state) => state.tags.tags.length);
+  const transactionTotal = useAppSelector((state) => state.transactions.total);
 
   const chooseBudget = (budgetId?: string) => {
     const budget = budgets.find((item) => item.id === budgetId);
@@ -40,14 +55,32 @@ export function SettingsScreen() {
       </View>
 
       <Card style={styles.profileCard}>
-        <IconTile size={52}>
-          <UserRound color={colors.primary} size={24} />
-        </IconTile>
+        {user?.picture ? (
+          <Image source={{ uri: user.picture }} style={styles.profilePhoto} />
+        ) : (
+          <IconTile size={52}>
+            <UserRound color={colors.primary} size={24} />
+          </IconTile>
+        )}
         <View style={styles.profileMain}>
           <AppText variant="heading">{user?.name ?? 'Pennywise user'}</AppText>
           <AppText variant="caption" muted>{user?.email ?? 'Signed in'}</AppText>
+          <AppText variant="caption" tone="faint">Signed in with Google</AppText>
         </View>
       </Card>
+
+      <View style={styles.section}>
+        <AppText variant="label" tone="faint" style={styles.sectionLabel}>At a glance</AppText>
+        <Card style={styles.statsCard}>
+          <StatCell label="Accounts" value={accountCount} />
+          <View style={styles.statDivider} />
+          <StatCell label="Payees" value={payeeCount} />
+          <View style={styles.statDivider} />
+          <StatCell label="Tags" value={tagCount} />
+          <View style={styles.statDivider} />
+          <StatCell label="Transactions" value={transactionTotal} />
+        </Card>
+      </View>
 
       <View style={styles.section}>
         <AppText variant="label" tone="faint" style={styles.sectionLabel}>Budgets</AppText>
@@ -72,6 +105,28 @@ export function SettingsScreen() {
               </Pressable>
             );
           })}
+        </Card>
+      </View>
+
+      <View style={styles.section}>
+        <AppText variant="label" tone="faint" style={styles.sectionLabel}>App</AppText>
+        <Card style={styles.listCard}>
+          <View style={styles.infoRow}>
+            <AppText variant="caption" muted>Version</AppText>
+            <AppText variant="caption" weight="medium" tabular>{appConfig.expo.version}</AppText>
+          </View>
+          <View style={[styles.infoRow, styles.rowDivider]}>
+            <AppText variant="caption" muted>API</AppText>
+            <AppText variant="caption" weight="medium" numberOfLines={1} style={styles.infoValue}>
+              {config.apiBaseUrl}
+            </AppText>
+          </View>
+          <View style={[styles.infoRow, styles.rowDivider]}>
+            <AppText variant="caption" muted>Budget ID</AppText>
+            <AppText variant="caption" weight="medium" numberOfLines={1} style={styles.infoValue}>
+              {selectedBudget?.id ?? '—'}
+            </AppText>
+          </View>
         </Card>
       </View>
 
@@ -107,6 +162,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.lg
   },
+  profilePhoto: {
+    width: 52,
+    height: 52,
+    borderRadius: 26
+  },
   profileMain: {
     flex: 1,
     gap: 2
@@ -117,6 +177,20 @@ const styles = StyleSheet.create({
   sectionLabel: {
     marginLeft: spacing.xs
   },
+  statsCard: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    paddingVertical: spacing.md
+  },
+  statCell: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 2
+  },
+  statDivider: {
+    width: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border
+  },
   listCard: {
     paddingVertical: spacing.xs
   },
@@ -126,6 +200,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.md,
     paddingVertical: spacing.md
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.lg,
+    paddingVertical: spacing.md
+  },
+  infoValue: {
+    flexShrink: 1,
+    textAlign: 'right'
   },
   rowDivider: {
     borderTopWidth: StyleSheet.hairlineWidth,
