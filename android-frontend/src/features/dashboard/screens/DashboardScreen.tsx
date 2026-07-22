@@ -1,4 +1,4 @@
-import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { Image, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { ArrowDownLeft, ArrowUpRight, Landmark, UserRound, WalletCards } from 'lucide-react-native';
@@ -8,7 +8,6 @@ import { Card } from '../../../components/Card';
 import { Screen } from '../../../components/Screen';
 import { AppText } from '../../../components/AppText';
 import { IconTile } from '../../../components/IconTile';
-import { InitialAvatar } from '../../../components/InitialAvatar';
 import { ProgressBar } from '../../../components/ProgressBar';
 import { fetchAllAccounts } from '../../accounts/store/accountSlice';
 import { fetchAllCategoryGroups, fetchInflowAmount } from '../../category/store/categorySlice';
@@ -78,7 +77,11 @@ export function DashboardScreen() {
           style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}
           onPress={() => navigation.navigate('Settings')}
         >
-          <UserRound size={20} color={colors.primary} />
+          {user?.picture ? (
+            <Image source={{ uri: user.picture }} style={styles.settingsAvatar} />
+          ) : (
+            <UserRound size={20} color={colors.primary} />
+          )}
         </Pressable>
       </View>
 
@@ -182,7 +185,6 @@ export function DashboardScreen() {
           const amount = (txn.inflow ?? 0) || -(txn.outflow ?? 0);
           return (
             <View key={txn.id} style={styles.txnRow}>
-              <InitialAvatar name={txn.payeeName || '?'} size={38} />
               <View style={styles.rowMain}>
                 <AppText weight="medium" numberOfLines={1}>{txn.payeeName || 'Unknown payee'}</AppText>
                 <AppText variant="caption" muted numberOfLines={1}>{formatShortDate(txn.date)} · {txn.accountName}</AppText>
@@ -218,7 +220,13 @@ const styles = StyleSheet.create({
     borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.primaryMuted
+    backgroundColor: colors.primaryMuted,
+    overflow: 'hidden'
+  },
+  settingsAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21
   },
   pressed: {
     opacity: 0.7
