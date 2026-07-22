@@ -88,6 +88,7 @@ function AppTabs() {
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarShowLabel: false,
+        tabBarHideOnKeyboard: true,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.muted,
         tabBarStyle: styles.tabBar,
@@ -121,16 +122,16 @@ function AppNavigator() {
 const styles = StyleSheet.create({
   tabBar: {
     position: 'absolute',
-    left: 20,
-    right: 20,
-    bottom: 20,
+    left: 12,
+    right: 12,
+    bottom: 16,
     height: 64,
     borderTopWidth: 0,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     borderRadius: 32,
     backgroundColor: colors.surface,
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
     paddingTop: 8,
     paddingBottom: 8,
     elevation: 20,
@@ -144,11 +145,10 @@ const styles = StyleSheet.create({
     borderRadius: 24
   },
   tabBarIcon: {
-    width: 52,
     height: 48
   },
   tabIconPill: {
-    width: 50,
+    width: 44,
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
