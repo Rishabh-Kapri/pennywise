@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -170,6 +171,7 @@ export function AgentChat() {
   const currentConversationId = useAppSelector(selectCurrentAgentConversationId);
   const selectedModelKey = useAppSelector(selectSelectedAgentModelKey);
   const selectedBudget = useAppSelector(selectSelectedBudget);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isModelOpen, setIsModelOpen] = useState(false);
   const [composerValue, setComposerValue] = useState('');
@@ -211,6 +213,15 @@ export function AgentChat() {
       composerInputRef.current?.focus();
     });
   }, [hasSelectedBudget]);
+
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', () => setIsKeyboardVisible(true));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setIsKeyboardVisible(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (!shouldRefocusComposerRef.current || isSending) {
@@ -388,11 +399,14 @@ export function AgentChat() {
           <KeyboardAvoidingView style={styles.panel} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <View style={styles.header}>
               <View style={styles.agentMark}>
-                <Bot size={20} color={colors.primary} />
+                <Bot size={18} color={colors.primary} />
               </View>
               <View style={styles.headerText}>
-                <AppText weight="bold" numberOfLines={1} style={styles.headerTitle}>
+                <AppText variant="heading" numberOfLines={1}>
                   {headerTitle}
+                </AppText>
+                <AppText variant="caption" muted numberOfLines={1}>
+                  {selectedModel.shortLabel ?? selectedModel.label}
                 </AppText>
               </View>
               <View style={styles.headerActions}>
@@ -472,7 +486,8 @@ export function AgentChat() {
               }
             />
 
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.suggestions}>
+            {displayedAgentMessages.length === 0 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.suggestions}>
               {SUGGESTIONS.map((suggestion) => (
                 <Pressable
                   key={suggestion}
@@ -491,8 +506,9 @@ export function AgentChat() {
                 </Pressable>
               ))}
             </ScrollView>
+            ) : null}
 
-            <View style={styles.composer}>
+            <View style={[styles.composer, isKeyboardVisible && styles.composerKeyboard]}>
               <TextInput
                 ref={composerInputRef}
                 value={composerValue}
@@ -521,7 +537,7 @@ export function AgentChat() {
                 </View>
               ) : null}
 
-              <View style={styles.composerFooter}>
+              <View style={styles.composerFooterRow}>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Select agent model"
@@ -614,11 +630,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.borderMuted,
-    backgroundColor: colors.background
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.md
   },
   agentMark: {
     width: 40,
@@ -630,11 +644,8 @@ const styles = StyleSheet.create({
   },
   headerText: {
     flex: 1,
-    minWidth: 0
-  },
-  headerTitle: {
-    fontSize: 17,
-    lineHeight: 22
+    minWidth: 0,
+    gap: 1
   },
   headerActions: {
     flexDirection: 'row',
@@ -790,13 +801,17 @@ const styles = StyleSheet.create({
   },
   composer: {
     gap: spacing.md,
-    marginHorizontal: spacing.md,
+    marginHorizontal: spacing.lg,
     marginTop: spacing.md,
     // Clear the floating tab bar, which overlays the bottom of every tab screen.
     marginBottom: tabBarClearance - spacing.xl,
     padding: spacing.lg,
     borderRadius: 24,
     backgroundColor: colors.surface
+  },
+  // The tab bar hides while the keyboard is open, so drop the clearance.
+  composerKeyboard: {
+    marginBottom: spacing.md
   },
   composerInput: {
     minHeight: 42,
@@ -805,7 +820,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 21
   },
-  composerFooter: {
+  composerFooterRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',

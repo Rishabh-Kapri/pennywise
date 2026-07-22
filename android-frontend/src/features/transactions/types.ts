@@ -30,6 +30,47 @@ export interface Transaction {
   categoryId: string | null;
 }
 
+export interface TransactionPrediction {
+  id: string;
+  budgetId: string;
+  transactionId: string;
+  emailText?: string | null;
+  amount?: number | null;
+  account?: string | null;
+  accountPrediction?: number | null;
+  payee?: string | null;
+  payeePrediction?: number | null;
+  category?: string | null;
+  categoryPrediction?: number | null;
+  hasUserCorrected?: boolean | null;
+  userCorrectedAccount?: string | null;
+  userCorrectedPayee?: string | null;
+  userCorrectedCategory?: string | null;
+}
+
+export interface CipherPrediction {
+  id: string;
+  budgetId: string;
+  transactionId: string;
+  emailText?: string | null;
+  llmReasoning?: string | null;
+  amount?: number | null;
+  extractedAccount?: string | null;
+  extractedPayee?: string | null;
+  predictedPayeeId?: string | null;
+  predictedCategoryId?: string | null;
+  accountConfidence?: number | null;
+  payeeConfidence?: number | null;
+  categoryConfidence?: number | null;
+  source?: string;
+  hasUserCorrected?: boolean;
+}
+
+export interface TransactionPredictionDetails {
+  prediction?: TransactionPrediction | null;
+  cipherPrediction?: CipherPrediction | null;
+}
+
 export interface TransactionDTO {
   id?: string;
   budgetId: string;
