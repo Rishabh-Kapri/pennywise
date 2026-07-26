@@ -12,10 +12,10 @@ import (
 
 type ReportRepository interface {
 	BaseRepositoryInterface
-	GetSpendingRows(ctx context.Context, budgetId uuid.UUID, startDate, endDateExcl string, accountIds, categoryIds []uuid.UUID) ([]model.SpendingRow, error)
-	GetIncomeRows(ctx context.Context, budgetId uuid.UUID, startDate, endDateExcl string, accountIds []uuid.UUID) ([]model.IncomeRow, error)
-	GetExpenseRows(ctx context.Context, budgetId uuid.UUID, startDate, endDateExcl string, accountIds, categoryIds []uuid.UUID) ([]model.ExpenseRow, error)
-	GetNetWorthByMonth(ctx context.Context, budgetId uuid.UUID, startMonthDate, endMonthDate, startDate, endDateExcl string) ([]model.NetWorthPoint, error)
+	GetSpendingRows(ctx context.Context, budgetId uuid.UUID, startDate, endDateExcl string, accountIds, categoryIds, tagIds []uuid.UUID) ([]model.SpendingRow, error)
+	GetIncomeRows(ctx context.Context, budgetId uuid.UUID, startDate, endDateExcl string, accountIds, tagIds []uuid.UUID) ([]model.IncomeRow, error)
+	GetExpenseRows(ctx context.Context, budgetId uuid.UUID, startDate, endDateExcl string, accountIds, categoryIds, tagIds []uuid.UUID) ([]model.ExpenseRow, error)
+	GetNetWorthByMonth(ctx context.Context, budgetId uuid.UUID, startMonthDate, endMonthDate, startDate, endDateExcl string, accountIds []uuid.UUID) ([]model.NetWorthPoint, error)
 }
 
 type reportRepo struct {
@@ -43,7 +43,7 @@ func (r *reportRepo) GetSpendingRows(
 	ctx context.Context,
 	budgetId uuid.UUID,
 	startDate, endDateExcl string,
-	accountIds, categoryIds []uuid.UUID,
+	accountIds, categoryIds, tagIds []uuid.UUID,
 ) ([]model.SpendingRow, error) {
 	query := `
 		SELECT c.category_group_id, cg.name, c.id, c.name, SUM(t.amount) AS net
@@ -55,6 +55,7 @@ func (r *reportRepo) GetSpendingRows(
 	args := []any{budgetId, startDate, endDateExcl}
 	query, args = appendUUIDFilter(query, args, "t.account_id", accountIds)
 	query, args = appendUUIDFilter(query, args, "t.category_id", categoryIds)
+	query, args = appendUUIDOverlapFilter(query, args, "t.tag_ids", tagIds)
 	query += ` GROUP BY c.category_group_id, cg.name, c.id, c.name`
 
 	rows, err := r.Executor(nil).Query(ctx, query, args...)
@@ -78,7 +79,7 @@ func (r *reportRepo) GetIncomeRows(
 	ctx context.Context,
 	budgetId uuid.UUID,
 	startDate, endDateExcl string,
-	accountIds []uuid.UUID,
+	accountIds, tagIds []uuid.UUID,
 ) ([]model.IncomeRow, error) {
 	query := `
 		SELECT
@@ -94,6 +95,7 @@ func (r *reportRepo) GetIncomeRows(
 			AND t.category_id = (b.metadata ->> 'inflowCategoryId')::uuid`
 	args := []any{budgetId, startDate, endDateExcl}
 	query, args = appendUUIDFilter(query, args, "t.account_id", accountIds)
+	query, args = appendUUIDOverlapFilter(query, args, "t.tag_ids", tagIds)
 	query += `
 		GROUP BY month, t.payee_id, p.name
 		ORDER BY month`
@@ -119,7 +121,7 @@ func (r *reportRepo) GetExpenseRows(
 	ctx context.Context,
 	budgetId uuid.UUID,
 	startDate, endDateExcl string,
-	accountIds, categoryIds []uuid.UUID,
+	accountIds, categoryIds, tagIds []uuid.UUID,
 ) ([]model.ExpenseRow, error) {
 	query := `
 		SELECT
@@ -133,6 +135,7 @@ func (r *reportRepo) GetExpenseRows(
 	args := []any{budgetId, startDate, endDateExcl}
 	query, args = appendUUIDFilter(query, args, "t.account_id", accountIds)
 	query, args = appendUUIDFilter(query, args, "t.category_id", categoryIds)
+	query, args = appendUUIDOverlapFilter(query, args, "t.tag_ids", tagIds)
 	query += `
 		GROUP BY month, c.category_group_id, cg.name, c.id, c.name
 		ORDER BY month`
@@ -166,7 +169,17 @@ func (r *reportRepo) GetNetWorthByMonth(
 	ctx context.Context,
 	budgetId uuid.UUID,
 	startMonthDate, endMonthDate, startDate, endDateExcl string,
+	accountIds []uuid.UUID,
 ) ([]model.NetWorthPoint, error) {
+	// the optional account filter applies to both the windowed deltas and
+	// the opening balance, so it is spliced into both CTEs
+	accountClause := ""
+	args := []any{budgetId, startMonthDate, endMonthDate, startDate, endDateExcl}
+	if len(accountIds) > 0 {
+		args = append(args, accountIds)
+		accountClause = fmt.Sprintf(" AND t.account_id = ANY($%d)", len(args))
+	}
+
 	query := `
 		WITH months AS (
 			SELECT generate_series($2::date, $3::date, interval '1 month') AS month
@@ -179,7 +192,7 @@ func (r *reportRepo) GetNetWorthByMonth(
 			FROM transactions t
 			JOIN accounts a ON a.id = t.account_id AND a.deleted = FALSE
 			WHERE t.budget_id = $1 AND t.deleted = FALSE
-				AND t.date >= $4 AND t.date < $5
+				AND t.date >= $4 AND t.date < $5` + accountClause + `
 			GROUP BY 1
 		),
 		opening AS (
@@ -188,7 +201,7 @@ func (r *reportRepo) GetNetWorthByMonth(
 				COALESCE(SUM(CASE WHEN a.type IN ('creditCard', 'liability') THEN t.amount END), 0) AS liabilities
 			FROM transactions t
 			JOIN accounts a ON a.id = t.account_id AND a.deleted = FALSE
-			WHERE t.budget_id = $1 AND t.deleted = FALSE AND t.date < $4
+			WHERE t.budget_id = $1 AND t.deleted = FALSE AND t.date < $4` + accountClause + `
 		)
 		SELECT
 			TO_CHAR(m.month, 'YYYY-MM') AS month,
@@ -199,7 +212,7 @@ func (r *reportRepo) GetNetWorthByMonth(
 		CROSS JOIN opening o
 		ORDER BY m.month`
 
-	rows, err := r.Executor(nil).Query(ctx, query, budgetId, startMonthDate, endMonthDate, startDate, endDateExcl)
+	rows, err := r.Executor(nil).Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -225,4 +238,14 @@ func appendUUIDFilter(query string, args []any, column string, ids []uuid.UUID) 
 	}
 	args = append(args, ids)
 	return query + fmt.Sprintf(" AND %s = ANY($%d)", column, len(args)), args
+}
+
+// appendUUIDOverlapFilter appends an "AND col && $n" clause for uuid[]
+// columns, matching rows carrying any of the given ids.
+func appendUUIDOverlapFilter(query string, args []any, column string, ids []uuid.UUID) (string, []any) {
+	if len(ids) == 0 {
+		return query, args
+	}
+	args = append(args, ids)
+	return query + fmt.Sprintf(" AND %s && $%d", column, len(args)), args
 }
