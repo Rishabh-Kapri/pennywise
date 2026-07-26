@@ -5,13 +5,13 @@ import { Provider } from 'react-redux';
 import { DarkTheme, NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { BarChart3, Landmark, LayoutDashboard, ReceiptText, Sparkles, Tags } from 'lucide-react-native';
 import { useAppDispatch, useAppSelector } from './app/hooks';
 import { store } from './app/store';
 import { LoadingStateView } from './components/LoadingStateView';
-import { colors } from './theme';
+import { colors, spacing } from './theme';
 import { apiClient } from './utils/api';
 import type { AppTabParamList, AuthStackParamList, RootStackParamList } from './navigation/types';
 import { hydrateAuth } from './features/auth/store/authSlice';
@@ -82,6 +82,8 @@ function TabIcon({ routeName, focused }: { routeName: keyof AppTabParamList; foc
 }
 
 function AppTabs() {
+  const insets = useSafeAreaInsets();
+
   return (
     <Tab.Navigator
       initialRouteName="Dashboard"
@@ -91,7 +93,7 @@ function AppTabs() {
         tabBarHideOnKeyboard: true,
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.muted,
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: [styles.tabBar, { bottom: Math.max(insets.bottom, spacing.md) }],
         tabBarItemStyle: styles.tabBarItem,
         tabBarIconStyle: styles.tabBarIcon,
         tabBarIcon: ({ focused }) => <TabIcon routeName={route.name as keyof AppTabParamList} focused={focused} />
@@ -122,23 +124,25 @@ function AppNavigator() {
 const styles = StyleSheet.create({
   tabBar: {
     position: 'absolute',
-    left: 12,
-    right: 12,
-    bottom: 16,
+    // React Navigation's base tab bar style pins the bar with the logical
+    // `start`/`end` insets, which win over `left`/`right` in Yoga no matter the
+    // style order. Override the same properties so the bar actually floats.
+    start: spacing.lg,
+    end: spacing.lg,
     height: 64,
     borderTopWidth: 0,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
+    borderColor: colors.borderLight,
     borderRadius: 32,
     backgroundColor: colors.surface,
-    paddingHorizontal: 4,
-    paddingTop: 8,
-    paddingBottom: 8,
-    elevation: 20,
+    paddingHorizontal: spacing.xs,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
+    elevation: 24,
     shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.35,
-    shadowRadius: 24
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20
   },
   tabBarItem: {
     height: 48,
