@@ -233,6 +233,20 @@ func (s *predictionService) embedWithFallback(
 	return nil, config.LLMTarget{}, errs.Wrap(errs.CodeInternalError, "all embedding providers failed", lastErr)
 }
 
+// cloudMaxOutputTokens bounds the output budget requested from hosted providers.
+// Ollama maps the cap to num_predict, a soft generation ceiling where an
+// oversized value costs nothing, so local targets keep whatever the caller asked
+// for. Hosted APIs instead validate it (max_output_tokens / max_tokens) against
+// the model's own limit and reject anything above it — Claude Haiku 4.5 tops out
+// near 64k, GPT-4o at 16k — and some reserve quota against the requested figure.
+// The pipeline's largest real response is a small JSON object, so this ceiling is
+// still ample.
+const cloudMaxOutputTokens = 8192
+
+// localLLMProviders serve models on infrastructure we run, where the token cap
+// is advisory. Everything else is treated as a hosted API.
+var localLLMProviders = map[string]bool{"ollama": true}
+
 // chatWithFallback runs the request against each configured pipeline provider in
 // order, returning the first successful response. Any failure — the provider
 // isn't configured, the host is unreachable, the call times out — moves on to
@@ -269,6 +283,9 @@ func (s *predictionService) chatWithFallback(
 		req := buildReq(model)
 		req.Provider = target.Provider
 		req.Model = model
+		if !localLLMProviders[target.Provider] && req.MaxTokens > cloudMaxOutputTokens {
+			req.MaxTokens = cloudMaxOutputTokens
+		}
 
 		progress.Report(ctx, step)
 		chatCtx, chatCancel := s.withLLMTimeout(ctx)
