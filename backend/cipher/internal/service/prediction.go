@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"regexp"
 	"strings"
 	"time"
@@ -131,8 +132,17 @@ type predictionService struct {
 	// pipelineTargets is the ordered provider chain for the email pipeline's
 	// LLM steps (extract, summarize, llm fallback).
 	pipelineTargets []config.LLMTarget
+	// embedders maps a provider name to its embedding backend, and
+	// embeddingTargets is the ordered chain drawn from it.
+	embedders        map[string]client.Embedder
+	embeddingTargets []config.LLMTarget
 }
 
+// NewPredictionService wires the prediction pipeline. embedders maps provider
+// names to embedding backends for the EMAIL_EMBEDDING_PROVIDERS chain; the
+// ollama client is always registered under "ollama", and callers add optional
+// remote backends (a nil entry is ignored so callers can pass one
+// unconditionally).
 func NewPredictionService(
 	agent *agent.Agent,
 	llmResolver llm.LLMResolver,
@@ -144,21 +154,83 @@ func NewPredictionService(
 	payeeRuleRepo repository.PayeeRuleRepository,
 	categoryRepo repository.CategoryRepository,
 	tracer oteltrace.Tracer,
+	embedders map[string]client.Embedder,
 ) PredictionService {
-	return &predictionService{
-		agent:           agent,
-		llmResolver:     llmResolver,
-		ollama:          ollama,
-		mlp:             mlp,
-		embeddingRepo:   embeddingRepo,
-		accountRepo:     accountRepo,
-		payeeRepo:       payeeRepo,
-		payeeRuleRepo:   payeeRuleRepo,
-		categoryRepo:    categoryRepo,
-		tracer:          tracer,
-		llmCallTimeout:  config.Load().LLMCallTimeout,
-		pipelineTargets: config.Load().EmailPipelineTargets,
+	allEmbedders := map[string]client.Embedder{"ollama": ollama}
+	for provider, embedder := range embedders {
+		if embedder == nil {
+			continue
+		}
+		// Constructors return a typed nil pointer when unconfigured, which is a
+		// non-nil interface — unwrap it so the chain skips the provider instead
+		// of panicking on the call.
+		if value := reflect.ValueOf(embedder); value.Kind() == reflect.Ptr && value.IsNil() {
+			continue
+		}
+		allEmbedders[provider] = embedder
 	}
+
+	return &predictionService{
+		agent:            agent,
+		llmResolver:      llmResolver,
+		ollama:           ollama,
+		mlp:              mlp,
+		embeddingRepo:    embeddingRepo,
+		accountRepo:      accountRepo,
+		payeeRepo:        payeeRepo,
+		payeeRuleRepo:    payeeRuleRepo,
+		categoryRepo:     categoryRepo,
+		tracer:           tracer,
+		llmCallTimeout:   config.Load().LLMCallTimeout,
+		pipelineTargets:  config.Load().EmailPipelineTargets,
+		embedders:        allEmbedders,
+		embeddingTargets: config.Load().EmailEmbeddingTargets,
+	}
+}
+
+// embedWithFallback generates an embedding for text, trying each configured
+// embedding target in order and moving on when one fails. It returns the target
+// that produced the vector so callers can record which backend was used.
+//
+// Every target is expected to serve the same model, so the resulting vectors
+// stay comparable to the ones already stored in pgvector; the chain exists for
+// availability, not for model choice.
+func (s *predictionService) embedWithFallback(
+	ctx context.Context,
+	text string,
+) ([]float64, config.LLMTarget, error) {
+	log := logger.Logger(ctx)
+
+	if len(s.embeddingTargets) == 0 {
+		return nil, config.LLMTarget{}, errs.New(errs.CodeInternalError, "no embedding providers configured")
+	}
+
+	var lastErr error
+	for _, target := range s.embeddingTargets {
+		embedder, ok := s.embedders[target.Provider]
+		if !ok {
+			log.Warn("embedding provider unavailable, trying next", "provider", target.Provider)
+			lastErr = errs.New(errs.CodeInternalError, "embedding provider %q not configured", target.Provider)
+			continue
+		}
+
+		embedModel := target.Model
+		if embedModel == "" {
+			embedModel = EmbeddingModel
+		}
+
+		embedding, err := embedder.Embed(ctx, embedModel, text)
+		if err != nil {
+			log.Warn("embedding provider call failed, trying next",
+				"provider", target.Provider, "model", embedModel, "error", err)
+			lastErr = err
+			continue
+		}
+
+		return embedding, config.LLMTarget{Provider: target.Provider, Model: embedModel}, nil
+	}
+
+	return nil, config.LLMTarget{}, errs.Wrap(errs.CodeInternalError, "all embedding providers failed", lastErr)
 }
 
 // chatWithFallback runs the request against each configured pipeline provider in
@@ -295,10 +367,11 @@ func (s *predictionService) handleSemanticSearch(
 	log := logger.Logger(ctx)
 
 	progress.Report(ctx, "predict:semantic_search")
-	embedding, err := s.ollama.Embed(ctx, EmbeddingModel, embeddingText)
+	embedding, embedTarget, err := s.embedWithFallback(ctx, embeddingText)
 	if err != nil {
-		log.Warn("ollama embed failed, falling back to MLP", "error", err)
-		// return s.mlpFallback(ctx, req, log)
+		// Semantic search is optional: without a vector we simply fall through
+		// to the payee rules / LLM fallback rather than failing the prediction.
+		log.Warn("embedding failed, skipping semantic search", "error", err)
 		return nil, nil
 	}
 
@@ -320,6 +393,12 @@ func (s *predictionService) handleSemanticSearch(
 		}
 		result.Payee = payee.Name
 		result.Category = category.Name
+		// Record which backend produced the query vector — with a fallback chain
+		// the corpus can mix backends, and that is worth being able to see.
+		if result.Metadata != nil {
+			result.Metadata["embedding_model"] = embedTarget.Model
+			result.Metadata["embedding_provider"] = embedTarget.Provider
+		}
 		return result, nil
 	}
 	return nil, nil
@@ -697,7 +776,7 @@ func (s *predictionService) GenerateTransactionEmbedding(
 	}
 
 	embeddingText := transactionType + " " + merchantName
-	embedding, err := s.ollama.Embed(ctx, EmbeddingModel, embeddingText)
+	embedding, _, err := s.embedWithFallback(ctx, embeddingText)
 	if err != nil {
 		return nil, errs.Wrap(errs.CodeInternalError, "generate transaction embedding", err)
 	}
@@ -714,7 +793,7 @@ func (s *predictionService) HandleCorrection(ctx context.Context, req Correction
 	logger := logger.Logger(ctx)
 
 	// Generate embedding for the corrected transaction
-	embedding, err := s.ollama.Embed(ctx, EmbeddingModel, req.EmailText)
+	embedding, _, err := s.embedWithFallback(ctx, req.EmailText)
 	if err != nil {
 		return errs.Wrap(errs.CodeInternalError, "embed correction", err)
 	}
