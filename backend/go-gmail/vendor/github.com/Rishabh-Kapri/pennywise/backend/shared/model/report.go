@@ -10,6 +10,7 @@ type ReportParams struct {
 	EndMonth    string // "YYYY-MM", inclusive
 	AccountIDs  []uuid.UUID
 	CategoryIDs []uuid.UUID
+	TagIDs      []uuid.UUID
 }
 
 // SpendingReport is the response for GET /api/reports/spending.
