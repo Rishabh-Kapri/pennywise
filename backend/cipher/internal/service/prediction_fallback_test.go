@@ -16,9 +16,10 @@ import (
 type fakeLLM struct {
 	replyText string
 	err       error
-	// gotModel records the model on the last request it received.
-	gotModel string
-	calls    int
+	// gotModel and gotMaxTokens record the last request it received.
+	gotModel     string
+	gotMaxTokens int
+	calls        int
 }
 
 func (f *fakeLLM) Chat(
@@ -27,6 +28,7 @@ func (f *fakeLLM) Chat(
 ) (*sharedModel.ChatResponse, error) {
 	f.calls++
 	f.gotModel = req.Model
+	f.gotMaxTokens = req.MaxTokens
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -181,6 +183,72 @@ func TestChatWithFallbackErrorsWhenAllProvidersFail(t *testing.T) {
 	require.Contains(t, err.Error(), "parse:extract")
 	require.Equal(t, 1, primary.calls)
 	require.Equal(t, 1, secondary.calls)
+}
+
+// bigReq mirrors the extraction step, which asks for an ollama-sized budget.
+func bigReq(model string) sharedModel.ChatRequest {
+	req := simpleReq(model)
+	req.MaxTokens = 100000
+	return req
+}
+
+// TestChatWithFallbackKeepsLocalTokenBudget: ollama maps the cap to num_predict,
+// a free generation ceiling, so the caller's value is sent untouched.
+func TestChatWithFallbackKeepsLocalTokenBudget(t *testing.T) {
+	local := &fakeLLM{replyText: `{"ok":true}`}
+	resolver := &fakeResolver{
+		clients:   map[string]*fakeLLM{"ollama": local},
+		telemetry: newTestTelemetry(t),
+	}
+	service := newTestService(t, resolver, []config.LLMTarget{{Provider: "ollama", Model: "gemma4:12b"}})
+
+	_, err := service.chatWithFallback(context.Background(), "parse:extract", bigReq)
+
+	require.NoError(t, err)
+	require.Equal(t, 100000, local.gotMaxTokens)
+}
+
+// TestChatWithFallbackCapsCloudTokenBudget: hosted APIs validate the cap against
+// the model's own limit, so an ollama-sized budget must be brought under it
+// before the request goes out.
+func TestChatWithFallbackCapsCloudTokenBudget(t *testing.T) {
+	local := &fakeLLM{err: errors.New("status code: 530")}
+	remote := &fakeLLM{replyText: `{"ok":true}`}
+	resolver := &fakeResolver{
+		clients:   map[string]*fakeLLM{"ollama": local, "openrouter": remote},
+		telemetry: newTestTelemetry(t),
+	}
+	service := newTestService(t, resolver, []config.LLMTarget{
+		{Provider: "ollama", Model: "gemma4:12b"},
+		{Provider: "openrouter", Model: "anthropic/claude-haiku-4.5"},
+	})
+
+	_, err := service.chatWithFallback(context.Background(), "parse:extract", bigReq)
+
+	require.NoError(t, err)
+	// Local target still saw the original budget; only the hosted one is capped.
+	require.Equal(t, 100000, local.gotMaxTokens)
+	require.Equal(t, cloudMaxOutputTokens, remote.gotMaxTokens)
+}
+
+// TestChatWithFallbackLeavesSmallBudgetsAlone: the cap is a ceiling, not a
+// rewrite — requests already under it are untouched on every provider.
+func TestChatWithFallbackLeavesSmallBudgetsAlone(t *testing.T) {
+	remote := &fakeLLM{replyText: `{"ok":true}`}
+	resolver := &fakeResolver{
+		clients:   map[string]*fakeLLM{"openrouter": remote},
+		telemetry: newTestTelemetry(t),
+	}
+	service := newTestService(t, resolver, []config.LLMTarget{{Provider: "openrouter", Model: "gemini"}})
+
+	_, err := service.chatWithFallback(context.Background(), "predict:summarize", func(model string) sharedModel.ChatRequest {
+		req := simpleReq(model)
+		req.MaxTokens = 256
+		return req
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 256, remote.gotMaxTokens)
 }
 
 // TestChatWithFallbackErrorsWithoutTargets guards against a misconfigured
