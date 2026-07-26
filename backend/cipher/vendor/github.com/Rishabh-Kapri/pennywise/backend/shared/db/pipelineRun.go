@@ -29,7 +29,7 @@ func NewPipelineRunRepository(pool *pgxpool.Pool) PipelineRunRepository {
 
 const pipelineRunColumns = `
 	id, budget_id, workflow_id, workflow_run_id, child_workflow_id,
-	trigger, email_account, status, current_step, error,
+	trigger, email_account, gmail_history_id, status, current_step, error,
 	emails_fetched, emails_skipped, transactions_created,
 	started_at, updated_at, completed_at`
 
@@ -43,6 +43,7 @@ func scanPipelineRun(row pgx.Row) (*model.PipelineRun, error) {
 		&run.ChildWorkflowID,
 		&run.Trigger,
 		&run.EmailAccount,
+		&run.GmailHistoryID,
 		&run.Status,
 		&run.CurrentStep,
 		&run.Error,
@@ -67,8 +68,8 @@ func (r *pipelineRunRepo) CreateRun(
 ) (*model.PipelineRun, error) {
 	return scanPipelineRun(r.Executor(nil).QueryRow(
 		ctx,
-		`INSERT INTO pipeline_runs (budget_id, workflow_id, workflow_run_id, trigger, email_account)
-		 VALUES ($1, $2, $3, $4, NULLIF($5, ''))
+		`INSERT INTO pipeline_runs (budget_id, workflow_id, workflow_run_id, trigger, email_account, gmail_history_id)
+		 VALUES ($1, $2, $3, $4, NULLIF($5, ''), NULLIF($6::numeric, 0))
 		 ON CONFLICT (workflow_id, workflow_run_id) DO UPDATE SET updated_at = now()
 		 RETURNING `+pipelineRunColumns,
 		input.BudgetID,
@@ -76,6 +77,7 @@ func (r *pipelineRunRepo) CreateRun(
 		input.WorkflowRunID,
 		input.Trigger,
 		input.EmailAccount,
+		input.GmailHistoryID,
 	))
 }
 
