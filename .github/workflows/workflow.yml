@@ -46,9 +46,53 @@ jobs:
           echo "OS Info:"
           uname -a
 
+  # The Go services build from their vendor/ trees (Dockerfiles run
+  # `go build -mod=vendor`), but local development goes through the go.work
+  # workspace, which reads backend/shared directly and ignores vendor/. A
+  # change to backend/shared therefore compiles locally while the vendored
+  # copies stay stale and the image build fails. Catch that here instead.
+  verify_vendor:
+    runs-on: [self-hosted, unraid]
+    needs: checkout_repo
+    steps:
+      # GOWORK=off + -mod=vendor is exactly what the Dockerfiles do, so this
+      # fails on the same stale-vendor errors the image build would hit.
+      - name: Build services in vendor mode
+        run: |
+          docker run --rm -v "$PWD":/src:ro -e GOWORK=off \
+            golang:1.25-alpine sh -euc '
+              cd /src/backend/workflows        && go build -mod=vendor -o /tmp/worker ./cmd/worker
+              cd /src/backend/go-gmail         && go build -mod=vendor -o /tmp/gmail  ./cmd
+              cd /src/backend/cipher           && go build -mod=vendor -o /tmp/cipher ./cmd/api
+              cd /src/backend/go-pennywise-api && go build -mod=vendor -o /tmp/api    ./cmd/api
+            '
+
+      # A build can still pass on a vendor tree that merely lags behind
+      # backend/shared in files nothing imports yet. Re-vendor a throwaway copy
+      # of the tree (the workspace is mounted read-only) and diff it.
+      - name: Check vendored dependencies are in sync
+        run: |
+          docker run --rm -v "$PWD":/src:ro -e GOWORK=off \
+            golang:1.25-alpine sh -euc '
+              apk add --no-cache git >/dev/null
+              git config --global --add safe.directory /src
+              mkdir -p /tmp/repo && git -C /src archive HEAD | tar -x -C /tmp/repo
+              stale=""
+              for service in workflows go-gmail cipher go-pennywise-api; do
+                (cd "/tmp/repo/backend/$service" && go mod vendor)
+                if ! diff -qr "/tmp/repo/backend/$service/vendor" "/src/backend/$service/vendor"; then
+                  stale="$stale $service"
+                fi
+              done
+              if [ -n "$stale" ]; then
+                echo "::error::Stale vendor tree(s):$stale — run GOWORK=off go mod vendor in each and commit the result."
+                exit 1
+              fi
+            '
+
   build_docker:
     runs-on: [self-hosted, unraid]
-    needs: copy_env_files
+    needs: [copy_env_files, verify_vendor]
     steps:
       - name: Get changed files
         id: changes
