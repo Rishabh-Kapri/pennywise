@@ -49,6 +49,7 @@ type PipelineRun struct {
 	ChildWorkflowID     *string           `json:"childWorkflowId,omitempty"`
 	Trigger             PipelineTrigger   `json:"trigger"`
 	EmailAccount        *string           `json:"emailAccount,omitempty"`
+	GmailHistoryID      *uint64           `json:"gmailHistoryId,omitempty"`
 	Status              PipelineRunStatus `json:"status"`
 	CurrentStep         PipelineStep      `json:"currentStep"`
 	Error               *string           `json:"error,omitempty"`
@@ -79,6 +80,9 @@ type StartPipelineRunInput struct {
 	WorkflowRunID string          `json:"workflowRunId"`
 	Trigger       PipelineTrigger `json:"trigger"`
 	EmailAccount  string          `json:"emailAccount,omitempty"`
+	// GmailHistoryID is the Pub/Sub history id that triggered the run; zero for
+	// manual runs, which are not tied to a Gmail history cursor.
+	GmailHistoryID uint64 `json:"gmailHistoryId,omitempty"`
 }
 
 // PipelineEventInput is a timeline entry reported by the workflow.
