@@ -104,23 +104,43 @@ func (r *googleProviderRepo) Create(
 	expiryAt *int64,
 ) (*model.UserWithCredentials, error) {
 	oauthClientType = model.NormalizeGoogleOAuthClientType(oauthClientType)
-	// 1. Create auth_providers linking auth_user to google provider
+	// 1. Create auth_providers linking auth_user to google provider. Lookups
+	// skip soft-deleted rows but the unique index still counts them, so a
+	// plain INSERT would fail forever once a row for this (google id, client
+	// type) has existed; resurrect and reattach it instead.
 	_, err := r.Executor(tx).Exec(
 		ctx,
 		`INSERT INTO auth_providers (auth_user_id, provider_type, provider_id, oauth_client_type, verified_at)
-		 VALUES ($1, 'google', $2, $3, $4)`,
+		 VALUES ($1, 'google', $2, $3, $4)
+		 ON CONFLICT (provider_id, oauth_client_type) DO UPDATE SET
+		   auth_user_id = EXCLUDED.auth_user_id,
+		   verified_at = EXCLUDED.verified_at,
+		   deleted = false,
+		   updated_at = now()`,
 		authUserID, googleID, oauthClientType, time.Now(),
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	// 2. Create google_provider_users with provider-specific data
+	// 2. Create google_provider_users with provider-specific data. Keep the
+	// stored refresh token when Google didn't return a new one.
 	var gpu model.GoogleProviderUser
 	err = r.Executor(tx).QueryRow(
 		ctx,
 		`INSERT INTO google_provider_users (id, oauth_client_type, name, picture, email, refresh_token, expiry_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7)
+		 ON CONFLICT (id, oauth_client_type) DO UPDATE SET
+		   name = EXCLUDED.name,
+		   picture = EXCLUDED.picture,
+		   email = EXCLUDED.email,
+		   refresh_token = CASE
+		     WHEN EXCLUDED.refresh_token <> '' THEN EXCLUDED.refresh_token
+		     ELSE google_provider_users.refresh_token
+		   END,
+		   expiry_at = EXCLUDED.expiry_at,
+		   deleted = false,
+		   updated_at = now()
 		 RETURNING id, oauth_client_type, name, picture, email, gmail_history_id, refresh_token, created_at, updated_at, last_gmail_sync, expiry_at`,
 		googleID, oauthClientType, name, picture, email, refreshToken, expiryAt,
 	).Scan(&gpu.ID, &gpu.OAuthClientType, &gpu.Name, &gpu.Picture, &gpu.Email, &gpu.GmailHistoryID,
