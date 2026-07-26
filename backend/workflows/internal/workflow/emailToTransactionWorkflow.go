@@ -49,11 +49,12 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailToT
 	reporter := pipelineReporter{}
 	if workflow.GetVersion(ctx, "pipeline-observability", workflow.DefaultVersion, 1) >= 1 {
 		reporter = startPipelineRun(ctx, sharedModel.StartPipelineRunInput{
-			BudgetID:      googleUser.BudgetID,
-			WorkflowID:    workflowInfo.WorkflowExecution.ID,
-			WorkflowRunID: workflowInfo.WorkflowExecution.RunID,
-			Trigger:       sharedModel.PipelineTriggerGmailPush,
-			EmailAccount:  input.Email,
+			BudgetID:       googleUser.BudgetID,
+			WorkflowID:     workflowInfo.WorkflowExecution.ID,
+			WorkflowRunID:  workflowInfo.WorkflowExecution.RunID,
+			Trigger:        sharedModel.PipelineTriggerGmailPush,
+			EmailAccount:   input.Email,
+			GmailHistoryID: input.HistoryId,
 		})
 	}
 
@@ -111,7 +112,7 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailToT
 			Events: []sharedModel.PipelineEventInput{{
 				Step:   sharedModel.PipelineStepFetchEmails,
 				Status: sharedModel.PipelineEventSucceeded,
-				Detail: map[string]any{"count": emailCount},
+				Detail: map[string]any{"count": emailCount, "historyId": input.HistoryId},
 			}},
 		})
 		return nil
@@ -119,14 +120,31 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailToT
 
 	// Start child workflow for steps 2-4 (Predict -> CreateTransaction -> CreateCipherPrediction)
 	childWorkflowID := workflowInfo.WorkflowExecution.ID + "-parsed"
+	// One event per fetched email carrying the sender/subject/snippet, so the
+	// Activity page can show each email as soon as it is fetched — well before
+	// extraction produces merchant/amount detail.
+	fetchEvents := []sharedModel.PipelineEventInput{{
+		Step:   sharedModel.PipelineStepFetchEmails,
+		Status: sharedModel.PipelineEventSucceeded,
+		Detail: map[string]any{"count": emailCount, "historyId": input.HistoryId},
+	}}
+	for _, email := range emailDataInput.EmailData {
+		fetchEvents = append(fetchEvents, sharedModel.PipelineEventInput{
+			Step:      sharedModel.PipelineStepFetchEmails,
+			Status:    sharedModel.PipelineEventSucceeded,
+			MessageID: email.MessageId,
+			Detail: map[string]any{
+				"from":      email.From,
+				"subject":   email.Subject,
+				"snippet":   email.Snippet,
+				"historyId": input.HistoryId,
+			},
+		})
+	}
 	reporter.report(ctx, sharedModel.ReportPipelineStatusInput{
 		ChildWorkflowID: childWorkflowID,
 		EmailsFetched:   &emailCount,
-		Events: []sharedModel.PipelineEventInput{{
-			Step:   sharedModel.PipelineStepFetchEmails,
-			Status: sharedModel.PipelineEventSucceeded,
-			Detail: map[string]any{"count": emailCount},
-		}},
+		Events:          fetchEvents,
 	})
 
 	childCtx := workflow.WithChildOptions(ctx, workflow.ChildWorkflowOptions{
@@ -203,8 +221,24 @@ func ParsedEmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.Em
 				Trigger:       sharedModel.PipelineTriggerManual,
 			})
 			emailCount := len(input.EmailData)
+			// Standalone run: no parent recorded the fetched emails, so emit the
+			// per-email metadata events here instead.
+			fetchEvents := make([]sharedModel.PipelineEventInput, 0, len(input.EmailData))
+			for _, email := range input.EmailData {
+				fetchEvents = append(fetchEvents, sharedModel.PipelineEventInput{
+					Step:      sharedModel.PipelineStepFetchEmails,
+					Status:    sharedModel.PipelineEventSucceeded,
+					MessageID: email.MessageId,
+					Detail: map[string]any{
+						"from":    email.From,
+						"subject": email.Subject,
+						"snippet": email.Snippet,
+					},
+				})
+			}
 			reporter.report(ctx, sharedModel.ReportPipelineStatusInput{
 				EmailsFetched: &emailCount,
+				Events:        fetchEvents,
 			})
 		}
 	}
