@@ -244,6 +244,11 @@ func main() {
 		payeeRuleRepo,
 		categoryRepo,
 		tel.Tracer,
+		// Optional remote embedding backends for EMAIL_EMBEDDING_PROVIDERS. Nil
+		// entries (no API key) are dropped, so this is safe to pass always.
+		map[string]client.Embedder{
+			"openrouter": client.NewOpenRouterEmbedClient(tel.Tracer),
+		},
 	)
 
 	agentService := service.NewAgentService(redisClient, agent, pennywiseHttpTransport, memoryService, llmResolver)
