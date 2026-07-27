@@ -45,7 +45,7 @@ func (t GetTodayTool) Execute(ctx context.Context, call sharedModel.ToolCall) (*
 }
 
 func (t GetTodayTool) GetNormalizedName(isDone bool) string {
-	if (isDone) {
+	if isDone {
 		return "Fetched date"
 	}
 	return "Fetching date..."
