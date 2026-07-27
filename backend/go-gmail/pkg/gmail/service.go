@@ -167,7 +167,14 @@ func (s *Service) GetMessageHistory(
 				}
 			}
 			headers := msgRes.Payload.Headers
-			msgData = append(msgData, EmailData{MessageId: id, Headers: headers, Body: bodyData.String()})
+			msgData = append(msgData, EmailData{
+				MessageId: id,
+				Headers:   headers,
+				Body:      bodyData.String(),
+				// Gmail's own plain-text preview of the message — used to show
+				// the email in the UI before extraction has run.
+				Snippet: msgRes.Snippet,
+			})
 		}
 	}
 	return msgData, nil

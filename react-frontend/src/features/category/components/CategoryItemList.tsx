@@ -7,6 +7,7 @@ import { ActivityPopover } from './ActivityModal';
 import { useAppDispatch } from '@/app/hooks';
 import { toast } from '@/utils';
 import { updateCategoryBudget } from '../store/categorySlice';
+import { getCurrencyLocaleString } from '@/utils/date.utils';
 import { Parser } from 'expr-eval';
 
 interface Props {
@@ -23,8 +24,6 @@ interface CategoryItemProps {
   month: string;
   category: Category;
   selectedCategoryId?: string;
-  selectedCategoryIdx: number;
-  index: number;
   onSelectCategory: (category: Category | null) => void;
   openPopoverId: string | null;
   onPopoverOpen: (id: string) => void;
@@ -33,18 +32,38 @@ interface CategoryItemProps {
 
 const parser = new Parser();
 
+const formatAmount = (value: number): string =>
+  getCurrencyLocaleString(Math.abs(value) || 0, 'INR', 'en-IN', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+
+type MeterStatus = 'healthy' | 'warning' | 'danger' | 'idle';
+
+function getMeterStatus(balance: number, percentUsed: number, spent: number): MeterStatus {
+  if (balance < 0) return 'danger';
+  if (percentUsed >= 80) return 'warning';
+  if (spent > 0 || percentUsed > 0) return 'healthy';
+  return 'idle';
+}
+
+const STATUS_CLASS: Record<MeterStatus, string> = {
+  healthy: styles.healthy,
+  warning: styles.warning,
+  danger: styles.danger,
+  idle: styles.idle,
+};
+
 export function CategoryItem({
   month,
   category,
   selectedCategoryId,
-  selectedCategoryIdx,
-  index,
   onSelectCategory,
   openPopoverId,
   onPopoverOpen,
   onPopoverClose,
 }: CategoryItemProps) {
-  const triggerRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLSpanElement | null>(null);
   const activityTriggerRef = useRef<HTMLSpanElement | null>(null);
   const isPopoverOpen = openPopoverId === category.id;
   const [budgeted, setBudgeted] = useState<string>(
@@ -55,10 +74,20 @@ export function CategoryItem({
 
   const dispatch = useAppDispatch();
 
+  const assigned = category?.budgeted?.[month] ?? 0;
+  const activity = category?.activity?.[month] ?? 0;
+  const balance = category?.balance?.[month] ?? 0;
+  const spent = Math.max(-activity, 0);
+  const percentUsed = assigned > 0 ? (spent / assigned) * 100 : spent > 0 ? 100 : 0;
+  const status = getMeterStatus(balance, percentUsed, spent);
+  const fillWidth = Math.min(percentUsed, 100);
+  const percentLabel =
+    assigned > 0 && (spent > 0 || percentUsed > 0) ? `${Math.round(percentUsed)}%` : '';
+
   const handleBudgetBlur = useCallback(() => {
     setIsEditingBudget(false);
     const currentBudgeted = category?.budgeted?.[month] ?? 0;
-    if (isEditingBudget && selectedCategoryId) {
+    if (isEditingBudget && category.id) {
       const budgetedNum = Number(budgeted);
       if (budgetedNum !== currentBudgeted) {
         const expr = parser.parse(budgeted);
@@ -67,7 +96,7 @@ export function CategoryItem({
         dispatch(
           updateCategoryBudget({
             budgeted: result,
-            categoryId: selectedCategoryId!,
+            categoryId: category.id,
             month,
           }),
         ).unwrap()
@@ -75,15 +104,7 @@ export function CategoryItem({
           .catch(() => toast.error('Failed to update budget'));
       }
     }
-  }, [
-    isEditingBudget,
-    budgeted,
-    month,
-    category,
-    selectedCategoryId,
-    dispatch,
-    setBudgeted,
-  ]);
+  }, [isEditingBudget, budgeted, month, category, dispatch]);
 
   const onBudgetChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -98,74 +119,90 @@ export function CategoryItem({
     [isEditingBudget],
   );
 
+  const startEditingBudget = useCallback(() => {
+    if (!isEditingBudget) {
+      setBudgeted(String(category?.budgeted?.[month] ?? 0));
+      setIsEditingBudget(true);
+    }
+  }, [isEditingBudget, category, month]);
+
+  const chipText =
+    balance < 0
+      ? `${formatAmount(balance)} over`
+      : balance > 0
+        ? `${formatAmount(balance)} left`
+        : formatAmount(0);
+  const chipClass = [
+    styles.availableChip,
+    balance < 0 && styles.chipOver,
+    balance > 0 && styles.chipPositive,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   return (
-    <>
-      <div
-        key={category.id}
-        onClick={() => onSelectCategory(category)}
-        className={`${styles.categoryItem} ${selectedCategoryId === category.id ? styles.selected : ''}`}>
-        <div className={styles.categoryName}>
-          <div>{category.name}</div>
+    <div
+      onClick={() => onSelectCategory(category)}
+      className={`${styles.categoryItem} ${selectedCategoryId === category.id ? styles.selected : ''}`}>
+      <div className={styles.topLine}>
+        <div className={styles.categoryName}>{category.name}</div>
+        <span
+          ref={triggerRef}
+          id={`${category.id}-balance`}
+          className={chipClass}
+          onClick={() => onPopoverOpen(category.id ?? '')}
+          aria-haspopup={true}
+          aria-controls={`popover-content-${category.id}`}>
+          {chipText}
+        </span>
+        <MovePopover
+          triggerRef={triggerRef}
+          isOpen={isPopoverOpen}
+          categoryId={category.id ?? ''}
+          categoryName={category.name}
+          amount={balance}
+          onClose={onPopoverClose}
+        />
+      </div>
+
+      <div className={`${styles.meterRow} ${STATUS_CLASS[status]}`}>
+        <div className={styles.meterTrack}>
+          <div className={styles.meterFill} style={{ width: `${fillWidth}%` }} />
         </div>
-        {/* Budgeted */}
-        <div className={styles.amountItem}>
+        {percentLabel && <span className={styles.percentLabel}>{percentLabel}</span>}
+      </div>
+
+      <div className={styles.bottomLine}>
+        <span
+          ref={activityTriggerRef}
+          className={styles.activityText}
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowActivityModal(true);
+          }}>
+          {formatAmount(spent)} of {formatAmount(assigned)} spent
+        </span>
+        <ActivityPopover
+          isOpen={showActivityModal}
+          onClose={() => setShowActivityModal(false)}
+          triggerRef={activityTriggerRef}
+          categoryId={category.id ?? ''}
+          categoryName={category.name}
+          month={month}
+          activityAmount={activity}
+        />
+        <span className={styles.assignControl}>
+          <span className={styles.assignLabel}>Assigned</span>
           <AmountCell
-            value={budgeted}
+            value={isEditingBudget ? budgeted : assigned}
             isEditing={isEditingBudget}
-            onClick={() => setIsEditingBudget(true)}
+            onClick={startEditingBudget}
             onBlur={handleBudgetBlur}
             onChange={onBudgetChange}
           />
-        </div>
-        {/* Activity */}
-        <div className={styles.amountItem}>
-          <AmountCell
-            ref={activityTriggerRef}
-            value={category?.activity?.[month] ?? 0}
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowActivityModal(true);
-            }}
-          />
-          <ActivityPopover
-            isOpen={showActivityModal}
-            onClose={() => setShowActivityModal(false)}
-            triggerRef={activityTriggerRef}
-            categoryId={category.id ?? ''}
-            categoryName={category.name}
-            month={month}
-            activityAmount={category?.activity?.[month] ?? 0}
-          />
-        </div>
-        {/* Balance */}
-        <div className={styles.amountItem}>
-          <AmountCell
-            ref={triggerRef}
-            id={`${category.id}-balance`}
-            value={category?.balance?.[month] ?? 0}
-            variant="balance"
-            onClick={() => onPopoverOpen(category.id ?? '')}
-            aria-haspopup={true}
-            aria-controls={`popover-content-${category.id}`}
-          />
-          <MovePopover
-            triggerRef={triggerRef}
-            isOpen={isPopoverOpen}
-            categoryId={category.id ?? ''}
-            categoryName={category.name}
-            amount={category.balance?.[month] ?? 0}
-            onClose={onPopoverClose}
-          />
-        </div>
+        </span>
       </div>
-      <hr
-        className={`${selectedCategoryIdx !== -1 &&
-            (selectedCategoryIdx === index || selectedCategoryIdx - 1 === index)
-            ? styles.borderNone
-            : styles.categoryDivider
-          }`}
-      />
-    </>
+    </div>
   );
 }
 
@@ -178,47 +215,38 @@ export default function CategoryItemList({
   onPopoverOpen,
   onPopoverClose,
 }: Props) {
-  const [selectedCategoryIdx, setSelectedCategoryIdx] = useState<number>(-1);
-
   useEffect(() => {
     if (!selectedCategoryId) {
-      setSelectedCategoryIdx(-1);
       return;
     }
     const handleEscapeKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setSelectedCategoryIdx(-1);
         onSelectCategory(null);
       }
     };
-    const idx = categories.map((c) => c.id).indexOf(selectedCategoryId);
-    setSelectedCategoryIdx(idx);
 
     document.addEventListener('keydown', handleEscapeKey);
 
     return () => {
       document.removeEventListener('keydown', handleEscapeKey);
     };
-  }, [selectedCategoryId, categories, onSelectCategory]);
+  }, [selectedCategoryId, onSelectCategory]);
 
   return (
-    <>
-      {categories?.length === 0 && <div></div>}
+    <div className={styles.list}>
       {categories?.length > 0 &&
-        categories.map((category, idx) => (
+        categories.map((category) => (
           <CategoryItem
             key={category.id}
             month={month}
             category={category}
             selectedCategoryId={selectedCategoryId}
-            selectedCategoryIdx={selectedCategoryIdx}
-            index={idx}
             onSelectCategory={onSelectCategory}
             openPopoverId={openPopoverId}
             onPopoverOpen={onPopoverOpen}
             onPopoverClose={onPopoverClose}
           />
         ))}
-    </>
+    </div>
   );
 }

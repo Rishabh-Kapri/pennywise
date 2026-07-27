@@ -12,6 +12,7 @@ import (
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 )
 
 // Private struct that satisfies the transport interface
@@ -204,7 +205,7 @@ func (h *httpTransport) do(
 
 	applyHeaders(ctx, req, headers)
 
-	log.Info("httpTransport.do", "method", req.Method, "url", req.URL.String(), "headers", headers)
+	log.Info("httpTransport.do", "method", req.Method, "url", req.URL.String(), "headers", utils.SanitizeHeadersForLogging(headers))
 
 	res, err := h.client.Do(req)
 	if err != nil {
@@ -228,12 +229,26 @@ func (h *httpTransport) do(
 			"body",
 			string(body),
 		)
+		errBody := strings.TrimSpace(string(body))
+		if len(errBody) > 512 {
+			errBody = errBody[:512] + "..."
+		}
+		if errBody == "" {
+			return result, errs.New(
+				errs.CodeHTTPClientError,
+				"%s request for %s failed with status code: %d",
+				req.Method,
+				req.URL.String(),
+				res.StatusCode,
+			)
+		}
 		return result, errs.New(
 			errs.CodeHTTPClientError,
-			"%s request for %s failed with status code: %d",
+			"%s request for %s failed with status code: %d: %s",
 			req.Method,
 			req.URL.String(),
 			res.StatusCode,
+			errBody,
 		)
 	}
 	result.Body = res.Body

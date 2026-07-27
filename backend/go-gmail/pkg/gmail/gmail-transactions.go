@@ -53,6 +53,8 @@ type EmailData struct {
 	Headers   []*gmail.MessagePartHeader
 	Body      string
 	MessageId string
+	// Snippet is Gmail's plain-text preview of the message body.
+	Snippet string
 }
 
 type ParsedTransactionData struct {

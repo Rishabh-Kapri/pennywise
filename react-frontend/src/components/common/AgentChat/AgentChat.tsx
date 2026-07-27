@@ -40,6 +40,8 @@ const SUGGESTIONS = ['Summarize my spending', 'Find unusual transactions', 'Help
 const TEXT_DELTA_EVENT = 'agent::chat::text_delta';
 const AGENT_CHAT_STREAM_EVENT = 'pennywise::agent::chat::stream';
 const AGENT_LOADING_EVENT = 'agent::chat::loading';
+const AGENT_ERROR_EVENT = 'agent::chat::error';
+const AGENT_ERROR_FALLBACK_TEXT = 'Penny ran into an error while responding. Please try again.';
 const TEXT_DELTA_CHARS_PER_SECOND = 90;
 const TEXT_DELTA_MAX_FRAME_CHARS = 8;
 const AUTO_SCROLL_BOTTOM_THRESHOLD_PX = 48;
@@ -113,6 +115,7 @@ function agentMessageLabel(eventName: string) {
     eventName === AGENT_CHAT_STREAM_EVENT ||
     eventName === 'agent::chat::message' ||
     eventName === AGENT_LOADING_EVENT ||
+    eventName === AGENT_ERROR_EVENT ||
     eventName === 'agent::chat::tool_call' ||
     eventName === 'agent::chat::tool_call_start'
   ) {
@@ -473,6 +476,16 @@ export function AgentChat() {
         return;
       }
 
+      if (message.eventName === AGENT_CHAT_STREAM_EVENT && parsedMsgData?.type === 'error') {
+        flushPendingTextDelta();
+        const errorText =
+          typeof parsedMsgData.message === 'string' && parsedMsgData.message.trim()
+            ? parsedMsgData.message
+            : AGENT_ERROR_FALLBACK_TEXT;
+        dispatch(appendAgentEvent({ eventName: AGENT_ERROR_EVENT, text: errorText }));
+        return;
+      }
+
       if (message.eventName === AGENT_CHAT_STREAM_EVENT && parsedMsgData?.type === 'title_update') {
         const title = parsedMsgData.message as string;
         setHeaderTitle(title);
@@ -509,7 +522,6 @@ export function AgentChat() {
     dispatch,
     flushPendingTextDelta,
     scheduleTextDeltaAnimation,
-    selectedConversation,
     currentConversationId,
   ]);
 
@@ -791,7 +803,14 @@ export function AgentChat() {
         <div ref={messagesRef} className={styles.messages} onScroll={handleMessagesScroll}>
           {displayedAgentMessages.length === 0 && <div className={styles.emptyState}>ask questions about your budget</div>}
           {displayedAgentMessages.map((message) => (
-            <div key={message.id} className={message.role === 'user' ? styles.userMessage : styles.agentMessage}>
+            <div
+              key={message.id}
+              className={
+                message.role === 'user'
+                  ? styles.userMessage
+                  : `${styles.agentMessage} ${message.eventName === AGENT_ERROR_EVENT ? styles.errorMessage : ''}`
+              }>
+
               {message.role === 'assistant' && (
                 <span className={styles.messageLabel}>
                   {agentMessageLabel(message.eventName ?? 'agent::chat::message')}

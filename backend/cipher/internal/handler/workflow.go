@@ -14,6 +14,7 @@ import (
 
 type WorkflowHandler interface {
 	RetryPredict(c *gin.Context)
+	RetryParse(c *gin.Context)
 	StartParsedEmailToTransaction(c *gin.Context)
 }
 
@@ -34,7 +35,9 @@ func (h *workflowHandler) StartParsedEmailToTransaction(c *gin.Context) {
 	ctx := c.Request.Context()
 	log := logger.Logger(ctx)
 
-	var input sharedModel.ParsedEmailsInput
+	// The workflow's parameter is EmailDataInput (raw emails); binding
+	// ParsedEmailsInput here silently produced zero-email runs.
+	var input sharedModel.EmailDataInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		log.Error("error unmarshalling request body", "error", err)
 		wrappedErr := errs.Wrap(errs.CodeInternalError, "error unmarshalling request body", err)
@@ -88,5 +91,32 @@ func (h *workflowHandler) RetryPredict(c *gin.Context) {
 	}
 
 	log.Info("retry-predict signal sent", "workflowId", workflowId)
+	c.JSON(http.StatusOK, gin.H{"status": "signal sent", "workflowId": workflowId})
+}
+
+// RetryParse sends a retry-email-parse signal to a ParsedEmailToTransactionWorkflow
+// parked at the ParseEmailData step. Use this when extraction failed (e.g. Ollama
+// was unavailable) and the workflow is waiting for a manual nudge.
+//
+// POST /api/workflows/:workflowId/retry-parse
+func (h *workflowHandler) RetryParse(c *gin.Context) {
+	ctx := c.Request.Context()
+	log := logger.Logger(ctx)
+
+	workflowId := c.Param("workflowId")
+	if workflowId == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "workflowId is required"})
+		return
+	}
+
+	err := h.temporalClient.SignalWorkflow(ctx, workflowId, "", sharedModel.RetryEmailParseSignal, nil)
+	if err != nil {
+		log.Error("error sending retry-email-parse signal", "error", err, "workflowId", workflowId)
+		wrappedErr := errs.Wrap(errs.CodeInternalError, "error sending retry-email-parse signal", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": wrappedErr.Error()})
+		return
+	}
+
+	log.Info("retry-email-parse signal sent", "workflowId", workflowId)
 	c.JSON(http.StatusOK, gin.H{"status": "signal sent", "workflowId": workflowId})
 }

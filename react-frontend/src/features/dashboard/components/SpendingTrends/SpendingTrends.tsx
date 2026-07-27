@@ -1,189 +1,126 @@
-import { useState } from 'react';
 import { useAppSelector } from '@/app/hooks';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { selectSpendingTrends } from '../../store/dashboardSlice';
-import { ChartBar as BarChart3 } from '@phosphor-icons/react';
+import { ChartBar } from '@phosphor-icons/react';
+import { formatCurrency, formatCompactCurrency } from '../../utils';
 import styles from './SpendingTrends.module.css';
 
-const formatCurrency = (amount: number): string => {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
-};
+// Categorical series colors, CVD-validated against the card surface (#323232).
+// Hex constants because SVG fill attributes don't resolve CSS custom properties.
+const INCOME_COLOR = '#1baf7a';
+const EXPENSE_COLOR = '#3987e5';
+const AXIS_COLOR = '#a9a9a9';
+const GRID_COLOR = 'rgba(255, 255, 255, 0.07)';
 
-interface TooltipData {
-  month: string;
-  income: number;
-  expenses: number;
-  x: number;
-  y: number;
+interface TooltipEntry {
+  dataKey?: string | number;
+  name?: string | number;
+  value?: string | number;
+  color?: string;
 }
+
+interface CashFlowTooltipProps {
+  active?: boolean;
+  payload?: TooltipEntry[];
+  label?: string | number;
+}
+
+const CashFlowTooltip = ({ active, payload, label }: CashFlowTooltipProps) => {
+  if (!active || !payload || payload.length === 0) return null;
+
+  return (
+    <div className={styles.tooltip}>
+      <div className={styles.tooltipLabel}>{label}</div>
+      {payload.map((entry) => (
+        <div key={String(entry.dataKey)} className={styles.tooltipRow}>
+          <span className={styles.tooltipSwatch} style={{ background: entry.color }} />
+          <span className={styles.tooltipName}>{entry.name}</span>
+          <span className={styles.tooltipValue}>{formatCurrency(Number(entry.value ?? 0))}</span>
+        </div>
+      ))}
+    </div>
+  );
+};
 
 export default function SpendingTrends() {
   const trends = useAppSelector(selectSpendingTrends);
-  const [tooltip, setTooltip] = useState<TooltipData | null>(null);
-
-  if (trends.length === 0) {
-    return (
-      <div className={styles.container}>
-        <div className={styles.header}>
-          <h2 className={styles.title}>
-            <BarChart3 size={20} className={styles.titleIcon} />
-            Spending Trends
-          </h2>
-        </div>
-        <div className={styles.emptyState}>No transaction data available</div>
-      </div>
-    );
-  }
-
-  // Chart dimensions
-  const width = 100; // SVG viewBox width percentage
-  const height = 100;
-  const padding = { top: 10, bottom: 25, left: 5, right: 5 };
-  const chartWidth = width - padding.left - padding.right;
-  const chartHeight = height - padding.top - padding.bottom;
-
-  // Calculate max value for scaling
-  const maxValue = Math.max(
-    ...trends.flatMap((t) => [t.income, t.expenses]),
-    1
-  );
-
-  // Bar dimensions
-  const barGroupWidth = chartWidth / trends.length;
-  const barWidth = barGroupWidth * 0.35;
-  const barGap = barGroupWidth * 0.05;
-
-  const handleMouseEnter = (
-    trend: typeof trends[0],
-    _index: number,
-    event: React.MouseEvent
-  ) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const containerRect = (event.currentTarget.closest(`.${styles.chartContainer}`) as HTMLElement)?.getBoundingClientRect();
-    
-    if (containerRect) {
-      setTooltip({
-        month: trend.monthLabel,
-        income: trend.income,
-        expenses: trend.expenses,
-        x: rect.left - containerRect.left + rect.width / 2,
-        y: rect.top - containerRect.top - 10,
-      });
-    }
-  };
-
-  const handleMouseLeave = () => {
-    setTooltip(null);
-  };
+  const hasData = trends.some((trend) => trend.income > 0 || trend.expenses > 0);
 
   return (
     <div className={styles.container}>
       <div className={styles.header}>
         <h2 className={styles.title}>
-          <BarChart3 size={20} className={styles.titleIcon} />
-          Spending Trends
+          <ChartBar size={18} />
+          Cash flow
         </h2>
         <div className={styles.legend}>
-          <div className={styles.legendItem}>
-            <div className={`${styles.legendDot} ${styles.income}`} />
+          <span className={styles.legendItem}>
+            <span className={styles.legendDot} style={{ background: INCOME_COLOR }} />
             Income
-          </div>
-          <div className={styles.legendItem}>
-            <div className={`${styles.legendDot} ${styles.expenses}`} />
-            Expenses
-          </div>
+          </span>
+          <span className={styles.legendItem}>
+            <span className={styles.legendDot} style={{ background: EXPENSE_COLOR }} />
+            Spending
+          </span>
         </div>
       </div>
 
-      <div className={styles.chartContainer}>
-        <svg
-          className={styles.chart}
-          viewBox={`0 0 ${width} ${height}`}
-          preserveAspectRatio="xMidYMid meet"
-        >
-          {/* Grid lines */}
-          {[0, 25, 50, 75, 100].map((percent) => (
-            <line
-              key={percent}
-              className={styles.gridLine}
-              x1={padding.left}
-              y1={padding.top + (chartHeight * (100 - percent)) / 100}
-              x2={width - padding.right}
-              y2={padding.top + (chartHeight * (100 - percent)) / 100}
-            />
-          ))}
-
-          {/* Bars */}
-          {trends.map((trend, index) => {
-            const groupX = padding.left + index * barGroupWidth;
-            const incomeHeight = (trend.income / maxValue) * chartHeight;
-            const expensesHeight = (trend.expenses / maxValue) * chartHeight;
-
-            return (
-              <g
-                key={trend.month}
-                className={styles.barGroup}
-                onMouseEnter={(e) => handleMouseEnter(trend, index, e)}
-                onMouseLeave={handleMouseLeave}
-              >
-                {/* Income bar */}
-                <rect
-                  className={`${styles.bar} ${styles.income}`}
-                  x={groupX + barGap}
-                  y={padding.top + chartHeight - incomeHeight}
-                  width={barWidth}
-                  height={incomeHeight}
-                  rx={2}
-                />
-                {/* Expenses bar */}
-                <rect
-                  className={`${styles.bar} ${styles.expenses}`}
-                  x={groupX + barWidth + barGap * 2}
-                  y={padding.top + chartHeight - expensesHeight}
-                  width={barWidth}
-                  height={expensesHeight}
-                  rx={2}
-                />
-                {/* Month label */}
-                <text
-                  className={styles.axisLabel}
-                  x={groupX + barGroupWidth / 2}
-                  y={height - 5}
-                  textAnchor="middle"
-                >
-                  {trend.monthLabel}
-                </text>
-              </g>
-            );
-          })}
-        </svg>
-
-        {/* Tooltip */}
-        {tooltip && (
-          <div
-            className={styles.tooltip}
-            style={{
-              left: tooltip.x,
-              top: tooltip.y,
-              transform: 'translate(-50%, -100%)',
-            }}
+      {hasData ? (
+        <div className={styles.chartArea}>
+          <ResponsiveContainer
+            width="100%"
+            height={240}
+            initialDimension={{ width: 600, height: 240 }}
           >
-            <div className={styles.month}>{tooltip.month}</div>
-            <div className={styles.values}>
-              <span className={styles.income}>
-                Income: {formatCurrency(tooltip.income)}
-              </span>
-              <span className={styles.expenses}>
-                Expenses: {formatCurrency(tooltip.expenses)}
-              </span>
-            </div>
-          </div>
-        )}
-      </div>
+            <BarChart data={trends} barGap={2} barCategoryGap="28%">
+              <CartesianGrid vertical={false} stroke={GRID_COLOR} />
+              <XAxis
+                dataKey="monthLabel"
+                axisLine={{ stroke: GRID_COLOR }}
+                tickLine={false}
+                tick={{ fill: AXIS_COLOR, fontSize: 13.5 }}
+              />
+              <YAxis
+                axisLine={false}
+                tickLine={false}
+                width={60}
+                tick={{ fill: AXIS_COLOR, fontSize: 13.5 }}
+                tickFormatter={(value: number) => formatCompactCurrency(value)}
+              />
+              <Tooltip
+                content={<CashFlowTooltip />}
+                cursor={{ fill: 'rgba(255, 255, 255, 0.04)' }}
+              />
+              <Bar
+                dataKey="income"
+                name="Income"
+                fill={INCOME_COLOR}
+                radius={[4, 4, 0, 0]}
+                maxBarSize={20}
+                isAnimationActive={false}
+              />
+              <Bar
+                dataKey="expenses"
+                name="Spending"
+                fill={EXPENSE_COLOR}
+                radius={[4, 4, 0, 0]}
+                maxBarSize={20}
+                isAnimationActive={false}
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      ) : (
+        <div className={styles.emptyState}>No transactions in the last 6 months</div>
+      )}
     </div>
   );
 }

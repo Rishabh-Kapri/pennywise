@@ -63,6 +63,21 @@ func main() {
 	redisClient := redis.NewClient(redisOptions)
 	defer redisClient.Close()
 
+	// Temporal client — nil when Temporal is not configured (e.g. local dev).
+	// Shared by the pipeline retry endpoint and the activity worker below.
+	var temporalClient client.Client
+	if config.Environment != "local" && config.TemporalServerHost != "" {
+		tcl, err := client.Dial(client.Options{
+			HostPort:           fmt.Sprintf("%s:%s", config.TemporalServerHost, config.TemporalServerPort),
+			ContextPropagators: sharedTemporal.ContextPropagators(),
+		})
+		if err != nil {
+			logger.Logger(ctx).Error("failed to create temporal client", "error", err)
+			panic(err)
+		}
+		temporalClient = tcl
+	}
+
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(gzip.Gzip(gzip.DefaultCompression))
@@ -118,6 +133,7 @@ func main() {
 	googleProviderRepo := repository.NewGoogleProviderRepository(dbConn)
 	apiKeyRepo := repository.NewAPIKeyRepository(dbConn)
 	agentRepo := repository.NewAgentRepository(dbConn)
+	pipelineRunRepo := repository.NewPipelineRunRepository(dbConn)
 
 	budgetService := service.NewBudgetService(budgetRepo, payeeRepo, categoryRepo, categoryGroupRepo)
 	budgetHandler := handler.NewBudgetHandler(budgetService)
@@ -184,12 +200,35 @@ func main() {
 	authService := service.NewAuthService(authRepo, googleProviderRepo, gmailClient)
 	authHandler := handler.NewAuthHandler(authService)
 
+	var demoHandler handler.DemoHandler
+	if config.DemoMode {
+		demoService := service.NewDemoService(
+			authService,
+			authRepo,
+			googleProviderRepo,
+			budgetRepo,
+			categoryGroupRepo,
+			categoryRepo,
+			payeeRepo,
+			accountRepo,
+			payeeRuleRepo,
+		)
+		demoHandler = handler.NewDemoHandler(demoService)
+	}
+
 	apiKeyService := service.NewApiKeyService(apiKeyRepo)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 
 	loanMetadataRepo := repository.NewLoanMetadataRepository(dbConn)
 	loanMetadataService := service.NewLoanMetadataService(loanMetadataRepo)
 	loanMetadataHandler := handler.NewLoanMetadataHandler(loanMetadataService)
+
+	reportRepo := repository.NewReportRepository(dbConn)
+	reportService := service.NewReportService(reportRepo)
+	reportHandler := handler.NewReportHandler(reportService)
+
+	pipelineService := service.NewPipelineService(pipelineRunRepo, temporalClient)
+	pipelineHandler := handler.NewPipelineHandler(pipelineService)
 
 	websocketHub := websocket.NewConnectionHub()
 	websocketService := service.NewWebsocketService(websocketHub)
@@ -219,6 +258,9 @@ func main() {
 			authGroup := router.Group("/api/auth")
 			authGroup.POST("/google", authHandler.LoginWithGoogle)
 			authGroup.POST("/refresh", authHandler.RefreshToken)
+			if config.DemoMode {
+				authGroup.POST("/demo", demoHandler.LoginAsDemo)
+			}
 			// authGroup.POST("/logout", authHandler.Logout)
 		}
 
@@ -280,7 +322,8 @@ func main() {
 		{
 			apiKeyGroup := router.Group("/api/keys")
 			apiKeyGroup.Use(authMiddleware, rateLimitMiddleware)
-			apiKeyGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), apiKeyHandler.GetByKeyID)
+			apiKeyGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), apiKeyHandler.GetAll)
+			apiKeyGroup.GET("/:keyID", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), apiKeyHandler.GetByKeyID)
 			apiKeyGroup.POST("", middleware.RouteAuthMiddleware(sharedModel.ScopeAdmin), apiKeyHandler.Create)
 		}
 		{
@@ -420,6 +463,11 @@ func main() {
 			predictionGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
 			predictionGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), predictionHandler.List)
 			predictionGroup.GET(
+				"/cipher",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				predictionHandler.ListCipherPredictions,
+			)
+			predictionGroup.GET(
 				"/transactions/:transactionId",
 				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
 				predictionHandler.GetByTransactionID,
@@ -471,21 +519,43 @@ func main() {
 				loanMetadataHandler.Delete,
 			)
 		}
+		{
+			reportGroup := router.Group("/api/reports")
+			reportGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
+			reportGroup.GET("/spending", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), reportHandler.GetSpending)
+			reportGroup.GET(
+				"/income-expense",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				reportHandler.GetIncomeExpense,
+			)
+			reportGroup.GET("/networth", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), reportHandler.GetNetWorth)
+		}
+		{
+			pipelineGroup := router.Group("/api/pipeline")
+			pipelineGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
+			pipelineGroup.GET(
+				"/runs",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				pipelineHandler.ListRuns,
+			)
+			pipelineGroup.GET(
+				"/runs/:id",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				pipelineHandler.GetRun,
+			)
+			pipelineGroup.POST(
+				"/runs/:id/retry",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				pipelineHandler.RetryRun,
+			)
+		}
 	}
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 
 	// Temporal worker — skipped if TEMPORAL_SERVER_HOST is not set
-	if config.Environment != "local" && config.TemporalServerHost != "" {
-		temporalClient, err := client.Dial(client.Options{
-			HostPort:           fmt.Sprintf("%s:%s", config.TemporalServerHost, config.TemporalServerPort),
-			ContextPropagators: sharedTemporal.ContextPropagators(),
-		})
-		if err != nil {
-			logger.Logger(ctx).Error("failed to create temporal client", "error", err)
-			panic(err)
-		}
-		_, err = temporalClient.ScheduleClient().Create(ctx, client.ScheduleOptions{
+	if temporalClient != nil {
+		_, err := temporalClient.ScheduleClient().Create(ctx, client.ScheduleOptions{
 			ID: "sync-gmail-watch-workflow-schedule",
 			Spec: client.ScheduleSpec{
 				CronExpressions: []string{"0 12 */2 * *"}, // every 2 days at 12:00 PM
@@ -520,6 +590,10 @@ func main() {
 		w.RegisterActivity(&temporalActivities.FetchGoogleUsersActivity{
 			AuthService: authService,
 		})
+		w.RegisterActivity(&temporalActivities.PipelineStatusActivity{
+			PipelineRunRepo:  pipelineRunRepo,
+			WebsocketService: websocketService,
+		})
 
 		if err := w.Start(); err != nil {
 			logger.Logger(ctx).Error("failed to start temporal worker", "error", err)
@@ -535,8 +609,12 @@ func main() {
 		}()
 	}
 
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "5151"
+	}
 	go func() {
-		if err := router.Run("0.0.0.0:5151"); err != nil && err != http.ErrServerClosed {
+		if err := router.Run("0.0.0.0:" + port); err != nil && err != http.ErrServerClosed {
 			logger.Logger(ctx).Error("http server error", "error", err)
 		}
 	}()

@@ -24,6 +24,7 @@ type Config struct {
 	InternalAuthToken     string
 	TemporalServerHost    string
 	TemporalServerPort    string
+	DemoMode              bool
 }
 
 func Load() Config {
@@ -53,5 +54,7 @@ func Load() Config {
 
 		TemporalServerHost: os.Getenv("TEMPORAL_SERVER_HOST"),
 		TemporalServerPort: os.Getenv("TEMPORAL_SERVER_PORT"),
+
+		DemoMode: os.Getenv("DEMO_MODE") == "true",
 	}
 }

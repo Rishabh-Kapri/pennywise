@@ -46,6 +46,19 @@ func (m *mockTransactionRepo) Create(
 	return nil, args.Error(1)
 }
 
+// CreateDeduped implements repository.TransactionRepository.
+func (m *mockTransactionRepo) CreateDeduped(
+	ctx context.Context,
+	tx pgx.Tx,
+	txn model.Transaction,
+) (*model.Transaction, bool, error) {
+	args := m.Called(ctx, tx, txn)
+	if obj := args.Get(0); obj != nil {
+		return obj.(*model.Transaction), args.Bool(1), args.Error(2)
+	}
+	return nil, args.Bool(1), args.Error(2)
+}
+
 // DeleteById implements repository.TransactionRepository.
 func (m *mockTransactionRepo) DeleteById(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID) error {
 	args := m.Called(ctx, tx, budgetId, id)
@@ -180,6 +193,17 @@ func (m *mockCipherPredictionRepo) Create(
 	args := m.Called(ctx, tx, p)
 	if obj := args.Get(0); obj != nil {
 		return obj.(*model.CipherPredictionRecord), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+
+func (m *mockCipherPredictionRepo) GetAll(
+	ctx context.Context,
+	budgetID uuid.UUID,
+) ([]model.CipherPredictionRecord, error) {
+	args := m.Called(ctx, budgetID)
+	if obj := args.Get(0); obj != nil {
+		return obj.([]model.CipherPredictionRecord), args.Error(1)
 	}
 	return nil, args.Error(1)
 }
@@ -1506,8 +1530,8 @@ func TestLearnTransactionMappingAsync_NilPayeeID_Skips(t *testing.T) {
 	// but payeeID is nil → hits second guard
 	mockCipher := &mockCipherClientTxn{}
 	svc := &transactionService{
-		cipherClient:    mockCipher,
-		payeeRuleRepo:   &mockPayeeRuleRepo{},
+		cipherClient:     mockCipher,
+		payeeRuleRepo:    &mockPayeeRuleRepo{},
 		txnEmbeddingRepo: &mockTxnEmbeddingRepo{},
 	}
 	svc.learnTransactionMappingAsync(ctx, budgetId, txn)
@@ -1529,8 +1553,8 @@ func TestLearnTransactionMappingAsync_NilCategoryID_Skips(t *testing.T) {
 
 	mockCipher := &mockCipherClientTxn{}
 	svc := &transactionService{
-		cipherClient:    mockCipher,
-		payeeRuleRepo:   &mockPayeeRuleRepo{},
+		cipherClient:     mockCipher,
+		payeeRuleRepo:    &mockPayeeRuleRepo{},
 		txnEmbeddingRepo: &mockTxnEmbeddingRepo{},
 	}
 	svc.learnTransactionMappingAsync(ctx, budgetId, txn)
@@ -1551,8 +1575,8 @@ func TestLearnTransactionMappingAsync_NilRawBankText_Skips(t *testing.T) {
 
 	mockCipher := &mockCipherClientTxn{}
 	svc := &transactionService{
-		cipherClient:    mockCipher,
-		payeeRuleRepo:   &mockPayeeRuleRepo{},
+		cipherClient:     mockCipher,
+		payeeRuleRepo:    &mockPayeeRuleRepo{},
 		txnEmbeddingRepo: &mockTxnEmbeddingRepo{},
 	}
 	svc.learnTransactionMappingAsync(ctx, budgetId, txn)
@@ -1574,8 +1598,8 @@ func TestLearnTransactionMappingAsync_BlankRawBankText_Skips(t *testing.T) {
 
 	mockCipher := &mockCipherClientTxn{}
 	svc := &transactionService{
-		cipherClient:    mockCipher,
-		payeeRuleRepo:   &mockPayeeRuleRepo{},
+		cipherClient:     mockCipher,
+		payeeRuleRepo:    &mockPayeeRuleRepo{},
 		txnEmbeddingRepo: &mockTxnEmbeddingRepo{},
 	}
 	svc.learnTransactionMappingAsync(ctx, budgetId, txn)
@@ -1771,10 +1795,10 @@ func TestUpdateStatus_NilRawBankText_ReturnsError(t *testing.T) {
 	svc := &transactionService{repo: txnRepo, cipherPredictionRepo: cipherPredictionRepo}
 
 	txn := &model.Transaction{
-		ID:         txnId,
-		BudgetID:   budgetId,
-		PayeeID:    &payeeId,
-		CategoryID: &categoryId,
+		ID:          txnId,
+		BudgetID:    budgetId,
+		PayeeID:     &payeeId,
+		CategoryID:  &categoryId,
 		RawBankText: nil, // nil raw bank text
 	}
 	txnRepo.On("GetById", mock.Anything, budgetId, txnId).Return(txn, nil).Once()

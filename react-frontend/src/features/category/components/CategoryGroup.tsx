@@ -7,8 +7,14 @@ import { useCallback, useState } from 'react';
 import { CategoryInfo } from './CategoryInfo';
 import { useAppDispatch } from '@/app/hooks';
 import { createCategory, toggleGroupCollapse } from '../store';
-import { AmountCell } from './AmountCell';
 import { toast } from '@/utils';
+import { getCurrencyLocaleString } from '@/utils/date.utils';
+
+const formatAmount = (value: number): string =>
+  getCurrencyLocaleString(value || 0, 'INR', 'en-IN', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
 
 interface CategoryGroupProps {
   groups: CategoryGroup[];
@@ -67,12 +73,6 @@ export default function CategoryGroup({ groups, month }: CategoryGroupProps) {
   return (
     <div className={styles.mainContainer}>
       <div className={styles.header}>
-        <div className={styles.headerContainer}>
-          <div className={styles.spacer}></div>
-          <div className={styles.headerItem}>ASSIGNED</div>
-          <div className={styles.headerItem}>ACTIVITY</div>
-          <div className={styles.headerItem}>AVAILABLE</div>
-        </div>
         <div className={styles.content}>
           {groups.map((group) => (
             <div key={group.id} className={styles.groupContainer}>
@@ -106,18 +106,17 @@ export default function CategoryGroup({ groups, month }: CategoryGroupProps) {
                     </>
                   )}
                 </div>
-                <div className={styles.groupBudget}>
-                  <AmountCell value={group.budgeted?.[month] ?? 0} />
-                </div>
-                <div className={styles.groupBudget}>
-                  <AmountCell value={group.activity?.[month] ?? 0} />
-                </div>
-                <div className={styles.groupBudget}>
-                  <AmountCell
-                    value={group.balance?.[month] ?? 0}
-                    variant="balance"
-                    balanceClassName={styles.groupBalance}
-                  />
+                <div className={styles.groupSummary}>
+                  <span className={styles.groupAssigned}>
+                    {formatAmount(group.budgeted?.[month] ?? 0)} assigned
+                  </span>
+                  <span
+                    className={`${styles.groupChip} ${
+                      (group.balance?.[month] ?? 0) < 0 ? styles.groupChipOver : ''
+                    }`}>
+                    {formatAmount(Math.abs(group.balance?.[month] ?? 0))}{' '}
+                    {(group.balance?.[month] ?? 0) < 0 ? 'over' : 'left'}
+                  </span>
                 </div>
               </div>
               {!group.collapsed && (

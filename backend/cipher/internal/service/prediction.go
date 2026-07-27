@@ -3,8 +3,10 @@ package service
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
@@ -15,7 +17,9 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
 	agent "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/runtime"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/client"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/progress"
 	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
@@ -122,8 +126,23 @@ type predictionService struct {
 	payeeRuleRepo repository.PayeeRuleRepository
 	categoryRepo  repository.CategoryRepository
 	tracer        oteltrace.Tracer
+	// llmCallTimeout bounds each chat-endpoint LLM call made through the
+	// llmResolver (the OllamaClient bounds its own calls).
+	llmCallTimeout time.Duration
+	// pipelineTargets is the ordered provider chain for the email pipeline's
+	// LLM steps (extract, summarize, llm fallback).
+	pipelineTargets []config.LLMTarget
+	// embedders maps a provider name to its embedding backend, and
+	// embeddingTargets is the ordered chain drawn from it.
+	embedders        map[string]client.Embedder
+	embeddingTargets []config.LLMTarget
 }
 
+// NewPredictionService wires the prediction pipeline. embedders maps provider
+// names to embedding backends for the EMAIL_EMBEDDING_PROVIDERS chain; the
+// ollama client is always registered under "ollama", and callers add optional
+// remote backends (a nil entry is ignored so callers can pass one
+// unconditionally).
 func NewPredictionService(
 	agent *agent.Agent,
 	llmResolver llm.LLMResolver,
@@ -135,19 +154,166 @@ func NewPredictionService(
 	payeeRuleRepo repository.PayeeRuleRepository,
 	categoryRepo repository.CategoryRepository,
 	tracer oteltrace.Tracer,
+	embedders map[string]client.Embedder,
 ) PredictionService {
-	return &predictionService{
-		agent:         agent,
-		llmResolver:   llmResolver,
-		ollama:        ollama,
-		mlp:           mlp,
-		embeddingRepo: embeddingRepo,
-		accountRepo:   accountRepo,
-		payeeRepo:     payeeRepo,
-		payeeRuleRepo: payeeRuleRepo,
-		categoryRepo:  categoryRepo,
-		tracer:        tracer,
+	allEmbedders := map[string]client.Embedder{"ollama": ollama}
+	for provider, embedder := range embedders {
+		if embedder == nil {
+			continue
+		}
+		// Constructors return a typed nil pointer when unconfigured, which is a
+		// non-nil interface — unwrap it so the chain skips the provider instead
+		// of panicking on the call.
+		if value := reflect.ValueOf(embedder); value.Kind() == reflect.Ptr && value.IsNil() {
+			continue
+		}
+		allEmbedders[provider] = embedder
 	}
+
+	return &predictionService{
+		agent:            agent,
+		llmResolver:      llmResolver,
+		ollama:           ollama,
+		mlp:              mlp,
+		embeddingRepo:    embeddingRepo,
+		accountRepo:      accountRepo,
+		payeeRepo:        payeeRepo,
+		payeeRuleRepo:    payeeRuleRepo,
+		categoryRepo:     categoryRepo,
+		tracer:           tracer,
+		llmCallTimeout:   config.Load().LLMCallTimeout,
+		pipelineTargets:  config.Load().EmailPipelineTargets,
+		embedders:        allEmbedders,
+		embeddingTargets: config.Load().EmailEmbeddingTargets,
+	}
+}
+
+// embedWithFallback generates an embedding for text, trying each configured
+// embedding target in order and moving on when one fails. It returns the target
+// that produced the vector so callers can record which backend was used.
+//
+// Every target is expected to serve the same model, so the resulting vectors
+// stay comparable to the ones already stored in pgvector; the chain exists for
+// availability, not for model choice.
+func (s *predictionService) embedWithFallback(
+	ctx context.Context,
+	text string,
+) ([]float64, config.LLMTarget, error) {
+	log := logger.Logger(ctx)
+
+	if len(s.embeddingTargets) == 0 {
+		return nil, config.LLMTarget{}, errs.New(errs.CodeInternalError, "no embedding providers configured")
+	}
+
+	var lastErr error
+	for _, target := range s.embeddingTargets {
+		embedder, ok := s.embedders[target.Provider]
+		if !ok {
+			log.Warn("embedding provider unavailable, trying next", "provider", target.Provider)
+			lastErr = errs.New(errs.CodeInternalError, "embedding provider %q not configured", target.Provider)
+			continue
+		}
+
+		embedModel := target.Model
+		if embedModel == "" {
+			embedModel = EmbeddingModel
+		}
+
+		embedding, err := embedder.Embed(ctx, embedModel, text)
+		if err != nil {
+			log.Warn("embedding provider call failed, trying next",
+				"provider", target.Provider, "model", embedModel, "error", err)
+			lastErr = err
+			continue
+		}
+
+		return embedding, config.LLMTarget{Provider: target.Provider, Model: embedModel}, nil
+	}
+
+	return nil, config.LLMTarget{}, errs.Wrap(errs.CodeInternalError, "all embedding providers failed", lastErr)
+}
+
+// cloudMaxOutputTokens bounds the output budget requested from hosted providers.
+// Ollama maps the cap to num_predict, a soft generation ceiling where an
+// oversized value costs nothing, so local targets keep whatever the caller asked
+// for. Hosted APIs instead validate it (max_output_tokens / max_tokens) against
+// the model's own limit and reject anything above it — Claude Haiku 4.5 tops out
+// near 64k, GPT-4o at 16k — and some reserve quota against the requested figure.
+// The pipeline's largest real response is a small JSON object, so this ceiling is
+// still ample.
+const cloudMaxOutputTokens = 8192
+
+// localLLMProviders serve models on infrastructure we run, where the token cap
+// is advisory. Everything else is treated as a hosted API.
+var localLLMProviders = map[string]bool{"ollama": true}
+
+// chatWithFallback runs the request against each configured pipeline provider in
+// order, returning the first successful response. Any failure — the provider
+// isn't configured, the host is unreachable, the call times out — moves on to
+// the next target, so a local ollama outage no longer stalls the whole pipeline.
+// buildReq receives the resolved model name for the target being tried.
+//
+// Falling through on *every* error (rather than only transport errors) is
+// deliberate: the alternative is failing the activity, and one extra call to the
+// next provider is cheaper than a parked workflow. When every target fails the
+// last error is returned so Temporal still sees a retryable failure.
+func (s *predictionService) chatWithFallback(
+	ctx context.Context,
+	step string,
+	buildReq func(model string) sharedModel.ChatRequest,
+) (*sharedModel.ChatResponse, error) {
+	log := logger.Logger(ctx)
+
+	targets := s.pipelineTargets
+	if len(targets) == 0 {
+		return nil, errs.New(errs.CodeLLMNotConfigured, "no email pipeline providers configured")
+	}
+
+	var lastErr error
+	for _, target := range targets {
+		lc, model, err := s.llmResolver.Resolve(target.Provider, target.Model)
+		if err != nil {
+			// Provider has no API key / isn't registered — skip to the next.
+			log.Warn("pipeline provider unavailable, trying next",
+				"step", step, "provider", target.Provider, "error", err)
+			lastErr = err
+			continue
+		}
+
+		req := buildReq(model)
+		req.Provider = target.Provider
+		req.Model = model
+		if !localLLMProviders[target.Provider] && req.MaxTokens > cloudMaxOutputTokens {
+			req.MaxTokens = cloudMaxOutputTokens
+		}
+
+		progress.Report(ctx, step)
+		chatCtx, chatCancel := s.withLLMTimeout(ctx)
+		res, err := lc.Chat(chatCtx, req)
+		chatCancel()
+		if err != nil {
+			log.Warn("pipeline provider call failed, trying next",
+				"step", step, "provider", target.Provider, "model", model, "error", err)
+			lastErr = err
+			continue
+		}
+
+		log.Info("pipeline llm call succeeded",
+			"step", step, "provider", target.Provider, "model", model)
+		return res, nil
+	}
+
+	return nil, errs.Wrap(errs.CodeInternalError,
+		"all email pipeline providers failed for step "+step, lastErr)
+}
+
+// withLLMTimeout bounds a single chat-endpoint LLM call.
+func (s *predictionService) withLLMTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	timeout := s.llmCallTimeout
+	if timeout <= 0 {
+		timeout = config.DefaultLLMCallTimeout
+	}
+	return context.WithTimeout(ctx, timeout)
 }
 
 func (s *predictionService) getPayeeAndCategory(
@@ -217,10 +383,12 @@ func (s *predictionService) handleSemanticSearch(
 ) (*PredictResponse, error) {
 	log := logger.Logger(ctx)
 
-	embedding, err := s.ollama.Embed(ctx, EmbeddingModel, embeddingText)
+	progress.Report(ctx, "predict:semantic_search")
+	embedding, embedTarget, err := s.embedWithFallback(ctx, embeddingText)
 	if err != nil {
-		log.Warn("ollama embed failed, falling back to MLP", "error", err)
-		// return s.mlpFallback(ctx, req, log)
+		// Semantic search is optional: without a vector we simply fall through
+		// to the payee rules / LLM fallback rather than failing the prediction.
+		log.Warn("embedding failed, skipping semantic search", "error", err)
 		return nil, nil
 	}
 
@@ -242,6 +410,12 @@ func (s *predictionService) handleSemanticSearch(
 		}
 		result.Payee = payee.Name
 		result.Category = category.Name
+		// Record which backend produced the query vector — with a fallback chain
+		// the corpus can mix backends, and that is worth being able to see.
+		if result.Metadata != nil {
+			result.Metadata["embedding_model"] = embedTarget.Model
+			result.Metadata["embedding_provider"] = embedTarget.Provider
+		}
 		return result, nil
 	}
 	return nil, nil
@@ -253,11 +427,16 @@ func (s *predictionService) handleLLM(
 	embeddingText string,
 	req PredictRequest,
 ) (*PredictResponse, error) {
+	log := logger.Logger(ctx)
+
 	llmReq := LLMRequest{
-		Text:   embeddingText,
+		Text:   req.EmailText,
 		Amount: req.Amount,
 	}
+	log.Info("handleLLm", "llmReq", llmReq)
+
 	parsed, categoryID, metadata, err := s.llmFallback(ctx, budgetId, llmReq)
+	log.Info("after llmFallback", "parsed", parsed, "categoryID", categoryID, "metadata", metadata, "err", err)
 	if err != nil {
 		return nil, err
 	}
@@ -323,14 +502,44 @@ func (s *predictionService) SummarizeEmailText(ctx context.Context, text string)
 
 	log.Info("SummarizeEmailText before prompt", "text", text)
 
-	prompt := client.EmailSummarizationPrompt + text + "\nOutput:"
-	temperature := float32(0.0)
-
-	res, err := client.GenericLLMCall[summaryResponse](ctx, s.ollama, model.PromptReq{
-		Model:       "gemma4",
-		Prompt:      prompt,
-		Temperature: &temperature,
+	chatRes, err := s.chatWithFallback(ctx, "predict:summarize", func(model string) sharedModel.ChatRequest {
+		return sharedModel.ChatRequest{
+			Model: model,
+			Messages: []sharedModel.AgentMessage{
+				{
+					Role: sharedModel.RoleSystem,
+					Content: []sharedModel.ContentBlock{
+						{
+							Type: "text",
+							Text: client.EmailSummarizationPrompt,
+						},
+					},
+				},
+				{
+					Role: sharedModel.RoleUser,
+					Content: []sharedModel.ContentBlock{
+						{
+							Type: "text",
+							Text: text,
+						},
+					},
+				},
+			},
+			Temperature: 0.0,
+			Stream:      false,
+			Format:      "json",
+		}
 	})
+	if err != nil {
+		return "", err
+	}
+	if len(chatRes.Message.Content) == 0 {
+		// Non-transaction emails legitimately summarize to nothing.
+		log.Warn("empty summarization response", "text", text)
+		return "", nil
+	}
+
+	res, err := utils.UnmarshalResponse[summaryResponse]([]byte(chatRes.Message.Content[0].Text))
 	if err != nil {
 		return "", err
 	}
@@ -365,45 +574,48 @@ func (s *predictionService) ExtractEmailData(
 	text = strings.ReplaceAll(text, "\n", "")
 	text = strings.TrimSpace(text)
 
-	lc, model, err := s.llmResolver.Resolve("ollama", "gemma4:12b")
-	if err != nil {
-		return nil, err
-	}
-
-	chatReq := sharedModel.ChatRequest{
-		Provider: "ollama",
-		Model:    model,
-		Messages: []sharedModel.AgentMessage{
-			{
-				Role: sharedModel.RoleSystem,
-				Content: []sharedModel.ContentBlock{
-					{
-						Type: "text",
-						Text: client.ExtractionPrompt,
+	chatRes, err := s.chatWithFallback(ctx, "parse:extract", func(model string) sharedModel.ChatRequest {
+		return sharedModel.ChatRequest{
+			Model: model,
+			Messages: []sharedModel.AgentMessage{
+				{
+					Role: sharedModel.RoleSystem,
+					Content: []sharedModel.ContentBlock{
+						{
+							Type: "text",
+							Text: client.ExtractionPrompt,
+						},
+					},
+				},
+				{
+					Role: sharedModel.RoleUser,
+					Content: []sharedModel.ContentBlock{
+						{
+							Type: "text",
+							Text: text,
+						},
 					},
 				},
 			},
-			{
-				Role: sharedModel.RoleUser,
-				Content: []sharedModel.ContentBlock{
-					{
-						Type: "text",
-						Text: text,
-					},
-				},
-			},
-		},
-		Temperature: 0.0,
-		MaxTokens:   1024,
-		Stream:      false,
-		Format:      "json",
-	}
-	chatRes, err := lc.Chat(ctx, chatReq)
+			Temperature: 0.0,
+			MaxTokens:   100000,
+			Stream:      false,
+			Format:      client.ExtractionSchema,
+		}
+	})
 	if err != nil {
 		return nil, err
 	}
-	if chatRes.Message.Content == nil {
-		return nil, errs.New(errs.CodeInternalError, "no content in response")
+	if len(chatRes.Message.Content) == 0 {
+		// The model replies with nothing for some non-transaction emails despite
+		// the prompt; treat it as a skip so the batch survives — retrying at
+		// temperature 0 would deterministically fail again.
+		log.Warn("empty extraction response, treating email as non-transaction", "emailText", text)
+		return &sharedModel.ExtractedEmailResponse{
+			EmailText: text,
+			Skipped:   true,
+			Reasoning: "extractor returned no content",
+		}, nil
 	}
 
 	extracted, err := utils.UnmarshalResponse[sharedModel.ExtractedEmailResponse](
@@ -446,8 +658,10 @@ func (s *predictionService) Predict(ctx context.Context, req PredictRequest) (*P
 		extractedEmail.Date = req.ExtractedInputs.Date
 		extractedEmail.EmailText = req.EmailText
 	} else {
-		// Step 1: Extract email data using gemma4 if not provided
-		extracted, err := s.ollama.ExtractEmailData(ctx, req.EmailText)
+		// Step 1: Extract email data if the caller didn't already do it. Goes
+		// through the same provider chain as the parse step rather than
+		// straight to ollama, so this path survives a local outage too.
+		extracted, err := s.ExtractEmailData(ctx, ExtractEmailDataRequest{EmailHtml: req.EmailText})
 		if err != nil {
 			return nil, err
 		}
@@ -468,7 +682,9 @@ func (s *predictionService) Predict(ctx context.Context, req PredictRequest) (*P
 		return nil, err
 	}
 	if account == nil {
-		return nil, errs.New(errs.CodeInternalError, "account not found")
+		// Distinct code so activities can classify this as a per-email skip
+		// rather than a retryable infrastructure failure.
+		return nil, errs.New(errs.CodeAccountLookupFailed, "account not found for suffix %q", accountStr)
 	}
 	if err != nil {
 		logger.Logger(ctx).Warn("email extraction failed", "error", err)
@@ -577,7 +793,7 @@ func (s *predictionService) GenerateTransactionEmbedding(
 	}
 
 	embeddingText := transactionType + " " + merchantName
-	embedding, err := s.ollama.Embed(ctx, EmbeddingModel, embeddingText)
+	embedding, _, err := s.embedWithFallback(ctx, embeddingText)
 	if err != nil {
 		return nil, errs.Wrap(errs.CodeInternalError, "generate transaction embedding", err)
 	}
@@ -594,7 +810,7 @@ func (s *predictionService) HandleCorrection(ctx context.Context, req Correction
 	logger := logger.Logger(ctx)
 
 	// Generate embedding for the corrected transaction
-	embedding, err := s.ollama.Embed(ctx, EmbeddingModel, req.EmailText)
+	embedding, _, err := s.embedWithFallback(ctx, req.EmailText)
 	if err != nil {
 		return errs.Wrap(errs.CodeInternalError, "embed correction", err)
 	}
@@ -705,13 +921,13 @@ func (s *predictionService) llmFallback(
 	budgetId uuid.UUID,
 	req LLMRequest,
 ) (*model.LLMPrediction, uuid.UUID, map[string]any, error) {
-	// llmModel := "openai/gpt-5.4"
-	llmModel := "gemma4:12b"
+	log := logger.Logger(ctx)
 
 	userCategories, err := s.categoryRepo.GetAllSimplified(ctx, budgetId)
 	if err != nil {
 		return nil, uuid.Nil, nil, err
 	}
+	log.Info("categories found", "userCategories", userCategories, "err", err)
 
 	userCategoriesMap := make(map[string]uuid.UUID, len(userCategories))
 	userCategoriesText := ""
@@ -720,43 +936,40 @@ func (s *predictionService) llmFallback(
 		userCategoriesMap[c.Name] = c.ID
 	}
 
+	log.Info("categories map", "map", userCategoriesMap, "text", userCategoriesText, "prompt", promptV2)
+
 	prompt := strings.ReplaceAll(promptV2, "{categories}", userCategoriesText)
+	log.Info("llmFallback", "prompt", prompt)
 
-	lc, m, err := s.llmResolver.Resolve("ollama", "gemma4:12b")
-	if err != nil {
-		return nil, uuid.Nil, nil, err
-	}
-
-	chatReq := sharedModel.ChatRequest{
-		Provider: "ollama",
-		Model:    m,
-		Messages: []sharedModel.AgentMessage{
-			{
-				Role: sharedModel.RoleSystem,
-				Content: []sharedModel.ContentBlock{
-					{
-						Type: "text",
-						Text: prompt,
+	chatRes, err := s.chatWithFallback(ctx, "predict:llm_fallback", func(model string) sharedModel.ChatRequest {
+		return sharedModel.ChatRequest{
+			Model: model,
+			Messages: []sharedModel.AgentMessage{
+				{
+					Role: sharedModel.RoleSystem,
+					Content: []sharedModel.ContentBlock{
+						{
+							Type: "text",
+							Text: prompt,
+						},
+					},
+				},
+				{
+					Role: sharedModel.RoleUser,
+					Content: []sharedModel.ContentBlock{
+						{
+							Type: "text",
+							Text: req.Text,
+						},
 					},
 				},
 			},
-			{
-				Role: sharedModel.RoleUser,
-				Content: []sharedModel.ContentBlock{
-					{
-						Type: "text",
-						Text: req.Text,
-					},
-				},
-			},
-		},
-		Temperature: 0.0,
-		MaxTokens:   1024,
-		Stream:      false,
-		Format:      "json",
-	}
-
-	chatRes, err := lc.Chat(ctx, chatReq)
+			Temperature: 0.0,
+			MaxTokens:   10000,
+			Stream:      false,
+			Format:      "json",
+		}
+	})
 	if err != nil {
 		return nil, uuid.Nil, nil, errs.Wrap(errs.CodeInternalError, "error in llm fallback", err)
 	}
@@ -777,7 +990,7 @@ func (s *predictionService) llmFallback(
 
 	metadata := map[string]any{
 		"strategy":          "llm_fallback",
-		"model":             llmModel,
+		"model":             chatRes.Model,
 		"prompt":            prompt,
 		"input_text":        req.Text,
 		"input_amount":      req.Amount,

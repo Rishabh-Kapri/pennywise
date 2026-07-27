@@ -335,14 +335,13 @@ func (c *openAIClient) Stream(ctx context.Context, req sharedModel.ChatRequest) 
 		return events
 	}
 
-	log.Info("stream req done", "res", res, "error", err)
+	log.Info("stream req done", "status", res.StatusCode)
 
 	go func() {
 		defer func() {
 			close(events)
 		}()
 
-		log.Info("stream call", "res", res, "error", err)
 		for event := range res.Events {
 			// parsed, _ := utils.UnmarshalResponse[any](event.Data)
 			// log.Info("event loop", "event", event.Event, "data", parsed)
@@ -363,62 +362,63 @@ func (c *openAIClient) Stream(ctx context.Context, req sharedModel.ChatRequest) 
 						Role string `json:"role"` // assistant
 					} `json:"item"`
 				}
-				if json.Unmarshal(event.Data, &ev) == nil {
-					switch ev.Item.Type {
-					case "message":
-						// simple message call, skip
-					case "reasoning":
-						// @TODO: support later
-						return
-					case "function_call":
-						// function call started, send a tool call event
-						events <- sharedModel.StreamChunk{
-							Type:        sharedModel.ChunkEventToolCallStart,
-							ToolCallID:  ev.Item.ID,
-							ToolName:    ev.Item.Name,
-							OutputIndex: ev.OutputIndex,
-						}
+				if err := json.Unmarshal(event.Data, &ev); err != nil {
+					log.Error("failed to unmarshal stream event", "event", event.Event, "data", string(event.Data), "error", err)
+					continue
+				}
+				switch ev.Item.Type {
+				case "message":
+					// simple message call, skip
+				case "reasoning":
+					// reasoning models (gpt-5 family) emit a reasoning output
+					// item before the message; skip it instead of aborting
+					// the stream. @TODO: surface reasoning content later
+				case "function_call":
+					// function call started, send a tool call event
+					events <- sharedModel.StreamChunk{
+						Type:        sharedModel.ChunkEventToolCallStart,
+						ToolCallID:  ev.Item.ID,
+						ToolName:    ev.Item.Name,
+						OutputIndex: ev.OutputIndex,
 					}
-				} else {
-					return
 				}
 			case "response.output_text.delta":
 				var ev struct {
 					Delta string `json:"delta"`
 				}
-				if json.Unmarshal(event.Data, &ev) == nil {
-					events <- sharedModel.StreamChunk{
-						Type: sharedModel.ChunkEventText,
-						Text: ev.Delta,
-					}
-				} else {
-					return
+				if err := json.Unmarshal(event.Data, &ev); err != nil {
+					log.Error("failed to unmarshal stream event", "event", event.Event, "data", string(event.Data), "error", err)
+					continue
+				}
+				events <- sharedModel.StreamChunk{
+					Type: sharedModel.ChunkEventText,
+					Text: ev.Delta,
 				}
 			case "response.function_call_arguments.delta":
 				var ev struct {
 					OutputIndex int    `json:"output_index"`
 					Delta       string `json:"delta"`
 				}
-				if json.Unmarshal(event.Data, &ev) == nil {
-					events <- sharedModel.StreamChunk{
-						Type:          sharedModel.ChunkEventToolCallDelta,
-						ToolArgsDelta: ev.Delta,
-						OutputIndex:   ev.OutputIndex,
-					}
-				} else {
-					return
+				if err := json.Unmarshal(event.Data, &ev); err != nil {
+					log.Error("failed to unmarshal stream event", "event", event.Event, "data", string(event.Data), "error", err)
+					continue
+				}
+				events <- sharedModel.StreamChunk{
+					Type:          sharedModel.ChunkEventToolCallDelta,
+					ToolArgsDelta: ev.Delta,
+					OutputIndex:   ev.OutputIndex,
 				}
 			case "response.function_call_arguments.done":
 				var ev struct {
 					OutputIndex int `json:"output_index"`
 				}
-				if json.Unmarshal(event.Data, &ev) == nil {
-					events <- sharedModel.StreamChunk{
-						Type:        sharedModel.ChunkEventToolCall, // this event should merge all the tool related chunks
-						OutputIndex: ev.OutputIndex,
-					}
-				} else {
-					return
+				if err := json.Unmarshal(event.Data, &ev); err != nil {
+					log.Error("failed to unmarshal stream event", "event", event.Event, "data", string(event.Data), "error", err)
+					continue
+				}
+				events <- sharedModel.StreamChunk{
+					Type:        sharedModel.ChunkEventToolCall, // this event should merge all the tool related chunks
+					OutputIndex: ev.OutputIndex,
 				}
 			// @TODO: handle incomplete here too
 			case "response.completed":
@@ -443,36 +443,82 @@ func (c *openAIClient) Stream(ctx context.Context, req sharedModel.ChatRequest) 
 					} `json:"response"`
 				}
 
-				if json.Unmarshal(event.Data, &ev) == nil {
-					response := openAIRes{
-						Status: ev.Response.Status,
-						IncompleteDetails: func() *openAIIncompleteDetails {
-							if ev.Response.IncompleteDetails == nil {
-								return nil
-							}
-							return &openAIIncompleteDetails{Reason: ev.Response.IncompleteDetails.Reason}
-						}(),
-					}
-					usage := sharedModel.Usage{
-						InputTokens:  ev.Response.Usage.InputTokens,
-						OutputTokens: ev.Response.Usage.OutputTokens,
-						TotalTokens:  ev.Response.Usage.InputTokens + ev.Response.Usage.OutputTokens,
-					}
-					events <- sharedModel.StreamChunk{
-						Type:       sharedModel.ChunkEventCompleted,
-						Usage:      usage,
-						StopReason: toOpenAIStopReason(response),
-					}
-				} else {
-					return
+				if err := json.Unmarshal(event.Data, &ev); err != nil {
+					log.Error("failed to unmarshal stream event", "event", event.Event, "data", string(event.Data), "error", err)
+					continue
+				}
+				response := openAIRes{
+					Status: ev.Response.Status,
+					IncompleteDetails: func() *openAIIncompleteDetails {
+						if ev.Response.IncompleteDetails == nil {
+							return nil
+						}
+						return &openAIIncompleteDetails{Reason: ev.Response.IncompleteDetails.Reason}
+					}(),
+				}
+				usage := sharedModel.Usage{
+					InputTokens:  ev.Response.Usage.InputTokens,
+					OutputTokens: ev.Response.Usage.OutputTokens,
+					TotalTokens:  ev.Response.Usage.InputTokens + ev.Response.Usage.OutputTokens,
+				}
+				events <- sharedModel.StreamChunk{
+					Type:       sharedModel.ChunkEventCompleted,
+					Usage:      usage,
+					StopReason: toOpenAIStopReason(response),
 				}
 			case "response.failed", "response.error", "response.incomplete":
-			}
-			if err != nil {
-				log.Error("error while event unmarshal", "error", err)
+				errMsg := openAIStreamErrorMessage(event.Event, event.Data)
+				log.Error("openai stream returned an error event", "event", event.Event, "data", string(event.Data))
+				events <- sharedModel.StreamChunk{
+					Type: sharedModel.ChunkEventError,
+					Text: errMsg,
+				}
 			}
 		}
 	}()
 
 	return events
+}
+
+// openAIStreamErrorMessage extracts a human-readable error message from a
+// response.failed / response.error / response.incomplete stream event so the
+// real provider error survives into logs and run status instead of a generic
+// "llm responded with error".
+func openAIStreamErrorMessage(eventName string, data []byte) string {
+	var ev struct {
+		// top-level shape used by "error" events
+		Code    string `json:"code"`
+		Message string `json:"message"`
+		Error   *struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+		Response *struct {
+			Status string `json:"status"`
+			Error  *struct {
+				Code    string `json:"code"`
+				Message string `json:"message"`
+			} `json:"error"`
+			IncompleteDetails *struct {
+				Reason string `json:"reason"`
+			} `json:"incomplete_details"`
+		} `json:"response"`
+	}
+	if err := json.Unmarshal(data, &ev); err == nil {
+		if ev.Response != nil {
+			if ev.Response.Error != nil && ev.Response.Error.Message != "" {
+				return fmt.Sprintf("%s: %s (%s)", eventName, ev.Response.Error.Message, ev.Response.Error.Code)
+			}
+			if ev.Response.IncompleteDetails != nil && ev.Response.IncompleteDetails.Reason != "" {
+				return fmt.Sprintf("%s: %s", eventName, ev.Response.IncompleteDetails.Reason)
+			}
+		}
+		if ev.Error != nil && ev.Error.Message != "" {
+			return fmt.Sprintf("%s: %s (%s)", eventName, ev.Error.Message, ev.Error.Code)
+		}
+		if ev.Message != "" {
+			return fmt.Sprintf("%s: %s (%s)", eventName, ev.Message, ev.Code)
+		}
+	}
+	return fmt.Sprintf("%s: %s", eventName, string(data))
 }

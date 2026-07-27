@@ -4,11 +4,13 @@ import { config } from '@/config/env';
 import { selectCurrentAgentStreamId } from '@/features/agent/store';
 import { refreshAccessToken, selectAccessToken, selectUser } from '@/features/auth/store';
 import { selectSelectedBudget } from '@/features/budget';
+import { pipelineRunUpdated, type PipelineRun } from '@/features/pipeline';
 import { fetchAllTransaction } from '@/features/transactions/store';
 import { parseJWT } from '@/utils/auth.utils';
 import {
   AGENT_CHAT_WEBSOCKET_EVENT,
   AGENT_CHAT_SUBSCRIBE_EVENT,
+  PIPELINE_UPDATE_EVENT,
   type WebSocketMessage,
   type WebSocketSubscriptionMessage,
 } from './events';
@@ -73,16 +75,27 @@ function messageMatchesAgentRoom(
     return false;
   }
 
+  // If we don't have a known streamId yet (e.g. the run was just dispatched
+  // and the fulfilled action hasn't propagated to the ref), allow the message
+  // through on a budget+user match alone so we don't drop early stream events.
+  if (!streamId) {
+    return true;
+  }
+
   const messageStreamId = message.streamId ?? valueFromData(message.data, 'streamId');
   const messageRoomId = message.roomId ?? valueFromData(message.data, 'roomId');
-  if (!streamId) {
-    return false;
-  }
 
   const expectedRoomId = userId ? getAgentRoomId(budgetId, userId, streamId) : undefined;
 
+  // Only reject on a stream/room mismatch when the incoming message explicitly
+  // carries those fields — if they are absent, fall through and allow.
   if (messageStreamId && messageStreamId !== streamId) {
-    return false;
+    // Also accept if the message room contains our streamId (handles cases
+    // where the message carries the new run's streamId before our ref updates).
+    const roomContainsStream = messageRoomId?.includes(streamId) ?? false;
+    if (!roomContainsStream) {
+      return false;
+    }
   }
 
   if (expectedRoomId && messageRoomId && messageRoomId !== expectedRoomId) {
@@ -199,6 +212,15 @@ export function WebSocketProvider() {
 
           if (message.eventName === 'pennywise::transaction::created') {
             dispatch(fetchAllTransaction());
+          }
+
+          if (message.eventName === PIPELINE_UPDATE_EVENT && message.data) {
+            const run = (
+              typeof message.data === 'string' ? JSON.parse(message.data) : message.data
+            ) as PipelineRun;
+            if (run?.id) {
+              dispatch(pipelineRunUpdated(run));
+            }
           }
 
           if (

@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS budgets (
     user_id UUID REFERENCES auth_users(id),
     name TEXT NOT NULL,
     is_selected BOOLEAN,
+    -- inflowCategoryId / startingBalPayeeId / ccGroupId
+    metadata JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted BOOLEAN DEFAULT false
@@ -30,7 +32,7 @@ CREATE TABLE IF NOT EXISTS budgets (
 CREATE TABLE IF NOT EXISTS accounts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
-    budget_id UUID NOT NULL REFERENCES budgets(id),
+    budget_id UUID NOT NULL REFERENCES budgets(id) ON DELETE CASCADE,
     transfer_payee_id UUID,
     type TEXT NOT NULL,
     suffix TEXT, -- for saving the last 4 digits of the account number
@@ -43,7 +45,7 @@ CREATE TABLE IF NOT EXISTS accounts (
 CREATE TABLE IF NOT EXISTS payees (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
-    budget_id UUID NOT NULL REFERENCES budgets(id),
+    budget_id UUID NOT NULL REFERENCES budgets(id) ON DELETE CASCADE,
     transfer_account_id UUID REFERENCES accounts(id),
     deleted BOOLEAN DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -56,7 +58,7 @@ ALTER TABLE accounts ADD CONSTRAINT fk_transfer_payee_id FOREIGN KEY (transfer_p
 CREATE TABLE IF NOT EXISTS category_groups (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
-    budget_id UUID NOT NULL REFERENCES budgets(id),
+    budget_id UUID NOT NULL REFERENCES budgets(id) ON DELETE CASCADE,
     hidden BOOLEAN DEFAULT false,
     is_system BOOLEAN DEFAULT false,
     deleted BOOLEAN DEFAULT false,
@@ -67,8 +69,8 @@ CREATE TABLE IF NOT EXISTS category_groups (
 CREATE TABLE IF NOT EXISTS categories (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
-    budget_id UUID NOT NULL REFERENCES budgets(id),
-    category_group_id UUID NOT NULL REFERENCES category_groups(id),
+    budget_id UUID NOT NULL REFERENCES budgets(id) ON DELETE CASCADE,
+    category_group_id UUID REFERENCES category_groups(id) ON DELETE SET NULL,
     note TEXT,
     hidden BOOLEAN DEFAULT false,
     is_system BOOLEAN DEFAULT false,
@@ -97,8 +99,8 @@ CREATE INDEX idx_payee_rules_lookup ON payee_rules(budget_id, match_string);
 CREATE TABLE IF NOT EXISTS monthly_budgets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     month TEXT NOT NULL,
-    budget_id UUID NOT NULL REFERENCES budgets(id),
-    category_id UUID NOT NULL REFERENCES categories(id),
+    budget_id UUID NOT NULL REFERENCES budgets(id) ON DELETE CASCADE,
+    category_id UUID NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
     budgeted NUMERIC(12, 2) NOT NULL,
     carryover_balance NUMERIC(12, 2) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -107,11 +109,11 @@ CREATE TABLE IF NOT EXISTS monthly_budgets (
 
 CREATE TABLE IF NOT EXISTS transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    budget_id UUID NOT NULL REFERENCES budgets(id),
+    budget_id UUID NOT NULL REFERENCES budgets(id) ON DELETE CASCADE,
     date TEXT NOT NULL,
-    payee_id UUID REFERENCES payees(id),
-    category_id UUID REFERENCES categories(id),
-    account_id UUID NOT NULL REFERENCES accounts(id),
+    payee_id UUID REFERENCES payees(id) ON DELETE SET NULL,
+    category_id UUID REFERENCES categories(id) ON DELETE SET NULL,
+    account_id UUID NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
     amount NUMERIC(12, 2) NOT NULL,
     note TEXT,
 
@@ -122,6 +124,7 @@ CREATE TABLE IF NOT EXISTS transactions (
 
     transfer_account_id UUID REFERENCES accounts(id),
     transfer_transaction_id UUID REFERENCES transactions(id),
+    tag_ids UUID[],
     deleted BOOLEAN DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -134,8 +137,8 @@ WHERE dedupe_hash IS NOT NULL and deleted = FALSE;
 
 CREATE TABLE IF NOT EXISTS predictions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    budget_id UUID NOT NULL REFERENCES budgets(id),
-    transaction_id UUID NOT NULL REFERENCES transactions(id),
+    budget_id UUID NOT NULL REFERENCES budgets(id) ON DELETE CASCADE,
+    transaction_id UUID NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
     email_text TEXT,
     amount NUMERIC(12, 2),
     account TEXT,
@@ -162,10 +165,10 @@ CREATE TABLE IF NOT EXISTS cipher_predictions (
   amount NUMERIC(12, 2),
   -- extracted strings
   extracted_account TEXT,
-  extracted_merchant TEXT,
+  extracted_payee TEXT,
   -- predictions
-  predicted_payee_id UUID REFERENCES payees(id),
-  predicted_category_id UUID REFERENCES categories(id),
+  predicted_payee_id UUID REFERENCES payees(id) ON DELETE SET NULL,
+  predicted_category_id UUID REFERENCES categories(id) ON DELETE SET NULL,
   -- ai metrics
   account_confidence NUMERIC(5, 2),
   payee_confidence NUMERIC(5, 2),
@@ -173,8 +176,8 @@ CREATE TABLE IF NOT EXISTS cipher_predictions (
   source prediction_source NOT NULL,
 
   has_user_corrected BOOLEAN DEFAULT false,
-  actual_payee_id UUID REFERENCES payees(id),
-  actual_category_id UUID REFERENCES categories(id),
+  actual_payee_id UUID REFERENCES payees(id) ON DELETE SET NULL,
+  actual_category_id UUID REFERENCES categories(id) ON DELETE SET NULL,
   
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -188,7 +191,7 @@ CREATE TABLE IF NOT EXISTS loan_metadata (
     original_balance NUMERIC(12, 2) NOT NULL,
     monthly_payment NUMERIC(12, 2) NOT NULL,
     loan_start_date TEXT NOT NULL,
-    category_id UUID REFERENCES categories(id),
+    category_id UUID REFERENCES categories(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted BOOLEAN DEFAULT false
@@ -197,7 +200,7 @@ CREATE TABLE IF NOT EXISTS loan_metadata (
 CREATE TABLE IF NOT EXISTS tags (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
-    budget_id UUID NOT NULL REFERENCES budgets(id),
+    budget_id UUID NOT NULL REFERENCES budgets(id) ON DELETE CASCADE,
     color TEXT NOT NULL DEFAULT '',
     deleted BOOLEAN DEFAULT false,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -211,7 +214,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
     hashed_key TEXT NOT NULL,
     name TEXT NOT NULL,
     description TEXT DEFAULT '',
-    user_id UUID NOT NULL REFERENCES auth_users(id),
+    user_id UUID NOT NULL REFERENCES auth_users(id) ON DELETE CASCADE,
     scopes TEXT[] NOT NULL,
     allowed_ips TEXT[],
     allowed_referrers TEXT[],

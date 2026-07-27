@@ -20,6 +20,17 @@ export interface SpendingTrend {
 }
 
 /**
+ * Selected month cash flow vs the previous month
+ */
+export interface MonthlyComparison {
+  income: number;
+  expenses: number;
+  prevIncome: number;
+  prevExpenses: number;
+  hasPrevious: boolean;
+}
+
+/**
  * Individual category health status
  */
 export interface CategoryHealth {

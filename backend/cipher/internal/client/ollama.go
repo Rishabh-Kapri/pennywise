@@ -31,6 +31,16 @@ func NewOllamaClient(c *transport.Client, tracer oteltrace.Tracer) *OllamaClient
 	return &OllamaClient{client: c, config: cfg.Load(), tracer: tracer}
 }
 
+// withCallTimeout bounds a single LLM/embedding round-trip so a hung ollama
+// call fails fast instead of eating the whole activity timeout.
+func (c *OllamaClient) withCallTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	timeout := c.config.LLMCallTimeout
+	if timeout <= 0 {
+		timeout = cfg.DefaultLLMCallTimeout
+	}
+	return context.WithTimeout(ctx, timeout)
+}
+
 // ── Phase 1: Email data extraction ──────────────────────────────
 
 const extractionModel = "gemma4:12b"
@@ -96,23 +106,73 @@ const ExtractionPrompt = `You are a financial data extractor. You will receive e
 	- Skip the e-mandate email.
 	- Output field names must match the schema exactly. Do not rename, add, or omit any fields.
 	- date is always required if present in the email. Date formats like "3 Apr, 2023" must be parsed as 2023-04-03.
-	SCHEMA: {"merchant": "string", "amount": float, "date": "string (formatted as YYYY-MM-DD)", "time": string | null, "account_card": "string (Bank name and last 4 digits only, no extra words)", "reasoning": "string (Brief 1 sentence explanation of why this classification is chosen)"}
+
+	## Output shapes
+	### Shape A — Extracted transaction
+	Use when the email represents a completed debit or credit.
+
+	{
+		"merchant": "Google Play",
+		"amount": -650.00,
+		"date": "2026-06-14",
+		"time": "10:32",
+		"account_card": "HDFC 1234",
+		"reasoning": "..."
+	}
+
+	reasoning should be 1–2 sentences explaining how key fields were extracted or
+	any ambiguity resolved. Examples:
+	- "Debit of ₹650 to Google Play from HDFC Credit Card ending 1234 dated 14/06/2026."
+	- "Merchant extracted from POS label 'AMZN MKTP IN', normalized to Amazon. Amount negative as it is a debit."
+
+	### Shape B — Skipped email
+	Use when the email is an e-mandate, OTP, marketing, or otherwise not a completed transaction.
+
+	{
+		"merchant": "",
+		"amount": 0.0,
+		"date": "",
+		"time": "",
+		"account_card": "",
+		"skipped": true,
+		"reasoning": "Skipping e-mandate payment from HDFC credit card ending 1234"
+	}
+
+	Do NOT use Shape A with empty strings or 0.0 as a skip signal. Always use Shape B.
 
 	EXAMPLES: 
   Input: "Dear Customer, Rs.500.00 has been debited from account 4567 to VPA 9876543210@ybl JOHN DOE S O JAMES DOE on 14-07-25. Your UPI transaction reference number is 123456789012. If you did not authorize this transaction, please report it immediately by calling 18002586161 Or SMS BLOCK UPI to 7308080808. Warm Regards, HDFC BankFor more details on Service charges and Fees, click here.. © HDFC Bank"
-	Output: {"merchant": "JOHN DOE S O JAMES DOE", "amount": -500.0, "date": "2025-07-14", time: null, "account_card": "4567", "reasoning": "The transaction is a debit of 500.00 from an HDFC Bank acocunt ending in 4567 for the merchant JOHN DOE SO JAMES DOE."}
+	Output: {"merchant": "JOHN DOE S O JAMES DOE", "amount": -500.0, "date": "2025-07-14", time: "", "account_card": "4567", "reasoning": "The transaction is a debit of 500.00 from an HDFC Bank acocunt ending in 4567 for the merchant JOHN DOE SO JAMES DOE."}
 
 	Input: "Dear Customer, Rs. 3000.00 is successfully credited to your account **4567 by VPA 9876543210@ybl JOHN DOE S O JAMES DOE on 12-07-25. Your UPI transaction reference number is 987654321098. Thank you for banking with us. Warm Regards, HDFC BankFor more details on Service charges and Fees, click here.. © HDFC Bank}"
-	Output: {"merchant": "JOHN DOE S O JAMES DOE", "amount": 3000.0, "date": "2025-07-12", "account_card": "4567", "reasoning": "The transaction is a credit of 500.00 to HDFC Bank account Card ending in 4432 from the merchant JOHN DOE SO JAMES DOE."}
+	Output: {"merchant": "JOHN DOE S O JAMES DOE", "amount": 3000.0, "date": "2025-07-12", "time": "", "account_card": "4567", "reasoning": "The transaction is a credit of 500.00 to HDFC Bank account Card ending in 4432 from the merchant JOHN DOE SO JAMES DOE."}
 
 	Input: "Dear Customer, Rs.1200.00 has been debited from your HDFC Bank Credit Card ending 9876 towards NETFLIX on 05 Jan, 2025 at 10:22:11."
 	Output: {"merchant": "NETFLIX", "amount": -1200.0, "date": "2025-01-05", "time": "10:22:11", "account_card": "HDFC 9876", "reasoning": "Debit from HDFC credit card ending 9876 to Netflix."}
 
 	Input: "Dear Customer, Greetings from HDFC Bank! Your Canva Pty Ltd bill, set up through E-mandate (Auto payment), has been successfully paid using your HDFC Bank Credit Card ending 1234. Transaction Details: Amount: INR 500.00 Date: 10/06/2026 SI Hub ID: Y8Inwhnbjn To manage your e-Mandates, please visit: https://www.sihub.in/managesi/hdfcbank Thank you for banking with us. Warm regards, HDFC BankFor more details on Service charges and Fees, click here.. © HDFC Bank"
-	Output: {"merchant": "", "amount": 0.0, "date": "", "time": "", "account_card": "", "reasoning": "Skipping e-mandate payment from HDFC credit card ending 1234"}
+	Output: {"merchant": "", "amount": 0.0, "date": "", "time": "", "account_card": "", "reasoning": "Skipping e-mandate payment from HDFC credit card ending 1234", "skipped": true}
 
 	Now process this input:
 	Input: `
+
+// ExtractionSchema is the Ollama structured-outputs JSON schema for ExtractionPrompt.
+// It grammar-constrains generation so the model can never reply with an empty
+// string or a bare array for non-transaction emails — every field is forced to
+// exist, and skips must use Shape B (skipped: true).
+var ExtractionSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"merchant":     map[string]any{"type": "string"},
+		"amount":       map[string]any{"type": "number"},
+		"date":         map[string]any{"type": "string"},
+		"time":         map[string]any{"type": "string"},
+		"account_card": map[string]any{"type": "string"},
+		"reasoning":    map[string]any{"type": "string"},
+		"skipped":      map[string]any{"type": "boolean"},
+	},
+	"required": []string{"merchant", "amount", "date", "time", "account_card", "reasoning", "skipped"},
+}
 
 // ExtractEmailData implements Phase 1 of the classification pipeline:
 // sends raw email text to a local SLM (Gemma via Ollama) in JSON mode
@@ -147,6 +207,8 @@ func (c *OllamaClient) Embed(ctx context.Context, ollamaModel string, text strin
 		attribute.String("gen_ai.request.model", ollamaModel),
 		attribute.String("gen_ai.prompt", text),
 	)
+	ctx, cancel := c.withCallTimeout(ctx)
+	defer cancel()
 	resp, err := transport.Post[model.EmbedResponse](ctx, c.client, "/api/embed", nil, model.EmbedRequest{
 		Model: ollamaModel,
 		Input: text,
@@ -233,6 +295,8 @@ func (c *OllamaClient) doLocalGenerate(
 		modelTemp = *temperature
 	}
 
+	ctx, cancel := c.withCallTimeout(ctx)
+	defer cancel()
 	resp, err := transport.Post[model.OllamaResponse](ctx, c.client, "/api/generate", nil, model.OllamaRequest{
 		Model:  ollamaModel,
 		Prompt: prompt,
@@ -308,6 +372,8 @@ func (c *OllamaClient) doOpenAI(ctx context.Context, req model.PromptReq) (strin
 	}
 	reqData.ResponseFormat.Type = "json_object"
 
+	ctx, cancel := c.withCallTimeout(ctx)
+	defer cancel()
 	resp, err := transport.Post[model.OpenAIResponse](ctx, c.client, openaiEndpoint, headers, reqData)
 	if err != nil {
 		span.RecordError(err)

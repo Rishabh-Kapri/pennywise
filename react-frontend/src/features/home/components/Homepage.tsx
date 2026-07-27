@@ -17,35 +17,34 @@ import {
 } from '@phosphor-icons/react';
 import styles from './Homepage.module.css';
 
+const inr = (value: number): string => `₹${Math.abs(value).toLocaleString('en-IN')}`;
+
 const budgetGroups = [
   {
     name: 'Home Base',
-    assigned: '₹42,600',
-    activity: '-₹21,380',
-    available: '₹21,220',
+    assigned: 42600,
+    available: 21220,
     categories: [
-      { name: 'Utilities', assigned: '₹8,200', activity: '-₹3,460', available: '₹4,740' },
-      { name: 'Household', assigned: '₹6,400', activity: '-₹2,920', available: '₹3,480' },
+      { name: 'Utilities', assigned: 8200, spent: 3460, available: 4740 },
+      { name: 'Household', assigned: 6400, spent: 2920, available: 3480 },
     ],
   },
   {
     name: 'Daily Spend',
-    assigned: '₹31,750',
-    activity: '-₹18,240',
-    available: '₹13,510',
+    assigned: 31750,
+    available: 13510,
     categories: [
-      { name: 'Groceries', assigned: '₹16,000', activity: '-₹9,640', available: '₹6,360' },
-      { name: 'Commute', assigned: '₹4,800', activity: '-₹2,150', available: '₹2,650' },
+      { name: 'Groceries', assigned: 16000, spent: 9640, available: 6360 },
+      { name: 'Dining out', assigned: 6000, spent: 7450, available: -1450 },
     ],
   },
   {
     name: 'Future Plans',
-    assigned: '₹26,000',
-    activity: '-₹4,250',
-    available: '₹21,750',
+    assigned: 26000,
+    available: 21750,
     categories: [
-      { name: 'Trip fund', assigned: '₹12,000', activity: '-₹1,800', available: '₹10,200' },
-      { name: 'Emergency buffer', assigned: '₹14,000', activity: '-₹2,450', available: '₹11,550' },
+      { name: 'Trip fund', assigned: 12000, spent: 1800, available: 10200 },
+      { name: 'Emergency buffer', assigned: 14000, spent: 2450, available: 11550 },
     ],
   },
 ];
@@ -351,28 +350,42 @@ export default function Homepage() {
                   </span>
                 </div>
                 <div className={styles.categoryTable}>
-                  <div className={styles.tableHeader}>
-                    <span />
-                    <span>Assigned</span>
-                    <span>Activity</span>
-                    <span>Available</span>
-                  </div>
                   {budgetGroups.map((group) => (
                     <div className={styles.groupCard} key={group.name}>
                       <div className={styles.groupRow}>
                         <strong>{group.name}</strong>
-                        <span>{group.assigned}</span>
-                        <span>{group.activity}</span>
-                        <span>{group.available}</span>
+                        <span>{inr(group.assigned)} assigned</span>
+                        <em className={styles.mockChip}>{inr(group.available)} left</em>
                       </div>
-                      {group.categories.map((category) => (
-                        <div className={styles.categoryRow} key={category.name}>
-                          <span>{category.name}</span>
-                          <small>{category.assigned}</small>
-                          <small>{category.activity}</small>
-                          <strong>{category.available}</strong>
-                        </div>
-                      ))}
+                      {group.categories.map((category) => {
+                        const isOver = category.available < 0;
+                        const percentUsed =
+                          category.assigned > 0 ? (category.spent / category.assigned) * 100 : 0;
+                        const isWarn = !isOver && percentUsed >= 80;
+                        const meterClass = isOver
+                          ? styles.meterOver
+                          : isWarn
+                            ? styles.meterWarn
+                            : styles.meterOk;
+
+                        return (
+                          <div className={styles.mockCatRow} key={category.name}>
+                            <div className={styles.mockCatTop}>
+                              <span>{category.name}</span>
+                              <em
+                                className={`${styles.mockChip} ${isOver ? styles.mockChipOver : ''}`}>
+                                {inr(category.available)} {isOver ? 'over' : 'left'}
+                              </em>
+                            </div>
+                            <div className={`${styles.mockMeter} ${meterClass}`}>
+                              <i style={{ width: `${Math.min(percentUsed, 100)}%` }} />
+                            </div>
+                            <small>
+                              {inr(category.spent)} of {inr(category.assigned)} spent
+                            </small>
+                          </div>
+                        );
+                      })}
                     </div>
                   ))}
                 </div>

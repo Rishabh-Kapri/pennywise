@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -12,12 +13,13 @@ import {
   View,
   type ListRenderItem
 } from 'react-native';
-import { Bot, ChevronDown, MessagesSquare, Plus, Send, Sparkles, Trash2, X } from 'lucide-react-native';
+import { Bot, ChevronDown, MessagesSquare, Plus, Send, Sparkles, Trash2 } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppDispatch, useAppSelector } from '../../../app/hooks';
 import { AppText } from '../../../components/AppText';
+import { PickerModal } from '../../../components/Picker';
 import { LoadingState } from '../../../utils/constants';
-import { colors, radii, spacing } from '../../../theme';
+import { colors, radii, spacing, tabBarClearance } from '../../../theme';
 import {
   AGENT_MODEL_OPTIONS,
   clearAgentChat,
@@ -84,7 +86,7 @@ function AgentToolPart({ part }: { part: MessagePart }) {
 
   return (
     <View style={[styles.toolPart, !summary && styles.toolPartPending]}>
-      <Sparkles size={14} color={colors.primaryLight} />
+      <Sparkles size={14} color={colors.primary} />
       <View style={styles.toolText}>
         <AppText weight="semibold" style={styles.toolName}>
           {displayName}
@@ -107,7 +109,7 @@ function AgentMessageBody({ message }: { message: AgentChatMessage }) {
   if (message.eventName === AGENT_LOADING_EVENT) {
     return (
       <View style={styles.loadingMessage}>
-        <ActivityIndicator size="small" color={colors.primaryLight} />
+        <ActivityIndicator size="small" color={colors.primary} />
         <AppText muted style={styles.loadingText}>
           Thinking
         </AppText>
@@ -170,7 +172,7 @@ export function AgentChat() {
   const currentConversationId = useAppSelector(selectCurrentAgentConversationId);
   const selectedModelKey = useAppSelector(selectSelectedAgentModelKey);
   const selectedBudget = useAppSelector(selectSelectedBudget);
-  const [isOpen, setIsOpen] = useState(false);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isModelOpen, setIsModelOpen] = useState(false);
   const [composerValue, setComposerValue] = useState('');
@@ -203,40 +205,22 @@ export function AgentChat() {
   const canOpenModels = !isSending && hasSelectedBudget;
   const deleteConversationTitle = conversationToDelete?.title?.trim() || 'this chat';
 
-  const focusComposerInput = useCallback(() => {
-    if (!isOpen || !hasSelectedBudget) {
-      return;
-    }
-
-    requestAnimationFrame(() => {
-      composerInputRef.current?.focus();
-    });
-  }, [hasSelectedBudget, isOpen]);
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', () => setIsKeyboardVisible(true));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setIsKeyboardVisible(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    focusComposerInput();
-  }, [focusComposerInput, isOpen]);
-
-  useEffect(() => {
-    if (!shouldRefocusComposerRef.current || isSending) {
-      return;
-    }
-
-    shouldRefocusComposerRef.current = false;
-    focusComposerInput();
-  }, [focusComposerInput, isSending]);
-
-  useEffect(() => {
-    if (!isOpen || !selectedBudget?.id) {
+    if (!selectedBudget?.id) {
       return;
     }
 
     dispatch(listAgentConversations());
-  }, [dispatch, isOpen, selectedBudget?.id]);
+  }, [dispatch, selectedBudget?.id]);
 
   useEffect(() => {
     if (!currentConversationId) {
@@ -264,7 +248,7 @@ export function AgentChat() {
   ]);
 
   useEffect(() => {
-    if (!isOpen || displayedAgentMessages.length === 0) {
+    if (displayedAgentMessages.length === 0) {
       return;
     }
 
@@ -273,7 +257,7 @@ export function AgentChat() {
     }, 40);
 
     return () => clearTimeout(timer);
-  }, [displayedAgentMessages.length, isOpen]);
+  }, [displayedAgentMessages.length]);
 
   useEffect(() => {
     if (!isAwaitingAgentResponse) {
@@ -301,8 +285,9 @@ export function AgentChat() {
       }
 
       setComposerValue('');
-      shouldRefocusComposerRef.current = true;
-      focusComposerInput();
+      // Dismiss instead of refocusing: reopening the keyboard right after
+      // sending hides the reply that just arrived.
+      Keyboard.dismiss();
       setIsHistoryOpen(false);
       setIsAwaitingAgentResponse(true);
       dispatch(
@@ -312,7 +297,7 @@ export function AgentChat() {
         })
       );
     },
-    [currentConversationId, dispatch, focusComposerInput, hasSelectedBudget, isSending]
+    [currentConversationId, dispatch, hasSelectedBudget, isSending]
   );
 
   const handleNewChat = useCallback(() => {
@@ -389,41 +374,22 @@ export function AgentChat() {
     [dispatch, hasSelectedBudget, isSending]
   );
 
-  const closePanel = useCallback(() => {
-    setIsHistoryOpen(false);
-    setIsModelOpen(false);
-    setIsAwaitingAgentResponse(false);
-    setIsOpen(false);
-  }, []);
-
   const renderMessage = useCallback<ListRenderItem<AgentChatMessage>>(({ item }) => <ChatMessage message={item} />, []);
 
   return (
     <>
-      {!isOpen ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Ask Penny"
-          style={({ pressed }) => [styles.launcher, pressed && styles.pressed]}
-          onPress={() => setIsOpen(true)}
-        >
-          <Sparkles size={18} color="#ffffff" />
-          <AppText weight="bold" style={styles.launcherText}>
-            Ask Penny
-          </AppText>
-        </Pressable>
-      ) : null}
-
-      <Modal visible={isOpen} animationType="slide" presentationStyle="fullScreen" onRequestClose={closePanel}>
-        <SafeAreaView style={styles.modalSafe}>
-          <KeyboardAvoidingView style={styles.panel} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <SafeAreaView style={styles.modalSafe} edges={['top', 'left', 'right']}>
+          <KeyboardAvoidingView style={styles.panel} behavior="padding" keyboardVerticalOffset={0}>
             <View style={styles.header}>
               <View style={styles.agentMark}>
-                <Bot size={20} color="#ffffff" />
+                <Bot size={18} color={colors.primary} />
               </View>
               <View style={styles.headerText}>
-                <AppText weight="bold" numberOfLines={1} style={styles.headerTitle}>
+                <AppText variant="heading" numberOfLines={1}>
                   {headerTitle}
+                </AppText>
+                <AppText variant="caption" muted numberOfLines={1}>
+                  {selectedModel.shortLabel ?? selectedModel.label}
                 </AppText>
               </View>
               <View style={styles.headerActions}>
@@ -444,9 +410,6 @@ export function AgentChat() {
                   onPress={handleNewChat}
                 >
                   <Plus size={18} color={colors.text} />
-                </Pressable>
-                <Pressable accessibilityRole="button" accessibilityLabel="Close agent chat" style={styles.iconButton} onPress={closePanel}>
-                  <X size={18} color={colors.text} />
                 </Pressable>
               </View>
             </View>
@@ -506,7 +469,8 @@ export function AgentChat() {
               }
             />
 
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.suggestions}>
+            {displayedAgentMessages.length === 0 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.suggestions}>
               {SUGGESTIONS.map((suggestion) => (
                 <Pressable
                   key={suggestion}
@@ -525,8 +489,9 @@ export function AgentChat() {
                 </Pressable>
               ))}
             </ScrollView>
+            ) : null}
 
-            <View style={styles.composer}>
+            <View style={[styles.composer, isKeyboardVisible && styles.composerKeyboard]}>
               <TextInput
                 ref={composerInputRef}
                 value={composerValue}
@@ -540,28 +505,13 @@ export function AgentChat() {
                 onSubmitEditing={() => submitMessage(composerValue)}
               />
 
-              {isModelOpen ? (
-                <View style={styles.modelPanel}>
-                  {AGENT_MODEL_OPTIONS.map((modelOption) => (
-                    <Pressable
-                      key={modelOption.key}
-                      accessibilityRole="button"
-                      style={[styles.modelOption, modelOption.key === selectedModelKey && styles.optionActive]}
-                      onPress={() => handleSelectModel(modelOption.key)}
-                    >
-                      <AppText numberOfLines={1}>{modelOption.label}</AppText>
-                    </Pressable>
-                  ))}
-                </View>
-              ) : null}
-
-              <View style={styles.composerFooter}>
+              <View style={styles.composerFooterRow}>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Select agent model"
                   disabled={!canOpenModels}
                   style={({ pressed }) => [styles.modelButton, !canOpenModels && styles.disabled, pressed && styles.pressed]}
-                  onPress={() => setIsModelOpen((open) => !open)}
+                  onPress={() => setIsModelOpen(true)}
                 >
                   <AppText muted numberOfLines={1} style={styles.modelButtonText}>
                     {selectedModel.shortLabel ?? selectedModel.label}
@@ -579,13 +529,29 @@ export function AgentChat() {
                   ]}
                   onPress={() => submitMessage(composerValue)}
                 >
-                  <Send size={17} color="#ffffff" />
+                  <Send size={17} color={colors.onPrimary} />
                 </Pressable>
               </View>
             </View>
           </KeyboardAvoidingView>
-        </SafeAreaView>
-      </Modal>
+      </SafeAreaView>
+
+      <PickerModal
+        visible={isModelOpen}
+        title="Model"
+        options={AGENT_MODEL_OPTIONS.map((option) => ({
+          id: option.key,
+          label: option.label,
+          sublabel: option.provider
+        }))}
+        selectedId={selectedModelKey}
+        searchPlaceholder="Search models"
+        onSelect={(key) => {
+          if (key) handleSelectModel(key);
+          setIsModelOpen(false);
+        }}
+        onClose={() => setIsModelOpen(false)}
+      />
 
       <Modal
         transparent
@@ -621,7 +587,7 @@ export function AgentChat() {
                 onPress={handleConfirmDeleteConversation}
               >
                 {isDeletingConversation ? (
-                  <ActivityIndicator size="small" color="#ffffff" />
+                  <ActivityIndicator size="small" color={colors.danger} />
                 ) : (
                   <AppText weight="bold" style={styles.confirmDeleteText}>
                     Delete
@@ -637,60 +603,34 @@ export function AgentChat() {
 }
 
 const styles = StyleSheet.create({
-  launcher: {
-    position: 'absolute',
-    right: spacing.lg,
-    bottom: 104,
-    zIndex: 50,
-    elevation: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    minHeight: 48,
-    paddingHorizontal: spacing.lg,
-    borderRadius: 999,
-    backgroundColor: colors.primary,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.28,
-    shadowRadius: 16
-  },
-  launcherText: {
-    color: '#ffffff'
-  },
   modalSafe: {
     flex: 1,
     backgroundColor: colors.background
   },
   panel: {
     flex: 1,
-    backgroundColor: colors.surface
+    backgroundColor: colors.background
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.borderMuted,
-    backgroundColor: colors.surface
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.md
   },
   agentMark: {
-    width: 42,
-    height: 42,
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: radii.lg,
-    backgroundColor: colors.primary
+    borderRadius: 20,
+    backgroundColor: colors.primaryMuted
   },
   headerText: {
     flex: 1,
-    minWidth: 0
-  },
-  headerTitle: {
-    fontSize: 17,
-    lineHeight: 22
+    minWidth: 0,
+    gap: 1
   },
   headerActions: {
     flexDirection: 'row',
@@ -702,9 +642,7 @@ const styles = StyleSheet.create({
     height: 36,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: radii.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderMuted,
+    borderRadius: 18,
     backgroundColor: colors.surfaceStrong
   },
   historyPanel: {
@@ -744,7 +682,7 @@ const styles = StyleSheet.create({
   },
   messages: {
     flex: 1,
-    backgroundColor: colors.surface
+    backgroundColor: colors.background
   },
   messagesContent: {
     flexGrow: 1,
@@ -765,18 +703,18 @@ const styles = StyleSheet.create({
   },
   messageBubble: {
     maxWidth: '86%',
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    borderRadius: 18
+    borderRadius: 20
   },
   agentMessage: {
     alignSelf: 'flex-start',
-    borderTopLeftRadius: radii.sm,
-    backgroundColor: '#2c2c2a'
+    borderTopLeftRadius: 6,
+    backgroundColor: colors.surface
   },
   userMessage: {
     alignSelf: 'flex-end',
-    borderTopRightRadius: radii.sm,
+    borderTopRightRadius: 6,
     backgroundColor: colors.primary
   },
   messageLabel: {
@@ -790,7 +728,7 @@ const styles = StyleSheet.create({
     lineHeight: 21
   },
   userMessageText: {
-    color: '#ffffff',
+    color: colors.onPrimary,
     lineHeight: 21
   },
   messageParts: {
@@ -811,13 +749,11 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: spacing.sm,
     padding: spacing.sm,
-    borderRadius: radii.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderMuted,
-    backgroundColor: colors.background
+    borderRadius: radii.sm,
+    backgroundColor: colors.surfaceStrong
   },
   toolPartPending: {
-    borderColor: colors.primaryLight
+    backgroundColor: colors.primaryMuted
   },
   toolText: {
     flex: 1,
@@ -834,29 +770,33 @@ const styles = StyleSheet.create({
   suggestions: {
     gap: spacing.sm,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    backgroundColor: colors.surface
+    paddingBottom: spacing.sm,
+    backgroundColor: colors.background
   },
   suggestionButton: {
-    minHeight: 36,
+    minHeight: 30,
     justifyContent: 'center',
     paddingHorizontal: spacing.md,
     borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderMuted
+    backgroundColor: colors.surfaceStrong
   },
   suggestionText: {
-    fontSize: 13,
-    lineHeight: 17
+    fontSize: 12,
+    lineHeight: 16
   },
   composer: {
     gap: spacing.md,
-    margin: spacing.md,
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
+    // Clear the floating tab bar, which overlays the bottom of every tab screen.
+    marginBottom: tabBarClearance - spacing.xl,
     padding: spacing.lg,
-    borderRadius: 22,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderMuted,
-    backgroundColor: '#2c2c2a'
+    borderRadius: 24,
+    backgroundColor: colors.surface
+  },
+  // The tab bar hides while the keyboard is open, so drop the clearance.
+  composerKeyboard: {
+    marginBottom: spacing.md
   },
   composerInput: {
     minHeight: 42,
@@ -865,26 +805,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 21
   },
-  composerFooter: {
+  composerFooterRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
     gap: spacing.md
-  },
-  modelPanel: {
-    gap: spacing.xs,
-    maxHeight: 184,
-    padding: spacing.sm,
-    borderRadius: radii.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderMuted,
-    backgroundColor: colors.background
-  },
-  modelOption: {
-    minHeight: 38,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.md
   },
   modelButton: {
     flexDirection: 'row',
@@ -925,10 +850,8 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 360,
     gap: spacing.md,
-    padding: spacing.lg,
-    borderRadius: radii.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderMuted,
+    padding: spacing.xl,
+    borderRadius: radii.xl,
     backgroundColor: colors.surface
   },
   confirmTitle: {
@@ -947,9 +870,8 @@ const styles = StyleSheet.create({
     minHeight: 42,
     justifyContent: 'center',
     paddingHorizontal: spacing.lg,
-    borderRadius: radii.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderMuted
+    borderRadius: radii.full,
+    backgroundColor: colors.surfaceStrong
   },
   confirmDeleteButton: {
     minWidth: 88,
@@ -957,10 +879,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.lg,
-    borderRadius: radii.md,
-    backgroundColor: colors.danger
+    borderRadius: radii.full,
+    backgroundColor: colors.dangerMuted
   },
   confirmDeleteText: {
-    color: '#ffffff'
+    color: colors.danger
   }
 });

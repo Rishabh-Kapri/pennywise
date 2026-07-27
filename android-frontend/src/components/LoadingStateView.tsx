@@ -6,7 +6,7 @@ export function LoadingStateView({ label = 'Loading' }: { label?: string }) {
   return (
     <View style={styles.container}>
       <ActivityIndicator color={colors.primary} />
-      <AppText muted>{label}</AppText>
+      <AppText variant="caption" muted>{label}</AppText>
     </View>
   );
 }
@@ -17,6 +17,7 @@ const styles = StyleSheet.create({
     minHeight: 240,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.md
+    gap: spacing.md,
+    backgroundColor: colors.background
   }
 });

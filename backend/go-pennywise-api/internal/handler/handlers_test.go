@@ -163,6 +163,13 @@ func (m *mockAPIKeyService) Create(ctx context.Context, apiKey *model.APIKey) (s
 	args := m.Called(ctx, apiKey)
 	return args.String(0), args.Error(1)
 }
+func (m *mockAPIKeyService) GetAll(ctx context.Context) ([]model.APIKey, error) {
+	args := m.Called(ctx)
+	if v := args.Get(0); v != nil {
+		return v.([]model.APIKey), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
 func (m *mockAPIKeyService) GetByKeyID(ctx context.Context, keyID string) (*model.APIKey, error) {
 	args := m.Called(ctx, keyID)
 	if v := args.Get(0); v != nil {
@@ -821,6 +828,13 @@ func (m *mockPredictionService) Update(ctx context.Context, id uuid.UUID, p mode
 func (m *mockPredictionService) DeleteById(ctx context.Context, id uuid.UUID) error {
 	return m.Called(ctx, id).Error(0)
 }
+func (m *mockPredictionService) GetAllCipherPredictions(ctx context.Context) ([]model.CipherPredictionRecord, error) {
+	args := m.Called(ctx)
+	if v := args.Get(0); v != nil {
+		return v.([]model.CipherPredictionRecord), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
 func (m *mockPredictionService) CreateCipherPrediction(ctx context.Context, p model.CipherPredictionRecord) (*model.CipherPredictionRecord, error) {
 	args := m.Called(ctx, p)
 	if v := args.Get(0); v != nil {
@@ -1235,6 +1249,14 @@ func (m *mockTransactionService) Create(ctx context.Context, txn model.Transacti
 	}
 	return nil, args.Error(1)
 }
+func (m *mockTransactionService) CreateWithTxDeduped(ctx context.Context, tx pgx.Tx, txn model.Transaction) (*model.Transaction, bool, error) {
+	args := m.Called(ctx, tx, txn)
+	if v := args.Get(0); v != nil {
+		return v.(*model.Transaction), args.Bool(1), args.Error(2)
+	}
+	return nil, args.Bool(1), args.Error(2)
+}
+
 func (m *mockTransactionService) CreateWithTx(ctx context.Context, tx pgx.Tx, txn model.Transaction) ([]model.Transaction, error) {
 	args := m.Called(ctx, tx, txn)
 	if v := args.Get(0); v != nil {
