@@ -48,6 +48,25 @@ cd frontend && npx ng test --include="**/name.spec.ts"
 docker-compose up --build
 ```
 
+### After changing `backend/shared`
+
+`backend/go.work` puts local builds in workspace mode, where `shared` resolves from
+source and each service's `vendor/` is ignored. Docker and CI build each service in
+isolation with `go build -mod=vendor`, and `shared` reaches the image **only** through
+`vendor/` — so a local build passing proves nothing about the image building.
+
+Re-vendor every consumer after any change under `backend/shared`, and verify the way
+Docker does:
+
+```bash
+cd backend
+for d in cipher go-pennywise-api go-gmail workflows; do (cd $d && GOWORK=off go mod vendor); done
+(cd cipher && GOWORK=off go build -mod=vendor ./cmd/api)
+(cd go-pennywise-api && GOWORK=off go build -mod=vendor ./cmd/api)
+(cd go-gmail && GOWORK=off go build -mod=vendor -o /tmp/gmail ./cmd)
+(cd workflows && GOWORK=off go build -mod=vendor ./cmd/worker)
+```
+
 ## Key Data Flow
 
 1. Gmail push → `go-gmail` starts Temporal `EmailToTransactionWorkflow` with a deterministic ID (`email-to-txn-<email>-<historyId>`, duplicate pushes dedupe at Temporal) and its `FetchEmailData` activity returns raw email bodies → cipher processes **one email per activity** (`ParseEmail` extracts via local LLM, `PredictEmail` classifies; Ollama — the old regex parser in `pkg/parser/email.go` is deprecated). Non-transaction emails / unknown accounts are recorded skips; infrastructure failures retry per email, and only still-failed emails park on the retry signals (`retry-email-parse`/`retry-predict`, cipher `POST /api/workflows/:workflowId/retry-*`). Each round's successes are committed immediately via `go-pennywise-api`'s `CreateTransactionAndCipherPrediction`, whose insert is deduped on `(budget_id, dedupe_hash)` — retries never duplicate transactions. Cipher activities heartbeat before every LLM step (`internal/progress`); each LLM call is bounded by `CIPHER_LLM_CALL_TIMEOUT` (default 3m). The pipeline's LLM steps (`parse:extract`, `predict:summarize`, `predict:llm_fallback`) run through an ordered provider chain set by `EMAIL_PIPELINE_PROVIDERS` (e.g. `ollama=gemma4:12b,openrouter=google/gemini-2.5-flash`, default `ollama=gemma4:12b`): each target is tried in turn and any failure falls through to the next, so an Ollama outage no longer stalls ingestion (`predictionService.chatWithFallback`). Embeddings have their own chain, `EMAIL_EMBEDDING_PROVIDERS` (same syntax, default `ollama=bge-m3`, `predictionService.embedWithFallback`) — every target must serve the **same** model (bge-m3, 1024 dims; OpenRouter serves it as `baai/bge-m3`), since a different model would put query vectors in a different space and invalidate every stored pgvector row. Matches record the `embedding_provider`/`embedding_model` that produced the query vector. Legacy batch activities (`ParseEmailData`/`Predict`) remain registered for pre-rollout workflows (`workflow.GetVersion` gate "per-email-pipeline").
