@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Check } from 'lucide-react-native';
+import type { AppTabParamList } from '../../../navigation/types';
 import { useAppDispatch, useAppSelector } from '../../../app/hooks';
 import { Card } from '../../../components/Card';
 import { Screen } from '../../../components/Screen';
@@ -49,6 +52,7 @@ function AvailablePill({ amount }: { amount: number }) {
 
 export function BudgetScreen() {
   const dispatch = useAppDispatch();
+  const navigation = useNavigation<BottomTabNavigationProp<AppTabParamList>>();
   const month = useAppSelector(selectSelectedMonth);
   const monthLabel = useAppSelector(selectMonthInHumanFormat);
   const groups = useAppSelector((state) => state.categories.allCategoryGroups);
@@ -122,13 +126,26 @@ export function BudgetScreen() {
             const balance = category.balance?.[month] ?? 0;
             return (
               <View key={category.id ?? category.name} style={styles.categoryRow}>
-                <View style={styles.categoryMain}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`View ${category.name} transactions`}
+                  style={({ pressed }) => [styles.categoryMain, pressed && styles.pressed]}
+                  disabled={!category.id}
+                  onPress={() =>
+                    category.id &&
+                    navigation.navigate('Transactions', {
+                      categoryId: category.id,
+                      categoryName: category.name,
+                      month
+                    })
+                  }
+                >
                   <AppText numberOfLines={1}>{category.name}</AppText>
                   <View style={styles.categoryMeta}>
                     <AppText variant="caption" tone="faint" tabular>{formatCurrency(spent)} spent</AppText>
                     <AvailablePill amount={balance} />
                   </View>
-                </View>
+                </Pressable>
                 {category.id ? <BudgetInput categoryId={category.id} month={month} value={budgeted} /> : null}
               </View>
             );
@@ -234,7 +251,8 @@ const styles = StyleSheet.create({
   },
   categoryMain: {
     flex: 1,
-    gap: spacing.xs
+    gap: spacing.xs,
+    paddingVertical: spacing.xs
   },
   categoryMeta: {
     flexDirection: 'row',

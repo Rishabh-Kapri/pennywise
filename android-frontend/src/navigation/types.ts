@@ -7,7 +7,14 @@ export type AuthStackParamList = {
 export type AppTabParamList = {
   Dashboard: undefined;
   Budget: undefined;
-  Transactions: { accountId?: string } | undefined;
+  Transactions:
+    | {
+        accountId?: string;
+        categoryId?: string;
+        categoryName?: string;
+        month?: string;
+      }
+    | undefined;
   Payees: undefined;
   Loans: undefined;
   Penny: undefined;
