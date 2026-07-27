@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
-import { useEffect } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Animated, StyleSheet, View } from 'react-native';
 import { Provider } from 'react-redux';
 import { DarkTheme, NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -72,11 +72,29 @@ function iconForRoute(routeName: keyof AppTabParamList, color: string, size: num
 }
 
 function TabIcon({ routeName, focused }: { routeName: keyof AppTabParamList; focused: boolean }) {
-  const iconColor = focused ? colors.primary : colors.faint;
+  const progress = useRef(new Animated.Value(focused ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.spring(progress, {
+      toValue: focused ? 1 : 0,
+      useNativeDriver: true,
+      speed: 20,
+      bounciness: 10
+    }).start();
+  }, [focused, progress]);
 
   return (
-    <View style={[styles.tabIconPill, focused && styles.tabIconPillFocused]}>
-      {iconForRoute(routeName, iconColor, 22)}
+    <View style={styles.tabIcon}>
+      <Animated.View
+        style={[
+          styles.tabIconPill,
+          {
+            opacity: progress,
+            transform: [{ scale: progress.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }]
+          }
+        ]}
+      />
+      {iconForRoute(routeName, focused ? colors.primary : colors.faint, 22)}
     </View>
   );
 }
@@ -91,11 +109,11 @@ function AppTabs() {
         headerShown: false,
         tabBarShowLabel: false,
         tabBarHideOnKeyboard: true,
+        animation: 'shift',
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.muted,
         tabBarStyle: [styles.tabBar, { bottom: Math.max(insets.bottom, spacing.md) }],
         tabBarItemStyle: styles.tabBarItem,
-        tabBarIconStyle: styles.tabBarIcon,
         tabBarIcon: ({ focused }) => <TabIcon routeName={route.name as keyof AppTabParamList} focused={focused} />
       })}
     >
@@ -113,7 +131,7 @@ function AppNavigator() {
   return (
     <>
       <WebSocketProvider />
-      <RootStack.Navigator screenOptions={{ headerShown: false }}>
+      <RootStack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
         <RootStack.Screen name="Main" component={AppTabs} />
         <RootStack.Screen name="Settings" component={SettingsScreen} />
       </RootStack.Navigator>
@@ -146,19 +164,22 @@ const styles = StyleSheet.create({
   },
   tabBarItem: {
     height: 48,
-    borderRadius: 24
+    borderRadius: 24,
+    // The library's own item style is `justifyContent: 'flex-start'` with
+    // padding, which pins the icon to the top once labels are hidden.
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 0
   },
-  tabBarIcon: {
-    height: 48
-  },
-  tabIconPill: {
+  tabIcon: {
     width: 44,
     height: 44,
     alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 22
+    justifyContent: 'center'
   },
-  tabIconPillFocused: {
+  tabIconPill: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 22,
     backgroundColor: colors.primaryMuted
   }
 });

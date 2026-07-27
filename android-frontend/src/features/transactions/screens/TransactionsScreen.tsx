@@ -1,14 +1,30 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TextInput,
+  View
+} from 'react-native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { Check, ChevronDown, ChevronUp, Plus, ReceiptText, Search, Sparkles, Trash2, X } from 'lucide-react-native';
 import { useAppDispatch, useAppSelector } from '../../../app/hooks';
 import { Button } from '../../../components/Button';
 import { Screen } from '../../../components/Screen';
 import { AppText } from '../../../components/AppText';
 import { EmptyState } from '../../../components/EmptyState';
+import { PickerField, PickerOverlay, type PickerOption } from '../../../components/Picker';
 import { apiClient } from '../../../utils/api';
-import { formatCurrency, formatShortDate } from '../../../utils/date';
+import type { PaginationResponse } from '../../../utils/constants';
+import { formatCurrency, formatShortDate, getSelectedMonthInHumanFormat } from '../../../utils/date';
 import { colors, radii, spacing, tabBarClearance } from '../../../theme';
+import type { AppTabParamList } from '../../../navigation/types';
 import type { Tag } from '../../tags/types';
 import type { Transaction, TransactionDTO, TransactionPredictionDetails } from '../types';
 import { TransactionStatus } from '../types';
@@ -32,6 +48,8 @@ type TxnDraft = {
   tagIds: string[];
   status?: TransactionStatus;
 };
+
+type ActivePicker = 'account' | 'payee' | 'category' | null;
 
 function createDraft(txn?: Transaction): TxnDraft {
   const inflow = txn?.inflow ?? 0;
@@ -64,6 +82,15 @@ function statusLabel(status?: TransactionStatus) {
     default:
       return null;
   }
+}
+
+function monthRange(month: string) {
+  const [year, monthNumber] = month.split('-').map(Number);
+  const lastDay = new Date(year, monthNumber, 0).getDate();
+  return {
+    startDate: `${month}-01`,
+    endDate: `${month}-${String(lastDay).padStart(2, '0')}`
+  };
 }
 
 function TagChips({ tagIds, tags }: { tagIds: string[]; tags: Tag[] }) {
@@ -213,21 +240,46 @@ function TransactionEditor({
   draft,
   setDraft,
   onClose,
-  onSave
+  onSave,
+  onDeleted
 }: {
   draft: TxnDraft | null;
   setDraft: (draft: TxnDraft) => void;
   onClose: () => void;
   onSave: () => void;
+  onDeleted: () => void;
 }) {
   const dispatch = useAppDispatch();
   const accounts = useAppSelector((state) => state.accounts.allAccounts);
   const payees = useAppSelector((state) => state.payees.allPayees);
-  const categories = useAppSelector((state) => state.categories.allCategoryGroups.flatMap((group) => group.categories));
+  const groups = useAppSelector((state) => state.categories.allCategoryGroups);
   const tags = useAppSelector((state) => state.tags.tags);
+  const [activePicker, setActivePicker] = useState<ActivePicker>(null);
+
+  const accountOptions: PickerOption[] = useMemo(
+    () => accounts.filter((account) => account.id).map((account) => ({ id: account.id as string, label: account.name, sublabel: account.type })),
+    [accounts]
+  );
+  const payeeOptions: PickerOption[] = useMemo(
+    () => payees.filter((payee) => payee.id).map((payee) => ({ id: payee.id as string, label: payee.name })),
+    [payees]
+  );
+  const categoryOptions: PickerOption[] = useMemo(
+    () =>
+      groups.flatMap((group) =>
+        group.categories
+          .filter((category) => category.id)
+          .map((category) => ({ id: category.id as string, label: category.name, sublabel: group.name }))
+      ),
+    [groups]
+  );
+
   if (!draft) return null;
 
   const label = statusLabel(draft.status);
+  const accountName = accountOptions.find((option) => option.id === draft.accountId)?.label;
+  const payeeName = payeeOptions.find((option) => option.id === draft.payeeId)?.label;
+  const categoryName = categoryOptions.find((option) => option.id === draft.categoryId)?.label;
 
   const setStatus = (status: TransactionStatus) => {
     if (!draft.id) return;
@@ -244,8 +296,7 @@ function TransactionEditor({
         style: 'destructive',
         onPress: async () => {
           await dispatch(deleteTransactionById(draft.id as string)).unwrap();
-          onClose();
-          dispatch(fetchAllTransactions());
+          onDeleted();
         }
       }
     ]);
@@ -259,7 +310,7 @@ function TransactionEditor({
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalBackdrop}>
+      <KeyboardAvoidingView style={styles.modalBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.sheet}>
           <View style={styles.sheetHandle} />
           <View style={styles.rowBetween}>
@@ -269,7 +320,12 @@ function TransactionEditor({
             </Pressable>
           </View>
 
-          <ScrollView contentContainerStyle={styles.sheetScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            style={styles.sheetScrollView}
+            contentContainerStyle={styles.sheetScroll}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
             <AppText variant="label" tone="faint">Amount</AppText>
             <View style={styles.amountRow}>
               <View style={styles.directionToggle}>
@@ -309,59 +365,9 @@ function TransactionEditor({
               placeholderTextColor={colors.faint}
             />
 
-            <AppText variant="label" tone="faint">Account</AppText>
-            <FlatList
-              horizontal
-              data={accounts}
-              keyExtractor={(item) => item.id ?? item.name}
-              showsHorizontalScrollIndicator={false}
-              renderItem={({ item }) => (
-                <Pressable
-                  style={[styles.choice, draft.accountId === item.id && styles.choiceSelected]}
-                  onPress={() => item.id && setDraft({ ...draft, accountId: item.id })}
-                >
-                  <AppText variant="caption" weight="medium" style={draft.accountId === item.id ? styles.choiceSelectedText : styles.choiceText}>
-                    {item.name}
-                  </AppText>
-                </Pressable>
-              )}
-            />
-
-            <AppText variant="label" tone="faint">Payee</AppText>
-            <FlatList
-              horizontal
-              data={payees}
-              keyExtractor={(item) => item.id ?? item.name}
-              showsHorizontalScrollIndicator={false}
-              renderItem={({ item }) => (
-                <Pressable
-                  style={[styles.choice, draft.payeeId === item.id && styles.choiceSelected]}
-                  onPress={() => item.id && setDraft({ ...draft, payeeId: item.id })}
-                >
-                  <AppText variant="caption" weight="medium" style={draft.payeeId === item.id ? styles.choiceSelectedText : styles.choiceText}>
-                    {item.name}
-                  </AppText>
-                </Pressable>
-              )}
-            />
-
-            <AppText variant="label" tone="faint">Category</AppText>
-            <FlatList
-              horizontal
-              data={categories}
-              keyExtractor={(item) => item.id ?? item.name}
-              showsHorizontalScrollIndicator={false}
-              renderItem={({ item }) => (
-                <Pressable
-                  style={[styles.choice, draft.categoryId === item.id && styles.choiceSelected]}
-                  onPress={() => item.id && setDraft({ ...draft, categoryId: item.id })}
-                >
-                  <AppText variant="caption" weight="medium" style={draft.categoryId === item.id ? styles.choiceSelectedText : styles.choiceText}>
-                    {item.name}
-                  </AppText>
-                </Pressable>
-              )}
-            />
+            <PickerField label="Account" value={accountName} onPress={() => setActivePicker('account')} />
+            <PickerField label="Payee" value={payeeName} onPress={() => setActivePicker('payee')} />
+            <PickerField label="Category" value={categoryName} placeholder="Uncategorized" onPress={() => setActivePicker('category')} />
 
             {tags.length ? (
               <>
@@ -412,38 +418,128 @@ function TransactionEditor({
                 ) : null}
               </View>
             ) : null}
-
-            <Button onPress={onSave}>Save</Button>
-            {draft.id ? (
-              <Button variant="danger" onPress={confirmDelete}>
-                <View style={styles.deleteContent}>
-                  <Trash2 size={16} color={colors.danger} />
-                  <AppText weight="semibold" tone="danger">Delete transaction</AppText>
-                </View>
-              </Button>
-            ) : null}
           </ScrollView>
+
+          <View style={styles.actionRow}>
+            {draft.id ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Delete transaction"
+                style={({ pressed }) => [styles.deleteButton, pressed && styles.pressed]}
+                onPress={confirmDelete}
+              >
+                <Trash2 size={18} color={colors.danger} />
+              </Pressable>
+            ) : null}
+            <Button size="sm" style={styles.saveButton} onPress={onSave}>
+              Save
+            </Button>
+          </View>
         </View>
-      </View>
+
+        {activePicker === 'account' ? (
+          <PickerOverlay
+            title="Account"
+            options={accountOptions}
+            selectedId={draft.accountId}
+            searchPlaceholder="Search accounts"
+            onSelect={(id) => {
+              if (id) setDraft({ ...draft, accountId: id });
+              setActivePicker(null);
+            }}
+            onClose={() => setActivePicker(null)}
+          />
+        ) : null}
+        {activePicker === 'payee' ? (
+          <PickerOverlay
+            title="Payee"
+            options={payeeOptions}
+            selectedId={draft.payeeId}
+            searchPlaceholder="Search payees"
+            onSelect={(id) => {
+              if (id) setDraft({ ...draft, payeeId: id });
+              setActivePicker(null);
+            }}
+            onClose={() => setActivePicker(null)}
+          />
+        ) : null}
+        {activePicker === 'category' ? (
+          <PickerOverlay
+            title="Category"
+            options={categoryOptions}
+            selectedId={draft.categoryId}
+            searchPlaceholder="Search categories"
+            clearLabel="Uncategorized"
+            onSelect={(id) => {
+              setDraft({ ...draft, categoryId: id });
+              setActivePicker(null);
+            }}
+            onClose={() => setActivePicker(null)}
+          />
+        ) : null}
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 export function TransactionsScreen() {
   const dispatch = useAppDispatch();
+  const navigation = useNavigation();
+  const route = useRoute<RouteProp<AppTabParamList, 'Transactions'>>();
   const selectedBudget = useAppSelector((state) => state.budgets.selectedBudget);
   const { transactions, nextCursor, loadingMore } = useAppSelector((state) => state.transactions);
   const tags = useAppSelector((state) => state.tags.tags);
   const [search, setSearch] = useState('');
   const [draft, setDraft] = useState<TxnDraft | null>(null);
+  const [scoped, setScoped] = useState<Transaction[] | null>(null);
+  const [isScopedLoading, setIsScopedLoading] = useState(false);
+
+  const categoryId = route.params?.categoryId;
+  const categoryName = route.params?.categoryName;
+  const month = route.params?.month;
+
+  const loadScoped = useCallback(() => {
+    if (!categoryId) {
+      setScoped(null);
+      return;
+    }
+    const params = new URLSearchParams();
+    params.set('categoryId[]', categoryId);
+    if (month) {
+      const { startDate, endDate } = monthRange(month);
+      params.set('startDate', startDate);
+      params.set('endDate', endDate);
+    }
+    params.set('limit', '100');
+    setIsScopedLoading(true);
+    apiClient
+      .get<PaginationResponse<Transaction[]>>(`transactions/normalized?${params.toString()}`)
+      .then((response) => setScoped(response.data ?? []))
+      .catch(() => setScoped([]))
+      .finally(() => setIsScopedLoading(false));
+  }, [categoryId, month]);
+
+  useEffect(loadScoped, [loadScoped]);
+
+  const clearScope = () => {
+    setScoped(null);
+    navigation.setParams({ categoryId: undefined, categoryName: undefined, month: undefined } as never);
+  };
+
+  const source = categoryId ? scoped ?? [] : transactions;
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return transactions;
-    return transactions.filter((txn) =>
+    if (!q) return source;
+    return source.filter((txn) =>
       [txn.payeeName, txn.accountName, txn.categoryName ?? '', txn.note ?? ''].some((value) => value.toLowerCase().includes(q))
     );
-  }, [search, transactions]);
+  }, [search, source]);
+
+  const refreshLists = () => {
+    dispatch(fetchAllTransactions());
+    if (categoryId) loadScoped();
+  };
 
   const save = async () => {
     if (!draft || !selectedBudget?.id) return;
@@ -465,7 +561,7 @@ export function TransactionsScreen() {
     if (draft.id) await dispatch(updateTransaction(payload)).unwrap();
     else await dispatch(createTransaction(payload)).unwrap();
     setDraft(null);
-    dispatch(fetchAllTransactions());
+    refreshLists();
   };
 
   return (
@@ -473,12 +569,24 @@ export function TransactionsScreen() {
       <View style={styles.header}>
         <View style={styles.headerText}>
           <AppText variant="title">Transactions</AppText>
-          <AppText variant="caption" muted>{transactions.length} loaded</AppText>
+          <AppText variant="caption" muted>
+            {categoryId ? `${filtered.length} in this category` : `${transactions.length} loaded`}
+          </AppText>
         </View>
         <Pressable style={({ pressed }) => [styles.addButton, pressed && styles.pressed]} onPress={() => setDraft(createDraft())}>
           <Plus size={22} color={colors.onPrimary} />
         </Pressable>
       </View>
+
+      {categoryId ? (
+        <Pressable style={({ pressed }) => [styles.scopeChip, pressed && styles.pressed]} onPress={clearScope}>
+          <AppText variant="caption" weight="semibold" tone="primary" numberOfLines={1} style={styles.scopeText}>
+            {categoryName ?? 'Category'}
+            {month ? ` · ${getSelectedMonthInHumanFormat(month)}` : ''}
+          </AppText>
+          <X size={14} color={colors.primary} />
+        </Pressable>
+      ) : null}
 
       <View style={styles.searchBox}>
         <Search size={17} color={colors.faint} />
@@ -497,20 +605,34 @@ export function TransactionsScreen() {
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
-          <EmptyState
-            icon={<ReceiptText size={26} color={colors.primary} />}
-            title="No transactions"
-            body="Transactions from your accounts and Gmail imports will show up here."
-          />
+          isScopedLoading ? (
+            <View style={styles.scopedLoading}>
+              <ActivityIndicator color={colors.primary} />
+            </View>
+          ) : (
+            <EmptyState
+              icon={<ReceiptText size={26} color={colors.primary} />}
+              title={categoryId ? 'No transactions' : 'No transactions yet'}
+              body={
+                categoryId
+                  ? 'Nothing was spent in this category for the selected month.'
+                  : 'Transactions from your accounts and Gmail imports will show up here.'
+              }
+            />
+          )
         }
         onEndReached={() => {
-          if (nextCursor && loadingMore !== 'pending') dispatch(fetchAllTransactions({ cursor: nextCursor }));
+          if (!categoryId && nextCursor && loadingMore !== 'pending') dispatch(fetchAllTransactions({ cursor: nextCursor }));
         }}
         renderItem={({ item }) => {
           const amount = (item.inflow ?? 0) || -(item.outflow ?? 0);
           const unapproved = item.status === TransactionStatus.UNAPPROVED;
           return (
-            <Pressable style={({ pressed }) => [styles.txnRow, pressed && styles.rowPressed]} onPress={() => setDraft(createDraft(item))}>
+            <Pressable
+              android_ripple={{ color: colors.surfaceTertiary }}
+              style={({ pressed }) => [styles.txnRow, pressed && styles.rowPressed]}
+              onPress={() => setDraft(createDraft(item))}
+            >
               <View style={styles.txnMain}>
                 <AppText weight="medium" numberOfLines={1}>{item.payeeName || 'Unknown payee'}</AppText>
                 <AppText variant="caption" muted numberOfLines={1}>
@@ -538,7 +660,16 @@ export function TransactionsScreen() {
         }}
       />
 
-      <TransactionEditor draft={draft} setDraft={setDraft} onClose={() => setDraft(null)} onSave={() => void save()} />
+      <TransactionEditor
+        draft={draft}
+        setDraft={setDraft}
+        onClose={() => setDraft(null)}
+        onSave={() => void save()}
+        onDeleted={() => {
+          setDraft(null);
+          refreshLists();
+        }}
+      />
     </Screen>
   );
 }
@@ -564,6 +695,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center'
   },
+  scopeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: spacing.sm,
+    borderRadius: radii.full,
+    backgroundColor: colors.primaryMuted,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm - 2
+  },
+  scopeText: {
+    flexShrink: 1
+  },
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -582,6 +726,9 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     paddingBottom: tabBarClearance
   },
+  scopedLoading: {
+    paddingVertical: spacing.xxl
+  },
   txnRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -589,7 +736,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderRadius: radii.md,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md
+    paddingVertical: spacing.md,
+    overflow: 'hidden'
   },
   rowPressed: {
     backgroundColor: colors.surfaceStrong
@@ -652,7 +800,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: radii.xl,
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
+    paddingBottom: spacing.lg,
     gap: spacing.md
   },
   sheetHandle: {
@@ -667,9 +815,15 @@ const styles = StyleSheet.create({
     fontSize: 20,
     lineHeight: 26
   },
+  // Without an explicit shrink the ScrollView sizes to its content and the
+  // sheet's maxHeight clips it instead of scrolling.
+  sheetScrollView: {
+    flexShrink: 1
+  },
   sheetScroll: {
     gap: spacing.md,
-    paddingTop: spacing.sm
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md
   },
   closeButton: {
     width: 34,
@@ -728,15 +882,13 @@ const styles = StyleSheet.create({
     minHeight: 36,
     justifyContent: 'center',
     paddingHorizontal: spacing.md,
-    marginRight: spacing.sm,
     borderRadius: radii.full,
     backgroundColor: colors.surfaceStrong
   },
   tagChoice: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginRight: 0
+    gap: 6
   },
   tagPickRow: {
     flexDirection: 'row',
@@ -816,9 +968,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm
   },
-  deleteContent: {
+  actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm
+  },
+  saveButton: {
+    flex: 1
+  },
+  deleteButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.dangerMuted
   }
 });
