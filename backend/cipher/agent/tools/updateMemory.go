@@ -8,7 +8,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
-	"github.com/google/uuid"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -20,7 +20,6 @@ type updateMemoryArgs struct {
 	Operation string          `json:"operation"`
 	Path      string          `json:"path"`
 	Value     json.RawMessage `json:"value"`
-	BudgetID  string          `json:"budgetId"`
 }
 
 type UpdateWorkingMemoryTool struct {
@@ -52,12 +51,8 @@ func (t UpdateWorkingMemoryTool) Definition() sharedModel.ToolDefiniton {
 					Description:          "Non-empty JSON object to add, remove, or replace at the given path. Example for queryPreferences.medicalQueryStyle: {\"includePayeeAliases\": true, \"includeCategoryAliases\": true, \"notes\": \"Treat medical spending as both medical categories and confirmed medical payees.\"}",
 					AdditionalProperties: true,
 				},
-				"budgetId": {
-					Type:        "string",
-					Description: "The budgetId to query the working memory for.",
-				},
 			},
-			Required:             []string{"operation", "path", "value", "budgetId"},
+			Required:             []string{"operation", "path", "value"},
 			AdditionalProperties: false,
 		},
 	}
@@ -81,11 +76,11 @@ func (t UpdateWorkingMemoryTool) Execute(ctx context.Context, call sharedModel.T
 		return nil, errs.New(errs.CodeInvalidArgument, "update_working_memory path is required")
 	}
 	path := strings.Split(args.Path, ".")
-	budgetIDParsed, err := uuid.Parse(args.BudgetID)
-	if err != nil {
-		return nil, errs.Wrap(errs.CodeInternalError, "parsing budgetId", err)
-	}
-	queryArgs := []any{path, string(valueJSON), budgetIDParsed}
+
+	// The budget comes from the request context, never from tool arguments: a
+	// model-supplied budget id here would let a hallucination or a prompt
+	// injection write into another tenant's memory.
+	queryArgs := []any{path, string(valueJSON), utils.MustBudgetID(ctx)}
 
 	switch args.Operation {
 	case "add":
@@ -136,7 +131,7 @@ func (t UpdateWorkingMemoryTool) Execute(ctx context.Context, call sharedModel.T
 	default:
 		return nil, errs.New(errs.CodeInternalError, "wrong operation")
 	}
-	_, err = t.Executor(nil).Exec(ctx, query, queryArgs...)
+	_, err := t.Executor(nil).Exec(ctx, query, queryArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +141,6 @@ func (t UpdateWorkingMemoryTool) Execute(ctx context.Context, call sharedModel.T
 func (t UpdateWorkingMemoryTool) GetNormalizedName(isDone bool) string {
 	return ""
 }
-
 
 func (t UpdateWorkingMemoryTool) Normalize(
 	call sharedModel.ToolCall,

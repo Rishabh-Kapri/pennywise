@@ -24,7 +24,6 @@ type openRouterClient struct {
 type openRouterReq struct {
 	Model           string                `json:"model"`
 	Input           []openRouterInputItem `json:"input"`
-	Instructions    string                `json:"instructions,omitempty"`
 	Tools           []openAITool          `json:"tools,omitempty"`
 	ToolChoice      any                   `json:"tool_choice,omitempty"`
 	Temperature     float32               `json:"temperature,omitempty"`
@@ -48,6 +47,15 @@ type openRouterInputItem struct {
 type openRouterContentBlock struct {
 	Type string `json:"type"`
 	Text string `json:"text,omitempty"`
+	// CacheControl is passed through to the underlying provider. Anthropic models
+	// served via OpenRouter honour it as a prompt-cache breakpoint; providers that
+	// cache automatically ignore it. Either way the stable-prefix work is what
+	// actually earns the hit.
+	CacheControl *openRouterCacheControl `json:"cache_control,omitempty"`
+}
+
+type openRouterCacheControl struct {
+	Type string `json:"type"`
 }
 
 type openRouterRes struct {
@@ -72,11 +80,19 @@ type openRouterOutputItem struct {
 }
 
 type openRouterUsage struct {
-	InputTokens      int `json:"input_tokens"`
-	OutputTokens     int `json:"output_tokens"`
-	TotalTokens      int `json:"total_tokens"`
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
+	InputTokens         int                    `json:"input_tokens"`
+	OutputTokens        int                    `json:"output_tokens"`
+	TotalTokens         int                    `json:"total_tokens"`
+	PromptTokens        int                    `json:"prompt_tokens"`
+	CompletionTokens    int                    `json:"completion_tokens"`
+	InputTokensDetails  openRouterTokenDetails `json:"input_tokens_details"`
+	PromptTokensDetails openRouterTokenDetails `json:"prompt_tokens_details"`
+}
+
+// openRouterTokenDetails covers both spellings OpenRouter returns depending on
+// which upstream API shape the model is served through.
+type openRouterTokenDetails struct {
+	CachedTokens int `json:"cached_tokens"`
 }
 
 type openRouterError struct {
@@ -118,11 +134,10 @@ func NewOpenRouterClient() (llm.LLM, error) {
 }
 
 func (c *openRouterClient) toOpenRouterReq(req sharedModel.ChatRequest) openRouterReq {
-	input, instructions := toOpenRouterInput(req.Messages)
+	input := toOpenRouterInput(req.Messages)
 	return openRouterReq{
 		Model:           req.Model,
 		Input:           input,
-		Instructions:    instructions,
 		Tools:           toOpenAITools(req.Tools),
 		ToolChoice:      toOpenAIToolChoice(req.ToolChoice),
 		Temperature:     req.Temperature,
@@ -132,19 +147,30 @@ func (c *openRouterClient) toOpenRouterReq(req sharedModel.ChatRequest) openRout
 	}
 }
 
-func toOpenRouterInput(messages []sharedModel.AgentMessage) ([]openRouterInputItem, string) {
+// toOpenRouterInput builds the input list. System content is emitted as
+// role=system input items rather than hoisted into the top-level instructions
+// string: a bare string has nowhere to hang a cache_control breakpoint, so with
+// the old shape an Anthropic model served through OpenRouter could never cache
+// its system prompt. Providers that cache automatically are unaffected.
+func toOpenRouterInput(messages []sharedModel.AgentMessage) []openRouterInputItem {
 	out := make([]openRouterInputItem, 0, len(messages))
-	var instructions strings.Builder
 
 	for i, msg := range messages {
 		if msg.Role == sharedModel.RoleSystem {
-			text := contentBlocksText(msg.Content)
-			if text != "" {
-				if instructions.Len() > 0 {
-					instructions.WriteString("\n\n")
-				}
-				instructions.WriteString(text)
+			blocks := toOpenRouterContent(msg.Content, "input_text")
+			if len(blocks) == 0 {
+				continue
 			}
+			for j, block := range msg.Content {
+				if j < len(blocks) && block.Cacheable {
+					blocks[j].CacheControl = &openRouterCacheControl{Type: "ephemeral"}
+				}
+			}
+			out = append(out, openRouterInputItem{
+				Type:    "message",
+				Role:    sharedModel.RoleSystem,
+				Content: blocks,
+			})
 			continue
 		}
 
@@ -186,7 +212,7 @@ func toOpenRouterInput(messages []sharedModel.AgentMessage) ([]openRouterInputIt
 		}
 	}
 
-	return out, instructions.String()
+	return out
 }
 
 func toOpenRouterContent(blocks []sharedModel.ContentBlock, blockType string) []openRouterContentBlock {
@@ -300,10 +326,16 @@ func toOpenRouterUsage(usage openRouterUsage) sharedModel.Usage {
 		totalTokens = inputTokens + outputTokens
 	}
 
+	cachedTokens := usage.InputTokensDetails.CachedTokens
+	if cachedTokens == 0 {
+		cachedTokens = usage.PromptTokensDetails.CachedTokens
+	}
+
 	return sharedModel.Usage{
-		InputTokens:  inputTokens,
-		OutputTokens: outputTokens,
-		TotalTokens:  totalTokens,
+		InputTokens:     inputTokens,
+		OutputTokens:    outputTokens,
+		TotalTokens:     totalTokens,
+		CacheReadTokens: cachedTokens,
 	}
 }
 
