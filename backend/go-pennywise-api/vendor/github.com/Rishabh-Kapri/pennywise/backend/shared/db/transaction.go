@@ -29,6 +29,7 @@ type TransactionRepository interface {
 	Update(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID, txn model.Transaction) error
 	UpdateStatus(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID, status model.TransactionStatus) error
 	Create(ctx context.Context, tx pgx.Tx, txn model.Transaction) ([]model.Transaction, error)
+	CreateDeduped(ctx context.Context, tx pgx.Tx, txn model.Transaction) (*model.Transaction, bool, error)
 	DeleteById(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID) error
 }
 
@@ -448,6 +449,11 @@ func applyTransactionFilters(query sq.SelectBuilder, filter *model.TransactionFi
 		query = query.Where(sq.Eq{"transactions.payee_id": filter.PayeeIDs})
 	}
 
+	if len(filter.TagIDs) > 0 {
+		// uuid[] overlap: matches transactions carrying any of the tags
+		query = query.Where(sq.Expr("transactions.tag_ids && ?", filter.TagIDs))
+	}
+
 	if filter.StartDate != nil {
 		query = query.Where(sq.GtOrEq{"transactions.date": *filter.StartDate})
 	}
@@ -513,6 +519,83 @@ func (r *transactionRepo) Create(ctx context.Context, tx pgx.Tx, txn model.Trans
 	}
 	txns := make([]model.Transaction, 0)
 	return append(txns, createdTxn), nil
+}
+
+// CreateDeduped inserts a transaction but treats a (budget_id, dedupe_hash)
+// conflict as "already created": it returns the existing row and created=false
+// instead of a unique-violation error, so pipeline activity retries are
+// idempotent. Transactions without a dedupe hash always insert.
+func (r *transactionRepo) CreateDeduped(
+	ctx context.Context,
+	tx pgx.Tx,
+	txn model.Transaction,
+) (*model.Transaction, bool, error) {
+	if txn.DedupeHash == nil || *txn.DedupeHash == "" {
+		created, err := r.Create(ctx, tx, txn)
+		if err != nil {
+			return nil, false, err
+		}
+		return &created[0], true, nil
+	}
+
+	var createdTxn model.Transaction
+	err := r.Executor(tx).QueryRow(
+		ctx,
+		`INSERT INTO transactions (
+		  budget_id,
+		  date,
+		  payee_id,
+		  category_id,
+		  account_id,
+		  note,
+		  amount,
+		  dedupe_hash,
+		  status,
+			raw_bank_text,
+			summary,
+		  transfer_account_id,
+		  transfer_transaction_id,
+		  tag_ids
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		ON CONFLICT (budget_id, dedupe_hash) WHERE dedupe_hash IS NOT NULL and deleted = FALSE
+		DO NOTHING
+		RETURNING id, amount, budget_id, status, summary`,
+		txn.BudgetID,
+		txn.Date,
+		txn.PayeeID,
+		txn.CategoryID,
+		txn.AccountID,
+		txn.Note,
+		txn.Amount,
+		txn.DedupeHash,
+		txn.Status,
+		txn.RawBankText,
+		txn.Summary,
+		txn.TransferAccountID,
+		txn.TransferTransactionID,
+		txn.TagIDs,
+	).Scan(&createdTxn.ID, &createdTxn.Amount, &createdTxn.BudgetID, &createdTxn.Status, &createdTxn.Summary)
+	if err == nil {
+		return &createdTxn, true, nil
+	}
+	if err != pgx.ErrNoRows {
+		return nil, false, err
+	}
+
+	// Conflict: fetch the already-committed row.
+	var existing model.Transaction
+	err = r.Executor(tx).QueryRow(
+		ctx,
+		`SELECT id, amount, budget_id, status, summary
+		 FROM transactions
+		 WHERE budget_id = $1 AND dedupe_hash = $2 AND deleted = FALSE`,
+		txn.BudgetID,
+		txn.DedupeHash,
+	).Scan(&existing.ID, &existing.Amount, &existing.BudgetID, &existing.Status, &existing.Summary)
+	if err != nil {
+		return nil, false, err
+	}
+	return &existing, false, nil
 }
 
 func (r *transactionRepo) Update(

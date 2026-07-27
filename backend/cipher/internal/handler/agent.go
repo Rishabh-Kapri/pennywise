@@ -42,7 +42,9 @@ func (h *agentHandler) CreateRun(c *gin.Context) {
 			return
 		}
 		logger.Logger(ctx).Error("agent run creation failed", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "agent run creation failed"})
+		// internal endpoint: return the real error so pennywise-api can store
+		// it on the run and surface it to the UI
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 

@@ -29,6 +29,17 @@ const (
 	PredictRetryInterval = 10 * time.Minute
 )
 
+// Pipeline step names. Stable identifiers used as "step" log fields today and
+// as pipeline_runs step keys once run tracking lands — do not rename.
+const (
+	PipelineStepFetchUser   = "fetch_user"
+	PipelineStepFetchEmails = "fetch_emails"
+	PipelineStepParse       = "parse"
+	PipelineStepPredict     = "predict"
+	PipelineStepCreateTxns  = "create_transactions"
+	PipelineStepDone        = "done"
+)
+
 // EmailToTransactionWorflowInput is the input to the EmailToTransactionWorkflow,
 // dispatched by go-gmail on receiving a Gmail Pub/Sub notification.
 type EmailToTransactionWorflowInput struct {
@@ -57,8 +68,11 @@ type ExtractedEmailResponse struct {
 	Merchant    string  `json:"merchant"`
 	Amount      float64 `json:"amount"`
 	Date        string  `json:"date"`
+	Time        string  `json:"time"`
 	AccountCard string  `json:"account_card"`
 	Reasoning   string  `json:"reasoning"`
+	// When skipped
+	Skipped bool `json:"skipped,omitempty"`
 }
 
 // ParsedEmailsInput is the result of FetchAndParseEmails (go-gmail)
@@ -71,11 +85,56 @@ type ParsedEmailsInput struct {
 type EmailData struct {
 	MessageId string
 	Body      string
+	// Header/snippet metadata captured at fetch time. Purely informational —
+	// the extraction step works off Body — but it lets the Activity page show
+	// who sent an email and what it says before it has been parsed.
+	From    string
+	Subject string
+	Snippet string
+}
+
+// ParseEmailInput is the input to the per-email ParseEmail activity (cipher).
+type ParseEmailInput struct {
+	Email    EmailData `json:"email"`
+	BudgetID uuid.UUID `json:"budgetId"`
+}
+
+// ParseEmailResult is the outcome of parsing a single email. Skipped results
+// (non-transaction emails, unparseable dates) are recorded, never retried.
+type ParseEmailResult struct {
+	Parsed     *ParsedEmail `json:"parsed,omitempty"`
+	Skipped    bool         `json:"skipped,omitempty"`
+	SkipReason string       `json:"skipReason,omitempty"`
+}
+
+// PredictEmailInput is the input to the per-email PredictEmail activity (cipher).
+type PredictEmailInput struct {
+	Email    ParsedEmail `json:"email"`
+	BudgetID uuid.UUID   `json:"budgetId"`
+}
+
+// PredictEmailResult is the outcome of predicting a single parsed email.
+type PredictEmailResult struct {
+	Prediction *CipherPredictionResult `json:"prediction,omitempty"`
+	Skipped    bool                    `json:"skipped,omitempty"`
+	SkipReason string                  `json:"skipReason,omitempty"`
+}
+
+// EmailSkip records an email the pipeline could not turn into a transaction,
+// keyed by Gmail message ID and the step that dropped it.
+type EmailSkip struct {
+	MessageId string `json:"messageId"`
+	Step      string `json:"step"`
+	Reason    string `json:"reason"`
 }
 
 type EmailDataInput struct {
 	EmailData []EmailData `json:"emailData"`
 	BudgetID  uuid.UUID   `json:"budgetId"`
+	// PipelineRunID links a child workflow back to the pipeline_runs row created
+	// by its parent. Nil when the workflow is started standalone; the child then
+	// creates its own run row with trigger "manual".
+	PipelineRunID uuid.UUID `json:"pipelineRunId,omitempty"`
 }
 
 type FetchAndParseEmailsInput struct {
@@ -94,6 +153,9 @@ type UpdateGmailHistoryInput struct {
 
 // CipherPredictionResult is the result of the Predict activity (cipher).
 type CipherPredictionResult struct {
+	// MessageId is the Gmail message this prediction came from; carried through
+	// to transaction creation for logging and future pipeline run tracking.
+	MessageId       string           `json:"messageId,omitempty"`
 	OriginalRawText string           `json:"rawText"`
 	Summary         string           `json:"summary"`
 	AccountID       uuid.UUID        `json:"accountId"`

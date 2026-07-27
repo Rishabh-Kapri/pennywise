@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/google/uuid"
@@ -367,6 +368,20 @@ func GetHeaders(ctx context.Context) map[string][]string {
 	return BuildInternalHeaders(ctx)
 }
 
+// sensitiveLogHeaders lists headers (lowercase) whose values carry
+// credentials — provider API keys, internal service tokens, session cookies —
+// and must never reach logs.
+var sensitiveLogHeaders = map[string]struct{}{
+	"authorization":       {},
+	"proxy-authorization": {},
+	"cookie":              {},
+	"set-cookie":          {},
+	"x-api-key":           {},
+	"api-key":             {},
+	"x-goog-api-key":      {},
+	"x-internal-token":    {},
+}
+
 func SanitizeHeadersForLogging(headers map[string][]string) map[string][]string {
 	if headers == nil {
 		return nil
@@ -375,8 +390,10 @@ func SanitizeHeadersForLogging(headers map[string][]string) map[string][]string 
 	sanitized := make(map[string][]string, len(headers))
 	for key, values := range headers {
 		copied := append([]string(nil), values...)
-		if key == HeaderInternalToken && len(copied) > 0 {
-			copied[0] = "[REDACTED]"
+		if _, sensitive := sensitiveLogHeaders[strings.ToLower(key)]; sensitive {
+			for i := range copied {
+				copied[i] = "[REDACTED]"
+			}
 		}
 		sanitized[key] = copied
 	}

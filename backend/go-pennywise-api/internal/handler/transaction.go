@@ -48,16 +48,20 @@ func (h *transactionHandler) List(c *gin.Context) {
 func stringToUUIDs(ids []string) ([]uuid.UUID, error) {
 	var filterIds []uuid.UUID
 
-	for _, id := range ids {
-		id = strings.TrimSpace(id)
-		if id == "" {
-			continue
+	// clients send either repeated params or a single comma-joined value,
+	// so split every element before parsing
+	for _, joined := range ids {
+		for _, id := range strings.Split(joined, ",") {
+			id = strings.TrimSpace(id)
+			if id == "" {
+				continue
+			}
+			parsedId, err := uuid.Parse(id)
+			if err != nil {
+				return nil, err
+			}
+			filterIds = append(filterIds, parsedId)
 		}
-		parsedId, err := uuid.Parse(id)
-		if err != nil {
-			return nil, err
-		}
-		filterIds = append(filterIds, parsedId)
 	}
 
 	return filterIds, nil
@@ -69,6 +73,7 @@ func (h *transactionHandler) ListNormalized(c *gin.Context) {
 	accountIdParam := strings.TrimSpace(c.Query("accountId"))
 	categoryIdParam := strings.TrimSpace(c.Query("categoryId"))
 	payeeIdParam := strings.TrimSpace(c.Query("payeeId"))
+	tagIdParam := strings.TrimSpace(c.Query("tagId"))
 	startDateParam := strings.TrimSpace(c.DefaultQuery("startDate", ""))
 	endDateParam := strings.TrimSpace(c.DefaultQuery("endDate", ""))
 	noteParam := strings.TrimSpace(c.DefaultQuery("note", ""))
@@ -97,6 +102,11 @@ func (h *transactionHandler) ListNormalized(c *gin.Context) {
 	payeeIds := c.QueryArray("payeeId[]")
 	if len(payeeIds) == 0 && payeeIdParam != "" {
 		payeeIds = strings.Split(payeeIdParam, ",")
+	}
+
+	tagIds := c.QueryArray("tagId[]")
+	if len(tagIds) == 0 && tagIdParam != "" {
+		tagIds = strings.Split(tagIdParam, ",")
 	}
 
 	logger.Logger(ctx).Info("listing normalized transactions", "accountIdParam", accountIdParam)
@@ -133,6 +143,15 @@ func (h *transactionHandler) ListNormalized(c *gin.Context) {
 			return
 		}
 		txnFilter.PayeeIDs = ids
+	}
+
+	if len(tagIds) > 0 {
+		ids, err := stringToUUIDs(tagIds)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing tagId"})
+			return
+		}
+		txnFilter.TagIDs = ids
 	}
 
 	if noteParam != "" {

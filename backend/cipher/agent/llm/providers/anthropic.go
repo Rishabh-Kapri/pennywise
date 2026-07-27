@@ -133,7 +133,7 @@ func NewAnthropicClient(name string) (llm.LLM, error) {
 	httpTransport := httpclient.NewHttpTransport(
 		"https://api.anthropic.com",
 	)
-	logger.Logger(context.Background()).Info("anthropic client created", "headers", headers)
+	logger.Logger(context.Background()).Info("anthropic client created")
 
 	return &anthropicClient{
 		name: name,

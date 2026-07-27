@@ -3,4 +3,5 @@ export const config = {
   isDevelopment: import.meta.env.DEV,
   isProduction: import.meta.env.PROD,
   mode: import.meta.env.MODE,
+  demoMode: String(import.meta.env.VITE_DEMO_MODE).toLowerCase().trim().replace(/['"]/g, '') === 'true',
 } as const;

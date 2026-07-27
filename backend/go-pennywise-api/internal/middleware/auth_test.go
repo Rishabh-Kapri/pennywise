@@ -77,6 +77,9 @@ func (m *mockMwAPIKeyService) GetByHash(ctx context.Context, hash string) (*mode
 func (m *mockMwAPIKeyService) Create(ctx context.Context, key *model.APIKey) (string, error) {
 	panic("unused")
 }
+func (m *mockMwAPIKeyService) GetAll(ctx context.Context) ([]model.APIKey, error) {
+	panic("unused")
+}
 func (m *mockMwAPIKeyService) GetByKeyID(ctx context.Context, keyID string) (*model.APIKey, error) {
 	panic("unused")
 }

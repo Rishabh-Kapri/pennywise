@@ -227,7 +227,7 @@ func (s *agentService) continueRun(
 		return nil
 	})
 	if err != nil {
-		log.Error("failed to create assistant conversation message", err)
+		log.Error("failed to create assistant conversation message", "error", err)
 		return
 	}
 
@@ -253,13 +253,14 @@ func (s *agentService) continueRun(
 			sharedModel.AgentRunStatusFailed,
 			ptrString(err.Error()),
 		)
-		if updateErr == nil {
+		if updateErr != nil {
 			log.Error("failed to update run status", "failedRun", failedRun, "error", updateErr)
-			// return failedRun, errs.Wrap(errs.CodeAgentDispatchFailed, "failed to dispatch agent run", err)
 		}
 
 		log.Error("failed to dispatch agent run", "error", err)
-		// return run, errs.Wrap(errs.CodeAgentDispatchFailed, "failed to dispatch agent run", err)
+		// the run is already marked FAILED; falling through would flip it
+		// back to RUNNING and leave the client waiting forever
+		return
 	}
 
 	status := sharedModel.AgentRunStatusRunning

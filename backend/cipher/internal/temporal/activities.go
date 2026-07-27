@@ -2,8 +2,11 @@ package temporal
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"time"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/progress"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/service"
 	"github.com/google/uuid"
 
@@ -12,6 +15,7 @@ import (
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 	"go.temporal.io/sdk/activity"
+	"go.temporal.io/sdk/temporal"
 )
 
 type PredictionActivity struct {
@@ -68,10 +72,16 @@ func (a *PredictionActivity) Predict(
 			continue
 		}
 
+		if prediction == nil {
+			log.Warn("No prediction result", "email", email)
+			continue
+		}
+
 		prediction.Summary = summary
 		log.Info("Prediction result", "result", prediction)
 
 		predictionResponse = append(predictionResponse, sharedModel.CipherPredictionResult{
+			MessageId:       email.MessageId,
 			OriginalRawText: email.EmailText,
 			Summary:         prediction.Summary,
 			AccountID:       prediction.AccountID,
@@ -162,4 +172,170 @@ func (a *PredictionActivity) ParseEmailData(
 	}
 
 	return result, nil
+}
+
+// ----- Per-email activities -----
+// One email per invocation so a bad email is skipped or retried on its own
+// instead of failing the whole batch. The batch activities above stay
+// registered for workflows started before the per-email rollout.
+
+func activityLogger(ctx context.Context) *slog.Logger {
+	activityInfo := activity.GetInfo(ctx)
+	return logger.Logger(ctx).With(
+		"workflow_id", activityInfo.WorkflowExecution.ID,
+		"workflow_run_id", activityInfo.WorkflowExecution.RunID,
+		"activity_id", activityInfo.ActivityID,
+		"activity_type", activityInfo.ActivityType.Name,
+	)
+}
+
+// withHeartbeats forwards service-level progress reports (fired before each
+// LLM/embedding step) to Temporal heartbeats, so a hung ollama call is
+// detected at the HeartbeatTimeout instead of the whole StartToCloseTimeout.
+func withHeartbeats(ctx context.Context) context.Context {
+	activity.RecordHeartbeat(ctx, "started")
+	return progress.With(ctx, func(step string) {
+		activity.RecordHeartbeat(ctx, step)
+	})
+}
+
+// ParseEmail extracts transaction data from a single raw email. Data problems
+// (empty body, non-transaction email, unparseable date) come back as Skipped
+// results; only infrastructure errors (ollama down) are returned as errors so
+// Temporal's retry policy applies.
+func (a *PredictionActivity) ParseEmail(
+	ctx context.Context,
+	input sharedModel.ParseEmailInput,
+) (sharedModel.ParseEmailResult, error) {
+	ctx = utils.WithServiceName(ctx, "cipher")
+	log := activityLogger(ctx).With("step", sharedModel.PipelineStepParse, "messageId", input.Email.MessageId)
+
+	if input.BudgetID == uuid.Nil {
+		return sharedModel.ParseEmailResult{},
+			temporal.NewNonRetryableApplicationError("budget id is required", "invalid_argument", nil)
+	}
+	ctx = utils.WithBudgetID(ctx, input.BudgetID)
+
+	if input.Email.Body == "" {
+		return sharedModel.ParseEmailResult{Skipped: true, SkipReason: "empty email body"}, nil
+	}
+
+	ctx = withHeartbeats(ctx)
+	extracted, err := a.PredictionService.ExtractEmailData(
+		ctx,
+		service.ExtractEmailDataRequest{EmailHtml: input.Email.Body},
+	)
+	if err != nil {
+		log.Error("error extracting email", "error", err)
+		return sharedModel.ParseEmailResult{}, err
+	}
+	if extracted == nil {
+		return sharedModel.ParseEmailResult{}, errs.New(errs.CodeInternalError, "extraction returned no result")
+	}
+
+	if extracted.Skipped || extracted.Amount == 0 || extracted.AccountCard == "" || extracted.Date == "" {
+		log.Info("email not a transaction", "extracted", *extracted)
+		return sharedModel.ParseEmailResult{Skipped: true, SkipReason: "not a transaction email"}, nil
+	}
+
+	date, err := time.Parse("2006-01-02", extracted.Date)
+	if err != nil {
+		// Bad data from the extractor is deterministic — retrying cannot fix it.
+		log.Warn("unparseable extraction date, skipping email", "date", extracted.Date, "error", err)
+		return sharedModel.ParseEmailResult{Skipped: true, SkipReason: "unparseable date: " + extracted.Date}, nil
+	}
+
+	transactionType := "debit"
+	if extracted.Amount > 0 {
+		transactionType = "credit"
+	}
+
+	return sharedModel.ParseEmailResult{
+		Parsed: &sharedModel.ParsedEmail{
+			MessageId:         input.Email.MessageId,
+			EmailText:         extracted.EmailText,
+			ExtractedMerchant: extracted.Merchant,
+			ExtractedAccount:  extracted.AccountCard,
+			Amount:            extracted.Amount,
+			Date:              date.Format("2006-01-02"),
+			TransactionType:   transactionType,
+		},
+	}, nil
+}
+
+// PredictEmail predicts payee/category/account for a single parsed email.
+// Unknown accounts are Skipped (data problem); LLM/DB failures return errors
+// for Temporal retries.
+func (a *PredictionActivity) PredictEmail(
+	ctx context.Context,
+	input sharedModel.PredictEmailInput,
+) (sharedModel.PredictEmailResult, error) {
+	ctx = utils.WithServiceName(ctx, "cipher")
+	log := activityLogger(ctx).With("step", sharedModel.PipelineStepPredict, "messageId", input.Email.MessageId)
+
+	if input.BudgetID == uuid.Nil {
+		return sharedModel.PredictEmailResult{},
+			temporal.NewNonRetryableApplicationError("budget id is required", "invalid_argument", nil)
+	}
+	ctx = utils.WithBudgetID(ctx, input.BudgetID)
+
+	email := input.Email
+	log.Info("predicting", "amount", email.Amount, "date", email.Date)
+
+	ctx = withHeartbeats(ctx)
+	predictionInput := service.PredictRequest{
+		EmailText: email.EmailText,
+		Amount:    email.Amount,
+	}
+	if email.ExtractedMerchant != "" && email.ExtractedAccount != "" && email.Date != "" {
+		predictionInput.ExtractedInputs = &service.ExtractedInputs{
+			Merchant: email.ExtractedMerchant,
+			Account:  email.ExtractedAccount,
+			Date:     email.Date,
+		}
+	}
+
+	summary, err := a.PredictionService.SummarizeEmailText(ctx, email.EmailText)
+	if err != nil {
+		log.Error("summarization failed", "error", err)
+		return sharedModel.PredictEmailResult{}, err
+	}
+
+	prediction, err := a.PredictionService.Predict(ctx, predictionInput)
+	if err != nil {
+		var svcErr *errs.Error
+		if errors.As(err, &svcErr) && svcErr.Code == errs.CodeAccountLookupFailed {
+			log.Warn("no matching account, skipping email", "error", err)
+			return sharedModel.PredictEmailResult{Skipped: true, SkipReason: err.Error()}, nil
+		}
+		log.Error("prediction failed", "error", err)
+		return sharedModel.PredictEmailResult{}, err
+	}
+	if prediction == nil {
+		log.Warn("no prediction result, skipping email")
+		return sharedModel.PredictEmailResult{Skipped: true, SkipReason: "predictor returned no result"}, nil
+	}
+
+	prediction.Summary = summary
+	log.Info("prediction result", "result", prediction)
+
+	return sharedModel.PredictEmailResult{
+		Prediction: &sharedModel.CipherPredictionResult{
+			MessageId:       email.MessageId,
+			OriginalRawText: email.EmailText,
+			Summary:         prediction.Summary,
+			AccountID:       prediction.AccountID,
+			Account:         prediction.Account,
+			PayeeID:         prediction.PayeeID,
+			CategoryID:      prediction.CategoryID,
+			Payee:           prediction.Payee,
+			Category:        prediction.Category,
+			Date:            email.Date,
+			Amount:          email.Amount,
+			Confidence:      prediction.Confidence,
+			Source:          prediction.Source,
+			Reasoning:       prediction.Reasoning,
+			Metadata:        prediction.Metadata,
+		},
+	}, nil
 }

@@ -1,19 +1,19 @@
 import 'react-native-gesture-handler';
-import { useEffect } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Animated, StyleSheet, View } from 'react-native';
 import { Provider } from 'react-redux';
 import { DarkTheme, NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { BarChart3, Landmark, LayoutDashboard, ReceiptText, Settings, Tags } from 'lucide-react-native';
+import { BarChart3, Landmark, LayoutDashboard, ReceiptText, Sparkles, Tags } from 'lucide-react-native';
 import { useAppDispatch, useAppSelector } from './app/hooks';
 import { store } from './app/store';
 import { LoadingStateView } from './components/LoadingStateView';
-import { colors } from './theme';
+import { colors, spacing } from './theme';
 import { apiClient } from './utils/api';
-import type { AppTabParamList, AuthStackParamList } from './navigation/types';
+import type { AppTabParamList, AuthStackParamList, RootStackParamList } from './navigation/types';
 import { hydrateAuth } from './features/auth/store/authSlice';
 import { LoginScreen } from './features/auth/screens/LoginScreen';
 import { fetchAllBudgets } from './features/budget/store/budgetSlice';
@@ -28,6 +28,7 @@ import { WebSocketProvider } from './features/websocket/WebSocketProvider';
 import { AgentChat } from './features/agent/components/AgentChat';
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
+const RootStack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<AppTabParamList>();
 
 const navigationTheme = {
@@ -36,7 +37,7 @@ const navigationTheme = {
     ...DarkTheme.colors,
     primary: colors.primary,
     background: colors.background,
-    card: colors.surfaceStrong,
+    card: colors.surface,
     text: colors.text,
     border: colors.border,
     notification: colors.danger
@@ -63,48 +64,77 @@ function iconForRoute(routeName: keyof AppTabParamList, color: string, size: num
       return <Tags color={color} size={size} />;
     case 'Loans':
       return <Landmark color={color} size={size} />;
-    case 'Settings':
-      return <Settings color={color} size={size} />;
+    case 'Penny':
+      return <Sparkles color={color} size={size} />;
     default:
       return null;
   }
 }
 
 function TabIcon({ routeName, focused }: { routeName: keyof AppTabParamList; focused: boolean }) {
-  const iconColor = focused ? colors.primary : colors.muted;
+  const progress = useRef(new Animated.Value(focused ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.spring(progress, {
+      toValue: focused ? 1 : 0,
+      useNativeDriver: true,
+      speed: 20,
+      bounciness: 10
+    }).start();
+  }, [focused, progress]);
 
   return (
-    <View style={[styles.tabIconPill, focused && styles.tabIconPillFocused]}>
-      {iconForRoute(routeName, iconColor, focused ? 31 : 30)}
+    <View style={styles.tabIcon}>
+      <Animated.View
+        style={[
+          styles.tabIconPill,
+          {
+            opacity: progress,
+            transform: [{ scale: progress.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }]
+          }
+        ]}
+      />
+      {iconForRoute(routeName, focused ? colors.primary : colors.faint, 22)}
     </View>
   );
 }
 
 function AppTabs() {
+  const insets = useSafeAreaInsets();
+
+  return (
+    <Tab.Navigator
+      initialRouteName="Dashboard"
+      screenOptions={({ route }) => ({
+        headerShown: false,
+        tabBarShowLabel: false,
+        tabBarHideOnKeyboard: true,
+        animation: 'shift',
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.muted,
+        tabBarStyle: [styles.tabBar, { bottom: Math.max(insets.bottom, spacing.md) }],
+        tabBarItemStyle: styles.tabBarItem,
+        tabBarIcon: ({ focused }) => <TabIcon routeName={route.name as keyof AppTabParamList} focused={focused} />
+      })}
+    >
+      <Tab.Screen name="Dashboard" component={DashboardScreen} />
+      <Tab.Screen name="Budget" component={BudgetScreen} />
+      <Tab.Screen name="Transactions" component={TransactionsScreen} />
+      <Tab.Screen name="Payees" component={PayeesScreen} />
+      <Tab.Screen name="Loans" component={LoansScreen} />
+      <Tab.Screen name="Penny" component={AgentChat} />
+    </Tab.Navigator>
+  );
+}
+
+function AppNavigator() {
   return (
     <>
       <WebSocketProvider />
-      <Tab.Navigator
-        initialRouteName="Dashboard"
-        screenOptions={({ route }) => ({
-          headerShown: false,
-          tabBarShowLabel: false,
-          tabBarActiveTintColor: colors.primary,
-          tabBarInactiveTintColor: colors.muted,
-          tabBarStyle: styles.tabBar,
-          tabBarItemStyle: styles.tabBarItem,
-          tabBarIconStyle: styles.tabBarIcon,
-          tabBarIcon: ({ focused }) => <TabIcon routeName={route.name as keyof AppTabParamList} focused={focused} />
-        })}
-      >
-        <Tab.Screen name="Dashboard" component={DashboardScreen} />
-        <Tab.Screen name="Budget" component={BudgetScreen} />
-        <Tab.Screen name="Transactions" component={TransactionsScreen} />
-        <Tab.Screen name="Payees" component={PayeesScreen} />
-        <Tab.Screen name="Loans" component={LoansScreen} />
-        <Tab.Screen name="Settings" component={SettingsScreen} />
-      </Tab.Navigator>
-      <AgentChat />
+      <RootStack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+        <RootStack.Screen name="Main" component={AppTabs} />
+        <RootStack.Screen name="Settings" component={SettingsScreen} />
+      </RootStack.Navigator>
     </>
   );
 }
@@ -112,41 +142,45 @@ function AppTabs() {
 const styles = StyleSheet.create({
   tabBar: {
     position: 'absolute',
-    left: 18,
-    right: 18,
-    bottom: 18,
-    height: 72,
+    // React Navigation's base tab bar style pins the bar with the logical
+    // `start`/`end` insets, which win over `left`/`right` in Yoga no matter the
+    // style order. Override the same properties so the bar actually floats.
+    start: spacing.lg,
+    end: spacing.lg,
+    height: 64,
     borderTopWidth: 0,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderMuted,
-    borderRadius: 36,
-    backgroundColor: colors.surfaceStrong,
-    paddingHorizontal: 8,
-    paddingTop: 8,
-    paddingBottom: 8,
-    elevation: 16,
+    borderColor: colors.borderLight,
+    borderRadius: 32,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.xs,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
+    elevation: 24,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
-    shadowRadius: 18
+    shadowOpacity: 0.5,
+    shadowRadius: 20
   },
   tabBarItem: {
-    height: 56,
-    borderRadius: 28
+    height: 48,
+    borderRadius: 24,
+    // The library's own item style is `justifyContent: 'flex-start'` with
+    // padding, which pins the icon to the top once labels are hidden.
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 0
   },
-  tabBarIcon: {
-    width: 60,
-    height: 56
+  tabIcon: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center'
   },
   tabIconPill: {
-    width: 56,
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 28
-  },
-  tabIconPillFocused: {
-    backgroundColor: colors.surfaceTertiary
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 22,
+    backgroundColor: colors.primaryMuted
   }
 });
 
@@ -181,7 +215,7 @@ function RootContent() {
     return <BudgetOnboardingScreen />;
   }
 
-  return <AppTabs />;
+  return <AppNavigator />;
 }
 
 function AppShell() {

@@ -1,146 +1,104 @@
 .container {
-  background: linear-gradient(135deg, var(--color-surface) 0%, var(--color-surface-secondary) 100%);
-  border-radius: 16px;
-  padding: 1.5rem;
-  border: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.25rem;
+  background: var(--color-surface-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
 }
 
 .header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 1.5rem;
+  justify-content: space-between;
+  gap: 1rem;
 }
 
 .title {
-  font-size: 1.125rem;
-  font-weight: 600;
-  color: var(--color-text);
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-}
-
-.titleIcon {
-  color: var(--color-primary);
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+  font-weight: 600;
 }
 
 .legend {
-  display: flex;
+  display: inline-flex;
+  align-items: center;
   gap: 1rem;
 }
 
 .legendItem {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 0.75rem;
+  gap: 0.4rem;
   color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
 }
 
 .legendDot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
 }
 
-.legendDot.income {
-  background: var(--color-success);
-}
-
-.legendDot.expenses {
-  background: var(--color-error);
-}
-
-.chartContainer {
-  height: 200px;
-  position: relative;
-}
-
-.chart {
-  width: 100%;
-  height: 100%;
-}
-
-.barGroup {
-  cursor: pointer;
-}
-
-.barGroup:hover .bar {
-  opacity: 0.8;
-}
-
-.bar {
-  transition: opacity 0.2s ease;
-}
-
-.bar.income {
-  fill: var(--color-success);
-}
-
-.bar.expenses {
-  fill: var(--color-error);
-}
-
-.gridLine {
-  stroke: var(--color-border);
-  stroke-width: 1;
-  stroke-dasharray: 4;
-}
-
-.axisLabel {
-  font-size: 0.75rem;
-  fill: var(--color-text-secondary);
+.chartArea {
+  min-width: 0;
 }
 
 .tooltip {
-  position: absolute;
-  background: var(--color-surface-tertiary);
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 0.75rem;
-  font-size: 0.75rem;
-  pointer-events: none;
-  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--color-surface);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
   box-shadow: var(--shadow-md);
 }
 
-.tooltip .month {
-  font-weight: 600;
+.tooltipLabel {
   color: var(--color-text);
-  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 600;
 }
 
-.tooltip .values {
+.tooltipRow {
   display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+  align-items: center;
+  gap: 0.45rem;
 }
 
-.tooltip .income {
-  color: var(--color-success);
+.tooltipSwatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: 0 0 auto;
 }
 
-.tooltip .expenses {
-  color: var(--color-error);
+.tooltipName {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+.tooltipValue {
+  margin-left: auto;
+  padding-left: 0.75rem;
+  color: var(--color-text);
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .emptyState {
-  height: 200px;
   display: flex;
   align-items: center;
   justify-content: center;
+  height: 240px;
   color: var(--color-text-secondary);
-}
-
-@media (max-width: 768px) {
-  .header {
-    flex-direction: column;
-    gap: 0.75rem;
-    align-items: flex-start;
-  }
-  
-  .chartContainer {
-    height: 160px;
-  }
+  font-size: 0.95rem;
 }

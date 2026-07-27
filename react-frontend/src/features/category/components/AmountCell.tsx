@@ -71,7 +71,11 @@ export const AmountCell = forwardRef<HTMLSpanElement, AmountCellProps>(
         className={className}
         onClick={onClick}
         {...ariaProps}>
-        {getCurrencyLocaleString(valueNum)}
+        {/* `|| 0` normalizes -0 so it never renders as "-₹0" */}
+        {getCurrencyLocaleString(valueNum || 0, 'INR', 'en-IN', {
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 2,
+        })}
       </span>
     );
   },

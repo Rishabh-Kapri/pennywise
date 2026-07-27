@@ -1,20 +1,37 @@
-import { Pressable, StyleSheet, View } from 'react-native';
-import { LogOut, UserRound } from 'lucide-react-native';
+import { Image, Pressable, StyleSheet, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { Check, ChevronLeft, LogOut, UserRound } from 'lucide-react-native';
+import appConfig from '../../../../app.json';
 import { useAppDispatch, useAppSelector } from '../../../app/hooks';
 import { Button } from '../../../components/Button';
 import { Card } from '../../../components/Card';
 import { Screen } from '../../../components/Screen';
 import { AppText } from '../../../components/AppText';
-import { SectionHeader } from '../../../components/SectionHeader';
+import { IconTile } from '../../../components/IconTile';
 import { logout } from '../../auth/store/authSlice';
 import { selectAllBudgets, selectSelectedBudget, setSelectedBudget, updateBudgetSelection } from '../../budget/store/budgetSlice';
+import { config } from '../../../config/env';
 import { colors, spacing } from '../../../theme';
+
+function StatCell({ label, value }: { label: string; value: number | string }) {
+  return (
+    <View style={styles.statCell}>
+      <AppText variant="heading" tabular>{value}</AppText>
+      <AppText variant="caption" muted>{label}</AppText>
+    </View>
+  );
+}
 
 export function SettingsScreen() {
   const dispatch = useAppDispatch();
+  const navigation = useNavigation();
   const user = useAppSelector((state) => state.auth.user);
   const budgets = useAppSelector(selectAllBudgets);
   const selectedBudget = useAppSelector(selectSelectedBudget);
+  const accountCount = useAppSelector((state) => state.accounts.allAccounts.length);
+  const payeeCount = useAppSelector((state) => state.payees.allPayees.length);
+  const tagCount = useAppSelector((state) => state.tags.tags.length);
+  const transactionTotal = useAppSelector((state) => state.transactions.total);
 
   const chooseBudget = (budgetId?: string) => {
     const budget = budgets.find((item) => item.id === budgetId);
@@ -25,38 +42,99 @@ export function SettingsScreen() {
 
   return (
     <Screen style={styles.screen}>
-      <SectionHeader title="Settings" subtitle="Account, budget switching, and local session controls." />
+      <View style={styles.headerRow}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+          onPress={() => navigation.goBack()}
+        >
+          <ChevronLeft size={20} color={colors.text} />
+        </Pressable>
+        <AppText variant="title">Settings</AppText>
+      </View>
 
       <Card style={styles.profileCard}>
-        <View style={styles.avatar}>
-          <UserRound color={colors.primary} size={24} />
-        </View>
+        {user?.picture ? (
+          <Image source={{ uri: user.picture }} style={styles.profilePhoto} />
+        ) : (
+          <IconTile size={52}>
+            <UserRound color={colors.primary} size={24} />
+          </IconTile>
+        )}
         <View style={styles.profileMain}>
-          <AppText weight="semibold">{user?.name ?? 'Pennywise user'}</AppText>
-          <AppText muted>{user?.email ?? 'Signed in'}</AppText>
+          <AppText variant="heading">{user?.name ?? 'Pennywise user'}</AppText>
+          <AppText variant="caption" muted>{user?.email ?? 'Signed in'}</AppText>
+          <AppText variant="caption" tone="faint">Signed in with Google</AppText>
         </View>
       </Card>
 
-      <Card style={styles.cardGap}>
-        <AppText weight="semibold" style={styles.cardTitle}>Budgets</AppText>
-        {budgets.map((budget) => {
-          const selected = budget.id === selectedBudget?.id;
-          return (
-            <Pressable key={budget.id ?? budget.name} onPress={() => chooseBudget(budget.id)} style={styles.budgetRow}>
-              <View>
-                <AppText weight="semibold">{budget.name}</AppText>
-                <AppText muted>{selected ? 'Selected budget' : 'Tap to switch'}</AppText>
-              </View>
-              {selected ? <View style={styles.selectedDot} /> : null}
-            </Pressable>
-          );
-        })}
-      </Card>
+      <View style={styles.section}>
+        <AppText variant="label" tone="faint" style={styles.sectionLabel}>At a glance</AppText>
+        <Card style={styles.statsCard}>
+          <StatCell label="Accounts" value={accountCount} />
+          <View style={styles.statDivider} />
+          <StatCell label="Payees" value={payeeCount} />
+          <View style={styles.statDivider} />
+          <StatCell label="Tags" value={tagCount} />
+          <View style={styles.statDivider} />
+          <StatCell label="Transactions" value={transactionTotal} />
+        </Card>
+      </View>
+
+      <View style={styles.section}>
+        <AppText variant="label" tone="faint" style={styles.sectionLabel}>Budgets</AppText>
+        <Card style={styles.listCard}>
+          {budgets.map((budget, index) => {
+            const selected = budget.id === selectedBudget?.id;
+            return (
+              <Pressable
+                key={budget.id ?? budget.name}
+                onPress={() => chooseBudget(budget.id)}
+                android_ripple={{ color: colors.surfaceStrong }}
+                style={({ pressed }) => [styles.budgetRow, index > 0 && styles.rowDivider, pressed && styles.pressed]}
+              >
+                <View style={styles.budgetMain}>
+                  <AppText weight="medium">{budget.name}</AppText>
+                  <AppText variant="caption" muted>{selected ? 'Selected budget' : 'Tap to switch'}</AppText>
+                </View>
+                {selected ? (
+                  <View style={styles.selectedBadge}>
+                    <Check size={13} color={colors.primary} />
+                  </View>
+                ) : null}
+              </Pressable>
+            );
+          })}
+        </Card>
+      </View>
+
+      <View style={styles.section}>
+        <AppText variant="label" tone="faint" style={styles.sectionLabel}>App</AppText>
+        <Card style={styles.listCard}>
+          <View style={styles.infoRow}>
+            <AppText variant="caption" muted>Version</AppText>
+            <AppText variant="caption" weight="medium" tabular>{appConfig.expo.version}</AppText>
+          </View>
+          <View style={[styles.infoRow, styles.rowDivider]}>
+            <AppText variant="caption" muted>API</AppText>
+            <AppText variant="caption" weight="medium" numberOfLines={1} style={styles.infoValue}>
+              {config.apiBaseUrl}
+            </AppText>
+          </View>
+          <View style={[styles.infoRow, styles.rowDivider]}>
+            <AppText variant="caption" muted>Budget ID</AppText>
+            <AppText variant="caption" weight="medium" numberOfLines={1} style={styles.infoValue}>
+              {selectedBudget?.id ?? '—'}
+            </AppText>
+          </View>
+        </Card>
+      </View>
 
       <Button variant="danger" onPress={() => void dispatch(logout())}>
         <View style={styles.logoutContent}>
-          <LogOut size={18} color="#fff" />
-          <AppText weight="semibold" style={styles.logoutLabel}>Log out</AppText>
+          <LogOut size={17} color={colors.danger} />
+          <AppText weight="semibold" tone="danger">Log out</AppText>
         </View>
       </Button>
     </Screen>
@@ -65,50 +143,98 @@ export function SettingsScreen() {
 
 const styles = StyleSheet.create({
   screen: {
-    gap: spacing.lg
+    gap: spacing.xl
   },
-  profileCard: {
+  headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md
   },
-  avatar: {
+  backButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceStrong
+  },
+  profileCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.lg
+  },
+  profilePhoto: {
     width: 52,
     height: 52,
-    borderRadius: 26,
-    backgroundColor: colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center'
+    borderRadius: 26
   },
   profileMain: {
-    flex: 1
+    flex: 1,
+    gap: 2
   },
-  cardGap: {
-    gap: spacing.md
+  section: {
+    gap: spacing.sm
   },
-  cardTitle: {
-    fontSize: 18
+  sectionLabel: {
+    marginLeft: spacing.xs
+  },
+  statsCard: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    paddingVertical: spacing.md
+  },
+  statCell: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 2
+  },
+  statDivider: {
+    width: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border
+  },
+  listCard: {
+    paddingVertical: spacing.xs
   },
   budgetRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: spacing.md,
+    gap: spacing.md,
+    paddingVertical: spacing.md
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.lg,
+    paddingVertical: spacing.md
+  },
+  infoValue: {
+    flexShrink: 1,
+    textAlign: 'right'
+  },
+  rowDivider: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border
   },
-  selectedDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.primary
+  budgetMain: {
+    flex: 1,
+    gap: 1
+  },
+  selectedBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primaryMuted
+  },
+  pressed: {
+    opacity: 0.7
   },
   logoutContent: {
     flexDirection: 'row',
     gap: spacing.sm,
     alignItems: 'center'
-  },
-  logoutLabel: {
-    color: '#fff'
   }
 });

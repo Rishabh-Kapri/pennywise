@@ -5,27 +5,22 @@ import tagStyles from './TagPopover.module.css';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import type { Tag } from '@/features/tags/types/tag.types';
 import { createTag } from '@/features/tags/store/tagSlice';
+import { getAutoColor } from '@/features/tags/utils';
 import { useDropdown } from '../../hooks/useDropdown';
-
-const TAG_COLORS = [
-  '#6366f1', '#ec4899', '#f59e0b', '#10b981', '#3b82f6',
-  '#8b5cf6', '#ef4444', '#14b8a6', '#f97316', '#06b6d4',
-];
-
-function getAutoColor(name: string): string {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return TAG_COLORS[Math.abs(hash) % TAG_COLORS.length];
-}
 
 interface TagPopoverProps {
   selectedTagIds: string[];
   onChange: (tagIds: string[]) => void;
+  allowCreate?: boolean;
+  placeholder?: string;
 }
 
-export function TagDropdown({ selectedTagIds, onChange }: TagPopoverProps) {
+export function TagDropdown({
+  selectedTagIds,
+  onChange,
+  allowCreate = true,
+  placeholder = 'Search or create tags',
+}: TagPopoverProps) {
   const { allTags } = useAppSelector((state) => state.tags);
   const dispatch = useAppDispatch();
   const [isCreating, setIsCreating] = useState(false);
@@ -84,7 +79,7 @@ export function TagDropdown({ selectedTagIds, onChange }: TagPopoverProps) {
         className={`${styles.input} ${styles.trigger}`}
         onChange={(e) => filterValues(e.target.value)}
         value={filterQuery}
-        placeholder="Search or create tags"
+        placeholder={placeholder}
         aria-haspopup="true"
         aria-expanded={isOpen}
         aria-controls="tag-popover-content"
@@ -120,7 +115,7 @@ export function TagDropdown({ selectedTagIds, onChange }: TagPopoverProps) {
             </span>
           </div>
         ))}
-        {!exactMatch && filterQuery.trim() && (
+        {allowCreate && !exactMatch && filterQuery.trim() && (
           <div
             className={`${styles.item} ${tagStyles.createItem}`}
             tabIndex={0}

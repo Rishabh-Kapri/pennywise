@@ -3,6 +3,8 @@ package pubsub
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -23,6 +25,8 @@ import (
 	"cloud.google.com/go/pubsub"
 	"google.golang.org/api/option"
 
+	enums "go.temporal.io/api/enums/v1"
+	"go.temporal.io/api/serviceerror"
 	tc "go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 )
@@ -130,7 +134,15 @@ func (p *EventProcessor) processMessage(event *pubsub.Message) {
 	we, err := p.temporalClient.ExecuteWorkflow(
 		ctx,
 		tc.StartWorkflowOptions{
+			// Deterministic ID: duplicate pub/sub deliveries of the same historyId
+			// dedupe at Temporal, surviving process restarts (the in-memory maps
+			// above are only a fast-path).
+			ID:        fmt.Sprintf("email-to-txn-%s-%d", email, historyID),
 			TaskQueue: sharedModel.PennywiseTaskQueue,
+			// A redelivery may retry a FAILED run but must not rerun a completed one.
+			WorkflowIDReusePolicy: enums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE_FAILED_ONLY,
+			// A concurrent duplicate attaches to the running execution instead of erroring.
+			WorkflowIDConflictPolicy: enums.WORKFLOW_ID_CONFLICT_POLICY_USE_EXISTING,
 		},
 		sharedModel.EmailToTransactionWorkflowName,
 		sharedModel.EmailToTransactionWorflowInput{
@@ -139,6 +151,11 @@ func (p *EventProcessor) processMessage(event *pubsub.Message) {
 		},
 	)
 	if err != nil {
+		var alreadyStarted *serviceerror.WorkflowExecutionAlreadyStarted
+		if errors.As(err, &alreadyStarted) {
+			log.Info("workflow already completed for this historyId, skipping", "historyId", historyID)
+			return
+		}
 		log.Error("error starting workflow", "error", err)
 		event.Nack()
 		return

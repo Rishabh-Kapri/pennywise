@@ -2,6 +2,7 @@ package temporal
 
 import (
 	"context"
+	"strings"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/auth"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/client"
@@ -13,6 +14,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"go.temporal.io/sdk/activity"
+	gmailv1 "google.golang.org/api/gmail/v1"
 )
 
 type GmailActivities struct {
@@ -68,8 +70,21 @@ func (a *GmailActivities) FetchEmailData(
 		result.EmailData = append(result.EmailData, sharedModel.EmailData{
 			MessageId: data.MessageId,
 			Body:      data.Body,
+			From:      headerValue(data.Headers, "From"),
+			Subject:   headerValue(data.Headers, "Subject"),
+			Snippet:   data.Snippet,
 		})
 	}
 
 	return result, nil
+}
+
+// headerValue returns the first matching MIME header, case-insensitively.
+func headerValue(headers []*gmailv1.MessagePartHeader, name string) string {
+	for _, header := range headers {
+		if header != nil && strings.EqualFold(header.Name, name) {
+			return header.Value
+		}
+	}
+	return ""
 }

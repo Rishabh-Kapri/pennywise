@@ -19,25 +19,6 @@
   min-width: 0;
 }
 
-.headerContainer {
-  display: flex;
-  padding: 0.4rem 1.5rem;
-  font-size: 0.8rem;
-}
-
-.spacer {
-  flex: 3;
-}
-
-.headerItem {
-  flex: 1;
-  text-align: right;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  color: var(--color-text-secondary);
-  text-transform: uppercase;
-}
-
 .content {
   flex: 1;
   display: flex;
@@ -76,14 +57,13 @@
   background: var(--color-surface);
   border-radius: 0.75rem;
   padding: 0.85rem 0;
-  transition: all 0.3s ease;
+  transition: border-color 0.2s ease;
   flex-shrink: 0;
   overflow: hidden;
 }
 
 .groupContainer:hover {
   border-color: var(--color-border-muted);
-  background: color-mix(in srgb, var(--color-surface) 88%, var(--color-surface-secondary));
 }
 
 .groupContainer > div:nth-child(2) {
@@ -92,10 +72,11 @@
 
 .groupHeader {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.75rem;
   padding: 0 1.5rem;
   align-items: center;
-  font-size: 1.05rem;
+  justify-content: space-between;
+  font-size: 1rem;
 }
 
 .addCategory {
@@ -108,14 +89,14 @@
   display: flex;
   gap: 0.5rem;
   align-items: center;
-  flex: 3;
+  flex: 1;
   min-width: 0;
 }
 
 .groupName {
   min-width: 0;
   overflow-wrap: anywhere;
-  font-weight: 700;
+  font-weight: 650;
 }
 
 .groupInfo:hover .addCategory {
@@ -138,14 +119,33 @@
   color: var(--color-text);
 }
 
-.groupBudget {
-  flex: 1;
-  font-size: 1rem;
-  text-align: right;
+.groupSummary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.85rem;
+  flex: 0 0 auto;
 }
 
-.groupBalance {
-  padding-right: 0.65rem;
+.groupAssigned {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.groupChip {
+  padding: 0.2rem 0.7rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-success) 16%, transparent);
+  color: var(--color-success);
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.groupChipOver {
+  background: color-mix(in srgb, var(--color-error) 16%, transparent);
+  color: var(--color-error);
 }
 
 .noAmount {
@@ -164,25 +164,29 @@
 
 .itemBalance {
   padding: 0.25rem 0.75rem;
-  border-radius: 1.5rem;
-  color: var(--color-budget-positive-bg);
-  background: var(--color-budget-positive-fg);
-  transition: filter 0.2s ease;
+  border-radius: 999px;
+  font-weight: 600;
+  color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 16%, transparent);
+  transition: background 0.2s ease;
 }
 
 .itemOverspent {
-  background: var(--color-budget-negative-fg);
-  color: var(--color-budget-negative-bg);
+  background: color-mix(in srgb, var(--color-error) 16%, transparent);
+  color: var(--color-error);
 }
 
 .itemBalance:hover {
-  filter: brightness(1.25);
+  background: color-mix(in srgb, var(--color-success) 28%, transparent);
+}
+
+.itemOverspent:hover {
+  background: color-mix(in srgb, var(--color-error) 28%, transparent);
 }
 
 .itemBalance.noAmount {
-  background: var(--color-surface-secondary);
+  background: rgba(255, 255, 255, 0.06);
   color: var(--color-text-secondary);
-  pointer: none;
 }
 
 .input {
@@ -190,12 +194,17 @@
   height: 100%;
   text-align: right;
   margin-right: -7px;
-  border: 1px solid transparent;
+  border: 1px solid rgba(255, 255, 255, 0.12);
   padding: 0.1rem 0.5rem;
-  border-radius: 1rem;
+  border-radius: 8px;
   background: var(--color-surface-secondary);
-  box-shadow: var(--shadow-sm);
   font-size: 1rem;
+  color: var(--color-text);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--color-primary);
 }
 
 @media (max-width: 768px) {
@@ -212,10 +221,6 @@
     position: static;
   }
 
-  .headerContainer {
-    display: none;
-  }
-
   .content {
     max-height: none;
     height: auto;
@@ -226,64 +231,22 @@
 
   .groupContainer {
     padding: 0.9rem 0 0.4rem;
-    border-radius: 1rem;
+    border-radius: 0.75rem;
     overflow: hidden;
   }
 
   .groupHeader {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.7rem;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.75rem;
     padding: 0 1rem;
-    align-items: start;
-    font-size: 1rem;
   }
 
   .groupInfo {
-    grid-column: 1 / -1;
-    align-items: center;
-    font-size: 1.05rem;
+    flex: 1 1 100%;
   }
 
-  .groupBudget {
-    display: flex;
-    min-width: 0;
-    flex-direction: column;
-    gap: 0.25rem;
-    font-size: 0.92rem;
-    text-align: left;
-    white-space: nowrap;
-  }
-
-  .groupBudget > span,
-  .groupBudget > input {
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .groupBudget::before {
-    font-size: 0.65rem;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    color: var(--color-text-secondary);
-    text-transform: uppercase;
-  }
-
-  .groupBudget:nth-of-type(2)::before {
-    content: "Assigned";
-  }
-
-  .groupBudget:nth-of-type(3)::before {
-    content: "Activity";
-  }
-
-  .groupBudget:nth-of-type(4)::before {
-    content: "Available";
-  }
-
-  .groupBalance {
-    padding-right: 0;
+  .groupSummary {
+    flex-wrap: wrap;
   }
 
   .addCategory {

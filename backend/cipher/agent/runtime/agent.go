@@ -625,7 +625,7 @@ func (a *Agent) Run(
 	ctx context.Context,
 	req sharedModel.ChatRequest,
 	opts ...AgentRunOption,
-) (*sharedModel.ChatResponse, error) {
+) (res *sharedModel.ChatResponse, err error) {
 	runOpts := AgentRunOptions{
 		enableTools:       true,
 		updateRunMetadata: true,
@@ -662,6 +662,23 @@ func (a *Agent) Run(
 
 	defer func() {
 		defer span.End()
+		// Surface run failures to the chat UI over the same websocket
+		// stream the deltas use, so users don't have to dig through logs.
+		if err != nil && req.Stream {
+			budgetID, budgetErr := utils.BudgetIDFromContext(ctx)
+			userID, userErr := utils.UserIDFromContext(ctx)
+			if budgetErr == nil && userErr == nil {
+				a.publishChatStreamEvent(
+					ctx,
+					budgetID,
+					userID,
+					conversationID,
+					messageID,
+					"error",
+					err.Error(),
+				)
+			}
+		}
 		go a.processRunFinish(ctx, runFinishedContext{
 			runOpts:        runOpts,
 			runID:          runID,
@@ -677,7 +694,6 @@ func (a *Agent) Run(
 		})
 	}()
 
-	var err error
 	var lastStepResult sharedModel.StepResult
 	hasStepResult := false
 
@@ -687,14 +703,13 @@ func (a *Agent) Run(
 
 	// Enrich with tools
 	if runOpts.enableTools && len(a.toolRegistry.GetAllTools()) > 0 {
-		log.Info("enriching with tools", "tools", a.toolRegistry.GetAllTools())
-
 		req.Tools = make([]sharedModel.ToolDefiniton, 0)
 
 		for _, tool := range a.toolRegistry.GetAllTools() {
 			req.Tools = append(req.Tools, tool.Definition())
 			enabledTools = append(enabledTools, tool.Definition().Name)
 		}
+		log.Info("enriching with tools", "tools", enabledTools)
 	}
 	log.Info("context builder", "builder", a.contextBuilder)
 
@@ -864,6 +879,9 @@ func (a *Agent) Run(
 
 		case sharedModel.StopReasonError:
 			err := errs.New(errs.CodeInternalError, "llm responded with error")
+			if stepResult.Err != nil {
+				err = errs.Wrap(errs.CodeInternalError, "llm responded with error", stepResult.Err)
+			}
 			log.Error("llm responded with error", "error", err)
 			setSpanError(span, err)
 			return stepResultToChatResponse(req.Model, stepResult), err
