@@ -68,6 +68,16 @@ type memory struct {
 	bufferTokens     int
 	messageTokens    int
 	bufferActivation float32
+	// countTokensFn is injectable so budget enforcement can be tested without
+	// tiktoken, which fetches its encoding file over the network on first use.
+	countTokensFn func([]sharedModel.AgentMessage, int) (int, error)
+}
+
+func (m *memory) countTokens(messages []sharedModel.AgentMessage, lastSequence int) (int, error) {
+	if m.countTokensFn != nil {
+		return m.countTokensFn(messages, lastSequence)
+	}
+	return countTokens(messages, lastSequence)
 }
 
 // memory service should be singleton
@@ -270,10 +280,13 @@ func (m *memory) GetWorkingMemory(ctx context.Context, budgetID uuid.UUID) strin
 func (m *memory) PrepareContext(ctx context.Context, req MemoryContextRequest) (*MemoryContext, error) {
 	log := logger.Logger(ctx)
 
-	tokenCount, err := countTokens(req.Messages, 0)
+	// tiktoken downloads its encoding on first use, so counting can fail for
+	// reasons unrelated to this conversation. Fail open: passing the messages
+	// through unchanged is far better than failing the user's chat outright.
+	tokenCount, err := m.countTokens(req.Messages, 0)
 	if err != nil {
-		log.Error("failed to count tokens", "error", err)
-		return nil, err
+		log.Error("failed to count tokens, skipping compaction", "error", err)
+		return &MemoryContext{req.Messages, nil}, nil
 	}
 	log.Info(
 		"tokens",
@@ -343,19 +356,166 @@ func (m *memory) PrepareContext(ctx context.Context, req MemoryContextRequest) (
 			activeObservations = append(activeObservations, om)
 		}
 
-		remainingTokens, _ := countTokens(messages, 0)
+		remainingTokens, _ := m.countTokens(messages, 0)
 
 		if remainingTokens <= rawTailTokens {
 			// we want to keep the raw messages intact from here on
 			break
 		}
 	}
-	pay, err := json.Marshal(messages)
-	log.Info("message", "messages", string(pay))
-	tokenCount, err = countTokens(messages, 0)
-	log.Info("new token count", "count", tokenCount, "error", err)
+	// Observation substitution is best-effort: it does nothing when no
+	// observations have been written yet, or when stored sequence spans no longer
+	// line up with the current message list. Without the enforcement below the
+	// oversized list was returned anyway and the provider rejected the request,
+	// which made the budget advisory rather than real.
+	messages = m.enforceTokenBudget(ctx, messages)
+
+	tokenCount, err = m.countTokens(messages, 0)
+	if err != nil {
+		log.Warn("failed to count tokens after compaction", "error", err)
+	}
+	log.Info("prepared context", "tokenCount", tokenCount, "observations", len(activeObservations))
 
 	return &MemoryContext{messages, activeObservations}, nil
+}
+
+// toolResultPlaceholder replaces the body of an old tool result. Tool output is
+// the dominant source of growth — one execute_sql call can park hundreds of rows
+// of JSON in context for the rest of the conversation — so shrinking it reclaims
+// far more than dropping conversational turns, and costs the model much less.
+const toolResultPlaceholder = "[earlier tool result omitted to stay within the context budget]"
+
+// recentSequencesKept is how many trailing conversation turns keep their full
+// tool output. Counted in turns rather than messages because a single turn can
+// span many messages (assistant call, several results, final answer), which
+// would otherwise put a genuinely old result inside the "recent" window. The
+// current turn and the one before it are what the model is still reasoning
+// about; anything older is reference material at best.
+const recentSequencesKept = 2
+
+// enforceTokenBudget brings messages under m.messageTokens, in two passes.
+//
+// The message list must stay structurally valid throughout: an assistant
+// tool_use block with no matching tool_result is rejected by the provider, so
+// pass one keeps every message and only shrinks old tool-result bodies, and pass
+// two drops assistant/tool pairs together rather than individually.
+func (m *memory) enforceTokenBudget(
+	ctx context.Context,
+	messages []sharedModel.AgentMessage,
+) []sharedModel.AgentMessage {
+	log := logger.Logger(ctx)
+
+	withinBudget := func(msgs []sharedModel.AgentMessage) bool {
+		count, err := m.countTokens(msgs, 0)
+		if err != nil {
+			// Fail open: a counting error should not truncate a valid conversation.
+			log.Warn("failed to count tokens while enforcing budget", "error", err)
+			return true
+		}
+		return count <= m.messageTokens
+	}
+
+	if withinBudget(messages) {
+		return messages
+	}
+
+	// Pass one: blank out old tool-result bodies, keeping the envelope intact.
+	maxSequence := 0
+	for _, msg := range messages {
+		if msg.Sequence > maxSequence {
+			maxSequence = msg.Sequence
+		}
+	}
+	shrinkBeforeSequence := maxSequence - recentSequencesKept
+
+	shrunk := 0
+	for i := range messages {
+		if messages[i].Sequence > shrinkBeforeSequence {
+			continue
+		}
+		result := messages[i].ToolResult
+		if result == nil || len(result.Content) == 0 {
+			continue
+		}
+		if len(result.Content) == 1 && result.Content[0].Text == toolResultPlaceholder {
+			continue
+		}
+
+		trimmed := *result
+		trimmed.Content = []sharedModel.ContentBlock{{Type: "text", Text: toolResultPlaceholder}}
+		messages[i].ToolResult = &trimmed
+		shrunk++
+	}
+	if shrunk > 0 {
+		log.Warn("context budget exceeded: shrank old tool results", "count", shrunk)
+		if withinBudget(messages) {
+			return messages
+		}
+	}
+
+	// Pass two: drop from the oldest, in whole tool-call groups. A group is an
+	// assistant message carrying tool calls plus the tool results answering it.
+	dropped := 0
+	for !withinBudget(messages) {
+		start := firstDroppableIndex(messages)
+		if start < 0 {
+			log.Warn("context budget still exceeded but nothing further can be dropped safely")
+			break
+		}
+
+		end := start + 1
+		if len(messages[start].ToolCalls) > 0 {
+			for end < len(messages) && messages[end].Role == sharedModel.RoleTool {
+				end++
+			}
+		}
+		// Never strand the final user message.
+		if end >= len(messages) {
+			break
+		}
+
+		messages = slices.Delete(messages, start, end)
+		dropped += end - start
+	}
+
+	if dropped > 0 {
+		log.Warn("context budget exceeded: dropped oldest messages", "count", dropped)
+		messages = slices.Insert(messages, firstNonSystemIndex(messages), sharedModel.AgentMessage{
+			Role: sharedModel.RoleSystem,
+			Content: []sharedModel.ContentBlock{{
+				Type: "text",
+				Text: "[earlier turns in this conversation were omitted to stay within the context budget]",
+			}},
+		})
+	}
+
+	return messages
+}
+
+// firstDroppableIndex returns the oldest message that may be removed: never a
+// system message, and never the trailing user turn the run is answering.
+func firstDroppableIndex(messages []sharedModel.AgentMessage) int {
+	for i, msg := range messages {
+		if msg.Role == sharedModel.RoleSystem {
+			continue
+		}
+		if i == len(messages)-1 {
+			return -1
+		}
+		// A tool result cannot lead: its assistant message was already dropped, so
+		// removing it here is safe, but it should never be the group anchor.
+		return i
+	}
+	return -1
+}
+
+func firstNonSystemIndex(messages []sharedModel.AgentMessage) int {
+	for i, msg := range messages {
+		if msg.Role != sharedModel.RoleSystem {
+			return i
+		}
+	}
+	return len(messages)
 }
 
 // This is called after the agent run is finished
