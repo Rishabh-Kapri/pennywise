@@ -100,6 +100,10 @@ type Config struct {
 	// the database rather than trusting the prompt. Empty falls back to
 	// DatabaseURL, which disables that isolation — see main.go.
 	AgentReadOnlyDatabaseURL string
+	// AgentTimezone is the IANA zone the agent resolves "today" in. Defaults to
+	// the process's local zone, which in a container is usually UTC — set this
+	// when the user's day boundary differs, or "yesterday" queries drift.
+	AgentTimezone string
 }
 
 // envInt reads a positive integer env var, returning 0 when unset or malformed
@@ -165,6 +169,7 @@ func Load() Config {
 		AgentMaxTurns:            envInt("AGENT_MAX_TURNS"),
 		AgentMaxToolCalls:        envInt("AGENT_MAX_TOOL_CALLS"),
 		AgentReadOnlyDatabaseURL: strings.TrimSpace(os.Getenv("AGENT_DB_URL")),
+		AgentTimezone:            strings.TrimSpace(os.Getenv("AGENT_TIMEZONE")),
 		LLMCallTimeout:           llmCallTimeout,
 		EmailPipelineTargets:     emailPipelineTargets,
 		EmailEmbeddingTargets:    emailEmbeddingTargets,
