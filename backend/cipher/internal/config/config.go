@@ -101,8 +101,9 @@ type Config struct {
 	// DatabaseURL, which disables that isolation — see main.go.
 	AgentReadOnlyDatabaseURL string
 	// AgentTimezone is the IANA zone the agent resolves "today" in. Defaults to
-	// the process's local zone, which in a container is usually UTC — set this
-	// when the user's day boundary differs, or "yesterday" queries drift.
+	// the process's local zone, which the Dockerfile sets to Asia/Kolkata. Set
+	// this when running somewhere that does not, or "yesterday" queries drift by
+	// a day at the boundary.
 	AgentTimezone string
 }
 
