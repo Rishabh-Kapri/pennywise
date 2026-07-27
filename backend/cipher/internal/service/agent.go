@@ -63,9 +63,37 @@ func NewAgentService(
 	}
 }
 
-// title model is in format "provider/model"
+// titleMaxTokens must leave room for reasoning-capable models, which draw their
+// internal tokens from the same budget. Too small a value returns empty output.
+const titleMaxTokens = 128
+
+// fallbackTitleMaxChars bounds the truncated-message title used when the title
+// model is unavailable.
+const fallbackTitleMaxChars = 60
+
+// fallbackTitle derives a title from the user's own message so a provider
+// failure leaves the conversation labelled rather than permanently untitled.
+func fallbackTitle(message string) string {
+	title := strings.TrimSpace(strings.Join(strings.Fields(message), " "))
+	if title == "" {
+		return ""
+	}
+	if len([]rune(title)) <= fallbackTitleMaxChars {
+		return title
+	}
+	return string([]rune(title)[:fallbackTitleMaxChars]) + "..."
+}
+
+// titleChatRequest builds the title request. The configured model is
+// "provider/model", but a bare "model" is accepted and resolves against the
+// registry's default provider — indexing a split blindly used to panic here.
 func titleChatRequest(model string, message string, metadata map[string]string) sharedModel.ChatRequest {
-	values := strings.Split(model, "/")
+	provider, modelName, found := strings.Cut(strings.TrimSpace(model), "/")
+	if !found {
+		// No provider prefix: treat the whole value as a model name and let the
+		// resolver pick the provider. An empty value resolves to both defaults.
+		provider, modelName = "", provider
+	}
 
 	systemPrompt := sharedModel.AgentMessage{
 		Role: sharedModel.RoleSystem,
@@ -81,14 +109,37 @@ func titleChatRequest(model string, message string, metadata map[string]string) 
 		},
 	}
 	return sharedModel.ChatRequest{
-		Provider:    values[0],
-		Model:       values[1],
-		MaxTokens:   24,
+		Provider:    provider,
+		Model:       modelName,
+		MaxTokens:   titleMaxTokens,
 		Temperature: 0,
 		Stream:      false,
 		Messages:    []sharedModel.AgentMessage{systemPrompt, userMessage},
 		Metadata:    metadata,
 	}
+}
+
+// generateTitle asks the title model for a short conversation title. It returns
+// an empty string with no error when the model produced nothing usable, so the
+// caller can fall back without treating it as a failure.
+func (s *agentService) generateTitle(ctx context.Context, message string) (string, error) {
+	titleReq := titleChatRequest(s.agent.TitleModel, message, nil)
+
+	client, model, err := s.llmResolver.Resolve(titleReq.Provider, titleReq.Model)
+	if err != nil {
+		return "", fmt.Errorf("resolving title model %q: %w", s.agent.TitleModel, err)
+	}
+	titleReq.Model = model
+
+	titleRes, err := client.Chat(ctx, titleReq)
+	if err != nil {
+		return "", fmt.Errorf("title model call: %w", err)
+	}
+	if titleRes == nil {
+		return "", fmt.Errorf("title model returned no response")
+	}
+
+	return strings.TrimSpace(messageText(titleRes.Message.Content)), nil
 }
 
 type runToolExchange struct {
@@ -455,48 +506,35 @@ func (s *agentService) CreateRun(
 		go func() {
 			log := logger.Logger(ctxBackground)
 
-			titleReq := titleChatRequest(s.agent.TitleModel, req.Message, nil)
+			// Falling back to a truncated first message keeps the conversation
+			// labelled when the title model is unavailable or misconfigured.
+			title := fallbackTitle(req.Message)
 
-			client, model, err := s.llmResolver.Resolve(titleReq.Provider, titleReq.Model)
-			if err != nil {
-				log.Error("error while resolving llm for title request", "error", err)
+			if generated, err := s.generateTitle(ctxBackground, req.Message); err != nil {
+				log.Error("error while generating title, using fallback", "error", err)
+			} else if generated != "" {
+				title = generated
+			}
+
+			if title == "" {
 				return
 			}
 
-			titleReq.Model = model
-			titleRes, err := client.Chat(ctxBackground, titleReq)
-			if err != nil {
-				log.Error("error while generating title", "error", err)
+			url := fmt.Sprintf("/api/agent/conversations/%s", req.ConversationID.String())
+			if _, err := transport.Patch[any](ctxBackground, s.pennywiseAPI, url, nil, map[string]any{
+				"title": title,
+			}); err != nil {
+				log.Error("error while patching title", "error", err)
+				return
 			}
 
-			log.Info("title res", "res", titleRes)
-
-			if titleRes.Message.Content != nil {
-				title := strings.TrimSpace(string(titleRes.Message.Content[0].Text))
-
-				url := fmt.Sprintf("/api/agent/conversations/%s", req.ConversationID.String())
-
-				data := map[string]any{
-					"title": title,
-				}
-
-				if title != "" {
-					patchRes, err := transport.Patch[any](ctxBackground, s.pennywiseAPI, url, nil, data)
-					logger.Logger(ctxBackground).Info("title patch", "res", patchRes, "error", err)
-					if err != nil {
-						logger.Logger(ctxBackground).Error("error while patching title", "error", err)
-						return
-					}
-
-					s.publishTitleUpdate(
-						utils.DetachedRequestContext(ctxBackground),
-						budgetID,
-						userID,
-						*req.ConversationID,
-						title,
-					)
-				}
-			}
+			s.publishTitleUpdate(
+				utils.DetachedRequestContext(ctxBackground),
+				budgetID,
+				userID,
+				*req.ConversationID,
+				title,
+			)
 		}()
 	}
 
