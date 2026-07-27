@@ -222,19 +222,37 @@ func agentRunToChatRequest(req sharedModel.AgentRunCreateRequest) sharedModel.Ch
 					Content:  content,
 				})
 			case sharedModel.RoleAssistant:
-				// for assistant message loop over
-				assistantMessages := make([]sharedModel.AgentMessage, 0)
+				// Message parts preserve the order the model produced them. Text before
+				// the first tool call belongs on the assistant message that carries the
+				// calls; text after it is the post-tool answer. Replaying them in the
+				// wrong order misrepresents the conversation to the model.
+				// Hidden tools (get_schema, update_working_memory) render no tool-call
+				// part, so their stored calls have no position in the content. Only
+				// split the text when a tool-call part is actually present; otherwise
+				// all of it is the post-tool answer.
+				hasToolCallPart := false
 				for _, part := range parts {
-					if part.Type == sharedModel.MessageTypeText {
-						content := contentBlocksFromMessageParts(part)
-						if len(content) > 0 {
-							// append to the assistant messages
-							assistantMessages = append(assistantMessages, sharedModel.AgentMessage{
-								Sequence: msg.Sequence,
-								Role:     msg.Role,
-								Content:  contentBlocksFromMessageParts(part),
-							})
-						}
+					if part.Type == sharedModel.MessageTypeToolCall {
+						hasToolCallPart = true
+						break
+					}
+				}
+
+				preToolParts := make([]sharedModel.MessagePart, 0, len(parts))
+				postToolParts := make([]sharedModel.MessagePart, 0, len(parts))
+				seenToolCall := !hasToolCallPart
+				for _, part := range parts {
+					if part.Type == sharedModel.MessageTypeToolCall {
+						seenToolCall = true
+						continue
+					}
+					if part.Type != sharedModel.MessageTypeText {
+						continue
+					}
+					if seenToolCall {
+						postToolParts = append(postToolParts, part)
+					} else {
+						preToolParts = append(preToolParts, part)
 					}
 				}
 
@@ -273,6 +291,7 @@ func agentRunToChatRequest(req sharedModel.AgentRunCreateRequest) sharedModel.Ch
 					messages = append(messages, sharedModel.AgentMessage{
 						Sequence:  msg.Sequence,
 						Role:      sharedModel.RoleAssistant,
+						Content:   contentBlocksFromMessageParts(preToolParts...),
 						ToolCalls: toolCalls,
 					})
 
@@ -283,9 +302,22 @@ func agentRunToChatRequest(req sharedModel.AgentRunCreateRequest) sharedModel.Ch
 							ToolResult: &toolResults[i],
 						})
 					}
+				} else {
+					// Nothing to replay, so the split is meaningless: keep all the text
+					// together as a single assistant turn.
+					combined := make([]sharedModel.MessagePart, 0, len(preToolParts)+len(postToolParts))
+					combined = append(combined, preToolParts...)
+					combined = append(combined, postToolParts...)
+					postToolParts = combined
 				}
 
-				messages = append(messages, assistantMessages...)
+				if content := contentBlocksFromMessageParts(postToolParts...); len(content) > 0 {
+					messages = append(messages, sharedModel.AgentMessage{
+						Sequence: msg.Sequence,
+						Role:     msg.Role,
+						Content:  content,
+					})
+				}
 			default:
 				continue
 			}

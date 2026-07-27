@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
+	"unicode/utf8"
 
-	agentContext "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/context"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/handler"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/memory"
@@ -27,17 +28,33 @@ import (
 
 const agentSpanContentLimit = 20_000
 
+// toolErrorContentLimit bounds how much of a failed tool's error text is handed
+// back to the model. Raw driver errors can be very large and would otherwise eat
+// the context window.
+const toolErrorContentLimit = 2_000
+
+const (
+	toolBudgetExhaustedMessage = "Tool call budget exhausted for this run. This tool was not executed."
+
+	toolBudgetNudge = "You have used the entire tool budget for this run, so no further tool calls will run. " +
+		"Answer the user's question now using only the information already gathered. " +
+		"If it is incomplete, say what you were able to determine and what is still missing."
+
+	maxTurnsNudge = "You have reached the maximum number of turns for this run. " +
+		"Answer the user's question now using only the information already gathered. " +
+		"If it is incomplete, say what you were able to determine and what is still missing."
+)
+
 type AgentConfig struct {
-	titleModel     string
-	telemetry      *otelSDK.Telemetry
-	redis          *redis.Client
-	toolRegistry   *tools.ToolRegistry
-	contextBuilder agentContext.ContextBuilder
-	maxTurns       int
-	maxToolCalls   int
-	pennywiseAPI   *transport.Client
-	memoryEnabled  bool
-	memory         memory.Memory
+	titleModel    string
+	telemetry     *otelSDK.Telemetry
+	redis         *redis.Client
+	toolRegistry  *tools.ToolRegistry
+	maxTurns      int
+	maxToolCalls  int
+	pennywiseAPI  *transport.Client
+	memoryEnabled bool
+	memory        memory.Memory
 }
 
 type AgentOption func(*AgentConfig)
@@ -54,21 +71,31 @@ func WithTelemetry(telemetry *otelSDK.Telemetry) AgentOption {
 	}
 }
 
-func WithContextBuilder(cb agentContext.ContextBuilder) AgentOption {
+// WithTitleModel sets the "provider/model" used for conversation title
+// generation. When empty the resolver's default provider and model are used.
+func WithTitleModel(model string) AgentOption {
 	return func(ac *AgentConfig) {
-		ac.contextBuilder = cb
+		ac.titleModel = model
 	}
 }
 
+// WithMaxTurns caps the agent loop. Non-positive values are ignored so an unset
+// config cannot silently reduce the budget to zero and skip the loop entirely.
 func WithMaxTurns(maxTurns int) AgentOption {
 	return func(ac *AgentConfig) {
-		ac.maxTurns = maxTurns
+		if maxTurns > 0 {
+			ac.maxTurns = maxTurns
+		}
 	}
 }
 
+// WithMaxToolCalls caps total tool executions per run. Non-positive values are
+// ignored, as for WithMaxTurns.
 func WithMaxToolCalls(maxToolCalls int) AgentOption {
 	return func(ac *AgentConfig) {
-		ac.maxToolCalls = maxToolCalls
+		if maxToolCalls > 0 {
+			ac.maxToolCalls = maxToolCalls
+		}
 	}
 }
 
@@ -86,20 +113,16 @@ func WithMemory(ms memory.Memory) AgentOption {
 }
 
 type Agent struct {
-	llmResolver    llm.LLMResolver
-	classifyModel  string
-	TitleModel     string  // model to use for title generation
-	localLLM       llm.LLM // always local (Ollama) — used for narrating raw SQL results
-	localModel     string
-	telemetry      *otelSDK.Telemetry
-	redisClient    *redis.Client
-	toolRegistry   *tools.ToolRegistry
-	contextBuilder agentContext.ContextBuilder
-	maxTurns       int
-	maxToolCalls   int
-	pennywiseAPI   *transport.Client
-	memoryEnabled  bool
-	memory         memory.Memory
+	llmResolver   llm.LLMResolver
+	TitleModel    string // "provider/model" used for conversation title generation
+	telemetry     *otelSDK.Telemetry
+	redisClient   *redis.Client
+	toolRegistry  *tools.ToolRegistry
+	maxTurns      int
+	maxToolCalls  int
+	pennywiseAPI  *transport.Client
+	memoryEnabled bool
+	memory        memory.Memory
 }
 
 func NewAgent(llmResolver llm.LLMResolver, toolRegistry *tools.ToolRegistry, opts ...AgentOption) (*Agent, error) {
@@ -113,19 +136,16 @@ func NewAgent(llmResolver llm.LLMResolver, toolRegistry *tools.ToolRegistry, opt
 	}
 
 	return &Agent{
-		llmResolver: llmResolver,
-		TitleModel:  "openai/gpt-5.4",
-		// localLLM:       ollamaObserved,
-		localModel:     "gemma4",
-		telemetry:      cfg.telemetry,
-		redisClient:    cfg.redis,
-		toolRegistry:   toolRegistry,
-		contextBuilder: cfg.contextBuilder,
-		maxTurns:       10,
-		maxToolCalls:   10,
-		pennywiseAPI:   cfg.pennywiseAPI,
-		memoryEnabled:  cfg.memoryEnabled,
-		memory:         cfg.memory,
+		llmResolver:   llmResolver,
+		TitleModel:    cfg.titleModel,
+		telemetry:     cfg.telemetry,
+		redisClient:   cfg.redis,
+		toolRegistry:  toolRegistry,
+		maxTurns:      cfg.maxTurns,
+		maxToolCalls:  cfg.maxToolCalls,
+		pennywiseAPI:  cfg.pennywiseAPI,
+		memoryEnabled: cfg.memoryEnabled,
+		memory:        cfg.memory,
 	}, nil
 }
 
@@ -200,102 +220,6 @@ func (a *Agent) executeTool(
 	return &tool, toolResult, nil
 }
 
-// narrateWithOllama sends raw execute_sql rows to local Ollama and replaces the
-// tool result content with a concise natural-language summary. Raw row data
-// never reaches the cloud LLM (Claude).
-func (a *Agent) narrateWithOllama(ctx context.Context, result *sharedModel.ToolResult) *sharedModel.ToolResult {
-	if a.localLLM == nil || result == nil {
-		return result
-	}
-	log := logger.Logger(ctx)
-
-	rawContent := ""
-	if result.Content != nil {
-		rawContent = fmt.Sprintf("%v", result.Content)
-	}
-
-	narrateReq := sharedModel.ChatRequest{
-		Model: a.localModel,
-		Messages: []sharedModel.AgentMessage{
-			{
-				Role: sharedModel.RoleSystem,
-				Content: []sharedModel.ContentBlock{{Type: "text", Text: `You are a financial data summariser. 
-You will receive raw SQL query results as JSON rows. 
-Summarise them in 1-3 plain English sentences that directly answer the user's question.
-Do NOT reveal individual transaction amounts or bank-specific payee strings.
-Use aggregated totals, counts, or category names only.
-Be concise.`}},
-			},
-			{
-				Role:    sharedModel.RoleUser,
-				Content: []sharedModel.ContentBlock{{Type: "text", Text: "SQL results:\n" + rawContent}},
-			},
-		},
-		MaxTokens: 256,
-		Stream:    false,
-	}
-
-	res, err := a.localLLM.Chat(ctx, narrateReq)
-	if err != nil {
-		log.Warn("narrateWithOllama: local LLM failed, returning raw result", "error", err)
-		return result
-	}
-
-	narration := messageContentText(res.Message.Content)
-	if narration == "" {
-		return result
-	}
-
-	// Replace the raw content with the narration string so Claude only sees it.
-	narrated := *result
-	narrated.Content = []sharedModel.ContentBlock{{Type: "text", Text: narration}}
-	return &narrated
-}
-
-// Add system prompts to the LLM request.
-func injectSystemContext(
-	systemPrompt string,
-	reqMessages []sharedModel.AgentMessage,
-	budgetId uuid.UUID,
-) []sharedModel.AgentMessage {
-	// contextJSON, err := json.Marshal(budgetContext)
-	// if err != nil {
-	// 	contextJSON = []byte(fmt.Sprintf("%+v", budgetContext))
-	// }
-
-	contextMessage := sharedModel.AgentMessage{
-		Role: sharedModel.RoleSystem,
-		Content: []sharedModel.ContentBlock{
-			{
-				Type: "text",
-				Text: fmt.Sprintf(
-					`%s.
-					Current scoped budget context.
-
-The conversation is already scoped to this budget:
-budget_id: %s
-
-Use this budget_id internally when calling tools that require a budgetID. Do not ask the user which budget to use. Use category IDs internally when calling tools, but refer to categories by name in user-facing responses. Do not reveal internal IDs to the user at any cost.
-`,
-					systemPrompt, budgetId.String(),
-				),
-			},
-		},
-	}
-
-	messages := make([]sharedModel.AgentMessage, 0, len(reqMessages)+1)
-	insertAt := 0
-	for insertAt < len(reqMessages) && reqMessages[insertAt].Role == sharedModel.RoleSystem {
-		insertAt++
-	}
-
-	messages = append(messages, reqMessages[:insertAt]...) // copy any existing system prompt
-	messages = append(messages, contextMessage)            // copy context message
-	messages = append(messages, reqMessages[insertAt:]...) // copy rest of the messages
-
-	return messages
-}
-
 func (a *Agent) Chat(ctx context.Context, req sharedModel.ChatRequest) (*sharedModel.ChatResponse, error) {
 	req.Stream = false
 	return a.Run(ctx, req)
@@ -351,6 +275,97 @@ func contentBlocksFromText(text string) []sharedModel.ContentBlock {
 	}
 }
 
+// truncateText clips text to limit bytes without splitting a multi-byte rune.
+func truncateText(text string, limit int) string {
+	if len(text) <= limit {
+		return text
+	}
+	truncated := text[:limit]
+	for len(truncated) > 0 && !utf8.ValidString(truncated) {
+		truncated = truncated[:len(truncated)-1]
+	}
+	return truncated + "... (truncated)"
+}
+
+// toolErrorResult converts a failed tool execution into a result the model can
+// see and recover from. Dropping the result instead would leave the assistant's
+// tool_use block unanswered, which providers reject on the following turn.
+func toolErrorResult(call sharedModel.ToolCall, err error) sharedModel.ToolResult {
+	return sharedModel.ToolResult{
+		ToolCallId: call.ID,
+		Name:       call.Name,
+		IsError:    true,
+		Content: []sharedModel.ContentBlock{{
+			Type: "text",
+			Text: truncateText(err.Error(), toolErrorContentLimit),
+		}},
+	}
+}
+
+// refusedToolResults answers every requested call with the same error, used when
+// the run is out of tool budget but the calls still need results.
+func refusedToolResults(calls []sharedModel.ToolCall, reason string) []sharedModel.ToolResult {
+	results := make([]sharedModel.ToolResult, 0, len(calls))
+	for _, call := range calls {
+		results = append(results, sharedModel.ToolResult{
+			ToolCallId: call.ID,
+			Name:       call.Name,
+			IsError:    true,
+			Content:    []sharedModel.ContentBlock{{Type: "text", Text: reason}},
+		})
+	}
+	return results
+}
+
+func appendAssistantToolCalls(
+	messages []sharedModel.AgentMessage,
+	sequence int,
+	stepResult sharedModel.StepResult,
+) []sharedModel.AgentMessage {
+	return append(messages, sharedModel.AgentMessage{
+		Sequence:  sequence,
+		Role:      sharedModel.RoleAssistant,
+		Content:   contentBlocksFromText(stepResult.Text),
+		ToolCalls: stepResult.ToolCalls,
+	})
+}
+
+func appendToolResults(
+	messages []sharedModel.AgentMessage,
+	sequence int,
+	results []sharedModel.ToolResult,
+) []sharedModel.AgentMessage {
+	for i := range results {
+		messages = append(messages, sharedModel.AgentMessage{
+			Sequence:   sequence,
+			Role:       sharedModel.RoleTool,
+			ToolResult: &results[i],
+		})
+	}
+	return messages
+}
+
+// finalAnswerTurn runs one last LLM step with tools disabled, so a run that has
+// exhausted its turn or tool budget still answers the user instead of surfacing
+// an error. The nudge is deliberately not written back into the caller's message
+// slice — it is scaffolding, not conversation, and should not reach storage.
+func (a *Agent) finalAnswerTurn(
+	ctx context.Context,
+	req sharedModel.ChatRequest,
+	messages []sharedModel.AgentMessage,
+	nudge string,
+) (sharedModel.StepResult, error) {
+	finalReq := req
+	finalReq.Tools = nil
+	finalReq.ToolChoice = nil
+	finalReq.Messages = append(slices.Clone(messages), sharedModel.AgentMessage{
+		Role:    sharedModel.RoleUser,
+		Content: []sharedModel.ContentBlock{{Type: "text", Text: nudge}},
+	})
+
+	return a.runLLMStep(ctx, finalReq)
+}
+
 func nextAgentMessageSequence(messages []sharedModel.AgentMessage) int {
 	maxSequence := 0
 	for _, msg := range messages {
@@ -384,9 +399,12 @@ func appendMessageToolCallPart(
 	args map[string]any,
 	resultJSON json.RawMessage,
 ) *sharedModel.ToolResultNormalized {
+	// Normalizers assume a success payload, so a failed tool result makes this
+	// error out. That must not skip the metadata append below — a call that ran
+	// and failed still belongs in the run record.
 	normalizedResult, err := tool.Normalize(toolCall, resultJSON)
 	if err != nil {
-		return nil
+		normalizedResult = nil
 	}
 
 	if normalizedResult != nil {
@@ -401,6 +419,19 @@ func appendMessageToolCallPart(
 		}
 		*messageParts = append(*messageParts, part)
 	}
+	appendMetaToolCall(metaToolCalls, toolCall, args, resultJSON)
+	return normalizedResult
+}
+
+// appendMetaToolCall records a tool call in the run metadata. Kept separate from
+// appendMessageToolCallPart so calls that never resolved to a tool are still
+// recorded.
+func appendMetaToolCall(
+	metaToolCalls *[]map[string]any,
+	toolCall sharedModel.ToolCall,
+	args map[string]any,
+	resultJSON json.RawMessage,
+) {
 	metaToolCall := make(map[string]any)
 	if toolCall.Name != "" {
 		metaToolCall["name"] = toolCall.Name
@@ -412,7 +443,6 @@ func appendMessageToolCallPart(
 	metaToolCall["result"] = resultJSON
 
 	*metaToolCalls = append(*metaToolCalls, metaToolCall)
-	return normalizedResult
 }
 
 func (a *Agent) publishChatStreamEvent(
@@ -694,7 +724,6 @@ func (a *Agent) Run(
 		})
 	}()
 
-	var lastStepResult sharedModel.StepResult
 	hasStepResult := false
 
 	messages := make([]sharedModel.AgentMessage, len(req.Messages), len(req.Messages)+1)
@@ -711,14 +740,7 @@ func (a *Agent) Run(
 		}
 		log.Info("enriching with tools", "tools", enabledTools)
 	}
-	log.Info("context builder", "builder", a.contextBuilder)
 
-	// Enrich with budget context, for now we only put budgetID
-	// if a.contextBuilder != nil && runOpts.requiresContext {
-	// 	// For now budgetId is hardcoded, take this from req later.
-	// 	budgetID := utils.MustBudgetID(ctx)
-	// 	messages = injectSystemContext(a.contextBuilder.GetSystemPrompt(), messages, budgetID)
-	// }
 	if runOpts.systemPrompt.Message != "" {
 		systemMessage := sharedModel.AgentMessage{
 			Role: sharedModel.RoleSystem,
@@ -736,6 +758,33 @@ func (a *Agent) Run(
 
 	turnCount := 0
 	totalToolCalls := 0
+
+	// finishWithFinalAnswer takes one tools-disabled turn so that exhausting a
+	// budget degrades into a real reply instead of an error bubble in the UI.
+	finishWithFinalAnswer := func(nudge string) (*sharedModel.ChatResponse, error) {
+		finalStep, stepErr := a.finalAnswerTurn(ctx, req, messages, nudge)
+		if stepErr != nil {
+			setSpanError(span, stepErr)
+			return nil, stepErr
+		}
+
+		tokenUsage["input"] += finalStep.Usage.InputTokens
+		tokenUsage["output"] += finalStep.Usage.OutputTokens
+
+		appendMessageTextPart(&messageParts, finalStep.Text)
+		messages = append(messages, sharedModel.AgentMessage{
+			Sequence: assistantSequence,
+			Role:     sharedModel.RoleAssistant,
+			Content:  contentBlocksFromText(finalStep.Text),
+		})
+		req.Messages = messages
+
+		finalRes := stepResultToChatResponse(req.Model, finalStep)
+		finalRes.Message.Sequence = assistantSequence
+		finalRes.StopReason = sharedModel.StopReasonEndTurn
+		recordAgentSuccess(span, finalRes, turnCount, totalToolCalls)
+		return finalRes, nil
+	}
 
 	for turnCount < a.maxTurns {
 		turnCount++
@@ -755,7 +804,6 @@ func (a *Agent) Run(
 			maxTokensUsed = stepResult.MaxTokens
 		}
 
-		lastStepResult = stepResult
 		hasStepResult = true
 		recordAgentStopReason(span, stepResult.StopReason)
 
@@ -770,53 +818,97 @@ func (a *Agent) Run(
 				return stepResultToChatResponse(req.Model, stepResult), err
 			}
 
-			if totalToolCalls+len(stepResult.ToolCalls) > a.maxToolCalls {
-				err := errs.New(errs.CodeInternalError, "agent exceeded max tool calls")
-				setSpanError(span, err)
-				return stepResultToChatResponse(req.Model, stepResult), err
-			}
-
 			recordToolCallsRequested(span, turnCount, len(stepResult.ToolCalls))
 
-			toolResults := make([]sharedModel.ToolResult, 0)
-			for _, toolCall := range stepResult.ToolCalls {
-				tool, toolResult, err := a.executeTool(ctx, toolCall)
-				if err != nil {
-					log.Error(err.Error())
-					continue
-				}
-				// Narrate execute_sql raw rows via local Ollama so Claude never
-				// sees individual transaction amounts or bank-format strings.
-				// if toolCall.Name == "execute_sql" {
-				// 	toolResult = a.narrateWithOllama(ctx, toolResult)
-				// }
-				toolResults = append(toolResults, *toolResult)
+			// Out of tool budget. Answer the requested calls with errors rather than
+			// dropping them — an unanswered tool_use block is rejected by the provider
+			// on the next turn — then let the model finish from what it has.
+			if totalToolCalls+len(stepResult.ToolCalls) > a.maxToolCalls {
+				log.Warn(
+					"agent exceeded max tool calls, forcing final answer",
+					"totalToolCalls", totalToolCalls,
+					"requested", len(stepResult.ToolCalls),
+					"maxToolCalls", a.maxToolCalls,
+				)
+				messages = appendAssistantToolCalls(messages, assistantSequence, stepResult)
+				messages = appendToolResults(
+					messages,
+					assistantSequence,
+					refusedToolResults(stepResult.ToolCalls, toolBudgetExhaustedMessage),
+				)
+				return finishWithFinalAnswer(toolBudgetNudge)
+			}
+
+			// The model may request several tools in one turn; run them concurrently
+			// but keep results positional so they pair with stepResult.ToolCalls.
+			type toolExecution struct {
+				tool   *tools.Tool
+				result sharedModel.ToolResult
+			}
+			executions := make([]toolExecution, len(stepResult.ToolCalls))
+
+			var toolWg sync.WaitGroup
+			for i, toolCall := range stepResult.ToolCalls {
+				toolWg.Add(1)
+				go func(index int, call sharedModel.ToolCall) {
+					defer toolWg.Done()
+
+					tool, toolResult, execErr := a.executeTool(ctx, call)
+					if execErr != nil {
+						// Hand the failure back to the model instead of dropping it, so it
+						// can correct a bad query rather than losing the whole run.
+						log.Error("tool execution failed", "tool", call.Name, "error", execErr)
+						executions[index] = toolExecution{result: toolErrorResult(call, execErr)}
+						return
+					}
+					executions[index] = toolExecution{tool: tool, result: *toolResult}
+				}(i, toolCall)
+			}
+			toolWg.Wait()
+
+			toolResults := make([]sharedModel.ToolResult, 0, len(executions))
+			for i, execution := range executions {
+				toolCall := stepResult.ToolCalls[i]
+				toolResults = append(toolResults, execution.result)
 
 				var toolArgs map[string]any
-				err = json.Unmarshal(toolCall.Arguments, &toolArgs)
-				if err != nil {
-					log.Error(err.Error())
+				if err := json.Unmarshal(toolCall.Arguments, &toolArgs); err != nil {
+					log.Error("error parsing tool call arguments", "tool", toolCall.Name, "error", err)
 				}
 
-				resultJSON, err := json.Marshal(toolResult)
+				resultJSON, err := json.Marshal(execution.result)
 				if err != nil {
-					log.Error(err.Error())
+					log.Error("error marshaling tool result", "tool", toolCall.Name, "error", err)
 					continue
 				}
+
+				// An unresolved tool has no normalizer. The error still reaches the model
+				// via toolResults above; record it for the run metadata and move on.
+				if execution.tool == nil {
+					appendMetaToolCall(&agentMetaToolCalls, toolCall, toolArgs, json.RawMessage(resultJSON))
+					continue
+				}
+
 				normalizedResult := appendMessageToolCallPart(
-					*tool,
+					*execution.tool,
 					toolCall,
 					&messageParts,
 					&agentMetaToolCalls,
 					toolArgs,
 					json.RawMessage(resultJSON),
 				)
-				if req.Stream && normalizedResult != nil {
-					toolMessage := map[string]any{
-						"id":          toolCall.ID,
-						"displayName": normalizedResult.DisplayName,
-						"summary":     normalizedResult.Summary,
-						"result":      string(normalizedResult.Result),
+
+				if !req.Stream {
+					continue
+				}
+
+				displayName := (*execution.tool).GetNormalizedName(true)
+				switch {
+				case execution.result.IsError:
+					// Normalizers only understand success payloads, so surface the failure
+					// directly rather than leaving the UI spinner running forever.
+					if displayName == "" {
+						continue
 					}
 					a.publishChatStreamEvent(
 						ctx,
@@ -825,33 +917,38 @@ func (a *Agent) Run(
 						conversationID,
 						messageID,
 						"tool_call",
-						toolMessage,
+						map[string]any{
+							"id":          toolCall.ID,
+							"displayName": displayName,
+							"summary":     "Failed",
+							"isError":     true,
+						},
+					)
+				case normalizedResult != nil:
+					a.publishChatStreamEvent(
+						ctx,
+						utils.MustBudgetID(ctx),
+						utils.MustUserID(ctx),
+						conversationID,
+						messageID,
+						"tool_call",
+						map[string]any{
+							"id":          toolCall.ID,
+							"displayName": normalizedResult.DisplayName,
+							"summary":     normalizedResult.Summary,
+							"result":      string(normalizedResult.Result),
+						},
 					)
 				}
 			}
-			if len(toolResults) == 0 {
-				err := errs.New(errs.CodeToolExecuteFail, "no tool results produced")
-				setSpanError(span, err)
-				return stepResultToChatResponse(req.Model, stepResult), err
-			}
+
 			totalToolCalls += len(toolResults)
 			recordTotalToolCalls(span, totalToolCalls)
 
 			// Preserve the assistant message that requested tools before appending
 			// provider-neutral tool result messages.
-			messages = append(messages, sharedModel.AgentMessage{
-				Sequence:  assistantSequence,
-				Role:      sharedModel.RoleAssistant,
-				Content:   contentBlocksFromText(stepResult.Text),
-				ToolCalls: stepResult.ToolCalls,
-			})
-			for i := range toolResults {
-				messages = append(messages, sharedModel.AgentMessage{
-					Sequence:   assistantSequence,
-					Role:       sharedModel.RoleTool,
-					ToolResult: &toolResults[i],
-				})
-			}
+			messages = appendAssistantToolCalls(messages, assistantSequence, stepResult)
+			messages = appendToolResults(messages, assistantSequence, toolResults)
 			req.Messages = messages
 			continue
 
@@ -873,9 +970,27 @@ func (a *Agent) Run(
 			return res, nil
 
 		case sharedModel.StopReasonMaxTokens:
-			err := errs.New(errs.CodeInternalError, "llm max tokens reached")
-			setSpanError(span, err)
-			return stepResultToChatResponse(req.Model, stepResult), err
+			// The reply was cut short. Partial text is more useful to the user than an
+			// error, so return it; only fail when there is nothing at all to show.
+			if strings.TrimSpace(stepResult.Text) == "" {
+				err := errs.New(errs.CodeInternalError, "llm max tokens reached before producing any output")
+				setSpanError(span, err)
+				return stepResultToChatResponse(req.Model, stepResult), err
+			}
+
+			log.Warn("llm hit max tokens, returning truncated answer", "turn", turnCount)
+			appendMessageTextPart(&messageParts, stepResult.Text)
+			messages = append(messages, sharedModel.AgentMessage{
+				Sequence: assistantSequence,
+				Role:     sharedModel.RoleAssistant,
+				Content:  contentBlocksFromText(stepResult.Text),
+			})
+			req.Messages = messages
+
+			truncatedRes := stepResultToChatResponse(req.Model, stepResult)
+			truncatedRes.Message.Sequence = assistantSequence
+			recordAgentSuccess(span, truncatedRes, turnCount, totalToolCalls)
+			return truncatedRes, nil
 
 		case sharedModel.StopReasonError:
 			err := errs.New(errs.CodeInternalError, "llm responded with error")
@@ -893,10 +1008,14 @@ func (a *Agent) Run(
 		}
 	}
 
-	err = errs.New(errs.CodeInternalError, "agent exceeded max turns")
-	setSpanError(span, err)
+	// Turn budget exhausted. Messages already end with a complete tool_use /
+	// tool_result pairing here, so one tools-disabled turn can still answer.
+	log.Warn("agent exceeded max turns, forcing final answer", "maxTurns", a.maxTurns)
 	if hasStepResult {
-		return stepResultToChatResponse(req.Model, lastStepResult), err
+		return finishWithFinalAnswer(maxTurnsNudge)
 	}
+
+	err = errs.New(errs.CodeInternalError, "agent exceeded max turns without producing a response")
+	setSpanError(span, err)
 	return nil, err
 }

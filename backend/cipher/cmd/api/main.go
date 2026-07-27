@@ -15,7 +15,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	agentContext "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/context"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm/providers"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/memory"
@@ -190,7 +189,6 @@ func main() {
 	payeeRepo := repository.NewPayeesRepository(dbConn)
 	payeeRuleRepo := repository.NewPayeeRuleRepository(dbConn)
 	categoryRepo := repository.NewCategoryRepository(dbConn)
-	categoryGroupRepo := repository.NewCategoryGroupRepository(dbConn)
 	agentMemoryRepo := repository.NewAgentMemoryRepository(dbConn)
 
 	// Service
@@ -201,14 +199,6 @@ func main() {
 	toolRegistry.RegisterTool(tools.NewExecuteSQLTool(dbConn))
 	toolRegistry.RegisterTool(tools.NewUpdateWorkingMemoryTool(dbConn))
 
-	contextBuilder := agentContext.NewContextBuilder(
-		dbConn,
-		accountRepo,
-		budgetRepo,
-		categoryRepo,
-		payeeRepo,
-		categoryGroupRepo,
-	)
 	llmClients, defaultProvider, err := getLLMClients(tel)
 	if err != nil {
 		logger.Fatal("error while getting llm clients", "error", err)
@@ -225,9 +215,11 @@ func main() {
 		toolRegistry,
 		agent.WithTelemetry(tel),
 		agent.WithRedis(redisClient),
-		agent.WithContextBuilder(contextBuilder),
 		agent.WithPennywiseAPI(pennywiseHttpTransport),
 		agent.WithMemory(memoryService),
+		agent.WithTitleModel(cfg.AgentTitleModel),
+		agent.WithMaxTurns(cfg.AgentMaxTurns),
+		agent.WithMaxToolCalls(cfg.AgentMaxToolCalls),
 	)
 	if err != nil {
 		logger.Fatal("error while creating agent", "error", err)
