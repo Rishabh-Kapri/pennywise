@@ -151,8 +151,12 @@ func NewAgent(llmResolver llm.LLMResolver, toolRegistry *tools.ToolRegistry, opt
 
 const redisPubsubStream = "pubsub"
 
+// SystemPrompt is split so the bulk of the instructions can be cached. Static
+// must be byte-identical across requests; Dynamic holds everything that varies
+// (date, learned preferences, budget id) and is placed after it.
 type SystemPrompt struct {
-	Message string
+	Static  string
+	Dynamic string
 	Args    []any
 }
 type AgentRunOptions struct {
@@ -591,11 +595,15 @@ func (a *Agent) processRunFinish(ctx context.Context, payload runFinishedContext
 		runMetadata := map[string]any{
 			"enabledTools": payload.enabledTools,
 			"inputTokens":  payload.tokenUsage["input"],
-			"outputTokens": payload.tokenUsage["output"],
-			"totalTokens":  payload.tokenUsage["input"] + payload.tokenUsage["output"],
-			"maxTokens":    payload.maxTokens,
-			"traceId":      payload.traceID,
-			"toolCalls":    payload.agentToolCalls,
+			// Cache counters make a broken prompt prefix visible: cacheReadTokens
+			// stuck at zero across turns means something volatile is in the prefix.
+			"cacheReadTokens":  payload.tokenUsage["cacheRead"],
+			"cacheWriteTokens": payload.tokenUsage["cacheWrite"],
+			"outputTokens":     payload.tokenUsage["output"],
+			"totalTokens":      payload.tokenUsage["input"] + payload.tokenUsage["output"],
+			"maxTokens":        payload.maxTokens,
+			"traceId":          payload.traceID,
+			"toolCalls":        payload.agentToolCalls,
 		}
 		backgroundCtx := utils.DetachedRequestContext(ctx)
 		_, err := transport.Patch[any](
@@ -661,10 +669,7 @@ func (a *Agent) Run(
 		updateRunMetadata: true,
 		requiresContext:   true,
 		memoryEnabled:     true,
-		systemPrompt: SystemPrompt{
-			Message: "",
-			Args:    []any{},
-		},
+		systemPrompt:      SystemPrompt{Args: []any{}},
 	}
 	for _, opt := range opts {
 		opt(&runOpts)
@@ -682,8 +687,10 @@ func (a *Agent) Run(
 	// agent metadata
 	enabledTools := make([]string, 0)
 	tokenUsage := map[string]int{
-		"input":  0,
-		"output": 0,
+		"input":      0,
+		"output":     0,
+		"cacheRead":  0,
+		"cacheWrite": 0,
 	}
 	maxTokensUsed := req.MaxTokens
 
@@ -717,7 +724,7 @@ func (a *Agent) Run(
 			enabledTools:   enabledTools,
 			tokenUsage:     tokenUsage,
 			maxTokens:      maxTokensUsed,
-			traceID:        span.SpanContext().SpanID().String(),
+			traceID:        span.SpanContext().TraceID().String(),
 			agentToolCalls: agentMetaToolCalls,
 			messageParts:   messageParts,
 			allMessages:    req.Messages,
@@ -741,17 +748,27 @@ func (a *Agent) Run(
 		log.Info("enriching with tools", "tools", enabledTools)
 	}
 
-	if runOpts.systemPrompt.Message != "" {
-		systemMessage := sharedModel.AgentMessage{
-			Role: sharedModel.RoleSystem,
-			Content: []sharedModel.ContentBlock{
-				{
-					Type: "text",
-					Text: fmt.Sprintf(runOpts.systemPrompt.Message, runOpts.systemPrompt.Args...),
-				},
-			},
+	// The static half carries the cache breakpoint; the dynamic half follows it so
+	// a new day or an updated memory document does not invalidate the prefix.
+	if runOpts.systemPrompt.Static != "" || runOpts.systemPrompt.Dynamic != "" {
+		blocks := make([]sharedModel.ContentBlock, 0, 2)
+		if runOpts.systemPrompt.Static != "" {
+			blocks = append(blocks, sharedModel.ContentBlock{
+				Type:      "text",
+				Text:      runOpts.systemPrompt.Static,
+				Cacheable: true,
+			})
 		}
-		messages = slices.Insert(messages, 0, systemMessage)
+		if runOpts.systemPrompt.Dynamic != "" {
+			blocks = append(blocks, sharedModel.ContentBlock{
+				Type: "text",
+				Text: fmt.Sprintf(runOpts.systemPrompt.Dynamic, runOpts.systemPrompt.Args...),
+			})
+		}
+		messages = slices.Insert(messages, 0, sharedModel.AgentMessage{
+			Role:    sharedModel.RoleSystem,
+			Content: blocks,
+		})
 	}
 	req.Messages = messages
 	recordAgentRunStart(span, req, a.maxTurns, a.maxToolCalls)
@@ -770,6 +787,8 @@ func (a *Agent) Run(
 
 		tokenUsage["input"] += finalStep.Usage.InputTokens
 		tokenUsage["output"] += finalStep.Usage.OutputTokens
+		tokenUsage["cacheRead"] += finalStep.Usage.CacheReadTokens
+		tokenUsage["cacheWrite"] += finalStep.Usage.CacheWriteTokens
 
 		appendMessageTextPart(&messageParts, finalStep.Text)
 		messages = append(messages, sharedModel.AgentMessage{
@@ -800,6 +819,8 @@ func (a *Agent) Run(
 
 		tokenUsage["input"] += stepResult.Usage.InputTokens
 		tokenUsage["output"] += stepResult.Usage.OutputTokens
+		tokenUsage["cacheRead"] += stepResult.Usage.CacheReadTokens
+		tokenUsage["cacheWrite"] += stepResult.Usage.CacheWriteTokens
 		if stepResult.MaxTokens > 0 {
 			maxTokensUsed = stepResult.MaxTokens
 		}

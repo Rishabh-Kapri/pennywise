@@ -478,7 +478,8 @@ func (s *agentService) CreateRun(
 	chatReq.Messages = context.Messages
 
 	systemPrompt := agent.SystemPrompt{
-		Message: agentPrompts.SystemPrompt,
+		Static:  agentPrompts.SystemPromptStatic,
+		Dynamic: agentPrompts.SystemPromptDynamic,
 		Args: []any{
 			time.Now().Format(time.DateOnly),
 			s.memoryService.GetWorkingMemory(ctx, budgetID),
