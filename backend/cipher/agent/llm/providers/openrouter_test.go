@@ -107,11 +107,17 @@ func TestOpenRouterChatUsesResponsesAPIAndNormalizesToolCalls(t *testing.T) {
 	if !ok {
 		t.Fatalf("payload type = %T, want openRouterReq", streamTransport.req.Payload)
 	}
-	if payload.Instructions != "system prompt" {
-		t.Fatalf("instructions = %q, want system prompt", payload.Instructions)
+	// System content is now an input item rather than the instructions string, so
+	// a cache breakpoint can be attached to it.
+	if len(payload.Input) != 2 {
+		t.Fatalf("input payload = %#v, want system item followed by user item", payload.Input)
 	}
-	if len(payload.Input) != 1 || payload.Input[0].Type != "message" || payload.Input[0].Content[0].Type != "input_text" {
-		t.Fatalf("input payload = %#v", payload.Input)
+	systemItem := payload.Input[0]
+	if systemItem.Role != sharedModel.RoleSystem || systemItem.Content[0].Text != "system prompt" {
+		t.Fatalf("system input item = %#v", systemItem)
+	}
+	if userItem := payload.Input[1]; userItem.Type != "message" || userItem.Content[0].Type != "input_text" {
+		t.Fatalf("user input item = %#v", userItem)
 	}
 	if len(payload.Tools) != 1 || payload.Tools[0].Name != "get_today" {
 		t.Fatalf("tools payload = %#v", payload.Tools)

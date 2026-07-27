@@ -32,6 +32,20 @@ type content struct {
 	ToolUseID string          `json:"tool_use_id,omitempty"`
 	Content   []content       `json:"content,omitempty"`
 	IsError   bool            `json:"is_error,omitempty"`
+	// CacheControl marks a prompt-cache breakpoint. Everything from the start of
+	// the request up to and including this block is cached; anything after it is
+	// re-processed each turn.
+	CacheControl *cacheControl `json:"cache_control,omitempty"`
+}
+
+type cacheControl struct {
+	Type string `json:"type"`
+}
+
+// ephemeralCache is the 5-minute cache breakpoint. Chat turns arrive well inside
+// that window, and the 1h TTL costs twice as much to write for no benefit here.
+func ephemeralCache() *cacheControl {
+	return &cacheControl{Type: "ephemeral"}
 }
 
 // message is Anthropic's chat message shape. System prompts are intentionally
@@ -45,7 +59,7 @@ type anthropicReq struct {
 	Model       string               `json:"model"`
 	MaxTokens   int                  `json:"max_tokens"`
 	Messages    []message            `json:"messages"`
-	System      string               `json:"system,omitempty"`
+	System      []content            `json:"system,omitempty"`
 	Temperature float32              `json:"temperature,omitempty"`
 	Tools       []anthropicTool      `json:"tools,omitempty"`
 	ToolChoice  *anthropicToolChoice `json:"tool_choice,omitempty"`
@@ -53,9 +67,10 @@ type anthropicReq struct {
 }
 
 type anthropicTool struct {
-	Name        string                 `json:"name"`
-	Description string                 `json:"description"`
-	InputSchema sharedModel.ToolSchema `json:"input_schema"`
+	Name         string                 `json:"name"`
+	Description  string                 `json:"description"`
+	InputSchema  sharedModel.ToolSchema `json:"input_schema"`
+	CacheControl *cacheControl          `json:"cache_control,omitempty"`
 }
 
 type anthropicToolChoice struct {
@@ -85,8 +100,10 @@ type anthropicContentBlock struct {
 }
 
 type anthropicUsage struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
+	InputTokens              int `json:"input_tokens"`
+	OutputTokens             int `json:"output_tokens"`
+	CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+	CacheReadInputTokens     int `json:"cache_read_input_tokens"`
 }
 
 type anthropicStreamEvent struct {
@@ -182,6 +199,18 @@ func toAnthropicToolUse(call sharedModel.ToolCall) content {
 	}
 }
 
+// toModelUsage carries cache counters through so a silently-broken cache prefix
+// is visible in run metadata rather than only in the bill.
+func toModelUsage(usage anthropicUsage) sharedModel.Usage {
+	return sharedModel.Usage{
+		InputTokens:      usage.InputTokens,
+		OutputTokens:     usage.OutputTokens,
+		TotalTokens:      usage.InputTokens + usage.OutputTokens,
+		CacheReadTokens:  usage.CacheReadInputTokens,
+		CacheWriteTokens: usage.CacheCreationInputTokens,
+	}
+}
+
 // toAnthropicTools converts the framework's provider-neutral tool schema into
 // Anthropic's tool format. Anthropic uses input_schema where OpenAI uses parameters.
 func toAnthropicTools(tools []sharedModel.ToolDefiniton) []anthropicTool {
@@ -193,6 +222,14 @@ func toAnthropicTools(tools []sharedModel.ToolDefiniton) []anthropicTool {
 			InputSchema: tool.InputSchema,
 		})
 	}
+
+	// Tools render before the system prompt, so a breakpoint on the last tool
+	// caches the whole tool array. This only pays off because the registry hands
+	// tools back in a stable order — see tools.ToolRegistry.GetAllTools.
+	if len(out) > 0 {
+		out[len(out)-1].CacheControl = ephemeralCache()
+	}
+
 	return out
 }
 
@@ -223,7 +260,7 @@ func toAnthropicToolChoice(choices []sharedModel.ToolChoice) *anthropicToolChoic
 // as a top-level string instead of regular messages.
 func (c *anthropicClient) toAnthropicReq(req sharedModel.ChatRequest) anthropicReq {
 	messages := make([]message, 0, len(req.Messages))
-	var system string
+	var system []content
 	maxTokens := req.MaxTokens
 	if maxTokens == 0 {
 		maxTokens = 1024
@@ -237,10 +274,11 @@ func (c *anthropicClient) toAnthropicReq(req sharedModel.ChatRequest) anthropicR
 				if block.Type != "text" {
 					continue
 				}
-				if system != "" {
-					system += "\n\n"
+				systemBlock := content{Type: "text", Text: block.Text}
+				if block.Cacheable {
+					systemBlock.CacheControl = ephemeralCache()
 				}
-				system += block.Text
+				system = append(system, systemBlock)
 			}
 			continue
 		}
@@ -308,11 +346,7 @@ func (c *anthropicClient) fromAnthropicRes(res anthropicRes) sharedModel.ChatRes
 			Content:   content,
 			ToolCalls: toolCalls,
 		},
-		Usage: sharedModel.Usage{
-			InputTokens:  res.Usage.InputTokens,
-			OutputTokens: res.Usage.OutputTokens,
-			TotalTokens:  res.Usage.InputTokens + res.Usage.OutputTokens,
-		},
+		Usage: toModelUsage(res.Usage),
 		StopReason:  toModelStopReason(res.StopReason),
 		RawProvider: res,
 	}
@@ -401,6 +435,10 @@ func (c *anthropicClient) Stream(ctx context.Context, req sharedModel.ChatReques
 				if ev.Message.Usage.OutputTokens > 0 {
 					usage.OutputTokens = ev.Message.Usage.OutputTokens
 				}
+				// Cache counters only appear on message_start; later usage events
+				// carry output tokens alone.
+				usage.CacheReadTokens = ev.Message.Usage.CacheReadInputTokens
+				usage.CacheWriteTokens = ev.Message.Usage.CacheCreationInputTokens
 				if !sendAnthropicChunk(ctx, events, sharedModel.StreamChunk{
 					Type: sharedModel.ChunkEventStarted,
 				}) {

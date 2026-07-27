@@ -5,7 +5,7 @@
 Pennywise is a personal finance/budgeting app with AI-powered transaction classification from email parsing. Monorepo services (each directory has its own README.md):
 
 - **go-pennywise-api** (`backend/go-pennywise-api`): Core REST API (Gin, PostgreSQL/pgx). Handler → service → repository layers (repos in `backend/shared/db`).
-- **cipher** (`backend/cipher`): Classification pipeline (Ollama extraction → payee rules → pgvector → LLM fallback) + budget agent runtime.
+- **cipher** (`backend/cipher`): Classification pipeline (Ollama extraction → payee rules → pgvector → LLM fallback) + budget agent runtime (`agent/`).
 - **go-gmail** (`backend/go-gmail`): Gmail Pub/Sub watcher, parses bank emails with regex, starts Temporal ingestion workflows.
 - **workflows** (`backend/workflows`): Temporal worker + workflow definitions for email → transaction ingestion.
 - **shared** (`backend/shared`): Shared Go module: repositories, models, transport, middleware, logging.
@@ -57,6 +57,38 @@ docker-compose up --build
 5. ML prediction corrections tracked in `internal/service/transaction.go` (`UserCorrectedPayee`, `UserCorrectedCategory`, etc.)
 6. Pipeline observability: the email workflows report progress via `StartPipelineRun`/`ReportPipelineStatus` activities (hosted by the go-pennywise-api worker) into `pipeline_runs` + `pipeline_run_events`; the fetch step emits one `fetch_emails` event per email carrying `from`/`subject`/`snippet` (captured from Gmail headers + snippet in `FetchEmailData`) so the Activity page can show sender/preview/message id before extraction runs, the run row stores the triggering `gmail_history_id`, and the per-email loop emits one timeline event per email (parse/predict succeeded/skipped/failed, keyed by `messageId`) and each run change is broadcast budget-wide as the `pennywise::pipeline::update` websocket event (`sharedModel.EventPipelineUpdate`). The React `/activity` page lists runs, shows per-email extraction/prediction detail, and can retry parked workflows through `POST /api/pipeline/runs/:id/retry` (signals Temporal directly, choosing `retry-email-parse` vs `retry-predict` from the run's `current_step`). Reporting is best-effort — status write failures never fail the pipeline — and is gated by `workflow.GetVersion` marker "pipeline-observability" so pre-rollout in-flight workflows replay unchanged.
 
+## Chat Agent (cipher `agent/`)
+
+The chat agent is a tool-calling loop (`agent/runtime/agent.go`) over a multi-provider
+LLM client, streaming deltas to the React panel via Redis.
+
+- **Tool failures are recoverable.** A failed tool returns an `IsError` tool result to the
+  model rather than being dropped — an unanswered `tool_use` block is rejected by the
+  provider on the next turn, and dropping it also denies the model any chance to correct a
+  bad query. Budget exhaustion (`AGENT_MAX_TURNS`, `AGENT_MAX_TOOL_CALLS`) takes a final
+  tools-disabled turn instead of surfacing an error.
+- **Tool selection.** Prefer purpose-built tools over `execute_sql`: `get_spending_summary`
+  (totals by category/payee/tag), `get_top_transactions` (bounded detail), `get_budget_info`
+  (which entities exist). `execute_sql` is the documented fallback. `get_schema` returns the
+  query rules those queries must follow — keep its table map in sync with the migrations.
+- **Tags** are a `UUID[]` column on `transactions` (`tag_ids`), not a join table. Join with
+  `tg.id = ANY(t.tag_ids)`; any-of is the `&&` overlap operator.
+- **Budget isolation is enforced by Postgres**, not the prompt. Read-only tools run through
+  `tools.withBudgetScopedTx`, which opens a read-only transaction and sets `app.budget_id`;
+  RLS policies (migration `00015`) key off it. `AGENT_DB_URL` must point at a login role
+  granted `pennywise_agent_ro` or the isolation is inactive (cipher warns at startup).
+  `category_balances_by_month` is `security_invoker` — without that a view bypasses RLS.
+- **Prompt caching.** The system prompt is split: `SystemPromptStatic` is byte-identical
+  across requests and carries the cache breakpoint, `SystemPromptDynamic` holds date,
+  learned preferences, and budget id. Never move varying content into the static half, and
+  keep `ToolRegistry` registration order stable — tools render first in the prompt, so
+  reordering them invalidates everything. Check `cacheReadTokens` in `agent_runs.metadata`
+  to confirm it still works.
+- **Context budget.** `messageTokens` (8k) is deliberately low to control cost.
+  `enforceTokenBudget` makes it a real ceiling: it shrinks old tool-result bodies first,
+  then drops whole tool-call groups oldest-first. Groups must stay intact for the same
+  `tool_use`/`tool_result` pairing reason as above.
+
 ## Code Conventions
 
 ### Go (Gin Framework)
@@ -107,6 +139,10 @@ docker-compose up --build
 | Pipeline status activity | `backend/go-pennywise-api/internal/temporal/activities/reportPipelineStatus.go` |
 | Pipeline runs repo / API (`/api/pipeline/runs`) | `backend/shared/db/pipelineRun.go`, `backend/go-pennywise-api/internal/service/pipeline.go` |
 | Pipeline UI (Activity page, `/activity`) | `react-frontend/src/features/pipeline/` |
+| Chat agent loop | `backend/cipher/agent/runtime/agent.go` |
+| Agent tools | `backend/cipher/agent/tools/` (`getSpendingSummary`, `getTopTransactions`, `getBudgetInfo`, `getSchema`, `executeSQL`, `getToday`, `updateMemory`) |
+| Agent system prompt | `backend/cipher/agent/context/prompts.go` (`SystemPromptStatic` / `SystemPromptDynamic`) |
+| Agent context budget | `backend/cipher/agent/memory/memory.go` (`PrepareContext`, `enforceTokenBudget`) |
 | Docker Compose | `docker-compose.yml` |
 | CI/CD | `.github/workflows/workflow.yml` |
 
@@ -122,4 +158,9 @@ After completing any new feature, bug fix, or task, update this CLAUDE.md file i
 - **API port**: `PORT` env var (default 5151).
 - **Deployment**: Docker Compose on self-hosted Unraid, deployed via GitHub Actions CI. Secondary: Railway.app for Go API.
 - **Env files**: `backend/go-gmail/.env`, `backend/go-pennywise-api/.env`, `backend/cipher/.env`
+- **Agent env** (cipher): `AGENT_PROVIDER`, `AGENT_TITLE_MODEL` (`provider/model`; unset uses the
+  default provider's default model), `AGENT_MAX_TURNS`, `AGENT_MAX_TOOL_CALLS`, `AGENT_TIMEZONE`
+  (IANA zone for `get_today`; containers default to UTC), `AGENT_DB_URL` (least-privilege
+  read-only connection for the agent's SQL tools — see migration `00015`, which also documents
+  the roles an administrator must create, since the migrating role usually cannot `CREATE ROLE`)
 - **Internal service auth**: Go services now expect a shared `INTERNAL_AUTH_TOKEN` for verified service-to-service HTTP calls

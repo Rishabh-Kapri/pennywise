@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -86,6 +87,37 @@ type Config struct {
 	// dims) — a different model would put query vectors in a different space and
 	// silently invalidate every stored pgvector row.
 	EmailEmbeddingTargets []LLMTarget
+	// AgentTitleModel is the "provider/model" used to generate conversation
+	// titles. Empty means "use the resolver's default provider and model", which
+	// is what keeps titles working on whatever provider is actually configured.
+	AgentTitleModel string
+	// AgentMaxTurns and AgentMaxToolCalls bound a single chat run. Zero means use
+	// the agent's built-in defaults.
+	AgentMaxTurns     int
+	AgentMaxToolCalls int
+	// AgentReadOnlyDatabaseURL is a least-privilege connection used only for the
+	// agent's read-only SQL tools, so row-level security can isolate budgets at
+	// the database rather than trusting the prompt. Empty falls back to
+	// DatabaseURL, which disables that isolation — see main.go.
+	AgentReadOnlyDatabaseURL string
+	// AgentTimezone is the IANA zone the agent resolves "today" in. Defaults to
+	// the process's local zone, which in a container is usually UTC — set this
+	// when the user's day boundary differs, or "yesterday" queries drift.
+	AgentTimezone string
+}
+
+// envInt reads a positive integer env var, returning 0 when unset or malformed
+// so callers fall back to their own defaults.
+func envInt(key string) int {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return 0
+	}
+	parsed, err := strconv.Atoi(raw)
+	if err != nil || parsed <= 0 {
+		return 0
+	}
+	return parsed
 }
 
 func Load() Config {
@@ -119,22 +151,27 @@ func Load() Config {
 	}
 
 	return Config{
-		Environment:           env,
-		DatabaseURL:           os.Getenv("DATABASE_URL"),
-		RedisURL:              os.Getenv("REDIS_URL"),
-		OllamaURL:             os.Getenv("OLLAMA_URL"),
-		MLPServiceURL:         os.Getenv("MLP_SERVICE_URL"),
-		PennywiseServiceURL:   os.Getenv("PENNYWISE_SERVICE_URL"),
-		OpenAIAPIKey:          os.Getenv("OPENAI_API_KEY"),
-		AnthropicAPIKey:       os.Getenv("ANTHROPIC_API_KEY"),
-		OpenRouterAPIKey:      os.Getenv("OPENROUTER_API_KEY"),
-		DefaultAgentProvider:  os.Getenv("AGENT_PROVIDER"),
-		InternalAuthToken:     os.Getenv("INTERNAL_AUTH_TOKEN"),
-		TemporalServerHost:    os.Getenv("TEMPORAL_SERVER_HOST"),
-		TemporalServerPort:    os.Getenv("TEMPORAL_SERVER_PORT"),
-		Port:                  port,
-		LLMCallTimeout:        llmCallTimeout,
-		EmailPipelineTargets:  emailPipelineTargets,
-		EmailEmbeddingTargets: emailEmbeddingTargets,
+		Environment:              env,
+		DatabaseURL:              os.Getenv("DATABASE_URL"),
+		RedisURL:                 os.Getenv("REDIS_URL"),
+		OllamaURL:                os.Getenv("OLLAMA_URL"),
+		MLPServiceURL:            os.Getenv("MLP_SERVICE_URL"),
+		PennywiseServiceURL:      os.Getenv("PENNYWISE_SERVICE_URL"),
+		OpenAIAPIKey:             os.Getenv("OPENAI_API_KEY"),
+		AnthropicAPIKey:          os.Getenv("ANTHROPIC_API_KEY"),
+		OpenRouterAPIKey:         os.Getenv("OPENROUTER_API_KEY"),
+		DefaultAgentProvider:     os.Getenv("AGENT_PROVIDER"),
+		InternalAuthToken:        os.Getenv("INTERNAL_AUTH_TOKEN"),
+		TemporalServerHost:       os.Getenv("TEMPORAL_SERVER_HOST"),
+		TemporalServerPort:       os.Getenv("TEMPORAL_SERVER_PORT"),
+		Port:                     port,
+		AgentTitleModel:          strings.TrimSpace(os.Getenv("AGENT_TITLE_MODEL")),
+		AgentMaxTurns:            envInt("AGENT_MAX_TURNS"),
+		AgentMaxToolCalls:        envInt("AGENT_MAX_TOOL_CALLS"),
+		AgentReadOnlyDatabaseURL: strings.TrimSpace(os.Getenv("AGENT_DB_URL")),
+		AgentTimezone:            strings.TrimSpace(os.Getenv("AGENT_TIMEZONE")),
+		LLMCallTimeout:           llmCallTimeout,
+		EmailPipelineTargets:     emailPipelineTargets,
+		EmailEmbeddingTargets:    emailEmbeddingTargets,
 	}
 }

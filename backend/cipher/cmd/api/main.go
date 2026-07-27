@@ -14,8 +14,8 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
-	agentContext "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/context"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm/providers"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/memory"
@@ -190,25 +190,49 @@ func main() {
 	payeeRepo := repository.NewPayeesRepository(dbConn)
 	payeeRuleRepo := repository.NewPayeeRuleRepository(dbConn)
 	categoryRepo := repository.NewCategoryRepository(dbConn)
-	categoryGroupRepo := repository.NewCategoryGroupRepository(dbConn)
 	agentMemoryRepo := repository.NewAgentMemoryRepository(dbConn)
 
 	// Service
 
+	// Read-only pool for the agent's query tools. When AGENT_DB_URL names a
+	// least-privilege role, row-level security confines every agent read to the
+	// caller's budget; without it we fall back to the app connection, where those
+	// policies do not apply.
+	agentReadDB := dbConn
+	if cfg.AgentReadOnlyDatabaseURL != "" {
+		agentReadDB, err = db.ConnectWithURL(cfg.AgentReadOnlyDatabaseURL)
+		if err != nil {
+			logger.Fatal("error connecting to agent read-only database", "error", err)
+		}
+		defer agentReadDB.Close()
+	} else {
+		logger.Logger(ctx).Warn(
+			"AGENT_DB_URL is not set: agent SQL tools run on the application role, " +
+				"so budget isolation depends on query correctness rather than row-level security",
+		)
+	}
+
+	// Registration order is the order tools are sent to the provider, and it must
+	// stay stable for prompt caching. Specific tools come before execute_sql so
+	// the model sees the purpose-built options first.
+	agentLocation := time.Local
+	if cfg.AgentTimezone != "" {
+		loaded, err := time.LoadLocation(cfg.AgentTimezone)
+		if err != nil {
+			logger.Fatal("invalid AGENT_TIMEZONE", "timezone", cfg.AgentTimezone, "error", err)
+		}
+		agentLocation = loaded
+	}
+
 	toolRegistry := tools.NewToolRegistry()
-	toolRegistry.RegisterTool(tools.NewGetBudgetInfoTool(dbConn))
+	toolRegistry.RegisterTool(tools.NewGetTodayTool(agentLocation))
+	toolRegistry.RegisterTool(tools.NewGetBudgetInfoTool(agentReadDB))
+	toolRegistry.RegisterTool(tools.NewGetSpendingSummaryTool(agentReadDB))
+	toolRegistry.RegisterTool(tools.NewGetTopTransactionsTool(agentReadDB))
 	toolRegistry.RegisterTool(tools.NewGetSchemaTool())
-	toolRegistry.RegisterTool(tools.NewExecuteSQLTool(dbConn))
+	toolRegistry.RegisterTool(tools.NewExecuteSQLTool(agentReadDB))
 	toolRegistry.RegisterTool(tools.NewUpdateWorkingMemoryTool(dbConn))
 
-	contextBuilder := agentContext.NewContextBuilder(
-		dbConn,
-		accountRepo,
-		budgetRepo,
-		categoryRepo,
-		payeeRepo,
-		categoryGroupRepo,
-	)
 	llmClients, defaultProvider, err := getLLMClients(tel)
 	if err != nil {
 		logger.Fatal("error while getting llm clients", "error", err)
@@ -225,9 +249,11 @@ func main() {
 		toolRegistry,
 		agent.WithTelemetry(tel),
 		agent.WithRedis(redisClient),
-		agent.WithContextBuilder(contextBuilder),
 		agent.WithPennywiseAPI(pennywiseHttpTransport),
 		agent.WithMemory(memoryService),
+		agent.WithTitleModel(cfg.AgentTitleModel),
+		agent.WithMaxTurns(cfg.AgentMaxTurns),
+		agent.WithMaxToolCalls(cfg.AgentMaxToolCalls),
 	)
 	if err != nil {
 		logger.Fatal("error while creating agent", "error", err)

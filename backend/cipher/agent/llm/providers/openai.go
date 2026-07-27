@@ -30,6 +30,12 @@ type openAIReq struct {
 	Temperature     float32       `json:"temperature,omitempty"`
 	MaxOutputTokens int           `json:"max_output_tokens,omitempty"`
 	Stream          bool          `json:"stream,omitempty"`
+	// PromptCacheKey is a routing hint, not a cache control: the Responses API
+	// caches long prefixes automatically, and this keeps a conversation's
+	// requests landing on the same cache so the hit rate holds up. There is no
+	// per-block breakpoint to set, so ContentBlock.Cacheable is advisory here —
+	// what matters is that the prefix stays byte-identical.
+	PromptCacheKey string `json:"prompt_cache_key,omitempty"`
 }
 
 type openAIInput struct {
@@ -78,9 +84,14 @@ type openAIIncompleteDetails struct {
 }
 
 type openAIUsage struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
-	TotalTokens  int `json:"total_tokens"`
+	InputTokens        int                     `json:"input_tokens"`
+	OutputTokens       int                     `json:"output_tokens"`
+	TotalTokens        int                     `json:"total_tokens"`
+	InputTokensDetails openAIInputTokenDetails `json:"input_tokens_details"`
+}
+
+type openAIInputTokenDetails struct {
+	CachedTokens int `json:"cached_tokens"`
 }
 
 func NewOpenAIClient() (llm.LLM, error) {
@@ -115,6 +126,7 @@ func (c *openAIClient) toOpenAIReq(req sharedModel.ChatRequest) openAIReq {
 		Temperature:     req.Temperature,
 		MaxOutputTokens: req.MaxTokens,
 		Stream:          req.Stream,
+		PromptCacheKey:  req.Metadata["conversationId"],
 	}
 }
 
@@ -260,9 +272,10 @@ func (c *openAIClient) fromOpenAIRes(res openAIRes) (sharedModel.ChatResponse, e
 			ToolCalls: toolCalls,
 		},
 		Usage: sharedModel.Usage{
-			InputTokens:  res.Usage.InputTokens,
-			OutputTokens: res.Usage.OutputTokens,
-			TotalTokens:  res.Usage.TotalTokens,
+			InputTokens:     res.Usage.InputTokens,
+			OutputTokens:    res.Usage.OutputTokens,
+			TotalTokens:     res.Usage.TotalTokens,
+			CacheReadTokens: res.Usage.InputTokensDetails.CachedTokens,
 		},
 		StopReason:  toOpenAIStopReason(res),
 		RawProvider: res,
@@ -457,9 +470,10 @@ func (c *openAIClient) Stream(ctx context.Context, req sharedModel.ChatRequest) 
 					}(),
 				}
 				usage := sharedModel.Usage{
-					InputTokens:  ev.Response.Usage.InputTokens,
-					OutputTokens: ev.Response.Usage.OutputTokens,
-					TotalTokens:  ev.Response.Usage.InputTokens + ev.Response.Usage.OutputTokens,
+					InputTokens:     ev.Response.Usage.InputTokens,
+					OutputTokens:    ev.Response.Usage.OutputTokens,
+					TotalTokens:     ev.Response.Usage.InputTokens + ev.Response.Usage.OutputTokens,
+					CacheReadTokens: ev.Response.Usage.InputTokensDetails.CachedTokens,
 				}
 				events <- sharedModel.StreamChunk{
 					Type:       sharedModel.ChunkEventCompleted,

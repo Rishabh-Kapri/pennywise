@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"sync"
 
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
@@ -37,8 +38,14 @@ func jsonToolResult(call sharedModel.ToolCall, name string, value any) (*sharedM
 	}, nil
 }
 
+// ToolRegistry holds the agent's tools. Registration order is preserved because
+// tools render first in the provider prompt: ranging a Go map shuffles the tool
+// array on every request, which changes the prompt prefix and defeats prompt
+// caching entirely.
 type ToolRegistry struct {
+	mu    sync.RWMutex
 	tools map[string]Tool
+	order []string
 }
 
 func NewToolRegistry() *ToolRegistry {
@@ -54,7 +61,6 @@ func (r *ToolRegistry) RegisterMultipleTools(tools []Tool) {
 }
 
 func (r *ToolRegistry) RegisterTool(tool Tool) {
-	logger.Logger(context.Background()).Info("registering tool", "tool", tool.Definition().Name)
 	if tool == nil {
 		return
 	}
@@ -64,12 +70,22 @@ func (r *ToolRegistry) RegisterTool(tool Tool) {
 		return
 	}
 
-	if _, exists := r.tools[toolName]; !exists {
-		r.tools[toolName] = tool
+	logger.Logger(context.Background()).Info("registering tool", "tool", toolName)
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if _, exists := r.tools[toolName]; exists {
+		return
 	}
+	r.tools[toolName] = tool
+	r.order = append(r.order, toolName)
 }
 
 func (r *ToolRegistry) GetTool(name string) (Tool, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
 	tool, ok := r.tools[name]
 	if !ok || tool == nil {
 		return nil, errs.New(errs.CodeToolNotFound, "no tool found for name: %s", name)
@@ -77,13 +93,17 @@ func (r *ToolRegistry) GetTool(name string) (Tool, error) {
 	return tool, nil
 }
 
+// GetAllTools returns tools in registration order, so repeated requests produce
+// a byte-identical tool array and the cached prompt prefix survives.
 func (r *ToolRegistry) GetAllTools() []Tool {
-	tools := make([]Tool, 0, len(r.tools))
-	for _, tool := range r.tools {
-		if tool == nil {
-			continue
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	tools := make([]Tool, 0, len(r.order))
+	for _, name := range r.order {
+		if tool, ok := r.tools[name]; ok && tool != nil {
+			tools = append(tools, tool)
 		}
-		tools = append(tools, tool)
 	}
 	return tools
 }
