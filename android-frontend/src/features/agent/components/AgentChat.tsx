@@ -17,6 +17,7 @@ import { Bot, ChevronDown, MessagesSquare, Plus, Send, Sparkles, Trash2 } from '
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppDispatch, useAppSelector } from '../../../app/hooks';
 import { AppText } from '../../../components/AppText';
+import { PickerModal } from '../../../components/Picker';
 import { LoadingState } from '../../../utils/constants';
 import { colors, radii, spacing, tabBarClearance } from '../../../theme';
 import {
@@ -204,16 +205,6 @@ export function AgentChat() {
   const canOpenModels = !isSending && hasSelectedBudget;
   const deleteConversationTitle = conversationToDelete?.title?.trim() || 'this chat';
 
-  const focusComposerInput = useCallback(() => {
-    if (!hasSelectedBudget) {
-      return;
-    }
-
-    requestAnimationFrame(() => {
-      composerInputRef.current?.focus();
-    });
-  }, [hasSelectedBudget]);
-
   useEffect(() => {
     const show = Keyboard.addListener('keyboardDidShow', () => setIsKeyboardVisible(true));
     const hide = Keyboard.addListener('keyboardDidHide', () => setIsKeyboardVisible(false));
@@ -222,15 +213,6 @@ export function AgentChat() {
       hide.remove();
     };
   }, []);
-
-  useEffect(() => {
-    if (!shouldRefocusComposerRef.current || isSending) {
-      return;
-    }
-
-    shouldRefocusComposerRef.current = false;
-    focusComposerInput();
-  }, [focusComposerInput, isSending]);
 
   useEffect(() => {
     if (!selectedBudget?.id) {
@@ -303,8 +285,9 @@ export function AgentChat() {
       }
 
       setComposerValue('');
-      shouldRefocusComposerRef.current = true;
-      focusComposerInput();
+      // Dismiss instead of refocusing: reopening the keyboard right after
+      // sending hides the reply that just arrived.
+      Keyboard.dismiss();
       setIsHistoryOpen(false);
       setIsAwaitingAgentResponse(true);
       dispatch(
@@ -314,7 +297,7 @@ export function AgentChat() {
         })
       );
     },
-    [currentConversationId, dispatch, focusComposerInput, hasSelectedBudget, isSending]
+    [currentConversationId, dispatch, hasSelectedBudget, isSending]
   );
 
   const handleNewChat = useCallback(() => {
@@ -396,7 +379,7 @@ export function AgentChat() {
   return (
     <>
       <SafeAreaView style={styles.modalSafe} edges={['top', 'left', 'right']}>
-          <KeyboardAvoidingView style={styles.panel} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <KeyboardAvoidingView style={styles.panel} behavior="padding" keyboardVerticalOffset={0}>
             <View style={styles.header}>
               <View style={styles.agentMark}>
                 <Bot size={18} color={colors.primary} />
@@ -522,28 +505,13 @@ export function AgentChat() {
                 onSubmitEditing={() => submitMessage(composerValue)}
               />
 
-              {isModelOpen ? (
-                <View style={styles.modelPanel}>
-                  {AGENT_MODEL_OPTIONS.map((modelOption) => (
-                    <Pressable
-                      key={modelOption.key}
-                      accessibilityRole="button"
-                      style={[styles.modelOption, modelOption.key === selectedModelKey && styles.optionActive]}
-                      onPress={() => handleSelectModel(modelOption.key)}
-                    >
-                      <AppText numberOfLines={1}>{modelOption.label}</AppText>
-                    </Pressable>
-                  ))}
-                </View>
-              ) : null}
-
               <View style={styles.composerFooterRow}>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Select agent model"
                   disabled={!canOpenModels}
                   style={({ pressed }) => [styles.modelButton, !canOpenModels && styles.disabled, pressed && styles.pressed]}
-                  onPress={() => setIsModelOpen((open) => !open)}
+                  onPress={() => setIsModelOpen(true)}
                 >
                   <AppText muted numberOfLines={1} style={styles.modelButtonText}>
                     {selectedModel.shortLabel ?? selectedModel.label}
@@ -567,6 +535,23 @@ export function AgentChat() {
             </View>
           </KeyboardAvoidingView>
       </SafeAreaView>
+
+      <PickerModal
+        visible={isModelOpen}
+        title="Model"
+        options={AGENT_MODEL_OPTIONS.map((option) => ({
+          id: option.key,
+          label: option.label,
+          sublabel: option.provider
+        }))}
+        selectedId={selectedModelKey}
+        searchPlaceholder="Search models"
+        onSelect={(key) => {
+          if (key) handleSelectModel(key);
+          setIsModelOpen(false);
+        }}
+        onClose={() => setIsModelOpen(false)}
+      />
 
       <Modal
         transparent
@@ -785,19 +770,19 @@ const styles = StyleSheet.create({
   suggestions: {
     gap: spacing.sm,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingBottom: spacing.sm,
     backgroundColor: colors.background
   },
   suggestionButton: {
-    minHeight: 36,
+    minHeight: 30,
     justifyContent: 'center',
     paddingHorizontal: spacing.md,
     borderRadius: 999,
     backgroundColor: colors.surfaceStrong
   },
   suggestionText: {
-    fontSize: 13,
-    lineHeight: 17
+    fontSize: 12,
+    lineHeight: 16
   },
   composer: {
     gap: spacing.md,
@@ -825,19 +810,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-end',
     gap: spacing.md
-  },
-  modelPanel: {
-    gap: spacing.xs,
-    maxHeight: 184,
-    padding: spacing.sm,
-    borderRadius: radii.md,
-    backgroundColor: colors.surfaceStrong
-  },
-  modelOption: {
-    minHeight: 38,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.md
   },
   modelButton: {
     flexDirection: 'row',
