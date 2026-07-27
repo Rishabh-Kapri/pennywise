@@ -278,7 +278,11 @@ export function PayeesScreen() {
           />
         }
         renderItem={({ item }) => (
-          <View style={styles.payeeRow}>
+          <Pressable
+            android_ripple={{ color: colors.surfaceTertiary }}
+            style={({ pressed }) => [styles.payeeRow, pressed && styles.rowPressed]}
+            onPress={() => item.id && setRulesPayee(item)}
+          >
             <InitialAvatar name={item.name} size={42} />
             <View style={styles.payeeMain}>
               <AppText weight="medium" numberOfLines={1}>{item.name}</AppText>
@@ -289,7 +293,7 @@ export function PayeesScreen() {
                 Rules
               </Button>
             ) : null}
-          </View>
+          </Pressable>
         )}
       />
 
@@ -354,7 +358,11 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     backgroundColor: colors.surface,
     borderRadius: radii.md,
-    padding: spacing.md
+    padding: spacing.md,
+    overflow: 'hidden'
+  },
+  rowPressed: {
+    backgroundColor: colors.surfaceStrong
   },
   payeeMain: {
     flex: 1,

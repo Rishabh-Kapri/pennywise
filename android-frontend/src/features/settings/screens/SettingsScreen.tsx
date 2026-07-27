@@ -91,6 +91,7 @@ export function SettingsScreen() {
               <Pressable
                 key={budget.id ?? budget.name}
                 onPress={() => chooseBudget(budget.id)}
+                android_ripple={{ color: colors.surfaceStrong }}
                 style={({ pressed }) => [styles.budgetRow, index > 0 && styles.rowDivider, pressed && styles.pressed]}
               >
                 <View style={styles.budgetMain}>
