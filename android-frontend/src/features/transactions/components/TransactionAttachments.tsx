@@ -5,7 +5,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { AppText } from '../../../components/AppText';
-import { colors, radii, spacing, tints } from '../../../theme';
+import { colors, radii, spacing } from '../../../theme';
 import { apiClient } from '../../../utils/api';
 import type { TransactionDocument } from '../types';
 
@@ -147,7 +147,7 @@ export function TransactionAttachments({ transactionId }: { transactionId: strin
                 {formatSize(doc.sizeBytes)}
               </AppText>
               <Pressable style={styles.docDelete} onPress={() => remove(doc)} hitSlop={8}>
-                <Trash2 size={14} color={colors.budgetNegative} />
+                <Trash2 size={14} color={colors.danger} />
               </Pressable>
             </View>
           ))}
@@ -159,22 +159,22 @@ export function TransactionAttachments({ transactionId }: { transactionId: strin
           style={[styles.actionBtn, isBusy && styles.actionBtnDisabled]}
           onPress={() => void pickFromCamera()}
           disabled={isBusy}>
-          <Camera size={14} color={colors.muted} />
-          <AppText style={styles.actionLabel}>Camera</AppText>
+          <Camera size={16} color={colors.text} />
+          <AppText weight="medium">Camera</AppText>
         </Pressable>
         <Pressable
           style={[styles.actionBtn, isBusy && styles.actionBtnDisabled]}
           onPress={() => void pickFromGallery()}
           disabled={isBusy}>
-          <Images size={14} color={colors.muted} />
-          <AppText style={styles.actionLabel}>Gallery</AppText>
+          <Images size={16} color={colors.text} />
+          <AppText weight="medium">Gallery</AppText>
         </Pressable>
         <Pressable
           style={[styles.actionBtn, isBusy && styles.actionBtnDisabled]}
           onPress={() => void pickDocument()}
           disabled={isBusy}>
-          <FileText size={14} color={colors.muted} />
-          <AppText style={styles.actionLabel}>File</AppText>
+          <FileText size={16} color={colors.text} />
+          <AppText weight="medium">File</AppText>
         </Pressable>
       </View>
 
@@ -206,7 +206,7 @@ const styles = StyleSheet.create({
     height: 92,
     borderRadius: radii.sm,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderMuted,
+    borderColor: colors.border,
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center'
@@ -226,35 +226,29 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: tints.scrim
+    backgroundColor: colors.scrim
   },
   actionsRow: {
     flexDirection: 'row',
     gap: spacing.sm
   },
-  // neutral tinted pills, matching the location actions
+  // same bordered-rect treatment as the location actions / Button "secondary"
   actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.xs,
     paddingHorizontal: spacing.md,
-    minHeight: 36,
-    borderRadius: 999,
+    minHeight: 42,
+    borderRadius: radii.sm,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: tints.neutralBorder,
-    backgroundColor: tints.neutralFill
+    borderColor: colors.border,
+    backgroundColor: colors.surface
   },
   actionBtnDisabled: {
-    opacity: 0.55
-  },
-  actionLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-    color: colors.muted
+    opacity: 0.6
   },
   errorText: {
-    color: colors.budgetNegative
+    color: colors.danger
   }
 });
