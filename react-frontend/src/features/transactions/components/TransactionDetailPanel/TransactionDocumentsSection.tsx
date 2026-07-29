@@ -51,14 +51,14 @@ function DocumentTile({
 
 export function TransactionDocumentsSection({ txn }: { txn: Transaction }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const { documents, previewUrls, isLoading, isUploading, error, upload, remove, openDocument } =
+  const { documents, previewUrls, isLoading, isUploading, uploadProgress, error, upload, remove, openDocument } =
     useTransactionDocuments(txn.id || undefined);
 
   if (!txn.id) return null;
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) void upload(file);
+    const files = Array.from(event.target.files ?? []);
+    if (files.length > 0) void upload(files);
     event.target.value = '';
   };
 
@@ -86,7 +86,13 @@ export function TransactionDocumentsSection({ txn }: { txn: Transaction }) {
           onClick={() => inputRef.current?.click()}
           disabled={isUploading}>
           <PlusIcon size={18} />
-          <span>{isUploading ? 'Uploading…' : 'Add'}</span>
+          <span>
+            {isUploading
+              ? uploadProgress
+                ? `${uploadProgress.done}/${uploadProgress.total}`
+                : 'Uploading…'
+              : 'Add'}
+          </span>
         </button>
       </div>
 
@@ -96,6 +102,7 @@ export function TransactionDocumentsSection({ txn }: { txn: Transaction }) {
       <input
         ref={inputRef}
         type="file"
+        multiple
         accept="image/jpeg,image/png,image/webp,image/heic,application/pdf"
         className={styles.hiddenFileInput}
         onChange={handleFileChange}
