@@ -27,25 +27,9 @@ export const colors = {
   budgetNegativeFg: '#651c0b',
   budgetUpcomingBg: '#f9e1a9',
   budgetUpcomingFg: '#70460b',
-  slate: '#333333'
-};
-
-/**
- * Tinted-pill palette mirroring the web panel's
- * `color-mix(in srgb, <token> 12%/25%/30%, transparent)` recipe, precomputed
- * because React Native has no color-mix. Used for the action pills and badges
- * on transaction detail (location, receipts).
- */
-export const tints = {
-  primaryFill: 'rgba(68, 131, 162, 0.12)',
-  primaryFillStrong: 'rgba(68, 131, 162, 0.22)',
-  primaryBorder: 'rgba(68, 131, 162, 0.30)',
-  neutralFill: 'rgba(169, 169, 169, 0.12)',
-  neutralBorder: 'rgba(169, 169, 169, 0.25)',
-  dangerFill: 'rgba(255, 99, 99, 0.12)',
-  dangerBorder: 'rgba(255, 99, 99, 0.30)',
-  /** scrim over receipt thumbnails, from colors.background */
-  scrim: 'rgba(31, 31, 30, 0.70)'
+  slate: '#333333',
+  /** overlay behind controls floating on top of imagery (receipt thumbnails) */
+  scrim: 'rgba(0, 0, 0, 0.55)'
 };
 
 export const spacing = {
