@@ -16,6 +16,32 @@ function formatSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/** Alert-based yes/no, so the capture loop can await the user's choice. */
+function confirmAsync(title: string, message: string, confirmLabel: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    Alert.alert(
+      title,
+      message,
+      [
+        { text: 'Done', style: 'cancel', onPress: () => resolve(false) },
+        { text: confirmLabel, onPress: () => resolve(true) }
+      ],
+      { cancelable: true, onDismiss: () => resolve(false) }
+    );
+  });
+}
+
+function assetToFile(
+  asset: { uri: string; fileName?: string | null; mimeType?: string | null },
+  index: number
+): PickedFile {
+  return {
+    uri: asset.uri,
+    name: asset.fileName ?? `receipt-${Date.now()}-${index + 1}.jpg`,
+    type: asset.mimeType ?? 'image/jpeg'
+  };
+}
+
 /**
  * Receipts/documents list + capture for a transaction. Image previews are
  * downloaded with auth headers into the cache directory (plain <Image src>
@@ -25,6 +51,7 @@ export function TransactionAttachments({ transactionId }: { transactionId: strin
   const [documents, setDocuments] = useState<TransactionDocument[]>([]);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const [isBusy, setIsBusy] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadThumb = useCallback(async (doc: TransactionDocument) => {
@@ -59,50 +86,94 @@ export function TransactionAttachments({ transactionId }: { transactionId: strin
     void refresh();
   }, [refresh]);
 
-  const upload = async (file: PickedFile) => {
+  /**
+   * Uploads a batch one file at a time — the API takes a single `file` part per
+   * request, which keeps the per-file size cap and mime sniffing meaningful.
+   * A failure part-way keeps the already-uploaded pages.
+   */
+  const uploadMany = async (files: PickedFile[]) => {
+    if (files.length === 0) return;
     setIsBusy(true);
     setError(null);
-    try {
-      const form = new FormData();
-      // React Native FormData file part
-      form.append('file', { uri: file.uri, name: file.name, type: file.type } as unknown as Blob);
-      const doc = await apiClient.postForm<TransactionDocument>(`transactions/${transactionId}/documents`, form);
-      setDocuments((docs) => [...docs, doc]);
-      void loadThumb(doc);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to upload');
-    } finally {
-      setIsBusy(false);
+    setProgress({ done: 0, total: files.length });
+    const failures: string[] = [];
+
+    for (const [index, file] of files.entries()) {
+      try {
+        const form = new FormData();
+        // React Native FormData file part
+        form.append('file', { uri: file.uri, name: file.name, type: file.type } as unknown as Blob);
+        const doc = await apiClient.postForm<TransactionDocument>(`transactions/${transactionId}/documents`, form);
+        setDocuments((docs) => [...docs, doc]);
+        void loadThumb(doc);
+      } catch (err) {
+        failures.push(file.name);
+        console.log('[receipts] upload failed', file.name, err);
+      }
+      setProgress({ done: index + 1, total: files.length });
     }
+
+    if (failures.length > 0) {
+      setError(
+        failures.length === files.length
+          ? 'Failed to upload'
+          : `Uploaded ${files.length - failures.length} of ${files.length}; ${failures.length} failed`
+      );
+    }
+    setProgress(null);
+    setIsBusy(false);
   };
 
+  /**
+   * Multi-shot capture: the camera reopens after each frame so a stack of bills
+   * can be scanned in one go, then the whole batch uploads together.
+   */
   const pickFromCamera = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') return;
-    const result = await ImagePicker.launchCameraAsync({ quality: 0.7 });
-    const asset = result.assets?.[0];
-    if (!result.canceled && asset) {
-      await upload({ uri: asset.uri, name: asset.fileName ?? 'receipt.jpg', type: asset.mimeType ?? 'image/jpeg' });
+
+    const captured: PickedFile[] = [];
+    for (;;) {
+      const result = await ImagePicker.launchCameraAsync({ quality: 0.7 });
+      const asset = result.assets?.[0];
+      if (result.canceled || !asset) break;
+
+      captured.push(assetToFile(asset, captured.length));
+      const more = await confirmAsync(
+        'Scan another?',
+        `${captured.length} ${captured.length === 1 ? 'bill' : 'bills'} captured.`,
+        'Scan another'
+      );
+      if (!more) break;
     }
+
+    await uploadMany(captured);
   };
 
   const pickFromGallery = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({ quality: 0.7 });
-    const asset = result.assets?.[0];
-    if (!result.canceled && asset) {
-      await upload({ uri: asset.uri, name: asset.fileName ?? 'receipt.jpg', type: asset.mimeType ?? 'image/jpeg' });
-    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      quality: 0.7,
+      allowsMultipleSelection: true,
+      selectionLimit: 10
+    });
+    if (result.canceled) return;
+    await uploadMany((result.assets ?? []).map(assetToFile));
   };
 
   const pickDocument = async () => {
     const result = await DocumentPicker.getDocumentAsync({
       type: ['application/pdf', 'image/*'],
-      copyToCacheDirectory: true
+      copyToCacheDirectory: true,
+      multiple: true
     });
-    const asset = result.assets?.[0];
-    if (!result.canceled && asset) {
-      await upload({ uri: asset.uri, name: asset.name, type: asset.mimeType ?? 'application/pdf' });
-    }
+    if (result.canceled) return;
+    await uploadMany(
+      (result.assets ?? []).map((asset) => ({
+        uri: asset.uri,
+        name: asset.name,
+        type: asset.mimeType ?? 'application/pdf'
+      }))
+    );
   };
 
   const remove = (doc: TransactionDocument) => {
@@ -178,7 +249,9 @@ export function TransactionAttachments({ transactionId }: { transactionId: strin
         </Pressable>
       </View>
 
-      {isBusy && <AppText muted>Uploading…</AppText>}
+      {isBusy && (
+        <AppText muted>{progress ? `Uploading ${progress.done} of ${progress.total}…` : 'Uploading…'}</AppText>
+      )}
       {error && <AppText style={styles.errorText}>{error}</AppText>}
     </View>
   );

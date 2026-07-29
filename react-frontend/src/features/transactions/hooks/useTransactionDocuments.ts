@@ -8,8 +8,10 @@ interface UseTransactionDocumentsResult {
   previewUrls: Record<string, string>;
   isLoading: boolean;
   isUploading: boolean;
+  /** set while a multi-file batch is in flight */
+  uploadProgress: { done: number; total: number } | null;
   error: string | null;
-  upload: (file: File) => Promise<void>;
+  upload: (files: File[]) => Promise<void>;
   remove: (documentId: string) => Promise<void>;
   /** fetch a fresh blob URL for opening/downloading any document */
   openDocument: (doc: TransactionDocument) => Promise<void>;
@@ -24,6 +26,7 @@ export function useTransactionDocuments(transactionId: string | undefined): UseT
   const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const urlsRef = useRef<Record<string, string>>({});
 
@@ -72,22 +75,41 @@ export function useTransactionDocuments(transactionId: string | undefined): UseT
     return revokeAll;
   }, [refresh]);
 
+  /**
+   * Uploads one file per request (the API takes a single `file` part), so a
+   * partial failure still keeps the pages that made it through.
+   */
   const upload = useCallback(
-    async (file: File) => {
-      if (!transactionId) return;
+    async (files: File[]) => {
+      if (!transactionId || files.length === 0) return;
       setIsUploading(true);
       setError(null);
-      try {
-        const form = new FormData();
-        form.append('file', file);
-        const doc = await apiClient.postForm<TransactionDocument>(`transactions/${transactionId}/documents`, form);
-        setDocuments((docs) => [...docs, doc]);
-        void loadPreviews([doc]);
-      } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Failed to upload document');
-      } finally {
-        setIsUploading(false);
+      setUploadProgress({ done: 0, total: files.length });
+      const failed: string[] = [];
+
+      for (const [index, file] of files.entries()) {
+        try {
+          const form = new FormData();
+          form.append('file', file);
+          const doc = await apiClient.postForm<TransactionDocument>(`transactions/${transactionId}/documents`, form);
+          setDocuments((docs) => [...docs, doc]);
+          void loadPreviews([doc]);
+        } catch (err: unknown) {
+          failed.push(file.name);
+          console.error('Failed to upload', file.name, err);
+        }
+        setUploadProgress({ done: index + 1, total: files.length });
       }
+
+      if (failed.length > 0) {
+        setError(
+          failed.length === files.length
+            ? 'Failed to upload document'
+            : `Uploaded ${files.length - failed.length} of ${files.length}; ${failed.length} failed`,
+        );
+      }
+      setUploadProgress(null);
+      setIsUploading(false);
     },
     [transactionId, loadPreviews],
   );
@@ -119,5 +141,5 @@ export function useTransactionDocuments(transactionId: string | undefined): UseT
     }
   }, []);
 
-  return { documents, previewUrls, isLoading, isUploading, error, upload, remove, openDocument };
+  return { documents, previewUrls, isLoading, isUploading, uploadProgress, error, upload, remove, openDocument };
 }
