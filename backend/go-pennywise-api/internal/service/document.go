@@ -1,11 +1,14 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/storage"
 	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
@@ -32,6 +35,8 @@ var allowedDocumentMimeTypes = map[string]string{
 
 type DocumentService interface {
 	Upload(ctx context.Context, transactionId uuid.UUID, fileName string, body io.Reader) (*model.TransactionDocument, error)
+	// UploadScan assembles captured pages into a single PDF stored as one document.
+	UploadScan(ctx context.Context, transactionId uuid.UUID, pages []ScanPage) (*model.TransactionDocument, error)
 	ListByTransaction(ctx context.Context, transactionId uuid.UUID) ([]model.TransactionDocument, error)
 	// Content returns the document metadata and a reader over its bytes.
 	Content(ctx context.Context, id uuid.UUID) (*model.TransactionDocument, io.ReadSeekCloser, error)
@@ -128,6 +133,69 @@ func (s *documentService) Upload(
 		FileName:      fileName,
 		MimeType:      mimeType,
 		SizeBytes:     sizeBytes,
+		StoragePath:   relPath,
+	})
+	if err != nil {
+		s.cleanupStored(ctx, relPath)
+		return nil, errs.Wrap(errs.CodeInternalError, "error saving document record", err)
+	}
+	return doc, nil
+}
+
+// UploadScan merges a multi-page capture into one PDF so a stack of bills
+// lands as a single receipt rather than N loose images.
+func (s *documentService) UploadScan(
+	ctx context.Context,
+	transactionId uuid.UUID,
+	pages []ScanPage,
+) (*model.TransactionDocument, error) {
+	budgetId := utils.MustBudgetID(ctx)
+
+	if len(pages) == 0 {
+		return nil, errs.New(errs.CodeInvalidArgument, "no pages were uploaded")
+	}
+	if len(pages) > MaxScanPages {
+		return nil, errs.New(errs.CodeInvalidArgument, "a scan can have at most %d pages", MaxScanPages)
+	}
+	if _, err := s.txnRepo.GetById(ctx, budgetId, transactionId); err != nil {
+		return nil, errs.Wrap(errs.CodeTransactionLookupFailed, "transaction not found", err)
+	}
+
+	// sniff every page before spending time on assembly
+	for i, page := range pages {
+		head := page.Data
+		if len(head) > 512 {
+			head = head[:512]
+		}
+		mimeType := detectMimeType(head, page.Name)
+		if mimeType != "image/jpeg" && mimeType != "image/png" {
+			return nil, errs.New(
+				errs.CodeInvalidArgument,
+				"page %d has unsupported type %q; scans must be jpeg or png",
+				i+1,
+				mimeType,
+			)
+		}
+	}
+
+	pdfBytes, err := buildScannedPDF(pages)
+	if err != nil {
+		return nil, errs.Wrap(errs.CodeInvalidArgument, "error assembling scan", err)
+	}
+
+	docId := uuid.New()
+	relPath, err := s.store.Save(budgetId.String(), docId.String()+".pdf", bytes.NewReader(pdfBytes))
+	if err != nil {
+		return nil, errs.Wrap(errs.CodeInternalError, "error storing scan", err)
+	}
+
+	doc, err := s.repo.Create(ctx, model.TransactionDocument{
+		ID:            docId,
+		BudgetID:      budgetId,
+		TransactionID: transactionId,
+		FileName:      fmt.Sprintf("scan-%s.pdf", time.Now().Format("20060102-150405")),
+		MimeType:      "application/pdf",
+		SizeBytes:     int64(len(pdfBytes)),
 		StoragePath:   relPath,
 	})
 	if err != nil {

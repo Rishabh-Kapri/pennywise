@@ -39,7 +39,8 @@
           "cameraPermission": "Pennywise uses the camera to photograph receipts for your transactions."
         }
       ],
-      "expo-document-picker"
+      "expo-document-picker",
+      "react-native-document-scanner-plugin"
     ],
     "extra": {
       "apiUrl": "${EXPO_PUBLIC_API_URL}",
