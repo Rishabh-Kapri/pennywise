@@ -154,7 +154,11 @@ export function TransactionLocationSection({ txn }: { txn: Transaction }) {
               <MapPinIcon size={14} />
               {hasLocation ? 'Move pin' : 'Pick on map'}
             </button>
-            <button type="button" className={styles.locationBtn} onClick={useMyLocation} disabled={isLocating}>
+            <button
+              type="button"
+              className={styles.locationBtnSecondary}
+              onClick={useMyLocation}
+              disabled={isLocating}>
               <CrosshairIcon size={14} />
               {isLocating ? 'Locating…' : 'Use my location'}
             </button>
