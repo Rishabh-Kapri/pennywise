@@ -51,14 +51,31 @@ function DocumentTile({
 
 export function TransactionDocumentsSection({ txn }: { txn: Transaction }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const { documents, previewUrls, isLoading, isUploading, uploadProgress, error, upload, remove, openDocument } =
-    useTransactionDocuments(txn.id || undefined);
+  const pdfInputRef = useRef<HTMLInputElement | null>(null);
+  const {
+    documents,
+    previewUrls,
+    isLoading,
+    isUploading,
+    uploadProgress,
+    error,
+    upload,
+    uploadAsPdf,
+    remove,
+    openDocument,
+  } = useTransactionDocuments(txn.id || undefined);
 
   if (!txn.id) return null;
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
     if (files.length > 0) void upload(files);
+    event.target.value = '';
+  };
+
+  const handlePdfFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    if (files.length > 0) void uploadAsPdf(files);
     event.target.value = '';
   };
 
@@ -96,8 +113,29 @@ export function TransactionDocumentsSection({ txn }: { txn: Transaction }) {
         </button>
       </div>
 
+      <div className={styles.locationActions}>
+        <button
+          type="button"
+          className={styles.locationBtnSecondary}
+          onClick={() => pdfInputRef.current?.click()}
+          disabled={isUploading}
+          title="Combine several page images into a single PDF">
+          <FilePdfIcon size={14} />
+          Combine images to PDF
+        </button>
+      </div>
+
       {isLoading && documents.length === 0 && <span className={styles.emptyValue}>Loading documents…</span>}
       {error && <span className={styles.errorText}>{error}</span>}
+
+      <input
+        ref={pdfInputRef}
+        type="file"
+        multiple
+        accept="image/jpeg,image/png"
+        className={styles.hiddenFileInput}
+        onChange={handlePdfFileChange}
+      />
 
       <input
         ref={inputRef}

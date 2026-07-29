@@ -467,6 +467,11 @@ func main() {
 				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
 				documentHandler.Upload,
 			)
+			transactionGroup.POST(
+				":id/documents/scan",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				documentHandler.UploadScan,
+			)
 			transactionGroup.GET(
 				":id/documents",
 				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
