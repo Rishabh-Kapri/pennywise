@@ -3,7 +3,7 @@ import { Linking, Pressable, StyleSheet, View } from 'react-native';
 import { Crosshair, MapPin, Trash2 } from 'lucide-react-native';
 import * as Location from 'expo-location';
 import { AppText } from '../../../components/AppText';
-import { colors, radii, spacing } from '../../../theme';
+import { colors, spacing, tints } from '../../../theme';
 import { useAppDispatch } from '../../../app/hooks';
 import { updateTransactionLocation } from '../store/transactionSlice';
 import { LocationSource } from '../types';
@@ -93,16 +93,21 @@ export function TransactionLocationRow({
       )}
 
       <View style={styles.actionsRow}>
-        <Pressable style={styles.actionBtn} onPress={() => void useCurrentLocation()} disabled={isLocating}>
-          <Crosshair size={16} color={colors.text} />
-          <AppText weight="medium">{isLocating ? 'Locating…' : hasLocation ? 'Update' : 'Use current location'}</AppText>
+        <Pressable
+          style={[styles.actionBtn, styles.actionBtnPrimary, isLocating && styles.actionBtnDisabled]}
+          onPress={() => void useCurrentLocation()}
+          disabled={isLocating}>
+          <Crosshair size={14} color={colors.primaryLight} />
+          <AppText style={[styles.actionLabel, styles.labelPrimary]}>
+            {isLocating ? 'Locating…' : hasLocation ? 'Update' : 'Use current location'}
+          </AppText>
         </Pressable>
         {hasLocation && (
           <Pressable
-            style={styles.actionBtn}
+            style={[styles.actionBtn, styles.actionBtnDanger]}
             onPress={() => apply({ lat: null, lng: null, name: null, source: null })}>
-            <Trash2 size={16} color={colors.danger} />
-            <AppText weight="medium">Remove</AppText>
+            <Trash2 size={14} color={colors.budgetNegative} />
+            <AppText style={[styles.actionLabel, styles.labelDanger]}>Remove</AppText>
           </Pressable>
         )}
         {!hasLocation && (
@@ -131,11 +136,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
     borderRadius: 999,
-    backgroundColor: colors.primaryLight
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: tints.primaryBorder,
+    backgroundColor: tints.primaryFill
   },
   autoBadgeText: {
     fontSize: 10,
-    color: colors.primary
+    lineHeight: 14,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    color: colors.primaryLight
   },
   mapsLink: {
     color: colors.primary
@@ -145,16 +155,45 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm
   },
+  // tinted pills, matching the web panel's status/location action styling
   actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: spacing.xs,
     paddingHorizontal: spacing.md,
-    minHeight: 38,
-    borderRadius: radii.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.surface
+    minHeight: 36,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth
+  },
+  actionBtnPrimary: {
+    borderColor: tints.primaryBorder,
+    backgroundColor: tints.primaryFill
+  },
+  actionBtnNeutral: {
+    borderColor: tints.neutralBorder,
+    backgroundColor: tints.neutralFill
+  },
+  actionBtnDanger: {
+    borderColor: tints.dangerBorder,
+    backgroundColor: tints.dangerFill
+  },
+  actionBtnDisabled: {
+    opacity: 0.55
+  },
+  actionLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.3
+  },
+  labelPrimary: {
+    color: colors.primaryLight
+  },
+  labelNeutral: {
+    color: colors.muted
+  },
+  labelDanger: {
+    color: colors.budgetNegative
   },
   hintRow: {
     flexDirection: 'row',
