@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { Camera, FileText, Images, Trash2 } from 'lucide-react-native';
+import { Camera, FileText, Images, ScanLine, Trash2 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
+import DocumentScanner from 'react-native-document-scanner-plugin';
 import * as FileSystem from 'expo-file-system/legacy';
 import { AppText } from '../../../components/AppText';
 import { colors, radii, spacing } from '../../../theme';
@@ -10,6 +11,9 @@ import { apiClient } from '../../../utils/api';
 import type { TransactionDocument } from '../types';
 
 type PickedFile = { uri: string; name: string; type: string };
+
+/** keep in step with service.MaxScanPages on the API */
+const MAX_SCAN_PAGES = 20;
 
 function formatSize(bytes: number) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
@@ -125,6 +129,46 @@ export function TransactionAttachments({ transactionId }: { transactionId: strin
   };
 
   /**
+   * Document scan: ML Kit's scanner handles edge detection, perspective
+   * correction, the cleaned-up "scanned" look and page reordering, then the
+   * server merges the pages into a single PDF.
+   */
+  const scanDocuments = async () => {
+    let scannedImages: string[] | undefined;
+    try {
+      ({ scannedImages } = await DocumentScanner.scanDocument({ maxNumDocuments: MAX_SCAN_PAGES }));
+    } catch (err) {
+      setError('Scanning is unavailable on this build');
+      console.log('[receipts] scanner unavailable', err);
+      return;
+    }
+    if (!scannedImages || scannedImages.length === 0) return;
+
+    setIsBusy(true);
+    setError(null);
+    setProgress(null);
+    try {
+      const form = new FormData();
+      scannedImages.forEach((uri, index) => {
+        form.append('pages', {
+          uri,
+          name: `page-${index + 1}.jpg`,
+          type: 'image/jpeg'
+        } as unknown as Blob);
+      });
+      const doc = await apiClient.postForm<TransactionDocument>(
+        `transactions/${transactionId}/documents/scan`,
+        form
+      );
+      setDocuments((docs) => [...docs, doc]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to upload scan');
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  /**
    * Multi-shot capture: the camera reopens after each frame so a stack of bills
    * can be scanned in one go, then the whole batch uploads together.
    */
@@ -227,6 +271,13 @@ export function TransactionAttachments({ transactionId }: { transactionId: strin
 
       <View style={styles.actionsRow}>
         <Pressable
+          style={[styles.actionBtn, styles.actionBtnPrimary, isBusy && styles.actionBtnDisabled]}
+          onPress={() => void scanDocuments()}
+          disabled={isBusy}>
+          <ScanLine size={16} color={colors.text} />
+          <AppText weight="medium">Scan</AppText>
+        </Pressable>
+        <Pressable
           style={[styles.actionBtn, isBusy && styles.actionBtnDisabled]}
           onPress={() => void pickFromCamera()}
           disabled={isBusy}>
@@ -303,6 +354,7 @@ const styles = StyleSheet.create({
   },
   actionsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm
   },
   // same bordered-rect treatment as the location actions / Button "secondary"
@@ -317,6 +369,11 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     backgroundColor: colors.surface
+  },
+  // the scan action is the primary way to add a bill, so it carries the accent
+  actionBtnPrimary: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryLight + '22'
   },
   actionBtnDisabled: {
     opacity: 0.6

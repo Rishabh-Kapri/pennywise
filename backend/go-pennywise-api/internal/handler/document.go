@@ -2,6 +2,7 @@ package handler
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 
@@ -13,6 +14,7 @@ import (
 
 type DocumentHandler interface {
 	Upload(c *gin.Context)
+	UploadScan(c *gin.Context)
 	ListByTransaction(c *gin.Context)
 	Content(c *gin.Context)
 	Delete(c *gin.Context)
@@ -52,6 +54,67 @@ func (h *documentHandler) Upload(c *gin.Context) {
 	defer file.Close()
 
 	doc, err := h.service.Upload(ctx, transactionId, header.Filename, file)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusCreated, doc)
+}
+
+// UploadScan takes the pages of a multi-page capture (repeated `pages` parts,
+// in order) and stores them as one PDF.
+func (h *documentHandler) UploadScan(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	transactionId, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing id"})
+		return
+	}
+
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, service.MaxScanTotalBytes)
+
+	form, err := c.MultipartForm()
+	if err != nil {
+		if _, tooLarge := err.(*http.MaxBytesError); tooLarge {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{
+				"error": fmt.Sprintf("scan exceeds the %dMB limit", service.MaxScanTotalBytes>>20),
+			})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": "multipart 'pages' parts are required"})
+		return
+	}
+
+	headers := form.File["pages"]
+	if len(headers) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "multipart 'pages' parts are required"})
+		return
+	}
+	if len(headers) > service.MaxScanPages {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": fmt.Sprintf("a scan can have at most %d pages", service.MaxScanPages),
+		})
+		return
+	}
+
+	pages := make([]service.ScanPage, 0, len(headers))
+	for _, header := range headers {
+		file, err := header.Open()
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "could not read an uploaded page"})
+			return
+		}
+		data, err := io.ReadAll(file)
+		file.Close()
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "could not read an uploaded page"})
+			return
+		}
+		pages = append(pages, service.ScanPage{Name: header.Filename, Data: data})
+	}
+
+	doc, err := h.service.UploadScan(ctx, transactionId, pages)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

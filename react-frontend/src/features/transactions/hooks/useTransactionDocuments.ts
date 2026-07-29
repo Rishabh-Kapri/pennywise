@@ -12,6 +12,8 @@ interface UseTransactionDocumentsResult {
   uploadProgress: { done: number; total: number } | null;
   error: string | null;
   upload: (files: File[]) => Promise<void>;
+  /** merges page images server-side into one PDF document */
+  uploadAsPdf: (files: File[]) => Promise<void>;
   remove: (documentId: string) => Promise<void>;
   /** fetch a fresh blob URL for opening/downloading any document */
   openDocument: (doc: TransactionDocument) => Promise<void>;
@@ -114,6 +116,29 @@ export function useTransactionDocuments(transactionId: string | undefined): UseT
     [transactionId, loadPreviews],
   );
 
+  const uploadAsPdf = useCallback(
+    async (files: File[]) => {
+      if (!transactionId || files.length === 0) return;
+      setIsUploading(true);
+      setError(null);
+      try {
+        const form = new FormData();
+        // order matters — parts become pages in the order appended
+        for (const file of files) form.append('pages', file);
+        const doc = await apiClient.postForm<TransactionDocument>(
+          `transactions/${transactionId}/documents/scan`,
+          form,
+        );
+        setDocuments((docs) => [...docs, doc]);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Failed to build PDF');
+      } finally {
+        setIsUploading(false);
+      }
+    },
+    [transactionId],
+  );
+
   const remove = useCallback(async (documentId: string) => {
     setError(null);
     try {
@@ -141,5 +166,16 @@ export function useTransactionDocuments(transactionId: string | undefined): UseT
     }
   }, []);
 
-  return { documents, previewUrls, isLoading, isUploading, uploadProgress, error, upload, remove, openDocument };
+  return {
+    documents,
+    previewUrls,
+    isLoading,
+    isUploading,
+    uploadProgress,
+    error,
+    upload,
+    uploadAsPdf,
+    remove,
+    openDocument,
+  };
 }
