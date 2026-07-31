@@ -27,6 +27,7 @@ type TransactionRepository interface {
 		filter *model.TransactionFilter,
 	) (model.PaginatedResponse[model.Transaction], error)
 	Update(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID, txn model.Transaction) error
+	UpdateLocation(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID, lat *float64, lng *float64, name *string, source *model.LocationSource) error
 	UpdateStatus(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID, status model.TransactionStatus) error
 	Create(ctx context.Context, tx pgx.Tx, txn model.Transaction) ([]model.Transaction, error)
 	CreateDeduped(ctx context.Context, tx pgx.Tx, txn model.Transaction) (*model.Transaction, bool, error)
@@ -61,6 +62,10 @@ func (r *transactionRepo) GetAll(
 			transfer_account_id,
 			transfer_transaction_id,
 			tag_ids,
+			location_lat,
+			location_lng,
+			location_name,
+			location_source,
 			created_at,
 			updated_at
 		FROM transactions
@@ -100,6 +105,10 @@ func (r *transactionRepo) GetAll(
 			&txn.TransferAccountID,
 			&txn.TransferTransactionID,
 			&txn.TagIDs,
+			&txn.LocationLat,
+			&txn.LocationLng,
+			&txn.LocationName,
+			&txn.LocationSource,
 			&txn.CreatedAt,
 			&txn.UpdatedAt,
 		)
@@ -130,6 +139,10 @@ func (r *transactionRepo) GetById(ctx context.Context, budgetId uuid.UUID, id uu
 				transactions.transfer_account_id,
 				transactions.transfer_transaction_id,
 				transactions.tag_ids,
+				transactions.location_lat,
+				transactions.location_lng,
+				transactions.location_name,
+				transactions.location_source,
 				transactions.created_at,
 				transactions.updated_at,
 				accounts.name AS account_name,
@@ -156,6 +169,10 @@ func (r *transactionRepo) GetById(ctx context.Context, budgetId uuid.UUID, id uu
 		&txn.TransferAccountID,
 		&txn.TransferTransactionID,
 		&txn.TagIDs,
+		&txn.LocationLat,
+		&txn.LocationLng,
+		&txn.LocationName,
+		&txn.LocationSource,
 		&txn.CreatedAt,
 		&txn.UpdatedAt,
 		&txn.AccountName,
@@ -192,6 +209,10 @@ func (r *transactionRepo) GetByIdTx(
 				transactions.transfer_account_id,
 				transactions.transfer_transaction_id,
 				transactions.tag_ids,
+				transactions.location_lat,
+				transactions.location_lng,
+				transactions.location_name,
+				transactions.location_source,
 				transactions.created_at,
 				transactions.updated_at,
 				accounts.name AS account_name,
@@ -218,6 +239,10 @@ func (r *transactionRepo) GetByIdTx(
 		&txn.TransferAccountID,
 		&txn.TransferTransactionID,
 		&txn.TagIDs,
+		&txn.LocationLat,
+		&txn.LocationLng,
+		&txn.LocationName,
+		&txn.LocationSource,
 		&txn.CreatedAt,
 		&txn.UpdatedAt,
 		&txn.AccountName,
@@ -303,6 +328,10 @@ func (r *transactionRepo) GetAllNormalized(
 			"transactions.transfer_account_id",
 			"transactions.transfer_transaction_id",
 			"transactions.tag_ids",
+			"transactions.location_lat",
+			"transactions.location_lng",
+			"transactions.location_name",
+			"transactions.location_source",
 			"transactions.created_at",
 			"transactions.updated_at",
 			"accounts.name AS account_name",
@@ -394,6 +423,10 @@ func (r *transactionRepo) GetAllNormalized(
 			&txn.TransferAccountID,
 			&txn.TransferTransactionID,
 			&txn.TagIDs,
+			&txn.LocationLat,
+			&txn.LocationLng,
+			&txn.LocationName,
+			&txn.LocationSource,
 			&txn.CreatedAt,
 			&txn.UpdatedAt,
 			&txn.AccountName,
@@ -496,8 +529,12 @@ func (r *transactionRepo) Create(ctx context.Context, tx pgx.Tx, txn model.Trans
 			summary,
 		  transfer_account_id,
 		  transfer_transaction_id,
-		  tag_ids
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		  tag_ids,
+		  location_lat,
+		  location_lng,
+		  location_name,
+		  location_source
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 		RETURNING id, amount, budget_id, status, summary`,
 		txn.BudgetID,
 		txn.Date,
@@ -513,6 +550,10 @@ func (r *transactionRepo) Create(ctx context.Context, tx pgx.Tx, txn model.Trans
 		txn.TransferAccountID,
 		txn.TransferTransactionID,
 		txn.TagIDs,
+		txn.LocationLat,
+		txn.LocationLng,
+		txn.LocationName,
+		txn.LocationSource,
 	).Scan(&createdTxn.ID, &createdTxn.Amount, &createdTxn.BudgetID, &createdTxn.Status, &createdTxn.Summary)
 	if err != nil {
 		return nil, err
@@ -555,8 +596,12 @@ func (r *transactionRepo) CreateDeduped(
 			summary,
 		  transfer_account_id,
 		  transfer_transaction_id,
-		  tag_ids
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		  tag_ids,
+		  location_lat,
+		  location_lng,
+		  location_name,
+		  location_source
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 		ON CONFLICT (budget_id, dedupe_hash) WHERE dedupe_hash IS NOT NULL and deleted = FALSE
 		DO NOTHING
 		RETURNING id, amount, budget_id, status, summary`,
@@ -574,6 +619,10 @@ func (r *transactionRepo) CreateDeduped(
 		txn.TransferAccountID,
 		txn.TransferTransactionID,
 		txn.TagIDs,
+		txn.LocationLat,
+		txn.LocationLng,
+		txn.LocationName,
+		txn.LocationSource,
 	).Scan(&createdTxn.ID, &createdTxn.Amount, &createdTxn.BudgetID, &createdTxn.Status, &createdTxn.Summary)
 	if err == nil {
 		return &createdTxn, true, nil
@@ -618,8 +667,12 @@ func (r *transactionRepo) Update(
 				transfer_transaction_id = $8,
 				tag_ids = $9,
 				status = $10,
+				location_lat = $11,
+				location_lng = $12,
+				location_name = $13,
+				location_source = $14,
 				updated_at = NOW()
-		  WHERE budget_id = $11 AND id = $12
+		  WHERE budget_id = $15 AND id = $16
 		`, txn.Date,
 		txn.PayeeID,
 		txn.CategoryID,
@@ -630,8 +683,44 @@ func (r *transactionRepo) Update(
 		txn.TransferTransactionID,
 		txn.TagIDs,
 		txn.Status,
+		txn.LocationLat,
+		txn.LocationLng,
+		txn.LocationName,
+		txn.LocationSource,
 		budgetId,
 		id,
+	)
+	if err != nil {
+		return err
+	}
+	if cmdTag.RowsAffected() == 0 {
+		return fmt.Errorf("Transaction not found for id: %v", id)
+	}
+	return nil
+}
+
+// UpdateLocation sets or clears (all-nil) the location fields without touching
+// the rest of the transaction.
+func (r *transactionRepo) UpdateLocation(
+	ctx context.Context,
+	tx pgx.Tx,
+	budgetId uuid.UUID,
+	id uuid.UUID,
+	lat *float64,
+	lng *float64,
+	name *string,
+	source *model.LocationSource,
+) error {
+	cmdTag, err := r.Executor(tx).Exec(
+		ctx, `
+			UPDATE transactions SET
+				location_lat = $1,
+				location_lng = $2,
+				location_name = $3,
+				location_source = $4,
+				updated_at = NOW()
+			WHERE budget_id = $5 AND id = $6 AND deleted = FALSE
+		`, lat, lng, name, source, budgetId, id,
 	)
 	if err != nil {
 		return err

@@ -1242,6 +1242,13 @@ func (m *mockTransactionService) Update(ctx context.Context, id uuid.UUID, txn m
 func (m *mockTransactionService) UpdateStatus(ctx context.Context, id uuid.UUID, status model.TransactionStatus) error {
 	return m.Called(ctx, id, status).Error(0)
 }
+func (m *mockTransactionService) UpdateLocation(ctx context.Context, id uuid.UUID, req model.TransactionLocationReq) (*model.Transaction, error) {
+	args := m.Called(ctx, id, req)
+	if v := args.Get(0); v != nil {
+		return v.(*model.Transaction), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
 func (m *mockTransactionService) Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error) {
 	args := m.Called(ctx, txn)
 	if v := args.Get(0); v != nil {

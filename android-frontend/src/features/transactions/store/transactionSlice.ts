@@ -1,7 +1,7 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 import { apiClient } from '../../../utils/api';
 import { LoadingState, type PaginationResponse } from '../../../utils/constants';
-import type { Transaction, TransactionDTO, TransactionState, TransactionStatus } from '../types';
+import type { Transaction, TransactionDTO, TransactionLocationDTO, TransactionState, TransactionStatus } from '../types';
 
 type FetchTransactionArgs = {
   accountIds?: string[];
@@ -42,6 +42,13 @@ export const updateTransaction = createAsyncThunk<TransactionDTO, TransactionDTO
 export const deleteTransactionById = createAsyncThunk<void, string>('transactions/deleteTransactionById', async (id) => {
   await apiClient.delete(`transactions/${id}`);
 });
+
+export const updateTransactionLocation = createAsyncThunk<Transaction, { id: string; location: TransactionLocationDTO }>(
+  'transactions/updateTransactionLocation',
+  async ({ id, location }) => {
+    return apiClient.patch<Transaction>(`transactions/${id}/location`, location);
+  }
+);
 
 export const updateTransactionStatus = createAsyncThunk<{ id: string; status: TransactionStatus }, { id: string; status: TransactionStatus }>(
   'transactions/updateTransactionStatus',
@@ -87,6 +94,15 @@ const transactionSlice = createSlice({
       .addCase(updateTransactionStatus.fulfilled, (state, action) => {
         const txn = state.transactions.find((item) => item.id === action.payload.id);
         if (txn) txn.status = action.payload.status;
+      })
+      .addCase(updateTransactionLocation.fulfilled, (state, action) => {
+        const txn = state.transactions.find((item) => item.id === action.payload.id);
+        if (txn) {
+          txn.locationLat = action.payload.locationLat ?? null;
+          txn.locationLng = action.payload.locationLng ?? null;
+          txn.locationName = action.payload.locationName ?? null;
+          txn.locationSource = action.payload.locationSource ?? null;
+        }
       });
   }
 });

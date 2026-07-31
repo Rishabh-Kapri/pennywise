@@ -25,6 +25,9 @@ type Config struct {
 	TemporalServerHost    string
 	TemporalServerPort    string
 	DemoMode              bool
+	NominatimURL          string
+	UploadsDir            string
+	ExpoPushURL           string
 }
 
 func Load() Config {
@@ -56,5 +59,21 @@ func Load() Config {
 		TemporalServerPort: os.Getenv("TEMPORAL_SERVER_PORT"),
 
 		DemoMode: os.Getenv("DEMO_MODE") == "true",
+
+		// reverse geocoding (empty = public OSM Nominatim)
+		NominatimURL: os.Getenv("NOMINATIM_URL"),
+
+		UploadsDir: uploadsDir(),
+
+		// Expo push endpoint (empty = the public https://exp.host one)
+		ExpoPushURL: os.Getenv("EXPO_PUSH_URL"),
 	}
+}
+
+func uploadsDir() string {
+	dir := os.Getenv("UPLOADS_DIR")
+	if dir == "" {
+		dir = "./data/uploads"
+	}
+	return dir
 }

@@ -742,3 +742,242 @@
 .deleteBtn > span {
   margin-top: 2px;
 }
+
+/* ---- Location section ---- */
+
+.locationSection,
+.documentsSection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 0 1.25rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.autoBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 30%, transparent);
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  color: var(--color-primary-light);
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.locationNameRow {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.locationName {
+  font-size: 0.92rem;
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.locationMapWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.locationMap {
+  width: 100%;
+  height: 180px;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-border-muted);
+  z-index: 0;
+}
+
+.locationHint {
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+}
+
+.locationActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* same tinted-pill family as the status actions (.approveBtn / .rejectBtn) */
+.locationBtn,
+.locationBtnSecondary,
+.locationBtnDanger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.locationBtn {
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  color: var(--color-primary-light);
+  border-color: color-mix(in srgb, var(--color-primary) 30%, transparent);
+}
+
+.locationBtn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-primary) 22%, transparent);
+}
+
+.locationBtnSecondary {
+  background: color-mix(in srgb, var(--color-text-secondary) 12%, transparent);
+  color: var(--color-text-secondary);
+  border-color: color-mix(in srgb, var(--color-text-secondary) 25%, transparent);
+}
+
+.locationBtnSecondary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-text-secondary) 22%, transparent);
+  color: var(--color-text);
+}
+
+.locationBtnDanger {
+  background: color-mix(in srgb, var(--color-budget-negative) 12%, transparent);
+  color: var(--color-budget-negative);
+  border-color: color-mix(in srgb, var(--color-budget-negative) 30%, transparent);
+}
+
+.locationBtnDanger:hover {
+  background: color-mix(in srgb, var(--color-budget-negative) 22%, transparent);
+}
+
+.locationBtn:disabled,
+.locationBtnSecondary:disabled,
+.locationBtnDanger:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* ---- Documents section ---- */
+
+.documentGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 0.65rem;
+}
+
+.documentTile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.documentPreview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 1;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.5rem;
+  background: var(--color-surface);
+  overflow: hidden;
+  cursor: pointer;
+  padding: 0;
+  transition: border-color 0.15s ease;
+}
+
+.documentThumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.documentIcon {
+  color: var(--color-text-secondary);
+}
+
+.documentMeta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.documentName {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.documentSize {
+  font-size: 0.7rem;
+  color: var(--color-text-secondary);
+  opacity: 0.7;
+}
+
+.documentDeleteBtn {
+  position: absolute;
+  top: 0.3rem;
+  right: 0.3rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border: none;
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, var(--color-background) 70%, transparent);
+  color: var(--color-budget-negative);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.documentTile:hover .documentDeleteBtn {
+  opacity: 1;
+}
+
+.documentPreview:hover {
+  border-color: var(--color-primary);
+}
+
+.documentAddBtn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  width: 100%;
+  aspect-ratio: 1;
+  border: 1px dashed var(--color-border-muted);
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.documentAddBtn:hover:not(:disabled) {
+  color: var(--color-text);
+  border-color: var(--color-primary);
+  background: var(--color-surface-tertiary);
+}
+
+.documentAddBtn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.hiddenFileInput {
+  display: none;
+}

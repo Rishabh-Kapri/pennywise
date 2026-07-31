@@ -103,6 +103,11 @@ export function buildTransactionPayload(txn: Transaction): TransactionDTO {
     note: txn.note ?? '',
     status: txn.status ?? TransactionStatus.MANUAL,
     tagIds: txn.tagIds ?? [],
+    // pass location through so a plain edit doesn't wipe an existing pin
+    locationLat: txn.locationLat ?? null,
+    locationLng: txn.locationLng ?? null,
+    locationName: txn.locationName ?? null,
+    locationSource: txn.locationSource ?? null,
   };
 }
 

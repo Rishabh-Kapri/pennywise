@@ -22,6 +22,7 @@ type CreateTransactionActivity struct {
 	PayeeService       service.PayeeService
 	PredictionService  service.PredictionService
 	WebsocketService   service.WebsocketService
+	PushService        service.PushNotificationService
 	DB                 *pgxpool.Pool
 }
 
@@ -169,17 +170,24 @@ func (a *CreateTransactionActivity) sendTransactionCreatedNotification(
 	transactions []sharedModel.Transaction,
 	log *slog.Logger,
 ) {
-	if a.WebsocketService == nil || len(transactions) == 0 {
+	if len(transactions) == 0 {
 		return
 	}
 
-	if err := a.WebsocketService.SendNotification(
-		ctx,
-		budgetId,
-		sharedModel.EventTransactionCreated,
-		transactions,
-	); err != nil {
-		log.Warn("failed to send transaction created websocket notification", "error", err)
+	if a.WebsocketService != nil {
+		if err := a.WebsocketService.SendNotification(
+			ctx,
+			budgetId,
+			sharedModel.EventTransactionCreated,
+			transactions,
+		); err != nil {
+			log.Warn("failed to send transaction created websocket notification", "error", err)
+		}
+	}
+
+	// best-effort push so the mobile app can auto-attach the device location
+	if a.PushService != nil {
+		a.PushService.NotifyTransactionsCreated(ctx, budgetId, transactions)
 	}
 }
 

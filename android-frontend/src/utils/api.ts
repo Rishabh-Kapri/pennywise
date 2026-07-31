@@ -154,6 +154,40 @@ class ApiClient {
     return this.handleResponse<T>(res, 'DELETE', endpoint);
   }
 
+  /**
+   * POST multipart/form-data (file uploads). Content-Type stays unset so fetch
+   * adds the multipart boundary itself.
+   */
+  async postForm<T>(endpoint: string, form: FormData): Promise<T> {
+    const headers = this.getHeaders(endpoint) as Record<string, string>;
+    delete headers['Content-Type'];
+
+    let res = await fetch(`${this.baseUrl}/${endpoint}`, {
+      method: 'POST',
+      headers,
+      body: form
+    });
+
+    if (res.status === 401 && !this.isRefreshEndpoint(endpoint)) {
+      const newAccessToken = await this.tryRefreshToken();
+      headers.Authorization = `Bearer ${newAccessToken}`;
+      res = await fetch(`${this.baseUrl}/${endpoint}`, {
+        method: 'POST',
+        headers,
+        body: form
+      });
+    }
+
+    return this.parseResponse<T>(res);
+  }
+
+  /** Absolute URL + auth headers for binary downloads (expo-file-system). */
+  getAuthorizedRequest(endpoint: string): { url: string; headers: Record<string, string> } {
+    const headers = this.getHeaders(endpoint) as Record<string, string>;
+    delete headers['Content-Type'];
+    return { url: `${this.baseUrl}/${endpoint}`, headers };
+  }
+
   async probeRoot(): Promise<{ status: number; body: string; url: string }> {
     const url = this.baseUrl.replace(/\/$/, '');
     const res = await fetch(url, { method: 'GET' });
