@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strconv"
+	"strings"
 	"sync"
 
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
@@ -16,14 +17,14 @@ import (
 
 const getBudgetToolName = "get_budget_info"
 
-type CategorySpend struct {
-	Name       string  `json:"name"`
-	TotalSpend float64 `json:"totalSpend"`
-}
+// budgetInfoNameCap bounds each name list. An active budget accumulates hundreds
+// of payees, and dumping all of them into context crowds out the actual answer.
+const budgetInfoNameCap = 200
 
 type BudgetInfo struct {
 	Categories []string `json:"categories"`
-	PayeeNames []string        `json:"payeeNames"`
+	PayeeNames []string `json:"payeeNames"`
+	TagNames   []string `json:"tagNames"`
 }
 
 type BudgetToolArgs struct {
@@ -44,7 +45,7 @@ func NewGetBudgetInfoTool(db *pgxpool.Pool) Tool {
 func (t GetBudgetInfoTool) Definition() sharedModel.ToolDefiniton {
 	return sharedModel.ToolDefiniton{
 		Name:        getBudgetToolName,
-		Description: "Return the user's budget info with categories & payees used for a specific date range. Only call this tool when date range is known.",
+		Description: "Return the category, payee, and tag names the user actually used in a specific date range. Use this to discover what entities exist before answering questions about them. Only call this tool when the date range is known.",
 		InputSchema: sharedModel.ToolSchema{
 			Type: "object",
 			Properties: map[string]sharedModel.ToolSchema{
@@ -74,17 +75,22 @@ func (t GetBudgetInfoTool) fetchCategories(
 	args BudgetToolArgs,
 ) (categories []string, err error) {
 	categoryRows, err := t.db.Query(ctx, `
-			SELECT
+			SELECT DISTINCT
 				c.name
 			FROM transactions t
-			JOIN categories c ON t.category_id = c.id AND c.is_system = false AND c.deleted = false
+			JOIN categories c
+				ON t.category_id = c.id
+				AND c.budget_id = t.budget_id
+				AND c.is_system = false
+				AND c.hidden = false
+				AND c.deleted = false
 			WHERE t.budget_id = $1
 				AND t.date >= $2
 				AND t.date <= $3
 				AND t.deleted = false
-			GROUP BY c.name
-			ORDER BY total_spend ASC
-			`, budgetID, args.DateRange.Start, args.DateRange.End)
+			ORDER BY c.name
+			LIMIT $4
+			`, budgetID, args.DateRange.Start, args.DateRange.End, budgetInfoNameCap)
 	if err != nil {
 		return nil, errs.Wrap(errs.CodeToolExecuteFail, "failed to execute tool get_budget_info", err)
 	}
@@ -113,14 +119,15 @@ func (t GetBudgetInfoTool) fetchPayees(
 	payeeRows, err := t.db.Query(ctx, `
 		SELECT DISTINCT p.name
 		FROM transactions t
-		JOIN payees p ON t.payee_id = p.id
+		JOIN payees p ON t.payee_id = p.id AND p.budget_id = t.budget_id AND p.deleted = false
 		WHERE t.budget_id = $1
 		  AND t.date >= $2
 		  AND t.date <= $3
 		  AND t.deleted = false
 		  AND p.name IS NOT NULL
 		ORDER BY p.name
-	`, budgetID, args.DateRange.Start, args.DateRange.End)
+		LIMIT $4
+	`, budgetID, args.DateRange.Start, args.DateRange.End, budgetInfoNameCap)
 	if err != nil {
 		return nil, errs.Wrap(errs.CodeToolExecuteFail, "failed to execute tool get_budget_info", err)
 	}
@@ -140,6 +147,44 @@ func (t GetBudgetInfoTool) fetchPayees(
 	return payeeNames, nil
 }
 
+// fetchTags returns the tag names actually attached to transactions in the date
+// range. Tags live in a UUID[] column on transactions rather than a join table,
+// so the join goes through the array.
+func (t GetBudgetInfoTool) fetchTags(
+	ctx context.Context,
+	budgetID uuid.UUID,
+	args BudgetToolArgs,
+) (tagNames []string, err error) {
+	tagRows, err := t.db.Query(ctx, `
+		SELECT DISTINCT tg.name
+		FROM transactions t
+		JOIN tags tg ON tg.id = ANY(t.tag_ids) AND tg.budget_id = t.budget_id AND tg.deleted = false
+		WHERE t.budget_id = $1
+		  AND t.date >= $2
+		  AND t.date <= $3
+		  AND t.deleted = false
+		ORDER BY tg.name
+		LIMIT $4
+	`, budgetID, args.DateRange.Start, args.DateRange.End, budgetInfoNameCap)
+	if err != nil {
+		return nil, errs.Wrap(errs.CodeToolExecuteFail, "failed to execute tool get_budget_info", err)
+	}
+	defer tagRows.Close()
+
+	for tagRows.Next() {
+		var name string
+		if err := tagRows.Scan(&name); err != nil {
+			return nil, errs.Wrap(errs.CodeToolExecuteFail, "failed to scan tag row", err)
+		}
+		tagNames = append(tagNames, name)
+	}
+	if err := tagRows.Err(); err != nil {
+		return nil, errs.Wrap(errs.CodeToolExecuteFail, "failed to scan tag rows", err)
+	}
+
+	return tagNames, nil
+}
+
 func (t GetBudgetInfoTool) Execute(ctx context.Context, call sharedModel.ToolCall) (*sharedModel.ToolResult, error) {
 	var args BudgetToolArgs
 	if err := json.Unmarshal(call.Arguments, &args); err != nil {
@@ -153,10 +198,11 @@ func (t GetBudgetInfoTool) Execute(ctx context.Context, call sharedModel.ToolCal
 
 	var categories []string
 	var payeeNames []string
-	var catErr, payeeErr error
+	var tagNames []string
+	var catErr, payeeErr, tagErr error
 
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(3)
 
 	go func() {
 		defer wg.Done()
@@ -168,6 +214,11 @@ func (t GetBudgetInfoTool) Execute(ctx context.Context, call sharedModel.ToolCal
 		payeeNames, payeeErr = t.fetchPayees(ctx, budgetID, args)
 	}()
 
+	go func() {
+		defer wg.Done()
+		tagNames, tagErr = t.fetchTags(ctx, budgetID, args)
+	}()
+
 	wg.Wait()
 
 	if catErr != nil {
@@ -176,10 +227,14 @@ func (t GetBudgetInfoTool) Execute(ctx context.Context, call sharedModel.ToolCal
 	if payeeErr != nil {
 		return nil, errs.Wrap(errs.CodeToolExecuteFail, "failed to fetch payees", payeeErr)
 	}
+	if tagErr != nil {
+		return nil, errs.Wrap(errs.CodeToolExecuteFail, "failed to fetch tags", tagErr)
+	}
 
 	return jsonToolResult(call, getBudgetToolName, BudgetInfo{
 		Categories: categories,
 		PayeeNames: payeeNames,
+		TagNames:   tagNames,
 	})
 }
 
@@ -224,23 +279,28 @@ func (t GetBudgetInfoTool) Normalize(
 
 	categoryCount := len(budgetInfo.Categories)
 	payeeCount := len(budgetInfo.PayeeNames)
+	tagCount := len(budgetInfo.TagNames)
+
+	found := make([]string, 0, 3)
+	if categoryCount > 0 {
+		found = append(found, pluralizeCount(categoryCount, "category", "categories"))
+	}
+	if payeeCount > 0 {
+		found = append(found, pluralizeCount(payeeCount, "payee", "payees"))
+	}
+	if tagCount > 0 {
+		found = append(found, pluralizeCount(tagCount, "tag", "tags"))
+	}
+
 	summary := "Loaded budget context"
-	if categoryCount > 0 || payeeCount > 0 {
-		summary = "Found "
-		switch {
-		case categoryCount > 0 && payeeCount > 0:
-			summary += pluralizeCount(categoryCount, "category", "categories") + " and " +
-				pluralizeCount(payeeCount, "payee", "payees")
-		case categoryCount > 0:
-			summary += pluralizeCount(categoryCount, "category", "categories")
-		default:
-			summary += pluralizeCount(payeeCount, "payee", "payees")
-		}
+	if len(found) > 0 {
+		summary = "Found " + joinWithAnd(found)
 	}
 
 	normalized := map[string]any{
 		"categoryCount": categoryCount,
 		"payeeCount":    payeeCount,
+		"tagCount":      tagCount,
 	}
 	if args.DateRange.Start != "" || args.DateRange.End != "" {
 		normalized["dateRange"] = map[string]string{
@@ -266,4 +326,16 @@ func pluralizeCount(count int, singular string, plural string) string {
 		return "1 " + singular
 	}
 	return strconv.Itoa(count) + " " + plural
+}
+
+// joinWithAnd renders a list as "a", "a and b", or "a, b and c".
+func joinWithAnd(items []string) string {
+	switch len(items) {
+	case 0:
+		return ""
+	case 1:
+		return items[0]
+	default:
+		return strings.Join(items[:len(items)-1], ", ") + " and " + items[len(items)-1]
+	}
 }

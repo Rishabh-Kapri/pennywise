@@ -106,6 +106,7 @@ function detailNumber(event: PipelineRunEvent | undefined, key: string): number 
 
 interface EmailGroup {
   messageId: string;
+  fetch?: PipelineRunEvent;
   parse?: PipelineRunEvent;
   predict?: PipelineRunEvent;
 }
@@ -119,10 +120,23 @@ function groupEventsByEmail(events: PipelineRunEvent[]): EmailGroup[] {
       group = { messageId: event.messageId };
       groups.set(event.messageId, group);
     }
+    if (event.step === 'fetch_emails') group.fetch = event;
     if (event.step === 'parse') group.parse = event;
     if (event.step === 'predict') group.predict = event;
   }
   return [...groups.values()];
+}
+
+/** "Bank Alerts <alerts@bank.com>" → "Bank Alerts"; bare addresses pass through. */
+function formatSender(from: string): string {
+  const match = from.match(/^\s*"?([^"<]*?)"?\s*<(.+)>\s*$/);
+  if (!match) return from.trim();
+  return match[1].trim() || match[2].trim();
+}
+
+function senderAddress(from: string): string {
+  const match = from.match(/<(.+)>/);
+  return match ? match[1].trim() : '';
 }
 
 function StatusChip({ status }: { status: PipelineRun['status'] }) {
@@ -160,29 +174,64 @@ function EmailCard({ group }: { group: EmailGroup }) {
   const [showReasoning, setShowReasoning] = useState(false);
 
   const parseSkipped = group.parse?.status === 'skipped';
+  const parseFailed = group.parse?.status === 'failed';
   const predictFailed = group.predict?.status === 'failed';
   const amount = detailNumber(group.parse, 'amount');
   const source = detailString(group.predict, 'source');
   const reasoning = detailString(group.predict, 'reasoning');
 
+  // Captured at fetch time, so it is available before extraction runs.
+  const from = detailString(group.fetch, 'from');
+  const subject = detailString(group.fetch, 'subject');
+  const snippet = detailString(group.fetch, 'snippet');
+  const address = senderAddress(from);
+
   return (
     <div className={styles.emailCard}>
-      <div className={styles.emailCardHeader}>
-        <EnvelopeSimple size={16} className={styles.emailIcon} />
-        {parseSkipped ? (
-          <span className={styles.mutedText}>Skipped — not a transaction email</span>
-        ) : (
-          <>
-            <span className={styles.emailMerchant}>
-              {detailString(group.parse, 'merchant') || 'Unknown merchant'}
+      {group.fetch && (
+        <div className={styles.emailSource}>
+          <div className={styles.emailSourceTop}>
+            <EnvelopeSimple size={16} className={styles.emailIcon} />
+            <span className={styles.emailSender} title={from}>
+              {from ? formatSender(from) : 'Unknown sender'}
             </span>
-            {amount !== null && (
-              <span className={styles.emailAmount}>{getCurrencyLocaleString(amount)}</span>
-            )}
-          </>
-        )}
-      </div>
-      {!parseSkipped && group.parse && (
+            {address && <span className={styles.emailAddress}>{address}</span>}
+            <span className={styles.messageId} title={`Message ID: ${group.messageId}`}>
+              {group.messageId}
+            </span>
+          </div>
+          {subject && <div className={styles.emailSubject}>{subject}</div>}
+          {snippet && <p className={styles.emailSnippet}>{snippet}</p>}
+        </div>
+      )}
+      {!group.parse && !group.predict && (
+        <div className={styles.emailPending}>
+          <CircleNotch size={14} className={styles.spin} />
+          Waiting for extraction…
+        </div>
+      )}
+      {(group.parse || group.predict) && (
+        <div className={styles.emailCardHeader}>
+          {!group.fetch && <EnvelopeSimple size={16} className={styles.emailIcon} />}
+          {parseSkipped ? (
+            <span className={styles.mutedText}>Skipped — not a transaction email</span>
+          ) : parseFailed ? (
+            <span className={styles.errorText}>
+              <XCircle size={14} /> Extraction failed for this email
+            </span>
+          ) : (
+            <>
+              <span className={styles.emailMerchant}>
+                {detailString(group.parse, 'merchant') || 'Unknown merchant'}
+              </span>
+              {amount !== null && (
+                <span className={styles.emailAmount}>{getCurrencyLocaleString(amount)}</span>
+              )}
+            </>
+          )}
+        </div>
+      )}
+      {!parseSkipped && !parseFailed && group.parse && (
         <div className={styles.emailMetaRow}>
           <span>{detailString(group.parse, 'account')}</span>
           <span>{detailString(group.parse, 'date')}</span>
@@ -316,6 +365,11 @@ function RunCard({
           {run.emailAccount ?? (run.trigger === 'manual' ? 'manual run' : 'email')}
         </span>
         <span className={styles.runCounts}>{counts.join(' · ')}</span>
+        {run.gmailHistoryId !== undefined && (
+          <span className={styles.historyChip} title="Gmail history ID">
+            history {run.gmailHistoryId}
+          </span>
+        )}
         <span className={styles.runTime}>{formatRelativeTime(run.startedAt)}</span>
       </button>
 

@@ -6,20 +6,23 @@ import { AppText } from './AppText';
 type Props = PropsWithChildren<
   PressableProps & {
     variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
+    size?: 'md' | 'sm';
   }
 >;
 
-export function Button({ children, variant = 'primary', style, ...props }: Props) {
+export function Button({ children, variant = 'primary', size = 'md', style, ...props }: Props) {
   return (
     <Pressable
       {...props}
       style={({ pressed }) => [
         styles.base,
+        size === 'sm' && styles.small,
         variant === 'primary' && styles.primary,
         variant === 'secondary' && styles.secondary,
         variant === 'ghost' && styles.ghost,
         variant === 'danger' && styles.danger,
         pressed && styles.pressed,
+        props.disabled && styles.disabled,
         typeof style === 'function' ? style({ pressed }) : style
       ]}
     >
@@ -29,7 +32,7 @@ export function Button({ children, variant = 'primary', style, ...props }: Props
           style={[
             styles.label,
             variant === 'primary' && styles.primaryLabel,
-            variant === 'danger' && styles.primaryLabel,
+            variant === 'danger' && styles.dangerLabel,
             variant === 'ghost' && styles.ghostLabel
           ]}
         >
@@ -44,39 +47,44 @@ export function Button({ children, variant = 'primary', style, ...props }: Props
 
 const styles = StyleSheet.create({
   base: {
-    minHeight: 44,
-    borderRadius: radii.sm,
+    minHeight: 50,
+    borderRadius: radii.full,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
-    borderWidth: StyleSheet.hairlineWidth
+    paddingHorizontal: spacing.xl
+  },
+  small: {
+    minHeight: 38,
+    paddingHorizontal: spacing.lg
   },
   primary: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary
+    backgroundColor: colors.primary
   },
   secondary: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border
+    backgroundColor: colors.surfaceStrong
   },
   ghost: {
-    backgroundColor: 'transparent',
-    borderColor: 'transparent'
+    backgroundColor: 'transparent'
   },
   danger: {
-    backgroundColor: colors.danger,
-    borderColor: colors.danger
+    backgroundColor: colors.dangerMuted
   },
   label: {
     textAlign: 'center'
   },
   primaryLabel: {
-    color: '#fff'
+    color: colors.onPrimary
+  },
+  dangerLabel: {
+    color: colors.danger
   },
   ghostLabel: {
     color: colors.primary
   },
   pressed: {
-    opacity: 0.78
+    opacity: 0.72
+  },
+  disabled: {
+    opacity: 0.45
   }
 });
