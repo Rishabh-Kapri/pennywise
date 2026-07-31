@@ -1,7 +1,7 @@
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Check, ChevronLeft, LogOut, UserRound } from 'lucide-react-native';
-import appConfig from '../../../../app.json';
+import Constants from 'expo-constants';
 import { useAppDispatch, useAppSelector } from '../../../app/hooks';
 import { Button } from '../../../components/Button';
 import { Card } from '../../../components/Card';
@@ -114,7 +114,7 @@ export function SettingsScreen() {
         <Card style={styles.listCard}>
           <View style={styles.infoRow}>
             <AppText variant="caption" muted>Version</AppText>
-            <AppText variant="caption" weight="medium" tabular>{appConfig.expo.version}</AppText>
+            <AppText variant="caption" weight="medium" tabular>{Constants.expoConfig?.version ?? '—'}</AppText>
           </View>
           <View style={[styles.infoRow, styles.rowDivider]}>
             <AppText variant="caption" muted>API</AppText>

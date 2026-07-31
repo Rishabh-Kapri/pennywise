@@ -33,8 +33,9 @@ Keep the package and scheme aligned. If the scheme does not match the Google red
 android-frontend/
 ├── App.tsx                 # thin root export to src/App.tsx
 ├── index.js                # Expo registerRootComponent entrypoint
-├── app.json                # Expo app identity, scheme, Android package, EAS metadata
+├── app.config.ts           # Expo app identity, scheme, Android package, EAS metadata
 ├── eas.json                # EAS build profiles
+├── google-services.json    # gitignored FCM credentials; supplied by EAS at build time
 ├── babel.config.js         # Expo + Reanimated Babel config
 ├── package.json            # scripts and pinned Expo-compatible native deps
 ├── tsconfig.json           # strict TypeScript config and @/* alias
@@ -50,7 +51,7 @@ android-frontend/
     └── utils/              # API client, auth helpers, dates, storage, constants
 ```
 
-Important: `src/app` is a Redux/application folder, not an Expo Router route folder. This app uses React Navigation, not Expo Router. `app.json` sets `extra.router.root` to `app` and `package.json` uses `index.js` so Expo does not treat `src/app` as the router root.
+Important: `src/app` is a Redux/application folder, not an Expo Router route folder. This app uses React Navigation, not Expo Router. `app.config.ts` sets `extra.router.root` to `app` and `package.json` uses `index.js` so Expo does not treat `src/app` as the router root.
 
 ## Source layout
 
@@ -122,8 +123,9 @@ src/features/<feature>/
 
 | Purpose | Path |
 |---------|------|
-| Expo config | `app.json` |
+| Expo config | `app.config.ts` |
 | EAS build profiles | `eas.json` |
+| Push token registration | `src/features/notifications/push.ts` |
 | Babel config | `babel.config.js` |
 | App shell/routes/tabs | `src/App.tsx` |
 | Theme tokens | `src/theme.ts` |
@@ -183,6 +185,39 @@ Backend API must also have:
 GOOGLE_ANDROID_CLIENT_ID=<same-android-client-id>.apps.googleusercontent.com
 ```
 
+## Push notifications (FCM)
+
+Android push needs Firebase credentials. `google-services.json` (Firebase console →
+project settings → your Android app) belongs at the root of `android-frontend/` and is
+**gitignored** — this repo is public, and while the file carries no private keys it does
+carry an Android API key worth keeping out of scrapers' reach.
+
+`app.config.ts` resolves it as:
+
+```ts
+process.env.GOOGLE_SERVICES_JSON ?? './google-services.json'
+```
+
+So local builds use the untracked copy on disk, and EAS builds use a file-type
+environment variable — EAS writes the file into the build workspace and sets the variable
+to its path. Upload it once per environment:
+
+```bash
+npx eas-cli env:create --environment preview --name GOOGLE_SERVICES_JSON --type file --value ./google-services.json --visibility secret
+npx eas-cli env:create --environment production --name GOOGLE_SERVICES_JSON --type file --value ./google-services.json --visibility secret
+```
+
+Notes:
+
+- The `package_name` inside `google-services.json` must equal `dev.pennywise.cloud`. A
+  mismatch fails the Gradle build with a `No matching client found` error.
+- Push tokens only resolve on a physical device (`push.ts` bails on simulators) and only
+  in a dev client or standalone build, not Expo Go.
+- `expo-notifications` reads `extra.eas.projectId` to mint the Expo push token; keep that
+  value in `app.config.ts` in sync with the EAS project.
+- The backend sends through Expo's push service (`internal/client/expopush.go`), so no FCM
+  server key is needed on the API side — only these client credentials.
+
 ## API client behavior
 
 `src/utils/api.ts` uses `EXPO_PUBLIC_API_URL` as the base URL. It automatically:
@@ -239,6 +274,7 @@ Ignored artifacts include:
 - `*.keystore`
 - `credentials.json`
 - `android/credentials.json`
+- `google-services.json` / `GoogleService-Info.plist`
 
 The SHA-1 fingerprint is safe to put in Google Cloud. The keystore file itself is secret.
 
