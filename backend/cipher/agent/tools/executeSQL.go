@@ -10,6 +10,8 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -17,10 +19,15 @@ import (
 const (
 	executeSQLToolName = "execute_sql"
 	executeSQLRowCap   = 500
+	// executeSQLByteCap bounds the serialized result. The row cap alone is not
+	// enough: 500 wide rows can be hundreds of KB of JSON, which crowds the
+	// context window and makes every later turn more expensive.
+	executeSQLByteCap = 128 * 1024
 )
 
 type ExecuteSQLTool struct {
 	db.BaseRepository
+	pool *pgxpool.Pool
 }
 
 type executeSQLArgs struct {
@@ -29,14 +36,13 @@ type executeSQLArgs struct {
 }
 
 func NewExecuteSQLTool(pool *pgxpool.Pool) Tool {
-	return ExecuteSQLTool{BaseRepository: db.NewBaseRepository(pool)}
+	return ExecuteSQLTool{BaseRepository: db.NewBaseRepository(pool), pool: pool}
 }
-
 
 func (t ExecuteSQLTool) Definition() sharedModel.ToolDefiniton {
 	return sharedModel.ToolDefiniton{
 		Name:        executeSQLToolName,
-		Description: "Execute a read-only SQL query against the Pennywise database. Use this only when the user asks for budget, transaction, account, category, payee, tag, or loan data that is not available from another more specific tool. Call get_schema before this tool unless schema was already returned in the current conversation. The query must be a single SELECT statement, must include budget scoping when querying budget-owned data, must follow get_schema query rules, and must not infer account/category/payee name matches when context IDs are available.",
+		Description: "Fallback for questions no specific tool covers. Prefer get_spending_summary for spending totals grouped by category, payee, or tag; get_top_transactions for individual transactions; and get_budget_info to discover which categories, payees, and tags exist. Reach for this only when none of those can answer the question — for example category balances, account balances, month-over-month comparisons, or loan data. Call get_schema first unless its output is already in this conversation, and follow the query_rules it returns. The query must be a single SELECT or WITH statement scoped by budget_id.",
 		InputSchema: sharedModel.ToolSchema{
 			Type: "object",
 			Properties: map[string]sharedModel.ToolSchema{
@@ -66,43 +72,61 @@ func (t ExecuteSQLTool) Execute(ctx context.Context, call sharedModel.ToolCall) 
 		return nil, err
 	}
 
-	queryCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	rows, err := t.Executor(nil).Query(queryCtx, query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	fields := rows.FieldDescriptions()
+	budgetID := utils.MustBudgetID(ctx)
 	results := make([]map[string]any, 0)
-	values := make([]any, len(fields))
-	valuePtrs := make([]any, len(fields))
 
-	for i := range values {
-		valuePtrs[i] = &values[i]
-	}
-	rowCount := 0
-	for rows.Next() {
-		if rowCount >= executeSQLRowCap {
-			break
+	// Postgres, not the validator above, is what actually enforces read-only
+	// access and budget isolation here — see withBudgetScopedTx.
+	err = withBudgetScopedTx(ctx, t.pool, budgetID, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, query)
+		if err != nil {
+			return err
 		}
-		if err := rows.Scan(valuePtrs...); err != nil {
-			return nil, err
+		defer rows.Close()
+
+		fields := rows.FieldDescriptions()
+		values := make([]any, len(fields))
+		valuePtrs := make([]any, len(fields))
+		for i := range values {
+			valuePtrs[i] = &values[i]
 		}
-		row := map[string]any{}
-		for i, field := range fields {
-			row[string(field.Name)] = normalizeSQLValue(values[i])
+
+		approxBytes := 0
+		for rows.Next() {
+			if len(results) >= executeSQLRowCap || approxBytes >= executeSQLByteCap {
+				break
+			}
+			if err := rows.Scan(valuePtrs...); err != nil {
+				return err
+			}
+			row := map[string]any{}
+			for i, field := range fields {
+				value := normalizeSQLValue(values[i])
+				row[string(field.Name)] = value
+				approxBytes += len(field.Name) + approxValueSize(value)
+			}
+			results = append(results, row)
 		}
-		results = append(results, row)
-		rowCount++
-	}
-	if err := rows.Err(); err != nil {
+		return rows.Err()
+	})
+	if err != nil {
 		return nil, err
 	}
 
 	return jsonToolResult(call, call.Name, results)
+}
+
+// approxValueSize is a cheap size estimate for the byte cap. It does not need to
+// be exact — it only has to stop an unbounded result from reaching the model.
+func approxValueSize(value any) int {
+	switch v := value.(type) {
+	case nil:
+		return 4
+	case string:
+		return len(v)
+	default:
+		return 16
+	}
 }
 
 func validateReadOnlyQuery(query string) (string, error) {
@@ -116,18 +140,15 @@ func validateReadOnlyQuery(query string) (string, error) {
 		return "", errs.New(errs.CodeInternalError, "execute_sql accepts only one statement")
 	}
 
-	upperQuery := strings.ToUpper(query)
-	queryParts := strings.Fields(upperQuery)
+	// Structural check only — a fast, obvious rejection with a clear message the
+	// model can act on. It is deliberately NOT the security boundary: the old
+	// keyword blocklist here was bypassable (UPDATE\r\n, DELETE(, a data-modifying
+	// CTE) and produced false positives on any query containing a blocked word in
+	// a string literal. Writes are now rejected by the read-only transaction in
+	// withBudgetScopedTx, and cross-budget reads by row-level security.
+	queryParts := strings.Fields(strings.ToUpper(query))
 	if len(queryParts) == 0 || (queryParts[0] != "SELECT" && queryParts[0] != "WITH") {
-		return "", errs.New(errs.CodeInternalError, "execute_sql accepts only SELECT or WITH queries")
-	}
-
-	blockedTerms := []string{"INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "TRUNCATE", "CREATE", "GRANT", "REVOKE"}
-	for _, term := range blockedTerms {
-		if strings.Contains(upperQuery, term+" ") || strings.Contains(upperQuery, term+"\n") ||
-			strings.Contains(upperQuery, term+"\t") {
-			return "", errs.New(errs.CodeInternalError, "execute_sql rejected non-read-only keyword: %s", term)
-		}
+		return "", errs.New(errs.CodeInvalidArgument, "execute_sql accepts only SELECT or WITH queries")
 	}
 
 	return query, nil
@@ -153,7 +174,7 @@ func normalizeSQLValue(value any) any {
 }
 
 func (t ExecuteSQLTool) GetNormalizedName(isDone bool) string {
-	if (isDone) {
+	if isDone {
 		return "Queried data"
 	}
 	return "Querying data..."

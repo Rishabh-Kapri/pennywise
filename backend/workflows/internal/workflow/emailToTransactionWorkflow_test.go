@@ -150,7 +150,13 @@ func testInput(bodies map[string]string) sharedModel.EmailDataInput {
 	// deterministic order
 	for _, id := range []string{"msg-1", "msg-2", "msg-3"} {
 		if body, ok := bodies[id]; ok {
-			input.EmailData = append(input.EmailData, sharedModel.EmailData{MessageId: id, Body: body})
+			input.EmailData = append(input.EmailData, sharedModel.EmailData{
+				MessageId: id,
+				Body:      body,
+				From:      "Bank Alerts <alerts@bank.test>",
+				Subject:   "Txn alert for " + id,
+				Snippet:   "Your card was used for " + id,
+			})
 		}
 	}
 	return input
@@ -183,6 +189,45 @@ func TestPerEmailPipelineHappyPath(t *testing.T) {
 	require.Contains(t, events["parse:msg-2"], sharedModel.PipelineEventSucceeded)
 	require.Contains(t, events["predict:msg-3"], sharedModel.PipelineEventSucceeded)
 	require.Contains(t, events["create_transactions"], sharedModel.PipelineEventSucceeded)
+}
+
+// TestStandaloneRunReportsEmailMetadataBeforeParse: sender/subject/snippet are
+// recorded per email as soon as the run starts, so the Activity page can show
+// the email before extraction has produced anything.
+func TestStandaloneRunReportsEmailMetadataBeforeParse(t *testing.T) {
+	var suite testsuite.WorkflowTestSuite
+	env := suite.NewTestWorkflowEnvironment()
+	fakes := &pipelineFakes{}
+	fakes.register(t, env)
+
+	env.ExecuteWorkflow(sharedModel.ParsedEmailToTransactionWorkflowName, testInput(map[string]string{
+		"msg-1": "txn email one",
+	}))
+
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+
+	fetchIndex, parseIndex := -1, -1
+	var fetchDetail map[string]any
+	for i, report := range fakes.statusReports {
+		for _, event := range report.Events {
+			if event.MessageID != "msg-1" {
+				continue
+			}
+			if event.Step == sharedModel.PipelineStepFetchEmails && fetchIndex < 0 {
+				fetchIndex, fetchDetail = i, event.Detail
+			}
+			if event.Step == sharedModel.PipelineStepParse && parseIndex < 0 {
+				parseIndex = i
+			}
+		}
+	}
+
+	require.GreaterOrEqual(t, fetchIndex, 0, "expected a fetch_emails event for msg-1")
+	require.Less(t, fetchIndex, parseIndex, "email metadata must be reported before the parse result")
+	require.Equal(t, "Bank Alerts <alerts@bank.test>", fetchDetail["from"])
+	require.Equal(t, "Txn alert for msg-1", fetchDetail["subject"])
+	require.Equal(t, "Your card was used for msg-1", fetchDetail["snippet"])
 }
 
 // TestPerEmailPipelineIsolatesFailures: one email permanently failing predict

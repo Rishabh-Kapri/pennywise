@@ -15,7 +15,7 @@
     "android": {
       "package": "dev.pennywise.cloud",
       "adaptiveIcon": {
-        "backgroundColor": "#1f1f1e"
+        "backgroundColor": "#0B0B0F"
       },
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",

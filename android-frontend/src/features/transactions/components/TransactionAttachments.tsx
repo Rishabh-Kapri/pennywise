@@ -322,16 +322,14 @@ const styles = StyleSheet.create({
   docThumb: {
     width: 92,
     height: 92,
-    borderRadius: radii.sm,
-    backgroundColor: colors.surface
+    borderRadius: radii.md,
+    backgroundColor: colors.surfaceStrong
   },
   docIconBox: {
     width: 92,
     height: 92,
-    borderRadius: radii.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    backgroundColor: colors.surfaceStrong,
     alignItems: 'center',
     justifyContent: 'center'
   },
@@ -357,26 +355,23 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.sm
   },
-  // same bordered-rect treatment as the location actions / Button "secondary"
+  // same borderless pill treatment as the location actions / Button "secondary"
   actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    minHeight: 42,
-    borderRadius: radii.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.surface
+    paddingHorizontal: spacing.lg,
+    minHeight: 38,
+    borderRadius: radii.full,
+    backgroundColor: colors.surfaceStrong
   },
   // the scan action is the primary way to add a bill, so it carries the accent
   actionBtnPrimary: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primaryLight + '22'
+    backgroundColor: colors.primaryMuted
   },
   actionBtnDisabled: {
-    opacity: 0.6
+    opacity: 0.45
   },
   errorText: {
     color: colors.danger

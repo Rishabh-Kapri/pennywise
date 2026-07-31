@@ -104,7 +104,7 @@ export function TransactionLocationRow({
         </Pressable>
         {hasLocation && (
           <Pressable
-            style={styles.actionBtn}
+            style={[styles.actionBtn, styles.actionBtnDanger]}
             onPress={() => apply({ lat: null, lng: null, name: null, source: null })}>
             <Trash2 size={16} color={colors.danger} />
             <AppText weight="medium" style={styles.labelDanger}>Remove</AppText>
@@ -134,18 +134,16 @@ const styles = StyleSheet.create({
   },
   autoBadge: {
     paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: radii.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceTertiary
+    paddingVertical: 3,
+    borderRadius: radii.full,
+    backgroundColor: colors.primaryMuted
   },
   autoBadgeText: {
     fontSize: 10,
     lineHeight: 14,
     fontWeight: '700',
     letterSpacing: 0.6,
-    color: colors.primaryLight
+    color: colors.primary
   },
   mapsLink: {
     color: colors.primary
@@ -155,22 +153,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm
   },
-  // mirrors the shared Button's "secondary" variant so these sit naturally
-  // alongside the app's other controls
+  // mirrors the shared Button's small "secondary"/"danger" variants: borderless
+  // pill on a raised surface, tonal fill for destructive
   actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    minHeight: 42,
-    borderRadius: radii.sm,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.surface
+    paddingHorizontal: spacing.lg,
+    minHeight: 38,
+    borderRadius: radii.full,
+    backgroundColor: colors.surfaceStrong
+  },
+  actionBtnDanger: {
+    backgroundColor: colors.dangerMuted
   },
   actionBtnDisabled: {
-    opacity: 0.6
+    opacity: 0.45
   },
   labelDanger: {
     color: colors.danger

@@ -32,6 +32,8 @@ export interface PipelineRun {
   childWorkflowId?: string;
   trigger: PipelineTrigger;
   emailAccount?: string;
+  /** Gmail history id that triggered the run; absent for manual runs. */
+  gmailHistoryId?: number;
   status: PipelineRunStatus;
   currentStep: PipelineStep;
   error?: string;
