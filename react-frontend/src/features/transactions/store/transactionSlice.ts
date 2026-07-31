@@ -1,5 +1,11 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
-import type { Transaction, TransactionDTO, TransactionState, TransactionStatusDTO } from '../types/transaction.types';
+import type {
+  Transaction,
+  TransactionDTO,
+  TransactionLocationDTO,
+  TransactionState,
+  TransactionStatusDTO,
+} from '../types/transaction.types';
 import { apiClient, LoadingState } from '@/utils';
 import { type PaginationResponse } from '@/utils/common.constants';
 
@@ -98,6 +104,19 @@ export const updateTransaction = createAsyncThunk<TransactionDTO, UpdateTransact
   async ({ payload }: UpdateTransactionArgs) => {
     const url = `transactions/${payload.id}`;
     return await apiClient.patch(url, payload);
+  },
+);
+
+type UpdateTransactionLocationArgs = {
+  id: string;
+  location: TransactionLocationDTO;
+};
+
+export const updateTransactionLocation = createAsyncThunk<Transaction, UpdateTransactionLocationArgs>(
+  'transactions/updateTransactionLocation',
+  async ({ id, location }: UpdateTransactionLocationArgs) => {
+    const url = `transactions/${id}/location`;
+    return await apiClient.patch<Transaction>(url, location as Partial<Transaction>);
   },
 );
 
@@ -204,6 +223,18 @@ const transactionSlice = createSlice({
           state.transactions[index] = previous;
         }
         delete state.optimisticTransactions[id];
+      })
+      .addCase(updateTransactionLocation.fulfilled, (state, action) => {
+        const transaction = state.transactions.find((txn) => txn.id === action.payload.id);
+        if (transaction) {
+          transaction.locationLat = action.payload.locationLat ?? null;
+          transaction.locationLng = action.payload.locationLng ?? null;
+          transaction.locationName = action.payload.locationName ?? null;
+          transaction.locationSource = action.payload.locationSource ?? null;
+        }
+      })
+      .addCase(updateTransactionLocation.rejected, (state, action) => {
+        state.error = action.error.message ?? 'Failed to update transaction location';
       })
       .addCase(updateTransactionStatus.pending, (state) => {
         state.loading = LoadingState.PENDING;

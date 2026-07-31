@@ -18,6 +18,7 @@ type TransactionHandler interface {
 	ListNormalized(c *gin.Context)
 	Create(c *gin.Context)
 	Update(c *gin.Context)
+	UpdateLocation(c *gin.Context)
 	UpdateStatus(c *gin.Context)
 	// DeleteById deletes a transaction by its ID.
 	// It retrieves the budget context and the transaction ID from the request parameters,
@@ -214,6 +215,33 @@ func (h *transactionHandler) Update(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, body)
+}
+
+func (h *transactionHandler) UpdateLocation(c *gin.Context) {
+	ctx := c.Request.Context()
+	id, ok := c.Params.Get("id")
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})
+		return
+	}
+	parsedId, err := uuid.Parse(id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing id"})
+		return
+	}
+
+	var body model.TransactionLocationReq
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	updated, err := h.service.UpdateLocation(ctx, parsedId, body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, updated)
 }
 
 func (h *transactionHandler) UpdateStatus(c *gin.Context) {

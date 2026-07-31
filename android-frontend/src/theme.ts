@@ -37,7 +37,9 @@ export const colors = {
   budgetNegativeFg: '#FF7A7A',
   budgetUpcomingBg: 'rgba(255, 198, 99, 0.14)',
   budgetUpcomingFg: '#FFC663',
-  slate: '#2A2A33'
+  slate: '#2A2A33',
+  /** overlay behind controls floating on top of imagery (receipt thumbnails) */
+  scrim: 'rgba(0, 0, 0, 0.55)'
 };
 
 export const spacing = {

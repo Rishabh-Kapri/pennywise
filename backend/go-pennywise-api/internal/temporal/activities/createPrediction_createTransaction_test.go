@@ -107,6 +107,10 @@ func (f *fakeTransactionService) UpdateStatus(context.Context, uuid.UUID, model.
 	return nil
 }
 
+func (f *fakeTransactionService) UpdateLocation(context.Context, uuid.UUID, model.TransactionLocationReq) (*model.Transaction, error) {
+	return nil, nil
+}
+
 func (f *fakeTransactionService) Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error) {
 	return f.CreateWithTx(ctx, nil, txn)
 }
