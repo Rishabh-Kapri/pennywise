@@ -135,6 +135,21 @@ func (m *mockTransactionRepo) Update(
 	return args.Error(0)
 }
 
+// UpdateLocation implements repository.TransactionRepository.
+func (m *mockTransactionRepo) UpdateLocation(
+	ctx context.Context,
+	tx pgx.Tx,
+	budgetId uuid.UUID,
+	id uuid.UUID,
+	lat *float64,
+	lng *float64,
+	name *string,
+	source *model.LocationSource,
+) error {
+	args := m.Called(ctx, tx, budgetId, id, lat, lng, name, source)
+	return args.Error(0)
+}
+
 func (m *mockTransactionRepo) UpdateStatus(
 	ctx context.Context,
 	tx pgx.Tx,
@@ -738,6 +753,7 @@ func newTestTransactionService(
 		mockPayees,
 		mockCategory,
 		NewMonthlyBudgetService(mockMonthlyBudget),
+		nil,
 	)
 
 	return service.(*transactionService)

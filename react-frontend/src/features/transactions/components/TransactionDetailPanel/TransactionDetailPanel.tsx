@@ -33,6 +33,8 @@ import { AccountDropdown } from '../popovers/AccountPopover';
 import { PayeeDropdown } from '../popovers/PayeePopover';
 import { CategoryDropdown } from '../popovers/CategoryPopover';
 import { DateDropdown } from '../popovers/DatePopover';
+import { TransactionLocationSection } from './TransactionLocationSection';
+import { TransactionDocumentsSection } from './TransactionDocumentsSection';
 import styles from './TransactionDetailPanel.module.css';
 
 type TransactionStatusAction = Extract<
@@ -573,6 +575,10 @@ function TransactionView({
         </span>
         <StatusControl status={txn.status} onStatusChange={onStatusChange} />
       </section>
+
+      <TransactionLocationSection txn={txn} />
+
+      <TransactionDocumentsSection txn={txn} />
 
       <section className={styles.notesSection}>
         <span className={styles.metaLabel}>

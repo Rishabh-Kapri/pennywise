@@ -27,7 +27,9 @@ import { colors, radii, spacing, tabBarClearance } from '../../../theme';
 import type { AppTabParamList } from '../../../navigation/types';
 import type { Tag } from '../../tags/types';
 import type { Transaction, TransactionDTO, TransactionPredictionDetails } from '../types';
-import { TransactionStatus } from '../types';
+import { LocationSource, TransactionStatus } from '../types';
+import { TransactionAttachments } from '../components/TransactionAttachments';
+import { TransactionLocationRow, getCurrentCoords, type DraftLocation } from '../components/TransactionLocationRow';
 import {
   createTransaction,
   deleteTransactionById,
@@ -47,6 +49,7 @@ type TxnDraft = {
   note: string;
   tagIds: string[];
   status?: TransactionStatus;
+  location: DraftLocation;
 };
 
 type ActivePicker = 'account' | 'payee' | 'category' | null;
@@ -65,7 +68,13 @@ function createDraft(txn?: Transaction): TxnDraft {
     direction: inflow > 0 ? 'inflow' : 'outflow',
     note: txn?.note ?? '',
     tagIds: txn?.tagIds ?? [],
-    status: txn?.status
+    status: txn?.status,
+    location: {
+      lat: txn?.locationLat ?? null,
+      lng: txn?.locationLng ?? null,
+      name: txn?.locationName ?? null,
+      source: txn?.locationSource ?? null
+    }
   };
 }
 
@@ -401,6 +410,14 @@ function TransactionEditor({
               placeholderTextColor={colors.faint}
             />
 
+            <TransactionLocationRow
+              transactionId={draft.id}
+              location={draft.location}
+              onDraftChange={(location) => setDraft({ ...draft, location })}
+            />
+
+            {draft.id ? <TransactionAttachments transactionId={draft.id} /> : null}
+
             {draft.id ? <PredictionSection key={draft.id} transactionId={draft.id} /> : null}
 
             {draft.id && label ? (
@@ -556,12 +573,30 @@ export function TransactionsScreen() {
       amount,
       note: draft.note,
       status: draft.status,
-      tagIds: draft.tagIds
+      tagIds: draft.tagIds,
+      // pass location through so a plain edit doesn't wipe an existing pin
+      locationLat: draft.location.lat,
+      locationLng: draft.location.lng,
+      locationName: draft.location.name,
+      locationSource: draft.location.lat != null ? (draft.location.source ?? LocationSource.MANUAL) : null
     };
     if (draft.id) await dispatch(updateTransaction(payload)).unwrap();
     else await dispatch(createTransaction(payload)).unwrap();
     setDraft(null);
     refreshLists();
+  };
+
+  // new transactions auto-attach the phone's location (removable before save)
+  const openNewDraft = () => {
+    setDraft(createDraft());
+    void getCurrentCoords().then((coords) => {
+      if (!coords) return;
+      setDraft((current) =>
+        !current || current.id || current.location.lat != null
+          ? current
+          : { ...current, location: { lat: coords.lat, lng: coords.lng, name: null, source: LocationSource.AUTO } }
+      );
+    });
   };
 
   return (
@@ -573,7 +608,7 @@ export function TransactionsScreen() {
             {categoryId ? `${filtered.length} in this category` : `${transactions.length} loaded`}
           </AppText>
         </View>
-        <Pressable style={({ pressed }) => [styles.addButton, pressed && styles.pressed]} onPress={() => setDraft(createDraft())}>
+        <Pressable style={({ pressed }) => [styles.addButton, pressed && styles.pressed]} onPress={openNewDraft}>
           <Plus size={22} color={colors.onPrimary} />
         </Pressable>
       </View>
