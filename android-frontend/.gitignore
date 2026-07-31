@@ -10,3 +10,10 @@ ios/
 *.keystore
 credentials.json
 android/credentials.json
+
+# Firebase config for FCM push. Ships inside the APK, so it holds no private
+# keys, but this repo is public and the Android API key in it is worth keeping
+# out of reach of scrapers. EAS supplies it at build time via the
+# GOOGLE_SERVICES_JSON file environment variable — see README.
+google-services.json
+GoogleService-Info.plist
