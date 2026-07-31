@@ -20,11 +20,22 @@ type Usage struct {
 	InputTokens  int
 	OutputTokens int
 	TotalTokens  int
+	// CacheReadTokens and CacheWriteTokens report prompt-cache activity where the
+	// provider exposes it. A CacheReadTokens that stays at zero across repeated
+	// turns means something volatile has crept into the prompt prefix.
+	CacheReadTokens  int
+	CacheWriteTokens int
 }
 
 type ContentBlock struct {
 	Type string
 	Text string
+	// Cacheable marks this block as the end of a stable prompt prefix. It is a
+	// provider-neutral hint: adapters that support explicit prompt caching place
+	// a breakpoint here, and the rest ignore it. Everything after the last
+	// Cacheable block is treated as volatile, so never set it on a block whose
+	// text varies between requests.
+	Cacheable bool
 }
 
 type AgentMessage struct {

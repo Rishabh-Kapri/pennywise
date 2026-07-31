@@ -60,6 +60,14 @@ const budgetSlice = createSlice({
         state.loading = LoadingState.ERROR;
         state.error = action.error.message ?? 'Failed to load budgets';
       })
+      .addCase(createBudget.pending, (state) => {
+        state.loading = LoadingState.PENDING;
+        state.error = null;
+      })
+      .addCase(createBudget.rejected, (state, action) => {
+        state.loading = LoadingState.ERROR;
+        state.error = action.error.message ?? 'Failed to create budget';
+      })
       .addCase(createBudget.fulfilled, (state, action) => {
         state.loading = LoadingState.SUCCESS;
         state.selectedBudget = action.payload;

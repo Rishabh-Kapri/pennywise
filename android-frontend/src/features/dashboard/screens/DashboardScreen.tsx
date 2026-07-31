@@ -1,10 +1,14 @@
-import { RefreshControl, StyleSheet, View } from 'react-native';
-import { ArrowDownLeft, ArrowUpRight, Landmark, PieChart, WalletCards } from 'lucide-react-native';
+import { Image, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { ArrowDownLeft, ArrowUpRight, Landmark, UserRound, WalletCards } from 'lucide-react-native';
+import type { RootStackParamList } from '../../../navigation/types';
 import { useAppDispatch, useAppSelector } from '../../../app/hooks';
 import { Card } from '../../../components/Card';
 import { Screen } from '../../../components/Screen';
 import { AppText } from '../../../components/AppText';
-import { SectionHeader } from '../../../components/SectionHeader';
+import { IconTile } from '../../../components/IconTile';
+import { ProgressBar } from '../../../components/ProgressBar';
 import { fetchAllAccounts } from '../../accounts/store/accountSlice';
 import { fetchAllCategoryGroups, fetchInflowAmount } from '../../category/store/categorySlice';
 import { fetchAllTransactions } from '../../transactions/store/transactionSlice';
@@ -21,6 +25,7 @@ function greeting() {
 
 export function DashboardScreen() {
   const dispatch = useAppDispatch();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const selectedMonth = useAppSelector(selectSelectedMonth);
   const monthLabel = useAppSelector(selectMonthInHumanFormat);
   const accounts = useAppSelector((state) => [...state.accounts.budgetAccounts, ...state.accounts.trackingAccounts]);
@@ -59,95 +64,137 @@ export function DashboardScreen() {
       style={styles.screen}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} />}
     >
-      <SectionHeader
-        title={`${greeting()}${user?.name ? `, ${user.name.split(' ')[0]}` : ''}`}
-        subtitle={new Intl.DateTimeFormat('en-IN', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}
-      />
+      <View style={styles.headerRow}>
+        <View style={styles.header}>
+          <AppText variant="caption" muted>
+            {new Intl.DateTimeFormat('en-IN', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}
+          </AppText>
+          <AppText variant="title">{`${greeting()}${user?.name ? `, ${user.name.split(' ')[0]}` : ''}`}</AppText>
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open settings"
+          style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}
+          onPress={() => navigation.navigate('Settings')}
+        >
+          {user?.picture ? (
+            <Image source={{ uri: user.picture }} style={styles.settingsAvatar} />
+          ) : (
+            <UserRound size={20} color={colors.primary} />
+          )}
+        </Pressable>
+      </View>
 
-      <View style={styles.statGrid}>
-        <Card style={styles.statCard}>
-          <WalletCards size={18} color={colors.primary} />
-          <AppText muted>Total balance</AppText>
-          <AppText weight="bold" style={styles.statValue}>{formatCurrency(totalBalance)}</AppText>
-        </Card>
-        <Card style={styles.statCard}>
-          <Landmark size={18} color={colors.primary} />
-          <AppText muted>Available cash</AppText>
-          <AppText weight="bold" style={styles.statValue}>{formatCurrency(availableCash)}</AppText>
-        </Card>
-        <Card style={styles.statCard}>
-          <ArrowDownLeft size={18} color={colors.danger} />
-          <AppText muted>Debt</AppText>
-          <AppText weight="bold" style={styles.statValue}>{formatCurrency(debt)}</AppText>
-        </Card>
-        <Card style={styles.statCard}>
-          <PieChart size={18} color={colors.primary} />
-          <AppText muted>Accounts</AppText>
-          <AppText weight="bold" style={styles.statValue}>{accounts.length}</AppText>
-        </Card>
+      <View style={styles.hero}>
+        <AppText variant="label" tone="faint">Total balance</AppText>
+        <AppText variant="display" tabular>{formatCurrency(totalBalance)}</AppText>
+        <View style={styles.heroChips}>
+          <View style={styles.heroChip}>
+            <IconTile tone="success" size={32}>
+              <WalletCards size={16} color={colors.success} />
+            </IconTile>
+            <View>
+              <AppText variant="caption" muted>Cash</AppText>
+              <AppText variant="caption" weight="semibold" tabular>{formatCurrency(availableCash)}</AppText>
+            </View>
+          </View>
+          <View style={styles.heroChip}>
+            <IconTile tone="danger" size={32}>
+              <Landmark size={16} color={colors.danger} />
+            </IconTile>
+            <View>
+              <AppText variant="caption" muted>Debt</AppText>
+              <AppText variant="caption" weight="semibold" tabular>{formatCurrency(debt)}</AppText>
+            </View>
+          </View>
+          <View style={styles.heroChip}>
+            <IconTile tone="neutral" size={32}>
+              <AppText variant="caption" weight="semibold" muted>{accounts.length}</AppText>
+            </IconTile>
+            <View>
+              <AppText variant="caption" muted>Accounts</AppText>
+              <AppText variant="caption" weight="semibold">Linked</AppText>
+            </View>
+          </View>
+        </View>
       </View>
 
       <Card style={styles.cardGap}>
         <View style={styles.rowBetween}>
-          <AppText weight="semibold" style={styles.cardTitle}>Budget Overview</AppText>
-          <AppText muted>{monthLabel || 'This month'}</AppText>
+          <AppText variant="heading">This month</AppText>
+          <AppText variant="caption" muted>{monthLabel || 'Current'}</AppText>
         </View>
-        <View style={styles.moneyRow}>
-          <View>
-            <AppText muted>Incoming</AppText>
-            <AppText weight="bold" style={styles.positive}>+{formatCurrency(totalInflow)}</AppText>
-          </View>
-          <View>
-            <AppText muted>Outgoing</AppText>
-            <AppText weight="bold" style={styles.negative}>-{formatCurrency(totalOutflow)}</AppText>
-          </View>
-        </View>
-        <View style={styles.divider} />
-        <AppText weight="semibold">Overspending</AppText>
-        {overspent.length ? (
-          overspent.map((category) => (
-            <View key={category.id} style={styles.rowBetween}>
-              <View>
-                <AppText>{category.name}</AppText>
-                <AppText muted>{formatCurrency(category.spent)} spent</AppText>
-              </View>
-              <AppText weight="semibold" style={styles.negative}>-{formatCurrency(Math.abs(category.remaining))}</AppText>
+        <View style={styles.flowRow}>
+          <View style={styles.flowCell}>
+            <View style={styles.flowLabel}>
+              <ArrowUpRight size={14} color={colors.success} />
+              <AppText variant="caption" muted>Incoming</AppText>
             </View>
-          ))
+            <AppText variant="heading" tone="success" tabular>+{formatCurrency(totalInflow)}</AppText>
+          </View>
+          <View style={styles.flowDivider} />
+          <View style={styles.flowCell}>
+            <View style={styles.flowLabel}>
+              <ArrowDownLeft size={14} color={colors.danger} />
+              <AppText variant="caption" muted>Outgoing</AppText>
+            </View>
+            <AppText variant="heading" tone="danger" tabular>-{formatCurrency(totalOutflow)}</AppText>
+          </View>
+        </View>
+        {overspent.length ? (
+          <View style={styles.overspendBlock}>
+            <AppText variant="label" tone="faint">Overspending</AppText>
+            {overspent.map((category) => (
+              <View key={category.id} style={styles.rowBetween}>
+                <View style={styles.rowMain}>
+                  <AppText numberOfLines={1}>{category.name}</AppText>
+                  <AppText variant="caption" muted>{formatCurrency(category.spent)} spent</AppText>
+                </View>
+                <AppText weight="semibold" tone="danger" tabular>-{formatCurrency(Math.abs(category.remaining))}</AppText>
+              </View>
+            ))}
+          </View>
+        ) : null}
+      </Card>
+
+      <Card style={styles.cardGap}>
+        <AppText variant="heading">Top categories</AppText>
+        {topSpent.length ? (
+          topSpent.map((category) => {
+            const total = category.spent + Math.max(category.remaining, 0);
+            const percent = total > 0 ? (category.spent / total) * 100 : 100;
+            return (
+              <View key={category.id} style={styles.categoryBlock}>
+                <View style={styles.rowBetween}>
+                  <AppText numberOfLines={1} style={styles.rowMain}>{category.name}</AppText>
+                  <AppText variant="caption" weight="semibold" tabular>{formatCurrency(category.spent)}</AppText>
+                </View>
+                <ProgressBar percent={percent} color={category.remaining < 0 ? colors.danger : colors.primary} height={5} />
+                <AppText variant="caption" tone="faint" tabular>{formatCurrency(category.remaining)} left</AppText>
+              </View>
+            );
+          })
         ) : (
-          <AppText muted>No overspending</AppText>
+          <AppText variant="caption" muted>No activity this month</AppText>
         )}
       </Card>
 
       <Card style={styles.cardGap}>
-        <AppText weight="semibold" style={styles.cardTitle}>Top Spent Categories</AppText>
-        {topSpent.length ? topSpent.map((category) => (
-          <View key={category.id} style={styles.rowBetween}>
-            <View style={styles.categoryName}>
-              <AppText numberOfLines={1}>{category.name}</AppText>
-              <AppText muted>{formatCurrency(category.remaining)} left</AppText>
-            </View>
-            <AppText weight="semibold">{formatCurrency(category.spent)}</AppText>
-          </View>
-        )) : <AppText muted>No activity this month</AppText>}
-      </Card>
-
-      <Card style={styles.cardGap}>
-        <AppText weight="semibold" style={styles.cardTitle}>Recent Transactions</AppText>
-        {transactions.slice(0, 6).map((txn) => (
-          <View key={txn.id} style={styles.rowBetween}>
-            <View style={styles.categoryName}>
-              <AppText numberOfLines={1}>{txn.payeeName || 'Unknown payee'}</AppText>
-              <AppText muted>{formatShortDate(txn.date)} · {txn.accountName}</AppText>
-            </View>
-            <View style={styles.amountRight}>
-              {(txn.inflow ?? 0) > 0 ? <ArrowUpRight size={14} color={colors.success} /> : <ArrowDownLeft size={14} color={colors.muted} />}
-              <AppText weight="semibold" style={(txn.inflow ?? 0) > 0 ? styles.positive : undefined}>
-                {formatCurrency((txn.inflow ?? 0) || -(txn.outflow ?? 0), { signed: true })}
+        <AppText variant="heading">Recent transactions</AppText>
+        {transactions.slice(0, 6).map((txn) => {
+          const amount = (txn.inflow ?? 0) || -(txn.outflow ?? 0);
+          return (
+            <View key={txn.id} style={styles.txnRow}>
+              <View style={styles.rowMain}>
+                <AppText weight="medium" numberOfLines={1}>{txn.payeeName || 'Unknown payee'}</AppText>
+                <AppText variant="caption" muted numberOfLines={1}>{formatShortDate(txn.date)} · {txn.accountName}</AppText>
+              </View>
+              <AppText weight="semibold" tone={amount > 0 ? 'success' : 'default'} tabular>
+                {formatCurrency(amount, { signed: true })}
               </AppText>
             </View>
-          </View>
-        ))}
+          );
+        })}
       </Card>
     </Screen>
   );
@@ -155,26 +202,54 @@ export function DashboardScreen() {
 
 const styles = StyleSheet.create({
   screen: {
-    gap: spacing.lg
+    gap: spacing.xl
   },
-  statGrid: {
+  headerRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: spacing.md
   },
-  statCard: {
-    width: '47%',
+  header: {
+    flex: 1,
     gap: spacing.xs
   },
-  statValue: {
-    fontSize: 20,
-    lineHeight: 26
+  settingsButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primaryMuted,
+    overflow: 'hidden'
+  },
+  settingsAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21
+  },
+  pressed: {
+    opacity: 0.7
+  },
+  hero: {
+    gap: spacing.sm
+  },
+  heroChips: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.sm
+  },
+  heroChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    padding: spacing.sm + 2
   },
   cardGap: {
-    gap: spacing.md
-  },
-  cardTitle: {
-    fontSize: 17
+    gap: spacing.lg
   },
   rowBetween: {
     flexDirection: 'row',
@@ -182,26 +257,40 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.md
   },
-  moneyRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between'
-  },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.border
-  },
-  categoryName: {
+  rowMain: {
     flex: 1
   },
-  amountRight: {
+  flowRow: {
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+  flowCell: {
+    flex: 1,
+    gap: spacing.xs
+  },
+  flowLabel: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs
   },
-  positive: {
-    color: colors.success
+  flowDivider: {
+    width: StyleSheet.hairlineWidth,
+    alignSelf: 'stretch',
+    backgroundColor: colors.border,
+    marginHorizontal: spacing.lg
   },
-  negative: {
-    color: colors.danger
+  overspendBlock: {
+    gap: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    paddingTop: spacing.lg
+  },
+  categoryBlock: {
+    gap: spacing.sm
+  },
+  txnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md
   }
 });

@@ -85,6 +85,12 @@ type ParsedEmailsInput struct {
 type EmailData struct {
 	MessageId string
 	Body      string
+	// Header/snippet metadata captured at fetch time. Purely informational —
+	// the extraction step works off Body — but it lets the Activity page show
+	// who sent an email and what it says before it has been parsed.
+	From    string
+	Subject string
+	Snippet string
 }
 
 // ParseEmailInput is the input to the per-email ParseEmail activity (cipher).
