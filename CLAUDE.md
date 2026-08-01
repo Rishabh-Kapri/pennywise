@@ -92,6 +92,18 @@ LLM client, streaming deltas to the React panel via Redis.
   (totals by category/payee/tag), `get_top_transactions` (bounded detail), `get_budget_info`
   (which entities exist). `execute_sql` is the documented fallback. `get_schema` returns the
   query rules those queries must follow — keep its table map in sync with the migrations.
+- **Tool arguments are decoded strictly** via `decodeToolArgs` (`DisallowUnknownFields`).
+  `encoding/json` drops unknown keys by default, which turns "a filter this tool doesn't
+  implement" into an unfiltered answer presented as a filtered one. Rejecting instead produces
+  an `IsError` result the model can correct from.
+- **Filtered queries are built with squirrel**, matching `shared/db` (`sq` alias, the shared
+  `psql = sq.StatementBuilder.PlaceholderFormat(sq.Dollar)` in `agent/tools/query.go`). The
+  filter vocabulary is defined once as `entityFilters` (`categoryName`, `payeeName`, `tagName`)
+  and shared by `get_spending_summary` and `get_top_transactions`, so the two cannot drift —
+  a filter honored by one and dropped by the other is a silently wrong answer. Add new filters
+  to `entityFilters.apply`, not to an individual tool. `get_spending_summary` must apply the
+  same scope to its **total** query as to its grouping queries, or the model reports a filtered
+  breakdown against an unfiltered denominator.
 - **Tags** are a `UUID[]` column on `transactions` (`tag_ids`), not a join table. Join with
   `tg.id = ANY(t.tag_ids)`; any-of is the `&&` overlap operator.
 - **Budget isolation is enforced by Postgres**, not the prompt. Read-only tools run through
@@ -105,6 +117,12 @@ LLM client, streaming deltas to the React panel via Redis.
   keep `ToolRegistry` registration order stable — tools render first in the prompt, so
   reordering them invalidates everything. Check `cacheReadTokens` in `agent_runs.metadata`
   to confirm it still works.
+- **Observation timestamps come from the transcript, not the model.** Each observer entry is
+  prefixed `N. [YYYY-MM-DD HH:MM]`, rendered in `AGENT_TIMEZONE` from `AgentMessage.CreatedAt`
+  (carried over from `ConversationMessage` on replay; zero means "this run", i.e. now). The LLM
+  is told to copy them, and `repairObservationTimes` clamps anything unparseable or outside the
+  observed window — instructing a model to report a fact it was never given produces a constant
+  hallucination, which is what stored every observation at 14:00.
 - **Context budget.** `messageTokens` (8k) is deliberately low to control cost.
   `enforceTokenBudget` makes it a real ceiling: it shrinks old tool-result bodies first,
   then drops whole tool-call groups oldest-first. Groups must stay intact for the same
