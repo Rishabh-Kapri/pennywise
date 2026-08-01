@@ -6,6 +6,7 @@ import { fetchAllLoanMetadata } from '../features/loans/store/loanSlice';
 import { fetchAllPayees } from '../features/payees/store/payeeSlice';
 import { fetchAllTags } from '../features/tags/store/tagSlice';
 import { fetchAllTransactions } from '../features/transactions/store/transactionSlice';
+import { saveSelectedBudgetId } from '../utils/storage';
 import type { AppDispatch, RootState } from './store';
 
 export const dataFetchMiddleware: Middleware = (store) => (next) => (action) => {
@@ -30,6 +31,28 @@ export const dataFetchMiddleware: Middleware = (store) => (next) => (action) => 
   }
 
   return result;
+};
+
+/**
+ * Mirrors the selected budget into AsyncStorage. Background tasks (widgets, the
+ * location snap) have no Redux store, so this is the only way they can know
+ * which budget to send as `x-budget-id`. Fire-and-forget: a failed write must
+ * not interfere with the action being dispatched.
+ */
+export const budgetPersistenceMiddleware: Middleware = (store) => {
+  // Every dispatched action passes through here, so only touch storage when the
+  // id actually changes rather than writing on each one.
+  let lastWritten: string | null = null;
+
+  return (next) => (action) => {
+    const result = next(action);
+    const budgetId = (store.getState() as RootState).budgets.selectedBudget?.id ?? null;
+    if (budgetId && budgetId !== lastWritten) {
+      lastWritten = budgetId;
+      void saveSelectedBudgetId(budgetId).catch(() => undefined);
+    }
+    return result;
+  };
 };
 
 export const dateChangeMiddleware: Middleware = (store) => (next) => (action) => {

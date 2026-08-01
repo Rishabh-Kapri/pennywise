@@ -8,6 +8,7 @@
     "android": "expo run:android",
     "android:dev": "expo start --android",
     "lint": "eslint .",
+    "test": "node --experimental-strip-types --no-warnings --import ./test/register.mjs test/headlessApi.test.mts",
     "typecheck": "tsc --noEmit",
     "ios": "expo run:ios"
   },
