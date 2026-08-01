@@ -90,6 +90,14 @@ LLM client, streaming deltas to the React panel via Redis.
   (totals by category/payee/tag), `get_top_transactions` (bounded detail), `get_budget_info`
   (which entities exist). `execute_sql` is the documented fallback. `get_schema` returns the
   query rules those queries must follow — keep its table map in sync with the migrations.
+- **Tool arguments are decoded strictly** via `decodeToolArgs` (`DisallowUnknownFields`).
+  `encoding/json` drops unknown keys by default, which turns "a filter this tool doesn't
+  implement" into an unfiltered answer presented as a filtered one. Rejecting instead produces
+  an `IsError` result the model can correct from. `get_spending_summary` and
+  `get_top_transactions` must keep an **identical filter vocabulary** (`categoryName`,
+  `payeeName`, `tagName`) — `tool_test.go` asserts this. Any filter added to one must be added
+  to the other, and to `get_spending_summary`'s total query as well as its grouping queries, or
+  the reported total covers a wider set than the rows beneath it.
 - **Tags** are a `UUID[]` column on `transactions` (`tag_ids`), not a join table. Join with
   `tg.id = ANY(t.tag_ids)`; any-of is the `&&` overlap operator.
 - **Budget isolation is enforced by Postgres**, not the prompt. Read-only tools run through
