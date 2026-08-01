@@ -3,7 +3,7 @@ import * as TaskManager from 'expo-task-manager';
 import * as Notifications from 'expo-notifications';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { config } from '../../config/env';
+import { headlessApi } from '../../utils/headlessApi';
 import { LocationSource } from '../transactions/types';
 
 export const LOCATION_SNAP_TASK = 'pennywise-location-snap';
@@ -14,13 +14,7 @@ const MAX_FIX_AGE_MS = 15 * 60 * 1000;
 /** Pending "tag this transaction?" prompts expire after this. */
 const PROMPT_TTL_MS = 60 * 60 * 1000;
 
-const AUTH_STORAGE_KEY = 'pennywise_auth';
 const PENDING_PROMPTS_KEY = 'pennywise_pending_location_prompts';
-
-type StoredAuth = {
-  user?: unknown;
-  tokens?: { accessToken: string; refreshToken: string; expiresAt: number };
-};
 
 type TransactionPushData = {
   type?: string;
@@ -37,41 +31,19 @@ type PendingLocationPrompt = {
 };
 
 /**
- * The background task runs outside the React tree (possibly before the Redux
- * store is hydrated), so auth goes straight through AsyncStorage.
+ * The push payload carries its own budget id, so it is passed explicitly rather
+ * than falling back to the persisted selection -- the transaction belongs to
+ * whichever budget produced the notification, which need not be the one the
+ * user last had open.
  */
-async function authenticatedPatch(path: string, budgetId: string, body: unknown): Promise<boolean> {
-  const raw = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
-  if (!raw) return false;
-  const stored = JSON.parse(raw) as StoredAuth;
-  if (!stored.tokens?.refreshToken) return false;
-
-  const doPatch = (accessToken: string) =>
-    fetch(`${config.apiBaseUrl}/${path}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
-        'x-budget-id': budgetId
-      },
-      body: JSON.stringify(body)
-    });
-
-  let res = await doPatch(stored.tokens.accessToken);
-  if (res.status === 401) {
-    const refreshRes = await fetch(`${config.apiBaseUrl}/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken: stored.tokens.refreshToken })
-    });
-    if (!refreshRes.ok) return false;
-    const refreshed = (await refreshRes.json()) as { accessToken: string; expiresIn: number };
-    stored.tokens.accessToken = refreshed.accessToken;
-    stored.tokens.expiresAt = Date.now() + refreshed.expiresIn * 1000;
-    await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(stored));
-    res = await doPatch(refreshed.accessToken);
+async function patchLocation(transactionId: string, budgetId: string, body: unknown): Promise<boolean> {
+  try {
+    await headlessApi.patch(`transactions/${transactionId}/location`, body, { budgetId });
+    return true;
+  } catch (error) {
+    console.log('[location-snap] request failed', error);
+    return false;
   }
-  return res.ok;
 }
 
 async function loadPendingPrompts(): Promise<PendingLocationPrompt[]> {
@@ -133,7 +105,7 @@ export async function snapLocationToTransaction(data: TransactionPushData): Prom
       return;
     }
 
-    const ok = await authenticatedPatch(`transactions/${data.transactionId}/location`, data.budgetId, {
+    const ok = await patchLocation(data.transactionId, data.budgetId, {
       lat: position.coords.latitude,
       lng: position.coords.longitude,
       source: LocationSource.AUTO
@@ -169,15 +141,11 @@ function promptForPendingLocation(entry: PendingLocationPrompt): Promise<void> {
                   accuracy: Location.Accuracy.Balanced
                 });
                 // user-confirmed, so stored as manual (no AUTO badge)
-                const ok = await authenticatedPatch(
-                  `transactions/${entry.transactionId}/location`,
-                  entry.budgetId,
-                  {
-                    lat: position.coords.latitude,
-                    lng: position.coords.longitude,
-                    source: LocationSource.MANUAL
-                  }
-                );
+                const ok = await patchLocation(entry.transactionId, entry.budgetId, {
+                  lat: position.coords.latitude,
+                  lng: position.coords.longitude,
+                  source: LocationSource.MANUAL
+                });
                 console.log(`[location-snap] prompt ${ok ? 'tagged' : 'failed to tag'} ${entry.transactionId}`);
               } catch (error) {
                 console.log('[location-snap] prompt error', error);

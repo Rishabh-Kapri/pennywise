@@ -131,6 +131,8 @@ src/features/<feature>/
 | Theme tokens | `src/theme.ts` |
 | Env config | `src/config/env.ts` |
 | API client | `src/utils/api.ts` |
+| Headless API client (background tasks) | `src/utils/headlessApi.ts` |
+| Auth + budget storage keys | `src/utils/storage.ts` |
 | Store setup | `src/app/store.ts` |
 | Auth screen | `src/features/auth/screens/LoginScreen.tsx` |
 | Auth slice/storage flow | `src/features/auth/store/authSlice.ts` |
@@ -184,6 +186,36 @@ Backend API must also have:
 ```env
 GOOGLE_ANDROID_CLIENT_ID=<same-android-client-id>.apps.googleusercontent.com
 ```
+
+## Background tasks and headless auth
+
+Anything running outside the React tree -- notification task handlers, and
+widget task handlers when those land -- has no Redux store. `src/utils/api.ts`
+is unusable there: it reads tokens and the selected budget through
+`setGetState`, which only `app/store.ts` ever wires up. With no store it sends
+unauthenticated requests, fails to refresh, and calls `handleSessionExpired()`,
+which **clears the stored session and signs the user out**. A background refresh
+must never be able to do that.
+
+Use `src/utils/headlessApi.ts` instead. It reads `pennywise_auth` straight from
+AsyncStorage, refreshes proactively when `expiresAt` is within a minute (a
+15-minute access token is always stale by the time a background task wakes),
+persists the rotated token, retries once on a 401, and **never clears the
+session** -- callers render a signed-out state instead.
+
+Budget scoping: the selected budget is Redux state, mirrored to AsyncStorage by
+`budgetPersistenceMiddleware` so headless requests can send `x-budget-id`. Pass
+`{ budgetId }` explicitly when the caller already knows it, as the location snap
+does from its push payload -- that transaction belongs to whichever budget
+raised the notification, not necessarily the one last opened.
+
+The API does not rotate refresh tokens, so concurrent refreshes across contexts
+are harmless and no locking is needed.
+
+`npm test` covers this module. It runs on Node's type stripping with a small
+loader (`test/loader.mjs`) that stubs AsyncStorage and resolves the app's
+extensionless imports, so the tests exercise the real source with no bundler and
+no test-runner dependency.
 
 ## Push notifications (FCM)
 
