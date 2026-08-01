@@ -39,9 +39,14 @@ type ContentBlock struct {
 }
 
 type AgentMessage struct {
-	Sequence   int
-	Role       Role
-	Content    []ContentBlock
+	Sequence int
+	Role     Role
+	Content  []ContentBlock
+	// CreatedAt is when the message actually happened, carried over from
+	// ConversationMessage on replay. The memory observer records a timestamp per
+	// observation and has no other source for it — left zero it invents one.
+	// Zero means "produced during the current run", i.e. now.
+	CreatedAt  time.Time
 	ToolCalls  []ToolCall
 	ToolResult *ToolResult
 	Name       string
