@@ -147,12 +147,16 @@ function PredictionSection({ transactionId }: { transactionId: string }) {
   const payees = useAppSelector((state) => state.payees.allPayees);
   const categories = useAppSelector((state) => state.categories.allCategoryGroups.flatMap((group) => group.categories));
   const [isOpen, setIsOpen] = useState(false);
+  // Latches true on the first expand and never clears. The fetch keys off this
+  // rather than `isOpen` so that collapsing the panel -- or any state the effect
+  // itself sets -- cannot re-run the effect and abort its own in-flight request.
+  const [hasRequested, setHasRequested] = useState(false);
   const [details, setDetails] = useState<TransactionPredictionDetails | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isOpen || details || isLoading) return;
+    if (!hasRequested) return;
     let ignore = false;
     setIsLoading(true);
     setError(null);
@@ -173,14 +177,20 @@ function PredictionSection({ transactionId }: { transactionId: string }) {
     return () => {
       ignore = true;
     };
-  }, [details, isLoading, isOpen, transactionId]);
+  }, [hasRequested, transactionId]);
 
   const cipher = details?.cipherPrediction;
   const legacy = details?.prediction;
 
   return (
     <View style={styles.predictionSection}>
-      <Pressable style={({ pressed }) => [styles.predictionHeader, pressed && styles.pressed]} onPress={() => setIsOpen((open) => !open)}>
+      <Pressable
+        style={({ pressed }) => [styles.predictionHeader, pressed && styles.pressed]}
+        onPress={() => {
+          setIsOpen((open) => !open);
+          setHasRequested(true);
+        }}
+      >
         <Sparkles size={15} color={colors.primary} />
         <AppText variant="caption" weight="semibold" style={styles.predictionTitle}>AI prediction</AppText>
         {isOpen ? <ChevronUp size={15} color={colors.faint} /> : <ChevronDown size={15} color={colors.faint} />}

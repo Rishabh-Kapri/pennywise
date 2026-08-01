@@ -180,6 +180,10 @@ After completing any new feature, bug fix, or task, update this CLAUDE.md file i
 ## Environment
 
 - **Database**: PostgreSQL via pgx (`internal/db/db.go`). Migrations via goose (`make migrate-up` in `backend/go-pennywise-api`).
+  Migration versions must be unique: goose **panics** when two files share one, which blocks every pending
+  migration, not just the clashing pair. Two branches each adding "the next number" merge cleanly in git and
+  then fail at runtime as a missing column, so renumber to the end of the sequence when rebasing onto a branch
+  that added migrations. `db/migrations/migrations_test.go` guards this.
 - **Auth**: Google OAuth (auth-code flow) + JWT. `POST /api/auth/google` issues 15-min access / 30-day refresh tokens; `AuthMiddleware` accepts Bearer header, `access_token` cookie, or `X-API-Key`. Budget ownership enforced by `BudgetIdMiddleware` (`budgets.user_id` must match the authenticated `auth_users` row).
 - **Demo mode**: `DEMO_MODE=true` (API) enables `POST /api/auth/demo` — logs into a persistent seeded demo user (`demo@pennywise.local`, budget + categories + accounts + ~4 months of transactions + payee rules + cipher predictions across all sources, seeded idempotently in a single DB transaction on first login by `internal/service/demo.go`/`demo_seed.go`). Frontend shows a "Try Demo" login button when `VITE_DEMO_MODE=true`; for the demo user (`selectIsDemoUser` in `features/auth/store/authSlice.ts`) AI config editing and budget creation are disabled. No Google account needed.
 - **API port**: `PORT` env var (default 5151).

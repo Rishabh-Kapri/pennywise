@@ -17,6 +17,7 @@ const config: ExpoConfig = {
   scheme: 'dev.pennywise.cloud',
   userInterfaceStyle: 'automatic',
   assetBundlePatterns: ['**/*'],
+  icon: './assets/icon.png',
   ios: {
     supportsTablet: false
   },
@@ -24,6 +25,10 @@ const config: ExpoConfig = {
     package: 'dev.pennywise.cloud',
     googleServicesFile,
     adaptiveIcon: {
+      // Foreground art sits inside the 66dp safe zone; the background colour is
+      // the app canvas, so the knocked-out "P" reads the same under every
+      // launcher mask.
+      foregroundImage: './assets/adaptive-icon.png',
       backgroundColor: '#0B0B0F'
     },
     permissions: [
@@ -42,7 +47,16 @@ const config: ExpoConfig = {
           'Pennywise attaches your current location to new transactions so you can remember where they happened.'
       }
     ],
-    'expo-notifications',
+    [
+      'expo-notifications',
+      {
+        // Android renders the small icon as a flat silhouette from the alpha
+        // channel only, so this asset is white-on-transparent; anything with
+        // colour would come out as a solid blob.
+        icon: './assets/notification-icon.png',
+        color: '#8B93FF'
+      }
+    ],
     [
       'expo-image-picker',
       {
