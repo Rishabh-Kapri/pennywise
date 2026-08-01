@@ -115,6 +115,12 @@ LLM client, streaming deltas to the React panel via Redis.
   keep `ToolRegistry` registration order stable — tools render first in the prompt, so
   reordering them invalidates everything. Check `cacheReadTokens` in `agent_runs.metadata`
   to confirm it still works.
+- **Observation timestamps come from the transcript, not the model.** Each observer entry is
+  prefixed `N. [YYYY-MM-DD HH:MM]`, rendered in `AGENT_TIMEZONE` from `AgentMessage.CreatedAt`
+  (carried over from `ConversationMessage` on replay; zero means "this run", i.e. now). The LLM
+  is told to copy them, and `repairObservationTimes` clamps anything unparseable or outside the
+  observed window — instructing a model to report a fact it was never given produces a constant
+  hallucination, which is what stored every observation at 14:00.
 - **Context budget.** `messageTokens` (8k) is deliberately low to control cost.
   `enforceTokenBudget` makes it a real ceiling: it shrinks old tool-result bodies first,
   then drops whole tool-call groups oldest-first. Groups must stay intact for the same

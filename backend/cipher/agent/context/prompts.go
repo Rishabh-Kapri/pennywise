@@ -196,7 +196,9 @@ If the user changes or corrects something, record the new state as replacing the
 
 ## Temporal Handling
 
-Each observation must include the time the relevant message happened, using 24-hour time.
+Every transcript entry is prefixed with the real timestamp it occurred at, as "N. [YYYY-MM-DD HH:MM] Title:".
+
+Copy the date and time from the entry the observation is about. Use 24-hour time. Never infer, estimate, or carry over a timestamp from another entry — if an observation draws on several entries, use the timestamp of the most recent one. Timestamps that are not present in the transcript are discarded and replaced.
 
 If the user references a relative date and the actual date/range is clear from the conversation, include it at the end:
 - (meaning May 1-31, 2026)
