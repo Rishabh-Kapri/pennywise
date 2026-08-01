@@ -346,7 +346,7 @@ func (c *anthropicClient) fromAnthropicRes(res anthropicRes) sharedModel.ChatRes
 			Content:   content,
 			ToolCalls: toolCalls,
 		},
-		Usage: toModelUsage(res.Usage),
+		Usage:       toModelUsage(res.Usage),
 		StopReason:  toModelStopReason(res.StopReason),
 		RawProvider: res,
 	}

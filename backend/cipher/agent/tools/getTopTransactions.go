@@ -157,8 +157,8 @@ func (t GetTopTransactionsTool) Execute(
 	call sharedModel.ToolCall,
 ) (*sharedModel.ToolResult, error) {
 	var args topTransactionsArgs
-	if err := json.Unmarshal(call.Arguments, &args); err != nil {
-		return nil, errs.Wrap(errs.CodeInternalError, "parse get_top_transactions arguments", err)
+	if err := decodeToolArgs(topTransactionsToolName, call.Arguments, &args); err != nil {
+		return nil, err
 	}
 
 	if args.DateRange.Start == "" || args.DateRange.End == "" {
