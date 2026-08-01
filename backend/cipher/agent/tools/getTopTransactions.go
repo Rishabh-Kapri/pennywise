@@ -10,6 +10,8 @@ import (
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
+	sq "github.com/Masterminds/squirrel"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -52,8 +54,11 @@ type topTransactionRow struct {
 }
 
 type topTransactionsResult struct {
-	DateRange    map[string]string   `json:"dateRange"`
-	Direction    string              `json:"direction"`
+	DateRange map[string]string `json:"dateRange"`
+	Direction string            `json:"direction"`
+	// Filters echoes back what was actually applied, so the model states the
+	// scope of a result rather than assuming it got what it asked for.
+	Filters      map[string]string   `json:"filters,omitempty"`
 	Transactions []topTransactionRow `json:"transactions"`
 	Truncated    bool                `json:"truncated,omitempty"`
 }
@@ -111,54 +116,70 @@ func (t GetTopTransactionsTool) Definition() sharedModel.ToolDefiniton {
 	}
 }
 
-// Filters are applied as fixed predicates with bind parameters; an empty filter
-// short-circuits via the "$n = ”" test rather than being concatenated in.
-// Amounts stay signed in the output so the model can tell spend from income,
-// but ordering is by magnitude.
-const topTransactionsQuery = `
-	SELECT t.date,
-	       t.amount,
-	       COALESCE(p.name, '')  AS payee_name,
-	       COALESCE(c.name, '')  AS category_name,
-	       COALESCE(a.name, '')  AS account_name,
-	       COALESCE(t.note, '')  AS note,
-	       COALESCE(
+// tagNamesColumn is a correlated subquery rather than a join, so a transaction
+// carrying three tags stays one row instead of being fanned out and breaking the
+// limit.
+const tagNamesColumn = `COALESCE(
 	         ARRAY(
 	           SELECT tg.name FROM tags tg
 	           WHERE tg.id = ANY(t.tag_ids) AND tg.budget_id = t.budget_id AND tg.deleted = FALSE
 	           ORDER BY tg.name
 	         ),
 	         ARRAY[]::text[]
-	       ) AS tag_names
-	FROM transactions t
-	LEFT JOIN payees p     ON p.id = t.payee_id     AND p.budget_id = t.budget_id
-	LEFT JOIN categories c ON c.id = t.category_id  AND c.budget_id = t.budget_id
-	LEFT JOIN accounts a   ON a.id = t.account_id   AND a.budget_id = t.budget_id
-	WHERE t.budget_id = $1
-	  AND t.deleted = FALSE
-	  AND t.date >= $2
-	  AND t.date <= $3
-	  AND t.transfer_account_id IS NULL
-	  AND CASE WHEN $4 = 'income' THEN t.amount > 0 ELSE t.amount < 0 END
-	  AND ($5 = '' OR c.name ILIKE '%' || $5 || '%')
-	  AND ($6 = '' OR p.name ILIKE '%' || $6 || '%')
-	  AND ($7 = '' OR EXISTS (
-	        SELECT 1 FROM tags tg
-	        WHERE tg.id = ANY(t.tag_ids)
-	          AND tg.budget_id = t.budget_id
-	          AND tg.deleted = FALSE
-	          AND tg.name ILIKE '%' || $7 || '%'
-	      ))
-	ORDER BY ABS(t.amount) DESC, t.date DESC
-	LIMIT $8`
+	       ) AS tag_names`
+
+// topTransactionsQuery builds the row query. Amounts stay signed in the output
+// so the model can tell spend from income, but ordering is by magnitude.
+//
+// Direction is a real conditional rather than the "CASE WHEN $n = 'income'"
+// predicate a fixed query string forces — which the planner cannot use an index
+// against, since the comparison depends on a parameter rather than the column.
+func topTransactionsQuery(
+	budgetID uuid.UUID,
+	start string,
+	end string,
+	direction string,
+	filters entityFilters,
+	limit uint64,
+) sq.SelectBuilder {
+	query := psql.
+		Select(
+			"t.date",
+			"t.amount",
+			"COALESCE(p.name, '')  AS payee_name",
+			"COALESCE(c.name, '')  AS category_name",
+			"COALESCE(a.name, '')  AS account_name",
+			"COALESCE(t.note, '')  AS note",
+			tagNamesColumn,
+		).
+		From("transactions t").
+		LeftJoin("payees p     ON p.id = t.payee_id     AND p.budget_id = t.budget_id").
+		LeftJoin("categories c ON c.id = t.category_id  AND c.budget_id = t.budget_id").
+		LeftJoin("accounts a   ON a.id = t.account_id   AND a.budget_id = t.budget_id").
+		Where(sq.Eq{"t.budget_id": budgetID}).
+		Where(sq.Eq{"t.deleted": false}).
+		Where(sq.GtOrEq{"t.date": start}).
+		Where(sq.LtOrEq{"t.date": end}).
+		Where(sq.Eq{"t.transfer_account_id": nil})
+
+	if direction == directionIncome {
+		query = query.Where(sq.Gt{"t.amount": 0})
+	} else {
+		query = query.Where(sq.Lt{"t.amount": 0})
+	}
+
+	return filters.apply(query).
+		OrderBy("ABS(t.amount) DESC", "t.date DESC").
+		Limit(limit)
+}
 
 func (t GetTopTransactionsTool) Execute(
 	ctx context.Context,
 	call sharedModel.ToolCall,
 ) (*sharedModel.ToolResult, error) {
 	var args topTransactionsArgs
-	if err := json.Unmarshal(call.Arguments, &args); err != nil {
-		return nil, errs.Wrap(errs.CodeInternalError, "parse get_top_transactions arguments", err)
+	if err := decodeToolArgs(topTransactionsToolName, call.Arguments, &args); err != nil {
+		return nil, err
 	}
 
 	if args.DateRange.Start == "" || args.DateRange.End == "" {
@@ -186,27 +207,27 @@ func (t GetTopTransactionsTool) Execute(
 	}
 
 	budgetID := utils.MustBudgetID(ctx)
+	filters := newEntityFilters(args.CategoryName, args.PayeeName, args.TagName)
+
+	querySQL, queryArgs, err := topTransactionsQuery(
+		budgetID, args.DateRange.Start, args.DateRange.End, direction, filters, uint64(limit),
+	).ToSql()
+	if err != nil {
+		return nil, errs.Wrap(errs.CodeInternalError, "build get_top_transactions query", err)
+	}
+
 	result := topTransactionsResult{
 		DateRange: map[string]string{
 			"start": args.DateRange.Start,
 			"end":   args.DateRange.End,
 		},
 		Direction:    direction,
+		Filters:      filters.applied(),
 		Transactions: make([]topTransactionRow, 0, limit),
 	}
 
-	err := withBudgetScopedTx(ctx, t.db, budgetID, func(tx pgx.Tx) error {
-		rows, err := tx.Query(
-			ctx, topTransactionsQuery,
-			budgetID,
-			args.DateRange.Start,
-			args.DateRange.End,
-			direction,
-			strings.TrimSpace(args.CategoryName),
-			strings.TrimSpace(args.PayeeName),
-			strings.TrimSpace(args.TagName),
-			limit,
-		)
+	err = withBudgetScopedTx(ctx, t.db, budgetID, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, querySQL, queryArgs...)
 		if err != nil {
 			return err
 		}

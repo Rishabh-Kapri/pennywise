@@ -242,7 +242,7 @@ func main() {
 	if err != nil {
 		logger.Fatal("error whiel creating llm registry", "error", err)
 	}
-	memoryService := memory.NewMemoryService(agentMemoryRepo, llmResolver)
+	memoryService := memory.NewMemoryService(agentMemoryRepo, llmResolver, agentLocation)
 
 	agent, err := agent.NewAgent(
 		llmResolver,

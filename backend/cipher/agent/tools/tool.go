@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"sync"
@@ -21,6 +22,24 @@ type Tool interface {
 	GetNormalizedName(isDone bool) string
 	// return normalized result for ui
 	Normalize(call sharedModel.ToolCall, result json.RawMessage) (*sharedModel.ToolResultNormalized, error)
+}
+
+// decodeToolArgs unmarshals tool arguments, rejecting any field the target
+// struct does not declare.
+//
+// encoding/json discards unknown keys by default, which is the wrong default
+// here: a model that passes a filter the tool does not implement gets an
+// unfiltered answer presented as a filtered one. Failing instead surfaces an
+// IsError tool result, which the agent loop feeds back so the model can retry
+// with arguments the tool actually supports.
+func decodeToolArgs(name string, raw json.RawMessage, target any) error {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+
+	if err := decoder.Decode(target); err != nil {
+		return errs.Wrap(errs.CodeInvalidArgument, "parse "+name+" arguments", err)
+	}
+	return nil
 }
 
 func jsonToolResult(call sharedModel.ToolCall, name string, value any) (*sharedModel.ToolResult, error) {
