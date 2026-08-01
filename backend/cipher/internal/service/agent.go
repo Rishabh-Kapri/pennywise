@@ -268,9 +268,10 @@ func agentRunToChatRequest(req sharedModel.AgentRunCreateRequest) sharedModel.Ch
 					continue
 				}
 				messages = append(messages, sharedModel.AgentMessage{
-					Sequence: msg.Sequence,
-					Role:     msg.Role,
-					Content:  content,
+					Sequence:  msg.Sequence,
+					Role:      msg.Role,
+					Content:   content,
+					CreatedAt: msg.CreatedAt,
 				})
 			case sharedModel.RoleAssistant:
 				// Message parts preserve the order the model produced them. Text before
@@ -343,6 +344,7 @@ func agentRunToChatRequest(req sharedModel.AgentRunCreateRequest) sharedModel.Ch
 						Sequence:  msg.Sequence,
 						Role:      sharedModel.RoleAssistant,
 						Content:   contentBlocksFromMessageParts(preToolParts...),
+						CreatedAt: msg.CreatedAt,
 						ToolCalls: toolCalls,
 					})
 
@@ -350,6 +352,7 @@ func agentRunToChatRequest(req sharedModel.AgentRunCreateRequest) sharedModel.Ch
 						messages = append(messages, sharedModel.AgentMessage{
 							Sequence:   msg.Sequence,
 							Role:       sharedModel.RoleTool,
+							CreatedAt:  msg.CreatedAt,
 							ToolResult: &toolResults[i],
 						})
 					}
@@ -364,9 +367,10 @@ func agentRunToChatRequest(req sharedModel.AgentRunCreateRequest) sharedModel.Ch
 
 				if content := contentBlocksFromMessageParts(postToolParts...); len(content) > 0 {
 					messages = append(messages, sharedModel.AgentMessage{
-						Sequence: msg.Sequence,
-						Role:     msg.Role,
-						Content:  content,
+						Sequence:  msg.Sequence,
+						Role:      msg.Role,
+						Content:   content,
+						CreatedAt: msg.CreatedAt,
 					})
 				}
 			default:

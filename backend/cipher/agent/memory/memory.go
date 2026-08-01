@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	agentPrompts "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/context"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
@@ -68,9 +69,20 @@ type memory struct {
 	bufferTokens     int
 	messageTokens    int
 	bufferActivation float32
+	// loc is the zone observation timestamps are rendered in. Same zone get_today
+	// resolves in, so an observation and the answer that produced it agree on what
+	// day it is.
+	loc *time.Location
 	// countTokensFn is injectable so budget enforcement can be tested without
 	// tiktoken, which fetches its encoding file over the network on first use.
 	countTokensFn func([]sharedModel.AgentMessage, int) (int, error)
+}
+
+func (m *memory) location() *time.Location {
+	if m.loc == nil {
+		return time.Local
+	}
+	return m.loc
 }
 
 func (m *memory) countTokens(messages []sharedModel.AgentMessage, lastSequence int) (int, error) {
@@ -81,13 +93,21 @@ func (m *memory) countTokens(messages []sharedModel.AgentMessage, lastSequence i
 }
 
 // memory service should be singleton
-func NewMemoryService(agentMemoryRepo db.AgentMemoryRepository, llmResolver llm.LLMResolver) Memory {
+func NewMemoryService(
+	agentMemoryRepo db.AgentMemoryRepository,
+	llmResolver llm.LLMResolver,
+	loc *time.Location,
+) Memory {
+	if loc == nil {
+		loc = time.Local
+	}
 	service := &memory{
 		agentMemoryRepo:  agentMemoryRepo,
 		llmResolver:      llmResolver,
 		bufferTokens:     2200,
 		messageTokens:    8000,
 		bufferActivation: 0.8,
+		loc:              loc,
 	}
 	return service
 }
@@ -126,7 +146,30 @@ func formatMessagesForTokenCount(messages []sharedModel.AgentMessage, lastSequen
 	return string(payload)
 }
 
-func formatMessagesForObserver(messages []sharedModel.AgentMessage, lastSequence *int) string {
+// observerTimeLayout is the timestamp rendered next to each transcript entry and
+// the format the observer is told to copy back.
+const (
+	observerDateLayout = "2006-01-02"
+	observerTimeLayout = "15:04"
+)
+
+// messageTime is when a message happened, in the agent's timezone. Replayed
+// messages carry their stored CreatedAt; messages produced during the current
+// run have none, and "now" is correct for those since the observer runs
+// immediately after the run completes.
+func messageTime(msg sharedModel.AgentMessage, now time.Time, loc *time.Location) time.Time {
+	if msg.CreatedAt.IsZero() {
+		return now.In(loc)
+	}
+	return msg.CreatedAt.In(loc)
+}
+
+func formatMessagesForObserver(
+	messages []sharedModel.AgentMessage,
+	lastSequence *int,
+	now time.Time,
+	loc *time.Location,
+) string {
 	var b strings.Builder
 	hasContent := false
 
@@ -134,6 +177,11 @@ func formatMessagesForObserver(messages []sharedModel.AgentMessage, lastSequence
 	b.WriteString("System/developer messages are intentionally omitted. ")
 	b.WriteString("Tool call arguments and internal IDs are intentionally omitted. ")
 	b.WriteString("Tool results are included only as evidence for conversation continuity.\n\n")
+	b.WriteString(fmt.Sprintf(
+		"Each entry is prefixed with the real timestamp it occurred at, in %s. "+
+			"Copy those into the date and time fields; do not infer them.\n\n",
+		loc.String(),
+	))
 
 	for _, msg := range messages {
 		if lastSequence != nil && msg.Sequence <= *lastSequence {
@@ -143,11 +191,13 @@ func formatMessagesForObserver(messages []sharedModel.AgentMessage, lastSequence
 			continue
 		}
 
+		at := messageTime(msg, now, loc)
+
 		before := b.Len()
 		if msg.ToolResult != nil {
-			appendToolResultForObserver(&b, msg.ToolResult, msg.Sequence)
+			appendToolResultForObserver(&b, msg.ToolResult, msg.Sequence, at)
 		} else if text := contentBlocksText(msg.Content); text != "" {
-			appendObserverSection(&b, roleLabel(msg.Role), text, msg.Sequence)
+			appendObserverSection(&b, roleLabel(msg.Role), text, msg.Sequence, at)
 		}
 		if b.Len() > before {
 			hasContent = true
@@ -166,7 +216,12 @@ func formatMessagesForObserver(messages []sharedModel.AgentMessage, lastSequence
 	return strings.TrimSpace(b.String())
 }
 
-func appendToolResultForObserver(b *strings.Builder, result *sharedModel.ToolResult, sequence int) {
+func appendToolResultForObserver(
+	b *strings.Builder,
+	result *sharedModel.ToolResult,
+	sequence int,
+	at time.Time,
+) {
 	if result == nil || result.Name == "get_schema" {
 		return
 	}
@@ -187,11 +242,12 @@ func appendToolResultForObserver(b *strings.Builder, result *sharedModel.ToolRes
 		title += " Error"
 	}
 
-	appendObserverSection(b, title, text, sequence)
+	appendObserverSection(b, title, text, sequence, at)
 }
 
-func appendObserverSection(b *strings.Builder, title string, text string, sequence int) {
-	b.WriteString(fmt.Sprintf("%d. ", sequence))
+func appendObserverSection(b *strings.Builder, title string, text string, sequence int, at time.Time) {
+	b.WriteString(fmt.Sprintf("%d. [%s %s] ",
+		sequence, at.Format(observerDateLayout), at.Format(observerTimeLayout)))
 	b.WriteString(title)
 	b.WriteString(":\n")
 	b.WriteString(text)
@@ -519,6 +575,72 @@ func firstNonSystemIndex(messages []sharedModel.AgentMessage) int {
 }
 
 // This is called after the agent run is finished
+// observedTimeBounds is the real time span of the messages handed to the
+// observer, used to bound the timestamps it returns.
+func observedTimeBounds(
+	messages []sharedModel.AgentMessage,
+	lastSequence int,
+	now time.Time,
+	loc *time.Location,
+) (earliest, latest time.Time) {
+	for _, msg := range messages {
+		if msg.Sequence <= lastSequence || msg.Role == sharedModel.RoleSystem {
+			continue
+		}
+		at := messageTime(msg, now, loc)
+		if earliest.IsZero() || at.Before(earliest) {
+			earliest = at
+		}
+		if latest.IsZero() || at.After(latest) {
+			latest = at
+		}
+	}
+	return earliest, latest
+}
+
+// repairObservationTimes replaces any timestamp the observer did not take from
+// the transcript.
+//
+// date and time are generated by the LLM, and before the transcript carried
+// real timestamps it had nothing to derive them from — every observation came
+// back with the same invented clock time. Instructing the model to copy them is
+// necessary but not sufficient: a timestamp that does not parse, or that falls
+// outside the span of the messages actually being observed, is provably not
+// from the transcript, so it is clamped to that span instead of being stored.
+func repairObservationTimes(
+	observations []sharedModel.AgentObservations,
+	earliest, latest time.Time,
+	loc *time.Location,
+) int {
+	if earliest.IsZero() || latest.IsZero() {
+		return 0
+	}
+
+	repaired := 0
+	for i := range observations {
+		stamp := strings.TrimSpace(observations[i].Date + " " + observations[i].Time)
+		parsed, err := time.ParseInLocation(observerDateLayout+" "+observerTimeLayout, stamp, loc)
+
+		switch {
+		case err != nil:
+			// Unparseable: attribute it to the end of the observed span, which is
+			// the most recent thing it could plausibly describe.
+			parsed = latest
+		case parsed.Before(earliest.Truncate(time.Minute)):
+			parsed = earliest
+		case parsed.After(latest):
+			parsed = latest
+		default:
+			continue
+		}
+
+		observations[i].Date = parsed.Format(observerDateLayout)
+		observations[i].Time = parsed.Format(observerTimeLayout)
+		repaired++
+	}
+	return repaired
+}
+
 // Create observation buffer chunks based on the thresholds
 func (m *memory) OnRunPersisted(ctx context.Context, data AgentRunData) error {
 	log := logger.Logger(ctx)
@@ -554,7 +676,8 @@ func (m *memory) OnRunPersisted(ctx context.Context, data AgentRunData) error {
 	}
 
 	// get transcript to
-	transcript := formatMessagesForObserver(data.Messages, &lastSequence)
+	now := time.Now()
+	transcript := formatMessagesForObserver(data.Messages, &lastSequence, now, m.location())
 	if transcript == "" {
 		log.Info("skipping observation generation: no observable transcript content")
 		return nil
@@ -627,6 +750,19 @@ func (m *memory) OnRunPersisted(ctx context.Context, data AgentRunData) error {
 	if len(observation.Observations) == 0 {
 		log.Error("llm generated no observations, skipping")
 		return nil
+	}
+
+	earliest, latest := observedTimeBounds(data.Messages, lastSequence, now, m.location())
+	if repaired := repairObservationTimes(
+		observation.Observations, earliest, latest, m.location(),
+	); repaired > 0 {
+		log.Warn(
+			"repaired observation timestamps outside the observed window",
+			"repaired", repaired,
+			"total", len(observation.Observations),
+			"earliest", earliest.Format(time.RFC3339),
+			"latest", latest.Format(time.RFC3339),
+		)
 	}
 
 	sequenceStart, sequenceEnd := observedSequence(data.Messages, lastSequence)
