@@ -10,6 +10,8 @@ import (
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
+	sq "github.com/Masterminds/squirrel"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -124,93 +126,104 @@ func (t GetSpendingSummaryTool) Definition() sharedModel.ToolDefiniton {
 // Spending is stored as a negative amount, so totals are negated to read as
 // positive "money spent". Transfers carry a transfer_account_id and are excluded
 // because moving money between your own accounts is not spending.
-const spendingSummaryBaseFilter = `
-	  AND t.deleted = FALSE
-	  AND t.date >= $2
-	  AND t.date <= $3
-	  AND t.amount < 0
-	  AND t.transfer_account_id IS NULL`
+// spendingScope is everything that decides which transactions count. It is
+// applied identically to the grouping queries and to the total, because a total
+// computed over a wider set than the rows beneath it is worse than no total at
+// all — the model reports a filtered breakdown against an unfiltered
+// denominator and every percentage it derives is wrong.
+type spendingScope struct {
+	budgetID uuid.UUID
+	start    string
+	end      string
+	filters  entityFilters
+}
 
-// spendingSummaryEntityFilters are the optional category/payee/tag filters.
-//
-// Each is written as a self-contained EXISTS subquery rather than a predicate on
-// a joined alias, so one fragment appends to every grouping query and to the
-// total regardless of which joins that particular query has. An empty string
-// short-circuits the filter; nothing is ever concatenated into the SQL.
-//
-// These must be applied to the total query too. A total computed over a wider
-// set than the rows is worse than no total at all — the model reports a filtered
-// breakdown against an unfiltered denominator and the percentages are nonsense.
-const spendingSummaryEntityFilters = `
-	  AND ($4 = '' OR EXISTS (
-	        SELECT 1 FROM categories fc
-	        WHERE fc.id = t.category_id
-	          AND fc.budget_id = t.budget_id
-	          AND fc.name ILIKE '%' || $4 || '%'
-	      ))
-	  AND ($5 = '' OR EXISTS (
-	        SELECT 1 FROM payees fp
-	        WHERE fp.id = t.payee_id
-	          AND fp.budget_id = t.budget_id
-	          AND fp.name ILIKE '%' || $5 || '%'
-	      ))
-	  AND ($6 = '' OR EXISTS (
-	        SELECT 1 FROM tags ftg
-	        WHERE ftg.id = ANY(t.tag_ids)
-	          AND ftg.budget_id = t.budget_id
-	          AND ftg.deleted = FALSE
-	          AND ftg.name ILIKE '%' || $6 || '%'
-	      ))`
+// applySpendingScope adds the predicates common to every spending query.
+// Spending is stored as a negative amount; transfers carry a transfer_account_id
+// and are excluded because moving money between your own accounts is not
+// spending.
+func applySpendingScope(query sq.SelectBuilder, scope spendingScope) sq.SelectBuilder {
+	query = query.
+		Where(sq.Eq{"t.budget_id": scope.budgetID}).
+		Where(sq.Eq{"t.deleted": false}).
+		Where(sq.GtOrEq{"t.date": scope.start}).
+		Where(sq.LtOrEq{"t.date": scope.end}).
+		Where(sq.Lt{"t.amount": 0}).
+		Where(sq.Eq{"t.transfer_account_id": nil})
 
-const spendingSummaryFilters = spendingSummaryBaseFilter + spendingSummaryEntityFilters
+	return scope.filters.apply(query)
+}
 
-var spendingSummaryQueries = map[string]string{
-	groupByCategory: `
-		SELECT COALESCE(c.name, 'Uncategorized') AS name,
-		       -SUM(t.amount) AS total,
-		       COUNT(*) AS transaction_count
-		FROM transactions t
-		LEFT JOIN categories c ON c.id = t.category_id AND c.budget_id = t.budget_id
-		WHERE t.budget_id = $1` + spendingSummaryFilters + `
-		  AND COALESCE(c.is_system, FALSE) = FALSE
-		GROUP BY COALESCE(c.name, 'Uncategorized')
-		ORDER BY total DESC
-		LIMIT $7`,
+// spendingSummaryGroupQuery builds the grouped breakdown. The grouping dimension
+// selects a fixed builder — it is never interpolated into SQL.
+func spendingSummaryGroupQuery(groupBy string, scope spendingScope, limit uint64) (sq.SelectBuilder, error) {
+	switch groupBy {
+	case groupByCategory:
+		query := psql.
+			Select(
+				"COALESCE(c.name, 'Uncategorized') AS name",
+				"-SUM(t.amount) AS total",
+				"COUNT(*) AS transaction_count",
+			).
+			From("transactions t").
+			LeftJoin("categories c ON c.id = t.category_id AND c.budget_id = t.budget_id").
+			GroupBy("COALESCE(c.name, 'Uncategorized')")
+		return applySpendingScope(query, scope).
+			Where(sq.Expr("COALESCE(c.is_system, FALSE) = FALSE")).
+			OrderBy("total DESC").
+			Limit(limit), nil
 
-	groupByPayee: `
-		SELECT COALESCE(p.name, 'Unknown payee') AS name,
-		       -SUM(t.amount) AS total,
-		       COUNT(*) AS transaction_count
-		FROM transactions t
-		LEFT JOIN payees p ON p.id = t.payee_id AND p.budget_id = t.budget_id
-		WHERE t.budget_id = $1` + spendingSummaryFilters + `
-		GROUP BY COALESCE(p.name, 'Unknown payee')
-		ORDER BY total DESC
-		LIMIT $7`,
+	case groupByPayee:
+		query := psql.
+			Select(
+				"COALESCE(p.name, 'Unknown payee') AS name",
+				"-SUM(t.amount) AS total",
+				"COUNT(*) AS transaction_count",
+			).
+			From("transactions t").
+			LeftJoin("payees p ON p.id = t.payee_id AND p.budget_id = t.budget_id").
+			GroupBy("COALESCE(p.name, 'Unknown payee')")
+		return applySpendingScope(query, scope).
+			OrderBy("total DESC").
+			Limit(limit), nil
 
 	// tag_ids is a UUID[] column on transactions, not a join table.
-	groupByTag: `
-		SELECT tg.name AS name,
-		       -SUM(t.amount) AS total,
-		       COUNT(*) AS transaction_count
-		FROM transactions t
-		JOIN tags tg ON tg.id = ANY(t.tag_ids) AND tg.budget_id = t.budget_id AND tg.deleted = FALSE
-		WHERE t.budget_id = $1` + spendingSummaryFilters + `
-		GROUP BY tg.name
-		ORDER BY total DESC
-		LIMIT $7`,
+	case groupByTag:
+		query := psql.
+			Select(
+				"tg.name AS name",
+				"-SUM(t.amount) AS total",
+				"COUNT(*) AS transaction_count",
+			).
+			From("transactions t").
+			Join("tags tg ON tg.id = ANY(t.tag_ids) AND tg.budget_id = t.budget_id AND tg.deleted = FALSE").
+			GroupBy("tg.name")
+		return applySpendingScope(query, scope).
+			OrderBy("total DESC").
+			Limit(limit), nil
+
+	default:
+		return sq.SelectBuilder{}, errs.New(
+			errs.CodeInvalidArgument,
+			"get_spending_summary groupBy must be one of category, payee, tag; got %q",
+			groupBy,
+		)
+	}
 }
 
 // spendingSummaryTotalQuery is the true total for the range and filters. It is
-// computed separately so a truncating limit cannot make the reported total
-// wrong, and so tag grouping (where one transaction can appear under several
-// tags) still has an unambiguous overall figure.
-const spendingSummaryTotalQuery = `
-	SELECT COALESCE(-SUM(t.amount), 0)
-	FROM transactions t
-	LEFT JOIN categories c ON c.id = t.category_id AND c.budget_id = t.budget_id
-	WHERE t.budget_id = $1` + spendingSummaryFilters + `
-	  AND COALESCE(c.is_system, FALSE) = FALSE`
+// computed separately from the grouped rows so a truncating limit cannot make
+// the reported total wrong, and so tag grouping (where one transaction can
+// appear under several tags) still has an unambiguous overall figure.
+func spendingSummaryTotalQuery(scope spendingScope) sq.SelectBuilder {
+	query := psql.
+		Select("COALESCE(-SUM(t.amount), 0)").
+		From("transactions t").
+		LeftJoin("categories c ON c.id = t.category_id AND c.budget_id = t.budget_id")
+
+	return applySpendingScope(query, scope).
+		Where(sq.Expr("COALESCE(c.is_system, FALSE) = FALSE"))
+}
 
 func (t GetSpendingSummaryTool) Execute(
 	ctx context.Context,
@@ -225,15 +238,6 @@ func (t GetSpendingSummaryTool) Execute(
 		return nil, errs.New(errs.CodeInvalidArgument, "get_spending_summary requires dateRange.start and dateRange.end")
 	}
 
-	query, ok := spendingSummaryQueries[args.GroupBy]
-	if !ok {
-		return nil, errs.New(
-			errs.CodeInvalidArgument,
-			"get_spending_summary groupBy must be one of category, payee, tag; got %q",
-			args.GroupBy,
-		)
-	}
-
 	limit := args.Limit
 	if limit <= 0 {
 		limit = spendingSummaryDefaultLimit
@@ -242,48 +246,44 @@ func (t GetSpendingSummaryTool) Execute(
 		limit = spendingSummaryMaxLimit
 	}
 
-	categoryName := strings.TrimSpace(args.CategoryName)
-	payeeName := strings.TrimSpace(args.PayeeName)
-	tagName := strings.TrimSpace(args.TagName)
-
-	filters := map[string]string{}
-	for key, value := range map[string]string{
-		"categoryName": categoryName,
-		"payeeName":    payeeName,
-		"tagName":      tagName,
-	} {
-		if value != "" {
-			filters[key] = value
-		}
+	budgetID := utils.MustBudgetID(ctx)
+	scope := spendingScope{
+		budgetID: budgetID,
+		start:    args.DateRange.Start,
+		end:      args.DateRange.End,
+		filters:  newEntityFilters(args.CategoryName, args.PayeeName, args.TagName),
 	}
 
-	budgetID := utils.MustBudgetID(ctx)
+	groupQuery, err := spendingSummaryGroupQuery(args.GroupBy, scope, uint64(limit))
+	if err != nil {
+		return nil, err
+	}
+
+	groupSQL, groupArgs, err := groupQuery.ToSql()
+	if err != nil {
+		return nil, errs.Wrap(errs.CodeInternalError, "build get_spending_summary query", err)
+	}
+	totalSQL, totalArgs, err := spendingSummaryTotalQuery(scope).ToSql()
+	if err != nil {
+		return nil, errs.Wrap(errs.CodeInternalError, "build get_spending_summary total query", err)
+	}
+
 	result := spendingSummaryResult{
 		GroupBy: args.GroupBy,
 		DateRange: map[string]string{
 			"start": args.DateRange.Start,
 			"end":   args.DateRange.End,
 		},
-		Rows: make([]spendingSummaryRow, 0, limit),
-	}
-	if len(filters) > 0 {
-		result.Filters = filters
+		Filters: scope.filters.applied(),
+		Rows:    make([]spendingSummaryRow, 0, limit),
 	}
 
-	err := withBudgetScopedTx(ctx, t.db, budgetID, func(tx pgx.Tx) error {
-		if err := tx.QueryRow(
-			ctx, spendingSummaryTotalQuery,
-			budgetID, args.DateRange.Start, args.DateRange.End,
-			categoryName, payeeName, tagName,
-		).Scan(&result.Total); err != nil {
+	err = withBudgetScopedTx(ctx, t.db, budgetID, func(tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx, totalSQL, totalArgs...).Scan(&result.Total); err != nil {
 			return err
 		}
 
-		rows, err := tx.Query(
-			ctx, query,
-			budgetID, args.DateRange.Start, args.DateRange.End,
-			categoryName, payeeName, tagName, limit,
-		)
+		rows, err := tx.Query(ctx, groupSQL, groupArgs...)
 		if err != nil {
 			return err
 		}
@@ -306,7 +306,7 @@ func (t GetSpendingSummaryTool) Execute(
 		result.Truncated = true
 		result.Note = fmt.Sprintf("Showing the top %d groups only; total reflects all spending in the range.", limit)
 	}
-	if len(result.Rows) == 0 && len(filters) > 0 {
+	if len(result.Rows) == 0 && scope.filters.any() {
 		// "No spending" and "the filter matched nothing" look identical in an
 		// empty result set. Say which, so the model reports an unmatched tag as
 		// an unmatched tag instead of as zero spend.

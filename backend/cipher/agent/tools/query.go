@@ -3,12 +3,102 @@ package tools
 import (
 	"context"
 	"strconv"
+	"strings"
 	"time"
 
+	sq "github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// psql is the shared statement builder. Postgres uses $N placeholders; squirrel
+// defaults to ?, which pgx would reject.
+var psql = sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
+
+// entityFilters are the optional name filters the query tools accept.
+//
+// Defined once and shared, so get_spending_summary and get_top_transactions
+// cannot drift apart. A filter honored by one tool and silently dropped by the
+// other is how a tagged question came back with untagged totals.
+type entityFilters struct {
+	categoryName string
+	payeeName    string
+	tagName      string
+}
+
+func newEntityFilters(categoryName, payeeName, tagName string) entityFilters {
+	return entityFilters{
+		categoryName: strings.TrimSpace(categoryName),
+		payeeName:    strings.TrimSpace(payeeName),
+		tagName:      strings.TrimSpace(tagName),
+	}
+}
+
+// apply adds a predicate per non-empty filter. An unset filter contributes no
+// SQL at all, rather than the "$n = ” OR ..." short-circuit a fixed query
+// string needs — which is the reason these are built rather than concatenated.
+//
+// Each predicate is an EXISTS subquery keyed off t, not a condition on a joined
+// alias, so the same filter works on any query aliasing transactions as t
+// regardless of which joins that query happens to have.
+func (f entityFilters) apply(query sq.SelectBuilder) sq.SelectBuilder {
+	if f.categoryName != "" {
+		query = query.Where(sq.Expr(
+			`EXISTS (SELECT 1 FROM categories fc
+			         WHERE fc.id = t.category_id
+			           AND fc.budget_id = t.budget_id
+			           AND fc.name ILIKE ?)`,
+			"%"+f.categoryName+"%",
+		))
+	}
+	if f.payeeName != "" {
+		query = query.Where(sq.Expr(
+			`EXISTS (SELECT 1 FROM payees fp
+			         WHERE fp.id = t.payee_id
+			           AND fp.budget_id = t.budget_id
+			           AND fp.name ILIKE ?)`,
+			"%"+f.payeeName+"%",
+		))
+	}
+	// tag_ids is a UUID[] column on transactions, not a join table.
+	if f.tagName != "" {
+		query = query.Where(sq.Expr(
+			`EXISTS (SELECT 1 FROM tags ftg
+			         WHERE ftg.id = ANY(t.tag_ids)
+			           AND ftg.budget_id = t.budget_id
+			           AND ftg.deleted = FALSE
+			           AND ftg.name ILIKE ?)`,
+			"%"+f.tagName+"%",
+		))
+	}
+	return query
+}
+
+func (f entityFilters) any() bool {
+	return f.categoryName != "" || f.payeeName != "" || f.tagName != ""
+}
+
+// applied reports the filters actually in force, echoed back in tool results so
+// the model states the scope of a number instead of assuming it got what it
+// asked for.
+func (f entityFilters) applied() map[string]string {
+	if !f.any() {
+		return nil
+	}
+
+	out := map[string]string{}
+	for key, value := range map[string]string{
+		"categoryName": f.categoryName,
+		"payeeName":    f.payeeName,
+		"tagName":      f.tagName,
+	} {
+		if value != "" {
+			out[key] = value
+		}
+	}
+	return out
+}
 
 // defaultToolQueryTimeout bounds any single agent-issued query. The model can
 // generate an accidental cross join, and without a server-side timeout that ties
