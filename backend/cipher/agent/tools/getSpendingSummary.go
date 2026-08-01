@@ -39,6 +39,12 @@ type spendingSummaryArgs struct {
 	} `json:"dateRange"`
 	GroupBy string `json:"groupBy"`
 	Limit   int    `json:"limit"`
+	// Filters mirror get_top_transactions exactly. Keep the two vocabularies
+	// identical: a name accepted by one tool and silently dropped by the other is
+	// how a filtered question comes back with unfiltered numbers.
+	CategoryName string `json:"categoryName"`
+	PayeeName    string `json:"payeeName"`
+	TagName      string `json:"tagName"`
 }
 
 type spendingSummaryRow struct {
@@ -48,8 +54,11 @@ type spendingSummaryRow struct {
 }
 
 type spendingSummaryResult struct {
-	GroupBy   string               `json:"groupBy"`
-	DateRange map[string]string    `json:"dateRange"`
+	GroupBy   string            `json:"groupBy"`
+	DateRange map[string]string `json:"dateRange"`
+	// Filters echoes back what was actually applied, so the model states the
+	// scope of a number rather than inferring it from what it asked for.
+	Filters   map[string]string    `json:"filters,omitempty"`
 	Total     float64              `json:"total"`
 	Rows      []spendingSummaryRow `json:"rows"`
 	Truncated bool                 `json:"truncated,omitempty"`
@@ -64,7 +73,8 @@ func (t GetSpendingSummaryTool) Definition() sharedModel.ToolDefiniton {
 	return sharedModel.ToolDefiniton{
 		Name: spendingSummaryToolName,
 		Description: "Return total spending in a date range, grouped by category, payee, or tag, " +
-			"ordered by amount spent. Prefer this over execute_sql for any 'how much did I spend on X' " +
+			"optionally filtered by category, payee, or tag, ordered by amount spent. " +
+			"Prefer this over execute_sql for any 'how much did I spend on X' " +
 			"or 'what did I spend the most on' question. Amounts are positive numbers representing money spent. " +
 			"Transfers between accounts and income are excluded.",
 		InputSchema: sharedModel.ToolSchema{
@@ -90,6 +100,20 @@ func (t GetSpendingSummaryTool) Definition() sharedModel.ToolDefiniton {
 						spendingSummaryDefaultLimit, spendingSummaryMaxLimit,
 					),
 				},
+				"categoryName": {
+					Type:        "string",
+					Description: "Optional category filter, matched case-insensitively as a partial name.",
+				},
+				"payeeName": {
+					Type:        "string",
+					Description: "Optional payee filter, matched case-insensitively as a partial name.",
+				},
+				"tagName": {
+					Type: "string",
+					Description: "Optional tag filter, matched case-insensitively as a partial name. " +
+						"Use this to restrict a summary to one tag, e.g. spending by category within a trip tag; " +
+						"groupBy \"tag\" instead breaks the range down across all tags.",
+				},
 			},
 			Required:             []string{"dateRange", "groupBy"},
 			AdditionalProperties: false,
@@ -107,6 +131,39 @@ const spendingSummaryBaseFilter = `
 	  AND t.amount < 0
 	  AND t.transfer_account_id IS NULL`
 
+// spendingSummaryEntityFilters are the optional category/payee/tag filters.
+//
+// Each is written as a self-contained EXISTS subquery rather than a predicate on
+// a joined alias, so one fragment appends to every grouping query and to the
+// total regardless of which joins that particular query has. An empty string
+// short-circuits the filter; nothing is ever concatenated into the SQL.
+//
+// These must be applied to the total query too. A total computed over a wider
+// set than the rows is worse than no total at all — the model reports a filtered
+// breakdown against an unfiltered denominator and the percentages are nonsense.
+const spendingSummaryEntityFilters = `
+	  AND ($4 = '' OR EXISTS (
+	        SELECT 1 FROM categories fc
+	        WHERE fc.id = t.category_id
+	          AND fc.budget_id = t.budget_id
+	          AND fc.name ILIKE '%' || $4 || '%'
+	      ))
+	  AND ($5 = '' OR EXISTS (
+	        SELECT 1 FROM payees fp
+	        WHERE fp.id = t.payee_id
+	          AND fp.budget_id = t.budget_id
+	          AND fp.name ILIKE '%' || $5 || '%'
+	      ))
+	  AND ($6 = '' OR EXISTS (
+	        SELECT 1 FROM tags ftg
+	        WHERE ftg.id = ANY(t.tag_ids)
+	          AND ftg.budget_id = t.budget_id
+	          AND ftg.deleted = FALSE
+	          AND ftg.name ILIKE '%' || $6 || '%'
+	      ))`
+
+const spendingSummaryFilters = spendingSummaryBaseFilter + spendingSummaryEntityFilters
+
 var spendingSummaryQueries = map[string]string{
 	groupByCategory: `
 		SELECT COALESCE(c.name, 'Uncategorized') AS name,
@@ -114,11 +171,11 @@ var spendingSummaryQueries = map[string]string{
 		       COUNT(*) AS transaction_count
 		FROM transactions t
 		LEFT JOIN categories c ON c.id = t.category_id AND c.budget_id = t.budget_id
-		WHERE t.budget_id = $1` + spendingSummaryBaseFilter + `
+		WHERE t.budget_id = $1` + spendingSummaryFilters + `
 		  AND COALESCE(c.is_system, FALSE) = FALSE
 		GROUP BY COALESCE(c.name, 'Uncategorized')
 		ORDER BY total DESC
-		LIMIT $4`,
+		LIMIT $7`,
 
 	groupByPayee: `
 		SELECT COALESCE(p.name, 'Unknown payee') AS name,
@@ -126,10 +183,10 @@ var spendingSummaryQueries = map[string]string{
 		       COUNT(*) AS transaction_count
 		FROM transactions t
 		LEFT JOIN payees p ON p.id = t.payee_id AND p.budget_id = t.budget_id
-		WHERE t.budget_id = $1` + spendingSummaryBaseFilter + `
+		WHERE t.budget_id = $1` + spendingSummaryFilters + `
 		GROUP BY COALESCE(p.name, 'Unknown payee')
 		ORDER BY total DESC
-		LIMIT $4`,
+		LIMIT $7`,
 
 	// tag_ids is a UUID[] column on transactions, not a join table.
 	groupByTag: `
@@ -138,21 +195,21 @@ var spendingSummaryQueries = map[string]string{
 		       COUNT(*) AS transaction_count
 		FROM transactions t
 		JOIN tags tg ON tg.id = ANY(t.tag_ids) AND tg.budget_id = t.budget_id AND tg.deleted = FALSE
-		WHERE t.budget_id = $1` + spendingSummaryBaseFilter + `
+		WHERE t.budget_id = $1` + spendingSummaryFilters + `
 		GROUP BY tg.name
 		ORDER BY total DESC
-		LIMIT $4`,
+		LIMIT $7`,
 }
 
-// spendingSummaryTotalQuery is the true total for the range. It is computed
-// separately so a truncating limit cannot make the reported total wrong, and so
-// tag grouping (where one transaction can appear under several tags) still has
-// an unambiguous overall figure.
+// spendingSummaryTotalQuery is the true total for the range and filters. It is
+// computed separately so a truncating limit cannot make the reported total
+// wrong, and so tag grouping (where one transaction can appear under several
+// tags) still has an unambiguous overall figure.
 const spendingSummaryTotalQuery = `
 	SELECT COALESCE(-SUM(t.amount), 0)
 	FROM transactions t
 	LEFT JOIN categories c ON c.id = t.category_id AND c.budget_id = t.budget_id
-	WHERE t.budget_id = $1` + spendingSummaryBaseFilter + `
+	WHERE t.budget_id = $1` + spendingSummaryFilters + `
 	  AND COALESCE(c.is_system, FALSE) = FALSE`
 
 func (t GetSpendingSummaryTool) Execute(
@@ -160,8 +217,8 @@ func (t GetSpendingSummaryTool) Execute(
 	call sharedModel.ToolCall,
 ) (*sharedModel.ToolResult, error) {
 	var args spendingSummaryArgs
-	if err := json.Unmarshal(call.Arguments, &args); err != nil {
-		return nil, errs.Wrap(errs.CodeInternalError, "parse get_spending_summary arguments", err)
+	if err := decodeToolArgs(spendingSummaryToolName, call.Arguments, &args); err != nil {
+		return nil, err
 	}
 
 	if args.DateRange.Start == "" || args.DateRange.End == "" {
@@ -185,6 +242,21 @@ func (t GetSpendingSummaryTool) Execute(
 		limit = spendingSummaryMaxLimit
 	}
 
+	categoryName := strings.TrimSpace(args.CategoryName)
+	payeeName := strings.TrimSpace(args.PayeeName)
+	tagName := strings.TrimSpace(args.TagName)
+
+	filters := map[string]string{}
+	for key, value := range map[string]string{
+		"categoryName": categoryName,
+		"payeeName":    payeeName,
+		"tagName":      tagName,
+	} {
+		if value != "" {
+			filters[key] = value
+		}
+	}
+
 	budgetID := utils.MustBudgetID(ctx)
 	result := spendingSummaryResult{
 		GroupBy: args.GroupBy,
@@ -194,15 +266,24 @@ func (t GetSpendingSummaryTool) Execute(
 		},
 		Rows: make([]spendingSummaryRow, 0, limit),
 	}
+	if len(filters) > 0 {
+		result.Filters = filters
+	}
 
 	err := withBudgetScopedTx(ctx, t.db, budgetID, func(tx pgx.Tx) error {
 		if err := tx.QueryRow(
-			ctx, spendingSummaryTotalQuery, budgetID, args.DateRange.Start, args.DateRange.End,
+			ctx, spendingSummaryTotalQuery,
+			budgetID, args.DateRange.Start, args.DateRange.End,
+			categoryName, payeeName, tagName,
 		).Scan(&result.Total); err != nil {
 			return err
 		}
 
-		rows, err := tx.Query(ctx, query, budgetID, args.DateRange.Start, args.DateRange.End, limit)
+		rows, err := tx.Query(
+			ctx, query,
+			budgetID, args.DateRange.Start, args.DateRange.End,
+			categoryName, payeeName, tagName, limit,
+		)
 		if err != nil {
 			return err
 		}
@@ -224,6 +305,13 @@ func (t GetSpendingSummaryTool) Execute(
 	if len(result.Rows) >= limit {
 		result.Truncated = true
 		result.Note = fmt.Sprintf("Showing the top %d groups only; total reflects all spending in the range.", limit)
+	}
+	if len(result.Rows) == 0 && len(filters) > 0 {
+		// "No spending" and "the filter matched nothing" look identical in an
+		// empty result set. Say which, so the model reports an unmatched tag as
+		// an unmatched tag instead of as zero spend.
+		result.Note = strings.TrimSpace(result.Note +
+			" No transactions matched the requested filter; the filter names may not exist in this budget. Use get_budget_info to list the real category, payee, and tag names.")
 	}
 	if args.GroupBy == groupByTag {
 		// A transaction can carry several tags, so per-tag totals legitimately sum
@@ -267,6 +355,9 @@ func (t GetSpendingSummaryTool) Normalize(
 		"groupBy":    summary.GroupBy,
 		"groupCount": len(summary.Rows),
 		"dateRange":  summary.DateRange,
+	}
+	if len(summary.Filters) > 0 {
+		normalized["filters"] = summary.Filters
 	}
 	normalizedJSON, err := json.Marshal(normalized)
 	if err != nil {
