@@ -7,6 +7,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   TextInput,
@@ -514,7 +515,7 @@ export function TransactionsScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<AppTabParamList, 'Transactions'>>();
   const selectedBudget = useAppSelector((state) => state.budgets.selectedBudget);
-  const { transactions, nextCursor, loadingMore } = useAppSelector((state) => state.transactions);
+  const { transactions, nextCursor, loadingMore, loading } = useAppSelector((state) => state.transactions);
   const tags = useAppSelector((state) => state.tags.tags);
   const [search, setSearch] = useState('');
   const [draft, setDraft] = useState<TxnDraft | null>(null);
@@ -649,6 +650,15 @@ export function TransactionsScreen() {
         keyExtractor={(item) => item.id ?? `${item.date}-${item.payeeName}-${item.amount}`}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            // The list is served either from the store or from the scoped
+            // category fetch, so the spinner has to track whichever is live.
+            refreshing={categoryId ? isScopedLoading : loading === 'pending'}
+            onRefresh={refreshLists}
+            tintColor={colors.primary}
+          />
+        }
         ListEmptyComponent={
           isScopedLoading ? (
             <View style={styles.scopedLoading}>

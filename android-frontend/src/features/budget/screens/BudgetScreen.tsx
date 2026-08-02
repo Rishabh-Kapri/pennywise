@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Check } from 'lucide-react-native';
@@ -8,7 +8,7 @@ import { useAppDispatch, useAppSelector } from '../../../app/hooks';
 import { Card } from '../../../components/Card';
 import { Screen } from '../../../components/Screen';
 import { AppText } from '../../../components/AppText';
-import { fetchAllCategoryGroups, toggleGroupCollapse, updateCategoryBudget } from '../../category/store/categorySlice';
+import { fetchAllCategoryGroups, fetchInflowAmount, toggleGroupCollapse, updateCategoryBudget } from '../../category/store/categorySlice';
 import { selectMonthInHumanFormat, selectSelectedMonth, setSelectedMonth } from '../store/budgetSlice';
 import { formatCurrency, shiftMonth } from '../../../utils/date';
 import { colors, radii, spacing } from '../../../theme';
@@ -57,6 +57,7 @@ export function BudgetScreen() {
   const monthLabel = useAppSelector(selectMonthInHumanFormat);
   const groups = useAppSelector((state) => state.categories.allCategoryGroups);
   const inflowAmount = useAppSelector((state) => state.categories.inflowAmount);
+  const refreshing = useAppSelector((state) => state.categories.loading === 'pending');
 
   const assigned = groups.reduce((sum, group) => sum + (group.budgeted?.[month] ?? 0), 0);
   const activity = groups.reduce((sum, group) => sum + (group.activity?.[month] ?? 0), 0);
@@ -68,8 +69,19 @@ export function BudgetScreen() {
     dispatch(fetchAllCategoryGroups(next));
   };
 
+  // Assigned/available are derived from the category groups, and "ready to
+  // assign" comes from the inflow amount, so both have to be refetched together
+  // or the header totals disagree with the rows under them.
+  const refresh = () => {
+    if (month) dispatch(fetchAllCategoryGroups(month));
+    dispatch(fetchInflowAmount());
+  };
+
   return (
-    <Screen style={styles.screen}>
+    <Screen
+      style={styles.screen}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} />}
+    >
       <View style={styles.headerRow}>
         <AppText variant="title">Budget</AppText>
         <View style={styles.monthStepper}>
