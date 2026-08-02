@@ -162,6 +162,7 @@ LLM client, streaming deltas to the React panel via Redis.
 | Location/receipts UI (React) | `react-frontend/src/features/transactions/components/TransactionDetailPanel/TransactionLocationSection.tsx`, `TransactionDocumentsSection.tsx` |
 | Location snap task (Android) | `android-frontend/src/features/notifications/locationSnapTask.ts` |
 | Headless API client (Android background tasks) | `android-frontend/src/utils/headlessApi.ts` |
+| Android home-screen widgets | `android-frontend/src/features/widgets/` |
 | React Redux store | `react-frontend/src/app/store.ts` |
 | Pipeline run tracking (workflow side) | `backend/workflows/internal/workflow/pipelineStatus.go` |
 | Pipeline status activity | `backend/go-pennywise-api/internal/temporal/activities/reportPipelineStatus.go` |

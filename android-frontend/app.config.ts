@@ -64,7 +64,28 @@ const config: ExpoConfig = {
       }
     ],
     'expo-document-picker',
-    'react-native-document-scanner-plugin'
+    'react-native-document-scanner-plugin',
+    [
+      'react-native-android-widget',
+      {
+        widgets: [
+          {
+            name: 'Pipeline',
+            label: 'Pennywise ingestion',
+            description: 'Email-to-transaction pipeline health, with one-tap retry for parked runs.',
+            minWidth: '180dp',
+            minHeight: '110dp',
+            targetCellWidth: 3,
+            targetCellHeight: 2,
+            resizeMode: 'horizontal|vertical',
+            // Android's floor is 30 minutes. Treated as a fallback: the widget is
+            // refreshed on demand via requestWidgetUpdate when the app knows
+            // something changed.
+            updatePeriodMillis: 1800000
+          }
+        ]
+      }
+    ]
   ],
   extra: {
     apiUrl: process.env.EXPO_PUBLIC_API_URL,
