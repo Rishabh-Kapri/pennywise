@@ -9,7 +9,12 @@ import payees from '../features/payees/store/payeeSlice';
 import tags from '../features/tags/store/tagSlice';
 import transactions from '../features/transactions/store/transactionSlice';
 import { apiClient } from '../utils/api';
-import { budgetUpdateMiddleware, dataFetchMiddleware, dateChangeMiddleware } from './middlewares';
+import {
+  budgetPersistenceMiddleware,
+  budgetUpdateMiddleware,
+  dataFetchMiddleware,
+  dateChangeMiddleware
+} from './middlewares';
 
 export const store = configureStore({
   reducer: {
@@ -26,7 +31,7 @@ export const store = configureStore({
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
       serializableCheck: false
-    }).concat([dataFetchMiddleware, dateChangeMiddleware, budgetUpdateMiddleware]),
+    }).concat([dataFetchMiddleware, dateChangeMiddleware, budgetUpdateMiddleware, budgetPersistenceMiddleware]),
   devTools: true
 });
 
