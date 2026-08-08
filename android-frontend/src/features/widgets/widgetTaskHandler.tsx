@@ -1,44 +1,59 @@
 import type { WidgetTaskHandlerProps } from 'react-native-android-widget';
+import { ACCOUNTS_WIDGET_NAME, AccountsWidget } from './AccountsWidget';
+import { BUDGET_WIDGET_NAME, BudgetWidget } from './BudgetWidget';
 import { PIPELINE_WIDGET_NAME, PipelineWidget, RETRY_PARKED_ACTION } from './PipelineWidget';
+import { RECENT_WIDGET_NAME, RecentWidget } from './RecentWidget';
+import { StatusCard } from './chrome';
 import { loadPipelineState, retryParkedRuns } from './pipelineData';
+import { loadAccountsState, loadBudgetState, loadRecentState } from './widgetData';
 
 /**
- * Entry point Android calls for every widget lifecycle event. Runs headlessly:
- * no Redux store, no React tree, no app UI -- which is why data access goes
- * through `utils/headlessApi` rather than `utils/api`.
+ * Entry point Android calls for every widget lifecycle event, for every widget.
+ * Runs headlessly: no Redux store, no React tree, no app UI -- which is why
+ * data access goes through `utils/headlessApi` rather than `utils/api`.
  */
 export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<void> {
-  if (props.widgetInfo.widgetName !== PIPELINE_WIDGET_NAME) return;
-
-  const render = async () => {
-    props.renderWidget(<PipelineWidget state={await loadPipelineState()} />);
-  };
+  const name = props.widgetInfo.widgetName;
 
   try {
-    switch (props.widgetAction) {
-      case 'WIDGET_ADDED':
-      case 'WIDGET_UPDATE':
-      case 'WIDGET_RESIZED':
-        await render();
-        break;
+    if (props.widgetAction === 'WIDGET_DELETED') return;
 
-      case 'WIDGET_CLICK':
-        if (props.clickAction !== RETRY_PARKED_ACTION) break;
+    // The only interactive widget today. Everything else is render-only, so a
+    // click falls through to a plain re-render.
+    if (props.widgetAction === 'WIDGET_CLICK') {
+      if (name === PIPELINE_WIDGET_NAME && props.clickAction === RETRY_PARKED_ACTION) {
         await handleRetry(props);
-        break;
-
-      case 'WIDGET_DELETED':
-        break;
+      }
+      return;
     }
+
+    await render(props, name);
   } catch (error) {
-    // A throw here leaves whatever was last rendered on the home screen, which
-    // is worse than showing the failure.
-    console.log('[widget] handler failed', error);
-    props.renderWidget(
-      <PipelineWidget
-        state={{ kind: 'error', message: error instanceof Error ? error.message : 'Unexpected error' }}
-      />
-    );
+    // Throwing here would leave whatever was last rendered on the home screen,
+    // which is worse than showing the failure.
+    console.log(`[widget] ${name} handler failed`, error);
+    const message = error instanceof Error ? error.message : 'Unexpected error';
+    props.renderWidget(<StatusCard title={name} state={{ kind: 'error', message }} />);
+  }
+}
+
+async function render(props: WidgetTaskHandlerProps, name: string): Promise<void> {
+  switch (name) {
+    case PIPELINE_WIDGET_NAME:
+      props.renderWidget(<PipelineWidget state={await loadPipelineState()} />);
+      return;
+    case BUDGET_WIDGET_NAME:
+      props.renderWidget(<BudgetWidget state={await loadBudgetState()} />);
+      return;
+    case ACCOUNTS_WIDGET_NAME:
+      props.renderWidget(<AccountsWidget state={await loadAccountsState()} />);
+      return;
+    case RECENT_WIDGET_NAME:
+      props.renderWidget(<RecentWidget state={await loadRecentState()} />);
+      return;
+    default:
+      // An unknown name means the config plugin and this switch disagree.
+      console.log('[widget] no renderer registered for', name);
   }
 }
 
