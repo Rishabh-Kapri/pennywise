@@ -225,9 +225,18 @@ Built with `react-native-android-widget`. Widgets are declared in
 `index.js` registers `widgetTaskHandler` at the entry point, because Android
 starts this bundle headlessly with no app UI mounted.
 
-`src/features/widgets/` holds one widget today, `Pipeline`: ingestion health
-with one-tap retry for parked runs, reading `GET /api/pipeline/runs` and posting
-to `POST /api/pipeline/runs/:id/retry`.
+`src/features/widgets/` holds four:
+
+| Widget | Shows | Reads |
+|--------|-------|-------|
+| `Budget` | Ready to assign, plus assigned / spent / available | `categories/inflow`, `category-groups?month=` |
+| `Accounts` | Net worth split into cash and debt | `accounts` |
+| `Recent` | Last 5 transactions, scrollable | `transactions/normalized?limit=5` |
+| `Pipeline` | Parked ingestion runs, with one-tap retry | `pipeline/runs`, `pipeline/runs/:id/retry` |
+
+`Pipeline` is the only interactive one; the rest are render-only. Shared card
+chrome (shell, header, status/error states) lives in `chrome.tsx`, and the
+read-only loaders share `widgetData.ts`.
 
 Things that are not obvious:
 
@@ -247,6 +256,10 @@ Things that are not obvious:
   and drive freshness with `requestWidgetUpdate` when something is known to
   have changed.
 - Widgets do not run in Expo Go. Testing needs a dev client or standalone build.
+- `adjustsFontSizeToFit` is a **style** prop on `TextWidget`, not a component
+  prop, unlike React Native's `Text`.
+- Each widget's `name` in `app.config.ts` must match the switch in
+  `widgetTaskHandler.tsx`; a mismatch silently renders nothing.
 
 `npm test` covers the widget's data layer (`pipelineData.ts`) without a device:
 state machine, error and signed-out degradation, and the retry fan-out. The
