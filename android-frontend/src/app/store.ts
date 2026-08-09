@@ -13,7 +13,8 @@ import {
   budgetPersistenceMiddleware,
   budgetUpdateMiddleware,
   dataFetchMiddleware,
-  dateChangeMiddleware
+  dateChangeMiddleware,
+  widgetRefreshMiddleware
 } from './middlewares';
 
 export const store = configureStore({
@@ -31,7 +32,13 @@ export const store = configureStore({
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
       serializableCheck: false
-    }).concat([dataFetchMiddleware, dateChangeMiddleware, budgetUpdateMiddleware, budgetPersistenceMiddleware]),
+    }).concat([
+      dataFetchMiddleware,
+      dateChangeMiddleware,
+      budgetUpdateMiddleware,
+      budgetPersistenceMiddleware,
+      widgetRefreshMiddleware
+    ]),
   devTools: true
 });
 

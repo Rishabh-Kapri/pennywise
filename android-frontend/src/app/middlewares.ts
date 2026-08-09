@@ -5,7 +5,13 @@ import { fetchAllCategoryGroups, fetchCategoryById, fetchInflowAmount, updateCat
 import { fetchAllLoanMetadata } from '../features/loans/store/loanSlice';
 import { fetchAllPayees } from '../features/payees/store/payeeSlice';
 import { fetchAllTags } from '../features/tags/store/tagSlice';
-import { fetchAllTransactions } from '../features/transactions/store/transactionSlice';
+import {
+  createTransaction,
+  deleteTransactionById,
+  fetchAllTransactions,
+  updateTransaction
+} from '../features/transactions/store/transactionSlice';
+import { refreshWidgets, SPEND_SENSITIVE_WIDGETS } from '../features/widgets/refresh';
 import { saveSelectedBudgetId } from '../utils/storage';
 import type { AppDispatch, RootState } from './store';
 
@@ -68,5 +74,30 @@ export const budgetUpdateMiddleware: Middleware = (store) => (next) => (action) 
   if (updateCategoryBudget.fulfilled.match(action)) {
     (store.dispatch as AppDispatch)(fetchInflowAmount());
   }
+  return result;
+};
+
+/**
+ * Redraws the spend-sensitive home-screen widgets after anything that changes
+ * what they show. Without this they would only refresh on Android's 30-minute
+ * schedule, so buying a coffee would not reach the "watch" widget until long
+ * after it mattered.
+ *
+ * Fire-and-forget: the mutation has already succeeded, and a widget redraw must
+ * never fail the action that triggered it.
+ */
+export const widgetRefreshMiddleware: Middleware = () => (next) => (action) => {
+  const result = next(action);
+
+  const changesSpending =
+    createTransaction.fulfilled.match(action) ||
+    updateTransaction.fulfilled.match(action) ||
+    deleteTransactionById.fulfilled.match(action) ||
+    updateCategoryBudget.fulfilled.match(action);
+
+  if (changesSpending) {
+    void refreshWidgets(SPEND_SENSITIVE_WIDGETS).catch(() => undefined);
+  }
+
   return result;
 };

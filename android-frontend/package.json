@@ -8,7 +8,7 @@
     "android": "expo run:android",
     "android:dev": "expo start --android",
     "lint": "eslint .",
-    "test": "npm run test:one -- test/headlessApi.test.mts && npm run test:one -- test/pipelineData.test.mts && npm run test:one -- test/widgetData.test.mts",
+    "test": "npm run test:one -- test/headlessApi.test.mts && npm run test:one -- test/pipelineData.test.mts && npm run test:one -- test/widgetData.test.mts && npm run test:one -- test/pressure.test.mts",
     "test:one": "node --experimental-strip-types --no-warnings --import ./test/register.mjs",
     "typecheck": "tsc --noEmit",
     "ios": "expo run:ios"
