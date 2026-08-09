@@ -229,12 +229,27 @@ starts this bundle headlessly with no app UI mounted.
 
 | Widget | Shows | Reads |
 |--------|-------|-------|
+| `Pressure` | Categories overspent or running hot, ranked by urgency | `category-groups?month=` |
 | `Budget` | Ready to assign, plus assigned / spent / available | `categories/inflow`, `category-groups?month=` |
 | `Accounts` | Net worth split into cash and debt | `accounts` |
 | `Recent` | Last 5 transactions, scrollable | `transactions/normalized?limit=5` |
 | `Pipeline` | Parked ingestion runs, with one-tap retry | `pipeline/runs`, `pipeline/runs/:id/retry` |
 
-`Pipeline` is the only interactive one; the rest are render-only. Shared card
+`Pipeline` is the only interactive one; the rest are render-only.
+
+`Pressure` is the one worth understanding. It ranks by **pace, not percentage**:
+90% spent on the 3rd of the month is a different problem from 90% on the 28th,
+so a category is only flagged as running hot when `used / monthElapsed` exceeds
+1.25 *and* at least half the budget is gone -- the second condition suppresses
+early-month lumpy spending, which would otherwise make the widget cry wolf every
+time rent cleared. Overspent always ranks first. This is arithmetic, not a
+model; keep it that way unless language or judgement is genuinely needed.
+
+Freshness comes from `refresh.ts`, not the update schedule.
+`widgetRefreshMiddleware` redraws the spend-sensitive widgets after a
+transaction or budget change, and `locationSnapTask` does the same when the
+ingestion pipeline pushes a new transaction. `renderers.tsx` is the single
+registry both entry points share, so a new widget is registered once. Shared card
 chrome (shell, header, status/error states) lives in `chrome.tsx`, and the
 read-only loaders share `widgetData.ts`.
 

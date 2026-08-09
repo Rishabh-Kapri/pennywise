@@ -22,13 +22,22 @@ async function guarded<T>(load: () => Promise<T>): Promise<T | LoadFailure> {
 
 // --- Budget: ready to assign -------------------------------------------------
 
+type Category = {
+  id?: string;
+  name: string;
+  hidden?: boolean;
+  budgeted?: Record<string, number>;
+  activity?: Record<string, number>;
+  balance?: Record<string, number>;
+};
+
 type CategoryGroup = {
   name: string;
   isSystem: boolean;
   budgeted: Record<string, number>;
   activity: Record<string, number>;
   balance: Record<string, number>;
-  categories: Array<{ name: string; balance: Record<string, number>; activity: Record<string, number> }>;
+  categories: Category[];
 };
 
 export type BudgetWidgetState =
@@ -68,6 +77,126 @@ export async function loadBudgetState(): Promise<BudgetWidgetState> {
       spent,
       overspentCount,
       month
+    };
+  });
+}
+
+// --- Pressure: which categories need attention right now ---------------------
+
+/**
+ * Why a category is being surfaced.
+ * - `over`   : already spent past what was assigned
+ * - `ahead`  : on pace to overspend before month end
+ * - `close`  : nearly used up, but not obviously running hot
+ */
+export type PressureReason = 'over' | 'ahead' | 'close';
+
+export type CategoryPressure = {
+  id: string;
+  name: string;
+  reason: PressureReason;
+  budgeted: number;
+  spent: number;
+  /** Negative when overspent. */
+  remaining: number;
+  /** spent / budgeted, uncapped so callers can tell 1.0 from 3.0. */
+  usedFraction: number;
+  /** Projected end-of-month spend at the current pace. */
+  projected: number;
+};
+
+export type PressureWidgetState =
+  | LoadFailure
+  | { kind: 'ready'; pressured: CategoryPressure[]; trackedCount: number; monthProgress: number };
+
+/** How many rows the widget will show. Kept small for the RemoteViews size budget. */
+export const PRESSURE_LIMIT = 3;
+
+/**
+ * A category counts as running hot when its spend rate outpaces the month by
+ * this much. 1.25 means "burning 25% faster than the calendar", which by month
+ * end lands meaningfully over unless something changes.
+ */
+const PACE_THRESHOLD = 1.25;
+
+/** Below this, an alarming ratio is just noise -- early-month lumpy spending. */
+const MIN_USED_TO_WARN = 0.5;
+
+/** Nearly exhausted, flagged regardless of pace. */
+const CLOSE_THRESHOLD = 0.85;
+
+/** Fraction of the month elapsed, floored so day 1 does not divide by zero. */
+export function monthElapsedFraction(now = new Date()): number {
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  return Math.min(1, Math.max(now.getDate() / daysInMonth, 1 / daysInMonth));
+}
+
+export async function loadPressureState(): Promise<PressureWidgetState> {
+  return guarded(async () => {
+    const month = getCurrentMonthKey();
+    const groups = await headlessApi.get<CategoryGroup[]>(`category-groups?month=${month}`);
+    const list = Array.isArray(groups) ? groups : [];
+    const elapsed = monthElapsedFraction();
+
+    const tracked: CategoryPressure[] = [];
+
+    for (const group of list) {
+      // System groups hold inflow/uncategorised bookkeeping, not spending plans.
+      if (group.isSystem) continue;
+
+      for (const category of group.categories ?? []) {
+        if (category.hidden) continue;
+
+        const budgeted = category.budgeted?.[month] ?? 0;
+        // `activity` is negative for spending; inflows to a spending category
+        // would make this positive, which is not overspending.
+        const spent = Math.max(0, -(category.activity?.[month] ?? 0));
+        if (budgeted <= 0 && spent <= 0) continue;
+
+        const remaining = category.balance?.[month] ?? budgeted - spent;
+        const usedFraction = budgeted > 0 ? spent / budgeted : spent > 0 ? Infinity : 0;
+        const projected = spent / elapsed;
+
+        tracked.push({
+          id: category.id ?? `${group.name}:${category.name}`,
+          name: category.name,
+          reason: 'close',
+          budgeted,
+          spent,
+          remaining,
+          usedFraction,
+          projected
+        });
+      }
+    }
+
+    const pressured = tracked
+      .map((entry) => {
+        // Spending against an unbudgeted category is overspending by definition.
+        if (entry.remaining < 0 || (entry.budgeted <= 0 && entry.spent > 0)) {
+          return { ...entry, reason: 'over' as const };
+        }
+        if (entry.usedFraction >= MIN_USED_TO_WARN && entry.usedFraction / elapsed >= PACE_THRESHOLD) {
+          return { ...entry, reason: 'ahead' as const };
+        }
+        if (entry.usedFraction >= CLOSE_THRESHOLD) {
+          return { ...entry, reason: 'close' as const };
+        }
+        return null;
+      })
+      .filter((entry): entry is CategoryPressure => entry !== null)
+      // Worst first: overspent, then whatever is furthest through its budget.
+      .sort((a, b) => {
+        const rank = { over: 0, ahead: 1, close: 2 };
+        if (rank[a.reason] !== rank[b.reason]) return rank[a.reason] - rank[b.reason];
+        return b.usedFraction - a.usedFraction;
+      });
+
+    return {
+      kind: 'ready' as const,
+      pressured: pressured.slice(0, PRESSURE_LIMIT),
+      trackedCount: tracked.length,
+      monthProgress: elapsed
     };
   });
 }

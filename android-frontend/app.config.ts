@@ -76,6 +76,17 @@ const config: ExpoConfig = {
         // the app knows something changed.
         widgets: [
           {
+            name: 'Pressure',
+            label: 'Pennywise watch',
+            description: 'Categories running hot or already overspent, ranked by urgency.',
+            minWidth: '250dp',
+            minHeight: '150dp',
+            targetCellWidth: 4,
+            targetCellHeight: 3,
+            resizeMode: 'horizontal|vertical',
+            updatePeriodMillis: 1800000
+          },
+          {
             name: 'Budget',
             label: 'Pennywise budget',
             description: 'Ready to assign this month, with assigned, spent and available.',
