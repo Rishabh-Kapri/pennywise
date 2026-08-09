@@ -1,44 +1,42 @@
 import type { WidgetTaskHandlerProps } from 'react-native-android-widget';
 import { PIPELINE_WIDGET_NAME, PipelineWidget, RETRY_PARKED_ACTION } from './PipelineWidget';
+import { StatusCard } from './chrome';
 import { loadPipelineState, retryParkedRuns } from './pipelineData';
+import { WIDGET_RENDERERS } from './renderers';
 
 /**
- * Entry point Android calls for every widget lifecycle event. Runs headlessly:
- * no Redux store, no React tree, no app UI -- which is why data access goes
- * through `utils/headlessApi` rather than `utils/api`.
+ * Entry point Android calls for every widget lifecycle event, for every widget.
+ * Runs headlessly: no Redux store, no React tree, no app UI -- which is why
+ * data access goes through `utils/headlessApi` rather than `utils/api`.
  */
 export async function widgetTaskHandler(props: WidgetTaskHandlerProps): Promise<void> {
-  if (props.widgetInfo.widgetName !== PIPELINE_WIDGET_NAME) return;
-
-  const render = async () => {
-    props.renderWidget(<PipelineWidget state={await loadPipelineState()} />);
-  };
+  const name = props.widgetInfo.widgetName;
 
   try {
-    switch (props.widgetAction) {
-      case 'WIDGET_ADDED':
-      case 'WIDGET_UPDATE':
-      case 'WIDGET_RESIZED':
-        await render();
-        break;
+    if (props.widgetAction === 'WIDGET_DELETED') return;
 
-      case 'WIDGET_CLICK':
-        if (props.clickAction !== RETRY_PARKED_ACTION) break;
+    // Pipeline is the only interactive widget today. Everything else is
+    // render-only, so a click falls through to a plain redraw.
+    if (props.widgetAction === 'WIDGET_CLICK') {
+      if (name === PIPELINE_WIDGET_NAME && props.clickAction === RETRY_PARKED_ACTION) {
         await handleRetry(props);
-        break;
-
-      case 'WIDGET_DELETED':
-        break;
+        return;
+      }
     }
+
+    const render = WIDGET_RENDERERS[name];
+    if (!render) {
+      // Means app.config.ts and the renderer map disagree.
+      console.log('[widget] no renderer registered for', name);
+      return;
+    }
+    props.renderWidget(await render());
   } catch (error) {
-    // A throw here leaves whatever was last rendered on the home screen, which
-    // is worse than showing the failure.
-    console.log('[widget] handler failed', error);
-    props.renderWidget(
-      <PipelineWidget
-        state={{ kind: 'error', message: error instanceof Error ? error.message : 'Unexpected error' }}
-      />
-    );
+    // Throwing here would leave whatever was last drawn on the home screen,
+    // which is worse than showing the failure.
+    console.log(`[widget] ${name} handler failed`, error);
+    const message = error instanceof Error ? error.message : 'Unexpected error';
+    props.renderWidget(<StatusCard title={name} state={{ kind: 'error', message }} />);
   }
 }
 

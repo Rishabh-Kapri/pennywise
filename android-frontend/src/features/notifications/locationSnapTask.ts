@@ -4,6 +4,7 @@ import * as Notifications from 'expo-notifications';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { headlessApi } from '../../utils/headlessApi';
+import { refreshWidgets, SPEND_SENSITIVE_WIDGETS } from '../widgets/refresh';
 import { LocationSource } from '../transactions/types';
 
 export const LOCATION_SNAP_TASK = 'pennywise-location-snap';
@@ -82,6 +83,11 @@ async function removePendingPrompt(transactionId: string): Promise<void> {
 export async function snapLocationToTransaction(data: TransactionPushData): Promise<void> {
   try {
     if (data.type !== 'transaction.created' || !data.transactionId || !data.budgetId) return;
+
+    // A pipeline-created transaction changes what the spend widgets show, and
+    // this runs whether or not the location tagging below succeeds. Not awaited:
+    // location capture is time-sensitive and must not queue behind a redraw.
+    void refreshWidgets(SPEND_SENSITIVE_WIDGETS).catch(() => undefined);
 
     const queueForPrompt = async (reason: string) => {
       console.log(`[location-snap] ${reason}; queueing prompt for ${data.transactionId}`);

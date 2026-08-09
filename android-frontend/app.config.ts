@@ -68,7 +68,57 @@ const config: ExpoConfig = {
     [
       'react-native-android-widget',
       {
+        // Widget `name` must match the switch in
+        // src/features/widgets/widgetTaskHandler.tsx.
+        //
+        // updatePeriodMillis is Android's 30-minute floor throughout, treated as
+        // a fallback: freshness is meant to come from requestWidgetUpdate when
+        // the app knows something changed.
         widgets: [
+          {
+            name: 'Pressure',
+            label: 'Pennywise watch',
+            description: 'Categories running hot or already overspent, ranked by urgency.',
+            minWidth: '250dp',
+            minHeight: '150dp',
+            targetCellWidth: 4,
+            targetCellHeight: 3,
+            resizeMode: 'horizontal|vertical',
+            updatePeriodMillis: 1800000
+          },
+          {
+            name: 'Budget',
+            label: 'Pennywise budget',
+            description: 'Ready to assign this month, with assigned, spent and available.',
+            minWidth: '180dp',
+            minHeight: '110dp',
+            targetCellWidth: 3,
+            targetCellHeight: 2,
+            resizeMode: 'horizontal|vertical',
+            updatePeriodMillis: 1800000
+          },
+          {
+            name: 'Accounts',
+            label: 'Pennywise net worth',
+            description: 'Total balance across open accounts, split into cash and debt.',
+            minWidth: '180dp',
+            minHeight: '110dp',
+            targetCellWidth: 3,
+            targetCellHeight: 2,
+            resizeMode: 'horizontal|vertical',
+            updatePeriodMillis: 1800000
+          },
+          {
+            name: 'Recent',
+            label: 'Pennywise recent transactions',
+            description: 'The latest transactions, scrollable when the widget is made taller.',
+            minWidth: '250dp',
+            minHeight: '150dp',
+            targetCellWidth: 4,
+            targetCellHeight: 3,
+            resizeMode: 'horizontal|vertical',
+            updatePeriodMillis: 1800000
+          },
           {
             name: 'Pipeline',
             label: 'Pennywise ingestion',
@@ -78,9 +128,6 @@ const config: ExpoConfig = {
             targetCellWidth: 3,
             targetCellHeight: 2,
             resizeMode: 'horizontal|vertical',
-            // Android's floor is 30 minutes. Treated as a fallback: the widget is
-            // refreshed on demand via requestWidgetUpdate when the app knows
-            // something changed.
             updatePeriodMillis: 1800000
           }
         ]
