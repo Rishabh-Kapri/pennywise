@@ -156,7 +156,9 @@ class ApiClient {
     return this.handleResponse<T>(res, 'GET', endpoint);
   }
 
-  async post<T>(endpoint: string, data: Partial<T>): Promise<T> {
+  // B defaults to Partial<T> so existing call sites are unchanged; pass it
+  // explicitly when the request body isn't a subset of the response shape
+  async post<T, B = Partial<T>>(endpoint: string, data: B): Promise<T> {
     const res = await fetch(`${this.baseUrl}/${endpoint}`, {
       method: 'POST',
       headers: this.getHeaders(endpoint),
@@ -244,7 +246,9 @@ class ApiClient {
     return URL.createObjectURL(blob);
   }
 
-  async patch<T>(endpoint: string, data: Partial<T>): Promise<T> {
+  // B defaults to Partial<T> so existing call sites are unchanged; pass it
+  // explicitly when the request body isn't a subset of the response shape
+  async patch<T, B = Partial<T>>(endpoint: string, data: B): Promise<T> {
     const res = await fetch(`${this.baseUrl}/${endpoint}`, {
       method: 'PATCH',
       headers: this.getHeaders(endpoint),

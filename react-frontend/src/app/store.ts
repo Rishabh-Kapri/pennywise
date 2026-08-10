@@ -11,6 +11,8 @@ import tags from '@/features/tags/store';
 import agent from '@/features/agent/store';
 import reports from '@/features/reports/store';
 import pipeline from '@/features/pipeline/store';
+import recurring from '@/features/recurring/store';
+import predictionReview from '@/features/predictionReview/store';
 import { apiClient } from '@/utils';
 import {
   budgetUpdateMiddleware,
@@ -32,6 +34,8 @@ export const store = configureStore({
     agent: agent,
     reports: reports,
     pipeline: pipeline,
+    recurring: recurring,
+    predictionReview: predictionReview,
   },
   middleware: (getDefaultMiddleWare) =>
     getDefaultMiddleWare({

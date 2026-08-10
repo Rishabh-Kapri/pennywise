@@ -25,6 +25,10 @@ const LoanOverview = lazy(() =>
 const Payees = lazy(() => import('@/features/payees/components/Payees'));
 const Reports = lazy(() => import('@/features/reports/components/Reports'));
 const Activity = lazy(() => import('@/features/pipeline/components/Activity'));
+const Recurring = lazy(() => import('@/features/recurring/components/Recurring'));
+const PredictionReview = lazy(
+  () => import('@/features/predictionReview/components/PredictionReview'),
+);
 
 function App() {
   return (
@@ -132,6 +136,22 @@ function App() {
               element={
                 <Suspense fallback={<div>Loading...</div>}>
                   <Activity />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/recurring"
+              element={
+                <Suspense fallback={<div>Loading...</div>}>
+                  <Recurring />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/review"
+              element={
+                <Suspense fallback={<div>Loading...</div>}>
+                  <PredictionReview />
                 </Suspense>
               }
             />
