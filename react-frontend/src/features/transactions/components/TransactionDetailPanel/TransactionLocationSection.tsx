@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { CrosshairIcon, MapPinIcon, TrashIcon } from '@phosphor-icons/react';
+import { CrosshairIcon, MagnifyingGlassIcon, MapPinIcon, TrashIcon } from '@phosphor-icons/react';
 import { MapContainer, Marker, TileLayer, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -7,6 +7,7 @@ import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 import { useAppDispatch } from '@/app/hooks';
+import { apiClient } from '@/utils/api';
 import { updateTransactionLocation } from '../../store/transactionSlice';
 import { LocationSource, type Transaction } from '../../types/transaction.types';
 import styles from './TransactionDetailPanel.module.css';
@@ -23,6 +24,8 @@ L.Icon.Default.mergeOptions({
 // fallback map center when picking a pin with no location yet (India)
 const DEFAULT_CENTER: [number, number] = [20.5937, 78.9629];
 
+type PlaceResult = { name: string; lat: number; lng: number };
+
 function PinPicker({ onPick }: { onPick: (lat: number, lng: number) => void }) {
   useMapEvents({
     click(event) {
@@ -38,6 +41,9 @@ export function TransactionLocationSection({ txn }: { txn: Transaction }) {
   const [draftPin, setDraftPin] = useState<[number, number] | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<PlaceResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
   const hasLocation = txn.locationLat != null && txn.locationLng != null;
   const position = useMemo<[number, number] | null>(
@@ -47,16 +53,38 @@ export function TransactionLocationSection({ txn }: { txn: Transaction }) {
 
   if (!txn.id) return null;
 
-  const saveLocation = (lat: number, lng: number) => {
+  // `name` is passed through when it came from a search hit, so the server does
+  // not reverse-geocode a coordinate we were already given a name for.
+  const saveLocation = (lat: number, lng: number, name?: string) => {
     setLocalError(null);
     dispatch(
       updateTransactionLocation({
         id: txn.id!,
-        location: { lat, lng, source: LocationSource.MANUAL },
+        location: { lat, lng, name, source: LocationSource.MANUAL },
       }),
     );
     setIsPicking(false);
     setDraftPin(null);
+    setResults([]);
+    setQuery('');
+  };
+
+  const searchPlaces = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const q = query.trim();
+    if (!q) return;
+    setIsSearching(true);
+    setLocalError(null);
+    try {
+      const found = await apiClient.get<PlaceResult[]>(`geocode/search?q=${encodeURIComponent(q)}`);
+      setResults(Array.isArray(found) ? found : []);
+      if (!found?.length) setLocalError('No places found');
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : 'Search failed');
+      setResults([]);
+    } finally {
+      setIsSearching(false);
+    }
   };
 
   const removeLocation = () => {
@@ -106,6 +134,39 @@ export function TransactionLocationSection({ txn }: { txn: Transaction }) {
           <span className={styles.locationName}>
             {txn.locationName || `${txn.locationLat?.toFixed(5)}, ${txn.locationLng?.toFixed(5)}`}
           </span>
+        </div>
+      )}
+
+      {isPicking && (
+        <div className={styles.locationSearch}>
+          <form onSubmit={searchPlaces} className={styles.locationSearchForm}>
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search a place"
+              className={styles.locationSearchInput}
+            />
+            <button type="submit" className={styles.locationBtnSecondary} disabled={isSearching}>
+              <MagnifyingGlassIcon size={14} />
+              {isSearching ? 'Searching…' : 'Search'}
+            </button>
+          </form>
+          {results.length > 0 && (
+            <ul className={styles.locationResults}>
+              {results.map((place) => (
+                <li key={`${place.lat},${place.lng}`}>
+                  <button
+                    type="button"
+                    className={styles.locationResult}
+                    onClick={() => saveLocation(place.lat, place.lng, place.name)}>
+                    <MapPinIcon size={13} />
+                    <span>{place.name}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 
