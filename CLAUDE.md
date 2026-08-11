@@ -129,6 +129,18 @@ LLM client, streaming deltas to the React panel via Redis.
   then drops whole tool-call groups oldest-first. Groups must stay intact for the same
   `tool_use`/`tool_result` pairing reason as above.
 
+## Navigation
+
+The top `Navbar` is the only mounted nav chrome (`Layout` does not render
+`components/layout/Sidebar`). Keep it to the daily destinations — Home,
+Transactions, Budget, Payees, Reports. Occasional or configuration-adjacent
+screens live as **Settings sections** instead, addressed by
+`/settings?section=<id>` and registered in `SECTIONS` in
+`features/settings/components/Settings.tsx`: loans (`&account=<id>`),
+recurring, activity, review, tags, ai. Their former top-level paths
+(`/loans/:id`, `/activity`, `/recurring`, `/review`) redirect to the matching
+section, so older links keep working.
+
 ## Code Conventions
 
 ### Go (Gin Framework)
@@ -183,6 +195,8 @@ LLM client, streaming deltas to the React panel via Redis.
 | Headless API client (Android background tasks) | `android-frontend/src/utils/headlessApi.ts` |
 | Android home-screen widgets | `android-frontend/src/features/widgets/` |
 | Settings shell + section registry (`/settings?section=`) | `react-frontend/src/features/settings/components/Settings.tsx` |
+| Loans UI (Settings → Loans, `?account=<id>`) | `react-frontend/src/features/loans/` |
+| Pipeline activity UI (Settings → Activity) | `react-frontend/src/features/pipeline/` |
 | Recurring transactions (`/api/recurring-transactions`) | `backend/shared/db/recurringTransaction.go`, `backend/go-pennywise-api/internal/service/recurringTransaction.go` |
 | Recurring transactions UI (Settings → Recurring) | `react-frontend/src/features/recurring/` |
 | Prediction review (`/api/predictions/review`) | `backend/shared/db/predictionReview.go`, `backend/go-pennywise-api/internal/service/predictionReview.go` |
