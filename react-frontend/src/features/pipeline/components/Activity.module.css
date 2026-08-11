@@ -1,9 +1,8 @@
+/* rendered as a Settings section, so no page-level padding or height */
 .page {
-  min-height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
-  padding: 1.5rem;
+  gap: 1rem;
   color: var(--color-text);
 }
 
@@ -14,11 +13,11 @@
   gap: 1rem;
 }
 
-.heading h1 {
+.heading h2 {
   margin: 0;
   color: var(--color-text);
-  font-size: clamp(2rem, 4vw, 3.25rem);
-  letter-spacing: -0.06em;
+  font-size: 1.05rem;
+  font-weight: 600;
 }
 
 .heading p {
