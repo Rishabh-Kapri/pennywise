@@ -442,7 +442,7 @@ export default function Activity() {
       <div className={styles.heading}>
         <div>
           <div className={styles.kicker}>email pipeline</div>
-          <h1>Activity</h1>
+          <h2>Activity</h2>
           <p>
             Transaction emails as they move through fetch, extraction, prediction
             and transaction creation.

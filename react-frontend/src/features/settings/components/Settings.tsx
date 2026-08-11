@@ -2,11 +2,15 @@ import {
   ArrowsClockwise,
   GearSix,
   ListChecks,
+  Money as Banknote,
+  Pulse,
   Robot,
   Tag,
 } from '@phosphor-icons/react';
 import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useAppSelector } from '@/app/hooks';
+import { selectActivePipelineRunCount } from '@/features/pipeline/store';
 import { apiClient } from '@/utils';
 import { GeneralSettings } from './GeneralSettings';
 import { AISettings } from './AISettings';
@@ -17,6 +21,8 @@ const Recurring = lazy(() => import('@/features/recurring/components/Recurring')
 const PredictionReview = lazy(
   () => import('@/features/predictionReview/components/PredictionReview'),
 );
+const LoanOverview = lazy(() => import('@/features/loans/components/LoanOverview'));
+const Activity = lazy(() => import('@/features/pipeline/components/Activity'));
 import styles from './Settings.module.css';
 
 /* ────────────────────────────────────────────────────────────── */
@@ -40,7 +46,7 @@ interface CurrentUser {
   providers: ConnectedProvider[];
 }
 
-type SectionId = 'general' | 'recurring' | 'review' | 'tags' | 'ai';
+type SectionId = 'general' | 'loans' | 'recurring' | 'activity' | 'review' | 'tags' | 'ai';
 
 interface SectionDef {
   id: SectionId;
@@ -57,10 +63,22 @@ const SECTIONS: SectionDef[] = [
     description: 'Providers, account, and preferences',
   },
   {
+    id: 'loans',
+    label: 'Loans',
+    icon: <Banknote size={18} />,
+    description: 'Payoff progress and simulator per loan account',
+  },
+  {
     id: 'recurring',
     label: 'Recurring',
     icon: <ArrowsClockwise size={18} />,
     description: 'Scheduled transactions created automatically',
+  },
+  {
+    id: 'activity',
+    label: 'Activity',
+    icon: <Pulse size={18} />,
+    description: 'Email pipeline runs and retries',
   },
   {
     id: 'review',
@@ -89,27 +107,33 @@ const SECTIONS: SectionDef[] = [
 function SidebarNav({
   active,
   onChange,
+  badges,
 }: {
   active: SectionId;
   onChange: (id: SectionId) => void;
+  badges?: Partial<Record<SectionId, number>>;
 }) {
   return (
     <nav className={styles.sidebar} role="tablist" aria-label="Settings sections">
-      {SECTIONS.map((section) => (
-        <button
-          key={section.id}
-          type="button"
-          role="tab"
-          aria-selected={active === section.id}
-          className={`${styles.navItem} ${active === section.id ? styles.navItemActive : ''}`}
-          onClick={() => onChange(section.id)}>
-          <span className={styles.navIcon}>{section.icon}</span>
-          <span className={styles.navText}>
-            <strong>{section.label}</strong>
-            <span>{section.description}</span>
-          </span>
-        </button>
-      ))}
+      {SECTIONS.map((section) => {
+        const badge = badges?.[section.id];
+        return (
+          <button
+            key={section.id}
+            type="button"
+            role="tab"
+            aria-selected={active === section.id}
+            className={`${styles.navItem} ${active === section.id ? styles.navItemActive : ''}`}
+            onClick={() => onChange(section.id)}>
+            <span className={styles.navIcon}>{section.icon}</span>
+            <span className={styles.navText}>
+              <strong>{section.label}</strong>
+              <span>{section.description}</span>
+            </span>
+            {badge ? <span className={styles.navBadge}>{badge}</span> : null}
+          </button>
+        );
+      })}
     </nav>
   );
 }
@@ -128,9 +152,12 @@ export default function Settings() {
   const sectionParam = searchParams.get('section');
   const activeSection: SectionId = isSectionId(sectionParam) ? sectionParam : 'general';
 
+  // switching sections drops any section-scoped params (e.g. loans' ?account=)
   const handleSectionChange = (id: SectionId) => {
     setSearchParams(id === 'general' ? {} : { section: id }, { replace: true });
   };
+
+  const activeRunCount = useAppSelector(selectActivePipelineRunCount);
 
   useEffect(() => {
     apiClient
@@ -148,13 +175,27 @@ export default function Settings() {
       </div>
 
       <div className={styles.settingsLayout}>
-        <SidebarNav active={activeSection} onChange={handleSectionChange} />
+        <SidebarNav
+          active={activeSection}
+          onChange={handleSectionChange}
+          badges={{ activity: activeRunCount }}
+        />
 
         <div className={styles.sectionContent}>
           {activeSection === 'general' && <GeneralSettings user={user} />}
+          {activeSection === 'loans' && (
+            <Suspense fallback={<div>Loading…</div>}>
+              <LoanOverview />
+            </Suspense>
+          )}
           {activeSection === 'recurring' && (
             <Suspense fallback={<div>Loading…</div>}>
               <Recurring />
+            </Suspense>
+          )}
+          {activeSection === 'activity' && (
+            <Suspense fallback={<div>Loading…</div>}>
+              <Activity />
             </Suspense>
           )}
           {activeSection === 'review' && (

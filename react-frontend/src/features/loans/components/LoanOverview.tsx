@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { Bank as Landmark, Pencil, Plus } from '@phosphor-icons/react';
 import { useAppSelector, useAppDispatch } from '@/app/hooks';
 import { selectLoanAccounts } from '@/features/accounts/store/accountSlice';
@@ -21,8 +21,9 @@ function formatCurrency(value: number): string {
 }
 
 export default function LoanOverview() {
-  const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
+  // rendered as a Settings section, so the selected loan rides on ?account=
+  const [searchParams, setSearchParams] = useSearchParams();
+  const id = searchParams.get('account') ?? undefined;
   const dispatch = useAppDispatch();
   const loanAccounts = useAppSelector(selectLoanAccounts);
   const allMetadata = useAppSelector(selectAllLoanMetadata);
@@ -113,11 +114,9 @@ export default function LoanOverview() {
     };
   }, [selectedAccount, loanMeta]);
 
-  // Navigate to first loan if none selected
-  if (!id && loanAccounts.length > 0 && loanAccounts[0]?.id) {
-    navigate(`/loans/${loanAccounts[0].id}`, { replace: true });
-    return null;
-  }
+  const selectAccount = (accountId: string) => {
+    setSearchParams({ section: 'loans', account: accountId }, { replace: true });
+  };
 
   // Empty state — no loan accounts
   if (loanAccounts.length === 0) {
@@ -158,9 +157,27 @@ export default function LoanOverview() {
 
   return (
     <div className={styles.container}>
+      {/* Account switcher — the sidebar deep-links here, but the section has
+          to stand on its own when opened from Settings */}
+      {loanAccounts.length > 1 && (
+        <div className={styles.accountSwitcher}>
+          {loanAccounts.map((account) => (
+            <button
+              key={account.id}
+              type="button"
+              className={
+                account.id === selectedAccount.id ? styles.accountPillActive : styles.accountPill
+              }
+              onClick={() => account.id && selectAccount(account.id)}>
+              {account.name}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Header */}
       <div className={styles.header}>
-        <h1>{selectedAccount.name}</h1>
+        <h2>{selectedAccount.name}</h2>
         <div className={styles.headerRight}>
           <button className={styles.editBtn} onClick={() => setShowEditForm(true)}>
             <Pencil size={16} /> Edit
