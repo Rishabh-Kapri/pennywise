@@ -337,7 +337,7 @@ export default function Recurring() {
     <div className={styles.container}>
       <div className={styles.header}>
         <div>
-          <h1>Recurring</h1>
+          <h2>Recurring transactions</h2>
           <p className={styles.subtitle}>
             Scheduled transactions are created automatically when they come due.
           </p>
