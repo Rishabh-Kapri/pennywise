@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -190,34 +191,29 @@ func main() {
 	)
 	transactionHandler := handler.NewTransactionHandler(transactionService)
 
-	// Object storage when a bucket is configured, local disk otherwise. Both
-	// implement the same Store interface and use the same relative keys, so
-	// storage_path rows written by either remain resolvable.
+	transactionDocumentRepo := repository.NewTransactionDocumentRepository(dbConn)
+
+	// Document bodies live in Postgres. Local disk stays available for anyone
+	// who wants it, but the default keeps receipts inside the same backup and
+	// the same failure domain as the rows that reference them.
 	var documentStore storage.Store
 	var err error
-	if config.S3Bucket != "" {
-		documentStore, err = storage.NewS3Store(ctx, storage.S3Config{
-			Endpoint:     config.S3Endpoint,
-			Bucket:       config.S3Bucket,
-			AccessKey:    config.S3AccessKey,
-			SecretKey:    config.S3SecretKey,
-			Region:       config.S3Region,
-			UsePathStyle: config.S3UsePathStyle,
-		})
-		if err != nil {
-			logger.Logger(ctx).Error("failed to init bucket storage", "error", err)
-			panic(err)
-		}
-		logger.Logger(ctx).Info("documents stored in bucket", "bucket", config.S3Bucket)
-	} else {
+	if strings.EqualFold(config.DocumentStorage, "local") {
 		documentStore, err = storage.NewLocalStore(config.UploadsDir)
 		if err != nil {
 			logger.Logger(ctx).Error("failed to init uploads storage", "error", err)
 			panic(err)
 		}
 		logger.Logger(ctx).Info("documents stored on local disk", "dir", config.UploadsDir)
+	} else {
+		documentStore, err = storage.NewPostgresStore(dbConn)
+		if err != nil {
+			logger.Logger(ctx).Error("failed to init document storage", "error", err)
+			panic(err)
+		}
+		logger.Logger(ctx).Info("documents stored in postgres")
 	}
-	transactionDocumentRepo := repository.NewTransactionDocumentRepository(dbConn)
+
 	documentService := service.NewDocumentService(transactionDocumentRepo, transactionRepo, payeeRepo, documentStore)
 	documentHandler := handler.NewDocumentHandler(documentService)
 

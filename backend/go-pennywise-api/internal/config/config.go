@@ -2,7 +2,6 @@ package config
 
 import (
 	"os"
-	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -28,15 +27,7 @@ type Config struct {
 	DemoMode              bool
 	NominatimURL          string
 	GeocodeCountryCodes   string
-	// S3-compatible object storage for receipts. On Railway these come from the
-	// bucket's Credentials tab. When the bucket is unset the API falls back to
-	// UploadsDir on local disk.
-	S3Endpoint     string
-	S3Bucket       string
-	S3AccessKey    string
-	S3SecretKey    string
-	S3Region       string
-	S3UsePathStyle bool
+	DocumentStorage       string
 	UploadsDir            string
 	ExpoPushURL           string
 }
@@ -74,13 +65,8 @@ func Load() Config {
 		// reverse geocoding (empty = public OSM Nominatim)
 		NominatimURL:        os.Getenv("NOMINATIM_URL"),
 		GeocodeCountryCodes: os.Getenv("GEOCODE_COUNTRY_CODES"),
-		S3Endpoint:          os.Getenv("AWS_ENDPOINT_URL"),
-		S3Bucket:            os.Getenv("AWS_S3_BUCKET_NAME"),
-		S3AccessKey:         os.Getenv("AWS_ACCESS_KEY_ID"),
-		S3SecretKey:         os.Getenv("AWS_SECRET_ACCESS_KEY"),
-		S3Region:            os.Getenv("AWS_DEFAULT_REGION"),
-		// Railway serves virtual-hosted style; set "path" only for MinIO and friends.
-		S3UsePathStyle: strings.EqualFold(os.Getenv("AWS_S3_URL_STYLE"), "path"),
+		// "local" keeps the old on-disk behaviour; anything else uses Postgres.
+		DocumentStorage: os.Getenv("DOCUMENT_STORAGE"),
 
 		UploadsDir: uploadsDir(),
 
