@@ -26,6 +26,7 @@ type Config struct {
 	TemporalServerPort    string
 	DemoMode              bool
 	NominatimURL          string
+	GeocodeCountryCodes   string
 	UploadsDir            string
 	ExpoPushURL           string
 }
@@ -61,7 +62,8 @@ func Load() Config {
 		DemoMode: os.Getenv("DEMO_MODE") == "true",
 
 		// reverse geocoding (empty = public OSM Nominatim)
-		NominatimURL: os.Getenv("NOMINATIM_URL"),
+		NominatimURL:        os.Getenv("NOMINATIM_URL"),
+		GeocodeCountryCodes: os.Getenv("GEOCODE_COUNTRY_CODES"),
 
 		UploadsDir: uploadsDir(),
 

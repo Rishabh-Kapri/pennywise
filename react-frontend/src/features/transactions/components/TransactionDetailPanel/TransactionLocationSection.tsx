@@ -86,7 +86,13 @@ export function TransactionLocationSection({ txn }: { txn: Transaction }) {
     setIsSearching(true);
     setLocalError(null);
     try {
-      const found = await apiClient.get<PlaceResult[]>(`geocode/search?q=${encodeURIComponent(q)}`);
+      // Bias to wherever the map already is, so a local branch outranks a
+      // namesake in another city.
+      const anchor = draftPin ?? position;
+      const near = anchor ? `&lat=${anchor[0]}&lng=${anchor[1]}` : '';
+      const found = await apiClient.get<PlaceResult[]>(
+        `geocode/search?q=${encodeURIComponent(q)}${near}`,
+      );
       setResults(Array.isArray(found) ? found : []);
       if (!found?.length) setLocalError('No places found');
     } catch (err) {
