@@ -26,6 +26,16 @@ const DEFAULT_CENTER: [number, number] = [20.5937, 78.9629];
 
 type PlaceResult = { name: string; lat: number; lng: number };
 
+// Overridable so a blocked or poor basemap is an env change rather than a
+// release. OSM's volunteer tile servers require a Referer and are explicitly
+// not intended for application traffic; MapTiler and Mapbox free tiers take a
+// key in the URL and are far more dependable.
+const TILE_URL =
+  import.meta.env.VITE_MAP_TILE_URL || 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+const TILE_ATTRIBUTION =
+  import.meta.env.VITE_MAP_TILE_ATTRIBUTION ||
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+
 function PinPicker({ onPick }: { onPick: (lat: number, lng: number) => void }) {
   useMapEvents({
     click(event) {
@@ -76,7 +86,13 @@ export function TransactionLocationSection({ txn }: { txn: Transaction }) {
     setIsSearching(true);
     setLocalError(null);
     try {
-      const found = await apiClient.get<PlaceResult[]>(`geocode/search?q=${encodeURIComponent(q)}`);
+      // Bias to wherever the map already is, so a local branch outranks a
+      // namesake in another city.
+      const anchor = draftPin ?? position;
+      const near = anchor ? `&lat=${anchor[0]}&lng=${anchor[1]}` : '';
+      const found = await apiClient.get<PlaceResult[]>(
+        `geocode/search?q=${encodeURIComponent(q)}${near}`,
+      );
       setResults(Array.isArray(found) ? found : []);
       if (!found?.length) setLocalError('No places found');
     } catch (err) {
@@ -178,10 +194,7 @@ export function TransactionLocationSection({ txn }: { txn: Transaction }) {
             zoom={hasLocation || draftPin ? 16 : 5}
             className={styles.locationMap}
             scrollWheelZoom={false}>
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
+            <TileLayer attribution={TILE_ATTRIBUTION} url={TILE_URL} />
             {markerPosition && <Marker position={markerPosition} />}
             {isPicking && <PinPicker onPick={(lat, lng) => setDraftPin([lat, lng])} />}
           </MapContainer>

@@ -19,6 +19,25 @@ type PlaceResult = {
 const DEFAULT_CENTER: Coords = { lat: 20.5937, lng: 78.9629 };
 
 /**
+ * A WebView fed raw HTML has an `about:blank` origin and sends no Referer, which
+ * OSM's tile policy rejects outright ("Referer is required"). Giving the
+ * document a baseUrl gives it an origin, so tiles load. The host does not need
+ * to resolve -- it only has to exist as an origin.
+ */
+const WEBVIEW_BASE_URL = 'https://pennywise.local/';
+
+/**
+ * Tile source, overridable so a blocked or poor basemap is an env change rather
+ * than a release. OSM's volunteer servers are rate-limited and explicitly not
+ * for app traffic; MapTiler and Mapbox free tiers take a key in the URL and are
+ * far more dependable.
+ */
+const TILE_URL =
+  process.env.EXPO_PUBLIC_MAP_TILE_URL ||
+  'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+const TILE_ATTRIBUTION = process.env.EXPO_PUBLIC_MAP_TILE_ATTRIBUTION || '&copy; OpenStreetMap &copy; CARTO';
+
+/**
  * Leaflet in a WebView rather than a native map module.
  *
  * Keeps the app free of a Google Maps API key and matches the web app's tiles
@@ -45,10 +64,20 @@ function buildHtml(center: Coords, hasPin: boolean): string {
     var map = L.map('map', { zoomControl: true, attributionControl: true })
       .setView([${center.lat}, ${center.lng}], ${hasPin ? 16 : 5});
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    var tiles = L.tileLayer('${TILE_URL}', {
       maxZoom: 19,
-      attribution: '&copy; OpenStreetMap &copy; CARTO'
+      attribution: '${TILE_ATTRIBUTION}'
     }).addTo(map);
+
+    // A blocked or throttled tile server otherwise just leaves a dark rectangle,
+    // which is indistinguishable from a broken app. Say so instead.
+    var failures = 0;
+    tiles.on('tileerror', function () {
+      failures++;
+      if (failures === 4) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'tileerror' }));
+      }
+    });
 
     var marker = ${hasPin} ? L.marker([${center.lat}, ${center.lng}]).addTo(map) : null;
 
@@ -106,6 +135,10 @@ export function LocationPickerModal({
   const onMessage = useCallback((event: WebViewMessageEvent) => {
     try {
       const data = JSON.parse(event.nativeEvent.data) as { type: string; lat: number; lng: number };
+      if (data.type === 'tileerror') {
+        setError('Map tiles failed to load. You can still drop a pin, or search instead.');
+        return;
+      }
       if (data.type !== 'pick') return;
       setPin({ lat: data.lat, lng: data.lng });
       // A tap on the map is a new place, so any name from a previous search
@@ -122,7 +155,13 @@ export function LocationPickerModal({
     setIsSearching(true);
     setError(null);
     try {
-      const found = await apiClient.get<PlaceResult[]>(`geocode/search?q=${encodeURIComponent(q)}`);
+      // Bias to wherever the map already is, so a local branch outranks a
+      // namesake in another city.
+      const anchor = pin ?? initial;
+      const near = anchor ? `&lat=${anchor.lat}&lng=${anchor.lng}` : '';
+      const found = await apiClient.get<PlaceResult[]>(
+        `geocode/search?q=${encodeURIComponent(q)}${near}`
+      );
       setResults(Array.isArray(found) ? found : []);
       if (!found?.length) setError('No places found');
     } catch (err) {
@@ -192,7 +231,7 @@ export function LocationPickerModal({
         <View style={styles.mapWrap}>
           <WebView
             ref={webRef}
-            source={{ html }}
+            source={{ html, baseUrl: WEBVIEW_BASE_URL }}
             originWhitelist={['*']}
             onMessage={onMessage}
             style={styles.map}
