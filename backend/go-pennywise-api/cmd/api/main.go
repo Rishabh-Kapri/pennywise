@@ -173,7 +173,7 @@ func main() {
 	agentService := service.NewAgentService(agentClient, agentRepo)
 	agentHandler := handler.NewAgentHandler(agentService)
 
-	geocodeService := service.NewGeocodeService(config.NominatimURL)
+	geocodeService := service.NewGeocodeService(config.NominatimURL, config.GeocodeCountryCodes)
 	transactionService := service.NewTransactionService(
 		transactionRepo,
 		budgetRepo,

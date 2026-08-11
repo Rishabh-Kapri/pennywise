@@ -280,6 +280,25 @@ Things that are not obvious:
 state machine, error and signed-out degradation, and the retry fan-out. The
 layout components themselves are only verifiable on a device.
 
+## Maps and geocoding
+
+The location picker runs Leaflet inside a WebView (`LocationPickerModal`), not a
+native map module, so the app needs no Google Maps key.
+
+Two things that are easy to get wrong:
+
+- A WebView given raw HTML has an `about:blank` origin and sends **no Referer**.
+  OSM's tile policy rejects that outright, and the failure looks like a dark
+  rectangle rather than an error. `source` must set `baseUrl`.
+- OSM's volunteer tile servers are explicitly not for app traffic. The tile URL
+  is read from `EXPO_PUBLIC_MAP_TILE_URL` (and `EXPO_PUBLIC_MAP_TILE_ATTRIBUTION`)
+  so moving to MapTiler, Mapbox or another keyed provider is an env change, not a
+  release. The web app has the matching `VITE_MAP_TILE_URL`.
+
+Place search goes through `GET /api/geocode/search`, never to Nominatim
+directly: the API enforces the 1 req/s policy in one place and sets the
+identifying User-Agent, which a browser cannot.
+
 ## Push notifications (FCM)
 
 Android push needs Firebase credentials. `google-services.json` (Firebase console →
