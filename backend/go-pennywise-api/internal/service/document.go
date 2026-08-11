@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"regexp"
 	"io"
+	"path"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -44,17 +46,91 @@ type DocumentService interface {
 }
 
 type documentService struct {
-	repo    repository.TransactionDocumentRepository
-	txnRepo repository.TransactionRepository
-	store   storage.Store
+	repo      repository.TransactionDocumentRepository
+	txnRepo   repository.TransactionRepository
+	payeeRepo repository.PayeesRepository
+	store     storage.Store
 }
 
 func NewDocumentService(
 	repo repository.TransactionDocumentRepository,
 	txnRepo repository.TransactionRepository,
+	payeeRepo repository.PayeesRepository,
 	store storage.Store,
 ) DocumentService {
-	return &documentService{repo: repo, txnRepo: txnRepo, store: store}
+	return &documentService{repo: repo, txnRepo: txnRepo, payeeRepo: payeeRepo, store: store}
+}
+
+// nonAlphanumeric strips everything that would make a filename awkward to read
+// or to handle in a shell or bucket browser. Case is preserved.
+var nonAlphanumeric = regexp.MustCompile(`[^a-zA-Z0-9]+`)
+
+// documentBaseName builds "<Payee>_<YYYYMMDD>-<n>" for a transaction's nth
+// document, e.g. "McDonalds_20260819-1".
+//
+// The index is always present, even for the first document. Numbering only on
+// the second upload would mean renaming the first one retroactively, which
+// would invalidate a storage key already written to the row.
+func (s *documentService) documentBaseName(
+	ctx context.Context,
+	budgetId uuid.UUID,
+	txn *model.Transaction,
+	index int,
+) string {
+	payeeName := ""
+	if txn != nil && txn.PayeeID != nil {
+		if found, err := s.payeeRepo.GetById(ctx, budgetId, *txn.PayeeID); err == nil && found != nil {
+			payeeName = found.Name
+		}
+	}
+
+	txnDate := ""
+	if txn != nil {
+		txnDate = string(txn.Date)
+	}
+	return formatDocumentName(payeeName, txnDate, index)
+}
+
+// formatDocumentName produces "<Payee>_<YYYYMMDD>-<n>", e.g. "McDonalds_20260819-1".
+//
+// Falls back to "Receipt" for an unknown payee and to today for an unparseable
+// date, so a name is always produced -- a missing payee should not block an
+// upload.
+func formatDocumentName(payeeName string, txnDate string, index int) string {
+	payee := nonAlphanumeric.ReplaceAllString(payeeName, "")
+	if payee == "" {
+		payee = "Receipt"
+	}
+
+	// Transaction date, not upload date: a receipt belongs to when the money
+	// moved, which is what someone browsing the bucket is looking for.
+	date := time.Now().Format("20060102")
+	if parsed, err := time.Parse("2006-01-02", txnDate); err == nil {
+		date = parsed.Format("20060102")
+	} else if parsed, err := time.Parse(time.RFC3339, txnDate); err == nil {
+		date = parsed.Format("20060102")
+	}
+
+	if index < 1 {
+		index = 1
+	}
+	return fmt.Sprintf("%s_%s-%d", payee, date, index)
+}
+
+// nextDocumentIndex is the 1-based position of the document about to be added.
+// Counting rather than tracking a sequence can collide if two uploads race;
+// the storage key is scoped per transaction so a collision would overwrite
+// within one transaction only, which is an acceptable trade for readable names.
+func (s *documentService) nextDocumentIndex(
+	ctx context.Context,
+	budgetId uuid.UUID,
+	transactionId uuid.UUID,
+) int {
+	existing, err := s.repo.GetByTransactionId(ctx, budgetId, transactionId)
+	if err != nil {
+		return 1
+	}
+	return len(existing) + 1
 }
 
 // detectMimeType sniffs the leading bytes; extension is never trusted.
@@ -82,7 +158,8 @@ func (s *documentService) Upload(
 	budgetId := utils.MustBudgetID(ctx)
 
 	// ensure the transaction exists in this budget before accepting bytes
-	if _, err := s.txnRepo.GetById(ctx, budgetId, transactionId); err != nil {
+	txn, err := s.txnRepo.GetById(ctx, budgetId, transactionId)
+	if err != nil {
 		return nil, errs.Wrap(errs.CodeTransactionLookupFailed, "transaction not found", err)
 	}
 
@@ -107,18 +184,21 @@ func (s *documentService) Upload(
 	}
 
 	docId := uuid.New()
+	baseName := s.documentBaseName(ctx, budgetId, txn, s.nextDocumentIndex(ctx, budgetId, transactionId))
+	// Key is scoped per transaction so two transactions with the same payee on
+	// the same day cannot collide on "<Payee>_<date>-1".
 	relPath, err := s.store.Save(
-		budgetId.String(),
-		docId.String()+ext,
+		path.Join(budgetId.String(), transactionId.String()),
+		baseName+ext,
 		io.MultiReader(strings.NewReader(string(head)), body),
 	)
 	if err != nil {
 		return nil, errs.Wrap(errs.CodeInternalError, "error storing file", err)
 	}
 
-	if fileName == "" {
-		fileName = docId.String() + ext
-	}
+	// The stored name is also what the browser sees on download, so the
+	// client-supplied name is deliberately discarded.
+	fileName = baseName + ext
 
 	sizeBytes, err := s.storedSize(relPath)
 	if err != nil {
@@ -157,7 +237,8 @@ func (s *documentService) UploadScan(
 	if len(pages) > MaxScanPages {
 		return nil, errs.New(errs.CodeInvalidArgument, "a scan can have at most %d pages", MaxScanPages)
 	}
-	if _, err := s.txnRepo.GetById(ctx, budgetId, transactionId); err != nil {
+	txn, err := s.txnRepo.GetById(ctx, budgetId, transactionId)
+	if err != nil {
 		return nil, errs.Wrap(errs.CodeTransactionLookupFailed, "transaction not found", err)
 	}
 
@@ -184,7 +265,12 @@ func (s *documentService) UploadScan(
 	}
 
 	docId := uuid.New()
-	relPath, err := s.store.Save(budgetId.String(), docId.String()+".pdf", bytes.NewReader(pdfBytes))
+	baseName := s.documentBaseName(ctx, budgetId, txn, s.nextDocumentIndex(ctx, budgetId, transactionId))
+	relPath, err := s.store.Save(
+		path.Join(budgetId.String(), transactionId.String()),
+		baseName+".pdf",
+		bytes.NewReader(pdfBytes),
+	)
 	if err != nil {
 		return nil, errs.Wrap(errs.CodeInternalError, "error storing scan", err)
 	}
@@ -193,7 +279,7 @@ func (s *documentService) UploadScan(
 		ID:            docId,
 		BudgetID:      budgetId,
 		TransactionID: transactionId,
-		FileName:      fmt.Sprintf("scan-%s.pdf", time.Now().Format("20060102-150405")),
+		FileName:      baseName + ".pdf",
 		MimeType:      "application/pdf",
 		SizeBytes:     int64(len(pdfBytes)),
 		StoragePath:   relPath,
