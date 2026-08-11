@@ -34,7 +34,16 @@ func (h *geocodeHandler) Search(c *gin.Context) {
 	}
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "5"))
 
-	results, err := h.service.Search(ctx, query, limit)
+	// Optional proximity bias. Both must parse, or the hint is simply ignored --
+	// a malformed coordinate should not fail an otherwise valid search.
+	var near *service.Coords
+	lat, latErr := strconv.ParseFloat(c.Query("lat"), 64)
+	lng, lngErr := strconv.ParseFloat(c.Query("lng"), 64)
+	if latErr == nil && lngErr == nil {
+		near = &service.Coords{Lat: lat, Lng: lng}
+	}
+
+	results, err := h.service.Search(ctx, query, limit, near)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return

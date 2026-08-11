@@ -155,7 +155,13 @@ export function LocationPickerModal({
     setIsSearching(true);
     setError(null);
     try {
-      const found = await apiClient.get<PlaceResult[]>(`geocode/search?q=${encodeURIComponent(q)}`);
+      // Bias to wherever the map already is, so a local branch outranks a
+      // namesake in another city.
+      const anchor = pin ?? initial;
+      const near = anchor ? `&lat=${anchor.lat}&lng=${anchor.lng}` : '';
+      const found = await apiClient.get<PlaceResult[]>(
+        `geocode/search?q=${encodeURIComponent(q)}${near}`
+      );
       setResults(Array.isArray(found) ? found : []);
       if (!found?.length) setError('No places found');
     } catch (err) {

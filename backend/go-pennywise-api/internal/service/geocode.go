@@ -19,7 +19,14 @@ import (
 // which allows at most 1 request/second and requires an identifying User-Agent).
 type GeocodeService interface {
 	Reverse(ctx context.Context, lat float64, lng float64) (string, error)
-	Search(ctx context.Context, query string, limit int) ([]PlaceResult, error)
+	Search(ctx context.Context, query string, limit int, near *Coords) ([]PlaceResult, error)
+}
+
+// Coords biases a search toward somewhere the caller already cares about --
+// the pin being moved, or the device's current position.
+type Coords struct {
+	Lat float64
+	Lng float64
 }
 
 // PlaceResult is one forward-geocoding hit: somewhere the user can pick.
@@ -31,6 +38,11 @@ type PlaceResult struct {
 
 const geocodeSearchMaxLimit = 8
 
+// Half-width of the proximity viewbox, in degrees. ~0.75deg is roughly 80km at
+// Indian latitudes: wide enough to cover a metro and its outskirts, tight
+// enough that a local branch outranks a namesake in another city.
+const geocodeViewboxDegrees = 0.75
+
 const (
 	geocodeUserAgent    = "pennywise/1.0 (self-hosted personal finance app)"
 	geocodeCacheMaxSize = 512
@@ -38,8 +50,11 @@ const (
 )
 
 type geocodeService struct {
-	baseURL    string
-	httpClient *http.Client
+	baseURL string
+	// Optional ISO country filter (GEOCODE_COUNTRY_CODES, e.g. "in"). Cuts the
+	// long tail of same-named places on other continents.
+	countryCodes string
+	httpClient   *http.Client
 
 	mu       sync.Mutex
 	lastCall time.Time
@@ -47,14 +62,15 @@ type geocodeService struct {
 	cache map[string]string
 }
 
-func NewGeocodeService(baseURL string) GeocodeService {
+func NewGeocodeService(baseURL string, countryCodes string) GeocodeService {
 	if baseURL == "" {
 		baseURL = "https://nominatim.openstreetmap.org"
 	}
 	return &geocodeService{
-		baseURL:    baseURL,
-		httpClient: &http.Client{Timeout: 5 * time.Second},
-		cache:      map[string]string{},
+		baseURL:      baseURL,
+		countryCodes: strings.TrimSpace(countryCodes),
+		httpClient:   &http.Client{Timeout: 5 * time.Second},
+		cache:        map[string]string{},
 	}
 }
 
@@ -90,7 +106,7 @@ func (s *geocodeService) throttle() {
 // Deliberately uncached: reverse lookups are cacheable because a coordinate's
 // place name does not change, whereas search text is open-ended and would fill
 // the cache with single-use keys.
-func (s *geocodeService) Search(ctx context.Context, query string, limit int) ([]PlaceResult, error) {
+func (s *geocodeService) Search(ctx context.Context, query string, limit int, near *Coords) ([]PlaceResult, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return nil, errs.New(errs.CodeInvalidArgument, "search query is required")
@@ -101,12 +117,31 @@ func (s *geocodeService) Search(ctx context.Context, query string, limit int) ([
 
 	s.throttle()
 
-	reqURL := fmt.Sprintf(
-		"%s/search?format=jsonv2&q=%s&limit=%d&addressdetails=0",
-		s.baseURL,
-		url.QueryEscape(query),
-		limit,
-	)
+	params := url.Values{}
+	params.Set("format", "jsonv2")
+	params.Set("q", query)
+	params.Set("limit", strconv.Itoa(limit))
+	params.Set("addressdetails", "0")
+	// Collapse the near-duplicate rows Nominatim returns for large features.
+	params.Set("dedupe", "1")
+
+	// Proximity bias is the single biggest lever on result quality here. Without
+	// it "blue tokai" is ranked globally; with it, the branch down the road wins.
+	// bounded=0 keeps this a preference rather than a filter, so a search for
+	// somewhere genuinely far away still returns it.
+	if near != nil {
+		params.Set("viewbox", fmt.Sprintf(
+			"%f,%f,%f,%f",
+			near.Lng-geocodeViewboxDegrees, near.Lat-geocodeViewboxDegrees,
+			near.Lng+geocodeViewboxDegrees, near.Lat+geocodeViewboxDegrees,
+		))
+		params.Set("bounded", "0")
+	}
+	if s.countryCodes != "" {
+		params.Set("countrycodes", s.countryCodes)
+	}
+
+	reqURL := s.baseURL + "/search?" + params.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, errs.Wrap(errs.CodeInternalError, "error creating geocode search request", err)
