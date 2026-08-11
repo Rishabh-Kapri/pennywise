@@ -205,6 +205,7 @@ func main() {
 		apiClient.NewExpoPushClient(config.ExpoPushURL),
 	)
 	deviceHandler := handler.NewDeviceHandler(pushNotificationService)
+	geocodeHandler := handler.NewGeocodeHandler(geocodeService)
 
 	categoryService := service.NewCategoryService(categoryRepo, monthlyBudgetRepo, transactionRepo)
 	categoryHandler := handler.NewCategoryHandler(categoryService)
@@ -311,6 +312,16 @@ func main() {
 				"/push-token",
 				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
 				deviceHandler.UnregisterPushToken,
+			)
+		}
+		{
+			// No budget middleware: place lookup is not budget-scoped data.
+			geocodeGroup := router.Group("/api/geocode")
+			geocodeGroup.Use(authMiddleware, rateLimitMiddleware)
+			geocodeGroup.GET(
+				"/search",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				geocodeHandler.Search,
 			)
 		}
 		{

@@ -3,6 +3,7 @@ import { Linking, Pressable, StyleSheet, View } from 'react-native';
 import { Crosshair, MapPin, Trash2 } from 'lucide-react-native';
 import * as Location from 'expo-location';
 import { AppText } from '../../../components/AppText';
+import { LocationPickerModal } from './LocationPickerModal';
 import { colors, radii, spacing } from '../../../theme';
 import { useAppDispatch } from '../../../app/hooks';
 import { updateTransactionLocation } from '../store/transactionSlice';
@@ -42,6 +43,7 @@ export function TransactionLocationRow({
 }) {
   const dispatch = useAppDispatch();
   const [isLocating, setIsLocating] = useState(false);
+  const [isPicking, setIsPicking] = useState(false);
 
   const hasLocation = location.lat != null && location.lng != null;
 
@@ -63,6 +65,14 @@ export function TransactionLocationRow({
     setIsLocating(false);
     if (!coords) return;
     apply({ lat: coords.lat, lng: coords.lng, name: null, source: LocationSource.MANUAL });
+  };
+
+  // A pin the user placed deliberately is manual, whatever put it there before.
+  // A name carried over from a search result is kept so the server does not need
+  // to reverse-geocode a coordinate it was already given a name for.
+  const applyPickedPin = (coords: { lat: number; lng: number }, name: string | null) => {
+    setIsPicking(false);
+    apply({ lat: coords.lat, lng: coords.lng, name, source: LocationSource.MANUAL });
   };
 
   const openInMaps = () => {
@@ -102,6 +112,10 @@ export function TransactionLocationRow({
             {isLocating ? 'Locating…' : hasLocation ? 'Update' : 'Use current location'}
           </AppText>
         </Pressable>
+        <Pressable style={styles.actionBtn} onPress={() => setIsPicking(true)}>
+          <MapPin size={16} color={colors.text} />
+          <AppText weight="medium">{hasLocation ? 'Move pin' : 'Pick on map'}</AppText>
+        </Pressable>
         {hasLocation && (
           <Pressable
             style={[styles.actionBtn, styles.actionBtnDanger]}
@@ -119,6 +133,15 @@ export function TransactionLocationRow({
           </View>
         )}
       </View>
+
+      {isPicking && (
+        <LocationPickerModal
+          visible={isPicking}
+          initial={hasLocation ? { lat: location.lat as number, lng: location.lng as number } : null}
+          onClose={() => setIsPicking(false)}
+          onPick={applyPickedPin}
+        />
+      )}
     </View>
   );
 }
