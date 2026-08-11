@@ -1,6 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import styles from './Sidebar.module.css';
-import { Money as Banknote, ChartPie, CurrencyCircleDollar as CircleDollarSign, FileText, Bank as Landmark, PiggyBank, Pulse, Wallet as WalletCards, Lock, SidebarSimple as PanelLeftClose } from '@phosphor-icons/react';
+import { Money as Banknote, ChartPie, CurrencyCircleDollar as CircleDollarSign, FileText, Bank as Landmark, PiggyBank, Wallet as WalletCards, Lock, SidebarSimple as PanelLeftClose } from '@phosphor-icons/react';
 import type { IconProps } from '@phosphor-icons/react';
 import { useAppSelector } from '@/app/hooks';
 import {
@@ -13,7 +13,6 @@ import {
   type ReactElement,
 } from 'react';
 import { getCurrencyLocaleString } from '@/utils/date.utils';
-import { selectActivePipelineRunCount } from '@/features/pipeline/store';
 import { Tooltip } from '@heroui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@heroui/popover';
 
@@ -46,7 +45,6 @@ function renderIcon(icon: IconElement | undefined, isSelected: boolean) {
 
 export default function Sidebar({ isMobileOpen = false, onNavigate }: SidebarProps) {
   const location = useLocation();
-  const activePipelineRunCount = useAppSelector(selectActivePipelineRunCount);
   const navItems: NavItem[] = useMemo(
     () => [
       {
@@ -73,17 +71,8 @@ export default function Sidebar({ isMobileOpen = false, onNavigate }: SidebarPro
         label: 'All Accounts',
         icon: <Landmark strokeWidth={1.5} />,
       },
-      {
-        path: '/activity',
-        key: 'activity',
-        label: 'Activity',
-        icon: <Pulse strokeWidth={1.5} />,
-        ...(activePipelineRunCount > 0
-          ? { meta: { balance: String(activePipelineRunCount) } }
-          : {}),
-      },
     ],
-    [activePipelineRunCount],
+    [],
   );
   const [dynamicNavItems, setDynamicNavItems] = useState<NavItem[]>([]);
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -181,7 +170,7 @@ export default function Sidebar({ isMobileOpen = false, onNavigate }: SidebarPro
     }
     if (loanAccounts.length > 0) {
       const navItem = getNavItem(
-        '/loans',
+        '/settings?section=loans',
         'loan-accounts',
         'Loan Accounts',
         {
@@ -198,7 +187,7 @@ export default function Sidebar({ isMobileOpen = false, onNavigate }: SidebarPro
       );
       navItem.children = loanAccounts.map((acc) =>
         getNavItem(
-          `/loans/${acc.id}`,
+          `/settings?section=loans&account=${acc.id}`,
           `loan-account-${acc.id}`,
           acc.name,
           { balance: getCurrencyLocaleString(Math.abs(acc.balance ?? 0)) },
@@ -253,15 +242,20 @@ export default function Sidebar({ isMobileOpen = false, onNavigate }: SidebarPro
     );
   };
 
+  // Some entries (loan accounts) point at a Settings section via a query
+  // string, which NavLink's own isActive ignores — match on path+search there.
+  const currentUrl = `${location.pathname}${location.search}`;
+  const isPathActive = (path: string) =>
+    path.includes('?')
+      ? currentUrl === path
+      : location.pathname === path || location.pathname.startsWith(`${path}/`);
+
   const isDynamicItemSelected = (item: NavItem) => {
-    if (
-      item.path &&
-      (location.pathname === item.path || location.pathname.startsWith(`${item.path}/`))
-    ) {
+    if (item.path && isPathActive(item.path)) {
       return true;
     }
 
-    return item.children?.some((child) => child.path === location.pathname) ?? false;
+    return item.children?.some((child) => isPathActive(child.path)) ?? false;
   };
 
   return (
@@ -296,17 +290,15 @@ export default function Sidebar({ isMobileOpen = false, onNavigate }: SidebarPro
             <NavLink
               to={item.path}
               onClick={onNavigate}
-              className={({ isActive }) =>
-                isActive ? `${styles.active} ${styles.navItem}` : styles.navItem
+              className={
+                isPathActive(item.path)
+                  ? `${styles.active} ${styles.navItem}`
+                  : styles.navItem
               }>
-              {({ isActive }) => (
-                <>
-                  {renderIcon(item.icon, isActive)}
-                  <span className={styles.label}>{item.label}</span>
-                  {item.meta && (
-                    <span className={styles.meta}>{item.meta.balance}</span>
-                  )}
-                </>
+              {renderIcon(item.icon, isPathActive(item.path))}
+              <span className={styles.label}>{item.label}</span>
+              {item.meta && (
+                <span className={styles.meta}>{item.meta.balance}</span>
               )}
             </NavLink>
           </Tooltip>
@@ -380,39 +372,38 @@ export default function Sidebar({ isMobileOpen = false, onNavigate }: SidebarPro
 
             {!item.isCollapsed && !isEffectivelyCollapsed && (
               <div className={styles.childContainer}>
-                {item?.children?.map((child) => (
-                  <Tooltip
-                    key={child.key}
-                    content={child.label}
-                    placement="right"
-                    isDisabled={!isEffectivelyCollapsed}
-                    classNames={{
-                      content: styles.tooltipContent,
-                    }}>
-                    <NavLink
-                      to={child.path}
-                      onClick={onNavigate}
-                      className={({ isActive }) =>
-                        isActive
-                          ? `${styles.navItem} ${styles.active}`
-                          : styles.navItem
-                      }>
-                      {({ isActive }) => (
-                        <>
-                          {renderIcon(child.icon, isActive)}
-                          <span className={`${styles.label} ${styles.truncate}`}>
-                            {child.label}
+                {item?.children?.map((child) => {
+                  const childActive = isPathActive(child.path);
+                  return (
+                    <Tooltip
+                      key={child.key}
+                      content={child.label}
+                      placement="right"
+                      isDisabled={!isEffectivelyCollapsed}
+                      classNames={{
+                        content: styles.tooltipContent,
+                      }}>
+                      <NavLink
+                        to={child.path}
+                        onClick={onNavigate}
+                        className={
+                          childActive
+                            ? `${styles.navItem} ${styles.active}`
+                            : styles.navItem
+                        }>
+                        {renderIcon(child.icon, childActive)}
+                        <span className={`${styles.label} ${styles.truncate}`}>
+                          {child.label}
+                        </span>
+                        {child.meta && (
+                          <span className={`${styles.meta} ${styles.truncate}`}>
+                            {child.meta.balance}
                           </span>
-                          {child.meta && (
-                            <span className={`${styles.meta} ${styles.truncate}`}>
-                              {child.meta.balance}
-                            </span>
-                          )}
-                        </>
-                      )}
-                    </NavLink>
-                  </Tooltip>
-                ))}
+                        )}
+                      </NavLink>
+                    </Tooltip>
+                  );
+                })}
               </div>
             )}
             </Fragment>

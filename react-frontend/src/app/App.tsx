@@ -1,6 +1,6 @@
 import { Provider } from 'react-redux';
 import { store } from './store';
-import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import '../styles/index.css';
 import { Layout } from '@/components/layout';
 import { lazy, Suspense } from 'react';
@@ -19,12 +19,15 @@ const Transaction = lazy(() =>
     default: module.Transaction,
   })),
 );
-const LoanOverview = lazy(() =>
-  import('@/features/loans/components/LoanOverview'),
-);
 const Payees = lazy(() => import('@/features/payees/components/Payees'));
 const Reports = lazy(() => import('@/features/reports/components/Reports'));
-const Activity = lazy(() => import('@/features/pipeline/components/Activity'));
+
+/** /loans/:id kept working after loans moved into Settings. */
+function LoansRedirect() {
+  const { id } = useParams<{ id: string }>();
+  const target = id ? `/settings?section=loans&account=${id}` : '/settings?section=loans';
+  return <Navigate to={target} replace />;
+}
 
 function App() {
   return (
@@ -103,14 +106,7 @@ function App() {
                 </Suspense>
               }
             />
-            <Route
-              path="/loans/:id?"
-              element={
-                <Suspense fallback={<div>Loading...</div>}>
-                  <LoanOverview />
-                </Suspense>
-              }
-            />
+            <Route path="/loans/:id?" element={<LoansRedirect />} />
             <Route
               path="/payees"
               element={
@@ -127,14 +123,13 @@ function App() {
                 </Suspense>
               }
             />
+            {/* These all live in Settings now; keep the old paths working */}
+            <Route path="/activity" element={<Navigate to="/settings?section=activity" replace />} />
             <Route
-              path="/activity"
-              element={
-                <Suspense fallback={<div>Loading...</div>}>
-                  <Activity />
-                </Suspense>
-              }
+              path="/recurring"
+              element={<Navigate to="/settings?section=recurring" replace />}
             />
+            <Route path="/review" element={<Navigate to="/settings?section=review" replace />} />
           </Route>
         </Routes>
       </BrowserRouter>

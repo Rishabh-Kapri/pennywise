@@ -251,6 +251,18 @@ func main() {
 	pipelineService := service.NewPipelineService(pipelineRunRepo, temporalClient)
 	pipelineHandler := handler.NewPipelineHandler(pipelineService)
 
+	recurringTransactionRepo := repository.NewRecurringTransactionRepository(dbConn)
+	recurringTransactionService := service.NewRecurringTransactionService(recurringTransactionRepo, transactionService)
+	recurringTransactionHandler := handler.NewRecurringTransactionHandler(recurringTransactionService)
+
+	predictionReviewRepo := repository.NewPredictionReviewRepository(dbConn)
+	predictionReviewService := service.NewPredictionReviewService(
+		predictionReviewRepo,
+		transactionRepo,
+		transactionService,
+	)
+	predictionReviewHandler := handler.NewPredictionReviewHandler(predictionReviewService)
+
 	websocketHub := websocket.NewConnectionHub()
 	websocketService := service.NewWebsocketService(websocketHub)
 	websocketHandler := handler.NewWebsocketHandler(websocketService)
@@ -552,6 +564,16 @@ func main() {
 				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
 				predictionHandler.GetByTransactionID,
 			)
+			predictionGroup.GET(
+				"/review",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				predictionReviewHandler.Queue,
+			)
+			predictionGroup.POST(
+				"/review/:id",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				predictionReviewHandler.Review,
+			)
 			predictionGroup.POST("", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), predictionHandler.Create)
 			predictionGroup.PATCH(
 				":id",
@@ -600,6 +622,35 @@ func main() {
 			)
 		}
 		{
+			recurringGroup := router.Group("/api/recurring-transactions")
+			recurringGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
+			recurringGroup.GET(
+				"",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				recurringTransactionHandler.List,
+			)
+			recurringGroup.POST(
+				"",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				recurringTransactionHandler.Create,
+			)
+			recurringGroup.POST(
+				"/run",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				recurringTransactionHandler.Run,
+			)
+			recurringGroup.PATCH(
+				":id",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				recurringTransactionHandler.Update,
+			)
+			recurringGroup.DELETE(
+				":id",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeDelete),
+				recurringTransactionHandler.DeleteById,
+			)
+		}
+		{
 			reportGroup := router.Group("/api/reports")
 			reportGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
 			reportGroup.GET("/spending", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), reportHandler.GetSpending)
@@ -632,6 +683,51 @@ func main() {
 	}
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+
+	// Recurring transactions scheduler. Deliberately a plain ticker rather
+	// than a Temporal schedule: the Temporal worker below is skipped in local
+	// and Docker-only setups, and recurring transactions must still fire
+	// there. Materialization is driven by each rule's next_date, so a missed
+	// tick (or a restart) is caught up on the following pass.
+	go func() {
+		schedulerCtx := utils.WithInternalAuthToken(
+			utils.WithServiceName(appCtx, config.ServiceName),
+			config.InternalAuthToken,
+		)
+		runRecurring := func() {
+			result, err := recurringTransactionService.RunDueAllBudgets(schedulerCtx)
+			if err != nil {
+				logger.Logger(schedulerCtx).Error("recurring transactions run failed", "error", err)
+				return
+			}
+			if result.Created > 0 || result.Skipped > 0 {
+				logger.Logger(schedulerCtx).Info(
+					"recurring transactions run complete",
+					"created", result.Created,
+					"skipped", result.Skipped,
+				)
+			}
+		}
+
+		// let the server finish coming up before the first pass
+		select {
+		case <-time.After(30 * time.Second):
+			runRecurring()
+		case <-schedulerCtx.Done():
+			return
+		}
+
+		ticker := time.NewTicker(time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				runRecurring()
+			case <-schedulerCtx.Done():
+				return
+			}
+		}
+	}()
 
 	// Temporal worker — skipped if TEMPORAL_SERVER_HOST is not set
 	if temporalClient != nil {
