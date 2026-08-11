@@ -182,6 +182,7 @@ LLM client, streaming deltas to the React panel via Redis.
 | Location snap task (Android) | `android-frontend/src/features/notifications/locationSnapTask.ts` |
 | Headless API client (Android background tasks) | `android-frontend/src/utils/headlessApi.ts` |
 | Android home-screen widgets | `android-frontend/src/features/widgets/` |
+| Settings shell + section registry (`/settings?section=`) | `react-frontend/src/features/settings/components/Settings.tsx` |
 | Recurring transactions (`/api/recurring-transactions`) | `backend/shared/db/recurringTransaction.go`, `backend/go-pennywise-api/internal/service/recurringTransaction.go` |
 | Recurring transactions UI (Settings → Recurring) | `react-frontend/src/features/recurring/` |
 | Prediction review (`/api/predictions/review`) | `backend/shared/db/predictionReview.go`, `backend/go-pennywise-api/internal/service/predictionReview.go` |

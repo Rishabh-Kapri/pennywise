@@ -187,7 +187,7 @@ export default function PredictionReview() {
     <div className={styles.container}>
       <div className={styles.header}>
         <div>
-          <h1>Prediction review</h1>
+          <h2>Prediction review</h2>
           <p className={styles.subtitle}>
             Confirm or correct how transactions from email were classified. Corrections train the
             payee rules.

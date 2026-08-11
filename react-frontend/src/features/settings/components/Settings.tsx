@@ -1,13 +1,22 @@
 import {
+  ArrowsClockwise,
   GearSix,
+  ListChecks,
   Robot,
   Tag,
 } from '@phosphor-icons/react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { apiClient } from '@/utils';
 import { GeneralSettings } from './GeneralSettings';
 import { AISettings } from './AISettings';
 import { TagSettings } from './TagSettings';
+
+// heavier, data-driven sections: keep them out of the settings entry chunk
+const Recurring = lazy(() => import('@/features/recurring/components/Recurring'));
+const PredictionReview = lazy(
+  () => import('@/features/predictionReview/components/PredictionReview'),
+);
 import styles from './Settings.module.css';
 
 /* ────────────────────────────────────────────────────────────── */
@@ -31,7 +40,7 @@ interface CurrentUser {
   providers: ConnectedProvider[];
 }
 
-type SectionId = 'general' | 'tags' | 'ai';
+type SectionId = 'general' | 'recurring' | 'review' | 'tags' | 'ai';
 
 interface SectionDef {
   id: SectionId;
@@ -46,6 +55,18 @@ const SECTIONS: SectionDef[] = [
     label: 'General',
     icon: <GearSix size={18} />,
     description: 'Providers, account, and preferences',
+  },
+  {
+    id: 'recurring',
+    label: 'Recurring',
+    icon: <ArrowsClockwise size={18} />,
+    description: 'Scheduled transactions created automatically',
+  },
+  {
+    id: 'review',
+    label: 'Prediction Review',
+    icon: <ListChecks size={18} />,
+    description: 'Confirm or correct AI-classified transactions',
   },
   {
     id: 'tags',
@@ -93,9 +114,23 @@ function SidebarNav({
   );
 }
 
+const SECTION_IDS = SECTIONS.map((section) => section.id);
+
+function isSectionId(value: string | null): value is SectionId {
+  return value !== null && (SECTION_IDS as string[]).includes(value);
+}
+
 export default function Settings() {
   const [user, setUser] = useState<CurrentUser | null>(null);
-  const [activeSection, setActiveSection] = useState<SectionId>('general');
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // ?section= keeps sections linkable now that they aren't routes of their own
+  const sectionParam = searchParams.get('section');
+  const activeSection: SectionId = isSectionId(sectionParam) ? sectionParam : 'general';
+
+  const handleSectionChange = (id: SectionId) => {
+    setSearchParams(id === 'general' ? {} : { section: id }, { replace: true });
+  };
 
   useEffect(() => {
     apiClient
@@ -113,10 +148,20 @@ export default function Settings() {
       </div>
 
       <div className={styles.settingsLayout}>
-        <SidebarNav active={activeSection} onChange={setActiveSection} />
+        <SidebarNav active={activeSection} onChange={handleSectionChange} />
 
         <div className={styles.sectionContent}>
           {activeSection === 'general' && <GeneralSettings user={user} />}
+          {activeSection === 'recurring' && (
+            <Suspense fallback={<div>Loading…</div>}>
+              <Recurring />
+            </Suspense>
+          )}
+          {activeSection === 'review' && (
+            <Suspense fallback={<div>Loading…</div>}>
+              <PredictionReview />
+            </Suspense>
+          )}
           {activeSection === 'tags' && <TagSettings />}
           {activeSection === 'ai' && <AISettings />}
         </div>
