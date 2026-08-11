@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { ChartPie, Wallet as WalletCards, Money as Banknote, List as Menu, X, Receipt as ReceiptIndianRupee, Users as UsersRound, ChartBar, ArrowsClockwise, Robot } from '@phosphor-icons/react';
+import { ChartPie, Wallet as WalletCards, Money as Banknote, List as Menu, X, Receipt as ReceiptIndianRupee, Users as UsersRound, ChartBar } from '@phosphor-icons/react';
 import type { IconProps } from '@phosphor-icons/react';
 import styles from './Navbar.module.css';
 import { cloneElement, useState, useEffect, type ReactElement } from 'react';
@@ -22,8 +22,6 @@ const NAV_ITEMS: {
   { path: '/loans', key: 'loans', label: 'Loans', icon: <Banknote size={16} strokeWidth={1.75} />, exact: false },
   { path: '/payees', key: 'payees', label: 'Payees', icon: <UsersRound size={16} strokeWidth={1.75} />, exact: false },
   { path: '/reports', key: 'reports', label: 'Reports', icon: <ChartBar size={16} strokeWidth={1.75} />, exact: false },
-  { path: '/recurring', key: 'recurring', label: 'Recurring', icon: <ArrowsClockwise size={16} strokeWidth={1.75} />, exact: false },
-  { path: '/review', key: 'review', label: 'Review', icon: <Robot size={16} strokeWidth={1.75} />, exact: false },
 ];
 
 function renderNavIcon(icon: NavIcon, isActive: boolean) {

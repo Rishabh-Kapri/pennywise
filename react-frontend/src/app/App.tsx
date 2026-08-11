@@ -1,6 +1,6 @@
 import { Provider } from 'react-redux';
 import { store } from './store';
-import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import '../styles/index.css';
 import { Layout } from '@/components/layout';
 import { lazy, Suspense } from 'react';
@@ -25,10 +25,6 @@ const LoanOverview = lazy(() =>
 const Payees = lazy(() => import('@/features/payees/components/Payees'));
 const Reports = lazy(() => import('@/features/reports/components/Reports'));
 const Activity = lazy(() => import('@/features/pipeline/components/Activity'));
-const Recurring = lazy(() => import('@/features/recurring/components/Recurring'));
-const PredictionReview = lazy(
-  () => import('@/features/predictionReview/components/PredictionReview'),
-);
 
 function App() {
   return (
@@ -139,22 +135,12 @@ function App() {
                 </Suspense>
               }
             />
+            {/* Recurring and Prediction Review live in Settings */}
             <Route
               path="/recurring"
-              element={
-                <Suspense fallback={<div>Loading...</div>}>
-                  <Recurring />
-                </Suspense>
-              }
+              element={<Navigate to="/settings?section=recurring" replace />}
             />
-            <Route
-              path="/review"
-              element={
-                <Suspense fallback={<div>Loading...</div>}>
-                  <PredictionReview />
-                </Suspense>
-              }
-            />
+            <Route path="/review" element={<Navigate to="/settings?section=review" replace />} />
           </Route>
         </Routes>
       </BrowserRouter>
