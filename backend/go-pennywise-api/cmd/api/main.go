@@ -190,13 +190,35 @@ func main() {
 	)
 	transactionHandler := handler.NewTransactionHandler(transactionService)
 
-	documentStore, err := storage.NewLocalStore(config.UploadsDir)
-	if err != nil {
-		logger.Logger(ctx).Error("failed to init uploads storage", "error", err)
-		panic(err)
+	// Object storage when a bucket is configured, local disk otherwise. Both
+	// implement the same Store interface and use the same relative keys, so
+	// storage_path rows written by either remain resolvable.
+	var documentStore storage.Store
+	var err error
+	if config.S3Bucket != "" {
+		documentStore, err = storage.NewS3Store(ctx, storage.S3Config{
+			Endpoint:     config.S3Endpoint,
+			Bucket:       config.S3Bucket,
+			AccessKey:    config.S3AccessKey,
+			SecretKey:    config.S3SecretKey,
+			Region:       config.S3Region,
+			UsePathStyle: config.S3UsePathStyle,
+		})
+		if err != nil {
+			logger.Logger(ctx).Error("failed to init bucket storage", "error", err)
+			panic(err)
+		}
+		logger.Logger(ctx).Info("documents stored in bucket", "bucket", config.S3Bucket)
+	} else {
+		documentStore, err = storage.NewLocalStore(config.UploadsDir)
+		if err != nil {
+			logger.Logger(ctx).Error("failed to init uploads storage", "error", err)
+			panic(err)
+		}
+		logger.Logger(ctx).Info("documents stored on local disk", "dir", config.UploadsDir)
 	}
 	transactionDocumentRepo := repository.NewTransactionDocumentRepository(dbConn)
-	documentService := service.NewDocumentService(transactionDocumentRepo, transactionRepo, documentStore)
+	documentService := service.NewDocumentService(transactionDocumentRepo, transactionRepo, payeeRepo, documentStore)
 	documentHandler := handler.NewDocumentHandler(documentService)
 
 	devicePushTokenRepo := repository.NewDevicePushTokenRepository(dbConn)
