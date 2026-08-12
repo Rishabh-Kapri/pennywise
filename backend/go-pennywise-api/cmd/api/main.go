@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -190,13 +191,30 @@ func main() {
 	)
 	transactionHandler := handler.NewTransactionHandler(transactionService)
 
-	documentStore, err := storage.NewLocalStore(config.UploadsDir)
-	if err != nil {
-		logger.Logger(ctx).Error("failed to init uploads storage", "error", err)
-		panic(err)
-	}
 	transactionDocumentRepo := repository.NewTransactionDocumentRepository(dbConn)
-	documentService := service.NewDocumentService(transactionDocumentRepo, transactionRepo, documentStore)
+
+	// Document bodies live in Postgres. Local disk stays available for anyone
+	// who wants it, but the default keeps receipts inside the same backup and
+	// the same failure domain as the rows that reference them.
+	var documentStore storage.Store
+	var err error
+	if strings.EqualFold(config.DocumentStorage, "local") {
+		documentStore, err = storage.NewLocalStore(config.UploadsDir)
+		if err != nil {
+			logger.Logger(ctx).Error("failed to init uploads storage", "error", err)
+			panic(err)
+		}
+		logger.Logger(ctx).Info("documents stored on local disk", "dir", config.UploadsDir)
+	} else {
+		documentStore, err = storage.NewPostgresStore(dbConn)
+		if err != nil {
+			logger.Logger(ctx).Error("failed to init document storage", "error", err)
+			panic(err)
+		}
+		logger.Logger(ctx).Info("documents stored in postgres")
+	}
+
+	documentService := service.NewDocumentService(transactionDocumentRepo, transactionRepo, payeeRepo, documentStore)
 	documentHandler := handler.NewDocumentHandler(documentService)
 
 	devicePushTokenRepo := repository.NewDevicePushTokenRepository(dbConn)

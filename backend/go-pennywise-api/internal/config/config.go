@@ -27,6 +27,7 @@ type Config struct {
 	DemoMode              bool
 	NominatimURL          string
 	GeocodeCountryCodes   string
+	DocumentStorage       string
 	UploadsDir            string
 	ExpoPushURL           string
 }
@@ -64,6 +65,8 @@ func Load() Config {
 		// reverse geocoding (empty = public OSM Nominatim)
 		NominatimURL:        os.Getenv("NOMINATIM_URL"),
 		GeocodeCountryCodes: os.Getenv("GEOCODE_COUNTRY_CODES"),
+		// "local" keeps the old on-disk behaviour; anything else uses Postgres.
+		DocumentStorage: os.Getenv("DOCUMENT_STORAGE"),
 
 		UploadsDir: uploadsDir(),
 
