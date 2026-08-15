@@ -1,7 +1,9 @@
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { Check, ChevronLeft, LogOut, UserRound } from 'lucide-react-native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Check, ChevronLeft, ChevronRight, Files, LogOut, UserRound } from 'lucide-react-native';
 import Constants from 'expo-constants';
+import type { RootStackParamList } from '../../../navigation/types';
 import { useAppDispatch, useAppSelector } from '../../../app/hooks';
 import { Button } from '../../../components/Button';
 import { Card } from '../../../components/Card';
@@ -24,7 +26,7 @@ function StatCell({ label, value }: { label: string; value: number | string }) {
 
 export function SettingsScreen() {
   const dispatch = useAppDispatch();
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const user = useAppSelector((state) => state.auth.user);
   const budgets = useAppSelector(selectAllBudgets);
   const selectedBudget = useAppSelector(selectSelectedBudget);
@@ -79,6 +81,26 @@ export function SettingsScreen() {
           <StatCell label="Tags" value={tagCount} />
           <View style={styles.statDivider} />
           <StatCell label="Transactions" value={transactionTotal} />
+        </Card>
+      </View>
+
+      <View style={styles.section}>
+        <AppText variant="label" tone="faint" style={styles.sectionLabel}>Library</AppText>
+        <Card style={styles.listCard}>
+          <Pressable
+            onPress={() => navigation.navigate('Documents')}
+            android_ripple={{ color: colors.surfaceStrong }}
+            style={({ pressed }) => [styles.navRow, pressed && styles.pressed]}
+          >
+            <IconTile size={38}>
+              <Files color={colors.primary} size={18} />
+            </IconTile>
+            <View style={styles.navMain}>
+              <AppText weight="medium">Documents</AppText>
+              <AppText variant="caption" muted>Every receipt and scan in this budget</AppText>
+            </View>
+            <ChevronRight size={18} color={colors.muted} />
+          </Pressable>
         </Card>
       </View>
 
@@ -201,6 +223,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.md,
     paddingVertical: spacing.md
+  },
+  navRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.md
+  },
+  navMain: {
+    flex: 1,
+    gap: 1
   },
   infoRow: {
     flexDirection: 'row',

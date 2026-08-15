@@ -523,6 +523,11 @@ func main() {
 			documentGroup := router.Group("/api/documents")
 			documentGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
 			documentGroup.GET(
+				"",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				documentHandler.List,
+			)
+			documentGroup.GET(
 				":docId/content",
 				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
 				documentHandler.Content,
