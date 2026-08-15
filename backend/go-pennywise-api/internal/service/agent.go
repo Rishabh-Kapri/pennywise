@@ -326,6 +326,11 @@ func (s *agentService) CreateRun(
 		}
 
 		req.ConversationMetadata = conversation.Metadata
+		// Carry the stored title forward. Clients do not echo it back on
+		// follow-up messages, and cipher only auto-titles when the request
+		// arrives without one -- leaving this nil re-generates the title on
+		// every message of the conversation.
+		req.Title = conversation.Title
 	} else {
 		conversationMetadata := req.ConversationMetadata
 
