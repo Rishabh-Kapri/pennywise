@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -16,6 +17,7 @@ type DocumentHandler interface {
 	Upload(c *gin.Context)
 	UploadScan(c *gin.Context)
 	ListByTransaction(c *gin.Context)
+	List(c *gin.Context)
 	Content(c *gin.Context)
 	Delete(c *gin.Context)
 }
@@ -137,6 +139,35 @@ func (h *documentHandler) ListByTransaction(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, docs)
+}
+
+// List serves the budget-wide document library:
+// GET /api/documents?search=&type=image|pdf&startDate=&endDate=&limit=&offset=
+func (h *documentHandler) List(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	filter := model.DocumentFilter{
+		Search:    c.Query("search"),
+		Kind:      model.DocumentKind(c.Query("type")),
+		StartDate: c.Query("startDate"),
+		EndDate:   c.Query("endDate"),
+	}
+
+	// Bad paging numbers fall back to the defaults rather than 400: a stray
+	// query param shouldn't stop the library from rendering.
+	if limit, err := strconv.Atoi(c.Query("limit")); err == nil {
+		filter.Limit = limit
+	}
+	if offset, err := strconv.Atoi(c.Query("offset")); err == nil {
+		filter.Offset = offset
+	}
+
+	result, err := h.service.List(ctx, filter)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, result)
 }
 
 func (h *documentHandler) Content(c *gin.Context) {
