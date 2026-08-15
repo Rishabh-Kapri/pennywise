@@ -1,5 +1,6 @@
 import {
   ArrowsClockwise,
+  Files,
   GearSix,
   ListChecks,
   Money as Banknote,
@@ -23,6 +24,7 @@ const PredictionReview = lazy(
 );
 const LoanOverview = lazy(() => import('@/features/loans/components/LoanOverview'));
 const Activity = lazy(() => import('@/features/pipeline/components/Activity'));
+const DocumentLibrary = lazy(() => import('@/features/documents/components/DocumentLibrary'));
 import styles from './Settings.module.css';
 
 /* ────────────────────────────────────────────────────────────── */
@@ -46,7 +48,15 @@ interface CurrentUser {
   providers: ConnectedProvider[];
 }
 
-type SectionId = 'general' | 'loans' | 'recurring' | 'activity' | 'review' | 'tags' | 'ai';
+type SectionId =
+  | 'general'
+  | 'loans'
+  | 'recurring'
+  | 'documents'
+  | 'activity'
+  | 'review'
+  | 'tags'
+  | 'ai';
 
 interface SectionDef {
   id: SectionId;
@@ -73,6 +83,12 @@ const SECTIONS: SectionDef[] = [
     label: 'Recurring',
     icon: <ArrowsClockwise size={18} />,
     description: 'Scheduled transactions created automatically',
+  },
+  {
+    id: 'documents',
+    label: 'Documents',
+    icon: <Files size={18} />,
+    description: 'Every receipt and scan across this budget',
   },
   {
     id: 'activity',
@@ -191,6 +207,11 @@ export default function Settings() {
           {activeSection === 'recurring' && (
             <Suspense fallback={<div>Loading…</div>}>
               <Recurring />
+            </Suspense>
+          )}
+          {activeSection === 'documents' && (
+            <Suspense fallback={<div>Loading…</div>}>
+              <DocumentLibrary />
             </Suspense>
           )}
           {activeSection === 'activity' && (
