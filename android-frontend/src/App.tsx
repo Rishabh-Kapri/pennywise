@@ -24,6 +24,7 @@ import { TransactionsScreen } from './features/transactions/screens/Transactions
 import { PayeesScreen } from './features/payees/screens/PayeesScreen';
 import { LoansScreen } from './features/loans/screens/LoansScreen';
 import { SettingsScreen } from './features/settings/screens/SettingsScreen';
+import { DocumentsScreen } from './features/documents/screens/DocumentsScreen';
 import { WebSocketProvider } from './features/websocket/WebSocketProvider';
 import { AgentChat } from './features/agent/components/AgentChat';
 import { registerDevicePushToken } from './features/notifications/push';
@@ -140,6 +141,7 @@ function AppNavigator() {
       <RootStack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
         <RootStack.Screen name="Main" component={AppTabs} />
         <RootStack.Screen name="Settings" component={SettingsScreen} />
+        <RootStack.Screen name="Documents" component={DocumentsScreen} />
       </RootStack.Navigator>
     </>
   );
