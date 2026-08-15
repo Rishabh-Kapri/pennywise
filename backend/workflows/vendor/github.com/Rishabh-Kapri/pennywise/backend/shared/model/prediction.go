@@ -60,9 +60,45 @@ type CipherPredictionRecord struct {
 	HasUserCorrected    bool             `json:"hasUserCorrected"`
 	ActualPayeeID       *uuid.UUID       `json:"actualPayeeId,omitempty"`
 	ActualCategoryID    *uuid.UUID       `json:"actualCategoryId,omitempty"`
+	ReviewedAt          *time.Time       `json:"reviewedAt,omitempty"`
 	CreatedAt           time.Time        `json:"createdAt"`
 	UpdatedAt           time.Time        `json:"updatedAt"`
 	Deleted             bool             `json:"deleted"`
+}
+
+// PredictionReviewItem is a cipher prediction joined with the transaction it
+// classified, so the review queue can show predicted vs. current values
+// without a second round trip per row.
+type PredictionReviewItem struct {
+	CipherPredictionRecord
+
+	TransactionDate     Date       `json:"transactionDate"`
+	TransactionAmount   float64    `json:"transactionAmount"`
+	TransactionNote     string     `json:"transactionNote"`
+	AccountName         *string    `json:"accountName,omitempty"`
+	CurrentPayeeID      *uuid.UUID `json:"currentPayeeId,omitempty"`
+	CurrentPayeeName    *string    `json:"currentPayeeName,omitempty"`
+	CurrentCategoryID   *uuid.UUID `json:"currentCategoryId,omitempty"`
+	CurrentCategoryName *string    `json:"currentCategoryName,omitempty"`
+
+	PredictedPayeeName    *string `json:"predictedPayeeName,omitempty"`
+	PredictedCategoryName *string `json:"predictedCategoryName,omitempty"`
+}
+
+type PredictionReviewAction string
+
+const (
+	// PredictionReviewAccept confirms the prediction matches reality.
+	PredictionReviewAccept PredictionReviewAction = "accept"
+	// PredictionReviewCorrect rewrites the transaction's payee/category and
+	// records the correction as training signal.
+	PredictionReviewCorrect PredictionReviewAction = "correct"
+)
+
+type PredictionReviewRequest struct {
+	Action     PredictionReviewAction `json:"action"`
+	PayeeID    *uuid.UUID             `json:"payeeId,omitempty"`
+	CategoryID *uuid.UUID             `json:"categoryId,omitempty"`
 }
 
 type TransactionPredictionDetails struct {

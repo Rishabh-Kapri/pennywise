@@ -13,6 +13,7 @@ import { fetchAllAccounts } from '../../accounts/store/accountSlice';
 import { fetchAllCategoryGroups, fetchInflowAmount } from '../../category/store/categorySlice';
 import { fetchAllTransactions } from '../../transactions/store/transactionSlice';
 import { selectMonthInHumanFormat, selectSelectedMonth } from '../../budget/store/budgetSlice';
+import { RecentDocumentsCard } from '../../documents/components/RecentDocumentsCard';
 import { formatCurrency, formatShortDate } from '../../../utils/date';
 import { colors, spacing } from '../../../theme';
 
@@ -196,6 +197,8 @@ export function DashboardScreen() {
           );
         })}
       </Card>
+
+      <RecentDocumentsCard />
     </Screen>
   );
 }

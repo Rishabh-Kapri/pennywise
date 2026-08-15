@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"regexp"
 	"io"
-	"path"
 	"net/http"
+	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -40,6 +40,8 @@ type DocumentService interface {
 	// UploadScan assembles captured pages into a single PDF stored as one document.
 	UploadScan(ctx context.Context, transactionId uuid.UUID, pages []ScanPage) (*model.TransactionDocument, error)
 	ListByTransaction(ctx context.Context, transactionId uuid.UUID) ([]model.TransactionDocument, error)
+	// List returns a filtered page of every document in the budget.
+	List(ctx context.Context, filter model.DocumentFilter) (model.DocumentLibraryResponse, error)
 	// Content returns the document metadata and a reader over its bytes.
 	Content(ctx context.Context, id uuid.UUID) (*model.TransactionDocument, io.ReadSeekCloser, error)
 	Delete(ctx context.Context, id uuid.UUID) error
@@ -312,6 +314,37 @@ func (s *documentService) ListByTransaction(
 ) ([]model.TransactionDocument, error) {
 	budgetId := utils.MustBudgetID(ctx)
 	return s.repo.GetByTransactionId(ctx, budgetId, transactionId)
+}
+
+// MaxDocumentPageSize bounds a library page. A tile is a thumbnail fetch of
+// its own, so an unbounded page would fan out into hundreds of content
+// requests behind one list call.
+const MaxDocumentPageSize = 100
+
+func (s *documentService) List(
+	ctx context.Context,
+	filter model.DocumentFilter,
+) (model.DocumentLibraryResponse, error) {
+	budgetId := utils.MustBudgetID(ctx)
+
+	if !filter.Kind.Valid() {
+		return model.DocumentLibraryResponse{}, errs.New(
+			errs.CodeInvalidArgument,
+			"unknown document type %q; allowed: image, pdf",
+			string(filter.Kind),
+		)
+	}
+	if filter.Limit <= 0 {
+		filter.Limit = 50
+	}
+	if filter.Limit > MaxDocumentPageSize {
+		filter.Limit = MaxDocumentPageSize
+	}
+	if filter.Offset < 0 {
+		filter.Offset = 0
+	}
+
+	return s.repo.Search(ctx, budgetId, filter)
 }
 
 func (s *documentService) Content(
