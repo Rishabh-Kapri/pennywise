@@ -43,7 +43,7 @@ func NewTransactionRepository(pool *pgxpool.Pool) TransactionRepository {
 }
 
 // scannedStatus resolves transactions.status read from a database whose column
-// predates the NOT NULL default (see migration 00022): rows imported before it
+// predates the NOT NULL default (see migration 00023): rows imported before it
 // hold NULL, which cannot be scanned into the non-pointer model field. They are
 // MANUAL, the value the column default would have written. Every read of the
 // column goes through a *model.TransactionStatus and this helper so a legacy row

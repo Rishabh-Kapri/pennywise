@@ -229,7 +229,7 @@ After completing any new feature, bug fix, or task, update this CLAUDE.md file i
   that added migrations. `db/migrations/migrations_test.go` guards this.
   `00001` builds its tables with `CREATE TABLE IF NOT EXISTS`, so on a database that predates it the
   column constraints it declares were never applied — `transactions.status` was nullable there, and rows
-  imported without one held NULL. Migration `00022` backfills those to `MANUAL` and enforces the
+  imported without one held NULL. Migration `00023` backfills those to `MANUAL` and enforces the
   constraint; reads still go through `scannedStatus` (`shared/db/transaction.go`), which treats a NULL
   status as `MANUAL`, since a non-pointer scan destination turns one legacy row into a failed lookup.
 - **Auth**: Google OAuth (auth-code flow) + JWT. `POST /api/auth/google` issues 15-min access / 30-day refresh tokens; `AuthMiddleware` accepts Bearer header, `access_token` cookie, or `X-API-Key`. Budget ownership enforced by `BudgetIdMiddleware` (`budgets.user_id` must match the authenticated `auth_users` row).
