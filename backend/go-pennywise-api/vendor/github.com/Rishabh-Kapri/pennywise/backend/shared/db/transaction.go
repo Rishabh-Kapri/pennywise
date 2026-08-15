@@ -42,6 +42,19 @@ func NewTransactionRepository(pool *pgxpool.Pool) TransactionRepository {
 	return &transactionRepo{BaseRepository: NewBaseRepository(pool)}
 }
 
+// scannedStatus resolves transactions.status read from a database whose column
+// predates the NOT NULL default (see migration 00022): rows imported before it
+// hold NULL, which cannot be scanned into the non-pointer model field. They are
+// MANUAL, the value the column default would have written. Every read of the
+// column goes through a *model.TransactionStatus and this helper so a legacy row
+// stays editable instead of failing its lookup.
+func scannedStatus(status *model.TransactionStatus) model.TransactionStatus {
+	if status == nil || *status == "" {
+		return model.TransactionStatusManual
+	}
+	return *status
+}
+
 func (r *transactionRepo) GetAll(
 	ctx context.Context,
 	budgetId uuid.UUID,
@@ -90,6 +103,7 @@ func (r *transactionRepo) GetAll(
 	var transactions []model.Transaction
 	for rows.Next() {
 		var txn model.Transaction
+		var status *model.TransactionStatus
 		err := rows.Scan(
 			&txn.ID,
 			&txn.BudgetID,
@@ -99,7 +113,7 @@ func (r *transactionRepo) GetAll(
 			&txn.AccountID,
 			&txn.Note,
 			&txn.Amount,
-			&txn.Status,
+			&status,
 			&txn.RawBankText,
 			&txn.Summary,
 			&txn.TransferAccountID,
@@ -115,6 +129,7 @@ func (r *transactionRepo) GetAll(
 		if err != nil {
 			return nil, err
 		}
+		txn.Status = scannedStatus(status)
 		transactions = append(transactions, txn)
 	}
 	return transactions, nil
@@ -122,6 +137,7 @@ func (r *transactionRepo) GetAll(
 
 func (r *transactionRepo) GetById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Transaction, error) {
 	var txn model.Transaction
+	var status *model.TransactionStatus
 	err := r.Executor(nil).QueryRow(
 		ctx, `
 		  SELECT
@@ -163,7 +179,7 @@ func (r *transactionRepo) GetById(ctx context.Context, budgetId uuid.UUID, id uu
 		&txn.AccountID,
 		&txn.Note,
 		&txn.Amount,
-		&txn.Status,
+		&status,
 		&txn.RawBankText,
 		&txn.Summary,
 		&txn.TransferAccountID,
@@ -182,6 +198,7 @@ func (r *transactionRepo) GetById(ctx context.Context, budgetId uuid.UUID, id uu
 	if err != nil {
 		return nil, err
 	}
+	txn.Status = scannedStatus(status)
 	return &txn, nil
 }
 
@@ -192,6 +209,7 @@ func (r *transactionRepo) GetByIdTx(
 	id uuid.UUID,
 ) (*model.Transaction, error) {
 	var txn model.Transaction
+	var status *model.TransactionStatus
 	err := r.Executor(tx).QueryRow(
 		ctx, `
 		  SELECT
@@ -233,7 +251,7 @@ func (r *transactionRepo) GetByIdTx(
 		&txn.AccountID,
 		&txn.Note,
 		&txn.Amount,
-		&txn.Status,
+		&status,
 		&txn.RawBankText,
 		&txn.Summary,
 		&txn.TransferAccountID,
@@ -252,6 +270,7 @@ func (r *transactionRepo) GetByIdTx(
 	if err != nil {
 		return nil, err
 	}
+	txn.Status = scannedStatus(status)
 	return &txn, nil
 }
 
@@ -439,11 +458,7 @@ func (r *transactionRepo) GetAllNormalized(
 		if err != nil {
 			return model.PaginatedResponse[model.Transaction]{}, err
 		}
-		if status != nil {
-			txn.Status = *status
-		} else {
-			txn.Status = model.TransactionStatusManual
-		}
+		txn.Status = scannedStatus(status)
 		txns = append(txns, txn)
 	}
 	if err := rows.Err(); err != nil {
@@ -633,6 +648,7 @@ func (r *transactionRepo) CreateDeduped(
 
 	// Conflict: fetch the already-committed row.
 	var existing model.Transaction
+	var existingStatus *model.TransactionStatus
 	err = r.Executor(tx).QueryRow(
 		ctx,
 		`SELECT id, amount, budget_id, status, summary
@@ -640,10 +656,11 @@ func (r *transactionRepo) CreateDeduped(
 		 WHERE budget_id = $1 AND dedupe_hash = $2 AND deleted = FALSE`,
 		txn.BudgetID,
 		txn.DedupeHash,
-	).Scan(&existing.ID, &existing.Amount, &existing.BudgetID, &existing.Status, &existing.Summary)
+	).Scan(&existing.ID, &existing.Amount, &existing.BudgetID, &existingStatus, &existing.Summary)
 	if err != nil {
 		return nil, false, err
 	}
+	existing.Status = scannedStatus(existingStatus)
 	return &existing, false, nil
 }
 
