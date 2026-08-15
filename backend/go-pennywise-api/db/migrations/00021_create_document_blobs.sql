@@ -1,5 +1,11 @@
 -- +goose Up
 -- +goose StatementBegin
+-- Renumbered from 00019, which collided with 00019_create_recurring_transactions
+-- once both branches merged -- the exact case TestMigrationVersionsAreUnique
+-- guards, and which made goose refuse every pending migration, not just these
+-- two. Renumbering is safe here because every statement below is idempotent:
+-- where version 19 already applied this file, re-running it as 21 is a no-op.
+--
 -- Receipt/document bodies, stored in Postgres rather than on a container volume
 -- or in object storage.
 --
