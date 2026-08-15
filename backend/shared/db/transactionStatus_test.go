@@ -7,7 +7,7 @@ import (
 )
 
 // Rows written before transactions.status got its NOT NULL default (migration
-// 00022) scan as NULL. Reading them into the non-pointer model field is what
+// 00023) scan as NULL. Reading them into the non-pointer model field is what
 // made every single-row lookup of such a transaction fail, so the fallback has
 // to hold for each read path.
 func TestScannedStatus(t *testing.T) {
