@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
@@ -87,12 +88,35 @@ type openRouterUsage struct {
 	CompletionTokens    int                    `json:"completion_tokens"`
 	InputTokensDetails  openRouterTokenDetails `json:"input_tokens_details"`
 	PromptTokensDetails openRouterTokenDetails `json:"prompt_tokens_details"`
+	// CacheCreationInputTokens is Anthropic's spelling for cache writes, which
+	// OpenRouter passes through at the top level for Anthropic-served models.
+	CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+
+	// raw is the untouched usage object. Cache accounting is the one part of the
+	// response whose shape differs per upstream provider, and a field we do not
+	// model reads as a zero counter rather than as missing data -- which is how
+	// cache writes went unmeasured. Logged at debug so the real shape is
+	// observable instead of inferred.
+	raw json.RawMessage
+}
+
+// UnmarshalJSON keeps the decoded fields and stashes the original bytes.
+func (u *openRouterUsage) UnmarshalJSON(b []byte) error {
+	type alias openRouterUsage
+	var decoded alias
+	if err := json.Unmarshal(b, &decoded); err != nil {
+		return err
+	}
+	*u = openRouterUsage(decoded)
+	u.raw = append(json.RawMessage(nil), b...)
+	return nil
 }
 
 // openRouterTokenDetails covers both spellings OpenRouter returns depending on
 // which upstream API shape the model is served through.
 type openRouterTokenDetails struct {
-	CachedTokens int `json:"cached_tokens"`
+	CachedTokens        int `json:"cached_tokens"`
+	CacheCreationTokens int `json:"cache_creation_tokens"`
 }
 
 type openRouterError struct {
@@ -331,11 +355,23 @@ func toOpenRouterUsage(usage openRouterUsage) sharedModel.Usage {
 		cachedTokens = usage.PromptTokensDetails.CachedTokens
 	}
 
+	// Cache writes arrive under whichever spelling the upstream provider uses.
+	// Until one of these is non-zero on a first turn, a zero here means
+	// "not reported", not "not cached" -- do not read it as a cache miss.
+	cacheCreationTokens := usage.CacheCreationInputTokens
+	if cacheCreationTokens == 0 {
+		cacheCreationTokens = usage.InputTokensDetails.CacheCreationTokens
+	}
+	if cacheCreationTokens == 0 {
+		cacheCreationTokens = usage.PromptTokensDetails.CacheCreationTokens
+	}
+
 	return sharedModel.Usage{
-		InputTokens:     inputTokens,
-		OutputTokens:    outputTokens,
-		TotalTokens:     totalTokens,
-		CacheReadTokens: cachedTokens,
+		InputTokens:      inputTokens,
+		OutputTokens:     outputTokens,
+		TotalTokens:      totalTokens,
+		CacheReadTokens:  cachedTokens,
+		CacheWriteTokens: cacheCreationTokens,
 	}
 }
 
@@ -369,12 +405,26 @@ func (c *openRouterClient) Chat(ctx context.Context, req sharedModel.ChatRequest
 		return nil, err
 	}
 
+	logUsageShape(log, res.Usage)
+
 	chatRes, err := c.fromOpenRouterRes(res)
 	if err != nil {
 		return nil, err
 	}
 
 	return &chatRes, nil
+}
+
+// logUsageShape emits the untouched usage object so cache accounting can be
+// read from what the provider actually sent rather than from the subset we
+// happen to model. An unmodelled counter is indistinguishable from a zero one,
+// so this is the only way to tell "cache did not run" from "cache was not
+// reported".
+func logUsageShape(log *slog.Logger, usage openRouterUsage) {
+	if len(usage.raw) == 0 {
+		return
+	}
+	log.Debug("openrouter usage payload", "usage", string(usage.raw))
 }
 
 func (c *openRouterClient) Stream(ctx context.Context, req sharedModel.ChatRequest) <-chan sharedModel.StreamChunk {
@@ -548,6 +598,7 @@ func (c *openRouterClient) Stream(ctx context.Context, req sharedModel.ChatReque
 				}
 
 			case "response.done", "response.completed":
+				logUsageShape(log, ev.Response.Usage)
 				usage = toOpenRouterUsage(ev.Response.Usage)
 				sendOpenRouterChunk(ctx, events, sharedModel.StreamChunk{
 					Type:       sharedModel.ChunkEventCompleted,
