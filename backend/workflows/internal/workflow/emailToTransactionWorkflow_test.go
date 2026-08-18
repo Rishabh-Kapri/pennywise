@@ -55,8 +55,19 @@ func (f *pipelineFakes) register(t *testing.T, env *testsuite.TestWorkflowEnviro
 	})
 
 	env.RegisterActivityWithOptions(func(ctx context.Context, input sharedModel.ParseEmailInput) (sharedModel.ParseEmailResult, error) {
+		extractCall := sharedModel.LLMCall{
+			Step:         "parse:extract",
+			Provider:     "ollama",
+			Model:        "gemma4:12b",
+			InputTokens:  100,
+			OutputTokens: 10,
+		}
 		if input.Email.Body == "skip" {
-			return sharedModel.ParseEmailResult{Skipped: true, SkipReason: "not a transaction email"}, nil
+			return sharedModel.ParseEmailResult{
+				Skipped:    true,
+				SkipReason: "not a transaction email",
+				LLMCalls:   []sharedModel.LLMCall{extractCall},
+			}, nil
 		}
 		return sharedModel.ParseEmailResult{
 			Parsed: &sharedModel.ParsedEmail{
@@ -65,6 +76,7 @@ func (f *pipelineFakes) register(t *testing.T, env *testsuite.TestWorkflowEnviro
 				Amount:    -100,
 				Date:      "2026-07-14",
 			},
+			LLMCalls: []sharedModel.LLMCall{extractCall},
 		}, nil
 	}, activity.RegisterOptions{Name: "ParseEmail"})
 
@@ -81,6 +93,10 @@ func (f *pipelineFakes) register(t *testing.T, env *testsuite.TestWorkflowEnviro
 				OriginalRawText: input.Email.EmailText,
 				Amount:          input.Email.Amount,
 				Date:            input.Email.Date,
+			},
+			LLMCalls: []sharedModel.LLMCall{
+				{Step: "predict:summarize", Provider: "ollama", Model: "gemma4:12b", InputTokens: 200, OutputTokens: 20},
+				{Step: "predict:embed", Provider: "ollama", Model: "bge-m3"},
 			},
 		}, nil
 	}, activity.RegisterOptions{Name: "PredictEmail"})
@@ -228,6 +244,59 @@ func TestStandaloneRunReportsEmailMetadataBeforeParse(t *testing.T) {
 	require.Equal(t, "Bank Alerts <alerts@bank.test>", fetchDetail["from"])
 	require.Equal(t, "Txn alert for msg-1", fetchDetail["subject"])
 	require.Equal(t, "Your card was used for msg-1", fetchDetail["snippet"])
+}
+
+// TestPipelineReportsLLMUsage: model calls reported by the per-email activities
+// are accumulated onto the run (totals + per-model breakdown) and attached to
+// each email's timeline event — including for emails that were skipped.
+func TestPipelineReportsLLMUsage(t *testing.T) {
+	var suite testsuite.WorkflowTestSuite
+	env := suite.NewTestWorkflowEnvironment()
+	fakes := &pipelineFakes{}
+	fakes.register(t, env)
+
+	env.ExecuteWorkflow(sharedModel.ParsedEmailToTransactionWorkflowName, testInput(map[string]string{
+		"msg-1": "skip",
+		"msg-2": "txn email two",
+	}))
+
+	require.True(t, env.IsWorkflowCompleted())
+	require.NoError(t, env.GetWorkflowError())
+
+	// Two extractions (both emails) + one summarize + one embed for msg-2.
+	var last sharedModel.ReportPipelineStatusInput
+	for _, report := range fakes.statusReports {
+		if report.LLMCalls != nil {
+			last = report
+		}
+	}
+	require.NotNil(t, last.LLMCalls, "expected run-level llm totals to be reported")
+	require.Equal(t, 4, *last.LLMCalls)
+	require.Equal(t, 100+100+200, *last.InputTokens)
+	require.Equal(t, 10+10+20, *last.OutputTokens)
+
+	require.Equal(t, sharedModel.LLMModelUsage{
+		Provider: "ollama", Calls: 3, InputTokens: 400, OutputTokens: 40,
+	}, last.LLMUsage["gemma4:12b"])
+	require.Equal(t, sharedModel.LLMModelUsage{Provider: "ollama", Calls: 1}, last.LLMUsage["bge-m3"])
+
+	// Per-email detail: the skipped email still accounts for its extraction.
+	var skippedDetail, predictDetail map[string]any
+	for _, report := range fakes.statusReports {
+		for _, event := range report.Events {
+			if event.MessageID == "msg-1" && event.Status == sharedModel.PipelineEventSkipped {
+				skippedDetail = event.Detail
+			}
+			if event.MessageID == "msg-2" && event.Step == sharedModel.PipelineStepPredict &&
+				event.Status == sharedModel.PipelineEventSucceeded {
+				predictDetail = event.Detail
+			}
+		}
+	}
+	// Detail values round-trip through JSON, so numbers come back as float64.
+	require.Equal(t, float64(100), skippedDetail["inputTokens"])
+	require.Equal(t, float64(200), predictDetail["inputTokens"])
+	require.Len(t, predictDetail["llmCalls"], 2)
 }
 
 // TestPerEmailPipelineIsolatesFailures: one email permanently failing predict
