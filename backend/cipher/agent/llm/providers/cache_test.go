@@ -1,6 +1,8 @@
 package providers
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
@@ -137,5 +139,77 @@ func TestOpenAIRequestCarriesPromptCacheKey(t *testing.T) {
 
 	if req.PromptCacheKey != "conv-123" {
 		t.Errorf("promptCacheKey = %q, want conv-123", req.PromptCacheKey)
+	}
+}
+
+// OpenRouter reports cache writes under whichever spelling the upstream
+// provider uses, and modelled none of them until now -- so every run through
+// OpenRouter recorded cacheWriteTokens as 0 whether or not the prefix was
+// cached. That made a real cache miss indistinguishable from an unreported
+// counter, which is the failure this covers.
+func TestOpenRouterUsageCarriesCacheWriteUnderEitherSpelling(t *testing.T) {
+	tests := []struct {
+		name  string
+		usage openRouterUsage
+		want  int
+	}{
+		{
+			name: "anthropic top-level spelling",
+			usage: openRouterUsage{
+				InputTokens:              100,
+				OutputTokens:             50,
+				CacheCreationInputTokens: 3200,
+			},
+			want: 3200,
+		},
+		{
+			name: "input_tokens_details spelling",
+			usage: openRouterUsage{
+				InputTokens:        100,
+				OutputTokens:       50,
+				InputTokensDetails: openRouterTokenDetails{CacheCreationTokens: 3200},
+			},
+			want: 3200,
+		},
+		{
+			name: "prompt_tokens_details spelling",
+			usage: openRouterUsage{
+				PromptTokens:        100,
+				CompletionTokens:    50,
+				PromptTokensDetails: openRouterTokenDetails{CacheCreationTokens: 3200},
+			},
+			want: 3200,
+		},
+		{
+			name:  "absent stays zero",
+			usage: openRouterUsage{InputTokens: 100, OutputTokens: 50},
+			want:  0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := toOpenRouterUsage(tt.usage).CacheWriteTokens; got != tt.want {
+				t.Errorf("cacheWriteTokens = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+// The raw usage bytes are kept so the counters we do not model stay visible in
+// logs. Without this, discovering a new spelling requires guessing at it.
+func TestOpenRouterUsageRetainsRawPayload(t *testing.T) {
+	body := []byte(`{"input_tokens":100,"output_tokens":50,"some_unmodelled_cache_field":7}`)
+
+	var usage openRouterUsage
+	if err := json.Unmarshal(body, &usage); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if usage.InputTokens != 100 {
+		t.Errorf("inputTokens = %d, want 100", usage.InputTokens)
+	}
+	if !strings.Contains(string(usage.raw), "some_unmodelled_cache_field") {
+		t.Errorf("raw payload lost the unmodelled field: %s", usage.raw)
 	}
 }
