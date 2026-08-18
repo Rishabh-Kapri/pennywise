@@ -9,6 +9,7 @@ import {
   CaretRight,
   CheckCircle,
   CircleNotch,
+  Cpu,
   EnvelopeSimple,
   Warning,
   XCircle,
@@ -20,6 +21,7 @@ import {
   retryPipelineRun,
 } from '../store';
 import type {
+  LLMCall,
   PipelineRun,
   PipelineRunEvent,
   PipelineStep,
@@ -137,6 +139,111 @@ function formatSender(from: string): string {
 function senderAddress(from: string): string {
   const match = from.match(/<(.+)>/);
   return match ? match[1].trim() : '';
+}
+
+/** 900 → "900", 1_250 → "1.3k". */
+function formatTokens(count: number): string {
+  if (count < 1000) return String(count);
+  return `${(count / 1000).toFixed(1)}k`;
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+/** The model calls recorded on one email's timeline event. */
+function eventCalls(event: PipelineRunEvent | undefined): LLMCall[] {
+  const value = event?.detail?.llmCalls;
+  return Array.isArray(value) ? (value as LLMCall[]) : [];
+}
+
+/** One-line "model · 1.2k in / 96 out · 4.1s" summary for a step's calls. */
+function callSummary(calls: LLMCall[]): string {
+  if (calls.length === 0) return '';
+  const models = [...new Set(calls.filter((call) => !call.failed).map((call) => call.model))];
+  const inputTokens = calls.reduce((total, call) => total + (call.inputTokens ?? 0), 0);
+  const outputTokens = calls.reduce((total, call) => total + (call.outputTokens ?? 0), 0);
+  const durationMs = calls.reduce((total, call) => total + (call.durationMs ?? 0), 0);
+
+  const parts = [models.join(', ') || 'no model'];
+  if (inputTokens || outputTokens) {
+    parts.push(`${formatTokens(inputTokens)} in / ${formatTokens(outputTokens)} out`);
+  }
+  if (durationMs) parts.push(formatDuration(durationMs));
+  return parts.join(' · ');
+}
+
+/** Model/token line under a step, with failed fallback attempts called out. */
+function StepUsage({ label, calls }: { label: string; calls: LLMCall[] }) {
+  if (calls.length === 0) return null;
+  const failed = calls.filter((call) => call.failed);
+
+  return (
+    <div className={styles.usageRow}>
+      <Cpu size={13} className={styles.usageIcon} />
+      <span className={styles.usageLabel}>{label}</span>
+      <span title={calls.map((call) => `${call.step}: ${call.model}`).join('\n')}>
+        {callSummary(calls)}
+      </span>
+      {failed.length > 0 && (
+        <span
+          className={styles.usageFailed}
+          title={failed.map((call) => `${call.model}: ${call.error ?? 'failed'}`).join('\n')}>
+          {failed.length} failed over
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Per-model breakdown for the whole run. */
+function RunUsage({ run }: { run: PipelineRun }) {
+  const models = Object.entries(run.llmUsage ?? {});
+  if (run.llmCalls === 0 && models.length === 0) return null;
+
+  return (
+    <div className={styles.runUsage}>
+      <div className={styles.runUsageHeader}>
+        <Cpu size={14} className={styles.usageIcon} />
+        <span>Model usage</span>
+        <span className={styles.mutedText}>
+          {run.llmCalls} call{run.llmCalls === 1 ? '' : 's'} ·{' '}
+          {formatTokens(run.inputTokens)} in / {formatTokens(run.outputTokens)} out
+        </span>
+      </div>
+      {models.length > 0 && (
+        <table className={styles.usageTable}>
+          <thead>
+            <tr>
+              <th>Model</th>
+              <th>Calls</th>
+              <th>In</th>
+              <th>Out</th>
+              <th>Time</th>
+            </tr>
+          </thead>
+          <tbody>
+            {models.map(([model, usage]) => (
+              <tr key={model}>
+                <td>
+                  {model || 'unknown'}
+                  {usage.provider && <span className={styles.mutedText}> · {usage.provider}</span>}
+                  {usage.failures ? (
+                    <span className={styles.usageFailed}> {usage.failures} failed</span>
+                  ) : null}
+                </td>
+                <td>{usage.calls}</td>
+                <td>{usage.inputTokens ? formatTokens(usage.inputTokens) : '—'}</td>
+                <td>{usage.outputTokens ? formatTokens(usage.outputTokens) : '—'}</td>
+                <td>{usage.durationMs ? formatDuration(usage.durationMs) : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
 }
 
 function StatusChip({ status }: { status: PipelineRun['status'] }) {
@@ -261,6 +368,8 @@ function EmailCard({ group }: { group: EmailGroup }) {
           )}
         </div>
       )}
+      <StepUsage label="extract" calls={eventCalls(group.parse)} />
+      <StepUsage label="predict" calls={eventCalls(group.predict)} />
       {reasoning && !predictFailed && !parseSkipped && (
         <div className={styles.reasoning}>
           <button
@@ -370,6 +479,14 @@ function RunCard({
             history {run.gmailHistoryId}
           </span>
         )}
+        {run.llmCalls > 0 && (
+          <span
+            className={styles.tokenChip}
+            title={`${run.llmCalls} model calls · ${run.inputTokens} input / ${run.outputTokens} output tokens`}>
+            <Cpu size={12} />
+            {formatTokens(run.inputTokens + run.outputTokens)} tokens
+          </span>
+        )}
         <span className={styles.runTime}>{formatRelativeTime(run.startedAt)}</span>
       </button>
 
@@ -410,6 +527,7 @@ function RunCard({
                   ))}
                 </div>
               )}
+              <RunUsage run={run} />
               <RunTimeline events={events ?? []} />
               {(events ?? []).length === 0 && (
                 <span className={styles.mutedText}>No timeline recorded for this run.</span>

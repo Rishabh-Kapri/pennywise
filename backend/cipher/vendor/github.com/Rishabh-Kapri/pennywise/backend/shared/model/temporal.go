@@ -105,6 +105,42 @@ type ParseEmailResult struct {
 	Parsed     *ParsedEmail `json:"parsed,omitempty"`
 	Skipped    bool         `json:"skipped,omitempty"`
 	SkipReason string       `json:"skipReason,omitempty"`
+	// LLMCalls records every model round-trip the activity made, including the
+	// attempts that failed over to the next provider.
+	LLMCalls []LLMCall `json:"llmCalls,omitempty"`
+}
+
+// LLMCall is one model round-trip made while processing an email: which
+// provider/model served it, what it cost in tokens and how long it took.
+// Recorded for observability only — nothing in the pipeline branches on it.
+type LLMCall struct {
+	// Step is the pipeline step label, e.g. "parse:extract",
+	// "predict:summarize", "predict:llm_fallback", "predict:embed".
+	Step         string `json:"step"`
+	Provider     string `json:"provider"`
+	Model        string `json:"model"`
+	InputTokens  int    `json:"inputTokens,omitempty"`
+	OutputTokens int    `json:"outputTokens,omitempty"`
+	DurationMs   int64  `json:"durationMs,omitempty"`
+	// Failed marks an attempt that errored and fell through to the next
+	// provider in the chain. Such attempts still cost time, and often tokens.
+	Failed bool   `json:"failed,omitempty"`
+	Error  string `json:"error,omitempty"`
+}
+
+// TotalTokens is the token count attributable to one call.
+func (c LLMCall) TotalTokens() int {
+	return c.InputTokens + c.OutputTokens
+}
+
+// LLMModelUsage aggregates every call served by one provider/model pair.
+type LLMModelUsage struct {
+	Provider     string `json:"provider,omitempty"`
+	Calls        int    `json:"calls"`
+	InputTokens  int    `json:"inputTokens"`
+	OutputTokens int    `json:"outputTokens"`
+	DurationMs   int64  `json:"durationMs,omitempty"`
+	Failures     int    `json:"failures,omitempty"`
 }
 
 // PredictEmailInput is the input to the per-email PredictEmail activity (cipher).
@@ -118,6 +154,9 @@ type PredictEmailResult struct {
 	Prediction *CipherPredictionResult `json:"prediction,omitempty"`
 	Skipped    bool                    `json:"skipped,omitempty"`
 	SkipReason string                  `json:"skipReason,omitempty"`
+	// LLMCalls records every model round-trip the activity made, including the
+	// attempts that failed over to the next provider.
+	LLMCalls []LLMCall `json:"llmCalls,omitempty"`
 }
 
 // EmailSkip records an email the pipeline could not turn into a transaction,
