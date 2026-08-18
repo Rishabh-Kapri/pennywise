@@ -31,6 +31,7 @@ const pipelineRunColumns = `
 	id, budget_id, workflow_id, workflow_run_id, child_workflow_id,
 	trigger, email_account, gmail_history_id, status, current_step, error,
 	emails_fetched, emails_skipped, transactions_created,
+	llm_calls, input_tokens, output_tokens, llm_usage,
 	started_at, updated_at, completed_at`
 
 func scanPipelineRun(row pgx.Row) (*model.PipelineRun, error) {
@@ -50,6 +51,10 @@ func scanPipelineRun(row pgx.Row) (*model.PipelineRun, error) {
 		&run.EmailsFetched,
 		&run.EmailsSkipped,
 		&run.TransactionsCreated,
+		&run.LLMCalls,
+		&run.InputTokens,
+		&run.OutputTokens,
+		&run.LLMUsage,
 		&run.StartedAt,
 		&run.UpdatedAt,
 		&run.CompletedAt,
@@ -99,6 +104,10 @@ func (r *pipelineRunRepo) UpdateRun(
 			emails_fetched = COALESCE($7, emails_fetched),
 			emails_skipped = COALESCE($8, emails_skipped),
 			transactions_created = COALESCE($9, transactions_created),
+			llm_calls = COALESCE($10, llm_calls),
+			input_tokens = COALESCE($11, input_tokens),
+			output_tokens = COALESCE($12, output_tokens),
+			llm_usage = COALESCE($13::jsonb, llm_usage),
 			completed_at = CASE
 				WHEN NULLIF($3, '') IN ('completed', 'failed') THEN now()
 				ELSE completed_at
@@ -115,7 +124,20 @@ func (r *pipelineRunRepo) UpdateRun(
 		input.EmailsFetched,
 		input.EmailsSkipped,
 		input.TransactionsCreated,
+		input.LLMCalls,
+		input.InputTokens,
+		input.OutputTokens,
+		llmUsageArg(input.LLMUsage),
 	))
+}
+
+// llmUsageArg keeps an unreported breakdown as a nil JSONB argument, so
+// COALESCE leaves the stored value alone instead of overwriting it with "{}".
+func llmUsageArg(usage map[string]model.LLMModelUsage) any {
+	if len(usage) == 0 {
+		return nil
+	}
+	return usage
 }
 
 func (r *pipelineRunRepo) AppendEvents(
