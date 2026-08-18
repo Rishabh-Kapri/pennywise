@@ -272,6 +272,73 @@ func perEmailCipherOptions(ctx workflow.Context, summary string) workflow.Contex
 	})
 }
 
+// llmUsageTotals accumulates the model calls reported by the per-email cipher
+// activities, both as run-wide totals and as a per-model breakdown. Purely
+// additive and driven only by activity results, so it replays deterministically.
+type llmUsageTotals struct {
+	calls        int
+	inputTokens  int
+	outputTokens int
+	byModel      map[string]sharedModel.LLMModelUsage
+}
+
+// add folds one activity's calls into the totals and returns those calls so the
+// caller can attach them to the email's timeline event.
+func (t *llmUsageTotals) add(calls []sharedModel.LLMCall) []sharedModel.LLMCall {
+	if len(calls) == 0 {
+		return nil
+	}
+	if t.byModel == nil {
+		t.byModel = map[string]sharedModel.LLMModelUsage{}
+	}
+	for _, call := range calls {
+		t.calls++
+		t.inputTokens += call.InputTokens
+		t.outputTokens += call.OutputTokens
+
+		model := t.byModel[call.Model]
+		model.Provider = call.Provider
+		model.Calls++
+		model.InputTokens += call.InputTokens
+		model.OutputTokens += call.OutputTokens
+		model.DurationMs += call.DurationMs
+		if call.Failed {
+			model.Failures++
+		}
+		t.byModel[call.Model] = model
+	}
+	return calls
+}
+
+// report fills the run-level LLM fields of a status report. No-op before any
+// call has been recorded, so the stored values are left alone.
+func (t *llmUsageTotals) report(input sharedModel.ReportPipelineStatusInput) sharedModel.ReportPipelineStatusInput {
+	if t.calls == 0 {
+		return input
+	}
+	input.LLMCalls = &t.calls
+	input.InputTokens = &t.inputTokens
+	input.OutputTokens = &t.outputTokens
+	input.LLMUsage = t.byModel
+	return input
+}
+
+// withLLMDetail attaches one email's model calls to its timeline event.
+func withLLMDetail(detail map[string]any, calls []sharedModel.LLMCall) map[string]any {
+	if len(calls) == 0 {
+		return detail
+	}
+	inputTokens, outputTokens := 0, 0
+	for _, call := range calls {
+		inputTokens += call.InputTokens
+		outputTokens += call.OutputTokens
+	}
+	detail["llmCalls"] = calls
+	detail["inputTokens"] = inputTokens
+	detail["outputTokens"] = outputTokens
+	return detail
+}
+
 // processEmailsIndividually parses and predicts one email per activity so a
 // bad email is skipped or retried on its own. Successful predictions are
 // committed (idempotently) as soon as their round completes; only emails that
@@ -290,6 +357,9 @@ func processEmailsIndividually(
 	pendingParse := input.EmailData
 	var pendingPredict []sharedModel.ParsedEmail
 	totalCreated := 0
+	// LLM usage accumulates across retry rounds: a retried email really does
+	// spend its tokens twice, and the run should say so.
+	usage := &llmUsageTotals{}
 
 	for {
 		// ----- Parse pending raw emails, one activity each -----
@@ -333,7 +403,8 @@ func processEmailsIndividually(
 					Step:      sharedModel.PipelineStepParse,
 					Status:    sharedModel.PipelineEventSkipped,
 					MessageID: email.MessageId,
-					Detail:    map[string]any{"reason": result.SkipReason},
+					Detail: withLLMDetail(map[string]any{"reason": result.SkipReason},
+						usage.add(result.LLMCalls)),
 				})
 			case result.Parsed != nil:
 				pendingPredict = append(pendingPredict, *result.Parsed)
@@ -341,22 +412,22 @@ func processEmailsIndividually(
 					Step:      sharedModel.PipelineStepParse,
 					Status:    sharedModel.PipelineEventSucceeded,
 					MessageID: email.MessageId,
-					Detail: map[string]any{
+					Detail: withLLMDetail(map[string]any{
 						"merchant":        result.Parsed.ExtractedMerchant,
 						"account":         result.Parsed.ExtractedAccount,
 						"amount":          result.Parsed.Amount,
 						"date":            result.Parsed.Date,
 						"transactionType": result.Parsed.TransactionType,
-					},
+					}, usage.add(result.LLMCalls)),
 				})
 			}
 		}
 		if len(parseEvents) > 0 {
 			skippedCount := len(skips)
-			reporter.report(ctx, sharedModel.ReportPipelineStatusInput{
+			reporter.report(ctx, usage.report(sharedModel.ReportPipelineStatusInput{
 				EmailsSkipped: &skippedCount,
 				Events:        parseEvents,
-			})
+			}))
 		}
 
 		// ----- Predict pending parsed emails, one activity each -----
@@ -401,7 +472,8 @@ func processEmailsIndividually(
 					Step:      sharedModel.PipelineStepPredict,
 					Status:    sharedModel.PipelineEventSkipped,
 					MessageID: parsed.MessageId,
-					Detail:    map[string]any{"reason": result.SkipReason},
+					Detail: withLLMDetail(map[string]any{"reason": result.SkipReason},
+						usage.add(result.LLMCalls)),
 				})
 			case result.Prediction != nil:
 				predictions = append(predictions, *result.Prediction)
@@ -409,7 +481,7 @@ func processEmailsIndividually(
 					Step:      sharedModel.PipelineStepPredict,
 					Status:    sharedModel.PipelineEventSucceeded,
 					MessageID: parsed.MessageId,
-					Detail: map[string]any{
+					Detail: withLLMDetail(map[string]any{
 						"payee":      result.Prediction.Payee,
 						"category":   result.Prediction.Category,
 						"account":    result.Prediction.Account,
@@ -418,16 +490,16 @@ func processEmailsIndividually(
 						"reasoning":  result.Prediction.Reasoning,
 						"amount":     result.Prediction.Amount,
 						"date":       result.Prediction.Date,
-					},
+					}, usage.add(result.LLMCalls)),
 				})
 			}
 		}
 		if len(predictEvents) > 0 {
 			skippedCount := len(skips)
-			reporter.report(ctx, sharedModel.ReportPipelineStatusInput{
+			reporter.report(ctx, usage.report(sharedModel.ReportPipelineStatusInput{
 				EmailsSkipped: &skippedCount,
 				Events:        predictEvents,
-			})
+			}))
 		}
 
 		// ----- Commit this round's successes; the insert is deduped, so a
@@ -533,12 +605,12 @@ func processEmailsIndividually(
 	}
 
 	skippedCount := len(skips)
-	reporter.report(ctx, sharedModel.ReportPipelineStatusInput{
+	reporter.report(ctx, usage.report(sharedModel.ReportPipelineStatusInput{
 		RunStatus:           sharedModel.PipelineRunStatusCompleted,
 		CurrentStep:         sharedModel.PipelineStepDone,
 		EmailsSkipped:       &skippedCount,
 		TransactionsCreated: &totalCreated,
-	})
+	}))
 	return nil
 }
 

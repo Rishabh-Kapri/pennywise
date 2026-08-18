@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/llmusage"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/progress"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/service"
 	"github.com/google/uuid"
@@ -221,28 +222,41 @@ func (a *PredictionActivity) ParseEmail(
 	}
 
 	ctx = withHeartbeats(ctx)
+	// Collect what the extraction cost in model calls/tokens; every return path
+	// below reports it, so a skipped or failed email still accounts for its LLM
+	// usage on the pipeline run.
+	ctx, usage := llmusage.With(ctx)
 	extracted, err := a.PredictionService.ExtractEmailData(
 		ctx,
 		service.ExtractEmailDataRequest{EmailHtml: input.Email.Body},
 	)
 	if err != nil {
 		log.Error("error extracting email", "error", err)
-		return sharedModel.ParseEmailResult{}, err
+		return sharedModel.ParseEmailResult{LLMCalls: usage.Calls()}, err
 	}
 	if extracted == nil {
-		return sharedModel.ParseEmailResult{}, errs.New(errs.CodeInternalError, "extraction returned no result")
+		return sharedModel.ParseEmailResult{LLMCalls: usage.Calls()},
+			errs.New(errs.CodeInternalError, "extraction returned no result")
 	}
 
 	if extracted.Skipped || extracted.Amount == 0 || extracted.AccountCard == "" || extracted.Date == "" {
 		log.Info("email not a transaction", "extracted", *extracted)
-		return sharedModel.ParseEmailResult{Skipped: true, SkipReason: "not a transaction email"}, nil
+		return sharedModel.ParseEmailResult{
+			Skipped:    true,
+			SkipReason: "not a transaction email",
+			LLMCalls:   usage.Calls(),
+		}, nil
 	}
 
 	date, err := time.Parse("2006-01-02", extracted.Date)
 	if err != nil {
 		// Bad data from the extractor is deterministic — retrying cannot fix it.
 		log.Warn("unparseable extraction date, skipping email", "date", extracted.Date, "error", err)
-		return sharedModel.ParseEmailResult{Skipped: true, SkipReason: "unparseable date: " + extracted.Date}, nil
+		return sharedModel.ParseEmailResult{
+			Skipped:    true,
+			SkipReason: "unparseable date: " + extracted.Date,
+			LLMCalls:   usage.Calls(),
+		}, nil
 	}
 
 	transactionType := "debit"
@@ -260,6 +274,7 @@ func (a *PredictionActivity) ParseEmail(
 			Date:              date.Format("2006-01-02"),
 			TransactionType:   transactionType,
 		},
+		LLMCalls: usage.Calls(),
 	}, nil
 }
 
@@ -283,6 +298,7 @@ func (a *PredictionActivity) PredictEmail(
 	log.Info("predicting", "amount", email.Amount, "date", email.Date)
 
 	ctx = withHeartbeats(ctx)
+	ctx, usage := llmusage.With(ctx)
 	predictionInput := service.PredictRequest{
 		EmailText: email.EmailText,
 		Amount:    email.Amount,
@@ -298,7 +314,7 @@ func (a *PredictionActivity) PredictEmail(
 	summary, err := a.PredictionService.SummarizeEmailText(ctx, email.EmailText)
 	if err != nil {
 		log.Error("summarization failed", "error", err)
-		return sharedModel.PredictEmailResult{}, err
+		return sharedModel.PredictEmailResult{LLMCalls: usage.Calls()}, err
 	}
 
 	prediction, err := a.PredictionService.Predict(ctx, predictionInput)
@@ -306,14 +322,22 @@ func (a *PredictionActivity) PredictEmail(
 		var svcErr *errs.Error
 		if errors.As(err, &svcErr) && svcErr.Code == errs.CodeAccountLookupFailed {
 			log.Warn("no matching account, skipping email", "error", err)
-			return sharedModel.PredictEmailResult{Skipped: true, SkipReason: err.Error()}, nil
+			return sharedModel.PredictEmailResult{
+				Skipped:    true,
+				SkipReason: err.Error(),
+				LLMCalls:   usage.Calls(),
+			}, nil
 		}
 		log.Error("prediction failed", "error", err)
-		return sharedModel.PredictEmailResult{}, err
+		return sharedModel.PredictEmailResult{LLMCalls: usage.Calls()}, err
 	}
 	if prediction == nil {
 		log.Warn("no prediction result, skipping email")
-		return sharedModel.PredictEmailResult{Skipped: true, SkipReason: "predictor returned no result"}, nil
+		return sharedModel.PredictEmailResult{
+			Skipped:    true,
+			SkipReason: "predictor returned no result",
+			LLMCalls:   usage.Calls(),
+		}, nil
 	}
 
 	prediction.Summary = summary
@@ -337,5 +361,6 @@ func (a *PredictionActivity) PredictEmail(
 			Reasoning:       prediction.Reasoning,
 			Metadata:        prediction.Metadata,
 		},
+		LLMCalls: usage.Calls(),
 	}, nil
 }

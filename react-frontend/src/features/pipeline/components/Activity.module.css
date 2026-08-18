@@ -97,6 +97,88 @@
   white-space: nowrap;
 }
 
+.tokenChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 999px;
+  color: var(--color-text-secondary);
+  font-size: 0.72rem;
+  padding: 0.05rem 0.5rem;
+  white-space: nowrap;
+}
+
+/* Per-step model/token line inside an email card */
+.usageRow {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  padding-left: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.usageIcon {
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+}
+
+.usageLabel {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.65rem;
+  color: var(--color-text-secondary);
+  opacity: 0.8;
+}
+
+.usageFailed {
+  color: #d97706;
+}
+
+/* Run-level per-model breakdown */
+.runUsage {
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.75rem;
+  padding: 0.6rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.runUsageHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.usageTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.usageTable th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  padding-bottom: 0.2rem;
+}
+
+.usageTable th:not(:first-child),
+.usageTable td:not(:first-child) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.usageTable td {
+  padding: 0.15rem 0;
+  border-top: 1px solid var(--color-border-muted);
+}
+
 .runTime {
   margin-left: auto;
   color: var(--color-text-secondary);
