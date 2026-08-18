@@ -18,6 +18,7 @@ import (
 	agent "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/runtime"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/client"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/llmusage"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/progress"
 	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
@@ -219,13 +220,32 @@ func (s *predictionService) embedWithFallback(
 			embedModel = EmbeddingModel
 		}
 
+		startedAt := time.Now()
 		embedding, err := embedder.Embed(ctx, embedModel, text)
+		elapsed := time.Since(startedAt)
 		if err != nil {
 			log.Warn("embedding provider call failed, trying next",
 				"provider", target.Provider, "model", embedModel, "error", err)
+			llmusage.Record(ctx, sharedModel.LLMCall{
+				Step:       "predict:embed",
+				Provider:   target.Provider,
+				Model:      embedModel,
+				DurationMs: elapsed.Milliseconds(),
+				Failed:     true,
+				Error:      err.Error(),
+			})
 			lastErr = err
 			continue
 		}
+
+		// Embedding backends do not report token counts, so this records the
+		// call and its cost in time only.
+		llmusage.Record(ctx, sharedModel.LLMCall{
+			Step:       "predict:embed",
+			Provider:   target.Provider,
+			Model:      embedModel,
+			DurationMs: elapsed.Milliseconds(),
+		})
 
 		return embedding, config.LLMTarget{Provider: target.Provider, Model: embedModel}, nil
 	}
@@ -289,17 +309,47 @@ func (s *predictionService) chatWithFallback(
 
 		progress.Report(ctx, step)
 		chatCtx, chatCancel := s.withLLMTimeout(ctx)
+		startedAt := time.Now()
 		res, err := lc.Chat(chatCtx, req)
+		elapsed := time.Since(startedAt)
 		chatCancel()
 		if err != nil {
 			log.Warn("pipeline provider call failed, trying next",
 				"step", step, "provider", target.Provider, "model", model, "error", err)
+			// Record the failed attempt too: it cost wall-clock time, and on a
+			// hosted provider often tokens, so leaving it out understates the run.
+			llmusage.Record(ctx, sharedModel.LLMCall{
+				Step:       step,
+				Provider:   target.Provider,
+				Model:      model,
+				DurationMs: elapsed.Milliseconds(),
+				Failed:     true,
+				Error:      err.Error(),
+			})
 			lastErr = err
 			continue
 		}
 
+		usage := sharedModel.LLMCall{
+			Step:       step,
+			Provider:   target.Provider,
+			Model:      model,
+			DurationMs: elapsed.Milliseconds(),
+		}
+		if res != nil {
+			// Prefer the model name the provider echoed back — with an aliased
+			// or routed model that is the one that actually served the call.
+			if res.Model != "" {
+				usage.Model = res.Model
+			}
+			usage.InputTokens = res.Usage.InputTokens
+			usage.OutputTokens = res.Usage.OutputTokens
+		}
+		llmusage.Record(ctx, usage)
+
 		log.Info("pipeline llm call succeeded",
-			"step", step, "provider", target.Provider, "model", model)
+			"step", step, "provider", target.Provider, "model", model,
+			"inputTokens", usage.InputTokens, "outputTokens", usage.OutputTokens)
 		return res, nil
 	}
 

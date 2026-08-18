@@ -56,7 +56,13 @@ type PipelineRun struct {
 	EmailsFetched       int               `json:"emailsFetched"`
 	EmailsSkipped       int               `json:"emailsSkipped"`
 	TransactionsCreated int               `json:"transactionsCreated"`
-	StartedAt           time.Time         `json:"startedAt"`
+	// LLM usage accumulated over the run, including retried emails. LLMUsage is
+	// the per-model breakdown, keyed by model name.
+	LLMCalls     int                      `json:"llmCalls"`
+	InputTokens  int                      `json:"inputTokens"`
+	OutputTokens int                      `json:"outputTokens"`
+	LLMUsage     map[string]LLMModelUsage `json:"llmUsage,omitempty"`
+	StartedAt    time.Time                `json:"startedAt"`
 	UpdatedAt           time.Time         `json:"updatedAt"`
 	CompletedAt         *time.Time        `json:"completedAt,omitempty"`
 }
@@ -106,7 +112,13 @@ type ReportPipelineStatusInput struct {
 	EmailsFetched       *int                 `json:"emailsFetched,omitempty"`
 	EmailsSkipped       *int                 `json:"emailsSkipped,omitempty"`
 	TransactionsCreated *int                 `json:"transactionsCreated,omitempty"`
-	Events              []PipelineEventInput `json:"events,omitempty"`
+	// LLM totals are absolute run-to-date values, like the counters above; nil
+	// leaves the stored value alone. LLMUsage replaces the stored breakdown.
+	LLMCalls     *int                     `json:"llmCalls,omitempty"`
+	InputTokens  *int                     `json:"inputTokens,omitempty"`
+	OutputTokens *int                     `json:"outputTokens,omitempty"`
+	LLMUsage     map[string]LLMModelUsage `json:"llmUsage,omitempty"`
+	Events       []PipelineEventInput     `json:"events,omitempty"`
 }
 
 // PipelineRunDetail is the API response for a single run with its timeline.

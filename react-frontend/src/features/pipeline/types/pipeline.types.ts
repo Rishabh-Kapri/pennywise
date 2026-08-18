@@ -40,9 +40,37 @@ export interface PipelineRun {
   emailsFetched: number;
   emailsSkipped: number;
   transactionsCreated: number;
+  /** LLM accounting for the run, accumulated across retries. */
+  llmCalls: number;
+  inputTokens: number;
+  outputTokens: number;
+  /** Per-model breakdown, keyed by model name. */
+  llmUsage?: Record<string, LLMModelUsage>;
   startedAt: string;
   updatedAt: string;
   completedAt?: string;
+}
+
+/** One model round-trip made while processing an email. */
+export interface LLMCall {
+  step: string;
+  provider: string;
+  model: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  durationMs?: number;
+  /** Attempt that errored and fell through to the next provider in the chain. */
+  failed?: boolean;
+  error?: string;
+}
+
+export interface LLMModelUsage {
+  provider?: string;
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+  durationMs?: number;
+  failures?: number;
 }
 
 export interface PipelineRunEvent {
