@@ -210,6 +210,8 @@ section, so older links keep working.
 | Pipeline runs repo / API (`/api/pipeline/runs`) | `backend/shared/db/pipelineRun.go`, `backend/go-pennywise-api/internal/service/pipeline.go` |
 | Pipeline UI (Activity page, `/activity`) | `react-frontend/src/features/pipeline/` |
 | Chat agent loop | `backend/cipher/agent/runtime/agent.go` |
+| LLM providers (agent + email pipeline) | `backend/cipher/agent/llm/providers/` (`anthropic`, `openai`, `openrouter`, `lumo`, `ollama`) |
+| lumo-tamer Railway deployment | `deploy/lumo-tamer/` |
 | Agent tools | `backend/cipher/agent/tools/` (`getSpendingSummary`, `getTopTransactions`, `getBudgetInfo`, `getSchema`, `executeSQL`, `getToday`, `updateMemory`) |
 | Agent system prompt | `backend/cipher/agent/context/prompts.go` (`SystemPromptStatic` / `SystemPromptDynamic`) |
 | Agent context budget | `backend/cipher/agent/memory/memory.go` (`PrepareContext`, `enforceTokenBudget`) |
@@ -242,4 +244,15 @@ After completing any new feature, bug fix, or task, update this CLAUDE.md file i
   (IANA zone for `get_today`; containers default to UTC), `AGENT_DB_URL` (least-privilege
   read-only connection for the agent's SQL tools — see migration `00015`, which also documents
   the roles an administrator must create, since the migrating role usually cannot `CREATE ROLE`)
+- **Lumo provider** (cipher): `LUMO_BASE_URL` + `LUMO_API_KEY` point at a self-hosted
+  [lumo-tamer](https://github.com/ZeroTricks/lumo-tamer), which fronts Proton Lumo with an
+  OpenAI-compatible API. Setting `LUMO_BASE_URL` is what registers the provider — it is
+  absent from the registry otherwise. It speaks the same Responses wire shape as OpenRouter,
+  so both share `responsesClient` in `agent/llm/providers/openrouter.go`; only host, path
+  (`/v1/responses` vs OpenRouter's `/api/v1/responses`) and auth differ. Usable anywhere a
+  provider name is (`EMAIL_PIPELINE_PROVIDERS=lumo=lumo-max`, `AGENT_PROVIDER=lumo`), with
+  two caveats: Lumo serves **no embeddings**, so `EMAIL_EMBEDDING_PROVIDERS` can never point
+  at it, and it has no native tool calling — lumo-tamer emulates it in the prompt
+  (`server.customTools`), which the email pipeline does not need and the chat agent depends
+  on entirely. Deployment runbook: `deploy/lumo-tamer/README.md`.
 - **Internal service auth**: Go services now expect a shared `INTERNAL_AUTH_TOKEN` for verified service-to-service HTTP calls

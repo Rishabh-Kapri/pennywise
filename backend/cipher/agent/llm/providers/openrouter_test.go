@@ -217,8 +217,10 @@ func TestOpenRouterStreamProcessesContentPartDelta(t *testing.T) {
 	}
 }
 
-func newTestOpenRouterClient(testTransport transport.Transport) *openRouterClient {
-	return &openRouterClient{
+func newTestOpenRouterClient(testTransport transport.Transport) *responsesClient {
+	return &responsesClient{
+		provider: "openrouter",
+		path:     openRouterResponsesPath,
 		httpClient: transport.NewClient(
 			"openrouter",
 			testTransport,

@@ -105,6 +105,15 @@ func getLLMClients(tel otelSDK.TelemetryProvider) (map[string]llm.RegistryEntry,
 		entries["openrouter"] = llm.RegistryEntry{Client: oc, DefaultModel: "anthropic/claude-haiku-4.5"}
 	}
 
+	if appConfig.LumoBaseURL != "" {
+		c, err := providers.NewLumoClient()
+		if err != nil {
+			return nil, "", err
+		}
+		oc := llm.NewObservedLLM(c, tel)
+		entries["lumo"] = llm.RegistryEntry{Client: oc, DefaultModel: providers.LumoDefaultModel}
+	}
+
 	ollamaClient, err := providers.NewOllamaClient()
 	if err != nil {
 		return nil, "", err
@@ -118,7 +127,7 @@ func getLLMClients(tel otelSDK.TelemetryProvider) (map[string]llm.RegistryEntry,
 	defaultProvider := appConfig.DefaultAgentProvider
 	if _, ok := entries[defaultProvider]; !ok {
 		defaultProvider = func() string {
-			for _, provider := range []string{"openai", "anthropic", "openrouter", "ollama"} {
+			for _, provider := range []string{"openai", "anthropic", "openrouter", "lumo", "ollama"} {
 				if _, ok := entries[provider]; ok {
 					return provider
 				}

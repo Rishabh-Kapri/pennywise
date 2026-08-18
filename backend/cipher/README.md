@@ -39,8 +39,8 @@ Requires a reachable Ollama endpoint (`OLLAMA_URL`); it is intentionally not par
 - `cmd/api`, `cmd/backfill` — entry points
 - `internal/service/prediction.go` — pipeline orchestration
 - `internal/temporal` — `PredictionActivity` (on `CipherActivitiesTaskQueue`)
-- `agent/` — agent runtime: `runtime/` (loop + streaming), `llm/providers/` (ollama/openai/anthropic/openrouter), `tools/`, `memory/`, `context/`
+- `agent/` — agent runtime: `runtime/` (loop + streaming), `llm/providers/` (ollama/openai/anthropic/openrouter/lumo), `tools/`, `memory/`, `context/`
 
 ## Environment
 
-`DATABASE_URL` (shares the main Postgres), `OLLAMA_URL`, `PENNYWISE_SERVICE_URL`, `REDIS_URL`, `INTERNAL_AUTH_TOKEN`, `AGENT_PROVIDER`, `OPENAI_API_KEY`/`ANTHROPIC_API_KEY`/`OPENROUTER_API_KEY`, `TEMPORAL_SERVER_HOST`/`PORT`, `PORT`.
+`DATABASE_URL` (shares the main Postgres), `OLLAMA_URL`, `PENNYWISE_SERVICE_URL`, `REDIS_URL`, `INTERNAL_AUTH_TOKEN`, `AGENT_PROVIDER`, `OPENAI_API_KEY`/`ANTHROPIC_API_KEY`/`OPENROUTER_API_KEY`, `LUMO_BASE_URL`/`LUMO_API_KEY` (self-hosted lumo-tamer — see `deploy/lumo-tamer/README.md`), `TEMPORAL_SERVER_HOST`/`PORT`, `PORT`.
