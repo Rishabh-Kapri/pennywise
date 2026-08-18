@@ -139,6 +139,10 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      # lumo-tamer instance fronting Proton Lumo. Setting the base URL is what
+      # registers the "lumo" provider; empty leaves it unregistered.
+      LUMO_BASE_URL: ${LUMO_BASE_URL:-}
+      LUMO_API_KEY: ${LUMO_API_KEY:-}
       AGENT_PROVIDER: ${AGENT_PROVIDER:-ollama}
       # "provider/model" for conversation titles. Unset uses the default
       # provider's default model, which is what keeps titles working wherever

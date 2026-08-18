@@ -61,16 +61,21 @@ func parseLLMTargets(raw string) []LLMTarget {
 }
 
 type Config struct {
-	Environment          string
-	DatabaseURL          string
-	RedisURL             string
-	OllamaURL            string
-	MLPServiceURL        string
-	PennywiseServiceURL  string
-	OpenAIAPIKey         string
-	AnthropicAPIKey      string
-	OpenRouterAPIKey     string
-	DefaultAgentProvider string // "anthropic", "openai", "openrouter", or "ollama"
+	Environment         string
+	DatabaseURL         string
+	RedisURL            string
+	OllamaURL           string
+	MLPServiceURL       string
+	PennywiseServiceURL string
+	OpenAIAPIKey        string
+	AnthropicAPIKey     string
+	OpenRouterAPIKey    string
+	// LumoBaseURL points at a lumo-tamer instance (Proton Lumo behind an
+	// OpenAI-compatible API). Empty leaves the "lumo" provider unregistered.
+	LumoBaseURL string
+	// LumoAPIKey is the shared secret lumo-tamer's server.apiKey expects.
+	LumoAPIKey           string
+	DefaultAgentProvider string // "anthropic", "openai", "openrouter", "lumo", or "ollama"
 	InternalAuthToken    string
 	TemporalServerHost   string
 	TemporalServerPort   string
@@ -161,6 +166,8 @@ func Load() Config {
 		OpenAIAPIKey:             os.Getenv("OPENAI_API_KEY"),
 		AnthropicAPIKey:          os.Getenv("ANTHROPIC_API_KEY"),
 		OpenRouterAPIKey:         os.Getenv("OPENROUTER_API_KEY"),
+		LumoBaseURL:              strings.TrimRight(strings.TrimSpace(os.Getenv("LUMO_BASE_URL")), "/"),
+		LumoAPIKey:               strings.TrimSpace(os.Getenv("LUMO_API_KEY")),
 		DefaultAgentProvider:     os.Getenv("AGENT_PROVIDER"),
 		InternalAuthToken:        os.Getenv("INTERNAL_AUTH_TOKEN"),
 		TemporalServerHost:       os.Getenv("TEMPORAL_SERVER_HOST"),

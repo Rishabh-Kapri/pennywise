@@ -17,8 +17,17 @@ import (
 
 const openRouterResponsesPath = "/api/v1/responses"
 
-type openRouterClient struct {
+// responsesClient speaks the OpenAI Responses wire shape (`/v1/responses`) to
+// any host that implements it. OpenRouter was the first such upstream, which is
+// why the wire structs below carry its name; lumo-tamer (see lumo.go) serves the
+// same shape, so it reuses this client instead of forking a near-identical copy.
+type responsesClient struct {
 	httpClient *transport.Client
+	// provider labels the upstream in errors and logs.
+	provider string
+	// path is the Responses endpoint on that upstream — OpenRouter serves it
+	// under /api/v1, everyone else under /v1.
+	path string
 }
 
 type openRouterReq struct {
@@ -123,7 +132,9 @@ func NewOpenRouterClient() (llm.LLM, error) {
 
 	httpTransport := httpclient.NewHttpTransport("https://openrouter.ai")
 
-	return &openRouterClient{
+	return &responsesClient{
+		provider: "openrouter",
+		path:     openRouterResponsesPath,
 		httpClient: transport.NewClient(
 			"openrouter",
 			httpTransport,
@@ -133,7 +144,7 @@ func NewOpenRouterClient() (llm.LLM, error) {
 	}, nil
 }
 
-func (c *openRouterClient) toOpenRouterReq(req sharedModel.ChatRequest) openRouterReq {
+func (c *responsesClient) toOpenRouterReq(req sharedModel.ChatRequest) openRouterReq {
 	input := toOpenRouterInput(req.Messages)
 	return openRouterReq{
 		Model:           req.Model,
@@ -262,12 +273,12 @@ func openRouterHistoryID(prefix string, index int, fallback string) string {
 	return fmt.Sprintf("%s_%s", prefix, b.String())
 }
 
-func (c *openRouterClient) fromOpenRouterRes(res openRouterRes) (sharedModel.ChatResponse, error) {
+func (c *responsesClient) fromOpenRouterRes(res openRouterRes) (sharedModel.ChatResponse, error) {
 	if res.Error != nil && res.Error.Message != "" {
-		return sharedModel.ChatResponse{}, errs.New(errs.CodeInternalError, "openrouter: %s", res.Error.Message)
+		return sharedModel.ChatResponse{}, errs.New(errs.CodeInternalError, "%s: %s", c.provider, res.Error.Message)
 	}
 	if len(res.Output) == 0 {
-		return sharedModel.ChatResponse{}, errs.New(errs.CodeInternalError, "openrouter: no output returned")
+		return sharedModel.ChatResponse{}, errs.New(errs.CodeInternalError, "%s: no output returned", c.provider)
 	}
 
 	content := make([]sharedModel.ContentBlock, 0)
@@ -360,12 +371,12 @@ func toOpenRouterStopReason(res openRouterRes) sharedModel.StopReason {
 	}
 }
 
-func (c *openRouterClient) Chat(ctx context.Context, req sharedModel.ChatRequest) (*sharedModel.ChatResponse, error) {
+func (c *responsesClient) Chat(ctx context.Context, req sharedModel.ChatRequest) (*sharedModel.ChatResponse, error) {
 	log := logger.Logger(ctx)
 	openRouterReq := c.toOpenRouterReq(req)
-	res, err := transport.Post[openRouterRes](ctx, c.httpClient, openRouterResponsesPath, nil, openRouterReq)
+	res, err := transport.Post[openRouterRes](ctx, c.httpClient, c.path, nil, openRouterReq)
 	if err != nil {
-		log.Error("error while sending openrouter /api/v1/responses", "error", err)
+		log.Error("error while sending responses request", "provider", c.provider, "path", c.path, "error", err)
 		return nil, err
 	}
 
@@ -377,7 +388,7 @@ func (c *openRouterClient) Chat(ctx context.Context, req sharedModel.ChatRequest
 	return &chatRes, nil
 }
 
-func (c *openRouterClient) Stream(ctx context.Context, req sharedModel.ChatRequest) <-chan sharedModel.StreamChunk {
+func (c *responsesClient) Stream(ctx context.Context, req sharedModel.ChatRequest) <-chan sharedModel.StreamChunk {
 	log := logger.Logger(ctx)
 	openRouterReq := c.toOpenRouterReq(req)
 	openRouterReq.Stream = true
@@ -386,9 +397,9 @@ func (c *openRouterClient) Stream(ctx context.Context, req sharedModel.ChatReque
 	headers := map[string][]string{
 		"Accept": {"text/event-stream"},
 	}
-	res, err := transport.StreamPost(ctx, c.httpClient, openRouterResponsesPath, headers, openRouterReq)
+	res, err := transport.StreamPost(ctx, c.httpClient, c.path, headers, openRouterReq)
 	if err != nil {
-		log.Error("error while sending openrouter streaming /api/v1/responses", "error", err)
+		log.Error("error while sending streaming responses request", "provider", c.provider, "path", c.path, "error", err)
 		events <- sharedModel.StreamChunk{
 			Type: sharedModel.ChunkEventError,
 			Text: err.Error(),
@@ -449,7 +460,7 @@ func (c *openRouterClient) Stream(ctx context.Context, req sharedModel.ChatReque
 
 			var ev openRouterStreamEvent
 			if err := json.Unmarshal([]byte(data), &ev); err != nil {
-				log.Error("error while unmarshalling openrouter stream event", "event", event.Event, "error", err)
+				log.Error("error while unmarshalling responses stream event", "event", event.Event, "error", err)
 				sendOpenRouterChunk(ctx, events, sharedModel.StreamChunk{
 					Type: sharedModel.ChunkEventError,
 					Text: err.Error(),
@@ -557,7 +568,7 @@ func (c *openRouterClient) Stream(ctx context.Context, req sharedModel.ChatReque
 				return
 
 			case "response.failed", "response.error", "error":
-				message := "openrouter stream error"
+				message := c.provider + " stream error"
 				if ev.Error != nil && ev.Error.Message != "" {
 					message = ev.Error.Message
 				} else if ev.Response.Error != nil && ev.Response.Error.Message != "" {
