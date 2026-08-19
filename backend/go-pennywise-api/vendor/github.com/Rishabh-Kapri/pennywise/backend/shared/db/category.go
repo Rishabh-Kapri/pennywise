@@ -18,6 +18,7 @@ type CategoryRepository interface {
 	BaseRepositoryInterface
 	GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Category, error)
 	GetAllSimplified(ctx context.Context, budgetId uuid.UUID) ([]model.CategorySimplified, error)
+	FindClosestSimplified(ctx context.Context, budgetId uuid.UUID, name string, limit int) ([]model.CategoryNameMatch, error)
 	GetInflowBalance(ctx context.Context, budgetId uuid.UUID) (float64, error)
 	GetByFilter(ctx context.Context, budgetId uuid.UUID, filter model.CategoryFilter) ([]model.Category, error)
 	Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.Category, error)
@@ -205,6 +206,55 @@ func (r *categoryRepo) GetByFilter(ctx context.Context, budgetId uuid.UUID, filt
 		categories = append(categories, c)
 	}
 	return categories, nil
+}
+
+// FindClosestSimplified ranks the budget's assignable categories by trigram
+// similarity to name and returns the best `limit` of them, highest score first.
+// The visibility filter is deliberately identical to GetAllSimplified: the only
+// categories worth matching are the ones that were offered to the model in the
+// first place.
+//
+// Callers decide what score is good enough -- the repository ranks, it does
+// not judge.
+func (r *categoryRepo) FindClosestSimplified(
+	ctx context.Context,
+	budgetId uuid.UUID,
+	name string,
+	limit int,
+) ([]model.CategoryNameMatch, error) {
+	if limit <= 0 {
+		limit = 1
+	}
+	rows, err := r.Executor(nil).Query(
+		ctx, `
+			SELECT categories.id, categories.name, similarity(categories.name, $2) AS score
+			FROM categories
+			LEFT JOIN budgets ON categories.budget_id = budgets.id
+			WHERE categories.budget_id = $1 AND
+					categories.deleted = FALSE AND
+					categories.hidden = FALSE AND
+					categories.is_system = FALSE AND
+					categories.id != (budgets.metadata ->> 'inflowCategoryId')::uuid AND
+					categories.category_group_id != (budgets.metadata ->> 'ccGroupId')::uuid
+			ORDER BY score DESC, categories.name ASC
+			LIMIT $3
+		`, budgetId, name, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var matches []model.CategoryNameMatch
+	for rows.Next() {
+		var m model.CategoryNameMatch
+		if err := rows.Scan(&m.ID, &m.Name, &m.Score); err != nil {
+			logger.Logger(ctx).Error("error scanning category match", "error", err)
+			return nil, err
+		}
+		matches = append(matches, m)
+	}
+	return matches, rows.Err()
 }
 
 func (r *categoryRepo) Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.Category, error) {

@@ -328,6 +328,15 @@ func (a *PredictionActivity) PredictEmail(
 				LLMCalls:   usage.Calls(),
 			}, nil
 		}
+		if errors.As(err, &svcErr) && svcErr.Code == errs.CodeCategoryLookupFailed {
+			// Deterministic: the model's category does not resolve against this
+			// budget and re-running the same email will not change that. Fail
+			// terminally so the workflow parks it now instead of paying for two
+			// more identical LLM rounds first.
+			log.Error("category lookup failed, parking email", "error", err)
+			return sharedModel.PredictEmailResult{LLMCalls: usage.Calls()},
+				temporal.NewNonRetryableApplicationError(err.Error(), string(errs.CodeCategoryLookupFailed), err)
+		}
 		log.Error("prediction failed", "error", err)
 		return sharedModel.PredictEmailResult{LLMCalls: usage.Calls()}, err
 	}
