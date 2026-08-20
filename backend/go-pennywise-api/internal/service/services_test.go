@@ -1003,6 +1003,27 @@ func (m *svcCipherPredictionRepo) GetByTransactionID(ctx context.Context, budget
 	}
 	return nil, args.Error(1)
 }
+func (m *svcCipherPredictionRepo) MarkLearned(ctx context.Context, tx pgx.Tx, budgetID uuid.UUID, txnID uuid.UUID) error {
+	return m.Called(ctx, tx, budgetID, txnID).Error(0)
+}
+
+func (m *svcCipherPredictionRepo) MarkLearnFailed(ctx context.Context, budgetID uuid.UUID, txnID uuid.UUID, reason string) error {
+	return m.Called(ctx, budgetID, txnID, reason).Error(0)
+}
+
+func (m *svcCipherPredictionRepo) ListPendingLearning(ctx context.Context, budgetID uuid.UUID, limit int, retryFailed bool) ([]model.LearningCandidate, error) {
+	args := m.Called(ctx, budgetID, limit, retryFailed)
+	if v := args.Get(0); v != nil {
+		return v.([]model.LearningCandidate), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+
+func (m *svcCipherPredictionRepo) LearningStats(ctx context.Context, budgetID uuid.UUID) (model.LearningStats, error) {
+	args := m.Called(ctx, budgetID)
+	return args.Get(0).(model.LearningStats), args.Error(1)
+}
+
 func (m *svcCipherPredictionRepo) MarkUserCorrected(ctx context.Context, tx pgx.Tx, budgetID uuid.UUID, txnID uuid.UUID, actualPayeeID *uuid.UUID, actualCategoryID *uuid.UUID) error {
 	return m.Called(ctx, tx, budgetID, txnID, actualPayeeID, actualCategoryID).Error(0)
 }
