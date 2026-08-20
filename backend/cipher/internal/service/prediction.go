@@ -790,10 +790,15 @@ func (s *predictionService) Predict(ctx context.Context, req PredictRequest) (*P
 		return predictResponse, nil
 	}
 
-	// Step 4: LLM fallback
+	// Step 4: LLM fallback. This is the last step, so its failures are the
+	// prediction's failures: returning nil here would have the activity record
+	// the email as a skip and drop it silently. Surfacing the error instead
+	// parks the email on the retry signal, where it can be reprocessed once the
+	// cause (a missing category, an LLM outage) is dealt with.
 	predictResponse, err = s.handleLLM(ctx, budgetId, embeddingText, req)
 	if err != nil {
-		log.Warn("LLM prediction failed, falling back to manual", "error", err)
+		log.Error("LLM prediction failed", "error", err)
+		return nil, err
 	}
 	if predictResponse != nil {
 		log.Info("LLM prediction found", "payee", predictResponse.PayeeID, "category", predictResponse.CategoryID)
@@ -1032,25 +1037,104 @@ func (s *predictionService) llmFallback(
 		return nil, uuid.Nil, nil, err
 	}
 
-	categoryID, ok := userCategoriesMap[parsed.SuggestedTag]
+	suggested := parsed.SuggestedTag
+	categoryID, ok := userCategoriesMap[suggested]
+	matchKind := "exact"
+	matchScore := 1.0
 	if !ok {
-		// Category should always be found by the LLM from existing categories
-		return nil, uuid.Nil, nil, errs.New(errs.CodeCategoryLookupFailed, "category not found")
+		// Local models routinely return a category that is right but not
+		// byte-identical -- dropping the emoji prefix, changing case or
+		// spacing. Ask the database for the closest name it can find before
+		// giving up on an otherwise usable prediction.
+		match, err := s.resolveCategoryFuzzy(ctx, budgetId, suggested)
+		if err != nil {
+			return nil, uuid.Nil, nil, err
+		}
+		if match == nil {
+			return nil, uuid.Nil, nil, errs.New(
+				errs.CodeCategoryLookupFailed, "category not found for %q", suggested,
+			)
+		}
+		log.Info("category resolved by fuzzy match",
+			"suggested", suggested, "matched", match.Name, "score", match.Score)
+		categoryID = match.ID
+		matchKind = "fuzzy"
+		matchScore = match.Score
+		// Report the canonical name onwards: callers surface SuggestedTag as
+		// the prediction's category, and it must agree with categoryID.
+		parsed.SuggestedTag = match.Name
 	}
 
 	metadata := map[string]any{
-		"strategy":          "llm_fallback",
-		"model":             chatRes.Model,
-		"prompt":            prompt,
-		"input_text":        req.Text,
-		"input_amount":      req.Amount,
-		"response":          chatRes.Message.Content[0].Text,
-		"categories_count":  len(userCategories),
-		"prompt_template":   "promptV2",
-		"response_category": parsed.SuggestedTag,
+		"strategy":             "llm_fallback",
+		"model":                chatRes.Model,
+		"prompt":               prompt,
+		"input_text":           req.Text,
+		"input_amount":         req.Amount,
+		"response":             chatRes.Message.Content[0].Text,
+		"categories_count":     len(userCategories),
+		"prompt_template":      "promptV2",
+		"response_category":    suggested,
+		"category_match":       matchKind,
+		"category_matched":     parsed.SuggestedTag,
+		"category_match_score": matchScore,
 	}
 
 	return &parsed, categoryID, metadata, nil
+}
+
+// Trigram thresholds for resolving a category name the model got almost right.
+//
+// pg_trgm treats emoji and punctuation as word separators and folds case, so
+// the common near-misses score at or near the top of the range while invented
+// names score far below the floor. Measured against the real category list:
+// a suggested "Dining Out/Entertainment" scores 1.00 against the stored
+// emoji-prefixed name (next best 0.07), lowercase "groceries" scores 1.00
+// (next 0.08), and "Uncategorized" -- a name no budget has a category for --
+// tops out at 0.10.
+//
+// The margin guards the other failure mode: sibling categories that differ by a
+// suffix both score well against a truncated name -- "Travel" scores exactly
+// 0.70 against both "Travel - ST" and "Travel - LT". Picking the higher one
+// would silently miscategorize, so when the top two are that close no answer
+// beats a coin flip: the prediction fails and the email parks for a retry.
+const (
+	categoryFuzzyMinScore  = 0.45
+	categoryFuzzyMinMargin = 0.10
+)
+
+// resolveCategoryFuzzy finds the budget category whose name is closest to the
+// one the model suggested. It returns nil (no error) when nothing is close
+// enough, or when the best two candidates are too close to call.
+func (s *predictionService) resolveCategoryFuzzy(
+	ctx context.Context,
+	budgetId uuid.UUID,
+	suggested string,
+) (*sharedModel.CategoryNameMatch, error) {
+	log := logger.Logger(ctx)
+
+	matches, err := s.categoryRepo.FindClosestSimplified(ctx, budgetId, suggested, 2)
+	if err != nil {
+		return nil, err
+	}
+	if len(matches) == 0 {
+		return nil, nil
+	}
+
+	best := matches[0]
+	if best.Score < categoryFuzzyMinScore {
+		log.Warn("no category close enough to the suggested one",
+			"suggested", suggested, "closest", best.Name, "score", best.Score)
+		return nil, nil
+	}
+	if len(matches) > 1 && best.Score-matches[1].Score < categoryFuzzyMinMargin {
+		log.Warn("ambiguous category match, refusing to guess",
+			"suggested", suggested,
+			"first", best.Name, "firstScore", best.Score,
+			"second", matches[1].Name, "secondScore", matches[1].Score)
+		return nil, nil
+	}
+	return &best, nil
 }
 
 func (s *predictionService) storeEmbedding(
