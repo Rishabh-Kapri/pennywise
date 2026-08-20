@@ -1275,6 +1275,26 @@ func (m *mockTransactionService) DeleteById(ctx context.Context, id uuid.UUID) e
 	return m.Called(ctx, id).Error(0)
 }
 
+func (m *mockTransactionService) LearnFromTransaction(ctx context.Context, txn model.Transaction) {
+	m.Called(ctx, txn)
+}
+
+func (m *mockTransactionService) BackfillLearning(
+	ctx context.Context,
+	req model.LearningBackfillRequest,
+) (*model.LearningBackfillResult, error) {
+	args := m.Called(ctx, req)
+	if v := args.Get(0); v != nil {
+		return v.(*model.LearningBackfillResult), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+
+func (m *mockTransactionService) LearningStatus(ctx context.Context) (model.LearningStats, error) {
+	args := m.Called(ctx)
+	return args.Get(0).(model.LearningStats), args.Error(1)
+}
+
 func TestTransactionHandler_List(t *testing.T) {
 	t.Run("returns_transactions", func(t *testing.T) {
 		svc := &mockTransactionService{}

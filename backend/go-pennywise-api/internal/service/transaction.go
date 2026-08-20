@@ -31,6 +31,12 @@ type TransactionService interface {
 	CreateWithTx(ctx context.Context, tx pgx.Tx, txn model.Transaction) ([]model.Transaction, error)
 	CreateWithTxDeduped(ctx context.Context, tx pgx.Tx, txn model.Transaction) (*model.Transaction, bool, error)
 	DeleteById(ctx context.Context, id uuid.UUID) error
+	// LearnFromTransaction queues best-effort learning for a confirmed
+	// transaction. Fire and forget: failures are recorded on the prediction,
+	// never returned to the caller.
+	LearnFromTransaction(ctx context.Context, txn model.Transaction)
+	BackfillLearning(ctx context.Context, req model.LearningBackfillRequest) (*model.LearningBackfillResult, error)
+	LearningStatus(ctx context.Context) (model.LearningStats, error)
 }
 
 type transactionService struct {
@@ -294,17 +300,7 @@ func (s *transactionService) learnTransactionMappingAsync(
 	budgetId uuid.UUID,
 	txn model.Transaction,
 ) {
-	if s.cipherClient == nil || s.payeeRuleRepo == nil || s.txnEmbeddingRepo == nil {
-		logger.Logger(ctx).
-			Warn("skipping transaction learning because dependencies are not configured", "txnId", txn.ID)
-		return
-	}
-	if txn.PayeeID == nil || txn.CategoryID == nil {
-		logger.Logger(ctx).Warn("skipping transaction learning because payee or category is missing", "txnId", txn.ID)
-		return
-	}
-	if txn.RawBankText == nil || strings.TrimSpace(*txn.RawBankText) == "" {
-		logger.Logger(ctx).Warn("skipping transaction learning because raw bank text is missing", "txnId", txn.ID)
+	if !s.canLearnFrom(ctx, txn) {
 		return
 	}
 
@@ -314,52 +310,224 @@ func (s *transactionService) learnTransactionMappingAsync(
 		bgCtx, cancel := context.WithTimeout(bgCtx, 2*time.Minute)
 		defer cancel()
 
-		generatedEmbedding, err := s.cipherClient.GenerateTransactionEmbedding(bgCtx, TransactionEmbeddingRequest{
-			RawBankText: *txn.RawBankText,
-			Amount:      txn.Amount,
-		})
-		if err != nil {
-			err := errs.Wrap(errs.CodeInternalError, "error generating transaction embedding", err)
-			logger.Logger(bgCtx).Error("error generating transaction embedding", "error", err)
-			return
-		}
-		if generatedEmbedding == nil || strings.TrimSpace(generatedEmbedding.Embedding) == "" {
-			err := errs.New(errs.CodeInternalError, "cipher returned empty transaction embedding")
-			logger.Logger(bgCtx).Error("cipher returned empty transaction embedding", "error", err)
-			return
-		}
-
-		payeeRule := model.PayeeRule{
-			BudgetID:    budgetId,
-			PayeeID:     *txn.PayeeID,
-			CategoryID:  txn.CategoryID,
-			MatchString: generatedEmbedding.MatchString,
-		}
-		err = withTx(bgCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
-			if err = s.payeeRuleRepo.CreatePayeeRule(bgCtx, tx, payeeRule); err != nil {
-				err := errs.Wrap(errs.CodeInternalError, "error creating payee rule", err)
-				logger.Logger(bgCtx).Error("error creating payee rule", "error", err)
-				return err
-			}
-
-			embedding := model.TransactionEmbedding{
-				BudgetID:      budgetId,
-				PayeeID:       *txn.PayeeID,
-				CategoryID:    *txn.CategoryID,
-				Amount:        txn.Amount,
-				Source:        "AUTO_LEARNED",
-				EmbeddingText: generatedEmbedding.EmbeddingText,
-			}
-			return s.txnEmbeddingRepo.Upsert(bgCtx, tx, embedding, generatedEmbedding.Embedding)
-		})
-		if err != nil {
-			logger.Logger(bgCtx).Error("error upserting transaction embedding", "error", err)
+		if err := s.learnTransactionMapping(bgCtx, budgetId, txn); err != nil {
+			logger.Logger(bgCtx).Error("transaction learning failed", "txnId", txn.ID, "error", err)
 		}
 	}()
 }
 
-// applySideEffects applies all side effects (carryovers, transfers, predictions)
-// for a transaction create, update, or delete in a single unified method.
+// LearnFromTransaction queues learning for a transaction the user just
+// confirmed. Exported so the review queue's accept path can teach the pipeline
+// without going through a full transaction update.
+func (s *transactionService) LearnFromTransaction(ctx context.Context, txn model.Transaction) {
+	s.learnTransactionMappingAsync(ctx, utils.MustBudgetID(ctx), txn)
+}
+
+// canLearnFrom reports whether a transaction carries what the learning step
+// needs. A manually entered row has no raw bank text, so there is nothing for a
+// future email to match against.
+func (s *transactionService) canLearnFrom(ctx context.Context, txn model.Transaction) bool {
+	if s.cipherClient == nil || s.payeeRuleRepo == nil || s.txnEmbeddingRepo == nil {
+		logger.Logger(ctx).
+			Warn("skipping transaction learning because dependencies are not configured", "txnId", txn.ID)
+		return false
+	}
+	if txn.PayeeID == nil || txn.CategoryID == nil {
+		logger.Logger(ctx).Warn("skipping transaction learning because payee or category is missing", "txnId", txn.ID)
+		return false
+	}
+	if txn.RawBankText == nil || strings.TrimSpace(*txn.RawBankText) == "" {
+		logger.Logger(ctx).Warn("skipping transaction learning because raw bank text is missing", "txnId", txn.ID)
+		return false
+	}
+	return true
+}
+
+// learnTransactionMapping turns one confirmed transaction into a payee rule and
+// an AUTO_LEARNED embedding, then stamps the prediction so a backfill can tell
+// what has already been learned from. Runs synchronously; the async wrapper and
+// the backfill share it.
+//
+// The outcome is recorded on the cipher prediction either way -- learning is
+// best-effort and nothing upstream surfaces its failures, so learn_error is the
+// only place a broken learning step becomes visible.
+func (s *transactionService) learnTransactionMapping(
+	ctx context.Context,
+	budgetId uuid.UUID,
+	txn model.Transaction,
+) error {
+	err := s.doLearnTransactionMapping(ctx, budgetId, txn)
+	if err == nil {
+		return nil
+	}
+	if s.cipherPredictionRepo != nil {
+		if markErr := s.cipherPredictionRepo.MarkLearnFailed(ctx, budgetId, txn.ID, err.Error()); markErr != nil {
+			logger.Logger(ctx).Warn("failed to record learning error", "txnId", txn.ID, "error", markErr)
+		}
+	}
+	return err
+}
+
+func (s *transactionService) doLearnTransactionMapping(
+	ctx context.Context,
+	budgetId uuid.UUID,
+	txn model.Transaction,
+) error {
+	generatedEmbedding, err := s.cipherClient.GenerateTransactionEmbedding(ctx, TransactionEmbeddingRequest{
+		RawBankText: *txn.RawBankText,
+		Amount:      txn.Amount,
+	})
+	if err != nil {
+		return errs.Wrap(errs.CodeInternalError, "error generating transaction embedding", err)
+	}
+	if generatedEmbedding == nil || strings.TrimSpace(generatedEmbedding.Embedding) == "" {
+		return errs.New(errs.CodeInternalError, "cipher returned empty transaction embedding")
+	}
+	// An empty match string would be stored as a payee rule matching nothing,
+	// and every such rule collides on (budget_id, match_string).
+	if strings.TrimSpace(generatedEmbedding.MatchString) == "" {
+		return errs.New(errs.CodeInternalError, "cipher returned empty payee match string")
+	}
+
+	payeeRule := model.PayeeRule{
+		BudgetID:    budgetId,
+		PayeeID:     *txn.PayeeID,
+		CategoryID:  txn.CategoryID,
+		MatchString: generatedEmbedding.MatchString,
+	}
+	if err := withTx(ctx, s.repo.GetDB(), func(tx pgx.Tx) error {
+		if err := s.payeeRuleRepo.CreatePayeeRule(ctx, tx, payeeRule); err != nil {
+			return errs.Wrap(errs.CodeInternalError, "error creating payee rule", err)
+		}
+
+		embedding := model.TransactionEmbedding{
+			BudgetID:      budgetId,
+			PayeeID:       *txn.PayeeID,
+			CategoryID:    *txn.CategoryID,
+			Amount:        txn.Amount,
+			Source:        "AUTO_LEARNED",
+			EmbeddingText: generatedEmbedding.EmbeddingText,
+		}
+		if err := s.txnEmbeddingRepo.Upsert(ctx, tx, embedding, generatedEmbedding.Embedding); err != nil {
+			return errs.Wrap(errs.CodeInternalError, "error upserting transaction embedding", err)
+		}
+
+		if s.cipherPredictionRepo != nil {
+			// Absent for a transaction the pipeline did not create; the rule and
+			// embedding above are still worth keeping.
+			if err := s.cipherPredictionRepo.MarkLearned(ctx, tx, budgetId, txn.ID); err != nil && err != pgx.ErrNoRows {
+				return errs.Wrap(errs.CodeInternalError, "error marking prediction learned", err)
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	logger.Logger(ctx).Info("learned transaction mapping",
+		"txnId", txn.ID, "matchString", generatedEmbedding.MatchString)
+	return nil
+}
+
+// Learning backfill bounds. Each item costs an extraction and an embedding
+// round-trip, so the request stays interactive only for a small page; callers
+// walk history by calling it repeatedly.
+const (
+	defaultLearningBackfillLimit = 25
+	maxLearningBackfillLimit     = 100
+)
+
+// LearningStatus reports how much of the budget's prediction history has taught
+// the pipeline.
+func (s *transactionService) LearningStatus(ctx context.Context) (model.LearningStats, error) {
+	budgetId := utils.MustBudgetID(ctx)
+	if s.cipherPredictionRepo == nil {
+		return model.LearningStats{}, errs.New(errs.CodeInternalError, "cipher prediction repository is not configured")
+	}
+	return s.cipherPredictionRepo.LearningStats(ctx, budgetId)
+}
+
+// BackfillLearning runs learning over past predictions that never taught the
+// pipeline -- transactions approved before learning worked, or whose learning
+// step failed at the time.
+//
+// Items are processed sequentially: each one calls out to cipher for an
+// extraction and an embedding, and a local model serves those one at a time
+// anyway, so a burst of parallel requests would only queue up behind itself.
+// A failed item is recorded and the run continues; only a lookup failure aborts.
+func (s *transactionService) BackfillLearning(
+	ctx context.Context,
+	req model.LearningBackfillRequest,
+) (*model.LearningBackfillResult, error) {
+	budgetId := utils.MustBudgetID(ctx)
+	log := logger.Logger(ctx)
+
+	if s.cipherPredictionRepo == nil {
+		return nil, errs.New(errs.CodeInternalError, "cipher prediction repository is not configured")
+	}
+
+	limit := req.Limit
+	if limit <= 0 {
+		limit = defaultLearningBackfillLimit
+	}
+	if limit > maxLearningBackfillLimit {
+		limit = maxLearningBackfillLimit
+	}
+
+	candidates, err := s.cipherPredictionRepo.ListPendingLearning(ctx, budgetId, limit, req.RetryFailed)
+	if err != nil {
+		return nil, errs.Wrap(errs.CodeInternalError, "error listing predictions pending learning", err)
+	}
+
+	log.Info("starting learning backfill",
+		"count", len(candidates), "limit", limit, "retryFailed", req.RetryFailed)
+
+	result := &model.LearningBackfillResult{Items: make([]model.LearningBackfillItem, 0, len(candidates))}
+	for _, candidate := range candidates {
+		// Stop cleanly when the caller goes away rather than burning LLM calls
+		// whose results nobody will read.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			log.Warn("learning backfill cancelled", "processed", result.Processed, "error", ctxErr)
+			break
+		}
+
+		txn := model.Transaction{
+			ID:          candidate.TransactionID,
+			BudgetID:    budgetId,
+			PayeeID:     candidate.PayeeID,
+			CategoryID:  candidate.CategoryID,
+			Amount:      candidate.Amount,
+			RawBankText: &candidate.RawBankText,
+		}
+
+		result.Processed++
+		item := model.LearningBackfillItem{TransactionID: candidate.TransactionID}
+		if err := s.learnTransactionMapping(ctx, budgetId, txn); err != nil {
+			log.Warn("learning backfill item failed", "txnId", candidate.TransactionID, "error", err)
+			item.Error = err.Error()
+			result.Failed++
+		} else {
+			item.Learned = true
+			result.Learned++
+		}
+		result.Items = append(result.Items, item)
+	}
+
+	stats, err := s.cipherPredictionRepo.LearningStats(ctx, budgetId)
+	if err != nil {
+		// The work is done and reported; a failed count should not sink it.
+		log.Warn("could not read learning stats after backfill", "error", err)
+	} else {
+		result.Remaining = stats.Pending
+	}
+
+	log.Info("learning backfill finished",
+		"processed", result.Processed, "learned", result.Learned,
+		"failed", result.Failed, "remaining", result.Remaining)
+
+	return result, nil
+}
+
 func (s *transactionService) applySideEffects(ctx context.Context, tx pgx.Tx, input sideEffectInput) error {
 	isCreate := input.oldTxn == nil && input.newTxn != nil
 	isUpdate := input.oldTxn != nil && input.newTxn != nil
@@ -452,44 +620,77 @@ func (s *transactionService) applySideEffects(ctx context.Context, tx pgx.Tx, in
 	}
 
 	// --- Cipher Predictions ---
-	switch {
-	case isUpdate && transactionMappingChanged(input.oldTxn, input.newTxn):
-		if s.cipherPredictionRepo == nil {
-			return nil
-		}
+	// Two things teach the pipeline, and both end in the same learning call: a
+	// correction (the user changed payee or category) and a confirmation (the
+	// user approved the prediction as it stood). Learning only from corrections
+	// meant the common case -- "yes, that is right" -- taught nothing, so the
+	// same merchant went through the whole LLM fallback on every future email.
+	if isUpdate {
+		mappingChanged := transactionMappingChanged(input.oldTxn, input.newTxn)
+		confirmed := predictionConfirmed(input.oldTxn, input.newTxn)
 
-		cipherPrediction, err := s.cipherPredictionRepo.GetByTransactionID(ctx, input.budgetId, input.oldTxn.ID)
-		if err != nil {
-			if err == pgx.ErrNoRows {
+		if mappingChanged || confirmed {
+			if s.cipherPredictionRepo == nil {
 				return nil
 			}
-			return errs.Wrap(errs.CodeTransactionLookupFailed, "error getting cipher prediction", err)
-		}
-		if cipherPrediction == nil {
-			return nil
-		}
 
-		if err := s.cipherPredictionRepo.MarkUserCorrected(
-			ctx,
-			tx,
-			input.budgetId,
-			input.oldTxn.ID,
-			input.newTxn.PayeeID,
-			input.newTxn.CategoryID,
-		); err != nil {
-			return errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating cipher prediction correction", err)
-		}
+			cipherPrediction, err := s.cipherPredictionRepo.GetByTransactionID(ctx, input.budgetId, input.oldTxn.ID)
+			if err != nil {
+				if err == pgx.ErrNoRows {
+					return nil
+				}
+				return errs.Wrap(errs.CodeTransactionLookupFailed, "error getting cipher prediction", err)
+			}
+			// No prediction means the transaction was not created by the
+			// pipeline, so there is nothing to correct and nothing worth
+			// learning from -- a manually entered row has no raw bank text to
+			// match future emails against.
+			if cipherPrediction == nil {
+				return nil
+			}
 
-		if input.queueLearning != nil {
-			learningTxn := *input.newTxn
-			learningTxn.RawBankText = input.oldTxn.RawBankText
-			input.queueLearning(learningTxn)
-		}
+			// Only a real change is a correction. Approving an untouched
+			// prediction confirms it, and marking that as user-corrected would
+			// poison the review queue's accuracy signal.
+			if mappingChanged {
+				if err := s.cipherPredictionRepo.MarkUserCorrected(
+					ctx,
+					tx,
+					input.budgetId,
+					input.oldTxn.ID,
+					input.newTxn.PayeeID,
+					input.newTxn.CategoryID,
+				); err != nil {
+					return errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating cipher prediction correction", err)
+				}
+			}
 
-		logger.Logger(ctx).Info("updated cipher prediction for transaction mapping change", "txnId", input.oldTxn.ID)
+			if input.queueLearning != nil {
+				learningTxn := *input.newTxn
+				// The update payload carries no raw bank text; the stored row
+				// does, and it is what the learned rule matches on.
+				learningTxn.RawBankText = input.oldTxn.RawBankText
+				input.queueLearning(learningTxn)
+			}
+
+			logger.Logger(ctx).Info("learning from cipher prediction",
+				"txnId", input.oldTxn.ID, "corrected", mappingChanged, "confirmed", confirmed)
+		}
 	}
 
 	return nil
+}
+
+// predictionConfirmed reports whether this update is the user approving a
+// pending prediction. Approval is the only status transition that carries a
+// judgement -- re-saving an already approved transaction says nothing new, so
+// it must not re-trigger learning.
+func predictionConfirmed(oldTxn, newTxn *model.Transaction) bool {
+	if oldTxn == nil || newTxn == nil {
+		return false
+	}
+	return oldTxn.Status == model.TransactionStatusUnapproved &&
+		newTxn.Status == model.TransactionStatusApproved
 }
 
 func (s *transactionService) reconcileTransfer(

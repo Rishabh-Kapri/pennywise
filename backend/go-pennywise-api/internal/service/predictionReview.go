@@ -63,6 +63,17 @@ func (s *predictionReviewService) Review(
 			return nil, err
 		}
 
+		// Accepting is a confirmation, and confirmations teach the pipeline the
+		// same as corrections do -- without this an accepted prediction went
+		// through the whole LLM fallback again on the merchant's next email.
+		txn, err := s.transactionRepo.GetById(ctx, budgetID, item.TransactionID)
+		if err != nil {
+			return nil, errs.Wrap(errs.CodeTransactionLookupFailed, "error getting transaction", err)
+		}
+		if txn != nil {
+			s.transactionService.LearnFromTransaction(ctx, *txn)
+		}
+
 	case model.PredictionReviewCorrect:
 		if req.PayeeID == nil && req.CategoryID == nil {
 			return nil, errs.New(errs.CodeInvalidArgument, "payeeId or categoryId is required to correct a prediction")
