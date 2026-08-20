@@ -2080,7 +2080,7 @@ func TestUpdateApprovingUnchangedPredictionLearnsWithoutMarkingCorrected(t *test
 	txnEmbeddingRepo.AssertExpectations(t)
 }
 
-func TestBackfillLearningProcessesPendingAndRecordsFailures(t *testing.T) {
+func TestBackfillLearningRunsInBackgroundAndRecordsFailures(t *testing.T) {
 	useInlineTx(t)
 	budgetId, txnId, _, payeeId, categoryId, _, _ := createTestUUIDs()
 	failingTxnId := uuid.New()
@@ -2117,6 +2117,8 @@ func TestBackfillLearningProcessesPendingAndRecordsFailures(t *testing.T) {
 				RawBankText:   "paid to broken merchant",
 			},
 		}, nil).Once()
+	cipherPredictionRepo.On("LearningStats", mock.Anything, budgetId).
+		Return(model.LearningStats{Total: 10, Learned: 8, Pending: 2, Failed: 1}, nil).Once()
 
 	cipherClient.On("GenerateTransactionEmbedding", mock.Anything, TransactionEmbeddingRequest{
 		RawBankText: "paid to grocery store",
@@ -2131,33 +2133,65 @@ func TestBackfillLearningProcessesPendingAndRecordsFailures(t *testing.T) {
 	cipherPredictionRepo.On("MarkLearned", mock.Anything, mock.Anything, budgetId, txnId).Return(nil).Once()
 
 	// The second one fails upstream: the run must continue and record why.
+	done := make(chan struct{})
 	cipherClient.On("GenerateTransactionEmbedding", mock.Anything, TransactionEmbeddingRequest{
 		RawBankText: "paid to broken merchant",
 		Amount:      -100,
 	}).Return(nil, errors.New("ollama unreachable")).Once()
 	cipherPredictionRepo.On("MarkLearnFailed", mock.Anything, budgetId, failingTxnId, mock.MatchedBy(func(reason string) bool {
 		return strings.Contains(reason, "ollama unreachable")
-	})).Return(nil).Once()
-
-	cipherPredictionRepo.On("LearningStats", mock.Anything, budgetId).
-		Return(model.LearningStats{Total: 10, Learned: 8, Pending: 2, Failed: 1}, nil).Once()
+	})).Return(nil).Run(func(args mock.Arguments) {
+		close(done)
+	}).Once()
 
 	result, err := svc.BackfillLearning(ctx, model.LearningBackfillRequest{})
 
+	// The call returns immediately; the work is still going.
 	require.NoError(t, err)
-	require.Equal(t, 2, result.Processed)
-	require.Equal(t, 1, result.Learned)
-	require.Equal(t, 1, result.Failed)
+	require.True(t, result.Started)
+	require.True(t, result.Running)
+	require.Equal(t, 2, result.Queued)
 	require.Equal(t, 2, result.Remaining)
-	require.Len(t, result.Items, 2)
-	require.True(t, result.Items[0].Learned)
-	require.False(t, result.Items[1].Learned)
-	require.Contains(t, result.Items[1].Error, "ollama unreachable")
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for the backfill to finish")
+	}
 
 	cipherPredictionRepo.AssertExpectations(t)
 	cipherClient.AssertExpectations(t)
 	payeeRuleRepo.AssertExpectations(t)
 	txnEmbeddingRepo.AssertExpectations(t)
+}
+
+// A second request while a run is in flight must not queue the same page twice:
+// the items are the same and each one costs two LLM round-trips.
+func TestBackfillLearningSingleFlights(t *testing.T) {
+	budgetId, txnId, _, payeeId, categoryId, _, _ := createTestUUIDs()
+	ctx := utils.WithBudgetID(context.Background(), budgetId)
+
+	cipherPredictionRepo := &mockCipherPredictionRepo{}
+	svc := &transactionService{cipherPredictionRepo: cipherPredictionRepo}
+	svc.learningBackfillRunning.Store(true)
+
+	cipherPredictionRepo.On("ListPendingLearning", mock.Anything, budgetId, defaultLearningBackfillLimit, false).
+		Return([]model.LearningCandidate{{
+			TransactionID: txnId,
+			PayeeID:       &payeeId,
+			CategoryID:    &categoryId,
+			RawBankText:   "paid to grocery store",
+		}}, nil).Once()
+	cipherPredictionRepo.On("LearningStats", mock.Anything, budgetId).
+		Return(model.LearningStats{Pending: 1}, nil).Once()
+
+	result, err := svc.BackfillLearning(ctx, model.LearningBackfillRequest{})
+
+	require.NoError(t, err)
+	require.False(t, result.Started)
+	require.True(t, result.Running)
+	require.Equal(t, 0, result.Queued)
+	cipherPredictionRepo.AssertExpectations(t)
 }
 
 func TestBackfillLearningClampsLimit(t *testing.T) {
@@ -2172,9 +2206,29 @@ func TestBackfillLearningClampsLimit(t *testing.T) {
 	cipherPredictionRepo.On("LearningStats", mock.Anything, budgetId).
 		Return(model.LearningStats{}, nil).Once()
 
+	// Nothing pending: no run starts, and the caller is told so.
 	result, err := svc.BackfillLearning(ctx, model.LearningBackfillRequest{Limit: 5000, RetryFailed: true})
 
 	require.NoError(t, err)
-	require.Equal(t, 0, result.Processed)
+	require.False(t, result.Started)
+	require.Equal(t, 0, result.Queued)
 	cipherPredictionRepo.AssertExpectations(t)
+}
+
+func TestLearningStatusReportsRunning(t *testing.T) {
+	budgetId, _, _, _, _, _, _ := createTestUUIDs()
+	ctx := utils.WithBudgetID(context.Background(), budgetId)
+
+	cipherPredictionRepo := &mockCipherPredictionRepo{}
+	svc := &transactionService{cipherPredictionRepo: cipherPredictionRepo}
+	svc.learningBackfillRunning.Store(true)
+
+	cipherPredictionRepo.On("LearningStats", mock.Anything, budgetId).
+		Return(model.LearningStats{Total: 3, Learned: 1, Pending: 2}, nil).Once()
+
+	stats, err := svc.LearningStatus(ctx)
+
+	require.NoError(t, err)
+	require.True(t, stats.Running)
+	require.Equal(t, 2, stats.Pending)
 }
