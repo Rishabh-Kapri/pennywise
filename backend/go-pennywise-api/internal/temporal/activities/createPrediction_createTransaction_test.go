@@ -142,6 +142,19 @@ func (f *fakeTransactionService) DeleteById(context.Context, uuid.UUID) error {
 	return nil
 }
 
+func (f *fakeTransactionService) LearnFromTransaction(context.Context, model.Transaction) {}
+
+func (f *fakeTransactionService) BackfillLearning(
+	context.Context,
+	model.LearningBackfillRequest,
+) (*model.LearningBackfillResult, error) {
+	return nil, nil
+}
+
+func (f *fakeTransactionService) LearningStatus(context.Context) (model.LearningStats, error) {
+	return model.LearningStats{}, nil
+}
+
 type fakePayeeService struct {
 	create func(context.Context, model.Payee) (*model.Payee, error)
 }

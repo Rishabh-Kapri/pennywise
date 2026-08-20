@@ -20,6 +20,8 @@ type TransactionHandler interface {
 	Update(c *gin.Context)
 	UpdateLocation(c *gin.Context)
 	UpdateStatus(c *gin.Context)
+	BackfillLearning(c *gin.Context)
+	LearningStatus(c *gin.Context)
 	// DeleteById deletes a transaction by its ID.
 	// It retrieves the budget context and the transaction ID from the request parameters,
 	// parses the ID, and then calls the service to perform the deletion.
@@ -267,6 +269,42 @@ func (h *transactionHandler) UpdateStatus(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, nil)
+}
+
+// LearningStatus reports how many of the budget's predictions have taught the
+// pipeline, so the UI can show whether a backfill is worth running.
+func (h *transactionHandler) LearningStatus(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	stats, err := h.service.LearningStatus(ctx)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, stats)
+}
+
+// BackfillLearning re-runs learning over past predictions that never taught the
+// pipeline. Bounded per call (see the service's limits) because every item costs
+// two LLM round-trips; the response's `remaining` says whether to call again.
+func (h *transactionHandler) BackfillLearning(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	var body model.LearningBackfillRequest
+	// An empty body is the common case: backfill the next page with defaults.
+	if c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(&body); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
+
+	result, err := h.service.BackfillLearning(ctx, body)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, result)
 }
 
 func (h *transactionHandler) DeleteById(c *gin.Context) {

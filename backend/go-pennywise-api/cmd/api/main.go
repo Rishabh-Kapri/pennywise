@@ -597,6 +597,16 @@ func main() {
 				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
 				predictionReviewHandler.Review,
 			)
+			predictionGroup.GET(
+				"/learning",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				transactionHandler.LearningStatus,
+			)
+			predictionGroup.POST(
+				"/learning/backfill",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				transactionHandler.BackfillLearning,
+			)
 			predictionGroup.POST("", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), predictionHandler.Create)
 			predictionGroup.PATCH(
 				":id",
