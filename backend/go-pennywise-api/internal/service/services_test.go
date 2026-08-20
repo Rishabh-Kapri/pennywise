@@ -247,6 +247,18 @@ func (m *svcCategoryRepo) GetAllSimplified(ctx context.Context, budgetId uuid.UU
 	}
 	return nil, args.Error(1)
 }
+func (m *svcCategoryRepo) FindClosestSimplified(
+	ctx context.Context,
+	budgetId uuid.UUID,
+	name string,
+	limit int,
+) ([]model.CategoryNameMatch, error) {
+	args := m.Called(ctx, budgetId, name, limit)
+	if v := args.Get(0); v != nil {
+		return v.([]model.CategoryNameMatch), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
 func (m *svcCategoryRepo) GetInflowBalance(ctx context.Context, budgetId uuid.UUID) (float64, error) {
 	args := m.Called(ctx, budgetId)
 	return args.Get(0).(float64), args.Error(1)

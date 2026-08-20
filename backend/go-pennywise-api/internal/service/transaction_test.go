@@ -506,6 +506,16 @@ func (m *mockCategoryRepo) GetAllSimplified(
 	panic("unimplemented")
 }
 
+// FindClosestSimplified implements repository.CategoryRepository.
+func (m *mockCategoryRepo) FindClosestSimplified(
+	ctx context.Context,
+	budgetId uuid.UUID,
+	name string,
+	limit int,
+) ([]model.CategoryNameMatch, error) {
+	panic("unimplemented")
+}
+
 // GetInflowBalance implements repository.CategoryRepository.
 func (m *mockCategoryRepo) GetInflowBalance(ctx context.Context, budgetId uuid.UUID) (float64, error) {
 	panic("unimplemented")
