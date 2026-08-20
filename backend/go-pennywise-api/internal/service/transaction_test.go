@@ -1919,3 +1919,118 @@ func TestApplySideEffects_Delete_InflowCategory_Skips(t *testing.T) {
 	require.NoError(t, err)
 	monthlyBudgetRepo.AssertExpectations(t)
 }
+
+// Approving a prediction that was already right is a confirmation, not a
+// correction: it must still teach the pipeline (payee rule + embedding) but
+// must not mark the prediction user-corrected.
+func TestUpdateApprovingUnchangedPredictionLearnsWithoutMarkingCorrected(t *testing.T) {
+	useInlineTx(t)
+	budgetId, txnId, accountId, payeeId, categoryId, _, inflowCategoryID := createTestUUIDs()
+	ctx := utils.WithBudgetID(context.Background(), budgetId)
+	rawBankText := "paid to less n more the pasta shop"
+	matchString := "less n more"
+	note := "dinner"
+
+	foundTxn := model.Transaction{
+		ID:          txnId,
+		BudgetID:    budgetId,
+		AccountID:   &accountId,
+		PayeeID:     &payeeId,
+		CategoryID:  &categoryId,
+		Amount:      -450,
+		Date:        "2023-01-01",
+		Status:      model.TransactionStatusUnapproved,
+		RawBankText: &rawBankText,
+	}
+	// Same payee and category -- the only thing the user changed is that they
+	// accepted it (plus an unrelated note, so the update is not a no-op).
+	toUpdate := model.Transaction{
+		BudgetID:   budgetId,
+		AccountID:  &accountId,
+		PayeeID:    &payeeId,
+		CategoryID: &categoryId,
+		Amount:     -450,
+		Date:       "2023-01-01",
+		Note:       note,
+	}
+
+	txnRepo := &mockTransactionRepo{}
+	budgetRepo := &mockBudgetRepo{}
+	accountRepo := &mockAccountRepo{}
+	payeeRepo := &mockPayeesRepo{}
+	monthlyBudgetRepo := &mockMonthlyBudgetRepo{}
+	cipherPredictionRepo := &mockCipherPredictionRepo{}
+	cipherClient := &mockCipherClient{}
+	payeeRuleRepo := &mockPayeeRuleRepo{}
+	txnEmbeddingRepo := &mockTransactionEmbeddingRepo{}
+	svc := &transactionService{
+		repo:                 txnRepo,
+		budgetRepo:           budgetRepo,
+		txnEmbeddingRepo:     txnEmbeddingRepo,
+		cipherClient:         cipherClient,
+		cipherPredictionRepo: cipherPredictionRepo,
+		payeeRuleRepo:        payeeRuleRepo,
+		accountRepo:          accountRepo,
+		payeeRepo:            payeeRepo,
+		mbService:            NewMonthlyBudgetService(monthlyBudgetRepo),
+	}
+	done := make(chan struct{})
+
+	txnRepo.On("GetByIdTx", mock.Anything, mock.Anything, budgetId, txnId).Return(&foundTxn, nil).Once()
+	budgetRepo.On("GetById", mock.Anything, mock.Anything, budgetId).Return(&model.Budget{
+		ID:       budgetId,
+		Metadata: model.BudgetMetadata{InflowCategoryID: inflowCategoryID},
+	}, nil).Once()
+	accountRepo.On("GetById", mock.Anything, mock.Anything, budgetId, accountId).
+		Return(&model.Account{ID: accountId, BudgetID: budgetId, Type: "checking"}, nil).
+		Once()
+	payeeRepo.On("GetByIdTx", mock.Anything, mock.Anything, budgetId, payeeId).
+		Return(&model.Payee{ID: payeeId, BudgetID: budgetId}, nil).
+		Once()
+	cipherPredictionRepo.On("GetByTransactionID", mock.Anything, budgetId, txnId).Return(&model.CipherPredictionRecord{
+		BudgetID:      budgetId,
+		TransactionID: txnId,
+		Source:        model.PredictionSourceLLM,
+	}, nil).Once()
+	txnRepo.On("Update", mock.Anything, mock.Anything, budgetId, txnId, mock.MatchedBy(func(txn model.Transaction) bool {
+		return txn.ID == txnId && txn.Status == model.TransactionStatusApproved
+	})).Return(nil).Once()
+	cipherClient.On("GenerateTransactionEmbedding", mock.Anything, TransactionEmbeddingRequest{
+		RawBankText: rawBankText,
+		Amount:      foundTxn.Amount,
+	}).Return(&TransactionEmbeddingResponse{
+		MatchString:   matchString,
+		EmbeddingText: "debit less n more",
+		Embedding:     "[0.3,0.4]",
+	}, nil).Once()
+	payeeRuleRepo.On("CreatePayeeRule", mock.Anything, mock.Anything, mock.MatchedBy(func(rule model.PayeeRule) bool {
+		return rule.BudgetID == budgetId &&
+			rule.PayeeID == payeeId &&
+			rule.CategoryID != nil && *rule.CategoryID == categoryId &&
+			rule.MatchString == matchString
+	})).Return(nil).Once()
+	txnEmbeddingRepo.On("Upsert", mock.Anything, mock.Anything, mock.MatchedBy(func(embedding model.TransactionEmbedding) bool {
+		return embedding.BudgetID == budgetId &&
+			embedding.PayeeID == payeeId &&
+			embedding.CategoryID == categoryId &&
+			embedding.Source == "AUTO_LEARNED"
+	}), "[0.3,0.4]").Return(nil).Run(func(args mock.Arguments) {
+		close(done)
+	}).Once()
+
+	err := svc.Update(ctx, txnId, toUpdate)
+
+	require.NoError(t, err)
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for transaction learning")
+	}
+	cipherPredictionRepo.AssertNotCalled(t, "MarkUserCorrected",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	txnRepo.AssertExpectations(t)
+	cipherPredictionRepo.AssertExpectations(t)
+	cipherClient.AssertExpectations(t)
+	payeeRuleRepo.AssertExpectations(t)
+	txnEmbeddingRepo.AssertExpectations(t)
+}
