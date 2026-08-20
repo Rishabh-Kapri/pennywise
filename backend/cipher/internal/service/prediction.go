@@ -826,7 +826,11 @@ func (s *predictionService) GenerateTransactionEmbedding(
 		transactionType = "credit"
 	}
 
-	extracted, err := s.ollama.ExtractEmailData(ctx, req.RawBankText)
+	// Go through the provider chain rather than straight to ollama, like every
+	// other extraction in the pipeline: this runs when the user approves or
+	// corrects a transaction, and a local ollama outage used to silently cost
+	// them the learned payee rule while ingestion itself carried on fine.
+	extracted, err := s.ExtractEmailData(ctx, ExtractEmailDataRequest{EmailHtml: req.RawBankText})
 	if err != nil {
 		return nil, errs.Wrap(errs.CodeInternalError, "extract transaction embedding text", err)
 	}

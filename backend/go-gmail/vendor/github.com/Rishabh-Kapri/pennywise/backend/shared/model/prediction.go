@@ -61,9 +61,64 @@ type CipherPredictionRecord struct {
 	ActualPayeeID       *uuid.UUID       `json:"actualPayeeId,omitempty"`
 	ActualCategoryID    *uuid.UUID       `json:"actualCategoryId,omitempty"`
 	ReviewedAt          *time.Time       `json:"reviewedAt,omitempty"`
-	CreatedAt           time.Time        `json:"createdAt"`
-	UpdatedAt           time.Time        `json:"updatedAt"`
-	Deleted             bool             `json:"deleted"`
+	// LearnedAt is when this prediction last taught the pipeline (payee rule +
+	// embedding); nil means it never has. LearnError carries why the last
+	// attempt failed, and is cleared on success.
+	LearnedAt  *time.Time `json:"learnedAt,omitempty"`
+	LearnError *string    `json:"learnError,omitempty"`
+	CreatedAt  time.Time  `json:"createdAt"`
+	UpdatedAt  time.Time  `json:"updatedAt"`
+	Deleted    bool       `json:"deleted"`
+}
+
+// LearningCandidate is a transaction whose cipher prediction has not taught the
+// pipeline yet, carrying the fields the learning step needs so the backfill can
+// run without a second lookup per row.
+type LearningCandidate struct {
+	TransactionID uuid.UUID  `json:"transactionId"`
+	PayeeID       *uuid.UUID `json:"payeeId,omitempty"`
+	CategoryID    *uuid.UUID `json:"categoryId,omitempty"`
+	Amount        float64    `json:"amount"`
+	RawBankText   string     `json:"rawBankText"`
+	LearnError    *string    `json:"learnError,omitempty"`
+}
+
+// LearningStats summarises how much of a budget's prediction history has been
+// learned from. Pending counts only rows a backfill can actually process, of
+// which Failed is the subset whose last attempt errored; Skipped counts rows
+// that can never be learned from (no payee, category or raw bank text). Total =
+// Learned + Pending + Skipped.
+type LearningStats struct {
+	Total   int `json:"total"`
+	Learned int `json:"learned"`
+	Pending int `json:"pending"`
+	Failed  int `json:"failed"`
+	Skipped int `json:"skipped"`
+}
+
+// LearningBackfillRequest asks the API to (re)run learning over past
+// predictions. Limit is clamped by the service; RetryFailed includes rows whose
+// previous attempt recorded an error.
+type LearningBackfillRequest struct {
+	Limit       int  `json:"limit"`
+	RetryFailed bool `json:"retryFailed"`
+}
+
+// LearningBackfillItem is the per-transaction outcome of a backfill run.
+type LearningBackfillItem struct {
+	TransactionID uuid.UUID `json:"transactionId"`
+	Learned       bool      `json:"learned"`
+	Error         string    `json:"error,omitempty"`
+}
+
+// LearningBackfillResult is what the backfill endpoint returns: the counts plus
+// one row per transaction it touched.
+type LearningBackfillResult struct {
+	Processed int                    `json:"processed"`
+	Learned   int                    `json:"learned"`
+	Failed    int                    `json:"failed"`
+	Remaining int                    `json:"remaining"`
+	Items     []LearningBackfillItem `json:"items"`
 }
 
 // PredictionReviewItem is a cipher prediction joined with the transaction it
