@@ -284,9 +284,10 @@ func (h *transactionHandler) LearningStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, stats)
 }
 
-// BackfillLearning re-runs learning over past predictions that never taught the
-// pipeline. Bounded per call (see the service's limits) because every item costs
-// two LLM round-trips; the response's `remaining` says whether to call again.
+// BackfillLearning kicks off learning over past predictions that never taught
+// the pipeline. Returns as soon as the work is queued -- it runs in the
+// background because every item costs two LLM round-trips and a page of them
+// runs well past the proxy's request timeout. Poll LearningStatus for progress.
 func (h *transactionHandler) BackfillLearning(c *gin.Context) {
 	ctx := c.Request.Context()
 
@@ -304,6 +305,12 @@ func (h *transactionHandler) BackfillLearning(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	if result.Started {
+		c.JSON(http.StatusAccepted, result)
+		return
+	}
+	// Nothing queued: either a run is already in flight or there is nothing
+	// left to learn. Both are fine, neither started work.
 	c.JSON(http.StatusOK, result)
 }
 
