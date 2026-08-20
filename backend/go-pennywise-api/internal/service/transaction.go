@@ -452,44 +452,77 @@ func (s *transactionService) applySideEffects(ctx context.Context, tx pgx.Tx, in
 	}
 
 	// --- Cipher Predictions ---
-	switch {
-	case isUpdate && transactionMappingChanged(input.oldTxn, input.newTxn):
-		if s.cipherPredictionRepo == nil {
-			return nil
-		}
+	// Two things teach the pipeline, and both end in the same learning call: a
+	// correction (the user changed payee or category) and a confirmation (the
+	// user approved the prediction as it stood). Learning only from corrections
+	// meant the common case -- "yes, that is right" -- taught nothing, so the
+	// same merchant went through the whole LLM fallback on every future email.
+	if isUpdate {
+		mappingChanged := transactionMappingChanged(input.oldTxn, input.newTxn)
+		confirmed := predictionConfirmed(input.oldTxn, input.newTxn)
 
-		cipherPrediction, err := s.cipherPredictionRepo.GetByTransactionID(ctx, input.budgetId, input.oldTxn.ID)
-		if err != nil {
-			if err == pgx.ErrNoRows {
+		if mappingChanged || confirmed {
+			if s.cipherPredictionRepo == nil {
 				return nil
 			}
-			return errs.Wrap(errs.CodeTransactionLookupFailed, "error getting cipher prediction", err)
-		}
-		if cipherPrediction == nil {
-			return nil
-		}
 
-		if err := s.cipherPredictionRepo.MarkUserCorrected(
-			ctx,
-			tx,
-			input.budgetId,
-			input.oldTxn.ID,
-			input.newTxn.PayeeID,
-			input.newTxn.CategoryID,
-		); err != nil {
-			return errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating cipher prediction correction", err)
-		}
+			cipherPrediction, err := s.cipherPredictionRepo.GetByTransactionID(ctx, input.budgetId, input.oldTxn.ID)
+			if err != nil {
+				if err == pgx.ErrNoRows {
+					return nil
+				}
+				return errs.Wrap(errs.CodeTransactionLookupFailed, "error getting cipher prediction", err)
+			}
+			// No prediction means the transaction was not created by the
+			// pipeline, so there is nothing to correct and nothing worth
+			// learning from -- a manually entered row has no raw bank text to
+			// match future emails against.
+			if cipherPrediction == nil {
+				return nil
+			}
 
-		if input.queueLearning != nil {
-			learningTxn := *input.newTxn
-			learningTxn.RawBankText = input.oldTxn.RawBankText
-			input.queueLearning(learningTxn)
-		}
+			// Only a real change is a correction. Approving an untouched
+			// prediction confirms it, and marking that as user-corrected would
+			// poison the review queue's accuracy signal.
+			if mappingChanged {
+				if err := s.cipherPredictionRepo.MarkUserCorrected(
+					ctx,
+					tx,
+					input.budgetId,
+					input.oldTxn.ID,
+					input.newTxn.PayeeID,
+					input.newTxn.CategoryID,
+				); err != nil {
+					return errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating cipher prediction correction", err)
+				}
+			}
 
-		logger.Logger(ctx).Info("updated cipher prediction for transaction mapping change", "txnId", input.oldTxn.ID)
+			if input.queueLearning != nil {
+				learningTxn := *input.newTxn
+				// The update payload carries no raw bank text; the stored row
+				// does, and it is what the learned rule matches on.
+				learningTxn.RawBankText = input.oldTxn.RawBankText
+				input.queueLearning(learningTxn)
+			}
+
+			logger.Logger(ctx).Info("learning from cipher prediction",
+				"txnId", input.oldTxn.ID, "corrected", mappingChanged, "confirmed", confirmed)
+		}
 	}
 
 	return nil
+}
+
+// predictionConfirmed reports whether this update is the user approving a
+// pending prediction. Approval is the only status transition that carries a
+// judgement -- re-saving an already approved transaction says nothing new, so
+// it must not re-trigger learning.
+func predictionConfirmed(oldTxn, newTxn *model.Transaction) bool {
+	if oldTxn == nil || newTxn == nil {
+		return false
+	}
+	return oldTxn.Status == model.TransactionStatusUnapproved &&
+		newTxn.Status == model.TransactionStatusApproved
 }
 
 func (s *transactionService) reconcileTransfer(
