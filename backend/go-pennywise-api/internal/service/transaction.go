@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
@@ -40,6 +41,11 @@ type TransactionService interface {
 }
 
 type transactionService struct {
+	// learningBackfillRunning single-flights the backfill: a second call while
+	// one is in flight would re-read the same pending page and pay for the same
+	// LLM round-trips twice.
+	learningBackfillRunning atomic.Bool
+
 	repo                 repository.TransactionRepository
 	budgetRepo           repository.BudgetRepository
 	txnEmbeddingRepo     repository.TransactionEmbeddingRepository
@@ -430,31 +436,43 @@ func (s *transactionService) doLearnTransactionMapping(
 }
 
 // Learning backfill bounds. Each item costs an extraction and an embedding
-// round-trip, so the request stays interactive only for a small page; callers
-// walk history by calling it repeatedly.
+// round-trip, so a run is bounded per call; callers walk history by calling it
+// repeatedly.
 const (
 	defaultLearningBackfillLimit = 25
 	maxLearningBackfillLimit     = 100
+
+	// A whole run is capped so a wedged backend cannot hold the single-flight
+	// guard forever, and each item is capped separately so one hung call cannot
+	// eat the entire run's budget.
+	learningBackfillRunTimeout  = time.Hour
+	learningBackfillItemTimeout = 5 * time.Minute
 )
 
 // LearningStatus reports how much of the budget's prediction history has taught
-// the pipeline.
+// the pipeline, and whether a backfill is currently running.
 func (s *transactionService) LearningStatus(ctx context.Context) (model.LearningStats, error) {
 	budgetId := utils.MustBudgetID(ctx)
 	if s.cipherPredictionRepo == nil {
 		return model.LearningStats{}, errs.New(errs.CodeInternalError, "cipher prediction repository is not configured")
 	}
-	return s.cipherPredictionRepo.LearningStats(ctx, budgetId)
+	stats, err := s.cipherPredictionRepo.LearningStats(ctx, budgetId)
+	if err != nil {
+		return model.LearningStats{}, err
+	}
+	stats.Running = s.learningBackfillRunning.Load()
+	return stats, nil
 }
 
-// BackfillLearning runs learning over past predictions that never taught the
+// BackfillLearning starts learning over past predictions that never taught the
 // pipeline -- transactions approved before learning worked, or whose learning
 // step failed at the time.
 //
-// Items are processed sequentially: each one calls out to cipher for an
-// extraction and an embedding, and a local model serves those one at a time
-// anyway, so a burst of parallel requests would only queue up behind itself.
-// A failed item is recorded and the run continues; only a lookup failure aborts.
+// The work runs in the background and the call returns as soon as it is queued:
+// each item costs two LLM round-trips against a local model, so even a small
+// page runs far past the proxy's request timeout. Progress is durable rather
+// than streamed -- every item stamps learned_at or learn_error as it finishes --
+// so callers poll GET /api/predictions/learning to follow along.
 func (s *transactionService) BackfillLearning(
 	ctx context.Context,
 	req model.LearningBackfillRequest,
@@ -479,15 +497,58 @@ func (s *transactionService) BackfillLearning(
 		return nil, errs.Wrap(errs.CodeInternalError, "error listing predictions pending learning", err)
 	}
 
-	log.Info("starting learning backfill",
-		"count", len(candidates), "limit", limit, "retryFailed", req.RetryFailed)
+	result := &model.LearningBackfillResult{Queued: len(candidates)}
+	if stats, err := s.cipherPredictionRepo.LearningStats(ctx, budgetId); err != nil {
+		log.Warn("could not read learning stats", "error", err)
+	} else {
+		result.Remaining = stats.Pending
+	}
 
-	result := &model.LearningBackfillResult{Items: make([]model.LearningBackfillItem, 0, len(candidates))}
+	if len(candidates) == 0 {
+		result.Running = s.learningBackfillRunning.Load()
+		return result, nil
+	}
+	if !s.learningBackfillRunning.CompareAndSwap(false, true) {
+		log.Info("learning backfill already running, not starting another")
+		result.Queued = 0
+		result.Running = true
+		return result, nil
+	}
+
+	// Detach from the request: this outlives the response by design.
+	bgCtx := utils.WithRequestMetadata(context.Background(), utils.RequestMetadataFromContext(ctx))
+	bgCtx = utils.WithInternalAuthToken(bgCtx, utils.InternalAuthTokenFromContext(ctx))
+	bgCtx = utils.WithBudgetID(bgCtx, budgetId)
+
+	go func() {
+		defer s.learningBackfillRunning.Store(false)
+		runCtx, cancel := context.WithTimeout(bgCtx, learningBackfillRunTimeout)
+		defer cancel()
+		s.runLearningBackfill(runCtx, budgetId, candidates)
+	}()
+
+	result.Started = true
+	result.Running = true
+	return result, nil
+}
+
+// runLearningBackfill works the page sequentially: each item calls out to cipher
+// for an extraction and an embedding, and a local model serves those one at a
+// time anyway, so parallel requests would only queue behind each other. A failed
+// item is recorded on its prediction and the run carries on.
+func (s *transactionService) runLearningBackfill(
+	ctx context.Context,
+	budgetId uuid.UUID,
+	candidates []model.LearningCandidate,
+) {
+	log := logger.Logger(ctx)
+	log.Info("learning backfill started", "count", len(candidates))
+
+	var learned, failed int
 	for _, candidate := range candidates {
-		// Stop cleanly when the caller goes away rather than burning LLM calls
-		// whose results nobody will read.
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			log.Warn("learning backfill cancelled", "processed", result.Processed, "error", ctxErr)
+			log.Warn("learning backfill stopped early",
+				"learned", learned, "failed", failed, "error", ctxErr)
 			break
 		}
 
@@ -500,32 +561,18 @@ func (s *transactionService) BackfillLearning(
 			RawBankText: &candidate.RawBankText,
 		}
 
-		result.Processed++
-		item := model.LearningBackfillItem{TransactionID: candidate.TransactionID}
-		if err := s.learnTransactionMapping(ctx, budgetId, txn); err != nil {
+		itemCtx, cancel := context.WithTimeout(ctx, learningBackfillItemTimeout)
+		err := s.learnTransactionMapping(itemCtx, budgetId, txn)
+		cancel()
+		if err != nil {
 			log.Warn("learning backfill item failed", "txnId", candidate.TransactionID, "error", err)
-			item.Error = err.Error()
-			result.Failed++
-		} else {
-			item.Learned = true
-			result.Learned++
+			failed++
+			continue
 		}
-		result.Items = append(result.Items, item)
+		learned++
 	}
 
-	stats, err := s.cipherPredictionRepo.LearningStats(ctx, budgetId)
-	if err != nil {
-		// The work is done and reported; a failed count should not sink it.
-		log.Warn("could not read learning stats after backfill", "error", err)
-	} else {
-		result.Remaining = stats.Pending
-	}
-
-	log.Info("learning backfill finished",
-		"processed", result.Processed, "learned", result.Learned,
-		"failed", result.Failed, "remaining", result.Remaining)
-
-	return result, nil
+	log.Info("learning backfill finished", "learned", learned, "failed", failed)
 }
 
 func (s *transactionService) applySideEffects(ctx context.Context, tx pgx.Tx, input sideEffectInput) error {
