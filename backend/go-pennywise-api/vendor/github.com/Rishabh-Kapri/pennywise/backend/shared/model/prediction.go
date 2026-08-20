@@ -94,6 +94,9 @@ type LearningStats struct {
 	Pending int `json:"pending"`
 	Failed  int `json:"failed"`
 	Skipped int `json:"skipped"`
+	// Running reports whether a backfill is working through the pending set
+	// right now, so a poller can tell "nothing left" from "still going".
+	Running bool `json:"running"`
 }
 
 // LearningBackfillRequest asks the API to (re)run learning over past
@@ -104,21 +107,17 @@ type LearningBackfillRequest struct {
 	RetryFailed bool `json:"retryFailed"`
 }
 
-// LearningBackfillItem is the per-transaction outcome of a backfill run.
-type LearningBackfillItem struct {
-	TransactionID uuid.UUID `json:"transactionId"`
-	Learned       bool      `json:"learned"`
-	Error         string    `json:"error,omitempty"`
-}
-
-// LearningBackfillResult is what the backfill endpoint returns: the counts plus
-// one row per transaction it touched.
+// LearningBackfillResult acknowledges a backfill request. The work runs in the
+// background -- each item costs two LLM round-trips, far past any sane request
+// timeout -- so this reports what was queued, not what was done. Started is
+// false with Running true when a run was already in flight, and false with
+// Queued zero when there was nothing left to learn. Follow progress by polling
+// the learning status endpoint.
 type LearningBackfillResult struct {
-	Processed int                    `json:"processed"`
-	Learned   int                    `json:"learned"`
-	Failed    int                    `json:"failed"`
-	Remaining int                    `json:"remaining"`
-	Items     []LearningBackfillItem `json:"items"`
+	Started   bool `json:"started"`
+	Running   bool `json:"running"`
+	Queued    int  `json:"queued"`
+	Remaining int  `json:"remaining"`
 }
 
 // PredictionReviewItem is a cipher prediction joined with the transaction it
