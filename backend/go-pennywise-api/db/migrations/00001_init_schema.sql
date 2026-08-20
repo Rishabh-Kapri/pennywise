@@ -178,7 +178,15 @@ CREATE TABLE IF NOT EXISTS cipher_predictions (
   has_user_corrected BOOLEAN DEFAULT false,
   actual_payee_id UUID REFERENCES payees(id) ON DELETE SET NULL,
   actual_category_id UUID REFERENCES categories(id) ON DELETE SET NULL,
-  
+
+  -- learning state: learned_at is set once this prediction has taught the
+  -- pipeline (payee rule + AUTO_LEARNED embedding), NULL means it never has.
+  -- learn_error records why the last attempt failed and is cleared on success --
+  -- learning runs best-effort in a goroutine, so this is the only place a broken
+  -- learning step becomes visible.
+  learned_at TIMESTAMPTZ,
+  learn_error TEXT,
+
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted BOOLEAN DEFAULT false
@@ -239,6 +247,10 @@ CREATE INDEX IF NOT EXISTS idx_predictions_txn ON predictions(budget_id, transac
 CREATE INDEX IF NOT EXISTS idx_payees_budget ON payees(budget_id) WHERE deleted = FALSE;
 CREATE INDEX IF NOT EXISTS idx_accounts_budget ON accounts(budget_id) WHERE deleted = FALSE;
 CREATE INDEX IF NOT EXISTS idx_categories_budget ON categories(budget_id) WHERE deleted = FALSE;
+-- drives the learning backfill's "what still needs learning" scan
+CREATE INDEX IF NOT EXISTS idx_cipher_predictions_unlearned
+    ON cipher_predictions (budget_id, created_at DESC)
+    WHERE deleted = FALSE AND learned_at IS NULL;
 -- +goose StatementEnd
 
 -- +goose Down
