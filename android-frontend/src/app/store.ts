@@ -6,6 +6,7 @@ import budgets from '../features/budget/store/budgetSlice';
 import categories from '../features/category/store/categorySlice';
 import loans from '../features/loans/store/loanSlice';
 import payees from '../features/payees/store/payeeSlice';
+import pipeline from '../features/pipeline/store/pipelineSlice';
 import tags from '../features/tags/store/tagSlice';
 import transactions from '../features/transactions/store/transactionSlice';
 import { apiClient } from '../utils/api';
@@ -26,6 +27,7 @@ export const store = configureStore({
     categories,
     loans,
     payees,
+    pipeline,
     tags,
     transactions
   },
