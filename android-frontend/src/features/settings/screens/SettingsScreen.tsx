@@ -14,6 +14,8 @@ import { IconTile } from '../../../components/IconTile';
 import { logout } from '../../auth/store/authSlice';
 import { selectAllBudgets, selectSelectedBudget, setSelectedBudget, updateBudgetSelection } from '../../budget/store/budgetSlice';
 import { config } from '../../../config/env';
+import { ConnectedProviders } from '../components/ConnectedProviders';
+import { useCurrentUser } from '../hooks/useCurrentUser';
 import { colors, spacing } from '../../../theme';
 
 function NavRow({
@@ -65,6 +67,7 @@ export function SettingsScreen() {
   const payeeCount = useAppSelector((state) => state.payees.allPayees.length);
   const tagCount = useAppSelector((state) => state.tags.tags.length);
   const transactionTotal = useAppSelector((state) => state.transactions.total);
+  const { user: currentUser } = useCurrentUser();
 
   const chooseBudget = (budgetId?: string) => {
     const budget = budgets.find((item) => item.id === budgetId);
@@ -114,6 +117,8 @@ export function SettingsScreen() {
           <StatCell label="Transactions" value={transactionTotal} />
         </Card>
       </View>
+
+      {currentUser ? <ConnectedProviders providers={currentUser.providers ?? []} /> : null}
 
       <View style={styles.section}>
         <AppText variant="label" tone="faint" style={styles.sectionLabel}>Library</AppText>
