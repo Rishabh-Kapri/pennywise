@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Activity, Check, ChevronLeft, ChevronRight, Files, LogOut, Tags, UserRound } from 'lucide-react-native';
+import { Activity, Bot, Check, ChevronLeft, ChevronRight, Files, LogOut, Tags, UserRound } from 'lucide-react-native';
 import Constants from 'expo-constants';
 import type { RootStackParamList } from '../../../navigation/types';
 import { useEffect } from 'react';
@@ -163,6 +163,13 @@ export function SettingsScreen() {
             description="Email pipeline runs and retries"
             onPress={() => navigation.navigate('Activity')}
             badge={activeRunCount}
+          />
+          <NavRow
+            icon={<Bot color={colors.primary} size={18} />}
+            label="AI & Predictions"
+            description="Classifier performance, prediction history, API keys"
+            onPress={() => navigation.navigate('AI')}
+            divider
           />
         </Card>
       </View>

@@ -75,6 +75,12 @@ export interface CipherPrediction {
   categoryConfidence?: number | null;
   source?: string;
   hasUserCorrected?: boolean;
+  actualPayeeId?: string | null;
+  actualCategoryId?: string | null;
+  metadata?: unknown;
+  createdAt?: string;
+  updatedAt?: string;
+  deleted?: boolean;
 }
 
 export interface TransactionPredictionDetails {
