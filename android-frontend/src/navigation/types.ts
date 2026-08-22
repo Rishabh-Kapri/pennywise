@@ -24,4 +24,5 @@ export type RootStackParamList = {
   Main: NavigatorScreenParams<AppTabParamList>;
   Settings: undefined;
   Documents: undefined;
+  Tags: undefined;
 };
