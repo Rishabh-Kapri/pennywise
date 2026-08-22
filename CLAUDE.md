@@ -141,6 +141,24 @@ recurring, activity, review, tags, ai. Their former top-level paths
 (`/loans/:id`, `/activity`, `/recurring`, `/review`) redirect to the matching
 section, so older links keep working.
 
+On **Android** the same occasional screens are pushed onto the root stack
+(`RootStackParamList` in `android-frontend/src/navigation/types.ts`,
+registered in `App.tsx`) rather than swapped inside one settings shell, since
+a native back stack reads better than a sidebar on a phone. `SettingsScreen`
+groups them into labelled rows: **Library** (Documents, Tags), **Automation**
+(Activity — badged with the running/parked run count, AI & Predictions).
+Loans is a bottom-tab destination on mobile, not a settings row.
+
+Two web settings sections are deliberately absent on Android: **Recurring**
+and **Prediction Review** are simply not ported yet. Two more are ported only
+in part — the General section's delete-account Danger Zone is skipped because
+`DELETE /api/auth/users/me` is not routed by the API (the web button 404s),
+and the AI section's "AI Configuration" editor is skipped because it is local
+component state over hardcoded defaults with no endpoint behind it (its
+`Save` only calls `setConfig`, and its model list is named
+`mockOllamaModels`). Both are UI-only gaps on web that need a backend before
+either client can mean anything by them.
+
 ## Code Conventions
 
 ### Go (Gin Framework)
@@ -193,6 +211,10 @@ section, so older links keep working.
 | Document library API (`GET /api/documents`) | `backend/shared/db/transactionDocument.go` (`Search`), `internal/service/document.go` (`List`) |
 | Document library UI (Settings → Documents) | `react-frontend/src/features/documents/` |
 | Document library UI (Android) | `android-frontend/src/features/documents/` |
+| Tag manager UI (Android) | `android-frontend/src/features/tags/screens/TagsScreen.tsx` |
+| Pipeline activity UI (Android) | `android-frontend/src/features/pipeline/` |
+| AI & Predictions UI (Android) | `android-frontend/src/features/ai/` |
+| Connected providers UI (Android) | `android-frontend/src/features/settings/components/ConnectedProviders.tsx` |
 | Expo push client / device tokens | `backend/go-pennywise-api/internal/client/expopush.go`, `backend/shared/db/devicePushToken.go` |
 | Location/receipts UI (React) | `react-frontend/src/features/transactions/components/TransactionDetailPanel/TransactionLocationSection.tsx`, `TransactionDocumentsSection.tsx` |
 | Location snap task (Android) | `android-frontend/src/features/notifications/locationSnapTask.ts` |
