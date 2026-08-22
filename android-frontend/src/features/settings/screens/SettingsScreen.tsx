@@ -1,7 +1,8 @@
+import type { ReactNode } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Check, ChevronLeft, ChevronRight, Files, LogOut, UserRound } from 'lucide-react-native';
+import { Check, ChevronLeft, ChevronRight, Files, LogOut, Tags, UserRound } from 'lucide-react-native';
 import Constants from 'expo-constants';
 import type { RootStackParamList } from '../../../navigation/types';
 import { useAppDispatch, useAppSelector } from '../../../app/hooks';
@@ -14,6 +15,36 @@ import { logout } from '../../auth/store/authSlice';
 import { selectAllBudgets, selectSelectedBudget, setSelectedBudget, updateBudgetSelection } from '../../budget/store/budgetSlice';
 import { config } from '../../../config/env';
 import { colors, spacing } from '../../../theme';
+
+function NavRow({
+  icon,
+  label,
+  description,
+  onPress,
+  divider
+}: {
+  icon: ReactNode;
+  label: string;
+  description: string;
+  onPress: () => void;
+  divider?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      android_ripple={{ color: colors.surfaceStrong }}
+      style={({ pressed }) => [styles.navRow, divider && styles.rowDivider, pressed && styles.pressed]}
+    >
+      <IconTile size={38}>{icon}</IconTile>
+      <View style={styles.navMain}>
+        <AppText weight="medium">{label}</AppText>
+        <AppText variant="caption" muted>{description}</AppText>
+      </View>
+      <ChevronRight size={18} color={colors.muted} />
+    </Pressable>
+  );
+}
 
 function StatCell({ label, value }: { label: string; value: number | string }) {
   return (
@@ -87,20 +118,19 @@ export function SettingsScreen() {
       <View style={styles.section}>
         <AppText variant="label" tone="faint" style={styles.sectionLabel}>Library</AppText>
         <Card style={styles.listCard}>
-          <Pressable
+          <NavRow
+            icon={<Files color={colors.primary} size={18} />}
+            label="Documents"
+            description="Every receipt and scan in this budget"
             onPress={() => navigation.navigate('Documents')}
-            android_ripple={{ color: colors.surfaceStrong }}
-            style={({ pressed }) => [styles.navRow, pressed && styles.pressed]}
-          >
-            <IconTile size={38}>
-              <Files color={colors.primary} size={18} />
-            </IconTile>
-            <View style={styles.navMain}>
-              <AppText weight="medium">Documents</AppText>
-              <AppText variant="caption" muted>Every receipt and scan in this budget</AppText>
-            </View>
-            <ChevronRight size={18} color={colors.muted} />
-          </Pressable>
+          />
+          <NavRow
+            icon={<Tags color={colors.primary} size={18} />}
+            label="Tags"
+            description="Create, rename, and recolor transaction tags"
+            onPress={() => navigation.navigate('Tags')}
+            divider
+          />
         </Card>
       </View>
 
