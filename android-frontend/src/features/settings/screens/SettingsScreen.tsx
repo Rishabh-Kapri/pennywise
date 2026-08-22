@@ -2,9 +2,10 @@ import type { ReactNode } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Check, ChevronLeft, ChevronRight, Files, LogOut, Tags, UserRound } from 'lucide-react-native';
+import { Activity, Check, ChevronLeft, ChevronRight, Files, LogOut, Tags, UserRound } from 'lucide-react-native';
 import Constants from 'expo-constants';
 import type { RootStackParamList } from '../../../navigation/types';
+import { useEffect } from 'react';
 import { useAppDispatch, useAppSelector } from '../../../app/hooks';
 import { Button } from '../../../components/Button';
 import { Card } from '../../../components/Card';
@@ -13,6 +14,7 @@ import { AppText } from '../../../components/AppText';
 import { IconTile } from '../../../components/IconTile';
 import { logout } from '../../auth/store/authSlice';
 import { selectAllBudgets, selectSelectedBudget, setSelectedBudget, updateBudgetSelection } from '../../budget/store/budgetSlice';
+import { fetchPipelineRuns, selectActivePipelineRunCount } from '../../pipeline/store/pipelineSlice';
 import { config } from '../../../config/env';
 import { ConnectedProviders } from '../components/ConnectedProviders';
 import { useCurrentUser } from '../hooks/useCurrentUser';
@@ -23,13 +25,15 @@ function NavRow({
   label,
   description,
   onPress,
-  divider
+  divider,
+  badge
 }: {
   icon: ReactNode;
   label: string;
   description: string;
   onPress: () => void;
   divider?: boolean;
+  badge?: number;
 }) {
   return (
     <Pressable
@@ -43,6 +47,11 @@ function NavRow({
         <AppText weight="medium">{label}</AppText>
         <AppText variant="caption" muted>{description}</AppText>
       </View>
+      {badge ? (
+        <View style={styles.navBadge}>
+          <AppText variant="caption" weight="semibold" tone="primary" tabular>{badge}</AppText>
+        </View>
+      ) : null}
       <ChevronRight size={18} color={colors.muted} />
     </Pressable>
   );
@@ -68,6 +77,12 @@ export function SettingsScreen() {
   const tagCount = useAppSelector((state) => state.tags.tags.length);
   const transactionTotal = useAppSelector((state) => state.transactions.total);
   const { user: currentUser } = useCurrentUser();
+  const activeRunCount = useAppSelector(selectActivePipelineRunCount);
+
+  // the Activity badge counts running/parked runs, so the list has to be loaded
+  useEffect(() => {
+    void dispatch(fetchPipelineRuns());
+  }, [dispatch]);
 
   const chooseBudget = (budgetId?: string) => {
     const budget = budgets.find((item) => item.id === budgetId);
@@ -135,6 +150,19 @@ export function SettingsScreen() {
             description="Create, rename, and recolor transaction tags"
             onPress={() => navigation.navigate('Tags')}
             divider
+          />
+        </Card>
+      </View>
+
+      <View style={styles.section}>
+        <AppText variant="label" tone="faint" style={styles.sectionLabel}>Automation</AppText>
+        <Card style={styles.listCard}>
+          <NavRow
+            icon={<Activity color={colors.primary} size={18} />}
+            label="Activity"
+            description="Email pipeline runs and retries"
+            onPress={() => navigation.navigate('Activity')}
+            badge={activeRunCount}
           />
         </Card>
       </View>
@@ -268,6 +296,14 @@ const styles = StyleSheet.create({
   navMain: {
     flex: 1,
     gap: 1
+  },
+  navBadge: {
+    minWidth: 22,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+    borderRadius: 11,
+    alignItems: 'center',
+    backgroundColor: colors.primaryMuted
   },
   infoRow: {
     flexDirection: 'row',
