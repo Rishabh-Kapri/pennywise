@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { Camera, FileText, Images, ScanLine, Trash2 } from 'lucide-react-native';
+import { Alert, Image, Pressable, ScrollView, StyleSheet, ToastAndroid, View } from 'react-native';
+import { Camera, Download, FileText, Images, ScanLine, Trash2 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import DocumentScanner from 'react-native-document-scanner-plugin';
-import * as FileSystem from 'expo-file-system/legacy';
 import { AppText } from '../../../components/AppText';
 import { colors, radii, spacing } from '../../../theme';
 import { apiClient } from '../../../utils/api';
 import type { TransactionDocument } from '../types';
+import { ensureDocumentCached, saveDocumentToDevice } from '../../documents/documentFile';
+import { DocumentViewer } from '../../documents/components/DocumentViewer';
 
 type PickedFile = { uri: string; name: string; type: string };
 
@@ -52,6 +53,19 @@ function assetToFile(
  * can't send Authorization).
  */
 export function TransactionAttachments({ transactionId }: { transactionId: string }) {
+  const [viewing, setViewing] = useState<TransactionDocument | null>(null);
+
+  const download = async (doc: TransactionDocument) => {
+    try {
+      const result = await saveDocumentToDevice(doc);
+      if (result.status === 'saved') {
+        ToastAndroid.show(`Saved ${result.fileName}`, ToastAndroid.SHORT);
+      }
+    } catch (err: unknown) {
+      Alert.alert('Download failed', err instanceof Error ? err.message : 'Could not save this document.');
+    }
+  };
+
   const [documents, setDocuments] = useState<TransactionDocument[]>([]);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const [isBusy, setIsBusy] = useState(false);
@@ -61,14 +75,7 @@ export function TransactionAttachments({ transactionId }: { transactionId: strin
   const loadThumb = useCallback(async (doc: TransactionDocument) => {
     if (!doc.mimeType.startsWith('image/')) return;
     try {
-      const { url, headers } = apiClient.getAuthorizedRequest(`documents/${doc.id}/content`);
-      const ext = doc.fileName.includes('.') ? doc.fileName.slice(doc.fileName.lastIndexOf('.')) : '.jpg';
-      const target = `${FileSystem.cacheDirectory}receipt-${doc.id}${ext}`;
-      const info = await FileSystem.getInfoAsync(target);
-      if (!info.exists) {
-        const result = await FileSystem.downloadAsync(url, target, { headers });
-        if (result.status !== 200) return;
-      }
+      const target = await ensureDocumentCached(doc);
       setThumbs((prev) => ({ ...prev, [doc.id]: target }));
     } catch {
       // preview failures are non-fatal
@@ -248,19 +255,32 @@ export function TransactionAttachments({ transactionId }: { transactionId: strin
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.docRow}>
           {documents.map((doc) => (
             <View key={doc.id} style={styles.docTile}>
-              {thumbs[doc.id] ? (
-                <Image source={{ uri: thumbs[doc.id] }} style={styles.docThumb} />
-              ) : (
-                <View style={styles.docIconBox}>
-                  <FileText size={26} color={colors.muted} />
-                </View>
-              )}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`View ${doc.fileName}`}
+                onPress={() => setViewing(doc)}
+              >
+                {thumbs[doc.id] ? (
+                  <Image source={{ uri: thumbs[doc.id] }} style={styles.docThumb} />
+                ) : (
+                  <View style={styles.docIconBox}>
+                    <FileText size={26} color={colors.muted} />
+                  </View>
+                )}
+              </Pressable>
               <AppText muted numberOfLines={1} style={styles.docName}>
                 {doc.fileName}
               </AppText>
               <AppText muted style={styles.docSize}>
                 {formatSize(doc.sizeBytes)}
               </AppText>
+              <Pressable
+                style={styles.docDownload}
+                accessibilityLabel={`Download ${doc.fileName}`}
+                onPress={() => void download(doc)}
+                hitSlop={8}>
+                <Download size={14} color={colors.text} />
+              </Pressable>
               <Pressable style={styles.docDelete} onPress={() => remove(doc)} hitSlop={8}>
                 <Trash2 size={14} color={colors.danger} />
               </Pressable>
@@ -268,6 +288,10 @@ export function TransactionAttachments({ transactionId }: { transactionId: strin
           ))}
         </ScrollView>
       )}
+
+      {viewing ? (
+        <DocumentViewer doc={viewing} title={viewing.fileName} onClose={() => setViewing(null)} />
+      ) : null}
 
       <View style={styles.actionsRow}>
         <Pressable
@@ -338,6 +362,17 @@ const styles = StyleSheet.create({
   },
   docSize: {
     fontSize: 10
+  },
+  docDownload: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.scrim
   },
   docDelete: {
     position: 'absolute',
