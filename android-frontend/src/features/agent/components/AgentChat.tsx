@@ -5,7 +5,6 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,7 +12,8 @@ import {
   View,
   type ListRenderItem
 } from 'react-native';
-import { Bot, ChevronDown, MessagesSquare, Plus, Send, Sparkles, Trash2 } from 'lucide-react-native';
+import { Bot, ChevronDown, MessagesSquare, Plus, Send, Sparkles, Trash2, X } from 'lucide-react-native';
+import Markdown from 'react-native-markdown-display';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppDispatch, useAppSelector } from '../../../app/hooks';
 import { AppText } from '../../../components/AppText';
@@ -38,12 +38,23 @@ import {
 import type { AgentChatHistoryItem, AgentChatMessage, MessagePart } from '../types';
 import { selectSelectedBudget } from '../../budget/store/budgetSlice';
 
-const SUGGESTIONS = ['Summarize my spending', 'Find unusual transactions', 'Help plan next month'];
+const SUGGESTIONS = [
+  'Summarize my spending this month',
+  'Find unusual transactions',
+  'Where can I cut back?',
+  'Compare this month to last'
+];
+const AGENT_NAME = 'Penny';
+const AGENT_ERROR_EVENT = 'agent::chat::error';
 const TEXT_DELTA_EVENT = 'agent::chat::text_delta';
 const AGENT_CHAT_STREAM_EVENT = 'pennywise::agent::chat::stream';
 const AGENT_LOADING_EVENT = 'agent::chat::loading';
 
 function agentMessageLabel(eventName: string) {
+  if (eventName === AGENT_ERROR_EVENT) {
+    return 'Error';
+  }
+
   if (
     eventName === TEXT_DELTA_EVENT ||
     eventName === AGENT_CHAT_STREAM_EVENT ||
@@ -51,7 +62,7 @@ function agentMessageLabel(eventName: string) {
     eventName === 'agent::chat::tool_call' ||
     eventName === 'agent::chat::tool_call_start'
   ) {
-    return 'Penny';
+    return AGENT_NAME;
   }
 
   return eventName.replace(/^agent::chat::/, '');
@@ -105,6 +116,16 @@ function AgentToolPart({ part }: { part: MessagePart }) {
   );
 }
 
+/**
+ * Agent replies arrive as markdown — lists, bold, tables. Rendering them as
+ * plain text showed the literal asterisks, so assistant text goes through a
+ * renderer styled from the app's own tokens. User text stays plain: we wrote
+ * it, and it should never be interpreted as markup.
+ */
+function AgentMarkdown({ text }: { text: string }) {
+  return <Markdown style={markdownStyles}>{text}</Markdown>;
+}
+
 function AgentMessageBody({ message }: { message: AgentChatMessage }) {
   if (message.eventName === AGENT_LOADING_EVENT) {
     return (
@@ -117,15 +138,19 @@ function AgentMessageBody({ message }: { message: AgentChatMessage }) {
     );
   }
 
+  if (message.eventName === AGENT_ERROR_EVENT) {
+    return <AppText style={styles.errorMessageText}>{message.text}</AppText>;
+  }
+
   if (!message.parts?.length) {
-    return <AppText style={styles.messageText}>{message.text}</AppText>;
+    return <AgentMarkdown text={message.text} />;
   }
 
   const hasTextPart = message.parts.some((part) => part.type.toUpperCase() === 'TEXT');
 
   return (
     <View style={styles.messageParts}>
-      {message.text.trim() && !hasTextPart ? <AppText style={styles.messageText}>{message.text}</AppText> : null}
+      {message.text.trim() && !hasTextPart ? <AgentMarkdown text={message.text} /> : null}
       {message.parts.map((part, index) => {
         const partType = part.type.toUpperCase();
         const key = part.id ?? `${message.id}-${index}`;
@@ -136,11 +161,7 @@ function AgentMessageBody({ message }: { message: AgentChatMessage }) {
 
         if (partType === 'TEXT') {
           const text = messagePartText(part);
-          return text ? (
-            <AppText key={key} style={styles.messageText}>
-              {text}
-            </AppText>
-          ) : null;
+          return text ? <AgentMarkdown key={key} text={text} /> : null;
         }
 
         return null;
@@ -151,11 +172,18 @@ function AgentMessageBody({ message }: { message: AgentChatMessage }) {
 
 function ChatMessage({ message }: { message: AgentChatMessage }) {
   const isUser = message.role === 'user';
+  const isError = message.eventName === AGENT_ERROR_EVENT;
 
   return (
-    <View style={[styles.messageBubble, isUser ? styles.userMessage : styles.agentMessage]}>
+    <View
+      style={[
+        styles.messageBubble,
+        isUser ? styles.userMessage : styles.agentMessage,
+        isError && styles.errorMessage
+      ]}
+    >
       {!isUser ? (
-        <AppText weight="bold" style={styles.messageLabel}>
+        <AppText weight="bold" style={[styles.messageLabel, isError && styles.errorMessageLabel]}>
           {agentMessageLabel(message.eventName ?? 'agent::chat::message')}
         </AppText>
       ) : null}
@@ -181,8 +209,6 @@ export function AgentChat() {
   const [isDeletingConversation, setIsDeletingConversation] = useState(false);
   const metadataSyncedConversationRef = useRef<string | null>(null);
   const messagesListRef = useRef<FlatList<AgentChatMessage>>(null);
-  const composerInputRef = useRef<TextInput>(null);
-  const shouldRefocusComposerRef = useRef(false);
   const isSending = createRunLoading === LoadingState.PENDING;
   const hasSelectedBudget = Boolean(selectedBudget?.id);
   const lastMessage = agentMessages[agentMessages.length - 1];
@@ -200,8 +226,10 @@ export function AgentChat() {
     : agentMessages;
   const selectedConversation = currentConversationId ? chatHistory.find((conversation) => conversation.id === currentConversationId) : undefined;
   const selectedModel = AGENT_MODEL_OPTIONS.find((option) => option.key === selectedModelKey) ?? AGENT_MODEL_OPTIONS[0];
-  const headerTitle = selectedConversation?.title ?? 'Penny Agent';
-  const canOpenHistory = !isSending && chatHistory.length > 0;
+  const headerTitle = selectedConversation?.title ?? AGENT_NAME;
+  // Openable even with no chats: the sheet has its own empty state, which
+  // reads better than a button that looks broken because it is disabled.
+  const canOpenHistory = !isSending;
   const canOpenModels = !isSending && hasSelectedBudget;
   const deleteConversationTitle = conversationToDelete?.title?.trim() || 'this chat';
 
@@ -246,18 +274,6 @@ export function AgentChat() {
     selectedConversation?.metadata?.model,
     selectedModelKey
   ]);
-
-  useEffect(() => {
-    if (displayedAgentMessages.length === 0) {
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      messagesListRef.current?.scrollToEnd({ animated: true });
-    }, 40);
-
-    return () => clearTimeout(timer);
-  }, [displayedAgentMessages.length]);
 
   useEffect(() => {
     if (!isAwaitingAgentResponse) {
@@ -388,9 +404,11 @@ export function AgentChat() {
                 <AppText variant="heading" numberOfLines={1}>
                   {headerTitle}
                 </AppText>
-                <AppText variant="caption" muted numberOfLines={1}>
-                  {selectedModel.shortLabel ?? selectedModel.label}
-                </AppText>
+                {selectedConversation ? (
+                  <AppText variant="caption" muted numberOfLines={1}>
+                    {AGENT_NAME}
+                  </AppText>
+                ) : null}
               </View>
               <View style={styles.headerActions}>
                 <Pressable
@@ -414,43 +432,6 @@ export function AgentChat() {
               </View>
             </View>
 
-            {isHistoryOpen ? (
-              <View style={styles.historyPanel}>
-                <ScrollView style={styles.historyScroll} showsVerticalScrollIndicator={false}>
-                  {chatHistory.map((conversation) => (
-                    <View
-                      key={conversation.id}
-                      style={[
-                        styles.historyRow,
-                        conversation.id === currentConversationId && styles.optionActive
-                      ]}
-                    >
-                      <Pressable
-                        accessibilityRole="button"
-                        style={({ pressed }) => [styles.historyOption, pressed && styles.pressed]}
-                        onPress={() => handleSelectChat(conversation.id)}
-                      >
-                        <AppText numberOfLines={2}>{conversation.title}</AppText>
-                      </Pressable>
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={`Delete ${conversation.title}`}
-                        disabled={isDeletingConversation}
-                        style={({ pressed }) => [
-                          styles.historyDeleteButton,
-                          isDeletingConversation && styles.disabled,
-                          pressed && styles.pressed
-                        ]}
-                        onPress={() => handleRequestDeleteConversation(conversation)}
-                      >
-                        <Trash2 size={16} color={colors.danger} />
-                      </Pressable>
-                    </View>
-                  ))}
-                </ScrollView>
-              </View>
-            ) : null}
-
             <FlatList
               ref={messagesListRef}
               data={displayedAgentMessages}
@@ -462,47 +443,51 @@ export function AgentChat() {
               keyboardShouldPersistTaps="handled"
               ListEmptyComponent={
                 <View style={styles.emptyState}>
-                  <AppText muted weight="semibold" style={styles.emptyStateText}>
-                    ask questions about your budget
+                  <View style={styles.emptyMark}>
+                    <Sparkles size={22} color={colors.primary} />
+                  </View>
+                  <AppText variant="heading" style={styles.emptyStateTitle}>
+                    Ask {AGENT_NAME} about your budget
                   </AppText>
+                  <AppText variant="caption" muted style={styles.emptyStateBody}>
+                    {AGENT_NAME} can read your transactions, categories and tags to answer
+                    questions and spot patterns. Start with one of these:
+                  </AppText>
+                  <View style={styles.suggestions}>
+                    {SUGGESTIONS.map((suggestion) => (
+                      <Pressable
+                        key={suggestion}
+                        accessibilityRole="button"
+                        disabled={isSending || !hasSelectedBudget}
+                        style={({ pressed }) => [
+                          styles.suggestionButton,
+                          (isSending || !hasSelectedBudget) && styles.disabled,
+                          pressed && styles.pressed
+                        ]}
+                        onPress={() => submitMessage(suggestion)}
+                      >
+                        <AppText weight="medium" style={styles.suggestionText}>
+                          {suggestion}
+                        </AppText>
+                      </Pressable>
+                    ))}
+                  </View>
                 </View>
               }
             />
 
-            {displayedAgentMessages.length === 0 ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.suggestions}>
-              {SUGGESTIONS.map((suggestion) => (
-                <Pressable
-                  key={suggestion}
-                  accessibilityRole="button"
-                  disabled={isSending || !hasSelectedBudget}
-                  style={({ pressed }) => [
-                    styles.suggestionButton,
-                    (isSending || !hasSelectedBudget) && styles.disabled,
-                    pressed && styles.pressed
-                  ]}
-                  onPress={() => submitMessage(suggestion)}
-                >
-                  <AppText muted weight="semibold" style={styles.suggestionText}>
-                    {suggestion}
-                  </AppText>
-                </Pressable>
-              ))}
-            </ScrollView>
-            ) : null}
-
             <View style={[styles.composer, isKeyboardVisible && styles.composerKeyboard]}>
               <TextInput
-                ref={composerInputRef}
                 value={composerValue}
                 editable={!isSending && hasSelectedBudget}
-                placeholder={hasSelectedBudget ? 'How can I help you today?' : 'Select a budget to chat'}
+                placeholder={hasSelectedBudget ? `Message ${AGENT_NAME}` : 'Select a budget to chat'}
                 placeholderTextColor={colors.muted}
                 style={styles.composerInput}
-                returnKeyType="send"
-                blurOnSubmit={false}
+                // Questions run long; a single-line field scrolled them
+                // sideways. Send is the button, so Enter inserts a newline.
+                multiline
+                textAlignVertical="top"
                 onChangeText={setComposerValue}
-                onSubmitEditing={() => submitMessage(composerValue)}
               />
 
               <View style={styles.composerFooterRow}>
@@ -555,6 +540,76 @@ export function AgentChat() {
 
       <Modal
         transparent
+        visible={isHistoryOpen}
+        animationType="slide"
+        onRequestClose={() => setIsHistoryOpen(false)}
+      >
+        <View style={styles.sheetBackdrop}>
+          <Pressable
+            accessibilityLabel="Close chat history"
+            style={styles.sheetDismiss}
+            onPress={() => setIsHistoryOpen(false)}
+          />
+          <View style={styles.sheet}>
+            <View style={styles.sheetHeader}>
+              <AppText variant="heading" style={styles.sheetTitle}>
+                Chats
+              </AppText>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Close chat history"
+                hitSlop={10}
+                style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+                onPress={() => setIsHistoryOpen(false)}
+              >
+                <X size={18} color={colors.text} />
+              </Pressable>
+            </View>
+
+            {chatHistory.length === 0 ? (
+              <AppText variant="caption" muted style={styles.sheetEmpty}>
+                No chats yet. Ask {AGENT_NAME} something and it will show up here.
+              </AppText>
+            ) : (
+              <ScrollView style={styles.historyScroll} showsVerticalScrollIndicator={false}>
+                {chatHistory.map((conversation) => (
+                  <View
+                    key={conversation.id}
+                    style={[
+                      styles.historyRow,
+                      conversation.id === currentConversationId && styles.optionActive
+                    ]}
+                  >
+                    <Pressable
+                      accessibilityRole="button"
+                      style={({ pressed }) => [styles.historyOption, pressed && styles.pressed]}
+                      onPress={() => handleSelectChat(conversation.id)}
+                    >
+                      <AppText numberOfLines={2}>{conversation.title}</AppText>
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Delete ${conversation.title}`}
+                      disabled={isDeletingConversation}
+                      style={({ pressed }) => [
+                        styles.historyDeleteButton,
+                        isDeletingConversation && styles.disabled,
+                        pressed && styles.pressed
+                      ]}
+                      onPress={() => handleRequestDeleteConversation(conversation)}
+                    >
+                      <Trash2 size={16} color={colors.danger} />
+                    </Pressable>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        transparent
         visible={Boolean(conversationToDelete)}
         animationType="fade"
         onRequestClose={handleCancelDeleteConversation}
@@ -602,6 +657,75 @@ export function AgentChat() {
   );
 }
 
+/**
+ * Markdown rendered with the app's own tokens rather than the library's
+ * light-theme defaults, which are unreadable on the dark canvas.
+ */
+const markdownStyles = StyleSheet.create({
+  body: {
+    color: colors.text,
+    fontSize: 15,
+    lineHeight: 21
+  },
+  paragraph: {
+    marginTop: 0,
+    marginBottom: spacing.sm
+  },
+  heading1: { color: colors.text, fontSize: 19, lineHeight: 25, fontWeight: '700', marginBottom: spacing.xs },
+  heading2: { color: colors.text, fontSize: 17, lineHeight: 23, fontWeight: '600', marginBottom: spacing.xs },
+  heading3: { color: colors.text, fontSize: 15, lineHeight: 21, fontWeight: '600', marginBottom: spacing.xs },
+  strong: { fontWeight: '700', color: colors.text },
+  em: { fontStyle: 'italic' },
+  link: { color: colors.primary },
+  bullet_list: { marginBottom: spacing.sm },
+  ordered_list: { marginBottom: spacing.sm },
+  list_item: { marginBottom: 2 },
+  bullet_list_icon: { color: colors.primary },
+  ordered_list_icon: { color: colors.primary },
+  code_inline: {
+    backgroundColor: colors.surfaceStrong,
+    color: colors.text,
+    borderWidth: 0,
+    borderRadius: radii.sm,
+    paddingHorizontal: 5,
+    fontFamily: 'monospace',
+    fontSize: 13
+  },
+  code_block: {
+    backgroundColor: colors.surfaceStrong,
+    color: colors.text,
+    borderWidth: 0,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    fontFamily: 'monospace',
+    fontSize: 13
+  },
+  fence: {
+    backgroundColor: colors.surfaceStrong,
+    color: colors.text,
+    borderWidth: 0,
+    borderRadius: radii.md,
+    padding: spacing.md,
+    fontFamily: 'monospace',
+    fontSize: 13
+  },
+  blockquote: {
+    backgroundColor: colors.surfaceStrong,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.primary,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginLeft: 0
+  },
+  hr: { backgroundColor: colors.border, height: StyleSheet.hairlineWidth },
+  table: { borderColor: colors.border, borderRadius: radii.sm },
+  thead: { backgroundColor: colors.surfaceStrong },
+  th: { padding: spacing.sm },
+  tr: { borderColor: colors.border },
+  td: { padding: spacing.sm }
+});
+
 const styles = StyleSheet.create({
   modalSafe: {
     flex: 1,
@@ -645,16 +769,8 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     backgroundColor: colors.surfaceStrong
   },
-  historyPanel: {
-    maxHeight: 184,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.borderMuted,
-    backgroundColor: colors.background,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm
-  },
   historyScroll: {
-    maxHeight: 168
+    flexGrow: 0
   },
   historyRow: {
     flexDirection: 'row',
@@ -689,17 +805,32 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     padding: spacing.lg
   },
+  // Anchored to the composer rather than floated in the middle: the block is
+  // the first thing you act on, so it belongs next to the thing you type in.
   emptyMessagesContent: {
-    justifyContent: 'center'
+    justifyContent: 'flex-end'
   },
   emptyState: {
     alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 180
+    gap: spacing.sm,
+    paddingBottom: spacing.md
   },
-  emptyStateText: {
-    opacity: 0.55,
+  emptyMark: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primaryMuted,
+    marginBottom: spacing.xs
+  },
+  emptyStateTitle: {
     textAlign: 'center'
+  },
+  emptyStateBody: {
+    textAlign: 'center',
+    maxWidth: 300,
+    marginBottom: spacing.sm
   },
   messageBubble: {
     maxWidth: '86%',
@@ -723,9 +854,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     textTransform: 'uppercase'
-  },
-  messageText: {
-    lineHeight: 21
   },
   userMessageText: {
     color: colors.onPrimary,
@@ -767,22 +895,29 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18
   },
+  // Wrapped rather than a horizontal ScrollView: its content container
+  // stretched children to the cross axis, which turned 30px pills into
+  // full-height capsules. A wrapping row also stops the last chip being
+  // clipped off-screen.
   suggestions: {
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.sm,
-    backgroundColor: colors.background
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: spacing.sm
   },
   suggestionButton: {
-    minHeight: 30,
+    minHeight: 38,
+    alignSelf: 'center',
     justifyContent: 'center',
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
     borderRadius: 999,
     backgroundColor: colors.surfaceStrong
   },
   suggestionText: {
-    fontSize: 12,
-    lineHeight: 16
+    fontSize: 14,
+    lineHeight: 18
   },
   composer: {
     gap: spacing.md,
@@ -800,6 +935,7 @@ const styles = StyleSheet.create({
   },
   composerInput: {
     minHeight: 42,
+    maxHeight: 132,
     padding: 0,
     color: colors.text,
     fontSize: 16,
@@ -832,6 +968,46 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 20,
     backgroundColor: colors.primary
+  },
+  errorMessage: {
+    backgroundColor: colors.dangerMuted
+  },
+  errorMessageLabel: {
+    color: colors.danger
+  },
+  errorMessageText: {
+    color: colors.danger,
+    fontSize: 15,
+    lineHeight: 21
+  },
+  sheetBackdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: colors.scrim
+  },
+  sheetDismiss: {
+    flex: 1
+  },
+  sheet: {
+    maxHeight: '70%',
+    backgroundColor: colors.background,
+    borderTopLeftRadius: radii.xl,
+    borderTopRightRadius: radii.xl,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl,
+    gap: spacing.md
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md
+  },
+  sheetTitle: {
+    flex: 1
+  },
+  sheetEmpty: {
+    paddingVertical: spacing.lg
   },
   disabled: {
     opacity: 0.5
