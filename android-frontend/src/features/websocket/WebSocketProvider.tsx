@@ -11,12 +11,16 @@ import {
   appendAgentTextDelta,
   selectCurrentAgentStreamId
 } from '../agent/store/agentSlice';
+import { pipelineRunUpdated } from '../pipeline/store/pipelineSlice';
+import type { PipelineRun } from '../pipeline/types';
 import type { AgentEventMessageData, MessagePart } from '../agent/types';
 
 const RECONNECT_DELAY_MS = 3000;
 const TOKEN_EXPIRY_BUFFER_MS = 30000;
 const AGENT_CHAT_STREAM_EVENT = 'pennywise::agent::chat::stream';
 const AGENT_CHAT_SUBSCRIBE_EVENT = 'pennywise::agent::chat::subscribe';
+// Mirrors EventPipelineUpdate in backend/shared/model/websocket.go
+const PIPELINE_UPDATE_EVENT = 'pennywise::pipeline::update';
 
 type WebSocketMessage = {
   eventName: string;
@@ -261,6 +265,15 @@ export function WebSocketProvider() {
             message.eventName === 'pennywise::transaction::created'
           ) {
             dispatch(fetchAllTransactions());
+          }
+
+          if (message.eventName === PIPELINE_UPDATE_EVENT && message.data) {
+            const run = (
+              typeof message.data === 'string' ? JSON.parse(message.data) : message.data
+            ) as PipelineRun;
+            if (run?.id) {
+              dispatch(pipelineRunUpdated(run));
+            }
           }
 
           if (
