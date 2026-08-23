@@ -183,7 +183,7 @@ function DocumentDetail({
                 <FileText size={34} color={colors.muted} />
                 <AppText variant="caption" muted style={styles.sheetPlaceholderText}>
                   {doc.mimeType === 'application/pdf'
-                    ? 'PDF pages are not rendered in the app yet. Download it to open in a PDF viewer.'
+                    ? 'Tap View to read this PDF.'
                     : 'No preview available for this file type.'}
                 </AppText>
               </View>

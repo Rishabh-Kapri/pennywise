@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
-import { FileText, X } from 'lucide-react-native';
+import Pdf from 'react-native-pdf';
+import { X } from 'lucide-react-native';
 import { AppText } from '../../../components/AppText';
 import { colors, radii, spacing } from '../../../theme';
 import { ensureDocumentCached, type DocumentFileRef } from '../documentFile';
@@ -9,6 +10,11 @@ import { ensureDocumentCached, type DocumentFileRef } from '../documentFile';
  * Full-screen, in-app view of one document. The body is read from the app's
  * private cache — nothing is written to the gallery or Downloads by opening
  * this, which is what separates viewing from the explicit save action.
+ *
+ * Images render through <Image>; everything else goes to <Pdf>, which
+ * rasterises natively from the same cached file. Passing it the local path
+ * rather than the API URL keeps the request out of the native layer, so the
+ * body is fetched once, with our auth headers, by ensureDocumentCached.
  */
 export function DocumentViewer({
   doc,
@@ -21,6 +27,8 @@ export function DocumentViewer({
 }) {
   const [localUri, setLocalUri] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pageCount, setPageCount] = useState(0);
+  const [page, setPage] = useState(1);
 
   const isImage = doc.mimeType.startsWith('image/');
 
@@ -78,15 +86,25 @@ export function DocumentViewer({
             <Image source={{ uri: localUri }} style={styles.image} resizeMode="contain" />
           </ScrollView>
         ) : (
-          <View style={styles.centered}>
-            <View style={styles.pdfIcon}>
-              <FileText size={30} color={colors.muted} />
-            </View>
-            <AppText variant="caption" muted style={styles.centeredText}>
-              This file type can't be rendered in the app yet. Save it to your device to open it
-              in a viewer.
-            </AppText>
-          </View>
+          <>
+            <Pdf
+              source={{ uri: localUri }}
+              style={styles.pdf}
+              trustAllCerts={false}
+              onLoadComplete={(pages) => setPageCount(pages)}
+              onPageChanged={(current) => setPage(current)}
+              onError={(err: unknown) =>
+                setError(err instanceof Error ? err.message : 'This document could not be opened')
+              }
+            />
+            {pageCount > 1 ? (
+              <View style={styles.pageBadge}>
+                <AppText variant="caption" muted tabular>
+                  {page} / {pageCount}
+                </AppText>
+              </View>
+            ) : null}
+          </>
         )}
       </View>
     </Modal>
@@ -127,13 +145,19 @@ const styles = StyleSheet.create({
   centeredText: {
     textAlign: 'center'
   },
-  pdfIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: radii.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surface
+  pdf: {
+    flex: 1,
+    width: '100%',
+    backgroundColor: colors.background
+  },
+  pageBadge: {
+    position: 'absolute',
+    alignSelf: 'center',
+    bottom: spacing.xl,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.full,
+    backgroundColor: colors.scrim
   },
   imageScroll: {
     flex: 1
