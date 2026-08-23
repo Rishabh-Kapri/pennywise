@@ -17,6 +17,14 @@ import type {
 
 const TEXT_DELTA_EVENT = 'agent::chat::text_delta';
 
+/**
+ * Hand-maintained mirror of the same list in
+ * react-frontend/src/features/agent/store/agentSlice.ts. cipher exposes no
+ * endpoint for "models this deployment can actually serve", so both clients
+ * guess: a model removed upstream, or one whose provider has no API key
+ * configured, only fails when a run is submitted. Keep the two lists in step,
+ * and prefer fetching this list once cipher can serve it.
+ */
 export const AGENT_MODEL_OPTIONS: AgentModelOption[] = [
   {
     key: 'sonnet-4-6',
