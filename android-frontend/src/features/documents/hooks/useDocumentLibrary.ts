@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import * as FileSystem from 'expo-file-system/legacy';
 import { apiClient } from '../../../utils/api';
+import { ensureDocumentCached } from '../documentFile';
 import {
   buildDocumentQuery,
   type DocumentFilters,
@@ -51,15 +51,7 @@ export function useDocumentLibrary(filters: DocumentFilters): UseDocumentLibrary
     for (const doc of docs) {
       if (!doc.mimeType.startsWith('image/')) continue;
       try {
-        const { url, headers } = apiClient.getAuthorizedRequest(`documents/${doc.id}/content`);
-        const ext = doc.fileName.includes('.') ? doc.fileName.slice(doc.fileName.lastIndexOf('.')) : '.jpg';
-        const target = `${FileSystem.cacheDirectory}receipt-${doc.id}${ext}`;
-
-        const info = await FileSystem.getInfoAsync(target);
-        if (!info.exists) {
-          const result = await FileSystem.downloadAsync(url, target, { headers });
-          if (result.status !== 200) continue;
-        }
+        const target = await ensureDocumentCached(doc);
         // the list moved on while this was downloading
         if (requestId !== requestIdRef.current) return;
         setThumbnails((prev) => ({ ...prev, [doc.id]: target }));
