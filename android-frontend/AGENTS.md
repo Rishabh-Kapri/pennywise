@@ -412,6 +412,7 @@ Conventions: pill-shaped buttons/search/inputs, `radii.lg` (20) cards, type scal
 
 - `babel-preset-expo` must be a top-level dev dependency because Babel resolves it from the app root.
 - `react-native-reanimated@4.1.1` requires `react-native-worklets@0.5.x`; this project pins `react-native-worklets` to `0.5.1`. Do not let it float to `0.8.x`, or EAS Android builds fail in `assertWorkletsVersionTask`.
+- `react-native-pdf` renders the in-app PDF viewer and needs `react-native-blob-util` as a peer. Both are native modules, so a JS-only reload will not pick them up — rebuild the dev client (or run an EAS build) after pulling them in, or `DocumentViewer` crashes on a missing native view manager.
 
 ## Maintenance
 
