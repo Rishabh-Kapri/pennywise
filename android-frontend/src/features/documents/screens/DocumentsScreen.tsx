@@ -10,10 +10,11 @@ import {
   ScrollView,
   StyleSheet,
   TextInput,
+  ToastAndroid,
   View
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { ChevronLeft, FileText, Files, Search, Trash2, X } from 'lucide-react-native';
+import { ChevronLeft, Download, Eye, FileText, Files, Search, Trash2, X } from 'lucide-react-native';
 import { AppText } from '../../../components/AppText';
 import { Card } from '../../../components/Card';
 import { EmptyState } from '../../../components/EmptyState';
@@ -21,6 +22,8 @@ import { Screen } from '../../../components/Screen';
 import { formatCurrency, formatShortDate } from '../../../utils/date';
 import { colors, radii, spacing } from '../../../theme';
 import { useDocumentLibrary } from '../hooks/useDocumentLibrary';
+import { saveDocumentToDevice } from '../documentFile';
+import { DocumentViewer } from '../components/DocumentViewer';
 import {
   EMPTY_DOCUMENT_FILTERS,
   type DocumentFilters,
@@ -119,13 +122,32 @@ function DocumentDetail({
   doc,
   thumbnail,
   onClose,
-  onDelete
+  onDelete,
+  onView
 }: {
   doc: DocumentListItem;
   thumbnail?: string;
   onClose: () => void;
   onDelete: () => void;
+  onView: () => void;
 }) {
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      const result = await saveDocumentToDevice(doc);
+      if (result.status === 'saved') {
+        ToastAndroid.show(`Saved ${result.fileName}`, ToastAndroid.SHORT);
+      }
+    } catch (err: unknown) {
+      Alert.alert('Download failed', err instanceof Error ? err.message : 'Could not save this document.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const confirmDelete = () => {
     Alert.alert('Delete document', `Delete ${doc.fileName}?`, [
       { text: 'Cancel', style: 'cancel' },
@@ -161,7 +183,7 @@ function DocumentDetail({
                 <FileText size={34} color={colors.muted} />
                 <AppText variant="caption" muted style={styles.sheetPlaceholderText}>
                   {doc.mimeType === 'application/pdf'
-                    ? 'PDF preview is not available on mobile yet — open this receipt from the web app to read it.'
+                    ? 'Tap View to read this PDF.'
                     : 'No preview available for this file type.'}
                 </AppText>
               </View>
@@ -175,6 +197,37 @@ function DocumentDetail({
               <DetailRow label="File" value={doc.fileName} />
               <DetailRow label="Size" value={formatSize(doc.sizeBytes)} />
             </Card>
+
+            <View style={styles.actionRow}>
+              <Pressable
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.actionButton, styles.viewButton, pressed && styles.pressed]}
+                onPress={onView}
+              >
+                <Eye size={16} color={colors.primary} />
+                <AppText weight="semibold" tone="primary">
+                  View
+                </AppText>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                disabled={isSaving}
+                style={({ pressed }) => [
+                  styles.actionButton,
+                  styles.downloadButton,
+                  pressed && styles.pressed,
+                  isSaving && styles.pressed
+                ]}
+                onPress={() => void handleSave()}
+              >
+                {isSaving ? (
+                  <ActivityIndicator size="small" color={colors.text} />
+                ) : (
+                  <Download size={16} color={colors.text} />
+                )}
+                <AppText weight="semibold">{isSaving ? 'Saving…' : 'Download'}</AppText>
+              </Pressable>
+            </View>
 
             <Pressable
               style={({ pressed }) => [styles.deleteButton, pressed && styles.pressed]}
@@ -212,6 +265,7 @@ export function DocumentsScreen() {
   const [searchInput, setSearchInput] = useState('');
   const [period, setPeriod] = useState<PeriodId>('all');
   const [selected, setSelected] = useState<DocumentListItem | null>(null);
+  const [viewing, setViewing] = useState<DocumentListItem | null>(null);
 
   // debounce so typing doesn't fire a request per keystroke
   useEffect(() => {
@@ -392,6 +446,15 @@ export function DocumentsScreen() {
           thumbnail={thumbnails[selected.id]}
           onClose={() => setSelected(null)}
           onDelete={() => void remove(selected.id)}
+          onView={() => setViewing(selected)}
+        />
+      ) : null}
+
+      {viewing ? (
+        <DocumentViewer
+          doc={viewing}
+          title={viewing.payeeName || viewing.fileName}
+          onClose={() => setViewing(null)}
         />
       ) : null}
     </Screen>
@@ -587,6 +650,25 @@ const styles = StyleSheet.create({
   detailValue: {
     flexShrink: 1,
     textAlign: 'right'
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: spacing.md
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    minHeight: 46,
+    borderRadius: radii.full
+  },
+  viewButton: {
+    backgroundColor: colors.primaryMuted
+  },
+  downloadButton: {
+    backgroundColor: colors.surfaceStrong
   },
   deleteButton: {
     flexDirection: 'row',
