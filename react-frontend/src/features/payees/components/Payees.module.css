@@ -346,6 +346,14 @@
   letter-spacing: 0.08em;
 }
 
+.ruleCreatedAt {
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .emptyState,
 .emptyDetail,
 .errorState {
