@@ -8,6 +8,24 @@ import { PencilSimpleLine as Edit2, Plus, FloppyDisk as Save, MagnifyingGlass as
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import styles from './Payees.module.css';
 
+// Oldest rule first. The API orders rules by match string, so the created
+// dates shown on each row would otherwise read out of sequence.
+function sortRulesByCreatedAt(rules: PayeeRule[]): PayeeRule[] {
+  return [...rules].sort((a, b) => {
+    const aTime = a.createdAt ? new Date(a.createdAt).getTime() : NaN;
+    const bTime = b.createdAt ? new Date(b.createdAt).getTime() : NaN;
+    const aValid = !Number.isNaN(aTime);
+    const bValid = !Number.isNaN(bTime);
+    // rules without a usable date sink to the bottom, ordered by match string
+    if (!aValid || !bValid) {
+      if (aValid !== bValid) return aValid ? -1 : 1;
+      return a.matchString.localeCompare(b.matchString);
+    }
+    if (aTime !== bTime) return aTime - bTime;
+    return a.matchString.localeCompare(b.matchString);
+  });
+}
+
 function formatRuleCreatedAt(createdAt?: string): string | null {
   if (!createdAt) return null;
   const date = new Date(createdAt);
@@ -64,7 +82,7 @@ export default function Payees() {
     apiClient
       .get<PayeeRule[]>(`payees/${payeeId}/rules`)
       .then((res) => {
-        setRules(res ?? []);
+        setRules(sortRulesByCreatedAt(res ?? []));
         setRulesLoading(LoadingState.SUCCESS);
       })
       .catch((err: Error) => {
