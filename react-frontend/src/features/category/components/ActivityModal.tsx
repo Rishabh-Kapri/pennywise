@@ -1,7 +1,9 @@
-import { useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { Receipt as ReceiptText } from '@phosphor-icons/react';
 import { Popover } from '@/components/common/Popover/Popover';
-import { useAppSelector } from '@/app/hooks';
+import type { Transaction } from '@/features/transactions/types/transaction.types';
+import { apiClient } from '@/utils';
+import { type PaginationResponse } from '@/utils/common.constants';
 import { getCurrencyLocaleString } from '@/utils/date.utils';
 import styles from './ActivityModal.module.css';
 
@@ -15,6 +17,21 @@ interface ActivityPopoverProps {
   activityAmount: number;
 }
 
+// The transactions slice only ever holds the page the transactions screen last
+// fetched, so filtering it client-side showed "no transactions" for any month
+// outside that page. Fetch the category's month directly instead.
+const TXN_LIMIT = 200;
+
+function monthBounds(month: string): { startDate: string; endDate: string } {
+  const [year, monthNumber] = month.split('-').map(Number);
+  // day 0 of the next month is the last day of this one
+  const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+  return {
+    startDate: `${month}-01`,
+    endDate: `${month}-${String(lastDay).padStart(2, '0')}`,
+  };
+}
+
 export function ActivityPopover({
   isOpen,
   onClose,
@@ -24,14 +41,43 @@ export function ActivityPopover({
   month,
   activityAmount,
 }: ActivityPopoverProps) {
-  const { transactions } = useAppSelector((state) => state.transactions);
-  const filteredTransactions = useMemo(() => {
-    return transactions.filter((txn) => {
-      if (txn.categoryId !== categoryId) return false;
-      const txnMonth = txn.date.substring(0, 7);
-      return txnMonth === month;
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || !categoryId || !month) return;
+
+    let cancelled = false;
+    const { startDate, endDate } = monthBounds(month);
+    const params = new URLSearchParams({
+      'categoryId[]': categoryId,
+      startDate,
+      endDate,
+      limit: String(TXN_LIMIT),
     });
-  }, [transactions, categoryId, month]);
+
+    setLoading(true);
+    setError(null);
+    apiClient
+      .get<PaginationResponse<Transaction[]>>(`transactions/normalized?${params.toString()}`)
+      .then((response) => {
+        if (cancelled) return;
+        setTransactions(response.data ?? []);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setTransactions([]);
+        setError(err instanceof Error ? err.message : 'Failed to load transactions');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, categoryId, month]);
 
   if (!isOpen) return null;
 
@@ -54,10 +100,14 @@ export function ActivityPopover({
         </div>
 
         {/* Body */}
-        {filteredTransactions.length === 0 ? (
+        {loading || error || transactions.length === 0 ? (
           <div className={styles.emptyState}>
             <ReceiptText size={28} className={styles.emptyIcon} />
-            <div className={styles.emptyText}>No transactions this month</div>
+            <div className={styles.emptyText}>
+              {loading
+                ? 'Loading transactions…'
+                : (error ?? 'No transactions this month')}
+            </div>
           </div>
         ) : (
           <table className={styles.txnTable}>
@@ -70,7 +120,7 @@ export function ActivityPopover({
               </tr>
             </thead>
             <tbody>
-              {filteredTransactions.map((txn) => {
+              {transactions.map((txn) => {
                 const amount = txn.outflow ?? txn.inflow ?? 0;
                 const isInflow = (txn.inflow ?? 0) > 0;
                 return (
