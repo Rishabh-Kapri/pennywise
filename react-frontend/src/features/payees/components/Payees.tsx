@@ -3,9 +3,17 @@ import { useHeader } from '@/context/HeaderContext';
 import { fetchAllPayees } from '@/features/payees/store';
 import type { Payee, PayeeRule } from '@/features/payees/types/payee.types';
 import { apiClient, LoadingState, toast } from '@/utils';
+import { getLocaleDate } from '@/utils/date.utils';
 import { PencilSimpleLine as Edit2, Plus, FloppyDisk as Save, MagnifyingGlass as Search, Tag as Tags, Trash as Trash2, Users as UsersRound, X } from '@phosphor-icons/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import styles from './Payees.module.css';
+
+function formatRuleCreatedAt(createdAt?: string): string | null {
+  if (!createdAt) return null;
+  const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) return null;
+  return getLocaleDate(createdAt, { day: 'numeric', month: 'short', year: 'numeric' });
+}
 
 type RuleForm = {
   id?: string;
@@ -359,34 +367,38 @@ export default function Payees() {
               )}
 
               <div className={styles.rulesList}>
-                {rules.map((rule) => (
-                  <div key={rule.id} className={styles.ruleRow}>
-                    <div className={styles.ruleMatch}>
-                      <span className={styles.ruleType}>{rule.matchType}</span>
-                      <strong>{rule.matchString}</strong>
+                {rules.map((rule) => {
+                  const createdAt = formatRuleCreatedAt(rule.createdAt);
+                  return (
+                    <div key={rule.id} className={styles.ruleRow}>
+                      <div className={styles.ruleMatch}>
+                        <span className={styles.ruleType}>{rule.matchType}</span>
+                        <strong>{rule.matchString}</strong>
+                        {createdAt && <span className={styles.ruleCreatedAt}>Created {createdAt}</span>}
+                      </div>
+                      <div className={styles.ruleCategory}>
+                        <span>Default category</span>
+                        <strong>{rule.categoryName ?? 'Uncategorized'}</strong>
+                      </div>
+                      <div className={styles.rowActions}>
+                        <button
+                          type="button"
+                          className={styles.editButton}
+                          aria-label="Edit rule"
+                          onClick={() => handleEditRule(rule)}>
+                          <Edit2 size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.deleteButton}
+                          aria-label="Delete rule"
+                          onClick={() => handleDeleteRule(rule.id)}>
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
                     </div>
-                    <div className={styles.ruleCategory}>
-                      <span>Default category</span>
-                      <strong>{rule.categoryName ?? 'Uncategorized'}</strong>
-                    </div>
-                    <div className={styles.rowActions}>
-                      <button
-                        type="button"
-                        className={styles.editButton}
-                        aria-label="Edit rule"
-                        onClick={() => handleEditRule(rule)}>
-                        <Edit2 size={15} />
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.deleteButton}
-                        aria-label="Delete rule"
-                        onClick={() => handleDeleteRule(rule.id)}>
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </>
           ) : (
