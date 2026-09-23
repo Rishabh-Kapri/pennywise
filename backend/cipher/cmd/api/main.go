@@ -96,6 +96,14 @@ func getLLMClients(tel otelSDK.TelemetryProvider) (map[string]llm.RegistryEntry,
 		entries["openai"] = llm.RegistryEntry{Client: oc, DefaultModel: "gpt-4o"}
 	}
 
+	if appConfig.LumoBaseURL != "" {
+		c, err := providers.NewLumoClient()
+		if err != nil {
+			return nil, "", err
+		}
+		entries["lumo"] = llm.RegistryEntry{Client: llm.NewObservedLLM(c, tel), DefaultModel: "lumo-max"}
+	}
+
 	if appConfig.OpenRouterAPIKey != "" {
 		c, err := providers.NewOpenRouterClient()
 		if err != nil {
@@ -118,7 +126,7 @@ func getLLMClients(tel otelSDK.TelemetryProvider) (map[string]llm.RegistryEntry,
 	defaultProvider := appConfig.DefaultAgentProvider
 	if _, ok := entries[defaultProvider]; !ok {
 		defaultProvider = func() string {
-			for _, provider := range []string{"openai", "anthropic", "openrouter", "ollama"} {
+			for _, provider := range []string{"openai", "anthropic", "openrouter", "lumo", "ollama"} {
 				if _, ok := entries[provider]; ok {
 					return provider
 				}
