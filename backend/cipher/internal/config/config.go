@@ -67,10 +67,12 @@ type Config struct {
 	OllamaURL            string
 	MLPServiceURL        string
 	PennywiseServiceURL  string
+	LumoBaseURL          string
+	LumoAPIKey           string
 	OpenAIAPIKey         string
 	AnthropicAPIKey      string
 	OpenRouterAPIKey     string
-	DefaultAgentProvider string // "anthropic", "openai", "openrouter", or "ollama"
+	DefaultAgentProvider string // "anthropic", "openai", "openrouter", "lumo", or "ollama"
 	InternalAuthToken    string
 	TemporalServerHost   string
 	TemporalServerPort   string
@@ -158,6 +160,8 @@ func Load() Config {
 		OllamaURL:                os.Getenv("OLLAMA_URL"),
 		MLPServiceURL:            os.Getenv("MLP_SERVICE_URL"),
 		PennywiseServiceURL:      os.Getenv("PENNYWISE_SERVICE_URL"),
+		LumoBaseURL:              strings.TrimSpace(os.Getenv("LUMO_BASE_URL")),
+		LumoAPIKey:               os.Getenv("LUMO_API_KEY"),
 		OpenAIAPIKey:             os.Getenv("OPENAI_API_KEY"),
 		AnthropicAPIKey:          os.Getenv("ANTHROPIC_API_KEY"),
 		OpenRouterAPIKey:         os.Getenv("OPENROUTER_API_KEY"),
