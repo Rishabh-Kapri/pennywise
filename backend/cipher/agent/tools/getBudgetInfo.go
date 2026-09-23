@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
-	"sync"
 
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
+	sq "github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -22,6 +23,12 @@ const getBudgetToolName = "get_budget_info"
 const budgetInfoNameCap = 200
 
 type BudgetInfo struct {
+	Categories []string `json:"categories"`
+	PayeeNames []string `json:"payeeNames"`
+	TagNames   []string `json:"tagNames"`
+}
+
+type budgetNamesRow struct {
 	Categories []string `json:"categories"`
 	PayeeNames []string `json:"payeeNames"`
 	TagNames   []string `json:"tagNames"`
@@ -69,120 +76,64 @@ func (t GetBudgetInfoTool) Definition() sharedModel.ToolDefiniton {
 	}
 }
 
-func (t GetBudgetInfoTool) fetchCategories(
-	ctx context.Context,
+func (t GetBudgetInfoTool) budgetNamesQuery(
 	budgetID uuid.UUID,
-	args BudgetToolArgs,
-) (categories []string, err error) {
-	categoryRows, err := t.db.Query(ctx, `
-			SELECT DISTINCT
-				c.name
-			FROM transactions t
-			JOIN categories c
-				ON t.category_id = c.id
+	start string,
+	end string,
+	limit uint64,
+) sq.SelectBuilder {
+	base := func(columns ...string) sq.SelectBuilder {
+		return sq.
+			Select(columns...).
+			From("transactions t").
+			Where(sq.Eq{"t.budget_id": budgetID}).
+			Where(sq.GtOrEq{"t.date": start}).
+			Where(sq.LtOrEq{"t.date": end}).
+			Where(sq.Eq{"t.deleted": false})
+	}
+
+	categories := base("DISTINCT c.name").
+		Join(`
+			categories c
+				ON c.id = t.category_id
 				AND c.budget_id = t.budget_id
-				AND c.is_system = false
-				AND c.hidden = false
-				AND c.deleted = false
-			WHERE t.budget_id = $1
-				AND t.date >= $2
-				AND t.date <= $3
-				AND t.deleted = false
-			ORDER BY c.name
-			LIMIT $4
-			`, budgetID, args.DateRange.Start, args.DateRange.End, budgetInfoNameCap)
-	if err != nil {
-		return nil, errs.Wrap(errs.CodeToolExecuteFail, "failed to execute tool get_budget_info", err)
-	}
+		`).
+		Where(sq.Eq{
+			"c.is_system": false,
+			"c.hidden":    false,
+			"c.deleted":   false,
+		}).
+		Where(sq.NotEq{"c.name": nil}).
+		OrderBy("c.name").
+		Limit(limit)
 
-	defer categoryRows.Close()
+	payees := base("DISTINCT p.name").
+		Join(`
+			payees p
+				ON p.id = t.payee_id
+				AND p.budget_id = t.budget_id
+		`).
+		Where(sq.Eq{"p.deleted": false}).
+		Where(sq.NotEq{"p.name": nil}).
+		OrderBy("p.name").
+		Limit(limit)
 
-	for categoryRows.Next() {
-		var name string
-		if err := categoryRows.Scan(&name); err != nil {
-			return nil, errs.Wrap(errs.CodeToolExecuteFail, "failed to scan category row", err)
-		}
-		categories = append(categories, name)
-	}
-	if err := categoryRows.Err(); err != nil {
-		return nil, errs.Wrap(errs.CodeToolExecuteFail, "failed to scan category rows", err)
-	}
+	tags := base("DISTINCT tg.name").
+		Join(`
+			tags tg
+				ON tg.id = ANY(t.tag_ids)
+				AND tg.budget_id = t.budget_id
+		`).
+		Where(sq.Eq{"tg.deleted": false}).
+		Where(sq.NotEq{"tg.name": nil}).
+		OrderBy("tg.name").
+		Limit(limit)
 
-	return categories, nil
-}
-
-func (t GetBudgetInfoTool) fetchPayees(
-	ctx context.Context,
-	budgetID uuid.UUID,
-	args BudgetToolArgs,
-) (payeeNames []string, err error) {
-	payeeRows, err := t.db.Query(ctx, `
-		SELECT DISTINCT p.name
-		FROM transactions t
-		JOIN payees p ON t.payee_id = p.id AND p.budget_id = t.budget_id AND p.deleted = false
-		WHERE t.budget_id = $1
-		  AND t.date >= $2
-		  AND t.date <= $3
-		  AND t.deleted = false
-		  AND p.name IS NOT NULL
-		ORDER BY p.name
-		LIMIT $4
-	`, budgetID, args.DateRange.Start, args.DateRange.End, budgetInfoNameCap)
-	if err != nil {
-		return nil, errs.Wrap(errs.CodeToolExecuteFail, "failed to execute tool get_budget_info", err)
-	}
-	defer payeeRows.Close()
-
-	for payeeRows.Next() {
-		var name string
-		if err := payeeRows.Scan(&name); err != nil {
-			return nil, errs.Wrap(errs.CodeToolExecuteFail, "failed to scan payee row", err)
-		}
-		payeeNames = append(payeeNames, name)
-	}
-	if err := payeeRows.Err(); err != nil {
-		return nil, errs.Wrap(errs.CodeToolExecuteFail, "failed to scan payee rows", err)
-	}
-
-	return payeeNames, nil
-}
-
-// fetchTags returns the tag names actually attached to transactions in the date
-// range. Tags live in a UUID[] column on transactions rather than a join table,
-// so the join goes through the array.
-func (t GetBudgetInfoTool) fetchTags(
-	ctx context.Context,
-	budgetID uuid.UUID,
-	args BudgetToolArgs,
-) (tagNames []string, err error) {
-	tagRows, err := t.db.Query(ctx, `
-		SELECT DISTINCT tg.name
-		FROM transactions t
-		JOIN tags tg ON tg.id = ANY(t.tag_ids) AND tg.budget_id = t.budget_id AND tg.deleted = false
-		WHERE t.budget_id = $1
-		  AND t.date >= $2
-		  AND t.date <= $3
-		  AND t.deleted = false
-		ORDER BY tg.name
-		LIMIT $4
-	`, budgetID, args.DateRange.Start, args.DateRange.End, budgetInfoNameCap)
-	if err != nil {
-		return nil, errs.Wrap(errs.CodeToolExecuteFail, "failed to execute tool get_budget_info", err)
-	}
-	defer tagRows.Close()
-
-	for tagRows.Next() {
-		var name string
-		if err := tagRows.Scan(&name); err != nil {
-			return nil, errs.Wrap(errs.CodeToolExecuteFail, "failed to scan tag row", err)
-		}
-		tagNames = append(tagNames, name)
-	}
-	if err := tagRows.Err(); err != nil {
-		return nil, errs.Wrap(errs.CodeToolExecuteFail, "failed to scan tag rows", err)
-	}
-
-	return tagNames, nil
+	return psql.
+		Select().
+		Column(sq.Expr("ARRAY(?) AS categories", categories)).
+		Column(sq.Expr("ARRAY(?) AS payees", payees)).
+		Column(sq.Expr("ARRAY(?) AS tags", tags))
 }
 
 func (t GetBudgetInfoTool) Execute(ctx context.Context, call sharedModel.ToolCall) (*sharedModel.ToolResult, error) {
@@ -194,48 +145,38 @@ func (t GetBudgetInfoTool) Execute(ctx context.Context, call sharedModel.ToolCal
 		return nil, errs.New(errs.CodeToolExecuteFail, "date range is required")
 	}
 
+	var limit uint64 = budgetInfoNameCap
+
 	budgetID := utils.MustBudgetID(ctx)
 
-	var categories []string
-	var payeeNames []string
-	var tagNames []string
-	var catErr, payeeErr, tagErr error
-
-	var wg sync.WaitGroup
-	wg.Add(3)
-
-	go func() {
-		defer wg.Done()
-		categories, catErr = t.fetchCategories(ctx, budgetID, args)
-	}()
-
-	go func() {
-		defer wg.Done()
-		payeeNames, payeeErr = t.fetchPayees(ctx, budgetID, args)
-	}()
-
-	go func() {
-		defer wg.Done()
-		tagNames, tagErr = t.fetchTags(ctx, budgetID, args)
-	}()
-
-	wg.Wait()
-
-	if catErr != nil {
-		return nil, errs.Wrap(errs.CodeToolExecuteFail, "failed to fetch categories", catErr)
-	}
-	if payeeErr != nil {
-		return nil, errs.Wrap(errs.CodeToolExecuteFail, "failed to fetch payees", payeeErr)
-	}
-	if tagErr != nil {
-		return nil, errs.Wrap(errs.CodeToolExecuteFail, "failed to fetch tags", tagErr)
+	querySQL, queryArgs, err := t.budgetNamesQuery(budgetID, args.DateRange.Start, args.DateRange.End, limit).ToSql()
+	if err != nil {
+		return nil, errs.Wrap(errs.CodeInternalError, "build budgetNamesQuery query", err)
 	}
 
-	return jsonToolResult(call, getBudgetToolName, BudgetInfo{
-		Categories: categories,
-		PayeeNames: payeeNames,
-		TagNames:   tagNames,
+	var result []budgetNamesRow
+
+	err = withBudgetScopedTx(ctx, t.db, budgetID, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, querySQL, queryArgs...)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var row budgetNamesRow
+			if err := rows.Scan(&row.Categories, &row.PayeeNames, &row.TagNames); err != nil {
+				return err
+			}
+			result = append(result, row)
+		}
+		return rows.Err()
 	})
+	if err != nil {
+		return nil, errs.Wrap(errs.CodeToolExecuteFail, "failed to execute tool get_budget_info", err)
+	}
+
+	return jsonToolResult(call, getBudgetToolName, result)
 }
 
 func (t GetBudgetInfoTool) GetNormalizedName(isDone bool) string {

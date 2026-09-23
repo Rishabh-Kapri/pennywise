@@ -11,12 +11,13 @@ import (
 )
 
 type StreamHandler struct {
-	OnTextDelta     func(textDelta string)
-	OnToolCallStart func(ctx context.Context, tool sharedModel.ToolCall)
-	OnToolCall      func(ctx context.Context, tool sharedModel.ToolCall)
-	OnDone          func(usage sharedModel.Usage)
-	OnComplete      func()
-	OnError         func()
+	OnTextDelta      func(textDelta string)
+	OnReasoningDelta func(textDelta string)
+	OnToolCallStart  func(ctx context.Context, tool sharedModel.ToolCall)
+	OnToolCall       func(ctx context.Context, tool sharedModel.ToolCall)
+	OnDone           func(usage sharedModel.Usage)
+	OnComplete       func()
+	OnError          func()
 }
 
 type eventToolCall struct {
@@ -63,10 +64,12 @@ func ProcessStream(
 	req *sharedModel.ChatRequest,
 	events <-chan sharedModel.StreamChunk,
 	handlerCallback StreamHandler,
-) sharedModel.StepResult {
+) (stepResult sharedModel.StepResult) {
 	log := logger.Logger(ctx)
-	stepResult := sharedModel.StepResult{MaxTokens: req.MaxTokens}
+	stepResult = sharedModel.StepResult{MaxTokens: req.MaxTokens}
 	var text strings.Builder
+	var reasoning strings.Builder
+	defer func() { stepResult.Reasoning = reasoning.String() }()
 	var hasFunctionCall bool
 
 	activeTools := make(map[int]*eventToolCall)
@@ -92,6 +95,11 @@ func ProcessStream(
 				text.WriteString(event.Text)
 				if handlerCallback.OnTextDelta != nil {
 					handlerCallback.OnTextDelta(event.Text)
+				}
+			case sharedModel.ChunkEventReasoning:
+				reasoning.WriteString(event.Text)
+				if handlerCallback.OnReasoningDelta != nil {
+					handlerCallback.OnReasoningDelta(event.Text)
 				}
 
 			case sharedModel.ChunkEventToolCallStart:

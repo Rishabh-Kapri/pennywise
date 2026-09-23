@@ -3,7 +3,6 @@ package temporal
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
 	"github.com/google/uuid"
@@ -168,7 +167,7 @@ func (a *CreateTransactionActivity) sendTransactionCreatedNotification(
 	ctx context.Context,
 	budgetId uuid.UUID,
 	transactions []sharedModel.Transaction,
-	log *slog.Logger,
+	log *logger.ContextLogger,
 ) {
 	if len(transactions) == 0 {
 		return
@@ -204,7 +203,7 @@ func (a *CreateTransactionActivity) createTransactions(
 	tx pgx.Tx,
 	predictions []sharedModel.CipherPredictionResult,
 	budgetId uuid.UUID,
-	log *slog.Logger,
+	log *logger.ContextLogger,
 ) ([]createdTransaction, error) {
 	createdTxns := make([]createdTransaction, 0, len(predictions))
 

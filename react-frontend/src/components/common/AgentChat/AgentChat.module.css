@@ -22,6 +22,15 @@
   background: var(--color-surface);
 }
 
+.agentPanelMaximized {
+  position: fixed;
+  inset: 1rem;
+  z-index: 890;
+  width: auto;
+  height: auto;
+  box-shadow: 0 1rem 3rem rgb(0 0 0 / 0.35);
+}
+
 .launcher {
   position: fixed;
   right: 1.5rem;
@@ -35,7 +44,7 @@
   border: 1px solid color-mix(in srgb, var(--color-primary) 55%, white 15%);
   border-radius: 999px;
   background: var(--color-primary);
-  color: #fff;
+  color: var(--on-accent);
   box-shadow: 0 0.75rem 1.75rem rgb(0 0 0 / 0.22);
   font-size: 0.9rem;
   font-weight: 700;
@@ -94,8 +103,8 @@
   height: 2.5rem;
   flex-shrink: 0;
   border-radius: 0.9rem;
-  background: color-mix(in srgb, var(--color-primary) 30%, var(--color-surface-secondary));
-  color: #fff;
+  background: var(--color-surface-secondary);
+  color: var(--color-primary);
 }
 
 .headerText {
@@ -308,7 +317,7 @@
   align-self: flex-end;
   border-top-right-radius: 0.35rem;
   background: var(--color-primary);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .messageLabel {
@@ -351,13 +360,80 @@
 }
 
 .toolPart {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.45rem;
   padding: 0.48rem 0.55rem;
   border: 1px solid color-mix(in srgb, var(--color-border-muted) 72%, transparent);
   border-radius: 0.55rem;
   background: color-mix(in srgb, var(--color-background) 64%, transparent);
+}
+
+.toolPartHeader {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.toolPartHeader::-webkit-details-marker { display: none; }
+
+.toolDetails {
+  margin: 0.55rem 0 0;
+  padding: 0.55rem;
+  overflow-x: auto;
+  border-top: 1px solid var(--color-border-muted);
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.reasoningPart {
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+}
+
+.reasoningPart summary { cursor: pointer; }
+
+.reasoningPart .markdownMessage { margin-top: 0.5rem; }
+
+.copyMessageButton,
+.copyCodeButton {
+  margin-top: 0.45rem;
+  padding: 0.2rem 0.35rem;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.copyMessageButton { display: inline-flex; align-items: center; gap: 0.3rem; }
+
+.copyMessageButton:hover,
+.copyCodeButton:hover { color: var(--color-text); }
+
+.codeBlock { position: relative; }
+
+.copyCodeButton { position: absolute; top: 0.25rem; right: 0.45rem; }
+
+.codeBlock pre { padding-top: 1.8rem; }
+
+.runStatus {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.45rem 1rem;
+  border-top: 1px solid var(--color-border-muted);
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+}
+
+.runStatus button {
+  border: 0;
+  background: transparent;
+  color: var(--color-primary-light);
+  cursor: pointer;
 }
 
 .toolPartPending {
@@ -525,6 +601,32 @@
   padding-left: 0.75rem;
 }
 
+.tableScroll {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.tableScroll table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.tableScroll th,
+.tableScroll td {
+  border: 1px solid var(--color-border-muted);
+  padding: 0.4rem 0.55rem;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.tableScroll th {
+  background: var(--color-surface-secondary);
+  font-weight: 700;
+}
+
 .userMessage p {
   margin: 0;
 }
@@ -582,9 +684,12 @@
   min-width: 0;
 }
 
-.composer input {
+.composer textarea {
   flex: 1 1 auto;
   min-width: 0;
+  max-height: 10rem;
+  resize: none;
+  overflow-y: auto;
   border: 0;
   background: transparent;
   color: var(--color-text);
@@ -678,18 +783,36 @@
   background: var(--color-background);
 }
 
-.composer input::placeholder {
+.composer textarea::placeholder {
   color: var(--color-text-secondary);
 }
 
-.composer input:focus {
+.composer textarea:focus {
   border-color: var(--color-primary-light);
   outline: none;
 }
 
-.composer input:disabled {
+.composer textarea:disabled {
   cursor: not-allowed;
   opacity: 0.7;
+}
+
+.composerHint {
+  margin-right: auto;
+  color: var(--color-text-secondary);
+  font-size: 0.7rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agentPanel,
+  .panelCard,
+  .launcher { transition: none; }
+  .loadingSpinner,
+  .toolPartPending .toolText { animation: none; }
+  .toolPartPending .toolText {
+    background: none;
+    -webkit-text-fill-color: currentColor;
+  }
 }
 
 .sendButton {
@@ -702,7 +825,7 @@
   border: 0;
   border-radius: 999px;
   background: var(--color-primary);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .sendButton:disabled {
@@ -797,6 +920,7 @@
 }
 
 @media (max-width: 520px) {
+  .agentPanelMaximized { inset: 0.5rem; }
   .agentPanel {
     --agent-panel-width: min(18rem, 50vw);
   }

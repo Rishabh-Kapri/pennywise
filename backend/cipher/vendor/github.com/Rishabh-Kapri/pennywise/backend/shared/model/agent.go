@@ -16,7 +16,21 @@ const (
 	StopReasonError     StopReason = "error"
 )
 
+type ChatType string
+
+const (
+	ChatBotChatType      ChatType = "CHAT_BOT"
+	EmailPredictChatType ChatType = "EMAIL_PREDICT"
+	MemoryChatType       ChatType = "MEMORY"
+)
+
+func (c ChatType) ToString() string {
+	return string(c)
+}
+
 type Usage struct {
+	// Available reports whether the provider supplied usage, including valid zero counts.
+	Available    bool
 	InputTokens  int
 	OutputTokens int
 	TotalTokens  int
@@ -63,6 +77,7 @@ type ChatRequest struct {
 	Metadata    map[string]string
 	Stream      bool
 	Format      any // "json" forces JSON output; a JSON-schema map constrains the output shape via structured outputs (Ollama only for now)
+	ChatType    ChatType
 }
 
 type ChatResponse struct {
@@ -126,6 +141,7 @@ type ChunkEvent string
 const (
 	ChunkEventStarted       ChunkEvent = "started"
 	ChunkEventText          ChunkEvent = "text"
+	ChunkEventReasoning     ChunkEvent = "reasoning"
 	ChunkEventMessage       ChunkEvent = "message"
 	ChunkEventToolCallStart ChunkEvent = "tool_call_start"
 	ChunkEventToolCall      ChunkEvent = "tool_call"
@@ -153,6 +169,7 @@ type StreamChunk struct {
 // Accumulated result of a single llm call
 type StepResult struct {
 	Text       string
+	Reasoning  string
 	ToolCalls  []ToolCall
 	Usage      Usage
 	MaxTokens  int
@@ -211,8 +228,9 @@ const (
 type MessageType string
 
 const (
-	MessageTypeText     MessageType = "text"
-	MessageTypeToolCall MessageType = "tool_call"
+	MessageTypeText      MessageType = "text"
+	MessageTypeReasoning MessageType = "reasoning"
+	MessageTypeToolCall  MessageType = "tool_call"
 )
 
 type AgentConversation struct {

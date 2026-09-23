@@ -7,12 +7,14 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/handler"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/memory"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/tools"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/redis/go-redis/v9"
 
@@ -203,18 +205,19 @@ func (a *Agent) executeTool(
 	ctx context.Context,
 	toolCall sharedModel.ToolCall,
 ) (*tools.Tool, *sharedModel.ToolResult, error) {
-	ctx, span := a.telemetry.TraceStart(ctx, "tool.execute")
+	ctx, span := a.telemetry.TraceStartWithScope(ctx, otelSDK.AgentScope, "execute_tool "+toolCall.Name)
 	defer span.End()
-
-	recordToolRequest(span, toolCall)
 
 	tool, err := a.toolRegistry.GetTool(toolCall.Name)
 	if err != nil {
 		setSpanError(span, err)
 		return nil, nil, errs.Wrap(errs.CodeToolNotFound, "tool not found", err)
 	}
+	recordToolRequest(span, toolCall, tool)
 
+	started := time.Now()
 	toolResult, err := tool.Execute(ctx, toolCall)
+	span.SetAttributes(attribute.Float64("tool.execution.duration_ms", float64(time.Since(started))/float64(time.Millisecond)))
 	if err != nil {
 		setSpanError(span, err)
 		return nil, nil, errs.Wrap(errs.CodeToolExecuteFail, "tool execution failed", err)
@@ -395,6 +398,16 @@ func appendMessageTextPart(messageParts *[]sharedModel.MessagePart, text string)
 	})
 }
 
+func appendMessageReasoningPart(messageParts *[]sharedModel.MessagePart, text string) {
+	if strings.TrimSpace(text) == "" {
+		return
+	}
+	content := text
+	*messageParts = append(*messageParts, sharedModel.MessagePart{
+		Type: sharedModel.MessageTypeReasoning, Content: &content,
+	})
+}
+
 func appendMessageToolCallPart(
 	tool tools.Tool,
 	toolCall sharedModel.ToolCall,
@@ -503,12 +516,12 @@ func (a *Agent) runLLMStep(ctx context.Context, req sharedModel.ChatRequest) (sh
 		return sharedModel.StepResult{}, err
 	}
 	req.Model = resolvedModel
+	conversationId := req.Metadata["conversationId"]
+
 	if req.Stream {
 		log := logger.Logger(ctx)
 
-		conversationId := req.Metadata["conversationId"]
-
-		events := llmClient.Stream(ctx, req)
+		events := llmClient.Stream(ctx, req, &conversationId)
 
 		stepResult := handler.ProcessStream(ctx, &req, events, handler.StreamHandler{
 			OnTextDelta: func(textDelta string) {
@@ -522,6 +535,10 @@ func (a *Agent) runLLMStep(ctx context.Context, req sharedModel.ChatRequest) (sh
 					"text_delta",
 					textDelta,
 				)
+			},
+			OnReasoningDelta: func(textDelta string) {
+				a.publishChatStreamEvent(ctx, budgetId, userId, conversationId,
+					req.Metadata["messageId"], "reasoning_delta", textDelta)
 			},
 			OnToolCallStart: func(ctx context.Context, toolCall sharedModel.ToolCall) {
 				log.Info("stream \"tool_call_start\" received", "tool", toolCall)
@@ -547,6 +564,7 @@ func (a *Agent) runLLMStep(ctx context.Context, req sharedModel.ChatRequest) (sh
 					"tool_call_start",
 					map[string]any{
 						"id":          toolCall.ID,
+						"name":        toolCall.Name,
 						"displayName": normalizedName,
 					},
 				)
@@ -564,7 +582,7 @@ func (a *Agent) runLLMStep(ctx context.Context, req sharedModel.ChatRequest) (sh
 		return stepResult, nil
 	}
 
-	chatRes, err := llmClient.Chat(ctx, req)
+	chatRes, err := llmClient.Chat(ctx, req, &conversationId)
 	if err != nil {
 		return sharedModel.StepResult{}, err
 	}
@@ -675,14 +693,24 @@ func (a *Agent) Run(
 		opt(&runOpts)
 	}
 
+	ctx, span := a.telemetry.TraceStartWithScope(ctx, otelSDK.AgentScope, "agent.run")
+	span.SetAttributes(attribute.String("langfuse.observation.type", "agent"))
 	log := logger.Logger(ctx)
-	ctx, span := a.telemetry.TraceStart(ctx, "agent.run")
 
 	log.Info("LLM run started", "req", req)
 
 	messageID := req.Metadata["messageId"]
 	runID := req.Metadata["runId"]
 	conversationID := req.Metadata["conversationId"]
+	if runID != "" {
+		span.SetAttributes(attribute.String("langfuse.trace.metadata.run_id", runID))
+	}
+	if conversationID != "" {
+		span.SetAttributes(attribute.String("langfuse.session.id", conversationID))
+	}
+	if userID, userErr := utils.UserIDFromContext(ctx); userErr == nil {
+		span.SetAttributes(attribute.String("langfuse.user.id", userID.String()))
+	}
 
 	// agent metadata
 	enabledTools := make([]string, 0)
@@ -699,6 +727,14 @@ func (a *Agent) Run(
 
 	defer func() {
 		defer span.End()
+		if err == nil && req.Stream {
+			budgetID, budgetErr := utils.BudgetIDFromContext(ctx)
+			userID, userErr := utils.UserIDFromContext(ctx)
+			if budgetErr == nil && userErr == nil {
+				a.publishChatStreamEvent(ctx, budgetID, userID, conversationID,
+					messageID, "run_completed", map[string]string{"runId": runID})
+			}
+		}
 		// Surface run failures to the chat UI over the same websocket
 		// stream the deltas use, so users don't have to dig through logs.
 		if err != nil && req.Stream {
@@ -790,6 +826,7 @@ func (a *Agent) Run(
 		tokenUsage["cacheRead"] += finalStep.Usage.CacheReadTokens
 		tokenUsage["cacheWrite"] += finalStep.Usage.CacheWriteTokens
 
+		appendMessageReasoningPart(&messageParts, finalStep.Reasoning)
 		appendMessageTextPart(&messageParts, finalStep.Text)
 		messages = append(messages, sharedModel.AgentMessage{
 			Sequence: assistantSequence,
@@ -831,6 +868,7 @@ func (a *Agent) Run(
 		switch stepResult.StopReason {
 
 		case sharedModel.StopReasonToolUse:
+			appendMessageReasoningPart(&messageParts, stepResult.Reasoning)
 			appendMessageTextPart(&messageParts, stepResult.Text)
 
 			if len(stepResult.ToolCalls) == 0 {
@@ -940,6 +978,7 @@ func (a *Agent) Run(
 						"tool_call",
 						map[string]any{
 							"id":          toolCall.ID,
+							"name":        toolCall.Name,
 							"displayName": displayName,
 							"summary":     "Failed",
 							"isError":     true,
@@ -955,9 +994,26 @@ func (a *Agent) Run(
 						"tool_call",
 						map[string]any{
 							"id":          toolCall.ID,
+							"name":        toolCall.Name,
 							"displayName": normalizedResult.DisplayName,
 							"summary":     normalizedResult.Summary,
 							"result":      string(normalizedResult.Result),
+						},
+					)
+				case displayName != "":
+					// A normalizer may decline to display a result. Complete the
+					// pending UI entry so it does not keep animating indefinitely.
+					a.publishChatStreamEvent(
+						ctx,
+						utils.MustBudgetID(ctx),
+						utils.MustUserID(ctx),
+						conversationID,
+						messageID,
+						"tool_call",
+						map[string]any{
+							"id":          toolCall.ID,
+							"name":        toolCall.Name,
+							"displayName": displayName,
 						},
 					)
 				}
@@ -974,6 +1030,7 @@ func (a *Agent) Run(
 			continue
 
 		case sharedModel.StopReasonEndTurn:
+			appendMessageReasoningPart(&messageParts, stepResult.Reasoning)
 			appendMessageTextPart(&messageParts, stepResult.Text)
 
 			messages = append(messages, sharedModel.AgentMessage{
@@ -991,6 +1048,7 @@ func (a *Agent) Run(
 			return res, nil
 
 		case sharedModel.StopReasonMaxTokens:
+			appendMessageReasoningPart(&messageParts, stepResult.Reasoning)
 			// The reply was cut short. Partial text is more useful to the user than an
 			// error, so return it; only fail when there is nothing at all to show.
 			if strings.TrimSpace(stepResult.Text) == "" {
