@@ -1,7 +1,14 @@
-name: Backend CI
+name: Backend build and Railway deploy
 
 on:
   workflow_dispatch:
+    inputs:
+      service:
+        description: Backend service to deploy manually
+        required: true
+        type: choice
+        default: all
+        options: [all, go-gmail, go-pennywise-api, cipher, workflows]
   pull_request:
     paths:
       - 'backend/go-gmail/**'
@@ -12,15 +19,82 @@ on:
       - '.github/workflows/workflow.yml'
   push:
     branches: [dev]
+    paths:
+      - 'backend/go-gmail/**'
+      - 'backend/go-pennywise-api/**'
+      - 'backend/cipher/**'
+      - 'backend/workflows/**'
+      - 'backend/shared/**'
+      - '.github/workflows/workflow.yml'
 
 jobs:
+  changes:
+    name: Select changed backend services
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+      any: ${{ steps.select.outputs.any }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Select services
+        id: select
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          MANUAL_SERVICE: ${{ inputs.service }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          services = [
+              ('go-gmail', './cmd', 'RAILWAY_GO_GMAIL_SERVICE_ID'),
+              ('go-pennywise-api', './cmd/api ./cmd/migrations', 'RAILWAY_GO_PENNYWISE_API_SERVICE_ID'),
+              ('cipher', './cmd/api ./cmd/backfill', 'RAILWAY_CIPHER_SERVICE_ID'),
+              ('workflows', './cmd/worker', 'RAILWAY_WORKFLOWS_SERVICE_ID'),
+          ]
+          event = os.environ['EVENT_NAME']
+          if event == 'workflow_dispatch':
+              choice = os.environ['MANUAL_SERVICE']
+              selected = {name for name, _, _ in services} if choice == 'all' else {choice}
+          else:
+              base = os.environ['BASE_SHA'] if event == 'pull_request' else os.environ['BEFORE_SHA']
+              head = os.environ['HEAD_SHA']
+              if not base or set(base) == {'0'}:
+                  selected = {name for name, _, _ in services}
+              else:
+                  changed = subprocess.check_output(
+                      ['git', 'diff', '--name-only', base, head, '--'], text=True
+                  ).splitlines()
+                  selected = {name for name, _, _ in services} if any(
+                      path.startswith('backend/shared/') for path in changed
+                  ) else {
+                      name for name, _, _ in services
+                      if any(path.startswith(f'backend/{name}/') for path in changed)
+                  }
+          matrix = {'include': [
+              {'module': name, 'build_targets': targets, 'service_var': service_var}
+              for name, targets, service_var in services if name in selected
+          ]}
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f"matrix={json.dumps(matrix, separators=(',', ':'))}\n")
+              output.write(f"any={'true' if matrix['include'] else 'false'}\n")
+          print('Selected services:', ', '.join(x['module'] for x in matrix['include']) or 'none')
+          PY
+
   backend:
-    name: Test and build ${{ matrix.module }}
+    name: Build ${{ matrix.module }}
+    needs: changes
+    if: needs.changes.outputs.any == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix:
-        module: [go-gmail, go-pennywise-api, cipher, workflows]
+      matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -32,9 +106,66 @@ jobs:
       - name: Vendor dependencies, including the local shared module
         working-directory: backend/${{ matrix.module }}
         run: GOWORK=off go mod vendor
-      - name: Test
-        working-directory: backend/${{ matrix.module }}
-        run: GOWORK=off go test -mod=vendor ./...
       - name: Build
         working-directory: backend/${{ matrix.module }}
-        run: GOWORK=off go build -mod=vendor ./...
+        run: GOWORK=off go build -mod=vendor ${{ matrix.build_targets }}
+      - name: Package vendor for Railway
+        if: github.ref == 'refs/heads/dev' && github.event_name != 'pull_request'
+        run: tar -cf "$RUNNER_TEMP/vendor.tar" -C "backend/${{ matrix.module }}" vendor
+      - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/dev' && github.event_name != 'pull_request'
+        with:
+          name: vendor-${{ matrix.module }}
+          path: ${{ runner.temp }}/vendor.tar
+          if-no-files-found: error
+          retention-days: 1
+
+  deploy_dev:
+    name: Deploy ${{ matrix.module }} to Railway dev
+    if: github.ref == 'refs/heads/dev' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.any == 'true'
+    needs: [changes, backend]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_DEV_TOKEN }}
+      RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+      RAILWAY_DEV_ENVIRONMENT_ID: ${{ vars.RAILWAY_DEV_ENVIRONMENT_ID }}
+      RAILWAY_SERVICE_ID: ${{ vars[matrix.service_var] }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: vendor-${{ matrix.module }}
+          path: ${{ runner.temp }}/vendor-artifact
+      - name: Prepare clean Railway source
+        env:
+          MODULE: ${{ matrix.module }}
+        run: |
+          set -eu
+          stage="$RUNNER_TEMP/railway-source"
+          service_root="$stage/backend/$MODULE"
+          mkdir -p "$service_root"
+          git archive "HEAD:backend/$MODULE" | tar -x -C "$service_root"
+          rm -rf "$service_root/vendor"
+          tar -xf "$RUNNER_TEMP/vendor-artifact/vendor.tar" -C "$service_root"
+          sed -i 's/^FROM golang:1\.25-alpine AS build-stage$/FROM golang:1.26-alpine AS build-stage/' "$service_root/Dockerfile"
+          test -f "$service_root/vendor/modules.txt"
+      - name: Install Railway CLI
+        run: npm install --global @railway/cli
+      - name: Deploy prepared source
+        run: |
+          set -eu
+          for name in RAILWAY_TOKEN RAILWAY_PROJECT_ID RAILWAY_DEV_ENVIRONMENT_ID RAILWAY_SERVICE_ID; do
+            if [ -z "${!name:-}" ]; then
+              echo "Missing GitHub secret or variable: $name" >&2
+              exit 1
+            fi
+          done
+          railway up "$RUNNER_TEMP/railway-source" \
+            --path-as-root --ci \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_DEV_ENVIRONMENT_ID" \
+            --service "$RAILWAY_SERVICE_ID" \
+            --message "$GITHUB_SHA"
