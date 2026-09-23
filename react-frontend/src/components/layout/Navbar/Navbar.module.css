@@ -51,13 +51,13 @@
 
 .navTabActive {
   background: var(--color-primary);
-  color: #fff;
+  color: var(--on-accent);
   font-weight: 500;
 }
 
 .navTabActive:hover {
   background: var(--color-primary);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 /* Right section */

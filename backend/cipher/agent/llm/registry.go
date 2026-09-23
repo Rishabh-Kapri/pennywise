@@ -68,5 +68,5 @@ func (r *llmRegistry) Resolve(provider, model string) (*ObservedLLM, string, err
 		model = r.defaults[provider]
 	}
 
-	return NewObservedLLM(client, r.telemetry), model, nil
+	return client, model, nil
 }

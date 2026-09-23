@@ -29,7 +29,6 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
@@ -52,8 +51,8 @@ import (
 // package-level Temporal client, set in main() and used by handlers
 var temporalClient tc.Client
 
-func setupLogger() {
-	logger.Setup("cipher")
+func setupLogger(service string) {
+	logger.Setup(service)
 }
 
 func healthPage(c *gin.Context) {
@@ -96,6 +95,14 @@ func getLLMClients(tel otelSDK.TelemetryProvider) (map[string]llm.RegistryEntry,
 		entries["openai"] = llm.RegistryEntry{Client: oc, DefaultModel: "gpt-4o"}
 	}
 
+	if appConfig.LumoBaseURL != "" {
+		c, err := providers.NewLumoClient()
+		if err != nil {
+			return nil, "", err
+		}
+		entries["lumo"] = llm.RegistryEntry{Client: llm.NewObservedLLM(c, tel), DefaultModel: "lumo"}
+	}
+
 	if appConfig.OpenRouterAPIKey != "" {
 		c, err := providers.NewOpenRouterClient()
 		if err != nil {
@@ -118,7 +125,7 @@ func getLLMClients(tel otelSDK.TelemetryProvider) (map[string]llm.RegistryEntry,
 	defaultProvider := appConfig.DefaultAgentProvider
 	if _, ok := entries[defaultProvider]; !ok {
 		defaultProvider = func() string {
-			for _, provider := range []string{"openai", "anthropic", "openrouter", "ollama"} {
+			for _, provider := range []string{"openai", "anthropic", "openrouter", "lumo", "ollama"} {
 				if _, ok := entries[provider]; ok {
 					return provider
 				}
@@ -136,8 +143,8 @@ func getLLMClients(tel otelSDK.TelemetryProvider) (map[string]llm.RegistryEntry,
 }
 
 func main() {
-	setupLogger()
 	cfg := config.Load()
+	setupLogger(cfg.ServiceName)
 
 	ctx := utils.WithInternalAuthToken(utils.WithServiceName(context.Background(), "cipher"), cfg.InternalAuthToken)
 
@@ -153,7 +160,7 @@ func main() {
 	}()
 
 	// Database connection via shared module
-	dbConn, err := db.ConnectWithURL(cfg.DatabaseURL)
+	dbConn, err := repository.ConnectWithURL(cfg.DatabaseURL)
 	if err != nil {
 		logger.Fatal(err.Error())
 	}
@@ -200,7 +207,7 @@ func main() {
 	// policies do not apply.
 	agentReadDB := dbConn
 	if cfg.AgentReadOnlyDatabaseURL != "" {
-		agentReadDB, err = db.ConnectWithURL(cfg.AgentReadOnlyDatabaseURL)
+		agentReadDB, err = repository.ConnectWithURL(cfg.AgentReadOnlyDatabaseURL)
 		if err != nil {
 			logger.Fatal("error connecting to agent read-only database", "error", err)
 		}
@@ -316,9 +323,9 @@ func main() {
 	router.Use(sharedMiddleware.InternalUserIDMiddleware())
 	router.Use(sharedMiddleware.RequestLogger())
 	router.Use(otelgin.Middleware(otelConfig.ServiceName))
-	router.Use(tel.LogRequest())
-	router.Use(tel.MeterRequestDuration())
-	router.Use(tel.MeterRequestsInFlight())
+	// router.Use(tel.LogRequest())
+	// router.Use(tel.MeterRequestDuration())
+	// router.Use(tel.MeterRequestsInFlight())
 
 	router.Use(cors.New(cors.Config{
 		AllowOrigins: []string{"http://localhost:5173"},

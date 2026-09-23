@@ -59,6 +59,13 @@ export const AGENT_MODEL_OPTIONS: AgentModelOption[] = [
     provider: 'anthropic',
     modelName: 'claude-haiku-4-5',
   },
+  {
+    key: 'lumo',
+    label: 'Lumo',
+    shortLabel: 'Lumo',
+    provider: 'lumo',
+    modelName: 'lumo',
+  },
 ];
 
 const DEFAULT_AGENT_MODEL_KEY = 'sonnet-4-6';
@@ -95,6 +102,11 @@ type AppendAgentEventPayload = {
 };
 
 type AppendAgentTextDeltaPayload = {
+  text: string;
+  messageId?: string;
+};
+
+type AppendAgentReasoningDeltaPayload = {
   text: string;
   messageId?: string;
 };
@@ -349,15 +361,52 @@ function lastRunId(messages: AgentChatMessage[]) {
 
 function findAssistantMessageForStream(state: AgentState, messageId?: string) {
   if (messageId) {
-    return state.messages.find(
-      (message) =>
-        message.role === 'assistant' &&
-        (message.streamMessageId === messageId || message.id === messageId),
-    );
+    for (let index = state.messages.length - 1; index >= 0; index -= 1) {
+      const message = state.messages[index];
+      if (message.role === 'assistant' && (message.streamMessageId === messageId || message.id === messageId)) {
+        return message;
+      }
+    }
+    return undefined;
   }
 
   const lastMessage = state.messages[state.messages.length - 1];
   return lastMessage?.role === 'assistant' ? lastMessage : undefined;
+}
+
+function appendStreamText(message: AgentChatMessage, text: string) {
+  const previousText = message.text;
+  message.text += text;
+  const parts = message.parts ?? (message.parts = previousText ? [{ type: 'TEXT', content: previousText }] : []);
+  const lastPart = parts[parts.length - 1];
+  if (lastPart?.type.toUpperCase() === 'TEXT') {
+    lastPart.content = (lastPart.content ?? '') + text;
+  } else {
+    parts.push({ type: 'TEXT', content: text });
+  }
+}
+
+function updateToolPart(state: AgentState, incoming: MessagePart, messageId?: string) {
+  // A provider may send the tool name before its call ID. Match that pending
+  // entry when the completed event arrives, then keep its original position.
+  const candidates = state.messages.filter((message) =>
+    message.role === 'assistant' && (!messageId || message.streamMessageId === messageId),
+  );
+  for (const message of candidates) {
+    const index = message.parts?.findIndex((part) =>
+      part.type.toUpperCase() === 'TOOL_CALL' &&
+      ((incoming.id && part.id === incoming.id) ||
+        (part.status === 'pending' && incoming.name && part.name === incoming.name)),
+    ) ?? -1;
+    if (index >= 0 && message.parts) {
+      if (incoming.status === 'pending' && message.parts[index].status === 'completed') {
+        return true;
+      }
+      message.parts[index] = { ...message.parts[index], ...incoming };
+      return true;
+    }
+  }
+  return false;
 }
 
 function resolveAgentRunStreamId(run: AgentRun) {
@@ -431,6 +480,29 @@ const agentSlice = createSlice({
   name: 'agent',
   initialState,
   reducers: {
+    appendAgentReasoningDelta: (state, action: PayloadAction<AppendAgentReasoningDeltaPayload>) => {
+      const { text, messageId } = action.payload;
+      if (!text) return;
+      let target = findAssistantMessageForStream(state, messageId);
+      if (!target) {
+        appendAssistantMessage(state, {
+          eventName: TEXT_DELTA_EVENT,
+          text: '',
+          parts: [],
+          runId: state.currentRunId ?? undefined,
+          streamMessageId: messageId,
+        });
+        target = state.messages[state.messages.length - 1];
+      }
+      const parts = target.parts ?? (target.parts = []);
+      const last = parts[parts.length - 1];
+      if (last?.type === 'REASONING') {
+        last.content = (last.content ?? '') + text;
+      } else {
+        parts.push({ type: 'REASONING', content: text });
+      }
+      syncCurrentChatHistory(state);
+    },
     appendAgentTextDelta: (state, action: PayloadAction<AppendAgentTextDeltaPayload>) => {
       const text = action.payload.text;
       if (!text) {
@@ -439,7 +511,7 @@ const agentSlice = createSlice({
 
       const targetMessage = findAssistantMessageForStream(state, action.payload.messageId);
       if (targetMessage) {
-        targetMessage.text += text;
+        appendStreamText(targetMessage, text);
         targetMessage.eventName = targetMessage.eventName ?? TEXT_DELTA_EVENT;
         targetMessage.streamMessageId = action.payload.messageId ?? targetMessage.streamMessageId;
         syncCurrentChatHistory(state);
@@ -449,6 +521,7 @@ const agentSlice = createSlice({
       appendAssistantMessage(state, {
         eventName: TEXT_DELTA_EVENT,
         text,
+        parts: [{ type: 'TEXT', content: text }],
         runId: state.currentRunId ?? undefined,
         streamMessageId: action.payload.messageId,
       });
@@ -463,19 +536,17 @@ const agentSlice = createSlice({
       syncCurrentChatHistory(state);
     },
     appendAgentMessagePart: (state, action: PayloadAction<AppendAgentMessagePartPayload>) => {
+      const incoming = action.payload.part;
+      if (incoming.type.toUpperCase() === 'TOOL_CALL' && updateToolPart(state, incoming, action.payload.messageId)) {
+        syncCurrentChatHistory(state);
+        return;
+      }
       const targetMessage = findAssistantMessageForStream(state, action.payload.messageId);
       if (targetMessage) {
-        const existingParts = targetMessage.parts ?? [];
-        const partID = action.payload.part.id;
-        const existingPartIndex = partID
-          ? existingParts.findIndex((part) => part.id === partID)
-          : -1;
-        targetMessage.parts = [...existingParts];
-        if (existingPartIndex >= 0) {
-          targetMessage.parts[existingPartIndex] = action.payload.part;
-        } else {
-          targetMessage.parts.push(action.payload.part);
+        if (!targetMessage.parts && targetMessage.text) {
+          targetMessage.parts = [{ type: 'TEXT', content: targetMessage.text }];
         }
+        targetMessage.parts = [...(targetMessage.parts ?? []), incoming];
         targetMessage.eventName = action.payload.eventName ?? targetMessage.eventName ?? TEXT_DELTA_EVENT;
         targetMessage.streamMessageId = action.payload.messageId ?? targetMessage.streamMessageId;
         syncCurrentChatHistory(state);
@@ -618,6 +689,7 @@ const agentSlice = createSlice({
 export const {
   appendAgentEvent,
   appendAgentMessagePart,
+  appendAgentReasoningDelta,
   appendAgentTextDelta,
   clearAgentChat,
   selectAgentConversation,

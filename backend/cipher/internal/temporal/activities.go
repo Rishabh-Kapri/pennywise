@@ -3,7 +3,6 @@ package temporal
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/llmusage"
@@ -180,7 +179,7 @@ func (a *PredictionActivity) ParseEmailData(
 // instead of failing the whole batch. The batch activities above stay
 // registered for workflows started before the per-email rollout.
 
-func activityLogger(ctx context.Context) *slog.Logger {
+func activityLogger(ctx context.Context) *logger.ContextLogger {
 	activityInfo := activity.GetInfo(ctx)
 	return logger.Logger(ctx).With(
 		"workflow_id", activityInfo.WorkflowExecution.ID,

@@ -1,8 +1,9 @@
 package agent
 
 import (
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/telemetry"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/tools"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -15,25 +16,30 @@ func setSpanError(span trace.Span, err error) {
 }
 
 func setSpanJSON(span trace.Span, key string, value any) {
-	serialized, err := utils.Marshal(value, agentSpanContentLimit)
+	serialized, err := telemetry.JSON(value, agentSpanContentLimit)
 	if err != nil {
 		span.RecordError(err)
 		return
 	}
 
-	span.SetAttributes(attribute.String(key, string(serialized)))
+	span.SetAttributes(attribute.String(key, serialized))
 }
 
-func recordToolRequest(span trace.Span, toolCall sharedModel.ToolCall) {
+func recordToolRequest(span trace.Span, toolCall sharedModel.ToolCall, tool tools.Tool) {
 	span.SetAttributes(
-		attribute.String("tool.name", toolCall.Name),
+		attribute.String("langfuse.observation.type", "tool"),
+		attribute.String("gen_ai.tool.name", toolCall.Name),
+		attribute.String("gen_ai.tool.type", "function"),
+		attribute.String("gen_ai.tool.description", tool.Definition().Description),
 		attribute.String("tool.call_id", toolCall.ID),
 	)
 	setSpanJSON(span, "tool.arguments", toolCall.Arguments)
+	setSpanJSON(span, "langfuse.observation.input", toolCall.Arguments)
 }
 
 func recordToolResult(span trace.Span, toolResult *sharedModel.ToolResult) {
 	setSpanJSON(span, "tool.result", toolResult)
+	setSpanJSON(span, "langfuse.observation.output", toolResult)
 	span.SetStatus(codes.Ok, "")
 }
 
@@ -45,7 +51,15 @@ func recordAgentRunStart(span trace.Span, req sharedModel.ChatRequest, maxTurns 
 		attribute.Int("agent.max_turns", maxTurns),
 		attribute.Int("agent.max_tool_calls", maxToolCalls),
 	)
-	setSpanJSON(span, "agent.input", req.Messages)
+	input := any(req.Messages)
+	for i := len(req.Messages) - 1; i >= 0; i-- {
+		if req.Messages[i].Role == sharedModel.RoleUser {
+			input = req.Messages[i].Content
+			break
+		}
+	}
+	setSpanJSON(span, "agent.input", input)
+	setSpanJSON(span, "langfuse.observation.input", input)
 }
 
 func recordAgentTurn(span trace.Span, turnCount int, messageCount int, totalToolCalls int) {
@@ -75,7 +89,8 @@ func recordTotalToolCalls(span trace.Span, totalToolCalls int) {
 }
 
 func recordAgentSuccess(span trace.Span, res *sharedModel.ChatResponse, turnCount int, totalToolCalls int) {
-	setSpanJSON(span, "agent.output", res.Message)
+	setSpanJSON(span, "agent.output", res.Message.Content)
+	setSpanJSON(span, "langfuse.observation.output", res.Message.Content)
 	span.SetAttributes(
 		attribute.Int("agent.final_turn_count", turnCount),
 		attribute.Int("agent.final_tool_call_count", totalToolCalls),

@@ -1,5 +1,14 @@
+import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { NavLink } from 'react-router-dom';
-import { ChartPie, Wallet as WalletCards, List as Menu, X, Receipt as ReceiptIndianRupee, Users as UsersRound, ChartBar } from '@phosphor-icons/react';
+import {
+  ChartPie,
+  Wallet as WalletCards,
+  List as Menu,
+  X,
+  Receipt as ReceiptIndianRupee,
+  Users as UsersRound,
+  ChartBar,
+} from '@phosphor-icons/react';
 import type { IconProps } from '@phosphor-icons/react';
 import styles from './Navbar.module.css';
 import { cloneElement, useState, useEffect, type ReactElement } from 'react';
@@ -17,7 +26,13 @@ const NAV_ITEMS: {
   exact: boolean;
 }[] = [
   { path: '/dashboard', key: 'home', label: 'Home', icon: <ChartPie size={16} strokeWidth={1.75} />, exact: true },
-  { path: '/transactions', key: 'transactions', label: 'Transactions', icon: <ReceiptIndianRupee size={16} strokeWidth={1.75} />, exact: false },
+  {
+    path: '/transactions',
+    key: 'transactions',
+    label: 'Transactions',
+    icon: <ReceiptIndianRupee size={16} strokeWidth={1.75} />,
+    exact: false,
+  },
   { path: '/budget', key: 'budget', label: 'Budget', icon: <WalletCards size={16} strokeWidth={1.75} />, exact: false },
   { path: '/payees', key: 'payees', label: 'Payees', icon: <UsersRound size={16} strokeWidth={1.75} />, exact: false },
   { path: '/reports', key: 'reports', label: 'Reports', icon: <ChartBar size={16} strokeWidth={1.75} />, exact: false },
@@ -45,9 +60,8 @@ export function Navbar() {
               key={item.key}
               to={item.path}
               end={item.exact}
-              className={({ isActive }) =>
-                `${styles.navTab} ${isActive ? styles.navTabActive : ''}`
-              }>
+              className={({ isActive }) => `${styles.navTab} ${isActive ? styles.navTabActive : ''}`}
+            >
               {({ isActive }) => (
                 <>
                   {renderNavIcon(item.icon, isActive)}
@@ -60,13 +74,15 @@ export function Navbar() {
 
         {/* Profile + mobile toggle */}
         <div className={styles.navRight}>
+          <ThemeToggle />
           <BudgetSwitcher />
           <UserMenu />
           <button
             type="button"
             className={styles.mobileMenuButton}
             aria-label={isMobileMenuOpen ? 'Close menu' : 'Open menu'}
-            onClick={() => setIsMobileMenuOpen((v) => !v)}>
+            onClick={() => setIsMobileMenuOpen((v) => !v)}
+          >
             {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
         </div>
@@ -87,9 +103,8 @@ export function Navbar() {
             key={item.key}
             to={item.path}
             end={item.exact}
-            className={({ isActive }) =>
-              `${styles.mobileNavItem} ${isActive ? styles.mobileNavItemActive : ''}`
-            }>
+            className={({ isActive }) => `${styles.mobileNavItem} ${isActive ? styles.mobileNavItemActive : ''}`}
+          >
             {({ isActive }) => (
               <>
                 {renderNavIcon(item.icon, isActive)}
@@ -107,9 +122,8 @@ export function Navbar() {
             key={item.key}
             to={item.path}
             end={item.exact}
-            className={({ isActive }) =>
-              `${styles.bottomNavItem} ${isActive ? styles.bottomNavItemActive : ''}`
-            }>
+            className={({ isActive }) => `${styles.bottomNavItem} ${isActive ? styles.bottomNavItemActive : ''}`}
+          >
             {({ isActive }) => (
               <>
                 {renderNavIcon(item.icon, isActive)}

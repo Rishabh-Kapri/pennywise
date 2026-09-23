@@ -88,7 +88,7 @@ type anthropicRes struct {
 	Content      []anthropicContentBlock `json:"content"`
 	StopReason   string                  `json:"stop_reason"`
 	StopSequence string                  `json:"stop_sequence"`
-	Usage        anthropicUsage          `json:"usage"`
+	Usage        *anthropicUsage         `json:"usage"`
 }
 
 type anthropicContentBlock struct {
@@ -112,14 +112,14 @@ type anthropicStreamEvent struct {
 	Index        int                        `json:"index"`
 	ContentBlock anthropicContentBlock      `json:"content_block"`
 	Delta        anthropicStreamDelta       `json:"delta"`
-	Usage        anthropicUsage             `json:"usage"`
+	Usage        *anthropicUsage            `json:"usage"`
 	Error        *anthropicStreamErrorEvent `json:"error,omitempty"`
 }
 
 type anthropicStreamMessage struct {
-	ID    string         `json:"id"`
-	Model string         `json:"model"`
-	Usage anthropicUsage `json:"usage"`
+	ID    string          `json:"id"`
+	Model string          `json:"model"`
+	Usage *anthropicUsage `json:"usage"`
 }
 
 type anthropicStreamDelta struct {
@@ -201,8 +201,12 @@ func toAnthropicToolUse(call sharedModel.ToolCall) content {
 
 // toModelUsage carries cache counters through so a silently-broken cache prefix
 // is visible in run metadata rather than only in the bill.
-func toModelUsage(usage anthropicUsage) sharedModel.Usage {
+func toModelUsage(usage *anthropicUsage) sharedModel.Usage {
+	if usage == nil {
+		return sharedModel.Usage{}
+	}
 	return sharedModel.Usage{
+		Available:        true,
 		InputTokens:      usage.InputTokens,
 		OutputTokens:     usage.OutputTokens,
 		TotalTokens:      usage.InputTokens + usage.OutputTokens,
@@ -431,14 +435,15 @@ func (c *anthropicClient) Stream(ctx context.Context, req sharedModel.ChatReques
 
 			switch eventType {
 			case "message_start":
-				usage.InputTokens = ev.Message.Usage.InputTokens
-				if ev.Message.Usage.OutputTokens > 0 {
-					usage.OutputTokens = ev.Message.Usage.OutputTokens
+				if ev.Message.Usage != nil {
+					usage.Available = true
+					usage.InputTokens = ev.Message.Usage.InputTokens
+					if ev.Message.Usage.OutputTokens > 0 {
+						usage.OutputTokens = ev.Message.Usage.OutputTokens
+					}
+					usage.CacheReadTokens = ev.Message.Usage.CacheReadInputTokens
+					usage.CacheWriteTokens = ev.Message.Usage.CacheCreationInputTokens
 				}
-				// Cache counters only appear on message_start; later usage events
-				// carry output tokens alone.
-				usage.CacheReadTokens = ev.Message.Usage.CacheReadInputTokens
-				usage.CacheWriteTokens = ev.Message.Usage.CacheCreationInputTokens
 				if !sendAnthropicChunk(ctx, events, sharedModel.StreamChunk{
 					Type: sharedModel.ChunkEventStarted,
 				}) {
@@ -491,7 +496,8 @@ func (c *anthropicClient) Stream(ctx context.Context, req sharedModel.ChatReques
 				}
 
 			case "message_delta":
-				if ev.Usage.OutputTokens > 0 {
+				if ev.Usage != nil {
+					usage.Available = true
 					usage.OutputTokens = ev.Usage.OutputTokens
 				}
 				if ev.Delta.StopReason != "" {
