@@ -61,10 +61,10 @@ export const AGENT_MODEL_OPTIONS: AgentModelOption[] = [
   },
   {
     key: 'lumo',
-    label: 'Lumo',
-    shortLabel: 'Lumo',
+    label: 'Lumo Max',
+    shortLabel: 'Lumo Max',
     provider: 'lumo',
-    modelName: 'lumo',
+    modelName: 'lumo-max',
   },
 ];
 
