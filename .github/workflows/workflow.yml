@@ -131,13 +131,16 @@ jobs:
           cp -a "backend/$MODULE/vendor" "$service_root/vendor"
           sed -i 's/^FROM golang:1\.25-alpine AS build-stage$/FROM golang:1.26-alpine AS build-stage/' "$service_root/Dockerfile"
           test -f "$service_root/vendor/modules.txt"
+          echo "Prepared Railway source for $MODULE:"
+          du -sh "$service_root"
+          du -sh "$service_root/vendor"
       - name: Install Railway CLI
         if: github.ref == 'refs/heads/dev' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: npm install --global @railway/cli
       - name: Deploy prepared source
         if: github.ref == 'refs/heads/dev' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: |
-          set -eu
+          set -euo pipefail
           for name in RAILWAY_TOKEN RAILWAY_PROJECT_ID RAILWAY_DEV_ENVIRONMENT_ID RAILWAY_SERVICE_ID; do
             if [ -z "${!name:-}" ]; then
               echo "Missing GitHub secret or variable: $name" >&2
@@ -145,9 +148,22 @@ jobs:
             fi
           done
           commit_message=$(git log -1 --format=%s)
-          railway up "$RUNNER_TEMP/railway-source" \
-            --path-as-root --ci \
-            --project "$RAILWAY_PROJECT_ID" \
-            --environment "$RAILWAY_DEV_ENVIRONMENT_ID" \
-            --service "$RAILWAY_SERVICE_ID" \
-            --message "$commit_message"
+          upload_log="$RUNNER_TEMP/railway-upload.log"
+          for attempt in 1 2 3; do
+            if railway up "$RUNNER_TEMP/railway-source" \
+              --path-as-root --no-gitignore --ci \
+              --project "$RAILWAY_PROJECT_ID" \
+              --environment "$RAILWAY_DEV_ENVIRONMENT_ID" \
+              --service "$RAILWAY_SERVICE_ID" \
+              --message "$commit_message" 2>&1 | tee "$upload_log"; then
+              exit 0
+            fi
+            if ! grep -Fq 'Uploading...' "$upload_log" || \
+               ! grep -Fq 'error sending request for url' "$upload_log" || \
+               ! grep -Fq 'operation timed out' "$upload_log" || \
+               [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            echo "Railway upload timed out; retrying ($attempt/3) in 10 seconds..." >&2
+            sleep 10
+          done
