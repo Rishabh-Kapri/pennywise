@@ -1,0 +1,65 @@
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  gap: 8px;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 9px 12px;
+  background: var(--raised-bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 16px;
+}
+.toggle:hover {
+  border-color: var(--accent);
+}
+.toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+@media (max-width: 800px) {
+  .label {
+    display: none;
+  }
+  .toggle {
+    padding: 9px;
+  }
+}
+
+.icon {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.icon svg {
+  grid-area: 1 / 1;
+  transition:
+    opacity 300ms ease,
+    transform 420ms ease;
+}
+.sun {
+  opacity: 1;
+  transform: rotate(0) scale(1);
+}
+.moon {
+  opacity: 0;
+  transform: rotate(-45deg) scale(0.65);
+}
+.icon[data-theme-icon='dark'] .sun {
+  opacity: 0;
+  transform: rotate(45deg) scale(0.65);
+}
+.icon[data-theme-icon='dark'] .moon {
+  opacity: 1;
+  transform: rotate(0) scale(1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .icon svg {
+    transition: none;
+  }
+}

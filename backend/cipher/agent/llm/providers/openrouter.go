@@ -62,7 +62,7 @@ type openRouterRes struct {
 	ID                string                   `json:"id"`
 	Model             string                   `json:"model"`
 	Output            []openRouterOutputItem   `json:"output"`
-	Usage             openRouterUsage          `json:"usage"`
+	Usage             *openRouterUsage         `json:"usage"`
 	Status            string                   `json:"status"`
 	IncompleteDetails *openAIIncompleteDetails `json:"incomplete_details,omitempty"`
 	Error             *openRouterError         `json:"error,omitempty"`
@@ -310,7 +310,10 @@ func openRouterCallID(item openRouterOutputItem) string {
 	return item.ID
 }
 
-func toOpenRouterUsage(usage openRouterUsage) sharedModel.Usage {
+func toOpenRouterUsage(usage *openRouterUsage) sharedModel.Usage {
+	if usage == nil {
+		return sharedModel.Usage{}
+	}
 	inputTokens := usage.InputTokens
 	if inputTokens == 0 {
 		inputTokens = usage.PromptTokens
@@ -332,6 +335,7 @@ func toOpenRouterUsage(usage openRouterUsage) sharedModel.Usage {
 	}
 
 	return sharedModel.Usage{
+		Available:       true,
 		InputTokens:     inputTokens,
 		OutputTokens:    outputTokens,
 		TotalTokens:     totalTokens,
@@ -468,6 +472,13 @@ func (c *openRouterClient) Stream(ctx context.Context, req sharedModel.ChatReque
 					return
 				}
 
+			case "response.reasoning_summary_text.delta":
+				if ev.Delta != "" && !sendOpenRouterChunk(ctx, events, sharedModel.StreamChunk{
+					Type: sharedModel.ChunkEventReasoning, Text: ev.Delta,
+				}) {
+					return
+				}
+
 			case "response.content_part.delta", "response.output_text.delta":
 				if ev.Delta == "" {
 					continue
@@ -481,6 +492,12 @@ func (c *openRouterClient) Stream(ctx context.Context, req sharedModel.ChatReque
 				}
 
 			case "response.output_item.added":
+				if ev.Item.Type == "reasoning" {
+					if !sendOpenRouterChunk(ctx, events, sharedModel.StreamChunk{Type: sharedModel.ChunkEventReasoning}) {
+						return
+					}
+					continue
+				}
 				if ev.Item.Type != "function_call" {
 					continue
 				}
