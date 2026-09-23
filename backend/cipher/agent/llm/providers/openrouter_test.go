@@ -65,7 +65,7 @@ func TestOpenRouterChatUsesResponsesAPIAndNormalizesToolCalls(t *testing.T) {
 				Arguments: "{}",
 			},
 		},
-		Usage: openRouterUsage{
+		Usage: &openRouterUsage{
 			PromptTokens:     10,
 			CompletionTokens: 3,
 			TotalTokens:      13,

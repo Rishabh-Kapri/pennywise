@@ -29,7 +29,7 @@ func TestLumoResponses(t *testing.T) {
 				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 					t.Error(err)
 				}
-				if req.Model != "lumo" {
+				if req.Model != "lumo-max" {
 					t.Errorf("model = %q", req.Model)
 				}
 				if req.Reasoning == nil || req.Reasoning.Effort != "high" {
@@ -43,7 +43,7 @@ func TestLumoResponses(t *testing.T) {
 					return
 				}
 				w.Header().Set("Content-Type", "application/json")
-				fmt.Fprint(w, `{"id":"resp_1","model":"lumo","status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"Hello"}]}]}`)
+				fmt.Fprint(w, `{"id":"resp_1","model":"lumo-max","status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"Hello"}]}]}`)
 			}))
 			defer server.Close()
 			t.Setenv("LUMO_BASE_URL", server.URL+"/v1/")
@@ -52,7 +52,7 @@ func TestLumoResponses(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			res, err := client.Chat(context.Background(), sharedModel.ChatRequest{Model: "lumo"})
+			res, err := client.Chat(context.Background(), sharedModel.ChatRequest{Model: "lumo-max"})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -60,7 +60,7 @@ func TestLumoResponses(t *testing.T) {
 				t.Fatalf("unexpected response: %+v", res)
 			}
 			completed, tool, reasoning := false, false, false
-			for chunk := range client.Stream(context.Background(), sharedModel.ChatRequest{Model: "lumo"}) {
+			for chunk := range client.Stream(context.Background(), sharedModel.ChatRequest{Model: "lumo-max"}) {
 				if chunk.Type == sharedModel.ChunkEventReasoning && chunk.Text == "Checking the tool." {
 					reasoning = true
 				}
