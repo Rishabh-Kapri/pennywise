@@ -44,3 +44,7 @@ Requires a reachable Ollama endpoint (`OLLAMA_URL`); it is intentionally not par
 ## Environment
 
 `DATABASE_URL` (shares the main Postgres), `OLLAMA_URL`, `PENNYWISE_SERVICE_URL`, `REDIS_URL`, `INTERNAL_AUTH_TOKEN`, `AGENT_PROVIDER`, `OPENAI_API_KEY`/`ANTHROPIC_API_KEY`/`OPENROUTER_API_KEY`, `TEMPORAL_SERVER_HOST`/`PORT`, `PORT`.
+
+### Lumo provider
+
+Set `LUMO_BASE_URL` to your lumo-tamer server URL to register the `lumo` provider. Set `AGENT_PROVIDER=lumo` to make it the backend default; the default model is `lumo-max`. `LUMO_API_KEY` is optional when the server does not require authentication. The React chat also offers Lumo Max in its model picker.

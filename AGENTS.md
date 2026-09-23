@@ -228,3 +228,5 @@ Each Go module has a local `Makefile` with common aliases such as `make run`, `m
 ## Maintenance
 
 When architecture, routes, service responsibilities, or build/test commands change, update this file in the same PR.
+
+Cipher supports lumo-tamer through the `lumo` provider when `LUMO_BASE_URL` is set. The default Lumo model is `lumo-max`; `AGENT_PROVIDER` takes the provider name `lumo`.

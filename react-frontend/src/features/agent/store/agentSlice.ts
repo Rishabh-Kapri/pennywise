@@ -59,6 +59,13 @@ export const AGENT_MODEL_OPTIONS: AgentModelOption[] = [
     provider: 'anthropic',
     modelName: 'claude-haiku-4-5',
   },
+  {
+    key: 'lumo',
+    label: 'Lumo Max',
+    shortLabel: 'Lumo Max',
+    provider: 'lumo',
+    modelName: 'lumo-max',
+  },
 ];
 
 const DEFAULT_AGENT_MODEL_KEY = 'sonnet-4-6';
