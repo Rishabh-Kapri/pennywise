@@ -39,8 +39,14 @@ Requires a reachable Ollama endpoint (`OLLAMA_URL`); it is intentionally not par
 - `cmd/api`, `cmd/backfill` — entry points
 - `internal/service/prediction.go` — pipeline orchestration
 - `internal/temporal` — `PredictionActivity` (on `CipherActivitiesTaskQueue`)
-- `agent/` — agent runtime: `runtime/` (loop + streaming), `llm/providers/` (ollama/openai/anthropic/openrouter), `tools/`, `memory/`, `context/`
+- `agent/` — agent runtime: `runtime/` (loop + streaming), `llm/providers/` (ollama/openai/anthropic/openrouter/lumo), `tools/`, `memory/`, `context/`
 
 ## Environment
 
 `DATABASE_URL` (shares the main Postgres), `OLLAMA_URL`, `PENNYWISE_SERVICE_URL`, `REDIS_URL`, `INTERNAL_AUTH_TOKEN`, `AGENT_PROVIDER`, `OPENAI_API_KEY`/`ANTHROPIC_API_KEY`/`OPENROUTER_API_KEY`, `TEMPORAL_SERVER_HOST`/`PORT`, `PORT`.
+
+### Lumo provider
+
+Set `LUMO_BASE_URL=http://localhost:3003` (a trailing `/v1` is also accepted) to register `lumo`, then set `AGENT_PROVIDER=lumo` to select it. Use a host reachable from Cipher when running in Docker. `LUMO_API_KEY` is optional; set it to the server API key if authentication is enabled. The default model is `lumo`.
+
+The provider uses the Responses API with `reasoning.effort: high` and forwards `response.reasoning_text.delta` to the agent chat. To display thinking text, set `server.reasoning.surfaceThinking: true` in [lumo-tamer](https://github.com/ZeroTricks/lumo-tamer) (under `server`, not at the YAML root). Enable `server.customTools.enabled: true` for agent tools; upstream describes custom tool support as experimental. Lumo can also be selected in `EMAIL_PIPELINE_PROVIDERS` (e.g. `lumo=lumo`) and `AGENT_TITLE_MODEL` (`lumo/lumo`).

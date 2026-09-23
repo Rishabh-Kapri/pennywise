@@ -1,615 +1,346 @@
+import { useTheme } from '@/context/ThemeContext';
+import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { Link } from 'react-router-dom';
 import {
+  ArrowDownLeft,
   ArrowRight,
+  ArrowUpRight,
   CalendarBlank,
-  ChatCircleText,
   ChartPie,
+  Check,
+  CheckCircle,
   EnvelopeSimple,
   GithubLogo,
-  LockKey,
-  MagicWand,
-  PencilSimpleLine,
+  Plant,
   Receipt,
   ShieldCheck,
-  Sparkle as Sparkles,
-  TrendUp,
+  Sparkle,
   Wallet,
 } from '@phosphor-icons/react';
 import styles from './Homepage.module.css';
 
-const inr = (value: number): string => `₹${Math.abs(value).toLocaleString('en-IN')}`;
-
-const budgetGroups = [
+const categories = [
+  { name: 'Home & essentials', spent: 21380, assigned: 42600, color: 'periwinkle' },
+  { name: 'Everyday spending', spent: 18240, assigned: 31750, color: 'blue' },
+  { name: 'Future plans', spent: 4250, assigned: 26000, color: 'peach' },
+];
+const inr = (value: number) => `₹${value.toLocaleString('en-IN')}`;
+const steps = [
   {
-    name: 'Home Base',
-    assigned: 42600,
-    available: 21220,
-    categories: [
-      { name: 'Utilities', assigned: 8200, spent: 3460, available: 4740 },
-      { name: 'Household', assigned: 6400, spent: 2920, available: 3480 },
-    ],
+    icon: EnvelopeSimple,
+    title: 'A receipt arrives.',
+    description: 'Bring payment emails from your connected Gmail inbox into your budget.',
   },
   {
-    name: 'Daily Spend',
-    assigned: 31750,
-    available: 13510,
-    categories: [
-      { name: 'Groceries', assigned: 16000, spent: 9640, available: 6360 },
-      { name: 'Dining out', assigned: 6000, spent: 7450, available: -1450 },
-    ],
+    icon: Sparkle,
+    title: 'Cipher sorts the details.',
+    description: 'Get a suggested payee, account, and category, without entering every field.',
   },
   {
-    name: 'Future Plans',
-    assigned: 26000,
-    available: 21750,
-    categories: [
-      { name: 'Trip fund', assigned: 12000, spent: 1800, available: 10200 },
-      { name: 'Emergency buffer', assigned: 14000, spent: 2450, available: 11550 },
-    ],
+    icon: CheckCircle,
+    title: 'You make the final call.',
+    description: 'Review your transactions and correct anything. Cipher learns from your changes.',
   },
 ];
 
-const agentMessages = [
-  { role: 'user', text: 'how is this month looking?' },
-  {
-    role: 'agent',
-    text: 'You have room in daily spend, but utilities is trending higher than usual.',
-  },
-  { role: 'user', text: 'what should i check next?' },
-  {
-    role: 'agent',
-    text: 'I can summarize category drift, find unusual transactions, or help move available money.',
-  },
-];
-
-const transactionRows = [
-  {
-    account: 'Nova Credit',
-    date: '27 Jun 2026',
-    payee: 'City Power',
-    category: 'Utilities',
-    amount: '-₹1,860',
-  },
-  {
-    account: 'Everyday Bank',
-    date: '27 Jun 2026',
-    payee: 'Fresh Basket',
-    category: 'Groceries',
-    amount: '-₹2,180',
-  },
-  {
-    account: 'Travel Wallet',
-    date: '25 Jun 2026',
-    payee: 'Metro Tap',
-    category: 'Commute',
-    amount: '-₹620',
-  },
-  {
-    account: 'Everyday Bank',
-    date: '24 Jun 2026',
-    payee: 'Design Tools',
-    category: 'Software',
-    amount: '-₹899',
-  },
-];
-
-const incomingTransaction = {
-  account: 'Inbox Import',
-  date: 'Just now',
-  payee: 'Streamline Fiber',
-  category: 'Internet',
-  amount: '-₹1,240',
-};
-
-const predictionStages = [
-  {
-    icon: <EnvelopeSimple size={20} weight="bold" />,
-    eyebrow: 'Gmail ingestion',
-    title: 'A receipt lands in the watched inbox.',
-    description:
-      'Cipher pulls the message metadata, extracts the merchant, amount, and card context, then sends only the useful transaction signal forward.',
-    screen: (
-      <div className={`${styles.flowScreen} ${styles.emailScreen}`}>
-        <div className={styles.flowScreenHeader}>
-          <span>Inbox</span>
-          <strong>New receipt</strong>
-        </div>
-        <div className={styles.emailCard}>
-          <span>From: receipts@streamline.example</span>
-          <strong>Streamline Fiber payment received</strong>
-          <p>Paid with Nova Credit ending 4281</p>
-          <div className={styles.receiptTotal}>
-            <span>Total</span>
-            <strong>₹1,240</strong>
-          </div>
-        </div>
-        <div className={styles.emailStatus}>
-          <i />
-          Parsed merchant, amount, and account hint
-        </div>
-      </div>
-    ),
-  },
-  {
-    icon: <MagicWand size={20} weight="bold" />,
-    eyebrow: 'Prediction',
-    title: 'The classifier proposes account, payee, and category.',
-    description:
-      'Cipher scores signals from recurring payments, recent corrections, and learned category patterns before creating anything permanent.',
-    screen: (
-      <div className={`${styles.flowScreen} ${styles.predictionScreen}`}>
-        <div className={styles.flowScreenHeader}>
-          <span>Prediction run</span>
-          <strong>Ready for creation</strong>
-        </div>
-        <div className={styles.predictionGrid}>
-          <span>
-            Account <strong>Nova Credit</strong>
-          </span>
-          <span>
-            Payee <strong>Streamline Fiber</strong>
-          </span>
-          <span>
-            Category <strong>Internet</strong>
-          </span>
-        </div>
-        <div className={styles.confidenceList}>
-          <div className={styles.confidenceRow}>
-            <span>Recurring payee match</span>
-            <i />
-            <strong>96%</strong>
-          </div>
-          <div className={styles.confidenceRow}>
-            <span>Category history</span>
-            <i />
-            <strong>91%</strong>
-          </div>
-          <div className={styles.confidenceRow}>
-            <span>Account signal</span>
-            <i />
-            <strong>88%</strong>
-          </div>
-        </div>
-      </div>
-    ),
-  },
-  {
-    icon: <Receipt size={20} weight="bold" />,
-    eyebrow: 'Transaction creation',
-    title: 'The prediction becomes a reviewable transaction.',
-    description:
-      'The transaction appears in the ledger with the predicted category and source context, ready for approval or correction.',
-    screen: (
-      <div className={`${styles.flowScreen} ${styles.flowTransactions}`}>
-        <div className={styles.flowScreenHeader}>
-          <span>Transactions</span>
-          <strong>June 2026</strong>
-        </div>
-        <div className={styles.flowTransactionColumns}>
-          <span>Account</span>
-          <span>Payee</span>
-          <span>Category</span>
-          <span>Amount</span>
-        </div>
-        <div className={styles.flowTransactionRow}>
-          <span>Everyday Bank</span>
-          <strong>Fresh Basket</strong>
-          <em>Groceries</em>
-          <b>-₹2,180</b>
-        </div>
-        <div className={`${styles.flowTransactionRow} ${styles.flowCreatedRow}`}>
-          <span>{incomingTransaction.account}</span>
-          <strong>{incomingTransaction.payee}</strong>
-          <em>{incomingTransaction.category}</em>
-          <b>{incomingTransaction.amount}</b>
-        </div>
-        <div className={styles.flowTransactionRow}>
-          <span>Travel Wallet</span>
-          <strong>Metro Tap</strong>
-          <em>Commute</em>
-          <b>-₹620</b>
-        </div>
-      </div>
-    ),
-  },
-  {
-    icon: <PencilSimpleLine size={20} weight="bold" />,
-    eyebrow: 'Correction',
-    title: 'If the prediction is wrong, the fix trains the next one.',
-    description:
-      'Changing a predicted field records exactly what was corrected, so the same payee or pattern can improve without extra manual setup.',
-    screen: (
-      <div className={`${styles.flowScreen} ${styles.correctionScreen}`}>
-        <div className={styles.flowScreenHeader}>
-          <span>Correction</span>
-          <strong>User reviewed</strong>
-        </div>
-        <div className={styles.correctionCard}>
-          <span>Streamline Fiber</span>
-          <strong>-₹1,240</strong>
-          <div className={styles.correctionField}>
-            <small>Predicted category</small>
-            <b>Utilities</b>
-          </div>
-          <div className={styles.correctionField}>
-            <small>User correction</small>
-            <b>Internet</b>
-          </div>
-          <button type="button">Save correction</button>
-        </div>
-      </div>
-    ),
-  },
-  {
-    icon: <TrendUp size={20} weight="bold" />,
-    eyebrow: 'Learning loop',
-    title: 'Cipher remembers the correction for future receipts.',
-    description:
-      'The next matching email can be categorized with higher confidence, and Cipher has better context when explaining monthly spending.',
-    screen: (
-      <div className={`${styles.flowScreen} ${styles.learningScreen}`}>
-        <div className={styles.flowScreenHeader}>
-          <span>Learned pattern</span>
-          <strong>Active</strong>
-        </div>
-        <div className={styles.learningCard}>
-          <span>Payee pattern</span>
-          <strong>Streamline Fiber → Internet</strong>
-          <p>Applied to recurring broadband receipts from Nova Credit.</p>
-        </div>
-        <div className={styles.learningMetric}>
-          <span>Next match confidence</span>
-          <strong>97%</strong>
-        </div>
-      </div>
-    ),
-  },
-];
-
-const highlights = [
-  {
-    icon: <ChartPie size={20} />,
-    title: 'Know where money goes',
-    description: 'Track budgets, accounts, and transactions from one focused workspace.',
-  },
-  {
-    icon: <Wallet size={20} />,
-    title: 'Move faster each month',
-    description: 'Plan categories, review spending, and keep monthly choices visible.',
-  },
-  {
-    icon: <ShieldCheck size={20} />,
-    title: 'Keep context protected',
-    description: 'Budget access, auth, and account flows stay scoped around your data.',
-  },
-];
-
-export default function Homepage() {
+function BudgetPreview() {
   return (
-    <main className={styles.page}>
-      <header className={styles.header}>
-        <Link to="/" className={styles.brand} aria-label="Pennywise home">
-          <span className={styles.logo}>P</span>
-          <span>Pennywise</span>
-        </Link>
-
-        <nav className={styles.actions} aria-label="Account actions">
-          <a
-            href="https://github.com/Rishabh-Kapri/pennywise"
-            className={styles.githubButton}
-            target="_blank"
-            rel="noreferrer"
-            aria-label="Pennywise on GitHub">
-            <GithubLogo size={20} weight="bold" />
-          </a>
-          <a href="#terms" className={styles.loginButton}>
-            Terms
-          </a>
-          <Link to="/login" className={styles.loginButton}>
-            Login
-          </Link>
-          <Link to="/signup" className={styles.signupButton}>
-            Sign up
-          </Link>
-        </nav>
-      </header>
-
-      <section className={styles.hero}>
-        <div className={styles.heroTexture} aria-hidden="true" />
-
-        <div className={styles.heroVisual} aria-hidden="true">
-          <div className={styles.appFrame}>
-            <div className={styles.windowBar}>
-              <span />
-              <span />
-              <span />
-              <strong>Pennywise / June Budget</strong>
-            </div>
-            <div className={styles.appWorkspace}>
-              <section className={styles.budgetShot}>
-                <div className={styles.monthPill}>
-                  <CalendarBlank size={14} weight="bold" />
-                  <span>June, 2026</span>
-                </div>
-                <div className={styles.shotHeader}>
-                  <div>
-                    <span>Monthly plan</span>
-                    <strong>Budget</strong>
-                  </div>
-                  <em>48 categories</em>
-                </div>
-                <div className={styles.summaryStrip}>
-                  <span>
-                    Assigned <strong>₹1,00,350</strong>
-                  </span>
-                  <span>
-                    Activity <strong>-₹43,870</strong>
-                  </span>
-                  <span>
-                    Available <strong>₹56,480</strong>
-                  </span>
-                </div>
-                <div className={styles.categoryTable}>
-                  {budgetGroups.map((group) => (
-                    <div className={styles.groupCard} key={group.name}>
-                      <div className={styles.groupRow}>
-                        <strong>{group.name}</strong>
-                        <span>{inr(group.assigned)} assigned</span>
-                        <em className={styles.mockChip}>{inr(group.available)} left</em>
-                      </div>
-                      {group.categories.map((category) => {
-                        const isOver = category.available < 0;
-                        const percentUsed =
-                          category.assigned > 0 ? (category.spent / category.assigned) * 100 : 0;
-                        const isWarn = !isOver && percentUsed >= 80;
-                        const meterClass = isOver
-                          ? styles.meterOver
-                          : isWarn
-                            ? styles.meterWarn
-                            : styles.meterOk;
-
-                        return (
-                          <div className={styles.mockCatRow} key={category.name}>
-                            <div className={styles.mockCatTop}>
-                              <span>{category.name}</span>
-                              <em
-                                className={`${styles.mockChip} ${isOver ? styles.mockChipOver : ''}`}>
-                                {inr(category.available)} {isOver ? 'over' : 'left'}
-                              </em>
-                            </div>
-                            <div className={`${styles.mockMeter} ${meterClass}`}>
-                              <i style={{ width: `${Math.min(percentUsed, 100)}%` }} />
-                            </div>
-                            <small>
-                              {inr(category.spent)} of {inr(category.assigned)} spent
-                            </small>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))}
-                </div>
-              </section>
-              <aside className={styles.budgetAside}>
-                <h2>June Budget</h2>
-                <div>
-                  <span>Total Available</span>
-                  <strong>₹56,480</strong>
-                </div>
-                <small>Total assigned ₹1,00,350</small>
-                <small>Total activity -₹43,870</small>
-              </aside>
-            </div>
+    <figure className={styles.preview} aria-label="Example monthly budget with ₹56,480 available">
+      <div className={styles.previewBar}>
+        <span className={styles.previewBrand}>
+          <span className={styles.smallLogo}>P</span> My workspace
+        </span>
+        <span className={styles.sampleBadge}>Sample budget</span>
+      </div>
+      <div className={styles.previewBody}>
+        <div className={styles.budgetHeading}>
+          <div>
+            <p>YOUR MONEY, AT A GLANCE</p>
+            <h2>Monthly overview</h2>
           </div>
-
-          <div className={styles.transactionsCard}>
-            <div className={styles.transactionsToolbar}>
+          <span className={styles.month}>
+            <CalendarBlank size={14} /> June 2026
+          </span>
+        </div>
+        <div className={styles.balance}>
+          <span>Available to spend</span>
+          <strong>
+            ₹56,480<span>.00</span>
+          </strong>
+          <span className={styles.balanceNote}>
+            <CheckCircle size={14} weight="fill" /> Every rupee has a place.
+          </span>
+        </div>
+        <div className={styles.metrics}>
+          <div>
+            <span>
+              <ArrowDownLeft size={15} /> Assigned
+            </span>
+            <strong>₹1,00,350</strong>
+          </div>
+          <div>
+            <span>
+              <ArrowUpRight size={15} /> Spent this month
+            </span>
+            <strong>₹43,870</strong>
+          </div>
+        </div>
+        <div className={styles.categoryHeading}>
+          <strong>Your categories</strong>
+          <span>Spent / assigned</span>
+        </div>
+        <div className={styles.categories}>
+          {categories.map((category) => (
+            <div className={styles.category} key={category.name}>
               <div>
-                <span>All accounts</span>
-                <strong>₹8,42,190</strong>
+                <span>{category.name}</span>
+                <span>
+                  {inr(category.spent)} <em>/ {inr(category.assigned)}</em>
+                </span>
               </div>
-              <em>Search transactions</em>
-            </div>
-            <div className={styles.transactionsContent}>
-              <section className={styles.transactionsTable}>
-                <div className={styles.transactionColumns}>
-                  <span>Account</span>
-                  <span>Date</span>
-                  <span>Payee</span>
-                  <span>Category</span>
-                  <span>Amount</span>
-                </div>
-                <div className={styles.transactionMonth}>
-                  <span>June 2026</span>
-                  <small>25 transactions</small>
-                </div>
-                <div
-                  className={`${styles.transactionPreviewRow} ${styles.selectedTransaction} ${styles.heroIncomingTransaction}`}>
-                  <span>{incomingTransaction.account}</span>
-                  <span>{incomingTransaction.date}</span>
-                  <strong>{incomingTransaction.payee}</strong>
-                  <em>{incomingTransaction.category}</em>
-                  <b>{incomingTransaction.amount}</b>
-                </div>
-                {transactionRows.map((row) => (
-                  <div
-                    className={styles.transactionPreviewRow}
-                    key={`${row.payee}-${row.amount}`}>
-                    <span>{row.account}</span>
-                    <span>{row.date}</span>
-                    <strong>{row.payee}</strong>
-                    <em>{row.category}</em>
-                    <b>{row.amount}</b>
-                  </div>
-                ))}
-              </section>
-              <aside className={styles.transactionDetail}>
-                <span>Transaction</span>
-                <strong>-₹1,240</strong>
-                <em>Internet</em>
-                <small>Streamline Fiber</small>
-                <small>Nova Credit</small>
-                <i>Approved</i>
-                <p>Created from an email receipt after prediction review.</p>
-              </aside>
-            </div>
-          </div>
-
-          <div className={styles.agentDemo}>
-            <div className={styles.agentHeader}>
-              <span>
-                <ChatCircleText size={18} weight="bold" />
-              </span>
-              <strong>Cipher</strong>
-              <i />
-            </div>
-            <div className={styles.agentBody}>
-              {agentMessages.map((message, index) => (
-                <div
-                  className={
-                    message.role === 'user'
-                      ? `${styles.agentBubble} ${styles.userBubble}`
-                      : `${styles.agentBubble} ${styles.pennyBubble}`
-                  }
-                  key={message.text}
-                  style={{ animationDelay: `${index * 0.72}s` }}>
-                  {message.role === 'agent' && index === 1 && (
-                    <span className={styles.contextChip}>
-                      <Sparkles size={13} weight="fill" />
-                      Loaded budget context
-                    </span>
-                  )}
-                  {message.text}
-                </div>
-              ))}
-              <div className={styles.typingBubble}>
-                <span />
-                <span />
-                <span />
+              <div className={styles.track}>
+                <span
+                  className={styles[category.color]}
+                  style={{ width: `${(category.spent / category.assigned) * 100}%` }}
+                />
               </div>
             </div>
-            <div className={styles.agentPrompts}>
-              {['Summarize spending', 'Find unusual transactions', 'Plan next move'].map((prompt) => (
-                <span key={prompt}>{prompt}</span>
-              ))}
-            </div>
-            <div className={styles.agentComposer}>How can I help you today?</div>
-          </div>
-        </div>
-
-        <div className={styles.heroContent}>
-          <p className={styles.eyebrow}>
-            <Sparkles size={15} weight="fill" />
-            Prediction-aware personal budgeting
-          </p>
-          <h1>Secure, flexible, and transparent money tracking</h1>
-          <p className={styles.subcopy}>
-            Pennywise brings monthly planning, transaction review, and prediction-assisted
-            categorization into one calm finance workspace.
-          </p>
-          <div className={styles.ctaRow}>
-            <Link to="/signup" className={styles.primaryCta}>
-              Start budgeting <ArrowRight size={18} weight="bold" />
-            </Link>
-            <Link to="/login" className={styles.secondaryCta}>
-              <LockKey size={18} weight="bold" />
-              I already have an account
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      <section className={styles.predictionStory} aria-labelledby="prediction-flow-title">
-        <div className={styles.storyIntro}>
-          <span>Prediction flow</span>
-          <h2 id="prediction-flow-title">From receipt email to a cleaner budget.</h2>
-        </div>
-
-        <div className={styles.predictionStack}>
-          {predictionStages.map((stage, index) => (
-            <article className={styles.predictionPanel} key={stage.title}>
-              <div className={styles.predictionCopy}>
-                <span className={styles.stepNumber}>0{index + 1}</span>
-                <p className={styles.stepEyebrow}>
-                  {stage.icon}
-                  {stage.eyebrow}
-                </p>
-                <h3>{stage.title}</h3>
-                <p>{stage.description}</p>
-              </div>
-              <div className={styles.predictionVisual}>{stage.screen}</div>
-            </article>
           ))}
         </div>
-      </section>
-
-      <section className={styles.highlights} aria-label="Pennywise highlights">
-        {highlights.map((highlight) => (
-          <article className={styles.highlightCard} key={highlight.title}>
-            <div className={styles.highlightIcon}>{highlight.icon}</div>
-            <h2>{highlight.title}</h2>
-            <p>{highlight.description}</p>
-          </article>
-        ))}
-      </section>
-
-      <section id="terms" className={styles.closingSection} aria-label="Get started with Pennywise">
-        <div className={styles.closingCopy}>
-          <span className={styles.legalKicker}>Built for review</span>
-          <h2>Close the loop on every transaction.</h2>
-          <p>
-            Pennywise keeps the automation visible: Cipher can predict, you can correct,
-            and the next receipt gets easier to place.
-          </p>
-          <div className={styles.closingActions}>
-            <Link to="/signup" className={styles.primaryCta}>
-              Start budgeting <ArrowRight size={18} weight="bold" />
-            </Link>
-            <a
-              href="https://github.com/Rishabh-Kapri/pennywise"
-              className={styles.secondaryCta}
-              target="_blank"
-              rel="noreferrer">
-              <GithubLogo size={18} weight="bold" />
-              View GitHub
-            </a>
+        <div className={styles.cipherNote}>
+          <span className={styles.cipherIcon}>
+            <Sparkle size={19} weight="fill" />
+          </span>
+          <div>
+            <strong>A little clarity, courtesy of Cipher</strong>
+            <p>You have ₹21,750 left for your future plans.</p>
           </div>
         </div>
+      </div>
+      <figcaption className={styles.previewCaption}>
+        <span className={styles.statusDot} /> A clearer picture. A calmer month.
+      </figcaption>
+    </figure>
+  );
+}
 
-        <aside className={styles.closingPanel}>
-          <div className={styles.closingPanelHeader}>
-            <span>
-              <ShieldCheck size={18} weight="bold" />
-            </span>
-            <strong>Workspace ready</strong>
-          </div>
-          <div className={styles.closingStatus}>
-            <span>Cipher loop</span>
-            <strong>Gmail to prediction to ledger</strong>
-            <small>Corrections feed the next import.</small>
-          </div>
-          <div className={styles.trustRows}>
-            <div>
-              <span>Budget scoped</span>
-              <strong>Imports stay tied to the selected budget.</strong>
-            </div>
-            <div>
-              <span>Review first</span>
-              <strong>Predictions remain editable before you rely on them.</strong>
-            </div>
-            <div>
-              <span>Open source</span>
-              <strong>Inspect the app, API, ingestion, MLP, and Cipher.</strong>
-            </div>
-          </div>
-          <div className={styles.legalLinks}>
-            <Link to="/terms">Terms</Link>
-            <Link id="privacy" to="/privacy">
-              Privacy
+export default function Homepage() {
+  const { theme } = useTheme();
+  return (
+    <main className={styles.page} data-home-theme={theme} tabIndex={0} aria-label="Pennywise home">
+      <a href="#main-content" className={styles.skipLink}>
+        Skip to content
+      </a>
+      <header className={styles.header}>
+        <Link to="/" className={styles.brand} aria-label="Pennywise home">
+          <span className={styles.logo}>P</span>Pennywise<span className={styles.brandDot}>.</span>
+        </Link>
+        <nav className={styles.navigation} aria-label="Main navigation">
+          <a href="#features">Features</a>
+          <a href="#how-it-works">How it works</a>
+          <a href="https://github.com/Rishabh-Kapri/pennywise" target="_blank" rel="noreferrer">
+            Open source <ArrowUpRight size={13} />
+          </a>
+        </nav>
+        <div className={styles.accountActions}>
+          <ThemeToggle />
+          <Link to="/login" className={styles.login}>
+            Log in
+          </Link>
+          <Link to="/signup" className={styles.headerCta}>
+            Get started <ArrowUpRight size={15} />
+          </Link>
+        </div>
+      </header>
+
+      <section id="main-content" className={styles.hero} aria-labelledby="hero-title">
+        <img
+          className={styles.heroPhoto}
+          src="/images/budget-desk-envelopes.webp"
+          alt=""
+          fetchPriority="high"
+          width={1536}
+          height={1024}
+        />
+        <div className={styles.heroCopy}>
+          <p className={styles.eyebrow}>
+            <span className={styles.statusDot} /> A little wiser with every rupee
+          </p>
+          <h1 id="hero-title">
+            Your money.
+            <br />
+            Less noise.
+            <br />
+            <span>More clarity.</span>
+          </h1>
+          <p className={styles.heroDescription}>
+            Make room for what matters. Bring your budgets, spending, and everyday decisions together in one thoughtful
+            workspace.
+          </p>
+          <div className={styles.heroActions}>
+            <Link to="/signup" className={styles.primaryCta}>
+              Start budgeting <ArrowRight size={18} />
             </Link>
+            <a href="#how-it-works" className={styles.textCta}>
+              See how it works <ArrowDownLeft size={17} />
+            </a>
           </div>
-        </aside>
+          <div className={styles.heroDetails}>
+            <span>
+              <Check size={14} /> Open source
+            </span>
+            <span>
+              <Check size={14} /> AI-assisted categorization
+            </span>
+          </div>
+        </div>
       </section>
+      <section className={styles.productSection} aria-labelledby="overview-title">
+        <div className={styles.productIntro}>
+          <p className={styles.eyebrow}>A PLACE FOR THE BIG PICTURE</p>
+          <h2 id="overview-title">
+            Less guesswork.
+            <br />
+            More peace of mind.
+          </h2>
+          <p>
+            From your morning coffee to your next big adventure, see how today’s spending fits into tomorrow’s plans.
+          </p>
+        </div>
+        <div className={styles.heroVisual}>
+          <BudgetPreview />
+          <div className={styles.visualFootnote}>
+            <ShieldCheck size={15} /> Your budget. Your decisions. Always.
+          </div>
+        </div>
+      </section>
+
+      <section id="features" className={styles.features} aria-labelledby="features-title">
+        <div className={styles.sectionHeading}>
+          <p className={styles.eyebrow}>LESS BUSYWORK. MORE BIG PICTURE.</p>
+          <h2 id="features-title">Everything in its right place.</h2>
+          <p>A simpler rhythm for your everyday finances.</p>
+        </div>
+        <div className={styles.featureGrid}>
+          <article className={styles.featureCard}>
+            <span className={styles.featureIcon}>
+              <Wallet size={24} />
+            </span>
+            <h3>A plan for every rupee.</h3>
+            <p>
+              Give your money a purpose with monthly categories. See what’s spent, what’s left, and where you can
+              adjust.
+            </p>
+            <div className={styles.featureIllustration}>
+              <span>
+                <Plant size={18} /> Next adventure
+              </span>
+              <strong>
+                ₹10,200 <small>left to grow</small>
+              </strong>
+              <div className={styles.savingsTrack}>
+                <span />
+              </div>
+            </div>
+          </article>
+          <article className={styles.featureCard}>
+            <span className={styles.featureIcon}>
+              <Receipt size={24} />
+            </span>
+            <h3>All the little details, together.</h3>
+            <p>Keep accounts and transactions in one view, so a quick check-in gives you the full picture.</p>
+            <div className={styles.miniTransaction}>
+              <span className={styles.merchantIcon}>F</span>
+              <span>
+                <strong>Fresh Basket</strong>
+                <small>Groceries · Everyday Bank</small>
+              </span>
+              <b>−₹2,180</b>
+            </div>
+          </article>
+          <article className={styles.featureCard}>
+            <span className={styles.featureIcon}>
+              <ChartPie size={24} />
+            </span>
+            <h3>A smarter second look.</h3>
+            <p>
+              Let Cipher help categorize receipts and explore your spending. Stay in control with predictions you can
+              review and correct.
+            </p>
+            <div className={styles.aiIllustration}>
+              <Sparkle size={17} weight="fill" />
+              <span>
+                Less sorting.
+                <br />
+                <strong>More understanding.</strong>
+              </span>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section id="how-it-works" className={styles.workflow} aria-labelledby="workflow-title">
+        <div className={styles.workflowIntro}>
+          <p className={styles.eyebrow}>MEET CIPHER</p>
+          <h2 id="workflow-title">
+            From inbox
+            <br />
+            to insight.
+          </h2>
+          <p>
+            A helping hand behind the scenes.
+            <br />
+            You’re still in the driver’s seat.
+          </p>
+        </div>
+        <ol className={styles.steps}>
+          {steps.map(({ icon: Icon, title, description }, index) => (
+            <li key={title}>
+              <span className={styles.stepIcon}>
+                <Icon size={21} />
+              </span>
+              <div>
+                <span className={styles.stepNumber}>0{index + 1}</span>
+                <h3>{title}</h3>
+                <p>{description}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <section className={styles.closing} aria-labelledby="closing-title">
+        <span className={styles.closingIcon}>
+          <Plant size={30} />
+        </span>
+        <p className={styles.eyebrow}>SMALL STEPS. A CLEARER TOMORROW.</p>
+        <h2 id="closing-title">
+          Good with money
+          <br />
+          starts with a little clarity.
+        </h2>
+        <Link to="/signup" className={styles.primaryCta}>
+          Make room for what matters <ArrowRight size={18} />
+        </Link>
+      </section>
+      <footer className={styles.footer}>
+        <Link to="/" className={styles.brand}>
+          <span className={styles.logo}>P</span>Pennywise<span className={styles.brandDot}>.</span>
+        </Link>
+        <p>A little more intention. Every day.</p>
+        <nav aria-label="Footer navigation">
+          <Link to="/terms">Terms</Link>
+          <Link to="/privacy">Privacy</Link>
+          <a
+            href="https://github.com/Rishabh-Kapri/pennywise"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Pennywise on GitHub"
+          >
+            <GithubLogo size={20} />
+          </a>
+        </nav>
+      </footer>
     </main>
   );
 }

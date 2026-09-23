@@ -4,7 +4,7 @@
   gap: 1rem;
   padding: 1.25rem;
   background: var(--color-surface-secondary);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--color-border);
   border-radius: 14px;
 }
 

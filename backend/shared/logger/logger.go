@@ -11,6 +11,41 @@ import (
 	"github.com/lmittmann/tint"
 )
 
+type ContextLogger struct {
+	*slog.Logger
+	ctx context.Context
+}
+
+func (l *ContextLogger) Debug(msg string, args ...any) {
+	l.Logger.DebugContext(l.ctx, msg, args...)
+}
+
+func (l *ContextLogger) Info(msg string, args ...any) {
+	l.Logger.InfoContext(l.ctx, msg, args...)
+}
+
+func (l *ContextLogger) Warn(msg string, args ...any) {
+	l.Logger.WarnContext(l.ctx, msg, args...)
+}
+
+func (l *ContextLogger) Error(msg string, args ...any) {
+	l.Logger.ErrorContext(l.ctx, msg, args...)
+}
+
+func (l *ContextLogger) With(args ...any) *ContextLogger {
+	return &ContextLogger{
+		Logger: l.Logger.With(args...),
+		ctx:    l.ctx,
+	}
+}
+
+func (l *ContextLogger) WithGroup(name string) *ContextLogger {
+	return &ContextLogger{
+		Logger: l.Logger.WithGroup(name),
+		ctx:    l.ctx,
+	}
+}
+
 // Setup initializes a structured JSON logger as the default slog logger with the service name.
 // It reads the RAILWAY_ENVIRONMENT_NAME environment variable to determine the log level.
 func Setup(service string) {
@@ -35,8 +70,8 @@ func Setup(service string) {
 		// 	AddSource: logLevel == slog.LevelDebug,
 		// })
 		handler = tint.NewHandler(os.Stdout, &tint.Options{
-			Level:     logLevel,
-			AddSource: logLevel == slog.LevelDebug,
+			Level:      logLevel,
+			AddSource:  logLevel == slog.LevelDebug,
 			TimeFormat: time.Kitchen,
 		})
 	} else {
@@ -72,7 +107,7 @@ func FatalContext(ctx context.Context, msg string, args ...any) {
 
 // Logger returns an slog.Logger enriched with the correlation ID from context.
 // Use this in handlers and services to get request-scoped logging.
-func Logger(ctx context.Context) *slog.Logger {
+func Logger(ctx context.Context) *ContextLogger {
 	logger := slog.Default()
 	metadata := utils.RequestMetadataFromContext(ctx)
 
@@ -95,5 +130,5 @@ func Logger(ctx context.Context) *slog.Logger {
 		logger = logger.With("user_id", uid.String())
 	}
 
-	return logger
+	return &ContextLogger{Logger: logger, ctx: ctx}
 }

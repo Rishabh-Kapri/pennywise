@@ -2,7 +2,6 @@ package temporal
 
 import (
 	"context"
-	"log/slog"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
 	"github.com/google/uuid"
@@ -93,7 +92,7 @@ func (a *PipelineStatusActivity) broadcast(ctx context.Context, run *sharedModel
 	}
 }
 
-func pipelineActivityLogger(ctx context.Context) *slog.Logger {
+func pipelineActivityLogger(ctx context.Context) *logger.ContextLogger {
 	activityInfo := activity.GetInfo(ctx)
 	return logger.Logger(ctx).With(
 		"workflow_id", activityInfo.WorkflowExecution.ID,

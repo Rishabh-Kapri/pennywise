@@ -1,0 +1,131 @@
+:root[data-theme] {
+  --accent: #315b78;
+  --accent-hover: #24465f;
+  --on-accent: #ffffff;
+  --page-bg: #f8f6f1;
+  --card-bg: #fffefa;
+  --raised-bg: #edf1f1;
+  --track-bg: #dde4e3;
+  --closing-bg: #eee9df;
+  --sage: #567a70;
+  --sand: #886d41;
+  --photo-opacity: 1;
+  --hero-overlay: linear-gradient(90deg, #f8f6f1f5, #f8f6f1c9 35%, #f8f6f110 65%);
+  --mobile-overlay: linear-gradient(180deg, #f8f6f1fa 0%, #f8f6f1f2 53%, #f8f6f100 83%);
+  --text: #202a30;
+  --muted: #60676a;
+  --line: #24384426;
+  color-scheme: light;
+  --color-primary: var(--accent);
+  --color-primary-light: var(--accent);
+  --color-background: var(--page-bg);
+  --color-surface: var(--card-bg);
+  --color-surface-secondary: var(--card-bg);
+  --color-surface-tertiary: var(--raised-bg);
+  --color-secondary: var(--raised-bg);
+  --color-accent: var(--accent);
+  --color-text: var(--text);
+  --color-text-secondary: var(--muted);
+  --color-text-tertiary: var(--accent);
+  --color-text-quaternary: var(--text);
+  --color-border: var(--line);
+  --color-border-muted: var(--line);
+  --color-border-light: var(--accent);
+  --color-success: #3c7560;
+  --color-error: #b64343;
+  --color-warning: #936619;
+  --color-budget-positive: #3c7560;
+  --color-budget-negative: #b64343;
+  --skeleton-base: #253b4510;
+  --skeleton-highlight: #253b4520;
+  --shadow-lg: 0 12px 40px #20313b18;
+}
+:root[data-theme='dark'] {
+  /* Restore the repository's original palette, before the homepage redesign. */
+  --color-primary: #4483a2;
+  --color-primary-light: #aec2dd;
+  --color-secondary: #f6f6f6;
+  --color-accent: #f6f6f6;
+  --color-background: #1f1f1e;
+  --color-surface: #1f1f1f;
+  --color-surface-secondary: #323232;
+  --color-surface-tertiary: #424242;
+  --color-text: #f6f6f6;
+  --color-text-secondary: #a9a9a9;
+  --color-text-tertiary: #646cff;
+  --color-text-quaternary: #333333;
+  --color-success: #10b981;
+  --color-error: #ef4444;
+  --color-warning: #f59e0b;
+  --color-info: #3b82f6;
+  --color-border: #626262;
+  --color-border-light: #788dba;
+  --color-border-muted: color(srgb 0.384314 0.384314 0.384314 / 0.5);
+  --color-budget-positive: #73eb95;
+  --color-budget-negative: #ff6363;
+  --color-budget-positive-bg: #c4ecbb;
+  --color-budget-positive-fg: #3a6e49;
+  --color-budget-negative-bg: #f7c1b5;
+  --color-budget-negative-fg: #651c0b;
+  --color-budget-upcoming-bg: #f9e1a9;
+  --color-budget-upcoming-fg: #70460b;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 5px 16px 8px rgb(0 0 0 / 0.4);
+  --skeleton-base: rgba(128, 128, 128, 0.2);
+  --skeleton-highlight: rgba(128, 128, 128, 0.1);
+  --accent: var(--color-primary);
+  --accent-hover: #5d9cbb;
+  --on-accent: #ffffff;
+  --text: var(--color-text);
+  --muted: var(--color-text-secondary);
+  --line: var(--color-border-muted);
+  --page-bg: var(--color-background);
+  --card-bg: var(--color-surface-secondary);
+  --raised-bg: var(--color-surface-tertiary);
+  --track-bg: var(--color-surface-tertiary);
+  --closing-bg: var(--color-surface-secondary);
+  --sage: var(--color-success);
+  --sand: var(--color-warning);
+  --photo-opacity: 0.65;
+  --hero-overlay: linear-gradient(90deg, #1f1f1eff, #1f1f1ef0 30%, #1f1f1e45 70%);
+  --mobile-overlay: linear-gradient(180deg, #1f1f1eff 0%, #1f1f1ef2 53%, #1f1f1e20 83%);
+  --skeleton-base: rgba(255, 255, 255, 0.1);
+  --skeleton-highlight: rgba(255, 255, 255, 0.05);
+  color-scheme: dark;
+}
+:root[data-theme] body {
+  background: var(--page-bg);
+  color: var(--text);
+}
+
+/* Fade the new theme over an opaque snapshot to avoid a brightness dip. */
+:root[data-theme-transition='fade']::view-transition-old(root),
+:root[data-theme-transition='fade']::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+:root[data-theme-transition='fade']::view-transition-old(root) {
+  z-index: 1;
+}
+:root[data-theme-transition='fade']::view-transition-new(root) {
+  z-index: 2;
+  animation: theme-fade 420ms ease-in-out both;
+}
+:root[data-theme-transition='fade']::view-transition-group(root) {
+  animation-duration: 420ms;
+}
+@keyframes theme-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme-transition='fade']::view-transition-group(root),
+  :root[data-theme-transition='fade']::view-transition-new(root) {
+    animation: none;
+  }
+}
