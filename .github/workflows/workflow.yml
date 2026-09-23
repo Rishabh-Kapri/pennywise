@@ -88,13 +88,18 @@ jobs:
           PY
 
   backend:
-    name: Build ${{ matrix.module }}
+    name: Build and deploy ${{ matrix.module }}
     needs: changes
     if: needs.changes.outputs.any == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_DEV_TOKEN }}
+      RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+      RAILWAY_DEV_ENVIRONMENT_ID: ${{ vars.RAILWAY_DEV_ENVIRONMENT_ID }}
+      RAILWAY_SERVICE_ID: ${{ vars[matrix.service_var] }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -112,37 +117,8 @@ jobs:
           for target in ${{ matrix.build_targets }}; do
             GOWORK=off go build -mod=vendor -o "$RUNNER_TEMP/$(basename "$target")" "$target"
           done
-      - name: Package vendor for Railway
-        if: github.ref == 'refs/heads/dev' && github.event_name != 'pull_request'
-        run: tar -cf "$RUNNER_TEMP/vendor.tar" -C "backend/${{ matrix.module }}" vendor
-      - uses: actions/upload-artifact@v4
-        if: github.ref == 'refs/heads/dev' && github.event_name != 'pull_request'
-        with:
-          name: vendor-${{ matrix.module }}
-          path: ${{ runner.temp }}/vendor.tar
-          if-no-files-found: error
-          retention-days: 1
-
-  deploy_dev:
-    name: Deploy ${{ matrix.module }} to Railway dev
-    if: github.ref == 'refs/heads/dev' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.any == 'true'
-    needs: [changes, backend]
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
-    env:
-      RAILWAY_TOKEN: ${{ secrets.RAILWAY_DEV_TOKEN }}
-      RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
-      RAILWAY_DEV_ENVIRONMENT_ID: ${{ vars.RAILWAY_DEV_ENVIRONMENT_ID }}
-      RAILWAY_SERVICE_ID: ${{ vars[matrix.service_var] }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: vendor-${{ matrix.module }}
-          path: ${{ runner.temp }}/vendor-artifact
       - name: Prepare clean Railway source
+        if: github.ref == 'refs/heads/dev' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         env:
           MODULE: ${{ matrix.module }}
         run: |
@@ -152,12 +128,14 @@ jobs:
           mkdir -p "$service_root"
           git archive "HEAD:backend/$MODULE" | tar -x -C "$service_root"
           rm -rf "$service_root/vendor"
-          tar -xf "$RUNNER_TEMP/vendor-artifact/vendor.tar" -C "$service_root"
+          cp -a "backend/$MODULE/vendor" "$service_root/vendor"
           sed -i 's/^FROM golang:1\.25-alpine AS build-stage$/FROM golang:1.26-alpine AS build-stage/' "$service_root/Dockerfile"
           test -f "$service_root/vendor/modules.txt"
       - name: Install Railway CLI
+        if: github.ref == 'refs/heads/dev' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: npm install --global @railway/cli
       - name: Deploy prepared source
+        if: github.ref == 'refs/heads/dev' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: |
           set -eu
           for name in RAILWAY_TOKEN RAILWAY_PROJECT_ID RAILWAY_DEV_ENVIRONMENT_ID RAILWAY_SERVICE_ID; do
@@ -166,9 +144,10 @@ jobs:
               exit 1
             fi
           done
+          commit_message=$(git log -1 --format=%s)
           railway up "$RUNNER_TEMP/railway-source" \
             --path-as-root --ci \
             --project "$RAILWAY_PROJECT_ID" \
             --environment "$RAILWAY_DEV_ENVIRONMENT_ID" \
             --service "$RAILWAY_SERVICE_ID" \
-            --message "$GITHUB_SHA"
+            --message "$commit_message"
