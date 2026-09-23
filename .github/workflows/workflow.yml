@@ -1,93 +1,39 @@
-name: Atlas Runner
+name: Backend CI
 
 on:
+  pull_request:
+    paths:
+      - 'backend/go-gmail/**'
+      - 'backend/go-pennywise-api/**'
+      - 'backend/cipher/**'
+      - 'backend/workflows/**'
+      - 'backend/shared/**'
+      - '.github/workflows/workflow.yml'
   push:
-    branches:
-      - master
+    branches: [dev]
 
 jobs:
-  checkout_repo:
-    runs-on: [self-hosted, unraid]
+  backend:
+    name: Test and build ${{ matrix.module }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [go-gmail, go-pennywise-api, cipher, workflows]
     steps:
-      - name: Checkout Repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          fetch-depth: 0 # Needed for full git history comparison
-
-  copy_env_files:
-    runs-on: [self-hosted, unraid]
-    needs: checkout_repo
-    steps:
-      - name: Print Info Before
-        run: |
-          echo "Hostname: $(hostname)"
-          echo "Running as: $(whoami)"
-          echo "Current directory: $(pwd)"
-          echo "Files:"
-          ls -la
-          ls -la backend/go-gmail
-          ls -la backend/go-pennywise-api
-          echo "OS Info:"
-          uname -a
-      - name: Copy Env Files
-        run: |
-          cp /mnt/user/LoganShare/Code/secrets/pennywise/.env backend/go-gmail/.env
-          cp /mnt/user/LoganShare/Code/secrets/pennywise/pennywise-39654-c87f94721374.json backend/go-gmail/pennywise-39654-c87f94721374.json
-          cp /mnt/user/LoganShare/Code/secrets/pennywise/.env backend/go-pennywise-api/.env
-
-      - name: Print Info After
-        run: |
-          echo "Hostname: $(hostname)"
-          echo "Running as: $(whoami)"
-          echo "Current directory: $(pwd)"
-          echo "Files:"
-          ls -la backend/go-gmail
-          ls -la backend/go-pennywise-api
-          echo "OS Info:"
-          uname -a
-
-  build_docker:
-    runs-on: [self-hosted, unraid]
-    needs: copy_env_files
-    steps:
-      - name: Get changed files
-        id: changes
-        run: |
-          echo "CHANGED=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} | xargs)" >> $GITHUB_OUTPUT
-
-      - name: Determine changed service
-        id: filter
-        run: |
-          declare -A folder_to_service
-          folder_to_service["python-mlp"]="python-mlp"
-
-          changed_files="${{ steps.changes.outputs.CHANGED }}"
-          echo "Changed files: ${changed_files}"
-          service_set=()
-          for file in $changed_files; do
-            if [[ $file =~ ^(backend|frontend|.github)\/([^\/]+)\/ ]]; then
-              folder=${BASH_REMATCH[2]}
-              service=${folder_to_service[$folder]}
-              if [[ -n "$service" ]]; then
-                service_set+=("$service")
-              fi
-            fi
-          done
-          unique_services=$(printf "%s\n" "${service_set[@]}" | sort -u | tr '\n' ' ')
-          echo "Final service list: ${unique_services}"
-          echo "SERVICES=$unique_services" >> $GITHUB_OUTPUT
-
-      - name: Build changed service
-        run: |
-          services="${{ steps.filter.outputs.SERVICES }}"
-          echo "Services: ${services}"
-          for svc in $services; do
-            echo "Building $svc..."
-            docker-compose -f ./backend/docker-compose.yml up --build $svc -d
-          done
-
-      # - name: Stop existing container
-      #   run: docker compose -f ./backend/docker-compose.yml down
-
-      # - name: Build and start containers
-      #   run: docker compose -f ./backend/docker-compose.yml up --build -d
+          go-version-file: backend/${{ matrix.module }}/go.mod
+          cache-dependency-path: |
+            backend/${{ matrix.module }}/go.sum
+            backend/shared/go.sum
+      - name: Vendor dependencies, including the local shared module
+        working-directory: backend/${{ matrix.module }}
+        run: GOWORK=off go mod vendor
+      - name: Test
+        working-directory: backend/${{ matrix.module }}
+        run: GOWORK=off go test -mod=vendor ./...
+      - name: Build
+        working-directory: backend/${{ matrix.module }}
+        run: GOWORK=off go build -mod=vendor ./...
