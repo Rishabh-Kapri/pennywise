@@ -711,8 +711,10 @@ func (m *memory) OnRunPersisted(ctx context.Context, data AgentRunData) error {
 		ToolChoice:  []sharedModel.ToolChoice{{Type: sharedModel.ToolChoiceNone}},
 		MaxTokens:   observerMaxTokens,
 		Temperature: 0.2,
+		ChatType:    sharedModel.MemoryChatType,
 	}
-	res, err := client.Chat(ctx, chatReq)
+	conversationID := data.ConversationID.String()
+	res, err := client.Chat(ctx, chatReq, &conversationID)
 	if err != nil {
 		log.Error("error on observation chat request", "error", err)
 		return nil

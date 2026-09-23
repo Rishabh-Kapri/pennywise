@@ -19,12 +19,14 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/storage"
 	temporalActivities "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/temporal/activities"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/websocket"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 
 	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedMiddleware "github.com/Rishabh-Kapri/pennywise/backend/shared/middleware"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/otelSDK"
 	sharedTemporal "github.com/Rishabh-Kapri/pennywise/backend/shared/temporal"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
@@ -50,6 +52,17 @@ func main() {
 	)
 	appCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	otelConfig := otelSDK.Load()
+	tel, err := otelSDK.NewTelemetry(ctx, *otelConfig)
+	if err != nil {
+		logger.Fatal("error while otel setup", "error", err)
+	}
+	defer func() {
+		if err := tel.Shutdown(ctx); err != nil {
+			logger.Fatal("otel shutdown error", "error", err)
+		}
+	}()
 
 	dbConn := db.Connect(ctx)
 	defer dbConn.Close()
@@ -88,6 +101,7 @@ func main() {
 	router.Use(sharedMiddleware.RequestMetadata(config.ServiceName))
 	router.Use(sharedMiddleware.InternalRequestAuth(config.InternalAuthToken))
 	router.Use(sharedMiddleware.RequestLogger())
+	router.Use(otelgin.Middleware(otelConfig.ServiceName))
 
 	router.Use(cors.New(cors.Config{
 		AllowOrigins: []string{
@@ -197,7 +211,6 @@ func main() {
 	// who wants it, but the default keeps receipts inside the same backup and
 	// the same failure domain as the rows that reference them.
 	var documentStore storage.Store
-	var err error
 	if strings.EqualFold(config.DocumentStorage, "local") {
 		documentStore, err = storage.NewLocalStore(config.UploadsDir)
 		if err != nil {

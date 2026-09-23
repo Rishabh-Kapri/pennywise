@@ -1,0 +1,26 @@
+FROM golang:1.26-alpine AS build
+
+RUN apk add --no-cache git
+
+ARG MODULE
+ARG TARGET
+ARG BINARY
+ARG EXTRA_TARGET=""
+ARG EXTRA_BINARY=""
+
+WORKDIR /src
+COPY shared/ ./shared/
+COPY ${MODULE}/ ./${MODULE}/
+WORKDIR /src/${MODULE}
+
+RUN mkdir -p /out && GOWORK=off go build -mod=mod -o /out/${BINARY} ${TARGET} && \
+    if [ -n "${EXTRA_TARGET}" ]; then \
+      GOWORK=off go build -mod=mod -o /out/${EXTRA_BINARY} ${EXTRA_TARGET}; \
+    fi
+
+FROM alpine:latest
+RUN apk add --no-cache ca-certificates tzdata
+WORKDIR /root/
+COPY --from=build /out/ ./
+ENV TZ=Asia/Kolkata
+ENTRYPOINT ["./app"]

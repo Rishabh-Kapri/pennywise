@@ -24,6 +24,7 @@ export type MessagePart = {
   summary?: string;
   args?: Record<string, unknown>;
   result?: unknown;
+  status?: 'pending' | 'completed';
 };
 
 export type MessageContent = {

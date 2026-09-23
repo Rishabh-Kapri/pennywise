@@ -62,6 +62,7 @@ func parseLLMTargets(raw string) []LLMTarget {
 
 type Config struct {
 	Environment          string
+	ServiceName          string
 	DatabaseURL          string
 	RedisURL             string
 	OllamaURL            string
@@ -72,6 +73,7 @@ type Config struct {
 	OpenAIAPIKey         string
 	AnthropicAPIKey      string
 	OpenRouterAPIKey     string
+	TypesafeAPIKey       string
 	DefaultAgentProvider string // "anthropic", "openai", "openrouter", "lumo", or "ollama"
 	InternalAuthToken    string
 	TemporalServerHost   string
@@ -155,16 +157,18 @@ func Load() Config {
 
 	return Config{
 		Environment:              env,
+		ServiceName:              os.Getenv("SERVICE_NAME"),
 		DatabaseURL:              os.Getenv("DATABASE_URL"),
 		RedisURL:                 os.Getenv("REDIS_URL"),
 		OllamaURL:                os.Getenv("OLLAMA_URL"),
 		MLPServiceURL:            os.Getenv("MLP_SERVICE_URL"),
 		PennywiseServiceURL:      os.Getenv("PENNYWISE_SERVICE_URL"),
-		LumoBaseURL:              strings.TrimSpace(os.Getenv("LUMO_BASE_URL")),
-		LumoAPIKey:               os.Getenv("LUMO_API_KEY"),
 		OpenAIAPIKey:             os.Getenv("OPENAI_API_KEY"),
 		AnthropicAPIKey:          os.Getenv("ANTHROPIC_API_KEY"),
 		OpenRouterAPIKey:         os.Getenv("OPENROUTER_API_KEY"),
+		TypesafeAPIKey:           os.Getenv("TYPESAFE_API_KEY"),
+		LumoBaseURL:              strings.TrimSpace(os.Getenv("LUMO_BASE_URL")),
+		LumoAPIKey:               os.Getenv("LUMO_API_KEY"),
 		DefaultAgentProvider:     os.Getenv("AGENT_PROVIDER"),
 		InternalAuthToken:        os.Getenv("INTERNAL_AUTH_TOKEN"),
 		TemporalServerHost:       os.Getenv("TEMPORAL_SERVER_HOST"),

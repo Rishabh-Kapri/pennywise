@@ -71,6 +71,7 @@ budget-scoped browser websocket clients
 5. **Gmail ingestion**: Pub/Sub event -> parser -> Temporal `EmailToTransactionWorkflow` -> cipher `PredictionActivity` -> create transaction + cipher prediction via API activities.
 6. **Prediction corrections**: transaction updates on predicted records update `has_user_corrected`/actual-ID fields (`predictions` and `cipher_predictions`) in API service logic and via cipher `POST /api/corrections`.
 7. **Agent streaming**: Cipher writes `eventName`, `budgetId`, and `data` fields to Redis stream `pubsub`; Go API reads new stream entries and broadcasts them to websocket clients scoped to the same budget.
+   Chat stream events include provider-supplied reasoning summaries and `run_completed`; the React chat shows progress and can cancel active runs through the API.
 
 ## Build, test, lint
 
@@ -109,6 +110,8 @@ Each Go module has a local `Makefile` with common aliases such as `make run`, `m
 
 `docker-compose.yml` currently defines the backend/dev dependency stack: PostgreSQL with pgvector, Redis, Temporal + UI, `go-pennywise-api`, `go-gmail`, `cipher`, and `workflows`. Frontend, Android, Python MLP, file-parser, and Ollama are intentionally excluded from that compose stack. Cipher expects `OLLAMA_URL` to point at a reachable external Ollama endpoint.
 
+Compose builds Go services from `backend/Dockerfile.compose` with the local shared module and Go 1.26; generated `vendor/` directories are not required for local Compose builds. Railway CI still vendors each module before building its service image.
+
 ## Code patterns and conventions
 
 ### Go API (`backend/go-pennywise-api`)
@@ -130,6 +133,7 @@ Each Go module has a local `Makefile` with common aliases such as `make run`, `m
 - Context headers are propagated centrally via `utils.GetHeaders`, including canonical caller/origin/correlation headers and `X-Internal-Token` when a service context is seeded with `INTERNAL_AUTH_TOKEN`.
 - `middleware.RequestMetadata` normalizes ingress metadata, `middleware.InternalRequestAuth` verifies internal traffic, and `middleware.BudgetIdMiddleware` now keys off shared verified-internal context instead of raw headers.
 - `shared/temporal.RequestMetadataPropagator` bridges `correlation_id` and `origin_service` across Temporal workflow/activity boundaries.
+- `otelSDK` exports all spans to the primary OTLP destination (SigNoz) and filters the Langfuse exporter to AI instrumentation scopes (`pennywise/agent`, `pennywise/llm`, `pennywise/embedding`). Cipher's agent and LLM spans use explicit scopes so HTTP and other application spans stay in SigNoz.
 
 ### Go Gmail (`backend/go-gmail`)
 
@@ -140,6 +144,7 @@ Each Go module has a local `Makefile` with common aliases such as `make run`, `m
 ### React frontend (`react-frontend`)
 
 - Feature-first Redux slices in `src/features/*/store/`.
+- Shared light/dark appearance is provided by `context/ThemeProvider.tsx` and `styles/theme.css`; `ThemeToggle` persists `pennywise-theme` and migrates the former homepage preference.
 - `apiClient` auto-adds:
   - `Authorization` bearer token (except auth endpoints)
   - `x-budget-id` from selected budget (except budget endpoints)
@@ -207,7 +212,7 @@ Each Go module has a local `Makefile` with common aliases such as `make run`, `m
 ### Git hooks
 
 - Root README expects: `git config core.hooksPath .githooks`
-- Pre-commit hook re-runs `go mod vendor` for Go API when `backend/go-pennywise-api/go.mod|go.sum` or `backend/shared/` changes.
+- Generated `vendor/` directories are ignored. CI vendors each affected Go module before its standalone build; the pre-commit hook no longer vendors dependencies.
 
 ## Current caveats (important for agents)
 
@@ -229,4 +234,4 @@ Each Go module has a local `Makefile` with common aliases such as `make run`, `m
 
 When architecture, routes, service responsibilities, or build/test commands change, update this file in the same PR.
 
-Cipher supports lumo-tamer through the `lumo` provider when `LUMO_BASE_URL` is set. The default Lumo model is `lumo-max`; `AGENT_PROVIDER` takes the provider name `lumo`.
+Cipher also supports `lumo` via lumo-tamer using the shared OpenAI Responses adapter. Set `LUMO_BASE_URL` to register it, optional `LUMO_API_KEY` for authentication, and `AGENT_PROVIDER=lumo` to select it (default model `lumo-max`).

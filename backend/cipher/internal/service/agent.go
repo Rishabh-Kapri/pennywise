@@ -131,7 +131,7 @@ func (s *agentService) generateTitle(ctx context.Context, message string) (strin
 	}
 	titleReq.Model = model
 
-	titleRes, err := client.Chat(ctx, titleReq)
+	titleRes, err := client.Chat(ctx, titleReq, nil)
 	if err != nil {
 		return "", fmt.Errorf("title model call: %w", err)
 	}
@@ -480,6 +480,7 @@ func (s *agentService) CreateRun(
 	}
 
 	chatReq.Messages = context.Messages
+	chatReq.ChatType = sharedModel.ChatBotChatType
 
 	systemPrompt := agent.SystemPrompt{
 		Static:  agentPrompts.SystemPromptStatic,

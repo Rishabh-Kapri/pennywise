@@ -89,7 +89,7 @@ func (r *ToolRegistry) RegisterTool(tool Tool) {
 		return
 	}
 
-	logger.Logger(context.Background()).Info("registering tool", "tool", toolName)
+	logger.Logger(context.Background()).Info("registering tool: " + toolName, "tool", toolName)
 
 	r.mu.Lock()
 	defer r.mu.Unlock()

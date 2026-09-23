@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent } from 'react';
 import {
   CaretDownIcon,
   ChatsIcon,
+  CopyIcon,
+  ArrowsOutIcon,
+  ArrowsInIcon,
   PlusIcon,
   RobotIcon as Bot,
   PaperPlaneRightIcon as Send,
@@ -10,11 +13,13 @@ import {
   XIcon,
 } from '@phosphor-icons/react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import {
   AGENT_MODEL_OPTIONS,
   appendAgentEvent,
   appendAgentMessagePart,
+  appendAgentReasoningDelta,
   appendAgentTextDelta,
   clearAgentChat,
   createAgentRun,
@@ -34,6 +39,7 @@ import { selectSelectedBudget } from '@/features/budget';
 import { AGENT_CHAT_WEBSOCKET_EVENT, type WebSocketMessage } from '@/features/websocket/events';
 import type { AgentChatHistoryItem, AgentChatMessage, AgentEventMessageData, MessagePart } from '@/features/agent';
 import { LoadingState } from '@/utils';
+import { apiClient } from '@/utils';
 import styles from './AgentChat.module.css';
 
 const SUGGESTIONS = ['Summarize my spending', 'Find unusual transactions', 'Help plan next month'];
@@ -45,6 +51,10 @@ const AGENT_ERROR_FALLBACK_TEXT = 'Penny ran into an error while responding. Ple
 const TEXT_DELTA_CHARS_PER_SECOND = 90;
 const TEXT_DELTA_MAX_FRAME_CHARS = 8;
 const AUTO_SCROLL_BOTTOM_THRESHOLD_PX = 48;
+
+function copyText(text: string) {
+  void navigator.clipboard.writeText(text);
+}
 
 function parseAgentStreamData(data: unknown) {
   if (typeof data === 'string') {
@@ -128,7 +138,22 @@ function agentMessageLabel(eventName: string) {
 function MarkdownAgentText({ text }: { text: string }) {
   return (
     <div className={styles.markdownMessage}>
-      <ReactMarkdown skipHtml>{text}</ReactMarkdown>
+      <ReactMarkdown
+        skipHtml
+        remarkPlugins={[remarkGfm]}
+        components={{
+          table: ({ children }) => <div className={styles.tableScroll}><table>{children}</table></div>,
+          pre: ({ children }) => (
+            <div className={styles.codeBlock}>
+              <button type="button" className={styles.copyCodeButton} onClick={(event) => {
+                copyText(event.currentTarget.nextElementSibling?.textContent ?? '');
+              }}>Copy code</button>
+              <pre>{children}</pre>
+            </div>
+          ),
+        }}>
+        {text}
+      </ReactMarkdown>
     </div>
   );
 }
@@ -159,16 +184,20 @@ function modelKeyFromMetadataModel(metadataModel: unknown) {
 function AgentToolPart({ part }: { part: MessagePart }) {
   const displayName = part.displayName?.trim() || part.name?.trim() || 'Used tool';
   const summary = part.summary?.trim();
-  const isPending = !summary;
+  const isPending = part.status === 'pending';
 
+  const details = typeof part.result === 'string' ? part.result : part.result == null ? '' : JSON.stringify(part.result, null, 2);
   return (
-    <div className={`${styles.toolPart} ${isPending ? styles.toolPartPending : ''}`}>
-      <Sparkles size={14} weight="fill" className={styles.toolIcon} aria-hidden="true" />
-      <div className={styles.toolText}>
-        <span className={styles.toolName}>{displayName}</span>
-        {summary && <span className={styles.toolSummary}>{summary}</span>}
-      </div>
-    </div>
+    <details className={`${styles.toolPart} ${isPending ? styles.toolPartPending : ''}`}>
+      <summary className={styles.toolPartHeader}>
+        <Sparkles size={14} weight="fill" className={styles.toolIcon} aria-hidden="true" />
+        <span className={styles.toolText}>
+          <span className={styles.toolName}>{displayName}</span>
+          {summary && <span className={styles.toolSummary}>{summary}</span>}
+        </span>
+      </summary>
+      {!isPending && details && <pre className={styles.toolDetails}>{details}</pre>}
+    </details>
   );
 }
 
@@ -181,7 +210,9 @@ function toolCallStartPart(message: unknown): MessagePart {
   return {
     type: 'TOOL_CALL',
     id: typeof toolMessage.id === 'string' ? toolMessage.id : undefined,
+    name: typeof toolMessage.name === 'string' ? toolMessage.name : undefined,
     displayName: typeof toolMessage.displayName === 'string' ? toolMessage.displayName : 'Using tool',
+    status: 'pending',
   };
 }
 
@@ -217,6 +248,13 @@ function AgentMessageBody({ message }: { message: AgentChatMessage }) {
           return text ? <MarkdownAgentText key={key} text={text} /> : null;
         }
 
+        if (partType === 'REASONING') {
+          return <details key={key} className={styles.reasoningPart}>
+            <summary>Reasoning summary</summary>
+            <MarkdownAgentText text={messagePartText(part)} />
+          </details>;
+        }
+
         return null;
       })}
     </div>
@@ -232,14 +270,19 @@ export function AgentChat() {
   const selectedModelKey = useAppSelector(selectSelectedAgentModelKey);
   const selectedBudget = useAppSelector(selectSelectedBudget);
   const [isOpen, setIsOpen] = useState(false);
+  const [isMaximized, setIsMaximized] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isModelOpen, setIsModelOpen] = useState(false);
   const [composerValue, setComposerValue] = useState('');
   const [isAwaitingAgentResponse, setIsAwaitingAgentResponse] = useState(false);
+  const [isRunActive, setIsRunActive] = useState(false);
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [runPhase, setRunPhase] = useState('Working');
   const [conversationToDelete, setConversationToDelete] = useState<AgentChatHistoryItem | null>(null);
   const [isDeletingConversation, setIsDeletingConversation] = useState(false);
   const messagesRef = useRef<HTMLDivElement | null>(null);
-  const composerInputRef = useRef<HTMLInputElement | null>(null);
+  const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const historyMenuRef = useRef<HTMLDivElement | null>(null);
   const modelMenuRef = useRef<HTMLDivElement | null>(null);
   const shouldRefocusComposerRef = useRef(false);
@@ -250,7 +293,7 @@ export function AgentChat() {
   const textDeltaFrameTimeRef = useRef<number | null>(null);
   const textDeltaCharBudgetRef = useRef(0);
   const shouldAutoScrollRef = useRef(true);
-  const isSending = createRunLoading === LoadingState.PENDING;
+  const isSending = createRunLoading === LoadingState.PENDING || isRunActive;
   const hasSelectedBudget = Boolean(selectedBudget?.id);
   const lastMessage = agentMessages[agentMessages.length - 1];
   const shouldShowResponseLoader = isAwaitingAgentResponse && lastMessage?.role === 'user';
@@ -283,6 +326,13 @@ export function AgentChat() {
       composerInputRef.current?.focus();
     });
   }, [hasSelectedBudget, isOpen]);
+
+  useEffect(() => {
+    const composer = composerInputRef.current;
+    if (!composer) return;
+    composer.style.height = 'auto';
+    composer.style.height = `${Math.min(composer.scrollHeight, 160)}px`;
+  }, [composerValue]);
 
   const scrollMessagesToBottom = useCallback(() => {
     const messages = messagesRef.current;
@@ -391,6 +441,7 @@ export function AgentChat() {
         }
         setIsAwaitingAgentResponse(false);
         setIsOpen(false);
+        setIsMaximized(false);
       }
     };
 
@@ -431,6 +482,7 @@ export function AgentChat() {
       const streamMessageId = agentStreamMessageId(parsedMsgData);
 
       if (message.eventName === AGENT_CHAT_STREAM_EVENT && parsedMsgData?.type === 'text_delta') {
+        setRunPhase('Writing answer');
         const text = typeof parsedMsgData.message === 'string' ? parsedMsgData.message : '';
         if (
           pendingTextDeltaRef.current &&
@@ -446,8 +498,20 @@ export function AgentChat() {
         return;
       }
 
+      if (message.eventName === AGENT_CHAT_STREAM_EVENT && parsedMsgData?.type === 'reasoning_delta') {
+        flushPendingTextDelta();
+        setRunPhase('Reasoning');
+        dispatch(appendAgentReasoningDelta({
+          messageId: streamMessageId,
+          text: typeof parsedMsgData.message === 'string' ? parsedMsgData.message : '',
+        }));
+        return;
+      }
+
       if (message.eventName === AGENT_CHAT_STREAM_EVENT && parsedMsgData?.type === 'tool_call_start') {
         flushPendingTextDelta();
+        const toolMessage = streamToolMessage(parsedMsgData.message);
+        setRunPhase(`Using ${typeof toolMessage.name === 'string' ? toolMessage.name : 'tool'}`);
         dispatch(appendAgentMessagePart({
           messageId: streamMessageId,
           part: toolCallStartPart(parsedMsgData.message),
@@ -462,15 +526,18 @@ export function AgentChat() {
         typeof parsedMsgData.message === 'object'
       ) {
         flushPendingTextDelta();
+        setRunPhase('Working');
         const toolMessage = streamToolMessage(parsedMsgData.message);
         dispatch(appendAgentMessagePart({
           messageId: streamMessageId,
           part: {
             type: 'TOOL_CALL',
             id: typeof toolMessage.id === 'string' ? toolMessage.id : undefined,
+            name: typeof toolMessage.name === 'string' ? toolMessage.name : undefined,
             displayName: typeof toolMessage.displayName === 'string' ? toolMessage.displayName : undefined,
             summary: typeof toolMessage.summary === 'string' ? toolMessage.summary : undefined,
             result: toolMessage.result,
+            status: 'completed',
           },
         }));
         return;
@@ -478,11 +545,22 @@ export function AgentChat() {
 
       if (message.eventName === AGENT_CHAT_STREAM_EVENT && parsedMsgData?.type === 'error') {
         flushPendingTextDelta();
+        setIsRunActive(false);
+        setActiveRunId(null);
+        setRunPhase('Failed');
         const errorText =
           typeof parsedMsgData.message === 'string' && parsedMsgData.message.trim()
             ? parsedMsgData.message
             : AGENT_ERROR_FALLBACK_TEXT;
         dispatch(appendAgentEvent({ eventName: AGENT_ERROR_EVENT, text: errorText }));
+        return;
+      }
+
+      if (message.eventName === AGENT_CHAT_STREAM_EVENT && parsedMsgData?.type === 'run_completed') {
+        flushPendingTextDelta();
+        setIsRunActive(false);
+        setActiveRunId(null);
+        setRunPhase('Finished');
         return;
       }
 
@@ -609,16 +687,46 @@ export function AgentChat() {
       focusComposerInput();
       setIsHistoryOpen(false);
       setIsAwaitingAgentResponse(true);
-      const run = await dispatch(
-        createAgentRun({
-          message: trimmedMessage,
-          conversationId: currentConversationId ?? undefined,
-        }),
-      ).unwrap();
-      dispatch(selectAgentConversation(run.conversationId ?? ''));
+      setIsRunActive(true);
+      setActiveRunId(null);
+      setRunPhase('Working');
+      try {
+        const run = await dispatch(
+          createAgentRun({
+            message: trimmedMessage,
+            conversationId: currentConversationId ?? undefined,
+          }),
+        ).unwrap();
+        if (run.status === 'COMPLETED' || run.status === 'FAILED' || run.status === 'CANCELLED') {
+          setIsRunActive(false);
+          setRunPhase(run.status === 'COMPLETED' ? 'Finished' : run.status === 'CANCELLED' ? 'Stopped' : 'Failed');
+        } else {
+          setActiveRunId(run.id);
+        }
+        dispatch(selectAgentConversation(run.conversationId ?? ''));
+      } catch {
+        setIsRunActive(false);
+        setRunPhase('Failed');
+      }
     },
     [currentConversationId, dispatch, focusComposerInput, hasSelectedBudget, isSending],
   );
+
+  const cancelRun = useCallback(async () => {
+    if (!activeRunId || isCancelling) return;
+    setIsCancelling(true);
+    try {
+      await apiClient.post(`agent/runs/${activeRunId}/cancel`, {});
+      flushPendingTextDelta();
+      setIsRunActive(false);
+      setActiveRunId(null);
+      setRunPhase('Stopped');
+    } catch {
+      setRunPhase('Could not stop run');
+    } finally {
+      setIsCancelling(false);
+    }
+  }, [activeRunId, flushPendingTextDelta, isCancelling]);
 
   const handleSubmit = useCallback(
     (event: FormEvent<HTMLFormElement>) => {
@@ -627,6 +735,13 @@ export function AgentChat() {
     },
     [composerValue, submitMessage],
   );
+
+  const handleComposerKeyDown = useCallback((event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      void submitMessage(composerValue);
+    }
+  }, [composerValue, submitMessage]);
 
   const handleNewChat = useCallback(() => {
     if (isSending) {
@@ -638,6 +753,7 @@ export function AgentChat() {
     setIsModelOpen(false);
     setComposerValue('');
     setIsAwaitingAgentResponse(false);
+    setRunPhase('');
     dispatch(clearAgentChat());
   }, [dispatch, flushPendingTextDelta, isSending]);
 
@@ -652,6 +768,7 @@ export function AgentChat() {
       setIsModelOpen(false);
       setComposerValue('');
       setIsAwaitingAgentResponse(false);
+      setRunPhase('');
       if (!conversationId) {
         dispatch(clearAgentChat());
         return;
@@ -713,7 +830,7 @@ export function AgentChat() {
   );
 
   return (
-    <aside className={`${styles.agentPanel} ${isOpen ? styles.agentPanelOpen : ''}`} aria-label="Penny Agent chat">
+    <aside className={`${styles.agentPanel} ${isOpen ? styles.agentPanelOpen : ''} ${isOpen && isMaximized ? styles.agentPanelMaximized : ''}`} aria-label="Penny Agent chat">
       {!isOpen && (
         <button
           type="button"
@@ -738,6 +855,12 @@ export function AgentChat() {
             <h2 id="agent-chat-title">{headerTitle}</h2>
           </div>
           <div className={styles.headerActions}>
+            <button type="button" className={styles.closeButton}
+              aria-label={isMaximized ? 'Restore chat window' : 'Maximize chat window'}
+              title={isMaximized ? 'Restore chat window' : 'Maximize chat window'}
+              onClick={() => setIsMaximized((value) => !value)}>
+              {isMaximized ? <ArrowsInIcon size={17} /> : <ArrowsOutIcon size={17} />}
+            </button>
             <div ref={historyMenuRef} className={styles.historyMenu}>
               <button
                 type="button"
@@ -794,6 +917,7 @@ export function AgentChat() {
               onClick={() => {
                 setIsAwaitingAgentResponse(false);
                 setIsOpen(false);
+                setIsMaximized(false);
               }}>
               <XIcon size={18} />
             </button>
@@ -817,9 +941,19 @@ export function AgentChat() {
                 </span>
               )}
               {message.role === 'assistant' ? <AgentMessageBody message={message} /> : <p>{message.text}</p>}
+              {message.role === 'assistant' && message.text.trim() && <button type="button"
+                className={styles.copyMessageButton} aria-label="Copy answer"
+                onClick={() => copyText(message.text)}><CopyIcon size={14} /> Copy</button>}
             </div>
           ))}
         </div>
+
+        {runPhase && <div className={styles.runStatus} role="status">
+          <span>{runPhase}</span>
+          {isRunActive && activeRunId && <button type="button" onClick={() => void cancelRun()} disabled={isCancelling}>
+            {isCancelling ? 'Stopping…' : 'Stop'}
+          </button>}
+        </div>}
 
         <div className={styles.suggestions} aria-label="Suggested prompts">
           {SUGGESTIONS.map((suggestion) => (
@@ -835,16 +969,18 @@ export function AgentChat() {
         </div>
 
         <form className={styles.composer} onSubmit={handleSubmit}>
-          <input
+          <textarea
             ref={composerInputRef}
-            type="text"
+            rows={1}
             placeholder={hasSelectedBudget ? 'How can I help you today?' : 'Select a budget to chat'}
             aria-label="Message Penny Agent"
             value={composerValue}
             disabled={isSending || !hasSelectedBudget}
             onChange={(event) => setComposerValue(event.target.value)}
+            onKeyDown={handleComposerKeyDown}
           />
           <div className={styles.composerFooter}>
+            <span className={styles.composerHint}>Enter to send · Shift+Enter for newline</span>
             <div ref={modelMenuRef} className={styles.modelMenu}>
               <button
                 type="button"

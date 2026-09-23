@@ -322,7 +322,7 @@ interface BudgetConfig {
 }
 
 const mockOllamaModels = ['gemma4:12b', 'llama3:8b', 'bge-m3'];
-const providers = ['ollama', 'openai', 'anthropic', 'openrouter'];
+const providers = ['ollama', 'openai', 'anthropic', 'openrouter', 'lumo'];
 
 function CustomSelect({ value, options, onChange, placeholder }: { value: string, options: string[], onChange: (val: string) => void, placeholder?: string }) {
   const [isOpen, setIsOpen] = useState(false);
