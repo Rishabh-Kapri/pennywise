@@ -98,7 +98,7 @@ func newTestAgent(t *testing.T, client llm.LLM, registry *tools.ToolRegistry, op
 
 	tel, err := otelSDK.NewTelemetry(context.Background(), otelSDK.Config{
 		ServiceName:     "cipher-test",
-		OtelSdkDisabled: "true",
+		OtelSdkDisabled: true,
 	})
 	if err != nil {
 		t.Fatalf("telemetry setup: %v", err)

@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel"
 	otelmetric "go.opentelemetry.io/otel/metric"
+	metricnoop "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/trace"
@@ -53,7 +54,11 @@ func NewTelemetry(ctx context.Context, cfg Config) (*Telemetry, error) {
 	logs.Info("telemetry init", "cfg", cfg)
 	if cfg.OtelSdkDisabled {
 		logs.Warn("otel sdk disabled")
-		return nil, nil
+		return &Telemetry{
+			meter:  metricnoop.NewMeterProvider().Meter(cfg.ServiceName),
+			Tracer: oteltrace.NewNoopTracerProvider().Tracer(cfg.ServiceName),
+			cfg:    cfg,
+		}, nil
 	}
 	rp := newResource(cfg.ServiceName, cfg.ServiceVersion, cfg.Environment)
 
@@ -155,6 +160,9 @@ func (t *Telemetry) TraceStart(ctx context.Context, name string) (context.Contex
 
 // TraceStartWithScope records a span under an explicit instrumentation scope.
 func (t *Telemetry) TraceStartWithScope(ctx context.Context, scope, name string) (context.Context, oteltrace.Span) {
+	if t.tp == nil {
+		return t.Tracer.Start(ctx, name)
+	}
 	return t.tp.Tracer(scope).Start(ctx, name)
 }
 

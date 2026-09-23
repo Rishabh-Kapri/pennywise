@@ -110,6 +110,8 @@ Each Go module has a local `Makefile` with common aliases such as `make run`, `m
 
 `docker-compose.yml` currently defines the backend/dev dependency stack: PostgreSQL with pgvector, Redis, Temporal + UI, `go-pennywise-api`, `go-gmail`, `cipher`, and `workflows`. Frontend, Android, Python MLP, file-parser, and Ollama are intentionally excluded from that compose stack. Cipher expects `OLLAMA_URL` to point at a reachable external Ollama endpoint.
 
+Compose builds Go services from `backend/Dockerfile.compose` with the local shared module and Go 1.26; generated `vendor/` directories are not required for local Compose builds. Railway CI still vendors each module before building its service image.
+
 ## Code patterns and conventions
 
 ### Go API (`backend/go-pennywise-api`)
@@ -210,7 +212,7 @@ Each Go module has a local `Makefile` with common aliases such as `make run`, `m
 ### Git hooks
 
 - Root README expects: `git config core.hooksPath .githooks`
-- Pre-commit hook re-runs `go mod vendor` for Go API when `backend/go-pennywise-api/go.mod|go.sum` or `backend/shared/` changes.
+- Generated `vendor/` directories are ignored. CI vendors each affected Go module before its standalone build; the pre-commit hook no longer vendors dependencies.
 
 ## Current caveats (important for agents)
 
@@ -232,4 +234,4 @@ Each Go module has a local `Makefile` with common aliases such as `make run`, `m
 
 When architecture, routes, service responsibilities, or build/test commands change, update this file in the same PR.
 
-Cipher also supports `lumo` via lumo-tamer using the shared OpenAI Responses adapter. Set `LUMO_BASE_URL` to register it, optional `LUMO_API_KEY` for authentication, and `AGENT_PROVIDER=lumo` to select it (default model `lumo`).
+Cipher also supports `lumo` via lumo-tamer using the shared OpenAI Responses adapter. Set `LUMO_BASE_URL` to register it, optional `LUMO_API_KEY` for authentication, and `AGENT_PROVIDER=lumo` to select it (default model `lumo-max`).

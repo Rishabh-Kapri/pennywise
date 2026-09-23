@@ -100,7 +100,7 @@ func getLLMClients(tel otelSDK.TelemetryProvider) (map[string]llm.RegistryEntry,
 		if err != nil {
 			return nil, "", err
 		}
-		entries["lumo"] = llm.RegistryEntry{Client: llm.NewObservedLLM(c, tel), DefaultModel: "lumo"}
+		entries["lumo"] = llm.RegistryEntry{Client: llm.NewObservedLLM(c, tel), DefaultModel: "lumo-max"}
 	}
 
 	if appConfig.OpenRouterAPIKey != "" {

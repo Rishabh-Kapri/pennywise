@@ -59,7 +59,14 @@ services:
 
   pennywise-migrate:
     build:
-      context: ./backend/go-pennywise-api
+      context: ./backend
+      dockerfile: Dockerfile.compose
+      args:
+        MODULE: go-pennywise-api
+        TARGET: ./cmd/api
+        BINARY: api
+        EXTRA_TARGET: ./cmd/migrations
+        EXTRA_BINARY: migrations
     entrypoint: ["./migrations"]
     command: ["-dir", ".", "up"]
     environment:
@@ -84,7 +91,15 @@ services:
 
   pennywise-api:
     build:
-      context: ./backend/go-pennywise-api
+      context: ./backend
+      dockerfile: Dockerfile.compose
+      args:
+        MODULE: go-pennywise-api
+        TARGET: ./cmd/api
+        BINARY: api
+        EXTRA_TARGET: ./cmd/migrations
+        EXTRA_BINARY: migrations
+    entrypoint: ["./api"]
     environment:
       RAILWAY_ENVIRONMENT_NAME: ${RAILWAY_ENVIRONMENT_NAME:-local}
       SERVICE_NAME: pennywise-api
@@ -123,7 +138,13 @@ services:
 
   cipher:
     build:
-      context: ./backend/cipher
+      context: ./backend
+      dockerfile: Dockerfile.compose
+      args:
+        MODULE: cipher
+        TARGET: ./cmd/api
+        BINARY: cipher
+    entrypoint: ["./cipher"]
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
@@ -181,7 +202,12 @@ services:
 
   gmail-watch:
     build:
-      context: ./backend/go-gmail
+      context: ./backend
+      dockerfile: Dockerfile.compose
+      args:
+        MODULE: go-gmail
+        TARGET: ./cmd
+        BINARY: app
     environment:
       RAILWAY_ENVIRONMENT_NAME: ${RAILWAY_ENVIRONMENT_NAME:-local}
       PORT: 5170
@@ -217,7 +243,12 @@ services:
 
   workflows:
     build:
-      context: ./backend/workflows
+      context: ./backend
+      dockerfile: Dockerfile.compose
+      args:
+        MODULE: workflows
+        TARGET: ./cmd/worker
+        BINARY: worker
     entrypoint:
       [
         "sh",
