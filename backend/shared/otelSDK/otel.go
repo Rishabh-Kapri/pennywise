@@ -3,11 +3,14 @@ package otelSDK
 import (
 	"context"
 	"errors"
+	"log/slog"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel"
 	otelmetric "go.opentelemetry.io/otel/metric"
+	metricnoop "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/trace"
@@ -23,6 +26,7 @@ type TelemetryProvider interface {
 	MeterInt64Histogram(metric Metric) (otelmetric.Int64Histogram, error)
 	MeterInt64UpDownCounter(metric Metric) (otelmetric.Int64UpDownCounter, error)
 	TraceStart(ctx context.Context, name string) (context.Context, oteltrace.Span)
+	TraceStartWithScope(ctx context.Context, scope, name string) (context.Context, oteltrace.Span)
 	LogRequest() gin.HandlerFunc
 	MeterRequestDuration() gin.HandlerFunc
 	MeterRequestsInFlight() gin.HandlerFunc
@@ -48,6 +52,14 @@ type Telemetry struct {
 func NewTelemetry(ctx context.Context, cfg Config) (*Telemetry, error) {
 	logs := logger.Logger(ctx)
 	logs.Info("telemetry init", "cfg", cfg)
+	if cfg.OtelSdkDisabled {
+		logs.Warn("otel sdk disabled")
+		return &Telemetry{
+			meter:  metricnoop.NewMeterProvider().Meter(cfg.ServiceName),
+			Tracer: oteltrace.NewNoopTracerProvider().Tracer(cfg.ServiceName),
+			cfg:    cfg,
+		}, nil
+	}
 	rp := newResource(cfg.ServiceName, cfg.ServiceVersion, cfg.Environment)
 
 	// Set up propagator for cross-service trace context (W3C traceparent + baggage headers)
@@ -82,6 +94,18 @@ func NewTelemetry(ctx context.Context, cfg Config) (*Telemetry, error) {
 		return nil, err
 	}
 	tracer = tp.Tracer(cfg.ServiceName)
+
+	otelLogger := otelslog.NewLogger(
+		cfg.ServiceName,
+		otelslog.WithLoggerProvider(lp),
+	)
+	defaultLogger := slog.Default()
+	slog.SetDefault(slog.New(
+		slog.NewMultiHandler(
+			otelLogger.Handler(),
+			defaultLogger.Handler(),
+		),
+	))
 
 	return &Telemetry{
 		lp:     lp,
@@ -132,6 +156,14 @@ func (t *Telemetry) MeterInt64UpDownCounter(metric Metric) (otelmetric.Int64UpDo
 // The caller is responsible for ending the returned span (typically via defer span.End()).
 func (t *Telemetry) TraceStart(ctx context.Context, name string) (context.Context, oteltrace.Span) {
 	return t.Tracer.Start(ctx, name)
+}
+
+// TraceStartWithScope records a span under an explicit instrumentation scope.
+func (t *Telemetry) TraceStartWithScope(ctx context.Context, scope, name string) (context.Context, oteltrace.Span) {
+	if t.tp == nil {
+		return t.Tracer.Start(ctx, name)
+	}
+	return t.tp.Tracer(scope).Start(ctx, name)
 }
 
 // Shutdown shuts down the logger, meter, and tracer providers.

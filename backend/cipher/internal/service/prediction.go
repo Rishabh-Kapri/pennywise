@@ -310,7 +310,7 @@ func (s *predictionService) chatWithFallback(
 		progress.Report(ctx, step)
 		chatCtx, chatCancel := s.withLLMTimeout(ctx)
 		startedAt := time.Now()
-		res, err := lc.Chat(chatCtx, req)
+		res, err := lc.Chat(chatCtx, req, nil)
 		elapsed := time.Since(startedAt)
 		chatCancel()
 		if err != nil {
@@ -578,6 +578,7 @@ func (s *predictionService) SummarizeEmailText(ctx context.Context, text string)
 			Temperature: 0.0,
 			Stream:      false,
 			Format:      "json",
+			ChatType:    sharedModel.EmailPredictChatType,
 		}
 	})
 	if err != nil {

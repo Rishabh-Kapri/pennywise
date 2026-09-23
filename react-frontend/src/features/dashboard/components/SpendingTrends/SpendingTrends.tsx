@@ -13,12 +13,11 @@ import { ChartBar } from '@phosphor-icons/react';
 import { formatCurrency, formatCompactCurrency } from '../../utils';
 import styles from './SpendingTrends.module.css';
 
-// Categorical series colors, CVD-validated against the card surface (#323232).
-// Hex constants because SVG fill attributes don't resolve CSS custom properties.
-const INCOME_COLOR = '#1baf7a';
-const EXPENSE_COLOR = '#3987e5';
-const AXIS_COLOR = '#a9a9a9';
-const GRID_COLOR = 'rgba(255, 255, 255, 0.07)';
+// SVG presentation colors follow the shared theme.
+const INCOME_COLOR = 'var(--sage)';
+const EXPENSE_COLOR = 'var(--accent)';
+const AXIS_COLOR = 'var(--muted)';
+const GRID_COLOR = 'var(--line)';
 
 interface TooltipEntry {
   dataKey?: string | number;

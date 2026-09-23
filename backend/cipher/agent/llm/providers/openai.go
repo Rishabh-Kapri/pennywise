@@ -31,7 +31,8 @@ type openAIReq struct {
 	MaxOutputTokens int           `json:"max_output_tokens,omitempty"`
 	Stream          bool          `json:"stream,omitempty"`
 	Reasoning       *struct {
-		Effort string `json:"effort"`
+		Summary string `json:"summary,omitempty"`
+		Effort  string `json:"effort,omitempty"`
 	} `json:"reasoning,omitempty"`
 	// PromptCacheKey is a routing hint, not a cache control: the Responses API
 	// caches long prefixes automatically, and this keeps a conversation's
@@ -62,7 +63,7 @@ type openAIRes struct {
 	ID                string                   `json:"id"`
 	Model             string                   `json:"model"`
 	Output            []openAIOutput           `json:"output"`
-	Usage             openAIUsage              `json:"usage"`
+	Usage             *openAIUsage             `json:"usage"`
 	Status            string                   `json:"status"`
 	IncompleteDetails *openAIIncompleteDetails `json:"incomplete_details,omitempty"`
 }
@@ -106,6 +107,7 @@ func NewOpenAIClient() (llm.LLM, error) {
 	return newResponsesClient("openai", "https://api.openai.com", cfg.OpenAIAPIKey), nil
 }
 
+// newResponsesClient shares the Responses API adapter across compatible providers.
 func newResponsesClient(provider, baseURL, apiKey string) *openAIClient {
 	headers := map[string][]string{"content-type": {"application/json"}}
 	if apiKey != "" {
@@ -132,9 +134,15 @@ func (c *openAIClient) toOpenAIReq(req sharedModel.ChatRequest) openAIReq {
 		Stream:          req.Stream,
 		PromptCacheKey:  req.Metadata["conversationId"],
 	}
-	if req.Provider == "lumo" || strings.HasPrefix(req.Model, "lumo") {
+	if strings.HasPrefix(req.Model, "gpt-5") {
 		request.Reasoning = &struct {
-			Effort string `json:"effort"`
+			Summary string `json:"summary,omitempty"`
+			Effort  string `json:"effort,omitempty"`
+		}{Summary: "auto"}
+	} else if req.Provider == "lumo" || strings.HasPrefix(req.Model, "lumo") {
+		request.Reasoning = &struct {
+			Summary string `json:"summary,omitempty"`
+			Effort  string `json:"effort,omitempty"`
 		}{Effort: "high"}
 	}
 	return request
@@ -281,15 +289,20 @@ func (c *openAIClient) fromOpenAIRes(res openAIRes) (sharedModel.ChatResponse, e
 			Content:   content,
 			ToolCalls: toolCalls,
 		},
-		Usage: sharedModel.Usage{
-			InputTokens:     res.Usage.InputTokens,
-			OutputTokens:    res.Usage.OutputTokens,
-			TotalTokens:     res.Usage.TotalTokens,
-			CacheReadTokens: res.Usage.InputTokensDetails.CachedTokens,
-		},
+		Usage:       toOpenAIUsage(res.Usage),
 		StopReason:  toOpenAIStopReason(res),
 		RawProvider: res,
 	}, nil
+}
+
+func toOpenAIUsage(usage *openAIUsage) sharedModel.Usage {
+	if usage == nil {
+		return sharedModel.Usage{}
+	}
+	return sharedModel.Usage{
+		Available: true, InputTokens: usage.InputTokens, OutputTokens: usage.OutputTokens,
+		TotalTokens: usage.TotalTokens, CacheReadTokens: usage.InputTokensDetails.CachedTokens,
+	}
 }
 
 func toOpenAIStopReason(res openAIRes) sharedModel.StopReason {
@@ -395,20 +408,30 @@ func (c *openAIClient) Stream(ctx context.Context, req sharedModel.ChatRequest) 
 				case "message":
 					// simple message call, skip
 				case "reasoning":
-					// reasoning models (gpt-5 family) emit a reasoning output
-					// item before the message; skip it instead of aborting
-					// the stream. @TODO: surface reasoning content later
+					// The item marks the reasoning phase; a summary may arrive later.
+					events <- sharedModel.StreamChunk{Type: sharedModel.ChunkEventReasoning}
 				case "function_call":
-					// function call started, send a tool call event
 					if ev.Item.CallID == "" {
 						ev.Item.CallID = ev.Item.ID
 					}
+					// function call started, send a tool call event
 					events <- sharedModel.StreamChunk{
 						Type:        sharedModel.ChunkEventToolCallStart,
 						ToolCallID:  ev.Item.CallID,
 						ToolName:    ev.Item.Name,
 						OutputIndex: ev.OutputIndex,
 					}
+				}
+			case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
+				var ev struct {
+					Delta string `json:"delta"`
+				}
+				if err := json.Unmarshal(event.Data, &ev); err != nil {
+					log.Error("failed to unmarshal reasoning delta", "error", err)
+					continue
+				}
+				if ev.Delta != "" {
+					events <- sharedModel.StreamChunk{Type: sharedModel.ChunkEventReasoning, Text: ev.Delta}
 				}
 			case "response.output_text.delta":
 				var ev struct {
@@ -458,7 +481,7 @@ func (c *openAIClient) Stream(ctx context.Context, req sharedModel.ChatRequest) 
 						IncompleteDetails *struct {
 							Reason string `json:"reason"`
 						} `json:"incomplete_details"`
-						Usage struct {
+						Usage *struct {
 							InputTokens         int `json:"input_tokens"`
 							OutputTokens        int `json:"output_tokens"`
 							OutputTokensDetails *struct {
@@ -484,13 +507,15 @@ func (c *openAIClient) Stream(ctx context.Context, req sharedModel.ChatRequest) 
 						return &openAIIncompleteDetails{Reason: ev.Response.IncompleteDetails.Reason}
 					}(),
 				}
-				usage := sharedModel.Usage{
-					InputTokens:  ev.Response.Usage.InputTokens,
-					OutputTokens: ev.Response.Usage.OutputTokens,
-					TotalTokens:  ev.Response.Usage.InputTokens + ev.Response.Usage.OutputTokens,
-				}
-				if ev.Response.Usage.InputTokensDetails != nil {
-					usage.CacheReadTokens = ev.Response.Usage.InputTokensDetails.CachedTokens
+				usage := sharedModel.Usage{}
+				if ev.Response.Usage != nil {
+					usage.Available = true
+					usage.InputTokens = ev.Response.Usage.InputTokens
+					usage.OutputTokens = ev.Response.Usage.OutputTokens
+					usage.TotalTokens = usage.InputTokens + usage.OutputTokens
+					if ev.Response.Usage.InputTokensDetails != nil {
+						usage.CacheReadTokens = ev.Response.Usage.InputTokensDetails.CachedTokens
+					}
 				}
 				events <- sharedModel.StreamChunk{
 					Type:       sharedModel.ChunkEventCompleted,

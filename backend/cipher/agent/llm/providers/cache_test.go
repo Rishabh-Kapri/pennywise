@@ -69,7 +69,7 @@ func TestAnthropicToolsWithNoToolsIsEmpty(t *testing.T) {
 }
 
 func TestAnthropicUsageCarriesCacheCounters(t *testing.T) {
-	usage := toModelUsage(anthropicUsage{
+	usage := toModelUsage(&anthropicUsage{
 		InputTokens:              100,
 		OutputTokens:             50,
 		CacheReadInputTokens:     900,
