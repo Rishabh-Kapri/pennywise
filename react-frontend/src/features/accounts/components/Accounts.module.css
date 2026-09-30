@@ -1,0 +1,216 @@
+.section {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  gap: 1rem;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 1rem 0.5rem;
+}
+
+.heading h1 {
+  margin: 0;
+  font-size: 1.2rem;
+  color: var(--color-text);
+}
+
+.heading p {
+  margin: 0.3rem 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 15rem minmax(0, 1fr);
+  gap: 1rem;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.accountList {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 1.25rem;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding: 0.25rem;
+}
+
+.accountGroup {
+  display: grid;
+  min-width: 0;
+  gap: 0.5rem;
+}
+
+.groupHeading {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.groupToggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  width: 100%;
+  padding: 0.55rem 0.35rem;
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-primary-light);
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.groupLabel small {
+  margin-left: 0.25rem;
+  color: var(--color-text-secondary);
+  font-weight: 400;
+}
+
+.groupBalance {
+  margin-left: auto;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.groupAccounts:not([hidden]) {
+  display: grid;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.accountButton {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.45rem;
+  width: 100%;
+  min-width: 0;
+  padding: 0.8rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.7rem;
+  background: var(--color-surface-secondary);
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.accountButton:hover {
+  border-color: var(--color-primary);
+}
+
+.selected {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 18%, var(--color-surface));
+  box-shadow: inset 3px 0 var(--color-primary);
+}
+
+.selected .accountIdentity strong {
+  color: var(--color-primary-light);
+}
+
+.positiveBalance {
+  color: var(--color-budget-positive);
+}
+
+.negativeBalance {
+  color: var(--color-budget-negative);
+}
+
+.accountIdentity {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.accountIdentity strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accountIdentity small {
+  color: var(--color-text-secondary);
+}
+
+.accountBalance {
+  font-size: 0.92rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.85rem;
+  background: var(--color-surface);
+}
+
+.meta {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  margin-bottom: 1rem;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+}
+
+.meta strong {
+  margin-left: 0.3rem;
+  color: var(--color-text);
+}
+
+.transactions {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-top: 1px solid var(--color-border);
+  padding-top: 1rem;
+}
+
+.message {
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.7rem;
+  color: var(--color-text-secondary);
+  background: var(--color-surface);
+}
+
+@media (max-width: 768px) {
+  .layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(6rem, 25%) minmax(0, 1fr);
+  }
+
+  .accountList {
+    max-height: none;
+  }
+
+  .heading p {
+    display: none;
+  }
+
+  .detail {
+    padding: 0.5rem;
+  }
+}

@@ -133,7 +133,7 @@ Compose builds Go services from `backend/Dockerfile.compose` with the local shar
 - Context headers are propagated centrally via `utils.GetHeaders`, including canonical caller/origin/correlation headers and `X-Internal-Token` when a service context is seeded with `INTERNAL_AUTH_TOKEN`.
 - `middleware.RequestMetadata` normalizes ingress metadata, `middleware.InternalRequestAuth` verifies internal traffic, and `middleware.BudgetIdMiddleware` now keys off shared verified-internal context instead of raw headers.
 - `shared/temporal.RequestMetadataPropagator` bridges `correlation_id` and `origin_service` across Temporal workflow/activity boundaries.
-- `otelSDK` exports all spans to the primary OTLP destination (SigNoz) and filters the Langfuse exporter to AI instrumentation scopes (`pennywise/agent`, `pennywise/llm`, `pennywise/embedding`). Cipher's agent and LLM spans use explicit scopes so HTTP and other application spans stay in SigNoz.
+- `otelSDK` exports all spans to the primary OTLP destination (SigNoz) and filters the Langfuse exporter to AI instrumentation scopes (`pennywise/agent`, `pennywise/llm`, `pennywise/embedding`). Cipher's agent and LLM spans use explicit scopes so HTTP and other application spans stay in SigNoz. The Langfuse exporter presents `agent.run` as the root observation because its HTTP parent is filtered out; SigNoz retains the original parent relationship. Agent and generation input/output live on observation attributes, with reasoning in observation metadata.
 
 ### Go Gmail (`backend/go-gmail`)
 
@@ -143,6 +143,7 @@ Compose builds Go services from `backend/Dockerfile.compose` with the local shar
 
 ### React frontend (`react-frontend`)
 
+- Accounts is a standalone page available from the top navbar (`/accounts`, optional `account` query parameter). Its scrollable left sidebar combines checking, savings, and credit cards under Budget, groups other open accounts by type, and keeps closed accounts under Hidden accounts (collapsed by default). Groups show combined balances; the selected account's details and shared `Transaction` component fill the right panel.
 - Feature-first Redux slices in `src/features/*/store/`.
 - Shared light/dark appearance is provided by `context/ThemeProvider.tsx` and `styles/theme.css`; `ThemeToggle` persists `pennywise-theme` and migrates the former homepage preference.
 - `apiClient` auto-adds:

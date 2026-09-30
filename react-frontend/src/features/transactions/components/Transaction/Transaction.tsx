@@ -86,11 +86,11 @@ function StickyMonthHeader({ stickyHeader }: { stickyHeader: NonNullable<StickyH
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function Transaction() {
+export function Transaction({ accountId, embedded = false }: { accountId?: string; embedded?: boolean } = {}) {
   const { setHeaderContent } = useHeader();
   const { setSidePanelContent } = useSidePanel();
   const { id } = useParams();
-  const paramId = id ?? '';
+  const paramId = accountId ?? id ?? '';
   const dispatch = useAppDispatch();
   const { loading, transactions, loadingMore, nextCursor, error } = useAppSelector((state) => state.transactions);
   const { name: accountName, balance: accountBal } = useAppSelector((state) =>
@@ -124,10 +124,13 @@ export function Transaction() {
     setIsDetailPanelOpen(false);
     setIsAddingNew(false);
     setSidePanelContent(null);
-    dispatch(fetchAllTransaction({ accountIds: [paramId] }));
+    dispatch(fetchAllTransaction({ accountIds: paramId ? [paramId] : [] }));
     document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [paramId, dispatch, setSidePanelContent]);
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+      setSidePanelContent(null);
+    };
+  }, [paramId, selectedBudgetId, dispatch, setSidePanelContent]);
 
   const handleTxnSelect = useCallback(
     (index: number, txn: Transaction | null) => {
@@ -301,8 +304,14 @@ export function Transaction() {
   );
 
   const filteredTransactions = useMemo(() => {
-    return filterTransactions(transactions, mobileFilter);
-  }, [transactions, mobileFilter]);
+    const search = searchTerm.trim().toLowerCase();
+    const scopedTransactions = transactions.filter((transaction) =>
+      (!paramId || transaction.accountId === paramId) &&
+      (!search || [transaction.payeeName, transaction.categoryName, transaction.note, transaction.accountName]
+        .some((value) => value?.toLowerCase().includes(search))),
+    );
+    return filterTransactions(scopedTransactions, mobileFilter);
+  }, [transactions, mobileFilter, paramId, searchTerm]);
 
   const listItems = useMemo(() => groupTransactions(filteredTransactions), [filteredTransactions]);
   const isLoadingMore = loadingMore === LoadingState.PENDING;
@@ -346,10 +355,9 @@ export function Transaction() {
       return;
     }
     const { accountIds, categoryIds, payeeIds, tagIds, note, dateFrom, dateTo } = filters;
-    const paramAccountIds = paramId ? [paramId] : [];
 
     const args = {
-      accountIds,
+      accountIds: paramId ? [paramId] : accountIds,
       categoryIds,
       payeeIds,
       tagIds,
@@ -362,8 +370,6 @@ export function Transaction() {
       ...args,
       cursor: nextCursor,
     };
-    params.accountIds = [...(paramAccountIds ?? []), ...(accountIds ?? [])];
-
     dispatch(fetchAllTransaction(params));
   }, [dispatch, filters, loading, loadingMore, nextCursor, paramId]);
 
@@ -380,7 +386,7 @@ export function Transaction() {
   useEffect(() => {
     const { accountIds, categoryIds, payeeIds, tagIds, note, dateFrom, dateTo } = filters;
     const args = {
-      accountIds,
+      accountIds: paramId ? [paramId] : accountIds,
       categoryIds,
       payeeIds,
       tagIds,
@@ -393,9 +399,10 @@ export function Transaction() {
     return () => {
       clearTimeout(timer);
     };
-  }, [filters, dispatch]);
+  }, [filters, dispatch, paramId, selectedBudgetId]);
 
   useEffect(() => {
+    if (embedded) return;
     setHeaderContent(
       <>
         <TransactionHeader
@@ -407,11 +414,11 @@ export function Transaction() {
           mobileFilter={mobileFilter}
           onMobileFilterChange={setMobileFilter}
         />
-        <TransactionFilterPanel filters={filters} onChange={setFilters} />
+        <TransactionFilterPanel filters={filters} onChange={setFilters} hideAccountFilter={Boolean(paramId)} />
       </>,
     );
     return () => setHeaderContent(null);
-  }, [setHeaderContent, accountName, accountBal, searchTerm, mobileFilter, filters, addTransaction, setFilters]);
+  }, [setHeaderContent, accountName, accountBal, searchTerm, mobileFilter, filters, addTransaction, setFilters, embedded, paramId]);
 
   // Sync detail panel into the side panel slot whenever selected txn changes
   useEffect(() => {
@@ -448,10 +455,27 @@ export function Transaction() {
 
   return (
     <>
+      {embedded && (
+        <div className={styles.embeddedHeader}>
+          <TransactionHeader
+            name={accountName}
+            balance={accountBal}
+            onTxnAdd={addTransaction}
+            searchTerm={searchTerm}
+            onSearchChange={setSearchTerm}
+            mobileFilter={mobileFilter}
+            onMobileFilterChange={setMobileFilter}
+          />
+          <TransactionFilterPanel filters={filters} onChange={setFilters} hideAccountFilter={Boolean(paramId)} />
+        </div>
+      )}
       {loading === LoadingState.PENDING && transactions.length === 0 && <TransactionSkeleton />}
       {error && <div className={styles.errorBanner}>{error}</div>}
+      {loading === LoadingState.SUCCESS && filteredTransactions.length === 0 && (
+        <p className={styles.emptyMessage}>No transactions match this view.</p>
+      )}
       {(loading !== LoadingState.PENDING || transactions.length > 0) && (
-        <div className={`${styles.wrapper} ${paramId ? styles.specificAccount : styles.allAccounts}`}>
+        <div className={`${styles.wrapper} ${paramId ? styles.specificAccount : styles.allAccounts} ${embedded ? styles.embeddedWrapper : ''}`}>
           {isMobile ? (
             <TransactionMobile
               transactions={filteredTransactions}
@@ -492,6 +516,11 @@ export function Transaction() {
             </div>
           )}
         </div>
+      )}
+      {isMobile && nextCursor && (
+        <button type="button" onClick={loadMoreTransactions} disabled={isLoadingMore || loading === LoadingState.PENDING}>
+          {isLoadingMore ? 'Loading…' : 'Load more transactions'}
+        </button>
       )}
     </>
   );

@@ -264,10 +264,8 @@ func (h *httpTransport) Send(ctx context.Context, req *transport.Request) (trans
 	switch req.Method {
 	case http.MethodGet:
 		doReq, err = h.get(ctx, req.Path, req.MergedHeaders)
-		break
 	case http.MethodPost, http.MethodPatch, http.MethodPut:
 		doReq, err = h.requestWithBody(ctx, req.Method, req.Path, req.MergedHeaders, req.Payload)
-		break
 	default:
 		return transport.Response{}, errs.New(errs.CodeInvalidArgument, "unsupported request method")
 	}
