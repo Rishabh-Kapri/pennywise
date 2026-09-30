@@ -14,6 +14,7 @@ const BudgetOnboarding = lazy(
   () => import('@/features/budget/components/BudgetOnboarding'),
 );
 const Settings = lazy(() => import('@/features/settings/components/Settings'));
+const Accounts = lazy(() => import('@/features/accounts/components/Accounts'));
 const Transaction = lazy(() =>
   import('@/features/transactions/components/Transaction').then((module) => ({
     default: module.Transaction,
@@ -103,6 +104,14 @@ function App() {
               element={
                 <Suspense fallback={<div>Loading...</div>}>
                   <Transaction />
+                </Suspense>
+              }
+            />
+            <Route
+              path="/accounts"
+              element={
+                <Suspense fallback={<div>Loading...</div>}>
+                  <Accounts />
                 </Suspense>
               }
             />

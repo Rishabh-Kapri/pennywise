@@ -151,8 +151,11 @@ func ProcessStream(
 					handlerCallback.OnDone(event.Usage)
 				}
 				stepResult.Usage = event.Usage
+				stepResult.Model = event.Model
 				stepResult.Text = text.String()
+
 				text.Reset()
+
 				if hasFunctionCall || len(stepResult.ToolCalls) > 0 {
 					stepResult.StopReason = sharedModel.StopReasonToolUse
 				} else if event.StopReason != "" {

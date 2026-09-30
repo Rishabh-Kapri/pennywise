@@ -264,6 +264,7 @@ func (c *openAIClient) fromOpenAIRes(res openAIRes) (sharedModel.ChatResponse, e
 
 	content := make([]sharedModel.ContentBlock, 0)
 	toolCalls := make([]sharedModel.ToolCall, 0)
+	var reasoning strings.Builder
 	for _, output := range res.Output {
 		switch output.Type {
 		case "message":
@@ -278,6 +279,15 @@ func (c *openAIClient) fromOpenAIRes(res openAIRes) (sharedModel.ChatResponse, e
 				Name:      output.Name,
 				Arguments: json.RawMessage(output.Arguments),
 			})
+		case "reasoning":
+			for _, item := range output.Content {
+				if item.Type == "reasoning_text" && item.Text != "" {
+					if reasoning.Len() > 0 {
+						reasoning.WriteString("\n\n")
+					}
+					reasoning.WriteString(item.Text)
+				}
+			}
 		}
 	}
 
@@ -289,6 +299,7 @@ func (c *openAIClient) fromOpenAIRes(res openAIRes) (sharedModel.ChatResponse, e
 			Content:   content,
 			ToolCalls: toolCalls,
 		},
+		Reasoning:   reasoning.String(),
 		Usage:       toOpenAIUsage(res.Usage),
 		StopReason:  toOpenAIStopReason(res),
 		RawProvider: res,
@@ -360,14 +371,15 @@ func (c *openAIClient) Stream(ctx context.Context, req sharedModel.ChatRequest) 
 	openAIReq := c.toOpenAIReq(req)
 	openAIReq.Stream = true
 	log.Info("sending stream req")
-	events := make(chan sharedModel.StreamChunk)
+	events := make(chan sharedModel.StreamChunk, 1)
 
 	headers := map[string][]string{
 		"Accept": {"text/event-stream"},
 	}
 	res, err := transport.StreamPost(ctx, c.httpClient, openAIResponsesPath, headers, openAIReq)
 	if err != nil {
-		log.Error("error while sending openai streaming /v1/messages", "error", err)
+		log.Error("error while sending streaming /v1/responses", "error", err)
+		events <- sharedModel.StreamChunk{Type: sharedModel.ChunkEventError, Text: err.Error()}
 		close(events)
 		return events
 	}
@@ -521,8 +533,9 @@ func (c *openAIClient) Stream(ctx context.Context, req sharedModel.ChatRequest) 
 					Type:       sharedModel.ChunkEventCompleted,
 					Usage:      usage,
 					StopReason: toOpenAIStopReason(response),
+					Model:      ev.Response.Model,
 				}
-			case "response.failed", "response.error", "response.incomplete":
+			case "response.failed", "response.error", "response.incomplete", "error":
 				errMsg := openAIStreamErrorMessage(event.Event, event.Data)
 				log.Error("openai stream returned an error event", "event", event.Event, "data", string(event.Data))
 				events <- sharedModel.StreamChunk{

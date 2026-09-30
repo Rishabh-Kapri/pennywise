@@ -241,13 +241,18 @@ func (a *Agent) Stream(ctx context.Context, req sharedModel.ChatRequest) error {
 func chatResToStepResult(chatRes sharedModel.ChatResponse) sharedModel.StepResult {
 	return sharedModel.StepResult{
 		Text:       messageContentText(chatRes.Message.Content),
+		Reasoning:  chatRes.Reasoning,
 		ToolCalls:  chatRes.Message.ToolCalls,
 		Usage:      chatRes.Usage,
+		Model:      chatRes.Model,
 		StopReason: chatRes.StopReason,
 	}
 }
 
 func stepResultToChatResponse(modelName string, stepResult sharedModel.StepResult) *sharedModel.ChatResponse {
+	if stepResult.Model != "" {
+		modelName = stepResult.Model
+	}
 	return &sharedModel.ChatResponse{
 		Model: modelName,
 		Message: sharedModel.AgentMessage{
@@ -525,7 +530,7 @@ func (a *Agent) runLLMStep(ctx context.Context, req sharedModel.ChatRequest) (sh
 
 		stepResult := handler.ProcessStream(ctx, &req, events, handler.StreamHandler{
 			OnTextDelta: func(textDelta string) {
-				log.Info("stream \"text_delta\" received", "textDelta", textDelta)
+				// log.Info("stream \"text_delta\" received", "textDelta", textDelta)
 				a.publishChatStreamEvent(
 					ctx,
 					budgetId,
@@ -541,7 +546,7 @@ func (a *Agent) runLLMStep(ctx context.Context, req sharedModel.ChatRequest) (sh
 					req.Metadata["messageId"], "reasoning_delta", textDelta)
 			},
 			OnToolCallStart: func(ctx context.Context, toolCall sharedModel.ToolCall) {
-				log.Info("stream \"tool_call_start\" received", "tool", toolCall)
+				// log.Info("stream \"tool_call_start\" received", "tool", toolCall)
 
 				tool, err := a.toolRegistry.GetTool(toolCall.Name)
 				if err != nil {
@@ -570,10 +575,10 @@ func (a *Agent) runLLMStep(ctx context.Context, req sharedModel.ChatRequest) (sh
 				)
 			},
 			OnToolCall: func(ctx context.Context, tool sharedModel.ToolCall) {
-				log.Info("stream \"tool_call\" received", "tool", tool)
+				// log.Info("stream \"tool_call\" received", "tool", tool)
 			},
 			OnDone: func(usage sharedModel.Usage) {
-				log.Info("stream done received", "usage", usage)
+				// log.Info("stream done received", "usage", usage)
 			},
 		})
 		if stepResult.Err != nil {
@@ -727,6 +732,7 @@ func (a *Agent) Run(
 
 	defer func() {
 		defer span.End()
+		recordAgentReasoning(span, messageParts)
 		if err == nil && req.Stream {
 			budgetID, budgetErr := utils.BudgetIDFromContext(ctx)
 			userID, userErr := utils.UserIDFromContext(ctx)
@@ -852,6 +858,10 @@ func (a *Agent) Run(
 		if err != nil {
 			setSpanError(span, err)
 			return nil, err
+		}
+		if stepResult.Model == "lumo-lite" {
+			// Keep using the quota fallback for subsequent tool turns and the final answer.
+			req.Model = "lumo-lite"
 		}
 
 		tokenUsage["input"] += stepResult.Usage.InputTokens

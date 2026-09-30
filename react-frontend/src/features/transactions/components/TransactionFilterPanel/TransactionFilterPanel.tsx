@@ -18,9 +18,10 @@ import styles from './TransactionFilterPanel.module.css';
 interface TransactionFilterPanelProps {
   filters: TransactionFilters;
   onChange: (filters: TransactionFilters) => void;
+  hideAccountFilter?: boolean;
 }
 
-export function TransactionFilterPanel({ filters, onChange }: TransactionFilterPanelProps) {
+export function TransactionFilterPanel({ filters, onChange, hideAccountFilter = false }: TransactionFilterPanelProps) {
   const isActive = hasActiveFilters(filters);
   const allTags = useAppSelector(selectAllTags);
 
@@ -60,7 +61,7 @@ export function TransactionFilterPanel({ filters, onChange }: TransactionFilterP
       </div>
 
       {/* Account */}
-      <div className={styles.filterGroup}>
+      {!hideAccountFilter && <div className={styles.filterGroup}>
         <label className={styles.filterLabel}>Account</label>
         <AccountDropdown
           multiple
@@ -70,7 +71,7 @@ export function TransactionFilterPanel({ filters, onChange }: TransactionFilterP
           onClick={() => { }}
           variant="form"
         />
-      </div>
+      </div>}
 
       {/* Payee */}
       <div className={styles.filterGroup}>

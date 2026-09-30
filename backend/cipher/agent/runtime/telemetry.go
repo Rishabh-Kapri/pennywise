@@ -1,6 +1,9 @@
 package agent
 
 import (
+	"strings"
+	"unicode/utf8"
+
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/telemetry"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/tools"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
@@ -54,12 +57,13 @@ func recordAgentRunStart(span trace.Span, req sharedModel.ChatRequest, maxTurns 
 	input := any(req.Messages)
 	for i := len(req.Messages) - 1; i >= 0; i-- {
 		if req.Messages[i].Role == sharedModel.RoleUser {
-			input = req.Messages[i].Content
+			input = messageContentText(req.Messages[i].Content)
 			break
 		}
 	}
 	setSpanJSON(span, "agent.input", input)
 	setSpanJSON(span, "langfuse.observation.input", input)
+	setSpanJSON(span, "langfuse.trace.input", input)
 }
 
 func recordAgentTurn(span trace.Span, turnCount int, messageCount int, totalToolCalls int) {
@@ -90,10 +94,31 @@ func recordTotalToolCalls(span trace.Span, totalToolCalls int) {
 
 func recordAgentSuccess(span trace.Span, res *sharedModel.ChatResponse, turnCount int, totalToolCalls int) {
 	setSpanJSON(span, "agent.output", res.Message.Content)
-	setSpanJSON(span, "langfuse.observation.output", res.Message.Content)
+	setSpanJSON(span, "langfuse.observation.output", messageContentText(res.Message.Content))
+	setSpanJSON(span, "langfuse.trace.output", messageContentText(res.Message.Content))
 	span.SetAttributes(
 		attribute.Int("agent.final_turn_count", turnCount),
 		attribute.Int("agent.final_tool_call_count", totalToolCalls),
 	)
 	span.SetStatus(codes.Ok, "")
+}
+
+func recordAgentReasoning(span trace.Span, parts []sharedModel.MessagePart) {
+	var sections []string
+	for _, part := range parts {
+		if part.Type == sharedModel.MessageTypeReasoning && part.Content != nil && *part.Content != "" {
+			sections = append(sections, *part.Content)
+		}
+	}
+	if len(sections) == 0 {
+		return
+	}
+	reasoning := strings.Join(sections, "\n\n")
+	if len(reasoning) > agentSpanContentLimit {
+		reasoning = reasoning[:agentSpanContentLimit]
+		for !utf8.ValidString(reasoning) {
+			reasoning = reasoning[:len(reasoning)-1]
+		}
+	}
+	span.SetAttributes(attribute.String("langfuse.observation.metadata.reasoning", reasoning))
 }

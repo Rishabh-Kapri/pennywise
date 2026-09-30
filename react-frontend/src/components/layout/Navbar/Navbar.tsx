@@ -8,6 +8,7 @@ import {
   Receipt as ReceiptIndianRupee,
   Users as UsersRound,
   ChartBar,
+  Bank,
 } from '@phosphor-icons/react';
 import type { IconProps } from '@phosphor-icons/react';
 import styles from './Navbar.module.css';
@@ -34,6 +35,7 @@ const NAV_ITEMS: {
     exact: false,
   },
   { path: '/budget', key: 'budget', label: 'Budget', icon: <WalletCards size={16} strokeWidth={1.75} />, exact: false },
+  { path: '/accounts', key: 'accounts', label: 'Accounts', icon: <Bank size={16} strokeWidth={1.75} />, exact: true },
   { path: '/payees', key: 'payees', label: 'Payees', icon: <UsersRound size={16} strokeWidth={1.75} />, exact: false },
   { path: '/reports', key: 'reports', label: 'Reports', icon: <ChartBar size={16} strokeWidth={1.75} />, exact: false },
 ];
@@ -48,7 +50,7 @@ export function Navbar() {
 
   useEffect(() => {
     setIsMobileMenuOpen(false);
-  }, [location.pathname]);
+  }, [location.pathname, location.search]);
 
   return (
     <>
@@ -60,14 +62,11 @@ export function Navbar() {
               key={item.key}
               to={item.path}
               end={item.exact}
+              aria-label={item.label}
+              title={item.label}
               className={({ isActive }) => `${styles.navTab} ${isActive ? styles.navTabActive : ''}`}
             >
-              {({ isActive }) => (
-                <>
-                  {renderNavIcon(item.icon, isActive)}
-                  <span>{item.label}</span>
-                </>
-              )}
+              {({ isActive }) => renderNavIcon(item.icon, isActive)}
             </NavLink>
           ))}
         </div>
@@ -117,7 +116,7 @@ export function Navbar() {
 
       {/* Bottom mobile nav bar */}
       <nav className={styles.bottomNav}>
-        {NAV_ITEMS.slice(0, 4).map((item) => (
+        {NAV_ITEMS.filter((item) => item.key !== 'accounts').slice(0, 4).map((item) => (
           <NavLink
             key={item.key}
             to={item.path}

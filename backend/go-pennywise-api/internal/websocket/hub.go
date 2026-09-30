@@ -177,7 +177,6 @@ func (r *connectionHub) broadcastToBudget(budgetID string, message sharedModel.M
 
 // broadcast a message to the users based on the message eventName
 func (r *connectionHub) Broadcast(message sharedModel.Message, client *Client) {
-	logger.Logger(context.Background()).Info("received chat::stream", "message", message)
 	switch message.EventName {
 	case "pennywise::agent::chat::subscribe":
 		// this is a chat subscription event, client is needed

@@ -162,6 +162,35 @@ func TestRunReturnsToolFailureToModel(t *testing.T) {
 	}
 }
 
+func TestRunKeepsLumoLiteAfterQuotaFallback(t *testing.T) {
+	registry := tools.NewToolRegistry()
+	registry.RegisterTool(failingTool{name: "execute_sql"})
+	first := toolUseResponse("call_1", "execute_sql")
+	first.Model = "lumo-lite"
+	second := endTurnResponse("Done")
+	second.Model = "lumo-lite"
+	client := &scriptedLLM{responses: []sharedModel.ChatResponse{first, second}}
+	agent := newTestAgent(t, client, registry)
+
+	response, err := agent.Run(testContext(t), sharedModel.ChatRequest{
+		Provider: "lumo",
+		Model:    "lumo-max",
+		Messages: []sharedModel.AgentMessage{{
+			Role:    sharedModel.RoleUser,
+			Content: []sharedModel.ContentBlock{{Type: "text", Text: "check my data"}},
+		}},
+	}, WithUpdateMetadata(false), WithRunMemoryEnabled(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(client.requests) != 2 || client.requests[0].Model != "lumo-max" || client.requests[1].Model != "lumo-lite" {
+		t.Fatalf("requested models = %v", client.requests)
+	}
+	if response.Model != "lumo-lite" {
+		t.Fatalf("response model = %q", response.Model)
+	}
+}
+
 // Every tool_use must have a matching tool_result in the next request,
 // regardless of how the tool behaved.
 func TestRunNeverLeavesToolCallUnanswered(t *testing.T) {
