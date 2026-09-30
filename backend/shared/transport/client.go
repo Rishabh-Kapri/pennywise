@@ -31,7 +31,7 @@ type StreamResponse struct {
 	Events     <-chan SSEEvent // receive only channel, prevents consumers sending events
 }
 
-// Defines the strategy pattern for inter service communication
+// Defines the strategy pattern for inter-service communication
 // All the actual transports like HTTP will have to satisfy this interface
 type Transport interface {
 	Send(ctx context.Context, req *Request) (Response, error)
@@ -94,6 +94,7 @@ func (c *Client) getMergedHeader(ctx context.Context, headers map[string][]strin
 		}
 	}
 
+	// passthrough internal headers
 	if c.propagateInternalHeaders == true {
 		for key, value := range utils.GetHeaders(ctx) {
 			if mergedHeaders[key] == nil {
@@ -168,7 +169,13 @@ func Patch[T any](ctx context.Context, c *Client, path string, headers map[strin
 	return result, nil
 }
 
-func StreamPost(ctx context.Context, c *Client, path string, headers map[string][]string, data any) (StreamResponse, error) {
+func StreamPost(
+	ctx context.Context,
+	c *Client,
+	path string,
+	headers map[string][]string,
+	data any,
+) (StreamResponse, error) {
 	req := &Request{Method: "POST", Path: path, MergedHeaders: c.getMergedHeader(ctx, headers), Payload: data}
 
 	return c.transport.Stream(ctx, req)

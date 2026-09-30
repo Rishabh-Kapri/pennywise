@@ -84,6 +84,7 @@ type ChatResponse struct {
 	ID          string
 	Model       string
 	Message     AgentMessage
+	Reasoning   string
 	Usage       Usage
 	StopReason  StopReason
 	RawProvider any // this is the raw message from the llm provider
@@ -164,6 +165,7 @@ type StreamChunk struct {
 
 	Usage      Usage
 	StopReason StopReason
+	Model      string
 }
 
 // Accumulated result of a single llm call
@@ -173,6 +175,7 @@ type StepResult struct {
 	ToolCalls  []ToolCall
 	Usage      Usage
 	MaxTokens  int
+	Model      string
 	Err        error
 	StopReason StopReason
 }
