@@ -40,10 +40,10 @@ export function TransactionHeader({
         <h3>{getCurrencyLocaleString(balance)}</h3>
       </div>
       <div className={styles.actionContainer}>
-        <div className={styles.addButton} onClick={onTxnAdd}>
+        <button type="button" className={styles.addButton} onClick={onTxnAdd}>
           <Plus size={16} />
           <span>Add Expense</span>
-        </div>
+        </button>
         <div className={styles.searchContainer}>
           <Search size={16} />
           <input

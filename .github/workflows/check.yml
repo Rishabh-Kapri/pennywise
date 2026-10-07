@@ -1,0 +1,52 @@
+name: Validate
+on:
+  pull_request:
+  push:
+    branches: [dev, master]
+permissions:
+  contents: read
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.0'
+          cache-dependency-path: backend/*/go.sum
+      - run: make check-go
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: react-frontend/package-lock.json
+      - run: npm --prefix react-frontend ci
+      - run: make check-web
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: react-frontend/package-lock.json
+      - run: npm --prefix react-frontend ci
+      - run: npx playwright install --with-deps chromium
+        working-directory: react-frontend
+      - run: make smoke
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: smoke-failure
+          path: |
+            artifacts/
+            react-frontend/playwright-report/
+            react-frontend/test-results/

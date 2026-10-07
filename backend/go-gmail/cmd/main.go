@@ -215,8 +215,17 @@ func main() {
 	budgetApiGroup := api.Group("")
 	budgetApiGroup.Use(sharedMiddleware.BudgetIdMiddleware(budgetRepo))
 
-	budgetApiGroup.POST("/watch", watchHandler)
-	budgetApiGroup.POST("/test/setup-watch", setupWatchTestHandler)
+	// Watch controls are mailbox-scoped and accept only verified internal calls.
+	watchGroup := api.Group("")
+	watchGroup.Use(func(c *gin.Context) {
+		if !utils.VerifiedInternalFromContext(c.Request.Context()) {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "verified internal request required"})
+			return
+		}
+		c.Next()
+	})
+	watchGroup.POST("/watch", watchHandler)
+	watchGroup.POST("/test/setup-watch", setupWatchTestHandler)
 	budgetApiGroup.POST("/temporal", temporalHandler)
 
 	server := &http.Server{

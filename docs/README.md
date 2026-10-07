@@ -11,6 +11,7 @@ Design and architecture documents. The living, must-stay-accurate references are
 
 ## Design explorations / history
 
+- [Credit card statement ingestion](credit-card-statement-ingestion.html) — proposed upload MVP: password-protected PDFs, transaction reconciliation, rewards, and related taxes/fees (standalone HTML)
 - [agent-architecture-future.md](agent-architecture-future.md) — future directions for the agent runtime
 - [beyond-ReAct.md](beyond-ReAct.md) — notes on agent loop patterns beyond ReAct
 - [mlp-implementation-plan.md](mlp-implementation-plan.md) — historical plan for the (now deprecated) python-mlp prediction service

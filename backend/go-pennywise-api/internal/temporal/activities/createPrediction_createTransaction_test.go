@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"math"
 	"net/http"
 	"strings"
@@ -963,7 +963,7 @@ func TestCreateTransactionsSkipsDuplicates(t *testing.T) {
 	created, err := act.createTransactions(ctx, nil, []model.CipherPredictionResult{
 		{MessageId: "msg-dup", OriginalRawText: dupRaw, PayeeID: payeeID, Amount: -10, Date: "2026-07-14"},
 		{MessageId: "msg-new", OriginalRawText: newRaw, PayeeID: payeeID, Amount: -20, Date: "2026-07-14"},
-	}, budgetID, slog.Default())
+	}, budgetID, logger.Logger(ctx))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

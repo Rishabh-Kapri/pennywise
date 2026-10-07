@@ -55,12 +55,13 @@ type PredictionReq struct {
 
 // GoogleUserInfo matches the API response from GET /api/auth/google/users
 type GoogleUserInfo struct {
-	GoogleID        string                            `json:"googleId"`
-	OAuthClientType sharedModel.GoogleOAuthClientType `json:"oauthClientType"`
-	Email           string                            `json:"email"`
-	GmailHistoryID  int                               `json:"gmailHistoryId"`
-	RefreshToken    string                            `json:"refreshToken"`
-	BudgetID        string                            `json:"budgetId"`
+	GoogleID             string                            `json:"googleId"`
+	OAuthClientType      sharedModel.GoogleOAuthClientType `json:"oauthClientType"`
+	Email                string                            `json:"email"`
+	GmailHistoryID       int                               `json:"gmailHistoryId"`
+	RefreshToken         string                            `json:"refreshToken"`
+	BudgetID             string                            `json:"budgetId"`
+	GmailIngestionPaused bool                              `json:"gmailIngestionPaused"`
 }
 
 type searchResult struct {

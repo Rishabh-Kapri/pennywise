@@ -46,18 +46,19 @@ type AuthProvider struct {
 }
 
 type GoogleProviderUser struct {
-	ID              string                `json:"id"` // AuthProvider.ProviderID
-	OAuthClientType GoogleOAuthClientType `json:"oauthClientType"`
-	Name            string                `json:"name"`
-	Picture         string                `json:"picture"`
-	Email           string                `json:"email"`
-	GmailHistoryID  *uint64               `json:"gmailHistoryId"`
-	RefreshToken    string                `json:"refreshToken"`
-	CreatedAt       time.Time             `json:"createdAt"`
-	UpdatedAt       time.Time             `json:"updatedAt"`
-	LastGmailSync   *time.Time            `json:"lastGmailSync"`
-	ExpiryAt        *int64                `json:"expiryAt"`
-	Deleted         bool                  `json:"deleted"`
+	ID                   string                `json:"id"` // AuthProvider.ProviderID
+	OAuthClientType      GoogleOAuthClientType `json:"oauthClientType"`
+	Name                 string                `json:"name"`
+	Picture              string                `json:"picture"`
+	Email                string                `json:"email"`
+	GmailHistoryID       *uint64               `json:"gmailHistoryId"`
+	RefreshToken         string                `json:"refreshToken"`
+	CreatedAt            time.Time             `json:"createdAt"`
+	UpdatedAt            time.Time             `json:"updatedAt"`
+	LastGmailSync        *time.Time            `json:"lastGmailSync"`
+	ExpiryAt             *int64                `json:"expiryAt"`
+	Deleted              bool                  `json:"deleted"`
+	GmailIngestionPaused bool                  `json:"gmailIngestionPaused"`
 }
 
 type UserWithCredentials struct {
@@ -136,14 +137,15 @@ type JWTClaims struct {
 // GoogleUserInfo is returned for internal service lookups by email.
 // Contains google provider data plus the user's budget context.
 type GoogleUserInfo struct {
-	GoogleID        string                `json:"googleId"`
-	OAuthClientType GoogleOAuthClientType `json:"oauthClientType"`
-	Email           string                `json:"email"`
-	GmailHistoryID  uint64                `json:"gmailHistoryId"`
-	RefreshToken    string                `json:"refreshToken"`
-	LastGmailSync   *time.Time            `json:"lastGmailSync"`
-	UserID          uuid.UUID             `json:"userId"`
-	BudgetID        uuid.UUID             `json:"budgetId"`
+	GoogleID             string                `json:"googleId"`
+	OAuthClientType      GoogleOAuthClientType `json:"oauthClientType"`
+	Email                string                `json:"email"`
+	GmailHistoryID       uint64                `json:"gmailHistoryId"`
+	RefreshToken         string                `json:"refreshToken"`
+	LastGmailSync        *time.Time            `json:"lastGmailSync"`
+	UserID               uuid.UUID             `json:"userId"`
+	BudgetID             uuid.UUID             `json:"budgetId"`
+	GmailIngestionPaused bool                  `json:"gmailIngestionPaused"`
 }
 
 // UpdateGmailHistoryRequest is the request body for updating gmail history ID
