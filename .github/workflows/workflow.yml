@@ -72,7 +72,7 @@ jobs:
                       ['git', 'diff', '--name-only', base, head, '--'], text=True
                   ).splitlines()
                   selected = {name for name, _, _ in services} if any(
-                      path.startswith('backend/shared/') for path in changed
+                      path.startswith('backend/shared/') or path == '.github/workflows/workflow.yml' for path in changed
                   ) else {
                       name for name, _, _ in services
                       if any(path.startswith(f'backend/{name}/') for path in changed)
@@ -111,6 +111,9 @@ jobs:
       - name: Vendor dependencies, including the local shared module
         working-directory: backend/${{ matrix.module }}
         run: GOWORK=off go mod vendor
+      - name: Test and vet
+        working-directory: backend/${{ matrix.module }}
+        run: go vet ./... && go test ./...
       - name: Build
         working-directory: backend/${{ matrix.module }}
         run: |

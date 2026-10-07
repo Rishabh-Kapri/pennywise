@@ -284,7 +284,7 @@ func (s *authService) LoginWithGoogle(
 
 	// setup gmail watch
 	lastGmailSync := userWithCreds.GoogleProvider.LastGmailSync
-	if userWithCreds.GoogleProvider.RefreshToken != "" && (lastGmailSync == nil || lastGmailSync.Before(time.Now().Add(-time.Hour*24*5))) {
+	if !userWithCreds.GoogleProvider.GmailIngestionPaused && userWithCreds.GoogleProvider.RefreshToken != "" && (lastGmailSync == nil || lastGmailSync.Before(time.Now().Add(-time.Hour*24*5))) {
 		googleRefreshToken := userWithCreds.GoogleProvider.RefreshToken
 		detachedCtx := context.WithoutCancel(ctx)
 		go s.SetupGmailWatch(

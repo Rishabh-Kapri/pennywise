@@ -35,6 +35,8 @@ Listens on port `5170`. Entry point is `cmd/main.go` (HTTP server + Pub/Sub list
 
 ## Environment
 
+`POST /api/watch` (including `isStop: true`) and `/api/test/setup-watch` are mailbox-scoped internal endpoints: they require shared verified internal authentication and do not require `X-Budget-ID`. The public user controls live in the Go API at `/api/auth/gmail`; credentials stay on the backend. Both the Temporal ingestion workflow and the legacy runner honor the persisted mailbox pause flag, and scheduled watch renewal skips paused connections.
+
 `.env`: Gmail/Pub/Sub credentials, `PENNYWISE_SERVICE_URL`, `CIPHER_SERVICE_URL`, Temporal host/port, `INTERNAL_AUTH_TOKEN`. Outbound calls to other Pennywise services carry the shared correlation/caller/origin headers plus `X-Internal-Token`.
 
 See `AGENTS.md` in this directory for a deeper architectural walkthrough.

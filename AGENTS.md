@@ -1,5 +1,15 @@
 # Agent Guidelines for Pennywise
 
+## Development entry points
+
+- `make setup`: install dependencies and Chromium. `make dev`: isolated credential-free demo.
+- `make check`: Go vet/tests across all active modules and React lint/build.
+- `make smoke`: disposable fresh-database migration and browser checks. `make logs` / `make status`: diagnostics.
+- Read `docs/development.md` for worktree isolation, artifacts, and integration limitations.
+- `contracts/core.schema.json` defines the initial API response contracts, validated against the demo API by `make smoke`. Extend contracts and client types together.
+- Preserve unrelated local changes. Define observable acceptance criteria and report checks actually run.
+- Changes to `backend/shared` require validation of every consumer. Keep budget scoping, transfer balances, and prediction corrections intact.
+
 ## Overview
 
 Pennywise is a personal finance/budgeting monorepo. The repo currently contains production paths, active migration work, and a few experimental services.
@@ -69,6 +79,7 @@ budget-scoped browser websocket clients
 3. **API auth middleware**: accepts `Authorization: Bearer ...` or `X-API-Key` for user traffic, and trusts only shared `VerifiedInternal` context for internal bypass.
 4. **Budget scoping**: budget-scoped routes require `X-Budget-ID`; middleware verifies ownership for user traffic and trusts only verified internal requests for service traffic.
 5. **Gmail ingestion**: Pub/Sub event -> parser -> Temporal `EmailToTransactionWorkflow` -> cipher `PredictionActivity` -> create transaction + cipher prediction via API activities.
+   React Settings → Gmail uses user-scoped `GET /api/auth/gmail` and `POST /api/auth/gmail/{pause,resume,sync,reconnect}`. Pause is persisted in `google_provider_users.gmail_ingestion_paused` across the mailbox's OAuth clients and respected by login, scheduled renewal, and ingestion. Watch renewal preserves the ingestion cursor; new push workflows advance it only after success. Manual sync uses the saved cursor and appears in Activity. Reconnecting validates the Google identity and preserves a deliberate pause. Gmail's `/api/watch` accepts only verified internal calls, without requiring a budget header.
 6. **Prediction corrections**: transaction updates on predicted records update `has_user_corrected`/actual-ID fields (`predictions` and `cipher_predictions`) in API service logic and via cipher `POST /api/corrections`.
 7. **Agent streaming**: Cipher writes `eventName`, `budgetId`, and `data` fields to Redis stream `pubsub`; Go API reads new stream entries and broadcasts them to websocket clients scoped to the same budget.
    Chat stream events include provider-supplied reasoning summaries and `run_completed`; the React chat shows progress and can cancel active runs through the API.
@@ -83,7 +94,7 @@ budget-scoped browser websocket clients
 | Shared | - | `cd backend/shared && go test ./...` | `cd backend/shared && go fmt ./... && go vet ./...` |
 | Workflows | `cd backend/workflows && go build ./cmd/worker` | `cd backend/workflows && go test ./...` | `cd backend/workflows && go fmt ./... && go vet ./...` |
 | Python MLP | `cd backend/python-mlp && python mlp_predict_server.py` | manual/API-level validation | - |
-| React frontend | `cd react-frontend && npm run dev` / `npm run build` | no dedicated test suite currently | `cd react-frontend && npm run lint` |
+| React frontend | `cd react-frontend && npm run dev` / `npm run build` | `npm run test:e2e` against demo stack | `cd react-frontend && npm run lint` |
 | Angular frontend | `cd frontend && npm start` / `npm run build` | `cd frontend && npm test` | TypeScript strict mode |
 | File parser | `cd backend/file-parser && clojure -M:run-m` | `cd backend/file-parser && clojure -T:build test` | - |
 
@@ -207,8 +218,9 @@ Compose builds Go services from `backend/Dockerfile.compose` with the local shar
 
 ### CI/deploy
 
-- GitHub Actions workflow (`master` push) copies env files on self-hosted runner, then runs Docker Compose.
-- Current changed-service mapping in CI mainly targets: `go-gmail`, `python-mlp`, `go-pennywise-api`, and Angular frontend.
+- `.github/workflows/check.yml` validates all five active Go modules, React lint/build, and fresh-database browser smoke coverage on PRs and dev/master pushes.
+- `.github/workflows/workflow.yml` builds/tests affected Go services and deploys to Railway on dev pushes or manual dispatch; shared changes select every consumer.
+- Root commands and isolated demo setup are documented in `docs/development.md`.
 
 ### Git hooks
 
@@ -219,7 +231,7 @@ Compose builds Go services from `backend/Dockerfile.compose` with the local shar
 
 - API embedding service (`internal/service/embedding.go`) is mostly stubbed.
 - React frontend calls `POST /auth/logout`, but the logout endpoint is currently commented out in API routes (local state is cleared regardless).
-- Legacy Go seed migrations (00002/00003) fail on a fresh database; use `up` → `baseline` → `up` and create the pgvector extension first.
+- Fresh demo databases apply every migration with `up`; missing legacy JSON seeds are skipped. Never baseline an empty database (it skips schema versions 1–6).
 - The AI Configuration card in React settings is display-only (local state, not yet persisted to the API).
 - `file-parser` is not production-ready.
 
@@ -227,8 +239,8 @@ Compose builds Go services from `backend/Dockerfile.compose` with the local shar
 
 - Go API tests are focused in service/repository/handler packages (notably transaction, loan metadata, and demo seeding flows).
 - Go Gmail has parser and API client tests.
-- Shared module has text-cleaning utility tests.
-- React frontend currently has no committed automated test suite.
+- Shared module has unit tests; legacy DB tests require an explicit disposable `PENNYWISE_TEST_DATABASE_URL`.
+- React frontend has Playwright smoke coverage against the real demo API; run `make smoke`.
 - Angular frontend still has Karma/Jasmine tests.
 
 ## Maintenance

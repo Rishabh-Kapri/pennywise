@@ -1,3 +1,27 @@
+/** Format a server UTC timestamp (or Unix milliseconds) in the viewer's timezone. */
+export function formatUtcTimestamp(
+  value?: string | number | null,
+  options: Intl.DateTimeFormatOptions = {},
+): string {
+  if (value === undefined || value === null || value === '') return 'Not available';
+
+  // ISO timestamps without an offset are UTC on the server, but Date otherwise
+  // interprets them as local time. Preserve explicit offsets and epoch values.
+  const timestamp = typeof value === 'string' &&
+    /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?$/.test(value)
+    ? `${value.replace(' ', 'T')}Z`
+    : value;
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return 'Not available';
+
+  return date.toLocaleString(undefined, {
+    year: 'numeric', month: 'numeric', day: 'numeric',
+    hour: 'numeric', minute: '2-digit', second: '2-digit',
+    timeZoneName: 'short',
+    ...options,
+  });
+}
+
 function pad(
   value: string,
   padLength: number,

@@ -4,6 +4,7 @@ import { useAppDispatch } from '@/app/hooks';
 import { logout } from '@/features/auth';
 import { Modal } from '@/components/common/Modal';
 import { apiClient } from '@/utils';
+import { formatUtcTimestamp } from '@/utils/date.utils';
 import styles from './Settings.module.css';
 
 interface ConnectedProvider {
@@ -85,7 +86,7 @@ export function GeneralSettings({ user }: Props) {
                   {provider.lastGmailSync && (
                     <small>
                       Last Gmail sync:{' '}
-                      {new Date(provider.lastGmailSync).toLocaleString('en-US', {
+                      {formatUtcTimestamp(provider.lastGmailSync, {
                         month: 'short',
                         day: 'numeric',
                         year: 'numeric',

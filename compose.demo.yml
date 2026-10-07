@@ -1,0 +1,98 @@
+# Credential-free, isolated development stack. Real integrations use docker-compose.yml.
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: pennywise
+      POSTGRES_PASSWORD: pennywise
+      POSTGRES_DB: pennywise
+    volumes:
+      - database:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U pennywise"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  migrate:
+    build: &api-build
+      network: ${DEMO_BUILD_NETWORK:-default}
+      context: ./backend
+      dockerfile: Dockerfile.compose
+      args:
+        MODULE: go-pennywise-api
+        TARGET: ./cmd/api
+        BINARY: api
+        EXTRA_TARGET: ./cmd/migrations
+        EXTRA_BINARY: migrations
+    entrypoint: [./migrations]
+    command: [-dir, ., up]
+    environment: &api-env
+      DATABASE_URL: postgres://pennywise:pennywise@postgres:5432/pennywise?sslmode=disable
+      RAILWAY_ENVIRONMENT_NAME: local
+      JWT_SECRET: isolated-demo-only-secret
+      INTERNAL_AUTH_TOKEN: isolated-demo-only-token
+      DEMO_MODE: "true"
+      DOMAIN: localhost
+      REDIS_URL: redis://redis:6379/0
+      OTEL_SDK_DISABLED: "true"
+      OTEL_TRACES_EXPORTER: none
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: none
+      CIPHER_SERVICE_URL: http://integrations:8080
+      GMAIL_SERVICE_URL: http://integrations:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+  api:
+    build: *api-build
+    entrypoint: [./api]
+    environment: *api-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD-SHELL, "wget -qO- http://127.0.0.1:5151/api >/dev/null"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  integrations:
+    image: python:3.13-alpine
+    command: [python, /stub.py]
+    volumes:
+      - ./scripts/demo-integrations.py:/stub.py:ro
+  web:
+    build:
+      context: ./react-frontend
+      dockerfile: Dockerfile.demo
+      network: ${DEMO_BUILD_NETWORK:-default}
+    working_dir: /app
+    command: [npm, run, dev, --, --host, 0.0.0.0, --port, "5173", --strictPort]
+    environment:
+      VITE_API_URL: /api
+      VITE_DEMO_MODE: "true"
+      VITE_GOOGLE_CLIENT_ID: ""
+      DEV_API_PROXY: http://api:5151
+    volumes:
+      - ./react-frontend:/app
+      - /app/node_modules
+    ports:
+      - "127.0.0.1:${DEMO_WEB_PORT:-5173}:5173"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD-SHELL, "wget -qO- http://127.0.0.1:5173/login >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+volumes:
+  database:

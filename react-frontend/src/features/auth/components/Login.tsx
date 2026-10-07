@@ -31,6 +31,29 @@ const LogoIcon = () => (
   </svg>
 );
 
+function GoogleSignInButton() {
+  const dispatch = useAppDispatch();
+  const onGoogleLogin = useGoogleLogin({
+    flow: 'auth-code',
+    scope: 'https://mail.google.com/',
+    onSuccess: async (codeResponse) => {
+      dispatch(loginWithGoogle(codeResponse.code))
+        .unwrap()
+        .catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : typeof err === 'string' ? err : 'Login failed';
+          toast.error(message);
+        });
+    },
+    onError: (error) => {
+      console.log('inside onError', error);
+    },
+  });
+
+  return <button className={styles.googleButton} onClick={() => onGoogleLogin()}>
+    <LogoIcon />Sign In with Google
+  </button>;
+}
+
 export function Login() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
@@ -61,21 +84,6 @@ export function Login() {
   //   [dispatch],
   // );
 
-  const onGoogleLogin = useGoogleLogin({
-    flow: 'auth-code',
-    scope: 'https://mail.google.com/',
-    onSuccess: async (codeResponse) => {
-      dispatch(loginWithGoogle(codeResponse.code))
-        .unwrap()
-        .catch((err: unknown) => {
-          const message = err instanceof Error ? err.message : typeof err === 'string' ? err : 'Login failed';
-          toast.error(message);
-        });
-    },
-    onError: (error) => {
-      console.log('inside onError', error);
-    },
-  });
 
   const onDemoLogin = () => {
     dispatch(loginAsDemo())
@@ -120,10 +128,7 @@ export function Login() {
           <div className={styles.googleButtonContainer}>
             {!GOOGLE_CLIENT_ID && !config.demoMode && <div className={styles.error}>Google Login Not Enabled</div>}
             {GOOGLE_CLIENT_ID && (
-              <button className={styles.googleButton} onClick={onGoogleLogin}>
-                <LogoIcon />
-                Sign In with Google
-              </button>
+              <GoogleSignInButton />
             )}
             {config.demoMode && (
               <button className={styles.demoButton} onClick={onDemoLogin}>

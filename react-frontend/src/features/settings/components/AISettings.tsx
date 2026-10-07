@@ -607,8 +607,8 @@ function APIKeysSection() {
       setCreating(true);
       setCreatedKey(null);
       try {
-        const fullKey = await apiClient.post<any>('keys', { name: newKeyName.trim() } as any);
-        setCreatedKey(fullKey as string);
+        const fullKey = await apiClient.post<string, { name: string }>('keys', { name: newKeyName.trim() });
+        setCreatedKey(fullKey);
         setNewKeyName('');
         // Reload keys list
         apiClient
