@@ -75,8 +75,8 @@ func newTestService(t *testing.T, resolver llm.LLMResolver, targets []config.LLM
 
 func newTestTelemetry(t *testing.T) otelSDK.TelemetryProvider {
 	t.Helper()
-	// No OTEL_*_EXPORTER env vars in tests, so no exporters are attached.
-	tel, err := otelSDK.NewTelemetry(context.Background(), otelSDK.Config{ServiceName: "cipher-test"})
+	// Unit tests must not install global providers or contact telemetry exporters.
+	tel, err := otelSDK.NewTelemetry(context.Background(), otelSDK.Config{ServiceName: "cipher-test", OtelSdkDisabled: true})
 	require.NoError(t, err)
 	return tel
 }

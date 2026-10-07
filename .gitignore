@@ -88,3 +88,8 @@ backend/cipher/api
 backend/go-pennywise-api/api
 backend/go-gmail/cmd/cmd
 backend/workflows/worker
+
+# Local validation artifacts
+/artifacts/
+react-frontend/playwright-report/
+react-frontend/test-results/
