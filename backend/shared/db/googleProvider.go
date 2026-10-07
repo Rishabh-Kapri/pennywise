@@ -58,7 +58,8 @@ func (r *googleProviderRepo) GetAll(ctx context.Context, tx pgx.Tx) ([]model.Goo
 		  created_at, 
 		  updated_at, 
 		  last_gmail_sync, 
-		  expiry_at
+		  expiry_at,
+		  gmail_ingestion_paused
 		FROM google_provider_users
 		WHERE deleted = FALSE`)
 	if err != nil {
@@ -81,6 +82,7 @@ func (r *googleProviderRepo) GetAll(ctx context.Context, tx pgx.Tx) ([]model.Goo
 			&user.UpdatedAt,
 			&user.LastGmailSync,
 			&user.ExpiryAt,
+			&user.GmailIngestionPaused,
 		); err != nil {
 			return nil, err
 		}
@@ -128,8 +130,9 @@ func (r *googleProviderRepo) Create(
 	var gpu model.GoogleProviderUser
 	err = r.Executor(tx).QueryRow(
 		ctx,
-		`INSERT INTO google_provider_users (id, oauth_client_type, name, picture, email, refresh_token, expiry_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`INSERT INTO google_provider_users (id, oauth_client_type, name, picture, email, refresh_token, expiry_at, gmail_ingestion_paused)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7,
+		   COALESCE((SELECT bool_or(gmail_ingestion_paused) FROM google_provider_users WHERE id = $1 AND deleted = FALSE), FALSE))
 		 ON CONFLICT (id, oauth_client_type) DO UPDATE SET
 		   name = EXCLUDED.name,
 		   picture = EXCLUDED.picture,
@@ -141,10 +144,10 @@ func (r *googleProviderRepo) Create(
 		   expiry_at = EXCLUDED.expiry_at,
 		   deleted = false,
 		   updated_at = now()
-		 RETURNING id, oauth_client_type, name, picture, email, gmail_history_id, refresh_token, created_at, updated_at, last_gmail_sync, expiry_at`,
+		 RETURNING id, oauth_client_type, name, picture, email, gmail_history_id, refresh_token, created_at, updated_at, last_gmail_sync, expiry_at, gmail_ingestion_paused`,
 		googleID, oauthClientType, name, picture, email, refreshToken, expiryAt,
 	).Scan(&gpu.ID, &gpu.OAuthClientType, &gpu.Name, &gpu.Picture, &gpu.Email, &gpu.GmailHistoryID,
-		&gpu.RefreshToken, &gpu.CreatedAt, &gpu.UpdatedAt, &gpu.LastGmailSync, &gpu.ExpiryAt,
+		&gpu.RefreshToken, &gpu.CreatedAt, &gpu.UpdatedAt, &gpu.LastGmailSync, &gpu.ExpiryAt, &gpu.GmailIngestionPaused,
 	)
 	if err != nil {
 		return nil, err
@@ -198,7 +201,8 @@ func (r *googleProviderRepo) getUserByGoogleID(
 		    gpu.created_at,
 		    gpu.updated_at,
 		    gpu.last_gmail_sync,
-			  gpu.expiry_at
+			  gpu.expiry_at,
+			  gpu.gmail_ingestion_paused
 		  FROM auth_users au
 		  JOIN auth_providers ap ON au.id = ap.auth_user_id
 		  JOIN google_provider_users gpu on ap.provider_id = gpu.id AND ap.oauth_client_type = gpu.oauth_client_type
@@ -215,7 +219,7 @@ func (r *googleProviderRepo) getUserByGoogleID(
 		&u.GoogleProvider.ID, &u.GoogleProvider.OAuthClientType, &u.GoogleProvider.Name, &u.GoogleProvider.Picture,
 		&u.GoogleProvider.Email, &u.GoogleProvider.GmailHistoryID,
 		&u.GoogleProvider.RefreshToken, &u.GoogleProvider.CreatedAt,
-		&u.GoogleProvider.UpdatedAt, &u.GoogleProvider.LastGmailSync, &u.GoogleProvider.ExpiryAt,
+		&u.GoogleProvider.UpdatedAt, &u.GoogleProvider.LastGmailSync, &u.GoogleProvider.ExpiryAt, &u.GoogleProvider.GmailIngestionPaused,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -237,12 +241,13 @@ func (r *googleProviderRepo) UpdateHistoryID(
 	logger.Logger(ctx).Info("updating historyID", "googleID", googleID, "oauthClientType", oauthClientType, "historyID", historyID)
 	query := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
 		Update("google_provider_users").
-		Set("gmail_history_id", historyID).
-		Set("last_gmail_sync", time.Now()).
 		Set("updated_at", time.Now())
 
 	if expiryAt != nil {
-		query = query.Set("expiry_at", expiryAt)
+		query = query.Set("expiry_at", expiryAt).
+			Set("gmail_history_id", sq.Expr("COALESCE(gmail_history_id, ?)", historyID))
+	} else {
+		query = query.Set("gmail_history_id", sq.Expr("GREATEST(COALESCE(gmail_history_id, 0), ?)", historyID)).Set("last_gmail_sync", time.Now())
 	}
 	query = query.Where(sq.Eq{"id": googleID, "oauth_client_type": oauthClientType, "deleted": false})
 
@@ -263,23 +268,24 @@ func (r *googleProviderRepo) GetUserByEmail(ctx context.Context, email string) (
 		    gpu.id,
 		    gpu.oauth_client_type,
 		    gpu.email,
-		    gpu.gmail_history_id,
+		    COALESCE(gpu.gmail_history_id, 0),
 		    gpu.refresh_token,
 		    gpu.last_gmail_sync,
+		    gpu.gmail_ingestion_paused,
 		    au.id,
 		    b.id
 		  FROM google_provider_users gpu
 		  JOIN auth_providers ap ON ap.provider_id = gpu.id AND ap.oauth_client_type = gpu.oauth_client_type AND ap.provider_type = 'google'
 		  JOIN auth_users au ON au.id = ap.auth_user_id
 		  JOIN budgets b ON b.user_id = au.id AND b.deleted = FALSE
-		  WHERE gpu.email = $1 AND gpu.deleted = FALSE
+		  WHERE gpu.email = $1 AND gpu.deleted = FALSE AND ap.deleted = FALSE AND au.deleted = FALSE
 		  ORDER BY (gpu.gmail_history_id IS NOT NULL) DESC,
 		           gpu.last_gmail_sync DESC NULLS LAST,
 		           b.is_selected DESC NULLS LAST,
 		           gpu.updated_at DESC
 		  LIMIT 1
 		`, email,
-	).Scan(&info.GoogleID, &info.OAuthClientType, &info.Email, &info.GmailHistoryID, &info.RefreshToken, &info.LastGmailSync, &info.UserID, &info.BudgetID)
+	).Scan(&info.GoogleID, &info.OAuthClientType, &info.Email, &info.GmailHistoryID, &info.RefreshToken, &info.LastGmailSync, &info.GmailIngestionPaused, &info.UserID, &info.BudgetID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrUserNotFound
@@ -296,7 +302,7 @@ func (r *googleProviderRepo) UpdateUserByGoogleIDAndClientType(
 	data *model.GoogleProviderUser,
 ) error {
 	oauthClientType = model.NormalizeGoogleOAuthClientType(oauthClientType)
-	logger.Logger(ctx).Info("updating user", "googleID", googleID, "oauthClientType", oauthClientType, "data", data)
+	logger.Logger(ctx).Info("updating user", "googleID", googleID, "oauthClientType", oauthClientType)
 	query := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).Update("google_provider_users")
 	isUpdate := false
 	if data.Name != "" {
@@ -334,12 +340,14 @@ func (r *googleProviderRepo) UpdateHistoryIDByEmail(
 	oauthClientType = model.NormalizeGoogleOAuthClientType(oauthClientType)
 	query := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
 		Update("google_provider_users").
-		Set("gmail_history_id", historyID).
-		Set("last_gmail_sync", time.Now()).
 		Set("updated_at", time.Now())
 
 	if expiryAt != nil {
-		query = query.Set("expiry_at", expiryAt)
+		query = query.Set("expiry_at", expiryAt).
+			Set("gmail_history_id", sq.Expr("COALESCE(gmail_history_id, ?)", historyID)).
+			Where(sq.Eq{"gmail_ingestion_paused": false})
+	} else {
+		query = query.Set("gmail_history_id", sq.Expr("GREATEST(COALESCE(gmail_history_id, 0), ?)", historyID)).Set("last_gmail_sync", time.Now())
 	}
 	query = query.Where(sq.Eq{"email": email, "oauth_client_type": oauthClientType, "deleted": false})
 

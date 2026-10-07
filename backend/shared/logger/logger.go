@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -17,19 +18,35 @@ type ContextLogger struct {
 }
 
 func (l *ContextLogger) Debug(msg string, args ...any) {
-	l.Logger.DebugContext(l.ctx, msg, args...)
+	logWithCaller(l.ctx, l.Logger, slog.LevelDebug, msg, args...)
 }
 
 func (l *ContextLogger) Info(msg string, args ...any) {
-	l.Logger.InfoContext(l.ctx, msg, args...)
+	logWithCaller(l.ctx, l.Logger, slog.LevelInfo, msg, args...)
 }
 
 func (l *ContextLogger) Warn(msg string, args ...any) {
-	l.Logger.WarnContext(l.ctx, msg, args...)
+	logWithCaller(l.ctx, l.Logger, slog.LevelWarn, msg, args...)
 }
 
 func (l *ContextLogger) Error(msg string, args ...any) {
-	l.Logger.ErrorContext(l.ctx, msg, args...)
+	logWithCaller(l.ctx, l.Logger, slog.LevelError, msg, args...)
+}
+
+// logWithCaller preserves the source of the caller of our logging wrappers.
+func logWithCaller(ctx context.Context, logger *slog.Logger, level slog.Level, msg string, args ...any) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if !logger.Enabled(ctx, level) {
+		return
+	}
+	var pcs [1]uintptr
+	// Skip runtime.Callers, this helper, and the public logging wrapper.
+	runtime.Callers(3, pcs[:])
+	record := slog.NewRecord(time.Now(), level, msg, pcs[0])
+	record.Add(args...)
+	_ = logger.Handler().Handle(ctx, record)
 }
 
 func (l *ContextLogger) With(args ...any) *ContextLogger {
@@ -95,13 +112,13 @@ func logLevelFromEnv(env string) slog.Level {
 // Fatal logs at error level and exits with code 1.
 // Use this as a replacement for log.Fatalf.
 func Fatal(msg string, args ...any) {
-	slog.Error(msg, args...)
+	logWithCaller(context.Background(), slog.Default(), slog.LevelError, msg, args...)
 	os.Exit(1)
 }
 
 // FatalContext logs at error level with context and exits with code 1.
 func FatalContext(ctx context.Context, msg string, args ...any) {
-	slog.ErrorContext(ctx, msg, args...)
+	logWithCaller(ctx, slog.Default(), slog.LevelError, msg, args...)
 	os.Exit(1)
 }
 

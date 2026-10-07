@@ -77,6 +77,10 @@ func (s *Runner) ProcessGmailHistoryId(ctx context.Context, eventData EventData)
 	if err != nil {
 		return err
 	}
+	if userInfo.GmailIngestionPaused {
+		log.Info("Gmail ingestion is paused", "email", eventData.Email)
+		return nil
+	}
 	log.Info("fetched user info", "budgetId", userInfo.BudgetID, "historyId", userInfo.GmailHistoryID)
 
 	// Set budget ID in context so all subsequent transport calls auto-inject X-Budget-ID

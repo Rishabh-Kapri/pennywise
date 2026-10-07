@@ -1,5 +1,7 @@
 # Pennywise
 
+For a credential-free development environment and the same checks used in CI, see [Development workflow](docs/development.md). Start with `make setup`, `make dev`, and `make check`; run `make smoke` for fresh-database/browser validation.
+
 Live Demo: [dev.pennywise.cloud](https://dev.pennywise.cloud)
 
 **A self-hosted personal finance app that reads your bank emails and turns them into a clean, categorized budget — automatically, using AI that runs on your own hardware.**

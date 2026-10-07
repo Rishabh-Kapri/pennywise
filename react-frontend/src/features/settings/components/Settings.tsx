@@ -2,6 +2,7 @@ import {
   ArrowsClockwise,
   Files,
   GearSix,
+  Envelope,
   ListChecks,
   Money as Banknote,
   Pulse,
@@ -16,6 +17,7 @@ import { apiClient } from '@/utils';
 import { GeneralSettings } from './GeneralSettings';
 import { AISettings } from './AISettings';
 import { TagSettings } from './TagSettings';
+import { GmailSettings } from './GmailSettings';
 
 // heavier, data-driven sections: keep them out of the settings entry chunk
 const Recurring = lazy(() => import('@/features/recurring/components/Recurring'));
@@ -50,6 +52,7 @@ interface CurrentUser {
 
 type SectionId =
   | 'general'
+  | 'gmail'
   | 'loans'
   | 'recurring'
   | 'documents'
@@ -71,6 +74,12 @@ const SECTIONS: SectionDef[] = [
     label: 'General',
     icon: <GearSix size={18} />,
     description: 'Providers, account, and preferences',
+  },
+  {
+    id: 'gmail',
+    label: 'Gmail',
+    icon: <Envelope size={18} />,
+    description: 'Connection health and automatic email imports',
   },
   {
     id: 'loans',
@@ -199,6 +208,7 @@ export default function Settings() {
 
         <div className={styles.sectionContent}>
           {activeSection === 'general' && <GeneralSettings user={user} />}
+          {activeSection === 'gmail' && <GmailSettings />}
           {activeSection === 'loans' && (
             <Suspense fallback={<div>Loading…</div>}>
               <LoanOverview />

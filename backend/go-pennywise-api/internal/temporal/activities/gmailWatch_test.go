@@ -209,6 +209,7 @@ func TestListGoogleUsersNeedingWatchRefresh_ExcludesFarFutureExpiry(t *testing.T
 					{
 						ID:             "gid-2",
 						Email:          "fresh@example.com",
+						RefreshToken:   "tok",
 						GmailHistoryID: &historyID,
 						ExpiryAt:       &futureExpiry,
 					},
@@ -234,6 +235,7 @@ func TestListGoogleUsersNeedingWatchRefresh_IncludesNilExpiry(t *testing.T) {
 					{
 						ID:             "gid-3",
 						Email:          "nil-expiry@example.com",
+						RefreshToken:   "tok",
 						GmailHistoryID: &historyID,
 						ExpiryAt:       nil, // nil means refresh is needed
 					},
@@ -251,6 +253,22 @@ func TestListGoogleUsersNeedingWatchRefresh_IncludesNilExpiry(t *testing.T) {
 }
 
 // --- GetGoogleUserByEmail ---
+
+func TestListGoogleUsersNeedingWatchRefresh_SkipsPausedAndDisconnectedUsers(t *testing.T) {
+	historyID := uint64(7)
+	act := FetchGoogleUsersActivity{AuthService: &fakeAuthService{
+		getAllGoogleUsers: func(context.Context) ([]model.GoogleProviderUser, error) {
+			return []model.GoogleProviderUser{
+				{ID: "paused", GmailHistoryID: &historyID, RefreshToken: "tok", GmailIngestionPaused: true},
+				{ID: "disconnected", GmailHistoryID: &historyID},
+			}, nil
+		},
+	}}
+	got, err := executeListGoogleUsersNeedingWatchRefresh(t, act)
+	if err != nil || len(got) != 0 {
+		t.Fatalf("paused and disconnected mailboxes must not renew: users=%v error=%v", got, err)
+	}
+}
 
 func TestGetGoogleUserByEmail_ReturnsUser(t *testing.T) {
 	want := &model.GoogleUserInfo{

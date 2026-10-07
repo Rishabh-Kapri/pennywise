@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Pennywise design proposal for password-protected credit card statement uploads, transaction reconciliation, reward points, and related taxes and fees.">
+  <title>Credit card statement ingestion · Pennywise</title>
+  <style>
+    :root { color-scheme: light; --paper:#fff; --canvas:#f4f6f5; --ink:#192c28; --muted:#526760; --line:#dbe4df; --accent:#176b52; --tint:#eaf5ef; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--canvas); color:var(--ink); font:16px/1.65 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    a { color:var(--accent); text-underline-offset:3px; }
+    .layout { display:grid; grid-template-columns:230px minmax(0,860px); gap:48px; max-width:1220px; margin:auto; padding:48px 32px 80px; }
+    nav { position:sticky; top:32px; align-self:start; font-size:14px; }
+    nav strong { display:block; margin-bottom:18px; letter-spacing:.12em; font-size:12px; }
+    nav a { display:block; text-decoration:none; padding:7px 0; }
+    main { min-width:0; }
+    header, section { background:var(--paper); border:1px solid var(--line); border-radius:16px; padding:32px; margin-bottom:20px; scroll-margin-top:24px; }
+    .eyebrow { color:var(--accent); text-transform:uppercase; font-weight:700; letter-spacing:.12em; font-size:12px; }
+    h1 { font-size:clamp(30px,4vw,44px); line-height:1.15; letter-spacing:-.035em; margin:16px 0; }
+    h2 { font-size:25px; line-height:1.25; margin:0 0 18px; letter-spacing:-.02em; }
+    h3 { font-size:18px; margin:25px 0 8px; }
+    p { margin:12px 0; }
+    .lead { font-size:19px; color:var(--muted); }
+    .meta { color:var(--muted); font-size:13px; margin-top:24px; }
+    .callout { background:var(--tint); border-left:3px solid var(--accent); padding:16px 20px; margin:20px 0; border-radius:0 8px 8px 0; }
+    ul, ol { padding-left:23px; }
+    li { margin:7px 0; }
+    code { font: .88em ui-monospace,SFMono-Regular,Consolas,monospace; overflow-wrap:anywhere; }
+    pre { background:#142d26; color:#e6f4ed; padding:22px; border-radius:10px; overflow:auto; line-height:1.65; }
+    pre code { overflow-wrap:normal; }
+    .table-wrap { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; margin:16px 0; font-size:14px; }
+    th { text-align:left; color:var(--muted); background:var(--canvas); }
+    th, td { padding:12px; border-bottom:1px solid var(--line); vertical-align:top; }
+    .flow { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; list-style:none; padding:0; counter-reset:step; }
+    .flow li { counter-increment:step; background:var(--canvas); border:1px solid var(--line); border-radius:10px; padding:16px; margin:0; }
+    .flow li::before { content:counter(step, decimal-leading-zero); display:block; color:var(--accent); font-size:12px; font-weight:700; margin-bottom:8px; }
+    .flow span { display:block; color:var(--muted); font-size:13px; margin-top:6px; }
+    footer { color:var(--muted); font-size:13px; padding:10px 4px; }
+    @media (max-width:900px) { .layout { display:block; padding:24px 16px; } nav { position:static; margin-bottom:24px; } nav a { display:inline-block; margin-right:16px; } header,section { padding:24px; } }
+    @media (max-width:540px) { .flow { grid-template-columns:1fr; } }
+    @media print { body { background:white; font-size:11pt; } .layout { display:block; max-width:none; padding:0; } nav { display:none; } header,section { border:0; padding:12px 0; border-radius:0; } h2,h3 { break-after:avoid; } tr,.callout,.flow li { break-inside:avoid; } pre { white-space:pre-wrap; background:#f4f6f5; color:#192c28; } a { color:inherit; } }
+  </style>
+</head>
+<body>
+<div class="layout">
+  <nav aria-label="Document sections">
+    <strong>PENNYWISE / DESIGN</strong>
+    <a href="#scope">01 · MVP scope</a>
+    <a href="#experience">02 · Import experience</a>
+    <a href="#architecture">03 · Architecture</a>
+    <a href="#data">04 · Data model</a>
+    <a href="#matching">05 · Reconciliation</a>
+    <a href="#charges">06 · Taxes &amp; fees</a>
+    <a href="#rewards">07 · Reward points</a>
+    <a href="#passwords">08 · Password handling</a>
+    <a href="#apply">09 · Reliable application</a>
+    <a href="#api">10 · Proposed API</a>
+    <a href="#delivery">11 · Delivery &amp; validation</a>
+    <a href="#decisions">12 · Open decisions</a>
+  </nav>
+  <main>
+    <header>
+      <div class="eyebrow">Design proposal · Upload MVP</div>
+      <h1>Credit card statement ingestion</h1>
+      <p class="lead">Turn a password-protected statement into reviewed transaction matches, reward entries, and correctly linked taxes and fees.</p>
+      <div class="callout"><strong>Core decision:</strong> stage statement rows before changing the ledger. Match existing transactions, review uncertain results, and apply approved changes once.</div>
+      <p class="meta">Created 5 October 2026 · Repository: Pennywise · Branch: <code>wip/jev-integration</code><br>Proposed design; the schema, routes, and statement processing described here are not implemented.</p>
+    </header>
+
+    <section id="scope">
+      <h2>01 · MVP scope</h2>
+      <p>The user uploads a credit card PDF and supplies its password when needed. Pennywise extracts transactions, finds existing ledger entries, proposes missing entries, records rewards, and links separately billed charges to their underlying transaction where the statement supports that relationship.</p>
+      <ul>
+        <li>Start with one issuer and a representative statement layout.</li>
+        <li>Support purchases, refunds, payments, separately billed taxes, fees, and interest as distinct row types.</li>
+        <li>Require an explicit review and apply action before changing financial data.</li>
+        <li>Keep unmatched and ambiguous rows visible, editable, and explainable.</li>
+        <li>Preserve source evidence and prevent duplicates across retries and re-uploads.</li>
+      </ul>
+      <p>Automatic Gmail discovery, additional bank formats, reward eligibility calculations, and tax filing/export workflows are later work. “Taxes” here means charges shown on the card statement, such as GST on a fee.</p>
+    </section>
+
+    <section id="experience">
+      <h2>02 · Import experience</h2>
+      <ol class="flow" aria-label="Six stages of statement import">
+        <li><strong>Upload</strong><span>Select the card account and provide a PDF.</span></li>
+        <li><strong>Unlock</strong><span>Prompt for a password only when the PDF requires one.</span></li>
+        <li><strong>Extract</strong><span>Read statement metadata, rows, rewards, and totals.</span></li>
+        <li><strong>Match</strong><span>Find candidates in the selected account’s ledger.</span></li>
+        <li><strong>Review</strong><span>Confirm matches, new entries, charge links, and points.</span></li>
+        <li><strong>Apply</strong><span>Commit approved changes and display their outcome.</span></li>
+      </ol>
+      <p>The review screen shows each source row beside its proposed action: match, create, or ignore. It includes the chosen transaction, alternative candidates, rewards, related charges, and the PDF page/row evidence.</p>
+      <p>Show extracted totals and discrepancies before approval. A failed integrity check blocks application until extraction is corrected or a documented, explicit override is recorded. A reviewed row may remain unlinked when its relationship is unknown.</p>
+    </section>
+
+    <section id="architecture">
+      <h2>03 · Fit with the existing services</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Component</th><th>Proposed responsibility</th></tr></thead>
+        <tbody>
+          <tr><td>React frontend</td><td>Upload, password prompt, progress, row review, and grouped transaction display. Android follows once the web flow is established.</td></tr>
+          <tr><td>Go API</td><td>Budget/account authorization, file intake and unlock, statement persistence, deterministic matching, and atomic ledger application.</td></tr>
+          <tr><td>Shared module</td><td>Statement/reward models, repositories, and shared request metadata.</td></tr>
+          <tr><td>Workflows</td><td>A new statement processing workflow for extraction and matching retries, using persisted artifacts as inputs.</td></tr>
+          <tr><td>Cipher</td><td>Structured extraction and optional merchant normalization, using the existing provider architecture where suitable.</td></tr>
+        </tbody>
+      </table></div>
+      <p>Existing uploads use <code>TransactionDocument</code>, which requires a transaction ID. Statements need an account-level record instead. Reuse the storage abstraction and PostgreSQL blob implementation; do not attach a whole statement to an arbitrary transaction.</p>
+      <p>The experimental Clojure file parser is not a prerequisite. Implement the MVP in the active Go services. Gmail can later create the same statement record and invoke the same processing workflow with <code>source = gmail</code>.</p>
+      <pre><code>React → Go API → unlock + persist extraction artifact
+                      ↓ statement ID + artifact reference
+                Temporal workflow
+                      ↓
+            Extract rows → validate → match
+                      ↓
+              Persist review proposals
+                      ↓
+React review → Go API → atomic apply → existing ledger</code></pre>
+      <p>Artifact references must resolve from every worker that needs them. A temporary file on one container is insufficient for distributed processing.</p>
+    </section>
+
+    <section id="data">
+      <h2>04 · Proposed data model</h2>
+      <p>Keep source observations separate from ledger identity. A statement is evidence about transactions, not another ledger.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Record</th><th>Key fields and purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>credit_card_statements</code></td><td>ID, budget/account IDs, source, issuer, masked card suffix, period, statement date, currency, file hash/blob reference, opening/closing balance, due amount/date, status, parser version, review revision, error code.</td></tr>
+          <tr><td><code>credit_card_statement_rows</code></td><td>Statement ID, stable source row key, page/row position, raw description, transaction/posting dates, signed amount, currency, foreign amount/currency if present, bank reference, row type, extraction confidence, extracted reward fields.</td></tr>
+          <tr><td><code>statement_row_matches</code></td><td>Source row, candidate/selected transaction ID, proposed action, matching reason/confidence, reviewer decision, parent-charge proposal, and applied result. Persist review state separately from raw extraction.</td></tr>
+          <tr><td><code>reward_entries</code></td><td>Budget/account/program IDs, statement/source-row IDs, optional transaction ID, entry kind, signed points, observation date, source key, and provenance.</td></tr>
+          <tr><td><code>transactions</code> additions</td><td>Nullable <code>parent_transaction_id</code> and <code>relationship_type</code> for related tax, fee, and interest entries. Existing rows remain valid.</td></tr>
+        </tbody>
+      </table></div>
+      <p>Use decimal amounts or integer minor units during extraction and matching. The existing SQL ledger uses <code>NUMERIC(12,2)</code> while the Go transaction model uses <code>float64</code>; compare canonical minor-unit amounts rather than raw floating-point equality.</p>
+      <p>Bank references are evidence, not assumed globally unique IDs. Scope all references and lookups to the budget and selected account. Preserve both transaction and posting dates; do not overwrite an existing transaction’s date solely because the statement uses posting dates.</p>
+      <p>A row match is unique per source row when applied. A transaction may have observations in multiple statements, but cannot satisfy multiple distinct purchase rows in the same statement. Legitimate grouped rows require explicit modeling and review.</p>
+    </section>
+
+    <section id="matching">
+      <h2>05 · Deterministic reconciliation</h2>
+      <ol>
+        <li>Validate account/card identity and statement period before searching the ledger.</li>
+        <li>Find candidates in the same budget/account with compatible amount, currency, direction, and row type.</li>
+        <li>Use a verified bank reference when available; otherwise rank by transaction/posting date proximity and normalized merchant evidence.</li>
+        <li>Resolve candidates across the whole statement so two rows cannot independently claim the same transaction.</li>
+        <li>Propose a unique strong match; leave ties and weak evidence for manual review.</li>
+        <li>Propose creating missing transactions, preserving statement provenance and using the existing transaction service for ledger side effects.</li>
+      </ol>
+      <p>The date window and confidence thresholds are configurable and must be calibrated against real statement fixtures. Repeated purchases of the same amount, foreign currency settlements, reversals, and existing entries that already include fees require review.</p>
+      <p>Payments may match existing transfer transactions. Never create a card-only payment entry automatically when doing so would duplicate or break an existing transfer pair. Opening balance, closing balance, and total due are summary fields, not transaction rows.</p>
+      <div class="callout">LLMs may extract fields or normalize descriptions. Application code owns identity decisions, amount checks, candidate allocation, and duplicate prevention. Existing categories, notes, and user corrections are preserved by default.</div>
+    </section>
+
+    <section id="charges">
+      <h2>06 · Taxes, fees, and parent transactions</h2>
+      <p>Use separate ledger entries for amounts the bank bills separately. Their relationship controls grouping, while their own amount controls accounting.</p>
+      <pre><code>Foreign purchase                      ₹10,000
+  Foreign currency markup                ₹350  [fee → purchase]
+    GST on markup                         ₹63  [tax → fee]
+
+Displayed group cost:                 ₹10,413
+Ledger entries: three; each counted exactly once.</code></pre>
+      <ul>
+        <li>Tax included in the purchase amount is a breakdown only; adding it as an expense would double-count it.</li>
+        <li>Separately charged tax is matched or created as its own ledger entry and linked to the stated fee or purchase.</li>
+        <li>A monthly aggregate tax or fee remains standalone when no individual relationship is established.</li>
+        <li>Do not infer a parent solely from adjacent PDF rows. Use explicit descriptions/references and review uncertain links.</li>
+        <li>Both ends must share budget/account, be active, and be distinct. Relationship type is required exactly when a parent exists.</li>
+        <li>Prevent cycles. Support shallow nesting, including tax on a fee, and bound traversal depth.</li>
+        <li>Deleting a parent must not silently delete financial children. Require an explicit detach or reviewed group action.</li>
+      </ul>
+      <p>Reports continue summing the individual entries. A displayed group total is derived and must never be added as an extra expense. Preserve each charge’s own date/category; a group spanning dates is not a substitute for period-based ledger reporting.</p>
+      <p>For the MVP, keep charges affecting multiple purchases unlinked. A future allocation table can represent many-to-many attribution without duplicating their monetary amounts.</p>
+    </section>
+
+    <section id="rewards">
+      <h2>07 · Reward points as a separate ledger</h2>
+      <p>Store signed reward entries for earned points, bonuses, reversals, redemptions, expiry, and adjustments when the statement provides them. They do not change monetary balances.</p>
+      <ul>
+        <li>Link points to a purchase only when the statement provides that attribution.</li>
+        <li>Store a monthly earned-points total at statement level when purchase-level detail is absent.</li>
+        <li>Keep “unknown” distinct from an explicitly reported zero.</li>
+        <li>Store opening/closing points balances as snapshots; they are not additional earned entries.</li>
+        <li>Do not add a summary earned total on top of its detailed earned entries. Use the total to validate the detail.</li>
+        <li>Deduplicate reward observations across repeated/overlapping imports. Preserve source keys and reversal relationships.</li>
+      </ul>
+      <p>Show transaction points by aggregating linked entries. Programs remain separate, and monetary value is not inferred from points. Cashback actually credited to the card is a monetary transaction and must be matched independently.</p>
+    </section>
+
+    <section id="passwords">
+      <h2>08 · Protected PDFs and extraction artifacts</h2>
+      <ol>
+        <li>Validate file signature and enforce upload, page-count, decompressed-size, and processing-time limits.</li>
+        <li>If encrypted, return a password-required state. A wrong password leaves the statement retryable.</li>
+        <li>Unlock in the API process with a PDF library or bounded subprocess. Keep the password in request memory and out of command-line arguments, persisted records, telemetry, and workflow inputs.</li>
+        <li>Prefer extracting text during unlock and persisting only the artifact needed by the worker. If OCR needs unlocked page images/PDF bytes, store them with restricted access and a defined TTL.</li>
+        <li>Pass statement ID and artifact reference into Temporal. Retry extraction from that artifact; once it expires, request unlock again.</li>
+        <li>Clean up unlocked artifacts on success, cancellation, failure, and TTL expiry. Retain the original encrypted upload according to the chosen statement retention policy.</li>
+      </ol>
+      <p>Try native PDF text first. Preserve page boundaries and table structure; use OCR/vision for scanned pages or unreliable text. Validate the structured result against a schema and statement arithmetic before generating review proposals.</p>
+      <p>If an external extraction provider receives statement text or images, disclose that in the upload flow and follow the configured provider policy. Passwords are never sent to an extraction model.</p>
+    </section>
+
+    <section id="apply">
+      <h2>09 · Idempotency, consistency, and recovery</h2>
+      <p>File hash detection handles identical uploads within a budget/account. Also check issuer/card/period identity because the same statement may be downloaded as different PDF bytes. Flag likely duplicate statements for review instead of treating different hashes as proof of different financial events.</p>
+      <p>Assign stable source row keys from the persisted extraction. Preserve legitimate identical purchases with separate occurrences; a hash of date/description/amount alone must not collapse them. Parser reruns create a versioned proposal and cannot silently change applied row identities.</p>
+      <p>Applying a reviewed statement locks its record, verifies the expected review revision, rechecks selected transactions and uniqueness constraints, and writes transaction changes, links, rewards, and application status in one database transaction.</p>
+      <ul>
+        <li>Refactor or extend the transaction service to share the same database transaction for its balance, transfer, and correction side effects. Calling independently committed CRUD operations in a loop is not atomic.</li>
+        <li>Retries of an applied statement return its recorded result. Unique row application/reward source constraints provide a second line of defense.</li>
+        <li>Concurrent Gmail/manual creates are rechecked during apply. Ambiguity produces a conflict requiring renewed review.</li>
+        <li>Record created IDs and changed fields for audit. Future undo needs conflict-aware compensation; it is not a blind delete or balance reversal.</li>
+        <li>Notify clients after commit through existing websocket infrastructure.</li>
+      </ul>
+      <pre><code>uploaded → needs_password → queued → processing → review_ready → applied
+                ↑                 ↓
+          unlock retry         failed → retry
+
+Cancellation is allowed before application.
+An applied statement is immutable as an import result.</code></pre>
+      <p>An unencrypted upload moves directly to queued after artifact preparation. Extraction validates printed debit/credit totals, balance arithmetic when the issuer’s format permits it, and points totals. Missing components or unexplained differences remain visible and block silent application.</p>
+    </section>
+
+    <section id="api">
+      <h2>10 · Proposed budget-scoped API</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Route</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>POST /api/statements</code></td><td>Multipart PDF upload with account ID; return statement ID and status.</td></tr>
+          <tr><td><code>POST /api/statements/:id/unlock</code></td><td>Submit an ephemeral password and prepare extraction artifacts.</td></tr>
+          <tr><td><code>GET /api/statements</code></td><td>List imports for an account with pagination.</td></tr>
+          <tr><td><code>GET /api/statements/:id</code></td><td>Metadata, progress, validation results, and outcome.</td></tr>
+          <tr><td><code>GET /api/statements/:id/rows</code></td><td>Paginated extracted rows, candidates, and review decisions.</td></tr>
+          <tr><td><code>PATCH /api/statements/:id/review</code></td><td>Save extraction corrections, match/create/ignore choices, charge links, and reward decisions with expected revision.</td></tr>
+          <tr><td><code>POST /api/statements/:id/apply</code></td><td>Apply the approved revision atomically and return stable results.</td></tr>
+          <tr><td><code>POST /api/statements/:id/retry</code></td><td>Retry a failed processing stage when its artifact remains available.</td></tr>
+          <tr><td><code>POST /api/statements/:id/cancel</code></td><td>Cancel a pending import and clean up temporary artifacts.</td></tr>
+        </tbody>
+      </table></div>
+      <p>Use existing auth and budget middleware. Verify account ownership, statement ownership, candidate transaction scope, and parent scope independently. Source file access must also be budget-scoped.</p>
+    </section>
+
+    <section id="delivery">
+      <h2>11 · Delivery plan and acceptance checks</h2>
+      <ol>
+        <li><strong>Establish the format:</strong> inspect a representative issuer statement; collect redacted fixtures including taxes, rewards, refunds, and card payments.</li>
+        <li><strong>Upload and unlock:</strong> statement records, storage reuse, protected-PDF handling, bounded extraction, and artifact cleanup.</li>
+        <li><strong>Extraction and review:</strong> structured rows, provenance, arithmetic validation, deterministic candidate matching, and editable review screen.</li>
+        <li><strong>Ledger enrichment:</strong> parent relationships, reward entries, atomic application, idempotency, and grouped display.</li>
+        <li><strong>Extend intake:</strong> Android upload, additional issuers, and Gmail statement discovery using the same pipeline.</li>
+      </ol>
+      <h3>Required validation before shipping</h3>
+      <ul>
+        <li>Encrypted and unencrypted PDFs work; incorrect passwords are recoverable and never appear in logs or workflow history.</li>
+        <li>Duplicate upload, workflow retry, and apply retry leave balances and points unchanged after the first successful application.</li>
+        <li>Identical repeated purchases remain separate; ambiguous matches and concurrent transaction changes require review.</li>
+        <li>Matched transactions retain user categories/notes, and no two distinct rows claim the same purchase.</li>
+        <li>Taxes included in an amount are not added again; separate charges affect balances once, including nested tax-on-fee cases.</li>
+        <li>Payments do not duplicate transfers; statement summary lines never become ledger transactions.</li>
+        <li>Monthly rewards and transaction rewards are not double-counted; unknown points are preserved.</li>
+        <li>Cross-budget/account matches and parent links fail; cycles fail; parent deletion cannot silently remove charges.</li>
+        <li>A failure midway through application rolls back transactions, side effects, reward entries, and import status together.</li>
+        <li>Totals mismatches are surfaced, and cancellation/expiry removes decrypted artifacts.</li>
+      </ul>
+      <p>Use Go service/repository/workflow tests for these invariants and a manual browser check of upload, password retry, review, and apply. Introduce meaningful frontend integration coverage if a harness is established during implementation.</p>
+    </section>
+
+    <section id="decisions">
+      <h2>12 · Decisions still needed</h2>
+      <ul>
+        <li>First issuer/card and a representative statement: does it show points per transaction, monthly totals, or both?</li>
+        <li>Which taxes/fees are shown, and what references connect them to a purchase or fee?</li>
+        <li>PDF decryption/extraction library and OCR provider, validated against the chosen issuer’s protected files.</li>
+        <li>Original-file retention and temporary artifact TTL/storage protection.</li>
+        <li>Default categories for unmatched fees/taxes/interest and review behavior for payments/transfers.</li>
+        <li>Date tolerance, matching thresholds, and the precise rules for integrity-check overrides.</li>
+      </ul>
+      <p>The first implementation milestone should be a correct, inspectable extraction of one protected statement. Use that evidence to finalize parser fields and matching rules before enabling ledger writes.</p>
+      <h3>Repository references</h3>
+      <ul>
+        <li><a href="../backend/shared/model/transaction.go">Shared transaction model</a></li>
+        <li><a href="../backend/go-pennywise-api/internal/service/transaction.go">Transaction service and ledger side effects</a></li>
+        <li><a href="../backend/go-pennywise-api/internal/service/document.go">Existing document upload service</a></li>
+        <li><a href="../backend/go-pennywise-api/internal/storage/postgres.go">PostgreSQL blob storage</a></li>
+        <li><a href="../backend/go-pennywise-api/db/migrations/00001_init_schema.sql">Ledger schema and existing dedupe constraint</a></li>
+        <li><a href="../backend/workflows/README.md">Temporal workflows</a> · <a href="../backend/cipher/README.md">Cipher</a></li>
+      </ul>
+    </section>
+    <footer>Pennywise · Statement ingestion proposal · Standalone HTML with no external assets. Use your browser’s print dialog to export a PDF.</footer>
+  </main>
+</div>
+</body>
+</html>

@@ -23,7 +23,7 @@ func (a *FetchGoogleUsersActivity) ListGoogleUsersNeedingWatchRefresh(
 	refreshBefore := time.Now().Add(time.Hour * 24 * 2).UnixMilli()
 	var watchUsers []sharedModel.GoogleWatchUser
 	for _, user := range users {
-		if user.GmailHistoryID == nil {
+		if user.GmailIngestionPaused || user.RefreshToken == "" || user.GmailHistoryID == nil {
 			continue
 		}
 		if user.ExpiryAt == nil || *user.ExpiryAt < refreshBefore {

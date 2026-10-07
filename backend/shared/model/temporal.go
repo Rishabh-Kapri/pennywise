@@ -43,8 +43,9 @@ const (
 // EmailToTransactionWorflowInput is the input to the EmailToTransactionWorkflow,
 // dispatched by go-gmail on receiving a Gmail Pub/Sub notification.
 type EmailToTransactionWorflowInput struct {
-	Email     string `json:"email"`
-	HistoryId uint64 `json:"historyId"`
+	Email      string `json:"email"`
+	HistoryId  uint64 `json:"historyId"`
+	ManualSync bool   `json:"manualSync,omitempty"`
 }
 
 // ParsedEmail is a single parsed transaction email.

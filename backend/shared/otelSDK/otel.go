@@ -11,10 +11,12 @@ import (
 	"go.opentelemetry.io/otel"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	metricnoop "go.opentelemetry.io/otel/metric/noop"
+	tracenoop "go.opentelemetry.io/otel/trace/noop"
 	"go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/trace"
 	oteltrace "go.opentelemetry.io/otel/trace"
+
 )
 
 // TelemetryProvider defines the contract for telemetry operations.
@@ -56,7 +58,7 @@ func NewTelemetry(ctx context.Context, cfg Config) (*Telemetry, error) {
 		logs.Warn("otel sdk disabled")
 		return &Telemetry{
 			meter:  metricnoop.NewMeterProvider().Meter(cfg.ServiceName),
-			Tracer: oteltrace.NewNoopTracerProvider().Tracer(cfg.ServiceName),
+			Tracer: tracenoop.NewTracerProvider().Tracer(cfg.ServiceName),
 			cfg:    cfg,
 		}, nil
 	}

@@ -176,7 +176,7 @@ export function TransactionRow({
   return (
     <div style={style}>
       <div className={`${styles.txnWrapper} ${cardClass} ${!isLast ? styles.txnDivider : ''}`}>
-        <div className={`${styles.txnRow} ${isSelected ? styles.txnRowSelected : ''}`} onClick={() => onSelect(txn)}>
+        <div data-testid={`transaction-${txn.id}`} className={`${styles.txnRow} ${isSelected ? styles.txnRowSelected : ''}`} onClick={() => onSelect(txn)}>
           {cols.map((col) => {
             const isActiveInlineEditCell = isInlineEditing && activeInlineEditKey === col.key;
             const cell = (

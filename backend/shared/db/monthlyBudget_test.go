@@ -2,8 +2,9 @@ package db
 
 import (
 	"context"
-	"log"
+	"os"
 	"testing"
+	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
@@ -28,22 +29,28 @@ type testSuite struct {
 }
 
 // Database connection and setup utilities
-func getTestDbConn(ctx context.Context) (*pgxpool.Pool, error) {
-	testDbUrl := "postgres://admin:admin@192.168.1.34:5433/testdb?sslmode=disable"
-	dbpool, err := pgxpool.New(ctx, testDbUrl)
-	if err == nil {
-		log.Printf("Database connection opened on: %v", testDbUrl)
+func getTestDbConn(t *testing.T, ctx context.Context) *pgxpool.Pool {
+	t.Helper()
+	testDbURL := os.Getenv("PENNYWISE_TEST_DATABASE_URL")
+	if testDbURL == "" {
+		t.Skip("set PENNYWISE_TEST_DATABASE_URL to a disposable database for repository integration tests")
 	}
-	return dbpool, err
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, testDbURL)
+	if err != nil {
+		t.Fatalf("open test database: %v", err)
+	}
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+		t.Fatalf("connect to test database: %v", err)
+	}
+	return pool
 }
 
 func setupTestSuite(t *testing.T) *testSuite {
 	ctx := context.Background()
-	dbpool, err := getTestDbConn(ctx)
-	if err != nil {
-		t.Skip("Skipping tests because active DB connection failed.")
-	}
-	require.NoError(t, err)
+	dbpool := getTestDbConn(t, ctx)
 
 	budgetID := uuid.New()
 	catID := uuid.New()
@@ -147,10 +154,7 @@ func (ts *testSuite) assertMonthlyBudgets(t *testing.T, monthlyBudgets []model.M
 
 func TestNewMonthlyBudgetRepository(t *testing.T) {
 	ctx := context.Background()
-	dbpool, err := getTestDbConn(ctx)
-	if err != nil {
-		t.Skip("Ignoring due to DB connection failure")
-	}
+	dbpool := getTestDbConn(t, ctx)
 	defer dbpool.Close()
 	repo := NewMonthlyBudgetRepository(dbpool)
 	require.NotNil(t, repo)

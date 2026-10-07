@@ -19,7 +19,7 @@ const RECONNECT_DELAY_MS = 3000;
 const TOKEN_EXPIRY_BUFFER_MS = 30000;
 
 function getWebSocketUrl(accessToken: string, budgetId: string) {
-  const apiUrl = new URL(config.apiBaseUrl);
+  const apiUrl = new URL(config.apiBaseUrl, window.location.origin);
   const protocol = apiUrl.protocol === 'https:' ? 'wss:' : 'ws:';
   const params = new URLSearchParams({
     token: accessToken,

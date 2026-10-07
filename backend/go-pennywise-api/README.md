@@ -33,11 +33,16 @@ All routes are under `/api` and wired in `cmd/api/main.go`.
 | `POST /auth/google`, `POST /auth/refresh` | public | Google auth-code flow → 15-min access / 30-day refresh JWTs |
 | `POST /auth/demo` | public, only when `DEMO_MODE=true` | logs into the seeded demo user (see below) |
 | `GET /auth/users/me` | user | current user |
+| `GET /auth/gmail`, `POST /auth/gmail/{pause,resume,sync,reconnect}` | user | mailbox controls across budgets; requests select `providerId` + `oauthClientType`; reconnect also requires a Google auth code |
 | `/budgets`, `/keys` | user | global (not budget-scoped) resources |
 | `/accounts`, `/transactions`, `/categories`, `/category-groups`, `/payees` (+ `/payees/:id/rules`), `/tags`, `/predictions` (+ `/predictions/cipher`), `/loan-metadata`, `/agent`, `/users` | user + budget | require `X-Budget-ID`; ownership enforced by `BudgetIdMiddleware` |
 | `/ws` | user | websocket connect + session inspection |
 
 `AuthMiddleware` accepts `Authorization: Bearer`, the `access_token` cookie, or `X-API-Key`. Internal service traffic is trusted only after the shared internal-request middleware verifies `X-Internal-Token` and marks the context `VerifiedInternal`.
+
+Gmail controls require migration `00026`. Pausing persists across logins and disables scheduled watch renewal and new email imports; imports already running may finish. Resume renews the Gmail watch without replacing the saved ingestion cursor. Sync starts a manual Temporal workflow and returns `202` with `workflowId` and `runId`; progress and failed-import retries are available in Settings → Activity. Manual sync checks Gmail's retained history from the saved cursor, rather than importing the entire mailbox. Reconnecting uses the existing web Google auth-code flow, checks that the selected Google identity matches the owned connection, and preserves an intentional pause. Android credentials must be reauthorized through Android sign-in. Demo accounts cannot change Gmail controls.
+
+Migration `00027` repairs legacy `last_gmail_sync` columns from `TIMESTAMP` to `TIMESTAMPTZ`, interpreting their existing wall-clock values as `Asia/Kolkata` (IST). Databases already using `TIMESTAMPTZ` are unchanged. Legacy databases populated in another timezone need that source timezone substituted before applying this repair. Watch expiry remains Unix milliseconds and does not need conversion.
 
 ## Demo mode
 
