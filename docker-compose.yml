@@ -68,7 +68,7 @@ services:
         EXTRA_TARGET: ./cmd/migrations
         EXTRA_BINARY: migrations
     entrypoint: ["./migrations"]
-    command: ["-dir", ".", "up"]
+    command: ["up"]
     environment:
       RAILWAY_ENVIRONMENT_NAME: ${RAILWAY_ENVIRONMENT_NAME:-local}
       DATABASE_URL: postgres://${POSTGRES_USER:-pennywise}:${POSTGRES_PASSWORD:-pennywise}@postgres:5432/${POSTGRES_DB:-pennywise}?sslmode=disable
@@ -120,6 +120,9 @@ services:
       UPLOADS_DIR: /data/uploads
       NOMINATIM_URL: ${NOMINATIM_URL:-}
       EXPO_PUSH_URL: ${EXPO_PUSH_URL:-}
+      # Seals users' AI provider keys; cipher needs the same value to open
+      # them. Generate your own: openssl rand -base64 32
+      LLM_CREDENTIALS_KEY: ${LLM_CREDENTIALS_KEY:-ZGV2LWxsbS1rZXktY2hhbmdlLW1lLTMyLWJ5dGVzISE=}
     volumes:
       - uploads_data:/data/uploads
     ports:
@@ -157,13 +160,17 @@ services:
       OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
       MLP_SERVICE_URL: ${MLP_SERVICE_URL:-}
       PENNYWISE_SERVICE_URL: http://pennywise-api:5151
+      # Chat models run on each user's own AI providers (Settings -> AI), never
+      # on server keys. OPENROUTER_API_KEY only serves EMAIL_EMBEDDING_PROVIDERS.
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      AGENT_PROVIDER: ${AGENT_PROVIDER:-ollama}
-      # "provider/model" for conversation titles. Unset uses the default
-      # provider's default model, which is what keeps titles working wherever
-      # the agent is actually pointed.
+      # Must match pennywise-api's.
+      LLM_CREDENTIALS_KEY: ${LLM_CREDENTIALS_KEY:-ZGV2LWxsbS1rZXktY2hhbmdlLW1lLTMyLWJ5dGVzISE=}
+      # Self-hosting: lets a user's Ollama URL reach private addresses such as
+      # host.docker.internal. Leave off for a multi-user deployment.
+      ALLOW_PRIVATE_LLM_URLS: ${ALLOW_PRIVATE_LLM_URLS:-true}
+      # "provider/model" for conversation titles. A provider the user hasn't
+      # configured falls back to their primary provider and model.
       AGENT_TITLE_MODEL: ${AGENT_TITLE_MODEL:-}
       AGENT_MAX_TURNS: ${AGENT_MAX_TURNS:-}
       AGENT_MAX_TOOL_CALLS: ${AGENT_MAX_TOOL_CALLS:-}
@@ -171,7 +178,7 @@ services:
       # which shifts day boundaries for anyone who is not.
       AGENT_TIMEZONE: ${AGENT_TIMEZONE:-}
       # Least-privilege connection for the agent's read-only SQL tools. Point it
-      # at a login role granted pennywise_agent_ro (see migration 00015) so
+      # at a login role granted pennywise_agent_ro (see backend/shared/sql/migrations/00009_agent_readonly_rls.sql) so
       # row-level security confines agent queries to one budget. Left unset, the
       # tools fall back to the application role and that isolation is lost —
       # cipher logs a warning at startup when that happens.

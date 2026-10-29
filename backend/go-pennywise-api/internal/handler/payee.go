@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -22,6 +23,9 @@ type PayeeHandler interface {
 	Create(c *gin.Context)
 	Update(c *gin.Context)
 	DeleteById(c *gin.Context)
+	Stats(c *gin.Context)
+	ListRules(c *gin.Context)
+	Merge(c *gin.Context)
 }
 
 type payeeHandler struct {
@@ -226,8 +230,51 @@ func (h *payeeHandler) DeleteById(c *gin.Context) {
 	}
 	err = h.service.DeleteById(ctx, parsedId)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(payeeErrorStatus(err), gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Payee deleted"})
+}
+
+func (h *payeeHandler) Stats(c *gin.Context) {
+	stats, err := h.service.GetStats(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, stats)
+}
+
+func (h *payeeHandler) ListRules(c *gin.Context) {
+	rules, err := h.service.GetAllRules(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, rules)
+}
+
+func (h *payeeHandler) Merge(c *gin.Context) {
+	var body model.PayeeMergeRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	result, err := h.service.Merge(c.Request.Context(), body)
+	if err != nil {
+		c.JSON(payeeErrorStatus(err), gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func payeeErrorStatus(err error) int {
+	switch {
+	case errors.Is(err, service.ErrPayeeNotFound):
+		return http.StatusNotFound
+	case errors.Is(err, service.ErrTransferPayee), errors.Is(err, service.ErrInvalidPayeeMerge):
+		return http.StatusBadRequest
+	default:
+		return http.StatusInternalServerError
+	}
 }

@@ -516,7 +516,7 @@ func (a *Agent) runLLMStep(ctx context.Context, req sharedModel.ChatRequest) (sh
 	budgetId := utils.MustBudgetID(ctx)
 	userId := utils.MustUserID(ctx)
 
-	llmClient, resolvedModel, err := a.llmResolver.Resolve(req.Provider, req.Model)
+	llmClient, resolvedModel, err := a.llmResolver.Resolve(ctx, req.Provider, req.Model)
 	if err != nil {
 		return sharedModel.StepResult{}, err
 	}

@@ -8,7 +8,7 @@
     "android": "expo run:android",
     "android:dev": "expo start --android",
     "lint": "eslint .",
-    "test": "npm run test:one -- test/headlessApi.test.mts && npm run test:one -- test/pipelineData.test.mts && npm run test:one -- test/widgetData.test.mts && npm run test:one -- test/pressure.test.mts",
+    "test": "npm run test:one -- test/expression.test.mts && npm run test:one -- test/headlessApi.test.mts && npm run test:one -- test/pipelineData.test.mts && npm run test:one -- test/widgetData.test.mts && npm run test:one -- test/pressure.test.mts",
     "test:one": "node --experimental-strip-types --no-warnings --import ./test/register.mjs",
     "typecheck": "tsc --noEmit",
     "ios": "expo run:ios"
@@ -30,6 +30,7 @@
     "expo-notifications": "^0.32.17",
     "expo-status-bar": "~3.0.8",
     "expo-task-manager": "~14.0.9",
+    "expo-updates": "~29.0.20",
     "expo-web-browser": "~15.0.8",
     "lucide-react-native": "^0.553.0",
     "react": "19.1.0",
@@ -43,6 +44,7 @@
     "react-native-reanimated": "4.1.1",
     "react-native-safe-area-context": "5.6.0",
     "react-native-screens": "4.16.0",
+    "react-native-svg": "15.15.4",
     "react-native-webview": "^13.15.0",
     "react-native-worklets": "0.5.1",
     "react-redux": "^9.2.0"

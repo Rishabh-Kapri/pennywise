@@ -57,15 +57,13 @@ func TestParseLLMTargets(t *testing.T) {
 	}
 }
 
-// Both chains are unset in tests, so Load must hand back the ollama-only
-// defaults that preserve pre-config behaviour.
-func TestLoadDefaultsToLocalOllamaChains(t *testing.T) {
-	t.Setenv("EMAIL_PIPELINE_PROVIDERS", "")
+// The embedding chain is unset in tests, so Load must hand back the
+// ollama-only default.
+func TestLoadDefaultsToLocalOllamaEmbeddings(t *testing.T) {
 	t.Setenv("EMAIL_EMBEDDING_PROVIDERS", "")
 
 	config := Load()
 
-	require.Equal(t, []LLMTarget{{Provider: "ollama", Model: "gemma4:12b"}}, config.EmailPipelineTargets)
 	require.Equal(t, []LLMTarget{{Provider: "ollama", Model: "bge-m3"}}, config.EmailEmbeddingTargets)
 }
 

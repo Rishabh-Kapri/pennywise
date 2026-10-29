@@ -15,25 +15,138 @@
   overflow: hidden;
 }
 
-.embeddedHeader {
-  display: grid;
-  flex-shrink: 0;
+/* Title, toolbar and list stack in one column; the list takes what is left. */
+.page {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
   min-height: 0;
-  max-height: 45%;
-  overflow-y: auto;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
 }
 
-.embeddedWrapper {
+/* /transactions on its own, spaced like the Budget page */
+.standalonePage {
+  padding: 1.5rem 1.5rem 0;
+}
+
+.pageTop {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem 2rem;
+  margin-bottom: 1.25rem;
+}
+
+.pageTop h1 {
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: 1.85rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.titleBlock {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+/* the accent tile gives the page title the same anchor the account pages get from their logo */
+.titleIcon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 0.85rem;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--color-primary) 78%, #fff), var(--color-primary));
+  box-shadow: 0 1px 2px rgb(16 24 40 / 0.2), inset 0 1px 0 rgb(255 255 255 / 0.18);
+  color: #fff;
+}
+
+.titleText {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  min-width: 0;
+}
+
+.titleEyebrow {
+  overflow: hidden;
+  color: var(--color-primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pageStats {
+  display: flex;
+  gap: 2.5rem;
+  margin: 0;
+}
+
+.pageStats > div {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.3rem;
+}
+
+.pageStats dt {
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.pageStats dd {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 1.3rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.negative {
+  color: var(--color-error) !important;
+}
+
+.toolbar {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 0.5rem;
+  min-height: 0;
+  max-height: 60%;
+  margin-bottom: 0.75rem;
+  overflow-y: auto;
+}
+
+/* the open filter fields sit in a soft tray under the toolbar */
+.filterCard {
+  padding: 0.35rem 0.85rem 0.6rem;
+  border-radius: 0.85rem;
+  background: color-mix(in srgb, var(--color-text) 4.5%, transparent);
+}
+
+.listWrapper {
   flex: 1;
   height: auto;
   min-height: 0;
 }
 
-.embeddedWrapper .mobileTxnContainer,
-.embeddedWrapper .mobileDetail,
-.embeddedWrapper .mobileEmptyState {
+.listWrapper .mobileTxnContainer,
+.listWrapper .mobileDetail,
+.listWrapper .mobileEmptyState {
   height: 100%;
   min-height: 0;
 }
@@ -44,12 +157,40 @@
 }
 
 @media (min-width: 769px) {
-  .embeddedWrapper {
+  .listWrapper {
     overflow-x: auto;
   }
 
-  .embeddedWrapper .listArea {
+  .listWrapper .listArea {
     min-width: 700px;
+  }
+}
+
+@media (max-width: 768px) {
+  .standalonePage {
+    padding: 0.85rem 0.25rem 0;
+  }
+
+  .pageTop {
+    margin-bottom: 0.75rem;
+  }
+
+  .pageTop h1 {
+    font-size: 1.5rem;
+  }
+
+  .titleIcon {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.7rem;
+  }
+
+  .pageStats dd {
+    font-size: 1.05rem;
+  }
+
+  .toolbar {
+    margin-bottom: 0.5rem;
   }
 }
 
@@ -80,11 +221,16 @@
   display: flex;
   flex-direction: row;
   gap: 1rem;
-  padding: 0.4rem 1.5rem;
-  font-size: 0.8rem;
+  /* line up with the cells inside the cards: card pad + row inset + border */
+  padding: 0.2rem calc(0.35rem + 1rem + 1px) 0;
+  /* the list below reserves a scrollbar gutter; match it so columns align */
+  overflow-y: hidden;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  font-size: 0.78rem;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   color: var(--color-text-secondary);
 }
 
@@ -94,35 +240,36 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  padding: 0.5rem;
+  height: 100%;
+  padding: 0 calc(0.35rem + 1rem) 0.6rem;
   background: transparent;
 }
 
 .monthGroupLabel {
-  font-size: 1rem;
-  font-weight: 500;
+  font-size: 1.02rem;
+  font-weight: 650;
   color: var(--color-text);
-  letter-spacing: 0.02em;
 }
 
 .monthGroupStats {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  font-size: 0.95rem;
+  gap: 0.85rem;
+  font-size: 0.9rem;
   font-weight: 500;
+  font-variant-numeric: tabular-nums;
   color: var(--color-text-secondary);
 }
 
 .statInflow {
   display: flex;
   align-items: center;
-  color: var(--color-budget-positive);
+  color: var(--color-success);
 }
 .statOutflow {
   display: flex;
   align-items: center;
-  color: var(--color-budget-negative);
+  color: var(--color-text);
 }
 .statCount {
   color: var(--color-text-secondary);
@@ -145,6 +292,7 @@
 
 .virtualList {
   height: 100%;
+  scrollbar-gutter: stable;
   scrollbar-color: color-mix(in srgb, var(--color-text-secondary) 65%, transparent) transparent;
   scrollbar-width: thin;
 }
@@ -218,68 +366,91 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.7rem 0.5rem;
-  /* background: var(--color-background); */
-  border-bottom: 1px solid var(--color-border);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  padding: 0.55rem calc(0.35rem + 1rem);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 28%, transparent);
+  background: var(--color-surface);
 }
 
 /* ── Transaction rows (card layout) ─────────────────────────── */
 
-/* Each react-window slot wrapper fills the allocated height so
-   no dark gap shows between rows within the same card group.
-   Side borders are shared by all rows in a group. */
+/* react-window renders each row in its own absolutely positioned slot, so a
+   month's card is drawn in slices: every slot carries the side borders and the
+   first/last slots add the rounded top/bottom. Same surface as the budget's
+   category-group cards. */
 .txnWrapper {
-  background: var(--color-surface);
+  --txn-card-border: 1px solid var(--color-border-muted);
+  --txn-hairline: color-mix(in srgb, var(--color-border) 28%, transparent);
+
   display: flex;
   flex-direction: column;
   height: 100%;
   min-width: 0;
+  padding: 0 0.35rem;
   overflow: hidden;
-  border-left: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
-  border-right: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  border-left: var(--txn-card-border);
+  border-right: var(--txn-card-border);
+  /* a whisper above the page surface; a full popover fill read too bright */
+  background: color-mix(in srgb, var(--color-text) 2.5%, var(--color-surface));
 }
 
 .txnCardFirst {
-  border-radius: 0.75rem 0.75rem 0 0;
-  border-top: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
-  overflow: hidden;
+  padding-top: 0.35rem;
+  border-top: var(--txn-card-border);
+  border-radius: 1rem 1rem 0 0;
 }
 
 .txnCardLast {
-  border-radius: 0 0 0.75rem 0.75rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
-  overflow: hidden;
+  padding-bottom: 0.35rem;
+  border-bottom: var(--txn-card-border);
+  border-radius: 0 0 1rem 1rem;
 }
 
 .txnCardSingle {
-  border-radius: 0.75rem;
-  border-top: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
-  overflow: hidden;
-}
-
-/* Subtle row separator inside a card */
-.txnDivider {
-  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+  border-top: var(--txn-card-border);
+  border-bottom: var(--txn-card-border);
+  border-radius: 1rem;
 }
 
 .txnRow {
+  position: relative;
   display: flex;
+  flex: 1;
   flex-direction: row;
   flex-wrap: nowrap;
-  gap: 1rem;
-  font-size: 1rem;
-  padding: 0.75rem 1.5rem;
-  background: var(--color-surface);
-  cursor: pointer;
-  transition:
-    background 0.2s ease,
-    box-shadow 0.2s ease;
   align-items: center;
-  flex: 1;
+  gap: 1rem;
   min-width: 0;
+  padding: 0 1rem;
+  border-radius: 0.65rem;
   overflow: hidden;
+  color: var(--color-text);
+  font-size: 0.98rem;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+/* inset hairline between rows of one card; it drops out under a hovered or
+   selected row so the rounded fill reads cleanly */
+.txnDivider .txnRow::after {
+  position: absolute;
+  right: 1rem;
+  bottom: 0;
+  left: 1rem;
+  height: 1px;
+  background: var(--txn-hairline);
+  content: '';
+  transition: opacity 0.12s ease;
+}
+
+.txnRow:hover {
+  background: color-mix(in srgb, var(--color-text) 3.5%, transparent);
+}
+
+.txnDivider .txnRow:hover::after,
+.txnDivider .txnRowSelected::after {
+  opacity: 0;
 }
 
 .txnRow > div {
@@ -287,20 +458,56 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  /* background: var(--color-surface-secondary); */
 }
 
-.txnRowSelected {
-  background: var(--color-surface-secondary) !important;
-  box-shadow: inset 3px 0 0 var(--color-border-light);
+.txnRowSelected,
+.txnRowSelected:hover {
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+}
+
+/* secondary columns recede so the payee and amount lead */
+.allAccounts .txnRow > div:first-child,
+.dateCell {
+  color: var(--color-text-secondary);
 }
 
 /* ── Cell styles ─────────────────────────────────────────────── */
 
+/* hugs the value, so clicking the empty rest of the cell selects the row
+   instead of starting an inline edit */
 .inlineEditHitArea {
-  width: 70%;
-  max-width: 70%;
+  width: fit-content;
+  max-width: 100%;
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* nothing to hug (an empty note): fill the cell so it can still be clicked */
+.inlineEditHitArea:empty {
+  width: 100%;
+  min-height: 1.75rem;
+}
+
+/* an open editor takes the whole cell and must not clip its focus border */
+.inlineEditHitArea.inlineEditActive {
+  width: 100%;
+  max-width: 100%;
+  margin-left: 0;
+  overflow: visible;
+}
+
+/* the payee's hover pill bleeds left so its text lines up with the column; the
+   cell's own overflow (set inline by the column layout) would clip that bleed,
+   so it stays open here and the hit area / name do the ellipsis */
+.txnRow > div:has(> .inlineEditHitArea > .payeeName) {
+  overflow: visible !important;
+}
+
+.inlineEditHitArea:has(> .payeeName) {
+  max-width: calc(100% + 0.5rem);
+  margin-left: -0.5rem;
 }
 
 .dateInlineEditHitArea {
@@ -309,20 +516,21 @@
 }
 
 .payeeName {
-  border: 2px solid transparent;
-  color: var(--color-text-secondary);
-  font-size: 1.2rem;
-  max-width: 100%;
   display: block;
-  padding: 0.5rem 1rem;
-  border-radius: 0.5rem;
+  max-width: 100%;
+  padding: 0.3rem 0.5rem;
+  border-radius: 0.45rem;
+  color: var(--color-text);
+  font-size: 1rem;
+  font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: background 0.12s ease;
 }
 
 .payeeName:hover {
   cursor: text;
-  background: var(--color-surface-secondary);
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
 }
 
 .categoryPill {
@@ -345,33 +553,42 @@
   align-items: center;
   justify-content: flex-end;
   text-align: right;
-  font-weight: 500;
-  font-size: 1.2rem;
+  font-weight: 600;
+  font-size: 1rem;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
-  color: var(--color-primary);
+  color: var(--color-text);
 }
 
-/* .amountInflow  { color: var(--color-budget-positive); } */
-/* .amountOutflow { color: var(--color-budget-negative); } */
+.amountInflow {
+  color: var(--color-success);
+}
+
+.balanceCell {
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
 
 .note {
   color: var(--color-text-secondary);
 }
 
+/* same box as the payee/account editors (popovers/Popover.module.css .input) */
 .input {
   width: 100%;
-  height: 100%;
+  padding: 0.45rem 0.75rem;
   border: 2px solid transparent;
-  padding: 0.5rem 0.5rem;
   border-radius: 0.5rem;
   background: var(--color-surface-secondary);
   box-shadow: var(--shadow-sm);
-  font-size: 1.1rem;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 1rem;
 }
 
 .input:focus {
-  border: 2px solid var(--color-border-light);
+  outline: none;
+  border-color: var(--color-border-light);
 }
 
 input[type='date']::-webkit-calendar-picker-indicator {
@@ -850,4 +1067,36 @@ input[type='date']::-webkit-calendar-picker-indicator {
     flex: 0 0 auto;
     margin-top: 0.2rem;
   }
+}
+
+/* account cell: bank logo */
+.accountLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 100%;
+  min-width: 0;
+  vertical-align: middle;
+}
+
+.mobileAccountLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.mobileAccountLabel > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* the meta grid greys out every span; the account value isn't a label */
+.mobileDetailMetaGrid .mobileAccountLabel,
+.mobileDetailMetaGrid .mobileAccountLabel span {
+  color: inherit;
+  font-size: inherit;
 }

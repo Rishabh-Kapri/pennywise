@@ -16,8 +16,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
-	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm/providers"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/memory"
 	agent "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/runtime"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/tools"
@@ -26,11 +24,11 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/handler"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/service"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/temporal"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/userllm"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 
 	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
-	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedMiddleware "github.com/Rishabh-Kapri/pennywise/backend/shared/middleware"
@@ -71,75 +69,6 @@ func connectToTemporal(ctx context.Context, cfg config.Config) (tc.Client, error
 	}
 	logger.Logger(ctx).Info("connected to temporal")
 	return c, nil
-}
-
-func getLLMClients(tel otelSDK.TelemetryProvider) (map[string]llm.RegistryEntry, string, error) {
-	appConfig := config.Load()
-	entries := map[string]llm.RegistryEntry{}
-
-	if appConfig.AnthropicAPIKey != "" {
-		c, err := providers.NewAnthropicClient("chat")
-		if err != nil {
-			return nil, "", err
-		}
-		oc := llm.NewObservedLLM(c, tel)
-		entries["anthropic"] = llm.RegistryEntry{Client: oc, DefaultModel: "claude-sonnet-4-6"}
-	}
-
-	if appConfig.OpenAIAPIKey != "" {
-		c, err := providers.NewOpenAIClient()
-		if err != nil {
-			return nil, "", err
-		}
-		oc := llm.NewObservedLLM(c, tel)
-		entries["openai"] = llm.RegistryEntry{Client: oc, DefaultModel: "gpt-4o"}
-	}
-
-	if appConfig.LumoBaseURL != "" {
-		c, err := providers.NewLumoClient()
-		if err != nil {
-			return nil, "", err
-		}
-		entries["lumo"] = llm.RegistryEntry{Client: llm.NewObservedLLM(c, tel), DefaultModel: "lumo-max"}
-	}
-
-	if appConfig.OpenRouterAPIKey != "" {
-		c, err := providers.NewOpenRouterClient()
-		if err != nil {
-			return nil, "", err
-		}
-		oc := llm.NewObservedLLM(c, tel)
-		entries["openrouter"] = llm.RegistryEntry{Client: oc, DefaultModel: "anthropic/claude-haiku-4.5"}
-	}
-
-	ollamaClient, err := providers.NewOllamaClient()
-	if err != nil {
-		return nil, "", err
-	}
-	ollamaObserved := llm.NewObservedLLM(ollamaClient, tel)
-	entries["ollama"] = llm.RegistryEntry{
-		Client:       ollamaObserved,
-		DefaultModel: "gemma4",
-	}
-
-	defaultProvider := appConfig.DefaultAgentProvider
-	if _, ok := entries[defaultProvider]; !ok {
-		defaultProvider = func() string {
-			for _, provider := range []string{"openai", "anthropic", "openrouter", "lumo", "ollama"} {
-				if _, ok := entries[provider]; ok {
-					return provider
-				}
-			}
-			return ""
-		}()
-	}
-
-	if _, ok := entries[defaultProvider]; !ok {
-		return nil, "", errs.New(errs.CodeInternalError,
-			"default provider %q is not present in registry entries", defaultProvider)
-	}
-
-	return entries, defaultProvider, nil
 }
 
 func main() {
@@ -240,15 +169,20 @@ func main() {
 	toolRegistry.RegisterTool(tools.NewExecuteSQLTool(agentReadDB))
 	toolRegistry.RegisterTool(tools.NewUpdateWorkingMemoryTool(dbConn))
 
-	llmClients, defaultProvider, err := getLLMClients(tel)
+	// Every chat model call (pipeline, statements, agent) runs on the budget
+	// owner's own AI providers. There is no server-key fallback.
+	llmCredentialsBox, err := utils.NewSecretBox(cfg.LLMCredentialsKey)
 	if err != nil {
-		logger.Fatal("error while getting llm clients", "error", err)
+		logger.Logger(ctx).Warn("user AI provider keys can't be opened", "error", err)
+		llmCredentialsBox = nil
 	}
-
-	llmResolver, err := llm.NewLLMRegistry(llmClients, defaultProvider, tel)
-	if err != nil {
-		logger.Fatal("error whiel creating llm registry", "error", err)
-	}
+	llmResolver := userllm.New(
+		repository.NewUserLLMProviderRepository(dbConn),
+		llmCredentialsBox,
+		tel,
+		cfg.AllowPrivateLLMURLs,
+	)
+	llmProviderHandler := handler.NewLLMProviderHandler(llmResolver)
 	memoryService := memory.NewMemoryService(agentMemoryRepo, llmResolver, agentLocation)
 
 	agent, err := agent.NewAgent(
@@ -355,6 +289,9 @@ func main() {
 		budgetApi.POST("/predict", predictionHandler.Predict)
 		budgetApi.POST("/embeddings/transaction", predictionHandler.GenerateTransactionEmbedding)
 		budgetApi.POST("/corrections", predictionHandler.HandleCorrection)
+		budgetApi.POST("/categories/describe", predictionHandler.SuggestCategoryDescription)
+		budgetApi.POST("/statements/extract", predictionHandler.ExtractStatement)
+		budgetApi.POST("/llm/providers/test", llmProviderHandler.Test)
 
 		api.POST("/workflows/:workflowId/retry-predict", workflowHandler.RetryPredict)
 		api.POST("/workflows/:workflowId/retry-parse", workflowHandler.RetryParse)

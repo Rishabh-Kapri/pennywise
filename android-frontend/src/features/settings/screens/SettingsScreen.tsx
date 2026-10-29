@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Activity, Bot, Check, ChevronLeft, ChevronRight, Files, LogOut, Tags, UserRound } from 'lucide-react-native';
+import { Activity, Bot, Check, ChevronLeft, ChevronRight, Files, Landmark, LogOut, Tags, UserRound } from 'lucide-react-native';
 import Constants from 'expo-constants';
 import type { RootStackParamList } from '../../../navigation/types';
 import { useEffect } from 'react';
@@ -16,6 +16,7 @@ import { logout } from '../../auth/store/authSlice';
 import { selectAllBudgets, selectSelectedBudget, setSelectedBudget, updateBudgetSelection } from '../../budget/store/budgetSlice';
 import { fetchPipelineRuns, selectActivePipelineRunCount } from '../../pipeline/store/pipelineSlice';
 import { config } from '../../../config/env';
+import { AppUpdates } from '../components/AppUpdates';
 import { ConnectedProviders } from '../components/ConnectedProviders';
 import { useCurrentUser } from '../hooks/useCurrentUser';
 import { colors, spacing } from '../../../theme';
@@ -151,6 +152,13 @@ export function SettingsScreen() {
             onPress={() => navigation.navigate('Tags')}
             divider
           />
+          <NavRow
+            icon={<Landmark color={colors.primary} size={18} />}
+            label="Loans"
+            description="Payoff progress, interest split, payoff simulator"
+            onPress={() => navigation.navigate('Loans')}
+            divider
+          />
         </Card>
       </View>
 
@@ -220,6 +228,7 @@ export function SettingsScreen() {
               {selectedBudget?.id ?? '—'}
             </AppText>
           </View>
+          <AppUpdates />
         </Card>
       </View>
 

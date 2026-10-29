@@ -1,10 +1,11 @@
+import { Check } from '@phosphor-icons/react';
 import { useAppSelector } from '@/app/hooks';
-import { useDropdown } from '../../hooks/useDropdown';
 import type { Account } from '@/features/accounts/types/account.types';
 import styles from './Popover.module.css';
-import { Autocomplete, AutocompleteItem } from '@heroui/autocomplete';
 import { Popover } from '@/components/common/Popover/Popover';
 import type { TransactionDropdownProps } from './types';
+import { SearchSelect } from './SearchSelect';
+import { BankLogo } from '@/features/accounts/components/BankLogo/BankLogo';
 import { useCallback, useRef, useState, useMemo } from 'react';
 
 export function AccountDropdown({
@@ -15,8 +16,14 @@ export function AccountDropdown({
   multiple = false,
   selectedIds = [],
   onChangeMultiple,
+  placeholder,
 }: TransactionDropdownProps) {
-  const { budgetAccounts } = useAppSelector((state) => state.accounts);
+  const { allAccounts } = useAppSelector((state) => state.accounts);
+  // every account type (loans and tracking too); closed ones can't take new transactions
+  const pickableAccounts = useMemo(
+    () => allAccounts.filter((account) => !account.deleted && (multiple || !account.closed)),
+    [allAccounts, multiple],
+  );
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const [isOpen, setIsOpen] = useState(false);
@@ -29,18 +36,21 @@ export function AccountDropdown({
   );
 
   const filteredItems = useMemo(() => {
-    return filterFn(budgetAccounts, searchQuery);
-  }, [budgetAccounts, searchQuery, filterFn]);
+    return filterFn(pickableAccounts, searchQuery);
+  }, [pickableAccounts, searchQuery, filterFn]);
 
-  // Single select handling
-  const selectedAccount = budgetAccounts.find((account) => account.name === value);
-  const { filterQuery, setFilterQuery, filteredItems: singleFilteredItems, filterValues } =
-    useDropdown(value, budgetAccounts, filterFn);
-
-  const handleOnClick = (account: Account) => {
-    setFilterQuery(account.name);
-    onClick(account.id!, account.name);
-  };
+  const accountItems = useMemo(
+    () =>
+      pickableAccounts
+        .filter((account) => account.id)
+        .map((account) => ({
+          id: account.id!,
+          name: account.name,
+          leading: <BankLogo name={account.name} bank={account.bank} type={account.type} size="xs" />,
+          trailing: account.suffix ? `••${account.suffix}` : undefined,
+        })),
+    [pickableAccounts],
+  );
 
   const handleToggleMultiple = (account: Account) => {
     if (!onChangeMultiple) return;
@@ -51,12 +61,12 @@ export function AccountDropdown({
 
     if (isSelected) {
       nextIds = selectedIds.filter((id) => id !== accId);
-      nextNames = budgetAccounts
+      nextNames = pickableAccounts
         .filter((acc) => nextIds.includes(acc.id!))
         .map((acc) => acc.name);
     } else {
       nextIds = [...selectedIds, accId];
-      nextNames = budgetAccounts
+      nextNames = pickableAccounts
         .filter((acc) => nextIds.includes(acc.id!))
         .map((acc) => acc.name);
     }
@@ -64,17 +74,16 @@ export function AccountDropdown({
   };
 
   const triggerClassName = variant === 'form' ? styles.formTrigger : styles.input;
-  const inputClassName = variant === 'form' ? styles.formInput : styles.input;
 
   if (multiple) {
-    const displayValue = value || 'Select Account';
+    const displayValue = value || placeholder || 'Select Account';
     return (
       <div className={styles.popoverContainer}>
         <button
           type="button"
           ref={triggerRef}
           onClick={() => setIsOpen((prev) => !prev)}
-          className={`${triggerClassName} ${styles.triggerButton} ${isOpen ? styles.open : ''}`}
+          className={`${triggerClassName} ${styles.triggerButton} ${isOpen ? styles.open : ''} ${value ? '' : styles.placeholderText}`}
           aria-haspopup="true"
           aria-expanded={isOpen}
           aria-controls="account-popover-content"
@@ -86,6 +95,7 @@ export function AccountDropdown({
           isOpen={isOpen}
           triggerRef={triggerRef}
           onClose={() => setIsOpen(false)}
+          width={Math.max(triggerRef.current?.offsetWidth ?? 0, 240)}
         >
           <div className={styles.searchContainer}>
             <input
@@ -97,14 +107,14 @@ export function AccountDropdown({
               aria-label="Search accounts"
             />
           </div>
-          <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
+          <div className={styles.multiList}>
             {filteredItems.length > 0 ? (
               filteredItems.map((item) => {
                 const isSelected = selectedIds.includes(item.id!);
                 return (
                   <div
                     key={item.id}
-                    className={`${styles.item} ${isSelected ? styles.selectedItem : ''}`}
+                    className={`${styles.option} ${styles.multiOption} ${isSelected ? styles.optionSelected : ''}`}
                     onClick={() => handleToggleMultiple(item)}
                     role="option"
                     aria-selected={isSelected}
@@ -116,7 +126,10 @@ export function AccountDropdown({
                       }
                     }}
                   >
-                    {item.name}
+                    <span className={styles.optionLeading}><BankLogo name={item.name} bank={item.bank} type={item.type} size="xs" /></span>
+                    <span className={styles.optionName}>{item.name}</span>
+                    {item.suffix && <span className={styles.optionTrailing}>••{item.suffix}</span>}
+                    {isSelected && <Check className={styles.optionCheck} size={14} weight="bold" />}
                   </div>
                 );
               })
@@ -129,59 +142,16 @@ export function AccountDropdown({
     );
   }
 
-  // Fallback to existing single select Autocomplete
   return (
-    <div className={styles.popoverContainer}>
-      <Autocomplete
-        inputValue={filterQuery}
-        selectedKey={selectedAccount?.id ?? null}
-        inputProps={{
-          autoFocus,
-          classNames: {
-            inputWrapper: styles.autocompleteInputWrapper,
-            innerWrapper: styles.autocompleteInnerWrapper,
-            input: inputClassName,
-          },
-        }}
-        classNames={{
-          base: styles.autocompleteBase,
-          selectorButton: styles.selectorButton,
-          clearButton: styles.clearButton,
-        }}
-        placeholder="Select Account"
-        popoverProps={{
-          classNames: {
-            base: styles.popoverBase,
-            content: styles.popoverContent,
-          },
-          placement: 'bottom-start',
-        }}
-        onInputChange={(value) => filterValues(value)}
-        onSelectionChange={(key) => {
-          const account = budgetAccounts.find((acc) => acc.id === key);
-          if (account) {
-            handleOnClick(account);
-          }
-        }}
-        items={singleFilteredItems}
-        listboxProps={{
-          emptyContent: 'No accounts found',
-          classNames: {
-            base: styles.listboxBase,
-            list: styles.listboxList,
-          },
-          itemClasses: {
-            base: styles.item,
-            selectedIcon: styles.hideIcon,
-          },
-        }}
-      >
-        {(item) => (
-          <AutocompleteItem key={item.id} className={styles.item}>
-            {item.name}
-          </AutocompleteItem>
-        )}
-      </Autocomplete>
-    </div>
+    <SearchSelect
+      value={value}
+      items={accountItems}
+      onSelect={(item) => onClick(item.id, item.name)}
+      placeholder="Select account"
+      emptyText="No accounts found"
+      autoFocus={autoFocus}
+      variant={variant}
+      menuWidth={variant === 'ghost' ? 260 : undefined}
+    />
   );
 }

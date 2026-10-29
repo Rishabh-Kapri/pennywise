@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -19,6 +20,8 @@ type CategoryHandler interface {
 	Create(c *gin.Context)
 	Update(c *gin.Context)
 	UpdateBudget(c *gin.Context)
+	UpdateDetails(c *gin.Context)
+	SuggestDescription(c *gin.Context)
 	GetById(c *gin.Context)
 	DeleteById(c *gin.Context)
 }
@@ -175,4 +178,69 @@ func (h *categoryHandler) DeleteById(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, nil)
+}
+
+// maxCategoryTextLength bounds a category note or description; both are short
+// free text, and an unbounded body is an easy way to bloat every budget fetch.
+const maxCategoryTextLength = 2000
+
+func (h *categoryHandler) UpdateDetails(c *gin.Context) {
+	ctx := c.Request.Context()
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid category id"})
+		return
+	}
+	var body model.CategoryDetailsUpdate
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if body.Note == nil && body.Description == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "note or description is required"})
+		return
+	}
+	for _, field := range []*string{body.Note, body.Description} {
+		if field == nil {
+			continue
+		}
+		*field = strings.TrimSpace(*field)
+		if len(*field) > maxCategoryTextLength {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "text is too long"})
+			return
+		}
+	}
+
+	if err := h.service.UpdateDetails(ctx, id, body); err != nil {
+		if errors.Is(err, service.ErrCategoryNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, body)
+}
+
+func (h *categoryHandler) SuggestDescription(c *gin.Context) {
+	ctx := c.Request.Context()
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid category id"})
+		return
+	}
+
+	description, err := h.service.SuggestDescription(ctx, id)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrCategoryNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		case errors.Is(err, service.ErrDescriptionUnavailable):
+			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		default:
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		}
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"description": description})
 }

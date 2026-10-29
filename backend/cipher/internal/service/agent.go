@@ -125,7 +125,7 @@ func titleChatRequest(model string, message string, metadata map[string]string) 
 func (s *agentService) generateTitle(ctx context.Context, message string) (string, error) {
 	titleReq := titleChatRequest(s.agent.TitleModel, message, nil)
 
-	client, model, err := s.llmResolver.Resolve(titleReq.Provider, titleReq.Model)
+	client, model, err := s.llmResolver.Resolve(ctx, titleReq.Provider, titleReq.Model)
 	if err != nil {
 		return "", fmt.Errorf("resolving title model %q: %w", s.agent.TitleModel, err)
 	}

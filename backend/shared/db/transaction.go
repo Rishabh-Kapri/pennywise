@@ -43,7 +43,7 @@ func NewTransactionRepository(pool *pgxpool.Pool) TransactionRepository {
 }
 
 // scannedStatus resolves transactions.status read from a database whose column
-// predates the NOT NULL default (see migration 00023): rows imported before it
+// predates the NOT NULL default (sql/migrations/00004_transactions.sql): rows imported before it
 // hold NULL, which cannot be scanned into the non-pointer model field. They are
 // MANUAL, the value the column default would have written. Every read of the
 // column goes through a *model.TransactionStatus and this helper so a legacy row
@@ -89,6 +89,16 @@ func (r *transactionRepo) GetAll(
 		if len(filter.AccountIDs) > 0 {
 			sql += fmt.Sprintf(" AND account_id = ANY($%d)", argsIndex)
 			args = append(args, filter.AccountIDs)
+			argsIndex++
+		}
+		if filter.StartDate != nil {
+			sql += fmt.Sprintf(" AND date >= $%d", argsIndex)
+			args = append(args, *filter.StartDate)
+			argsIndex++
+		}
+		if filter.EndDate != nil {
+			sql += fmt.Sprintf(" AND date <= $%d", argsIndex)
+			args = append(args, *filter.EndDate)
 			argsIndex++
 		}
 	}

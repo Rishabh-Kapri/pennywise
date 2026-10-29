@@ -43,11 +43,15 @@ func (s *scriptedLLM) Stream(context.Context, sharedModel.ChatRequest) <-chan sh
 // rather than substituted for it.
 type scriptedResolver struct{ client *llm.ObservedLLM }
 
-func (r scriptedResolver) Resolve(_ string, model string) (*llm.ObservedLLM, string, error) {
+func (r scriptedResolver) Resolve(_ context.Context, _ string, model string) (*llm.ObservedLLM, string, error) {
 	if model == "" {
 		model = "test-model"
 	}
 	return r.client, model, nil
+}
+
+func (r scriptedResolver) Targets(context.Context) ([]llm.Target, error) {
+	return []llm.Target{{Provider: "test", Model: "test-model"}}, nil
 }
 
 // failingTool always errors, standing in for a bad SQL query.

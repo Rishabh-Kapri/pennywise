@@ -4,6 +4,18 @@ import { getCurrencyLocaleString } from '@/utils/date.utils';
 import type { Transaction } from '../../types/transaction.types';
 import styles from '../Transaction/Transaction.module.css';
 import { useEffect, useMemo, useState } from 'react';
+import { useAppSelector } from '@/app/hooks';
+import { BankLogo } from '@/features/accounts/components/BankLogo/BankLogo';
+
+function MobileAccount({ txn }: { txn: Transaction }) {
+  const account = useAppSelector((state) => state.accounts.allAccounts.find((acc) => acc.id === txn.accountId));
+  return (
+    <span className={styles.mobileAccountLabel}>
+      <BankLogo name={txn.accountName} bank={account?.bank} type={account?.type} size="xs" />
+      <span>{txn.accountName || 'Account'}</span>
+    </span>
+  );
+}
 
 interface TransactionMobileProps {
   transactions: Transaction[];
@@ -195,7 +207,9 @@ export function TransactionMobile({
         <section className={styles.mobileDetailMetaGrid}>
           <div>
             <span>From</span>
-            <strong>{activeTransaction.accountName || 'Account'}</strong>
+            <strong>
+              <MobileAccount txn={activeTransaction} />
+            </strong>
           </div>
           <div>
             <span>On</span>
@@ -288,7 +302,7 @@ export function TransactionMobile({
                   </div>
                   {showAccountName && card.txn.accountName && (
                     <div className={styles.mobileTxnAccount}>
-                      {card.txn.accountName}
+                      <MobileAccount txn={card.txn} />
                     </div>
                   )}
                 </button>

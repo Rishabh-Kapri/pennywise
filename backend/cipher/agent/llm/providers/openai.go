@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
-	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
@@ -98,13 +97,13 @@ type openAIInputTokenDetails struct {
 	CachedTokens int `json:"cached_tokens"`
 }
 
-func NewOpenAIClient() (llm.LLM, error) {
-	cfg := config.Load()
-	if cfg.OpenAIAPIKey == "" {
+// NewOpenAIClientWithKey builds a client on a user's own key.
+func NewOpenAIClientWithKey(apiKey string) (llm.LLM, error) {
+	if apiKey == "" {
 		return nil, errs.New(errs.CodeInternalError, "no openai api key found")
 	}
 
-	return newResponsesClient("openai", "https://api.openai.com", cfg.OpenAIAPIKey), nil
+	return newResponsesClient("openai", "https://api.openai.com", apiKey), nil
 }
 
 // newResponsesClient shares the Responses API adapter across compatible providers.
@@ -144,6 +143,15 @@ func (c *openAIClient) toOpenAIReq(req sharedModel.ChatRequest) openAIReq {
 			Summary string `json:"summary,omitempty"`
 			Effort  string `json:"effort,omitempty"`
 		}{Effort: "high"}
+	}
+	if req.ReasoningEffort != "" {
+		if request.Reasoning == nil {
+			request.Reasoning = &struct {
+				Summary string `json:"summary,omitempty"`
+				Effort  string `json:"effort,omitempty"`
+			}{}
+		}
+		request.Reasoning.Effort = req.ReasoningEffort
 	}
 	return request
 }

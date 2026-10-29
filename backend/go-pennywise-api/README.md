@@ -19,10 +19,11 @@ make test           # go test ./...
 make check          # fmt + vet + test
 make migrate-up     # apply pending migrations
 make migrate-status # show migration state
-make migrate-baseline # mark legacy seed migrations (1-6) as applied
+make migrate-create name=add_x # new migration in backend/shared/sql/migrations
+make migrate-baseline # one-off, for a DB built by the old 29 migrations
 ```
 
-On a **fresh database** the legacy Go seed migrations (00002/00003) fail; the workaround is `make migrate-up` (applies 00001, fails at 00002) → `make migrate-baseline` → `make migrate-up`. `CREATE EXTENSION vector` must exist before 00009.
+A **fresh database** just needs `make migrate-up`. The migrations and how to write them: `../shared/sql/README.md`.
 
 ## Routes
 

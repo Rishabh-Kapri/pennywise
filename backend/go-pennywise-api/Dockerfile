@@ -19,8 +19,9 @@ RUN go build -mod=vendor -o migrations ./cmd/migrations
 # Stage 2: Create a minimal image
 FROM alpine:latest
 
-# Add CA certificates (needed for HTTPS/gcloud/pubsub)
-RUN apk update --no-cache && apk add --no-cache ca-certificates tzdata
+# Add CA certificates (needed for HTTPS/gcloud/pubsub); poppler-utils provides
+# pdftotext, which statement reconciliation reads uploaded PDFs with.
+RUN apk update --no-cache && apk add --no-cache ca-certificates tzdata poppler-utils
 
 WORKDIR /root/
 

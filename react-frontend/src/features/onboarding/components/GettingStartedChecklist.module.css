@@ -1,0 +1,116 @@
+.card {
+  margin-bottom: 1.25rem;
+  padding: 1.25rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 16px;
+  background: var(--color-surface);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.header p {
+  margin: 0.2rem 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+}
+
+.dismiss {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.progress {
+  height: 6px;
+  margin: 0.9rem 0;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--color-surface-tertiary);
+}
+
+.progressBar {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-success);
+  transition: width 0.3s ease;
+}
+
+.items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.5rem;
+}
+
+.item {
+  height: 100%;
+  padding: 0.65rem 0.75rem;
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  border-radius: 10px;
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.item:hover {
+  background: var(--color-surface-tertiary);
+}
+
+.item small {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+}
+
+.done > span {
+  color: var(--color-text-secondary);
+  text-decoration: line-through;
+}
+
+.done small {
+  text-decoration: none;
+}
+
+.check {
+  flex: 0 0 auto;
+  color: var(--color-success);
+}
+
+.todo {
+  flex: 0 0 auto;
+  color: var(--color-text-secondary);
+}
+
+.explore {
+  margin-top: 0.9rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+}
+
+.explore a {
+  color: var(--color-primary);
+}

@@ -1,6 +1,6 @@
 import { forwardRef } from 'react';
 import { getCurrencyLocaleString } from '@/utils/date.utils';
-import styles from './CategoryGroup.module.css';
+import styles from './AmountCell.module.css';
 
 type AmountVariant = 'default' | 'balance';
 
@@ -10,6 +10,7 @@ interface AmountCellProps {
   onClick?: (e: React.MouseEvent) => void;
   onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onBlur?: (e: React.FocusEvent) => void;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
   id?: string;
   isEditing?: boolean;
   balanceClassName?: string;
@@ -26,6 +27,7 @@ export const AmountCell = forwardRef<HTMLSpanElement, AmountCellProps>(
       onClick,
       onChange,
       onBlur,
+      onKeyDown,
       id,
       balanceClassName,
       overspentClassName,
@@ -58,8 +60,13 @@ export const AmountCell = forwardRef<HTMLSpanElement, AmountCellProps>(
           {...ariaProps}
           onChange={onChange}
           onBlur={onBlur}
+          onKeyDown={onKeyDown}
+          onClick={(e) => e.stopPropagation()}
           value={value}
+          inputMode="decimal"
+          aria-label="Assigned amount"
           autoFocus
+          onFocus={(e) => e.currentTarget.select()}
         />
       );
     }

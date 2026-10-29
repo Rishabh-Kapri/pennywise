@@ -20,6 +20,8 @@ type ReportHandler interface {
 	GetSpending(c *gin.Context)
 	GetIncomeExpense(c *gin.Context)
 	GetNetWorth(c *gin.Context)
+	GetCashFlow(c *gin.Context)
+	GetLoanHistories(c *gin.Context)
 }
 
 type reportHandler struct {
@@ -67,6 +69,32 @@ func (h *reportHandler) GetNetWorth(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, report)
+}
+
+func (h *reportHandler) GetCashFlow(c *gin.Context) {
+	params, ok := parseReportParams(c)
+	if !ok {
+		return
+	}
+	report, err := h.service.GetCashFlow(c.Request.Context(), params)
+	if err != nil {
+		respondReportError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, report)
+}
+
+func (h *reportHandler) GetLoanHistories(c *gin.Context) {
+	params, ok := parseReportParams(c)
+	if !ok {
+		return
+	}
+	histories, err := h.service.GetLoanHistories(c.Request.Context(), params)
+	if err != nil {
+		respondReportError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, histories)
 }
 
 func parseReportParams(c *gin.Context) (model.ReportParams, bool) {

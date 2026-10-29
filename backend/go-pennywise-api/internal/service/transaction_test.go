@@ -192,6 +192,10 @@ func (m *mockBudgetRepo) IsOwnedByUser(ctx context.Context, budgetID uuid.UUID, 
 	panic("unimplemented")
 }
 
+func (m *mockBudgetRepo) UpdateOnboarding(ctx context.Context, tx pgx.Tx, id uuid.UUID, onboarding model.BudgetOnboarding) error {
+	panic("unimplemented")
+}
+
 type mockPredictionRepo struct {
 	mockBaseRepo
 	mock.Mock
@@ -361,8 +365,38 @@ func (m *mockPayeeRuleRepo) DeleteByID(ctx context.Context, budgetId uuid.UUID, 
 	return args.Error(0)
 }
 
+func (m *mockPayeeRuleRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.PayeeRuleDetails, error) {
+	args := m.Called(ctx, budgetId)
+	if obj := args.Get(0); obj != nil {
+		return obj.([]model.PayeeRuleDetails), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+
 type mockCipherClient struct {
 	mock.Mock
+}
+
+func (m *mockCipherClient) SuggestCategoryDescription(
+	ctx context.Context,
+	req model.CategoryDescriptionContext,
+) (*CategoryDescriptionResponse, error) {
+	args := m.Called(ctx, req)
+	if v := args.Get(0); v != nil {
+		return v.(*CategoryDescriptionResponse), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+
+func (m *mockCipherClient) ExtractStatement(
+	ctx context.Context,
+	req model.StatementExtractRequest,
+) (*model.StatementExtractResponse, error) {
+	args := m.Called(ctx, req)
+	if v := args.Get(0); v != nil {
+		return v.(*model.StatementExtractResponse), args.Error(1)
+	}
+	return nil, args.Error(1)
 }
 
 func (m *mockCipherClient) GenerateTransactionEmbedding(
@@ -434,6 +468,11 @@ func (m *mockAccountRepo) Create(ctx context.Context, tx pgx.Tx, account model.A
 	panic("unimplemented")
 }
 
+// Update implements repository.AccountRepository.
+func (m *mockAccountRepo) Update(ctx context.Context, tx pgx.Tx, budgetId, id uuid.UUID, account model.Account) (*model.Account, error) {
+	panic("unimplemented")
+}
+
 // GetAll implements repository.AccountRepository.
 func (m *mockAccountRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Account, error) {
 	panic("unimplemented")
@@ -500,6 +539,19 @@ func (m *mockPayeesRepo) GetById(ctx context.Context, budgetId uuid.UUID, id uui
 	panic("unimplemented")
 }
 
+func (m *mockPayeesRepo) GetStats(ctx context.Context, budgetId uuid.UUID) ([]model.PayeeStats, error) {
+	panic("unimplemented")
+}
+
+func (m *mockPayeesRepo) MergeTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	budgetId, targetId uuid.UUID,
+	sourceIds []uuid.UUID,
+) (*model.PayeeMergeResult, error) {
+	panic("unimplemented")
+}
+
 // PayeesRepo mock methods
 func (m *mockPayeesRepo) GetByIdTx(ctx context.Context, tx pgx.Tx, budgetId, payeeId uuid.UUID) (*model.Payee, error) {
 	args := m.Called(ctx, tx, budgetId, payeeId)
@@ -517,6 +569,22 @@ func (m *mockPayeesRepo) Search(ctx context.Context, budgetId uuid.UUID, query s
 // Update implements repository.PayeesRepository.
 func (m *mockPayeesRepo) Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, payee model.Payee) error {
 	panic("unimplemented")
+}
+
+func (m *mockCategoryRepo) UpdateDetails(ctx context.Context, budgetId, id uuid.UUID, note, description *string) error {
+	return m.Called(ctx, budgetId, id, note, description).Error(0)
+}
+
+func (m *mockCategoryRepo) GetDescriptionContext(
+	ctx context.Context,
+	budgetId, categoryId uuid.UUID,
+	payeeLimit int,
+) (*model.CategoryDescriptionContext, error) {
+	args := m.Called(ctx, budgetId, categoryId, payeeLimit)
+	if v := args.Get(0); v != nil {
+		return v.(*model.CategoryDescriptionContext), args.Error(1)
+	}
+	return nil, args.Error(1)
 }
 
 type mockCategoryRepo struct {
@@ -1680,6 +1748,20 @@ func TestLearnTransactionMappingAsync_BlankRawBankText_Skips(t *testing.T) {
 
 type mockCipherClientTxn struct {
 	mock.Mock
+}
+
+func (m *mockCipherClientTxn) SuggestCategoryDescription(
+	ctx context.Context,
+	req model.CategoryDescriptionContext,
+) (*CategoryDescriptionResponse, error) {
+	return nil, nil
+}
+
+func (m *mockCipherClientTxn) ExtractStatement(
+	ctx context.Context,
+	req model.StatementExtractRequest,
+) (*model.StatementExtractResponse, error) {
+	return nil, nil
 }
 
 func (m *mockCipherClientTxn) GenerateTransactionEmbedding(ctx context.Context, req TransactionEmbeddingRequest) (*TransactionEmbeddingResponse, error) {

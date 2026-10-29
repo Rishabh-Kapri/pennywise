@@ -12,9 +12,11 @@ interface PopoverProps {
   zIndex?: number;
   onClose?: () => void;
   placement?: 'top' | 'bottom' | 'left' | 'right';
-  alignment?: 'start' | 'center';
+  alignment?: 'start' | 'center' | 'end';
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
+  /** Extra class for the content box (e.g. an inset option list). */
+  className?: string;
 }
 
 export function Popover({
@@ -27,6 +29,7 @@ export function Popover({
   onClose,
   placement = 'bottom',
   alignment = 'start',
+  className,
   onMouseEnter,
   onMouseLeave,
 }: PopoverProps) {
@@ -114,6 +117,8 @@ export function Popover({
             }
             if (alignment === 'center') {
               left = triggerRect.left + (triggerRect.width / 2) - (popoverWidth / 2);
+            } else if (alignment === 'end') {
+              left = triggerRect.right - popoverWidth;
             } else {
               left = triggerRect.left;
             }
@@ -125,6 +130,9 @@ export function Popover({
         if ((placement === 'left' || placement === 'right') && top + popoverHeight > viewportHeight) {
             top = Math.max(gap, viewportHeight - popoverHeight - gap);
         }
+
+        // Keep the popover inside the viewport horizontally.
+        left = Math.max(gap, Math.min(left, viewportWidth - popoverWidth - gap));
 
         popover.style.transform = `translate(${left}px, ${top}px)`;
 
@@ -206,7 +214,7 @@ export function Popover({
         zIndex: zIndex ?? 1000,
         width: typeof width === 'number' ? `${width}px` : undefined
       }}>
-      <div className={styles.container} style={{ width: width ? `${width}px` : (elWidth ? `${elWidth}px` : 'auto') }}>
+      <div className={`${styles.container} ${className ?? ''}`} style={{ width: width ? `${width}px` : (elWidth ? `${elWidth}px` : 'auto') }}>
         {children}
       </div>
     </div>,

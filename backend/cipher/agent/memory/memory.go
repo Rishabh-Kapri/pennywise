@@ -697,7 +697,7 @@ func (m *memory) OnRunPersisted(ctx context.Context, data AgentRunData) error {
 		},
 	}
 
-	client, model, err := m.llmResolver.Resolve("openrouter", "google/gemini-2.5-flash")
+	client, model, err := m.llmResolver.Resolve(ctx, "openrouter", "google/gemini-2.5-flash")
 	if err != nil {
 		log.Error("error while resolving llm for memory persistence", "error", err)
 		return nil

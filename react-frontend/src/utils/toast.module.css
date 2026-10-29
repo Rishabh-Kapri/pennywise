@@ -1,0 +1,78 @@
+/* App toasts: a surface card with a tinted status icon, in place of HeroUI's
+   flat colours. Unlayered, so these win over HeroUI's layered utilities. */
+
+.toast {
+  --toast-tone: var(--color-text-secondary);
+
+  gap: 0.75rem;
+  padding: 0.7rem 0.95rem 0.7rem 0.7rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.85rem;
+  background: var(--color-popover, var(--color-surface-secondary));
+  box-shadow: var(--shadow-popover, var(--shadow-lg));
+  color: var(--color-text);
+}
+
+.primary {
+  --toast-tone: var(--color-primary);
+}
+
+.success {
+  --toast-tone: var(--color-success);
+}
+
+.warning {
+  --toast-tone: var(--color-warning);
+}
+
+.danger {
+  --toast-tone: var(--color-error);
+}
+
+.icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--toast-tone) 15%, transparent);
+  color: var(--toast-tone);
+}
+
+.title {
+  color: var(--color-text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.description {
+  color: var(--color-text-secondary);
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+/* a thin bar along the bottom instead of a full-height fill */
+.progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: var(--toast-tone);
+  opacity: 0.55;
+}
+
+/* centred at the bottom, clear of Ask Penny and the side panel's buttons */
+.motion {
+  right: 0;
+  left: 0;
+  width: max-content;
+  max-width: calc(100vw - 1rem);
+  margin-inline: auto;
+}
+
+.close {
+  color: var(--color-text-secondary);
+}

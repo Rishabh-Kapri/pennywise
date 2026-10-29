@@ -3,6 +3,7 @@ import {
   ArrowUpIcon as ArrowUp,
   MoneyIcon as Banknote,
   CalendarDotsIcon as CalendarDays,
+  FunnelSimpleIcon as Funnel,
   PlusIcon as Plus,
   MagnifyingGlassIcon as Search,
 } from '@phosphor-icons/react';
@@ -19,6 +20,10 @@ export interface TransactionHeaderProps {
   onSearchChange: (v: string) => void;
   mobileFilter: MobileFilter;
   onMobileFilterChange: (v: MobileFilter) => void;
+  /** Off when the host page already shows the account name and balance. */
+  showSummary?: boolean;
+  /** Renders a button that shows/hides a filter panel the host owns. */
+  filterToggle?: { open: boolean; active: boolean; onToggle: () => void };
 }
 
 export function TransactionHeader({
@@ -29,30 +34,50 @@ export function TransactionHeader({
   onSearchChange,
   mobileFilter,
   onMobileFilterChange,
+  showSummary = true,
+  filterToggle,
 }: TransactionHeaderProps) {
   return (
     <div className={styles.container}>
-      <h2 className={styles.title}>
-        <Banknote size={28} />
-        <span>{name}</span>
-      </h2>
-      <div className={balance < 0 ? `${styles.negative} ${styles.amount}` : styles.amount}>
-        <h3>{getCurrencyLocaleString(balance)}</h3>
-      </div>
+      {showSummary && (
+        <>
+          <h2 className={styles.title}>
+            <Banknote size={28} />
+            <span>{name}</span>
+          </h2>
+          <div className={balance < 0 ? `${styles.negative} ${styles.amount}` : styles.amount}>
+            <h3>{getCurrencyLocaleString(balance)}</h3>
+          </div>
+        </>
+      )}
       <div className={styles.actionContainer}>
-        <div className={styles.addButton} onClick={onTxnAdd}>
-          <Plus size={16} />
+        <button type="button" className={styles.addButton} onClick={onTxnAdd}>
+          <Plus size={16} weight="bold" />
           <span>Add Expense</span>
-        </div>
-        <div className={styles.searchContainer}>
-          <Search size={16} />
-          <input
-            type="text"
-            className={styles.searchInput}
-            placeholder="Search transactions"
-            value={searchTerm}
-            onChange={(e) => onSearchChange(e.target.value)}
-          />
+        </button>
+        <div className={styles.trailingActions}>
+          {filterToggle && (
+            <button
+              type="button"
+              className={`${styles.filterToggle} ${filterToggle.open ? styles.filterToggleOpen : ''}`}
+              aria-expanded={filterToggle.open}
+              onClick={filterToggle.onToggle}>
+              <Funnel size={16} weight={filterToggle.active ? 'bold' : 'regular'} />
+              <span>Filters</span>
+              {filterToggle.active && <span className={styles.filterDot} aria-label="Filters active" />}
+            </button>
+          )}
+          <div className={styles.searchContainer}>
+            <Search size={16} />
+            <input
+              type="search"
+              aria-label="Search transactions"
+              className={styles.searchInput}
+              placeholder="Search transactions"
+              value={searchTerm}
+              onChange={(e) => onSearchChange(e.target.value)}
+            />
+          </div>
         </div>
       </div>
       <div className={styles.mobileFilterChips}>

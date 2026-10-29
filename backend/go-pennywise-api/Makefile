@@ -1,11 +1,10 @@
 GO ?= go
 GOCACHE ?= /tmp/pennywise-go-build-cache
 BIN_DIR ?= ./bin
-MIGRATIONS_DIR ?= .
 
 .DEFAULT_GOAL := help
 
-.PHONY: help run build test fmt vet check tidy vendor clean migrate-up migrate-one migrate-down migrate-redo migrate-status migrate-version migrate-baseline
+.PHONY: help run build test fmt vet check tidy vendor clean migrate-up migrate-one migrate-down migrate-redo migrate-status migrate-version migrate-create migrate-baseline
 
 help:
 	@echo "Go API targets:"
@@ -18,7 +17,8 @@ help:
 	@echo "  make migrate-down     Roll back one migration"
 	@echo "  make migrate-status   Show migration status"
 	@echo "  make migrate-version  Show current migration version"
-	@echo "  make migrate-baseline Mark seed migrations as applied"
+	@echo "  make migrate-create name=add_x  Create the next migration in backend/shared/sql/migrations"
+	@echo "  make migrate-baseline One-off: adopt the squashed history on a DB built by the old migrations"
 	@echo "  make vendor           Run vendor to add the shared modules"
 
 run:
@@ -49,22 +49,26 @@ clean:
 	rm -rf $(BIN_DIR)
 
 migrate-up:
-	$(GO) run ./cmd/migrations -dir $(MIGRATIONS_DIR) up
+	$(GO) run ./cmd/migrations up
 
 migrate-one:
-	$(GO) run ./cmd/migrations -dir $(MIGRATIONS_DIR) up-by-one
+	$(GO) run ./cmd/migrations up-by-one
 
 migrate-down:
-	$(GO) run ./cmd/migrations -dir $(MIGRATIONS_DIR) down
+	$(GO) run ./cmd/migrations down
 
 migrate-redo:
-	$(GO) run ./cmd/migrations -dir $(MIGRATIONS_DIR) redo
+	$(GO) run ./cmd/migrations redo
 
 migrate-status:
-	$(GO) run ./cmd/migrations -dir $(MIGRATIONS_DIR) status
+	$(GO) run ./cmd/migrations status
 
 migrate-version:
-	$(GO) run ./cmd/migrations -dir $(MIGRATIONS_DIR) version
+	$(GO) run ./cmd/migrations version
+
+migrate-create:
+	@test -n "$(name)" || { echo "usage: make migrate-create name=add_something"; exit 1; }
+	$(GO) run ./cmd/migrations create $(name)
 
 migrate-baseline:
-	$(GO) run ./cmd/migrations -dir $(MIGRATIONS_DIR) baseline
+	$(GO) run ./cmd/migrations baseline

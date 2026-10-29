@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Bank as Landmark, Pencil, Plus } from '@phosphor-icons/react';
+import { BankIcon as Landmark, PencilIcon, PlusIcon } from '@phosphor-icons/react';
 import { useAppSelector, useAppDispatch } from '@/app/hooks';
 import { selectLoanAccounts } from '@/features/accounts/store/accountSlice';
 import { selectAllLoanMetadata } from '../store/loanSlice';
@@ -8,6 +8,8 @@ import { fetchAllTransaction } from '@/features/transactions/store/transactionSl
 import type { Transaction } from '@/features/transactions/types/transaction.types';
 import { apiClient } from '@/utils';
 import { calculateAmortizationSchedule, calculateTotalInterest, formatPayoffDuration } from '../utils/payoffCalculator';
+import { useLoanHistory } from '../hooks/useLoanHistory';
+import LoanPaymentSplit from './LoanPaymentSplit';
 import PayoffSimulator from './PayoffSimulator';
 import LoanAccountForm from './LoanAccountForm';
 import styles from './LoanOverview.module.css';
@@ -41,6 +43,11 @@ export default function LoanOverview() {
   );
 
   const loanMeta = selectedAccount?.id ? (allMetadata[selectedAccount.id] ?? null) : null;
+  // refetch when a payment lands (balance) or the terms are edited
+  const { history, error: historyError } = useLoanHistory(
+    selectedAccount?.id,
+    `${selectedAccount?.balance ?? 0}:${JSON.stringify(loanMeta)}`,
+  );
 
   // Fetch transactions when switching to activity tab or when account changes
   useEffect(() => {
@@ -77,14 +84,17 @@ export default function LoanOverview() {
       });
   }, [activeTab, transactions]);
 
-  // Computed payoff data
+  // Computed payoff data. The balance comes from the API's amortized history,
+  // where each recorded payment first clears accrued interest; only the rest
+  // reduces principal. Until it loads (or if it fails), fall back to treating
+  // every payment as principal, which overstates progress.
   const payoffData = useMemo(() => {
     if (!loanMeta || !selectedAccount) return null;
 
-    // account.balance = sum of payments (transactions) TO the loan account
-    // remainingBalance = originalBalance - totalPayments
     const totalPayments = Math.abs(selectedAccount.balance ?? 0);
-    const currentBalance = Math.max(loanMeta.originalBalance - totalPayments, 0);
+    const currentBalance = history ? history.balance : Math.max(loanMeta.originalBalance - totalPayments, 0);
+    const principalPaid = history ? history.principalPaid : totalPayments;
+    const interestPaid = history ? history.interestPaid : 0;
     const baseInput = {
       currentBalance,
       interestRate: loanMeta.interestRate,
@@ -92,12 +102,13 @@ export default function LoanOverview() {
     };
 
     const schedule = calculateAmortizationSchedule(baseInput);
-    const totalInterest = calculateTotalInterest(baseInput);
+    const remainingInterest = calculateTotalInterest(baseInput);
     const payoffMonths = schedule.length;
-    const totalPaid = currentBalance + totalInterest;
-    const paidSoFar = totalPayments;
     const percentPaid =
-      loanMeta.originalBalance > 0 ? Math.min(Math.round((paidSoFar / loanMeta.originalBalance) * 100), 100) : 0;
+      loanMeta.originalBalance > 0 ? Math.min(Math.round((principalPaid / loanMeta.originalBalance) * 100), 100) : 0;
+
+    // what the next payment does: interest on what's left, the rest to principal
+    const nextInterest = schedule[0]?.interestPayment ?? 0;
 
     // Projected payoff date
     const payoffDate = new Date();
@@ -105,14 +116,17 @@ export default function LoanOverview() {
 
     return {
       currentBalance,
-      totalInterest,
+      principalPaid,
+      interestPaid,
+      remainingInterest,
+      lifetimeInterest: interestPaid + remainingInterest,
       payoffMonths,
-      totalPaid,
-      paidSoFar,
       percentPaid,
+      nextInterest,
       payoffDate,
+      exact: history !== null,
     };
-  }, [selectedAccount, loanMeta]);
+  }, [selectedAccount, loanMeta, history]);
 
   const selectAccount = (accountId: string) => {
     setSearchParams({ section: 'loans', account: accountId }, { replace: true });
@@ -130,7 +144,7 @@ export default function LoanOverview() {
             being debt-free.
           </p>
           <button className={styles.addBtn} onClick={() => setShowAddForm(true)}>
-            <Plus size={16} /> Add Loan Account
+            <PlusIcon size={16} /> Add Loan Account
           </button>
         </div>
         <LoanAccountForm isOpen={showAddForm} onClose={() => setShowAddForm(false)} />
@@ -165,10 +179,9 @@ export default function LoanOverview() {
             <button
               key={account.id}
               type="button"
-              className={
-                account.id === selectedAccount.id ? styles.accountPillActive : styles.accountPill
-              }
-              onClick={() => account.id && selectAccount(account.id)}>
+              className={account.id === selectedAccount.id ? styles.accountPillActive : styles.accountPill}
+              onClick={() => account.id && selectAccount(account.id)}
+            >
               {account.name}
             </button>
           ))}
@@ -180,7 +193,7 @@ export default function LoanOverview() {
         <h2>{selectedAccount.name}</h2>
         <div className={styles.headerRight}>
           <button className={styles.editBtn} onClick={() => setShowEditForm(true)}>
-            <Pencil size={16} /> Edit
+            <PencilIcon size={16} /> Edit
           </button>
           <button className={styles.simulatorBtn} onClick={() => setShowSimulator(true)}>
             Payoff Simulator
@@ -192,12 +205,14 @@ export default function LoanOverview() {
       <div className={styles.tabs}>
         <button
           className={activeTab === 'overview' ? styles.tabActive : styles.tab}
-          onClick={() => setActiveTab('overview')}>
+          onClick={() => setActiveTab('overview')}
+        >
           Overview
         </button>
         <button
           className={activeTab === 'activity' ? styles.tabActive : styles.tab}
-          onClick={() => setActiveTab('activity')}>
+          onClick={() => setActiveTab('activity')}
+        >
           Activity
         </button>
       </div>
@@ -221,42 +236,66 @@ export default function LoanOverview() {
                 </svg>
                 <span className={styles.progressPercent}>{payoffData.percentPaid}%</span>
               </div>
-              <span className={styles.progressLabel}>Paid Off</span>
+              <span className={styles.progressLabel}>Principal repaid</span>
             </div>
 
             {/* Balance Card */}
             <div className={styles.balanceCard}>
               <div className={styles.balanceRow}>
-                <span className={styles.balanceLabel}>Remaining Balance</span>
+                <span className={styles.balanceLabel}>Principal Outstanding</span>
                 <span className={`${styles.balanceValue} ${styles.balanceNegative}`}>
                   {formatCurrency(payoffData.currentBalance)}
                 </span>
               </div>
               <div className={styles.balanceRow}>
-                <span className={styles.balanceLabel}>Principal Paid</span>
-                <span className={`${styles.balanceValue} ${styles.balancePositive}`}>
-                  {formatCurrency(payoffData.paidSoFar)}
+                <span className={styles.balanceLabel}>Paid So Far</span>
+                <span className={styles.balanceValue}>
+                  {formatCurrency(payoffData.principalPaid + payoffData.interestPaid)}
                 </span>
               </div>
-              <div className={styles.balanceRow}>
-                <span className={styles.balanceLabel}>Total Interest (projected)</span>
-                <span className={styles.balanceValue}>{formatCurrency(payoffData.totalInterest)}</span>
+              <div className={styles.balanceSubRow}>
+                <span>Principal</span>
+                <span className={styles.balancePositive}>{formatCurrency(payoffData.principalPaid)}</span>
+              </div>
+              <div className={styles.balanceSubRow}>
+                <span>Interest</span>
+                <span>{formatCurrency(payoffData.interestPaid)}</span>
               </div>
               <div className={styles.balanceRow}>
-                <span className={styles.balanceLabel}>Total Cost</span>
-                <span className={styles.balanceValue}>{formatCurrency(payoffData.totalPaid)}</span>
+                <span className={styles.balanceLabel}>Interest Still to Pay (projected)</span>
+                <span className={styles.balanceValue}>{formatCurrency(payoffData.remainingInterest)}</span>
               </div>
+              <div className={styles.balanceRow}>
+                <span className={styles.balanceLabel}>Total Interest Over the Loan</span>
+                <span className={styles.balanceValue}>{formatCurrency(payoffData.lifetimeInterest)}</span>
+              </div>
+              {!payoffData.exact && (
+                <span className={styles.balanceNote}>
+                  {historyError
+                    ? "Couldn't load the payment history, so every payment is counted as principal for now."
+                    : 'Loading the payment history…'}
+                </span>
+              )}
             </div>
 
             {/* Insight Card */}
             <div className={styles.insightCard}>
               <span className={styles.insightTitle}>Payoff Insight</span>
+              {payoffData.exact && payoffData.nextInterest > 0 && loanMeta.monthlyPayment > 0 && (
+                <p className={styles.insightBody}>
+                  Right now <span className={styles.insightHighlight}>{formatCurrency(payoffData.nextInterest)}</span>{' '}
+                  of each {formatCurrency(loanMeta.monthlyPayment)} payment (
+                  {Math.round(Math.min(payoffData.nextInterest / loanMeta.monthlyPayment, 1) * 100)}%) goes to interest;
+                  only the rest brings the balance down. That share shrinks as the principal does, which is why extra
+                  payments early on save the most.
+                </p>
+              )}
               <p className={styles.insightBody}>
                 At your current monthly payment of{' '}
                 <span className={styles.insightHighlight}>{formatCurrency(loanMeta.monthlyPayment)}</span>, you&apos;ll
                 pay off this loan in{' '}
                 <span className={styles.insightHighlight}>{formatPayoffDuration(payoffData.payoffMonths)}</span>, with{' '}
-                <span className={styles.insightHighlight}>{formatCurrency(payoffData.totalInterest)}</span> in total
+                <span className={styles.insightHighlight}>{formatCurrency(payoffData.remainingInterest)}</span> more in
                 interest.
               </p>
               <div className={styles.insightActions}>
@@ -265,6 +304,8 @@ export default function LoanOverview() {
                 </button>
               </div>
             </div>
+
+            {history && history.months.some((m) => m.payment > 0) && <LoanPaymentSplit months={history.months} />}
 
             {/* Details Row */}
             <div className={styles.detailsCard}>
@@ -323,7 +364,8 @@ export default function LoanOverview() {
                     <td>{txn.payeeName || '—'}</td>
                     <td>{txn.categoryName || categoryMap[txn.transferTransactionId ?? ''] || '—'}</td>
                     <td
-                      className={`${styles.txnAmountCol} ${(txn.inflow ?? 0) > 0 ? styles.balancePositive : styles.balanceNegative}`}>
+                      className={`${styles.txnAmountCol} ${(txn.inflow ?? 0) > 0 ? styles.balancePositive : styles.balanceNegative}`}
+                    >
                       {formatCurrency(txn.inflow ?? txn.outflow ?? 0)}
                     </td>
                   </tr>

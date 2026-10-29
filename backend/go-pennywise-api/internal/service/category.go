@@ -23,20 +23,71 @@ type CategoryService interface {
 	DeleteById(ctx context.Context, id uuid.UUID) error
 	Update(ctx context.Context, id uuid.UUID, category model.Category) error
 	UpdateMonthlyBudget(ctx context.Context, categoryId uuid.UUID, newBudgeted float64, month string) error
+	UpdateDetails(ctx context.Context, id uuid.UUID, details model.CategoryDetailsUpdate) error
+	SuggestDescription(ctx context.Context, id uuid.UUID) (string, error)
 }
+
+// ErrCategoryNotFound is returned when a category does not exist in the budget.
+var ErrCategoryNotFound = errors.New("category not found")
+
+// ErrDescriptionUnavailable is returned when no AI provider could produce a
+// description suggestion.
+var ErrDescriptionUnavailable = errors.New("could not suggest a description right now")
+
+// descriptionPayeeLimit caps how many payees ground a description suggestion:
+// enough to show what the category is used for without bloating the prompt.
+const descriptionPayeeLimit = 12
 
 type categoryService struct {
 	repo              repository.CategoryRepository
 	monthlyBudgetRepo repository.MonthlyBudgetRepository
 	transactionRepo   repository.TransactionRepository
+	cipherClient      CipherClient
 }
 
 func NewCategoryService(
 	r repository.CategoryRepository,
 	mbR repository.MonthlyBudgetRepository,
 	txnR repository.TransactionRepository,
+	cipher CipherClient,
 ) CategoryService {
-	return &categoryService{repo: r, monthlyBudgetRepo: mbR, transactionRepo: txnR}
+	return &categoryService{repo: r, monthlyBudgetRepo: mbR, transactionRepo: txnR, cipherClient: cipher}
+}
+
+func (s *categoryService) UpdateDetails(ctx context.Context, id uuid.UUID, details model.CategoryDetailsUpdate) error {
+	budgetId := utils.MustBudgetID(ctx)
+	err := s.repo.UpdateDetails(ctx, budgetId, id, details.Note, details.Description)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrCategoryNotFound
+	}
+	return err
+}
+
+// SuggestDescription asks cipher's LLM chain for a one-sentence description of
+// what belongs in the category. It only suggests; nothing is saved until the
+// user accepts it through UpdateDetails.
+func (s *categoryService) SuggestDescription(ctx context.Context, id uuid.UUID) (string, error) {
+	budgetId := utils.MustBudgetID(ctx)
+	descCtx, err := s.repo.GetDescriptionContext(ctx, budgetId, id, descriptionPayeeLimit)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrCategoryNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+	if s.cipherClient == nil {
+		return "", ErrDescriptionUnavailable
+	}
+
+	res, err := s.cipherClient.SuggestCategoryDescription(ctx, *descCtx)
+	if err != nil {
+		logger.Logger(ctx).Error("category description suggestion failed", "categoryId", id, "error", err)
+		return "", ErrDescriptionUnavailable
+	}
+	if res == nil || res.Description == "" {
+		return "", ErrDescriptionUnavailable
+	}
+	return res.Description, nil
 }
 
 func (s *categoryService) GetAll(ctx context.Context) ([]model.Category, error) {

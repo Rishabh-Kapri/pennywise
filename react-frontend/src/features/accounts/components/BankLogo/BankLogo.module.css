@@ -1,0 +1,80 @@
+/* ── Bank account: the bare logo ── */
+
+.logo {
+  --tile: 1.35rem;
+
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: var(--tile);
+  height: var(--tile);
+}
+
+.logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* ── No known bank: tinted type icon ── */
+
+.tile {
+  --tile: 1.35rem;
+  --icon-tone: var(--color-primary);
+
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: var(--tile);
+  height: var(--tile);
+  border-radius: calc(var(--tile) * 0.28);
+  background: color-mix(in srgb, var(--icon-tone) 15%, transparent);
+  color: var(--icon-tone);
+}
+
+.tile[data-type='asset'] {
+  --icon-tone: var(--color-success);
+}
+
+.tile[data-type='liability'],
+.tile[data-type='loan'],
+.tile[data-type='mortgage'],
+.tile[data-type='autoLoan'],
+.tile[data-type='studentLoan'],
+.tile[data-type='personalLoan'],
+.tile[data-type='medicalDebt'] {
+  --icon-tone: var(--color-warning);
+}
+
+/* ── Credit card: Phosphor's card icon with the bank logo inside (see BankLogo.tsx) ── */
+
+.card {
+  --tile: 1.35rem;
+
+  display: block;
+  flex: 0 0 auto;
+  width: calc(var(--tile) * 1.5);
+  height: calc(var(--tile) * 1.5 * 0.714);
+  color: var(--color-text-secondary);
+}
+
+/* ── Sizes ── */
+
+/* kept small: the logo is a label, not the content */
+.xs {
+  --tile: 0.9rem;
+}
+
+.sm {
+  --tile: 1.1rem;
+}
+
+.md {
+  --tile: 1.35rem;
+}
+
+.lg {
+  --tile: 1.8rem;
+}

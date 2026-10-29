@@ -13,8 +13,8 @@ import {
 
 const parser = new Parser();
 
-export const HEADER_ROW_HEIGHT = 56;
-export const TXN_ROW_HEIGHT = 80;
+export const HEADER_ROW_HEIGHT = 64;
+export const TXN_ROW_HEIGHT = 60;
 export const MOBILE_ROW_HEIGHT = 188;
 
 function getTransactionDate(txn: Transaction) {
@@ -92,6 +92,9 @@ export function filterTransactions(
 }
 
 export function buildTransactionPayload(txn: Transaction): TransactionDTO {
+  // form inputs can leave strings behind; the API wants a number
+  const outflow = Number(txn.outflow) || 0;
+  const inflow = Number(txn.inflow) || 0;
   return {
     id: txn.id || undefined,
     budgetId: txn.budgetId,
@@ -99,7 +102,7 @@ export function buildTransactionPayload(txn: Transaction): TransactionDTO {
     payeeId: txn.payeeId,
     categoryId: txn.categoryId === '' ? null : txn.categoryId,
     date: txn.date,
-    amount: txn.outflow ? -txn.outflow : (txn.inflow ?? 0),
+    amount: outflow ? -Math.abs(outflow) : Math.abs(inflow),
     note: txn.note ?? '',
     status: txn.status ?? TransactionStatus.MANUAL,
     tagIds: txn.tagIds ?? [],

@@ -43,9 +43,13 @@ Requires a reachable Ollama endpoint (`OLLAMA_URL`); it is intentionally not par
 
 ## Environment
 
-`DATABASE_URL` (shares the main Postgres), `OLLAMA_URL`, `PENNYWISE_SERVICE_URL`, `REDIS_URL`, `INTERNAL_AUTH_TOKEN`, `AGENT_PROVIDER`, `OPENAI_API_KEY`/`ANTHROPIC_API_KEY`/`OPENROUTER_API_KEY`, `TEMPORAL_SERVER_HOST`/`PORT`, `PORT`.
+`DATABASE_URL` (shares the main Postgres), `OLLAMA_URL`, `PENNYWISE_SERVICE_URL`, `REDIS_URL`, `INTERNAL_AUTH_TOKEN`, `LLM_CREDENTIALS_KEY` (same as the API's), `ALLOW_PRIVATE_LLM_URLS`, `OPENROUTER_API_KEY` (embeddings only), `TEMPORAL_SERVER_HOST`/`PORT`, `PORT`.
+
+Chat models (email parsing, statements, the agent) run on each user's own AI provider keys, which they add in Settings → AI. The server's keys are never used for them.
 
 ### Lumo provider
+
+> Not reachable at the moment: Lumo isn't one of the providers users can configure (`user_llm_providers`), and there is no server-key fallback.
 
 Set `LUMO_BASE_URL=http://localhost:3003` (a trailing `/v1` is also accepted) to register `lumo`, then set `AGENT_PROVIDER=lumo` to select it. Use a host reachable from Cipher when running in Docker. `LUMO_API_KEY` is optional; set it to the server API key if authentication is enabled. The default model is `lumo-max`.
 

@@ -1,4 +1,5 @@
 import type { LoadingState } from '@/utils';
+import type { BudgetOnboarding } from '@/features/onboarding/types';
 
 export interface Budget {
   id?: string;
@@ -11,6 +12,7 @@ export interface Budget {
     startingBalPayeeId: string;
     ccGroupId: string;
   };
+  onboarding?: BudgetOnboarding;
 }
 
 export interface BudgetState {

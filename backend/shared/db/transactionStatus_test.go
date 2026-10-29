@@ -6,10 +6,10 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 )
 
-// Rows written before transactions.status got its NOT NULL default (migration
-// 00023) scan as NULL. Reading them into the non-pointer model field is what
-// made every single-row lookup of such a transaction fail, so the fallback has
-// to hold for each read path.
+// Rows written before transactions.status got its NOT NULL default
+// (sql/migrations/00004_transactions.sql) scan as NULL. Reading them into the
+// non-pointer model field is what made every single-row lookup of such a
+// transaction fail, so the fallback has to hold for each read path.
 func TestScannedStatus(t *testing.T) {
 	approved := model.TransactionStatusApproved
 	empty := model.TransactionStatus("")

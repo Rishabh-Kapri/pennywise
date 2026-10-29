@@ -156,28 +156,69 @@ func (s *Service) GetMessageHistory(
 				log.Error("error fetching message", "id", id, "error", err)
 				return nil, nil
 			}
-			var bodyData strings.Builder
-			for _, part := range msgRes.Payload.Parts {
-				if part.MimeType == "text/html" {
-					partData, err := base64.URLEncoding.DecodeString(part.Body.Data)
-					if err != nil {
-						log.Error("error decoding part", "error", err)
-					}
-					bodyData.Write(partData)
-				}
-			}
-			headers := msgRes.Payload.Headers
-			msgData = append(msgData, EmailData{
-				MessageId: id,
-				Headers:   headers,
-				Body:      bodyData.String(),
-				// Gmail's own plain-text preview of the message — used to show
-				// the email in the UI before extraction has run.
-				Snippet: msgRes.Snippet,
-			})
+			msgData = append(msgData, messageToEmailData(ctx, id, msgRes))
 		}
 	}
 	return msgData, nil
+}
+
+// backfillQuery narrows a backfill to bank alert emails so it doesn't send a
+// whole inbox through the LLM. It mirrors the keywords in IsTransactionEmail.
+const backfillQuery = `{debited credited txn transaction "credit card" instaalert "alert : update" "view: account"}`
+
+// GetRecentMessages fetches up to payload.MaxResults bank alert emails from
+// the last payload.Days days. Used by onboarding to run the pipeline on mail
+// that arrived before the Gmail watch was set up.
+func (s *Service) GetRecentMessages(ctx context.Context, payload GmailBackfillRequest) ([]EmailData, error) {
+	log := logger.Logger(ctx)
+	oauthConfig := s.getOauth2ConfigForClientType(payload.OAuthClientType)
+	token, err := oauthConfig.TokenSource(ctx, &oauth2.Token{RefreshToken: payload.RefreshToken}).Token()
+	if err != nil {
+		return nil, errs.Wrap(errs.CodeInternalError, "Error while fetching token", err)
+	}
+	gmailAPI, err := s.gmailAPIFactory(ctx, token, oauthConfig)
+	if err != nil {
+		return nil, errs.Wrap(errs.CodeInternalError, "Error while creating gmail service", err)
+	}
+
+	query := fmt.Sprintf("newer_than:%dd %s", payload.Days, backfillQuery)
+	messages, err := gmailAPI.ListMessages(ctx, payload.Email, query, payload.MaxResults)
+	if err != nil {
+		return nil, errs.Wrap(errs.CodeInternalError, "Error while listing messages", err)
+	}
+	log.Info("GetRecentMessages", "email", payload.Email, "count", len(messages))
+
+	msgData := make([]EmailData, 0, len(messages))
+	for _, msg := range messages {
+		msgRes, err := gmailAPI.GetMessage(ctx, payload.Email, msg.Id)
+		if err != nil {
+			return nil, errs.Wrap(errs.CodeInternalError, "Error while fetching message", err)
+		}
+		msgData = append(msgData, messageToEmailData(ctx, msg.Id, msgRes))
+	}
+	return msgData, nil
+}
+
+// messageToEmailData keeps the HTML parts of a message as its body.
+func messageToEmailData(ctx context.Context, id string, msgRes *gmail.Message) EmailData {
+	var bodyData strings.Builder
+	for _, part := range msgRes.Payload.Parts {
+		if part.MimeType == "text/html" {
+			partData, err := base64.URLEncoding.DecodeString(part.Body.Data)
+			if err != nil {
+				logger.Logger(ctx).Error("error decoding part", "error", err)
+			}
+			bodyData.Write(partData)
+		}
+	}
+	return EmailData{
+		MessageId: id,
+		Headers:   msgRes.Payload.Headers,
+		Body:      bodyData.String(),
+		// Gmail's own plain-text preview of the message — used to show
+		// the email in the UI before extraction has run.
+		Snippet: msgRes.Snippet,
+	}
 }
 
 func (s *Service) IsTransactionEmail(emailHeader []*gmail.MessagePartHeader) bool {

@@ -12,7 +12,8 @@ const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 const AppTree = (
   <ThemeProvider>
     <HeroUIProvider>
-      <ToastProvider placement="bottom-right" toastOffset={16} />
+      {/* bottom-center keeps toasts clear of the Ask Penny launcher and side-panel buttons */}
+      <ToastProvider placement="bottom-center" toastOffset={16} />
       <App />
     </HeroUIProvider>
   </ThemeProvider>
