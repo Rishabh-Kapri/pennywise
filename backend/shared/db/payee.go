@@ -21,6 +21,8 @@ type PayeesRepository interface {
 	Create(ctx context.Context, tx pgx.Tx, payee model.Payee) (*model.Payee, error)
 	DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error
 	Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, payee model.Payee) error
+	GetStats(ctx context.Context, budgetId uuid.UUID) ([]model.PayeeStats, error)
+	MergeTx(ctx context.Context, tx pgx.Tx, budgetId, targetId uuid.UUID, sourceIds []uuid.UUID) (*model.PayeeMergeResult, error)
 }
 
 type payeeRepo struct {
@@ -139,20 +141,27 @@ func (r *payeeRepo) Create(ctx context.Context, tx pgx.Tx, payee model.Payee) (*
 }
 
 func (r *payeeRepo) DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error {
+	// Retire the payee's rules with it: cipher resolves a matched rule's payee
+	// with deleted = FALSE, so a surviving rule would fail the email pipeline.
 	cmdTag, err := r.Executor(nil).Exec(
 		ctx,
-		`UPDATE payees SET
+		`WITH retired_rules AS (
+		   UPDATE payee_rules SET deleted = TRUE, updated_at = NOW()
+		   WHERE payee_id = $1 AND budget_id = $2 AND deleted = FALSE
+		 )
+		 UPDATE payees SET
 		   deleted = TRUE,
 		   updated_at = NOW()
 		WHERE id = $1 AND budget_id = $2`,
 		id, budgetId,
 	)
-
+	if err != nil {
+		return err
+	}
 	if cmdTag.RowsAffected() == 0 {
 		return errors.New("Payee not found")
 	}
-
-	return err
+	return nil
 }
 
 func (r *payeeRepo) Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, payee model.Payee) error {
@@ -170,4 +179,126 @@ func (r *payeeRepo) Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID
 	}
 
 	return err
+}
+
+func (r *payeeRepo) GetStats(ctx context.Context, budgetId uuid.UUID) ([]model.PayeeStats, error) {
+	rows, err := r.Executor(nil).Query(
+		ctx, `
+		SELECT p.id,
+		       COALESCE(t.txn_count, 0),
+		       COALESCE(t.inflow, 0)::float8,
+		       COALESCE(t.outflow, 0)::float8,
+		       t.last_used,
+		       t.top_category_id,
+		       COALESCE(r.rule_count, 0)
+		FROM payees p
+		LEFT JOIN (
+		  SELECT payee_id,
+		         COUNT(*) AS txn_count,
+		         SUM(amount) FILTER (WHERE amount > 0) AS inflow,
+		         -SUM(amount) FILTER (WHERE amount < 0) AS outflow,
+		         MAX(date) AS last_used,
+		         mode() WITHIN GROUP (ORDER BY category_id) AS top_category_id
+		  FROM transactions
+		  WHERE budget_id = $1 AND deleted = FALSE AND payee_id IS NOT NULL
+		  GROUP BY payee_id
+		) t ON t.payee_id = p.id
+		LEFT JOIN (
+		  SELECT payee_id, COUNT(*) AS rule_count
+		  FROM payee_rules
+		  WHERE budget_id = $1 AND deleted = FALSE
+		  GROUP BY payee_id
+		) r ON r.payee_id = p.id
+		WHERE p.budget_id = $1 AND p.deleted = FALSE`,
+		budgetId,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	stats := []model.PayeeStats{}
+	for rows.Next() {
+		var st model.PayeeStats
+		if err := rows.Scan(
+			&st.PayeeID,
+			&st.TransactionCount,
+			&st.TotalInflow,
+			&st.TotalOutflow,
+			&st.LastUsed,
+			&st.TopCategoryID,
+			&st.RuleCount,
+		); err != nil {
+			return nil, err
+		}
+		stats = append(stats, st)
+	}
+	return stats, rows.Err()
+}
+
+// MergeTx moves everything that references the source payees onto the target,
+// then soft-deletes the sources. The caller validates the ids.
+func (r *payeeRepo) MergeTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	budgetId, targetId uuid.UUID,
+	sourceIds []uuid.UUID,
+) (*model.PayeeMergeResult, error) {
+	result := &model.PayeeMergeResult{TargetID: targetId, MergedPayees: len(sourceIds)}
+
+	repoint := func(query string) (int64, error) {
+		tag, err := tx.Exec(ctx, query, targetId, sourceIds, budgetId)
+		if err != nil {
+			return 0, err
+		}
+		return tag.RowsAffected(), nil
+	}
+
+	var err error
+	if result.Transactions, err = repoint(`
+		UPDATE transactions SET payee_id = $1, updated_at = NOW()
+		WHERE payee_id = ANY($2) AND budget_id = $3`); err != nil {
+		return nil, err
+	}
+	if result.Rules, err = repoint(`
+		UPDATE payee_rules SET payee_id = $1, updated_at = NOW()
+		WHERE payee_id = ANY($2) AND budget_id = $3 AND deleted = FALSE`); err != nil {
+		return nil, err
+	}
+	if result.Recurring, err = repoint(`
+		UPDATE recurring_transactions SET payee_id = $1, updated_at = NOW()
+		WHERE payee_id = ANY($2) AND budget_id = $3`); err != nil {
+		return nil, err
+	}
+	if result.Embeddings, err = repoint(`
+		UPDATE transaction_embeddings SET payee_id = $1, updated_at = NOW()
+		WHERE payee_id = ANY($2) AND budget_id = $3`); err != nil {
+		return nil, err
+	}
+	if _, err = repoint(`
+		UPDATE cipher_predictions SET
+		  predicted_payee_id = CASE WHEN predicted_payee_id = ANY($2) THEN $1 ELSE predicted_payee_id END,
+		  actual_payee_id = CASE WHEN actual_payee_id = ANY($2) THEN $1 ELSE actual_payee_id END,
+		  updated_at = NOW()
+		WHERE (predicted_payee_id = ANY($2) OR actual_payee_id = ANY($2)) AND budget_id = $3`); err != nil {
+		return nil, err
+	}
+
+	// the sources' name embeddings would keep resolving queries to dead ids
+	if _, err = tx.Exec(ctx, `
+		DELETE FROM entity_embeddings
+		WHERE entity_type = 'payee' AND entity_id = ANY($1) AND budget_id = $2`,
+		sourceIds, budgetId,
+	); err != nil {
+		return nil, err
+	}
+
+	if _, err = tx.Exec(ctx, `
+		UPDATE payees SET deleted = TRUE, updated_at = NOW()
+		WHERE id = ANY($1) AND budget_id = $2`,
+		sourceIds, budgetId,
+	); err != nil {
+		return nil, err
+	}
+	return result, nil
 }

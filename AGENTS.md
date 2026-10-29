@@ -1,238 +1,42 @@
-# Agent Guidelines for Pennywise
+# Pennywise
 
-## Overview
+Personal budgeting app (YNAB-style) with AI transaction classification from bank emails.
+**Before working in a directory, read its `AGENTS.md`.**
 
-Pennywise is a personal finance/budgeting monorepo. The repo currently contains production paths, active migration work, and a few experimental services.
+| Path | What | Guide |
+|---|---|---|
+| `backend/go-pennywise-api` | Core REST API (Gin, pgx) | [AGENTS.md](backend/go-pennywise-api/AGENTS.md) |
+| `backend/cipher` | Email classification pipeline + chat agent | [AGENTS.md](backend/cipher/AGENTS.md) |
+| `backend/go-gmail` | Gmail Pub/Sub watcher → Temporal | [AGENTS.md](backend/go-gmail/AGENTS.md) |
+| `backend/workflows` | Temporal worker + workflows | [AGENTS.md](backend/workflows/AGENTS.md) |
+| `backend/shared` | Shared Go module (repos, models, middleware, transport) | [AGENTS.md](backend/shared/AGENTS.md) |
+| `react-frontend` | Main web app (React 19, Redux Toolkit) | [AGENTS.md](react-frontend/AGENTS.md) |
+| `android-frontend` | Expo React Native app | [AGENTS.md](android-frontend/AGENTS.md) |
+| `frontend` | Angular 17 app, legacy and maintenance only | [AGENTS.md](frontend/AGENTS.md) |
 
-### Current service map
+`backend/python-mlp` (deprecated) and `backend/file-parser` (experimental) are not run anywhere. Don't extend them. `docs/` holds architecture notes.
 
-| Service | Path | Status | Responsibility |
-|---------|------|--------|----------------|
-| Go API | `backend/go-pennywise-api` | Active | Core REST API (Gin + PostgreSQL), auth (incl. demo mode), budgets, transactions, tags, loan metadata, agent run persistence, websocket fanout |
-| Gmail watcher | `backend/go-gmail` | Active | Gmail Pub/Sub ingestion, email parsing, starts Temporal `EmailToTransactionWorkflow`, runs Gmail activity worker |
-| Cipher | `backend/cipher` | Active | Classification pipeline (Ollama extraction → payee rules → pgvector → LLM fallback), corrections, agent runtime, embedding backfill |
-| Shared Go module | `backend/shared` | Active | Repositories, models, logging, context propagation, transport abstraction, internal auth middleware, Temporal propagator |
-| Temporal workflows | `backend/workflows` | Active | Worker + workflow definitions (`EmailToTransactionWorkflow`, `ParsedEmailToTransactionWorkflow`, `RefreshGmailWatchWorkflow`) |
-| React frontend | `react-frontend` | Active development | Main web app (React 19 + Redux Toolkit + Vite) |
-| Android app | `android-frontend` | Active development | Expo React Native client mirroring `react-frontend` |
-| Angular frontend | `frontend` | Legacy/maintenance | Older app (Angular 17 + NGXS + Firestore remnants) |
-| Python MLP | `backend/python-mlp` | Deprecated | Former `/predict` inference path, replaced by Cipher |
-| File parser | `backend/file-parser` | Experimental | Clojure service scaffold for bulk upload flows |
+## Main flow
 
-Each service directory has its own `README.md` with commands, routes, and env details.
+Gmail push → `go-gmail` → Temporal `EmailToTransactionWorkflow` → cipher `ParseEmail`/`PredictEmail` (one email per activity) → go-pennywise-api creates the transaction (deduped on `(budget_id, dedupe_hash)`) → websocket → clients.
 
-## High-level architecture
+## Cross-cutting rules
 
-### Current primary flow
+- **Changed `backend/shared`? Re-vendor every Go service.** Docker and CI build with `-mod=vendor`. See [backend/shared/AGENTS.md](backend/shared/AGENTS.md).
+- **Migration numbers must be sequential and unique.** goose panics on a duplicate. Renumber yours to the end after rebasing (`backend/shared/sql/migrations`, guide in its `README.md`). A change to an existing table is a new file with an `ALTER`; never edit an applied one.
+- Every API call is budget-scoped by the `X-Budget-ID` header. Service-to-service calls use `INTERNAL_AUTH_TOKEN`.
+- Keep `workflow.GetVersion` gates intact. In-flight workflows replay against them.
 
-```
-Gmail Push (Pub/Sub)
-        |
-        v
-    go-gmail  -- parses email, starts Temporal EmailToTransactionWorkflow
-        |
-        v
- workflows worker (PennywiseTaskQueue)
-        |
-        | cipher PredictionActivity (CipherActivitiesTaskQueue):
-        | Ollama extraction -> payee rules -> pgvector -> LLM fallback
-        v
- go-pennywise-api activities create transaction + cipher prediction (PostgreSQL)
-        ^
-        |
- React frontend / Android app / Angular frontend
+## Run
+
+```bash
+docker-compose up --build   # postgres, redis, temporal, api, cipher, gmail-watch, workflows
 ```
 
-### Additional AI flow (newer path)
+Deploy: CI (`.github/workflows/workflow.yml`) ships the backend to Railway on push to `dev`. Self-hosted via Docker Compose.
 
-```
-cipher
-  |- generates embeddings (Ollama/OpenAI-compatible model)
-  |- checks pgvector similarity in transaction_embeddings
-  |- falls back to MLP/LLM
-  |- publishes agent stream deltas to Redis stream `pubsub`
-  |- handles correction upserts and backfill tooling
-
-Redis stream `pubsub`
-        |
-        v
-go-pennywise-api websocket listener
-        |
-        v
-budget-scoped browser websocket clients
-```
-
-## Key data and auth flow
-
-1. **React auth**: Google credential -> `POST /api/auth/google` -> access + refresh tokens. With `DEMO_MODE=true`, `POST /api/auth/demo` logs into a persistent seeded demo user (`demo@pennywise.local`) — first login seeds a full budget (transactions, payee rules, cipher predictions) in one DB transaction via `internal/service/demo.go`.
-2. **Internal service auth**: service-to-service HTTP calls propagate `X-Correlation-ID`, `X-Caller-Service`, `X-Origin-Service`, `X-Budget-ID`, and `X-Internal-Token`; shared middleware verifies internal requests and sets `VerifiedInternal` in context.
-3. **API auth middleware**: accepts `Authorization: Bearer ...` or `X-API-Key` for user traffic, and trusts only shared `VerifiedInternal` context for internal bypass.
-4. **Budget scoping**: budget-scoped routes require `X-Budget-ID`; middleware verifies ownership for user traffic and trusts only verified internal requests for service traffic.
-5. **Gmail ingestion**: Pub/Sub event -> parser -> Temporal `EmailToTransactionWorkflow` -> cipher `PredictionActivity` -> create transaction + cipher prediction via API activities.
-6. **Prediction corrections**: transaction updates on predicted records update `has_user_corrected`/actual-ID fields (`predictions` and `cipher_predictions`) in API service logic and via cipher `POST /api/corrections`.
-7. **Agent streaming**: Cipher writes `eventName`, `budgetId`, and `data` fields to Redis stream `pubsub`; Go API reads new stream entries and broadcasts them to websocket clients scoped to the same budget.
-   Chat stream events include provider-supplied reasoning summaries and `run_completed`; the React chat shows progress and can cancel active runs through the API.
-
-## Build, test, lint
-
-| Component | Build/Run | Test | Lint/Format |
-|-----------|-----------|------|-------------|
-| Go API | `cd backend/go-pennywise-api && go build ./cmd/api` | `cd backend/go-pennywise-api && go test ./...` | `cd backend/go-pennywise-api && go fmt ./... && go vet ./...` |
-| Go Gmail | `cd backend/go-gmail && go build ./cmd` | `cd backend/go-gmail && go test ./...` | `cd backend/go-gmail && go fmt ./... && go vet ./...` |
-| Cipher | `cd backend/cipher && go build ./cmd/api` | `cd backend/cipher && go test ./...` | `cd backend/cipher && go fmt ./... && go vet ./...` |
-| Shared | - | `cd backend/shared && go test ./...` | `cd backend/shared && go fmt ./... && go vet ./...` |
-| Workflows | `cd backend/workflows && go build ./cmd/worker` | `cd backend/workflows && go test ./...` | `cd backend/workflows && go fmt ./... && go vet ./...` |
-| Python MLP | `cd backend/python-mlp && python mlp_predict_server.py` | manual/API-level validation | - |
-| React frontend | `cd react-frontend && npm run dev` / `npm run build` | no dedicated test suite currently | `cd react-frontend && npm run lint` |
-| Angular frontend | `cd frontend && npm start` / `npm run build` | `cd frontend && npm test` | TypeScript strict mode |
-| File parser | `cd backend/file-parser && clojure -M:run-m` | `cd backend/file-parser && clojure -T:build test` | - |
-
-Each Go module has a local `Makefile` with common aliases such as `make run`, `make build`, `make test`, `make fmt`, `make vet`, `make check`, `make tidy`, and `make vendor` where applicable. The Go API Makefile also exposes migration aliases such as `make migrate-up`, `make migrate-one`, `make migrate-down`, and `make migrate-status`.
-
-### Database migrations (Go API)
-
-- `cd backend/go-pennywise-api && go run ./cmd/migrations -dir . up`
-- `cd backend/go-pennywise-api && go run ./cmd/migrations -dir . status`
-- `baseline` command exists for marking initial seed migrations as applied.
-
-### Backfill command (Cipher)
-
-- `cd backend/cipher && go run ./cmd/backfill -data <path-to-json>`
-- Without `-data`, it fetches `/api/predictions` from `PENNYWISE_API` using `BUDGET_ID`.
-
-## Runtime ports and local dev
-
-- Go API: `5151`
-- Go Gmail: `5170`
-- Cipher: `5160` (default)
-- Angular dev server: `5000`
-- React dev server: Vite default (`5173`)
-
-`docker-compose.yml` currently defines the backend/dev dependency stack: PostgreSQL with pgvector, Redis, Temporal + UI, `go-pennywise-api`, `go-gmail`, `cipher`, and `workflows`. Frontend, Android, Python MLP, file-parser, and Ollama are intentionally excluded from that compose stack. Cipher expects `OLLAMA_URL` to point at a reachable external Ollama endpoint.
-
-Compose builds Go services from `backend/Dockerfile.compose` with the local shared module and Go 1.26; generated `vendor/` directories are not required for local Compose builds. Railway CI still vendors each module before building its service image.
-
-## Code patterns and conventions
-
-### Go API (`backend/go-pennywise-api`)
-
-- Layering is `handler -> service -> repository`.
-- Services read tenant context from `context.Context` via shared utils (`MustUserID`, `MustBudgetID`).
-- Route protection is middleware-first:
-  - auth only for global user resources (`/api/budgets`, `/api/keys`)
-  - auth + budget middleware for budget-scoped resources (`accounts`, `transactions`, `categories`, `payees`, `tags`, `loan-metadata`, etc.)
-- Transaction service contains side effects in one place (carryovers, transfers, prediction correction sync).
-- Websocket fanout uses `internal/websocket.ConnectionHub`; Redis stream events from Cipher are consumed by `RedisStreamListener` and rebroadcast through the same budget-scoped hub.
-- Agent run routes (`POST /api/agent/runs`, `GET /api/agent/runs/:id`, `POST /api/agent/runs/:id/cancel`) are budget-scoped API routes. The Go API owns conversation/run/message persistence and dispatches execution to Cipher through the shared transport client.
-- Agent persistence uses `conversations` for long-lived chat threads, `agent_runs` for per-prompt/per-agent executions, and `conversation_messages` for ordered transcript rows. Metadata is stored at all three levels as JSONB.
-- Errors increasingly use typed shared error wrappers from `backend/shared/errors`.
-
-### Shared module (`backend/shared`)
-
-- `transport.Client` + `httpclient` implement a protocol-agnostic client/engine split.
-- Context headers are propagated centrally via `utils.GetHeaders`, including canonical caller/origin/correlation headers and `X-Internal-Token` when a service context is seeded with `INTERNAL_AUTH_TOKEN`.
-- `middleware.RequestMetadata` normalizes ingress metadata, `middleware.InternalRequestAuth` verifies internal traffic, and `middleware.BudgetIdMiddleware` now keys off shared verified-internal context instead of raw headers.
-- `shared/temporal.RequestMetadataPropagator` bridges `correlation_id` and `origin_service` across Temporal workflow/activity boundaries.
-- `otelSDK` exports all spans to the primary OTLP destination (SigNoz) and filters the Langfuse exporter to AI instrumentation scopes (`pennywise/agent`, `pennywise/llm`, `pennywise/embedding`). Cipher's agent and LLM spans use explicit scopes so HTTP and other application spans stay in SigNoz. The Langfuse exporter presents `agent.run` as the root observation because its HTTP parent is filtered out; SigNoz retains the original parent relationship. Agent and generation input/output live on observation attributes, with reasoning in observation metadata.
-
-### Go Gmail (`backend/go-gmail`)
-
-- Main operational path uses Pub/Sub + `runner.ProcessGmailHistoryId`.
-- Email parsing is regex-based in `pkg/parser/email.go`; extraction order matters (type before amount sign).
-- Parsed emails are handed to the Temporal `EmailToTransactionWorkflow`; classification happens in cipher's `PredictionActivity`. `cmd/main.go` also runs the Gmail activity worker (`GmailActivitiesTaskQueue`).
-
-### React frontend (`react-frontend`)
-
-- Accounts is a standalone page available from the top navbar (`/accounts`, optional `account` query parameter). Its scrollable left sidebar combines checking, savings, and credit cards under Budget, groups other open accounts by type, and keeps closed accounts under Hidden accounts (collapsed by default). Groups show combined balances; the selected account's details and shared `Transaction` component fill the right panel.
-- Feature-first Redux slices in `src/features/*/store/`.
-- Shared light/dark appearance is provided by `context/ThemeProvider.tsx` and `styles/theme.css`; `ThemeToggle` persists `pennywise-theme` and migrates the former homepage preference.
-- `apiClient` auto-adds:
-  - `Authorization` bearer token (except auth endpoints)
-  - `x-budget-id` from selected budget (except budget endpoints)
-- Automatic refresh flow retries 401s once using `POST /auth/refresh`.
-- Route protection is handled by `features/auth/components/ProtectedRoute.tsx`.
-
-### Angular frontend (`frontend`)
-
-- NGXS-based state remains in `src/app/store/dashboard/states/`.
-- `HeadersInterceptor` still injects `X-Budget-ID`.
-- Firestore-backed services remain present for legacy paths.
-
-### Python MLP (`backend/python-mlp`)
-
-- Main endpoints:
-  - `POST /predict`
-  - `POST /retrain`, `GET /retrain/:id`
-  - `POST /fetch`, `POST /augment`, `POST /rollback`
-  - `GET /backups`, `GET /health`
-- Models are loaded from `.parms` files, with Docker entrypoint seeding `/data` on first run.
-
-## Key files reference
-
-| Purpose | Path |
-|---------|------|
-| API routes and middleware wiring | `backend/go-pennywise-api/cmd/api/main.go` |
-| Auth middleware | `backend/go-pennywise-api/internal/middleware/auth.go` |
-| Budget ownership middleware | `backend/go-pennywise-api/internal/middleware/budget.go` |
-| Transaction side effects/corrections | `backend/go-pennywise-api/internal/service/transaction.go` |
-| Agent run proxy handler/service | `backend/go-pennywise-api/internal/handler/agent.go`, `backend/go-pennywise-api/internal/service/agent.go` |
-| Redis-to-websocket stream listener | `backend/go-pennywise-api/internal/websocket/redis_stream_listener.go` |
-| Gmail pipeline orchestrator | `backend/go-gmail/pkg/runner/runner.go` |
-| Gmail email parser | `backend/go-gmail/pkg/parser/email.go` |
-| Python MLP server endpoints | `backend/python-mlp/mlp_predict_server.py` |
-| Cipher prediction orchestration | `backend/cipher/internal/service/prediction.go` |
-| Cipher agent streaming publisher | `backend/cipher/agent/runtime/agent.go` |
-| Shared transport abstraction | `backend/shared/transport/client.go` |
-| Shared HTTP transport implementation | `backend/shared/httpclient/transport.go` |
-| Shared internal request verifier | `backend/shared/middleware/internalRequestAuth.go` |
-| Shared Temporal propagator | `backend/shared/temporal/propagator.go` |
-| Demo mode seeding | `backend/go-pennywise-api/internal/service/demo.go`, `demo_seed.go` |
-| React app routes | `react-frontend/src/app/App.tsx` |
-| React API client | `react-frontend/src/utils/api.ts` |
-| React store | `react-frontend/src/app/store.ts` |
-| Angular store config | `frontend/src/app/store/store.config.ts` |
-| CI workflow | `.github/workflows/workflow.yml` |
-| Local stack compose | `docker-compose.yml` |
-
-## Environment and deployment notes
-
-### Common env files
-
-- `backend/go-pennywise-api/.env`: `DATABASE_URL`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `DOMAIN`, `INTERNAL_AUTH_TOKEN`, optional `REDIS_URL`
-- `backend/go-gmail/.env`: Gmail/PubSub credentials + `PENNYWISE_SERVICE_URL`, `CIPHER_SERVICE_URL`, Temporal host/port, `INTERNAL_AUTH_TOKEN`
-- `backend/cipher/.env`: `DATABASE_URL`, `OLLAMA_URL`, `PENNYWISE_SERVICE_URL`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, `AGENT_PROVIDER`, `PORT`, `INTERNAL_AUTH_TOKEN`, Temporal host/port, optional `REDIS_URL`
-- `react-frontend/.env*`: `VITE_API_URL`, `VITE_GOOGLE_CLIENT_ID`, `VITE_DEMO_MODE`
-
-`python-mlp` primarily uses runtime env vars (`PORT`, optional `VOLUME_DIR`) and data/model files.
-
-### CI/deploy
-
-- GitHub Actions workflow (`master` push) copies env files on self-hosted runner, then runs Docker Compose.
-- Current changed-service mapping in CI mainly targets: `go-gmail`, `python-mlp`, `go-pennywise-api`, and Angular frontend.
-
-### Git hooks
-
-- Root README expects: `git config core.hooksPath .githooks`
-- Generated `vendor/` directories are ignored. CI vendors each affected Go module before its standalone build; the pre-commit hook no longer vendors dependencies.
-
-## Current caveats (important for agents)
-
-- API embedding service (`internal/service/embedding.go`) is mostly stubbed.
-- React frontend calls `POST /auth/logout`, but the logout endpoint is currently commented out in API routes (local state is cleared regardless).
-- Legacy Go seed migrations (00002/00003) fail on a fresh database; use `up` → `baseline` → `up` and create the pgvector extension first.
-- The AI Configuration card in React settings is display-only (local state, not yet persisted to the API).
-- `file-parser` is not production-ready.
-
-## Testing snapshot
-
-- Go API tests are focused in service/repository/handler packages (notably transaction, loan metadata, and demo seeding flows).
-- Go Gmail has parser and API client tests.
-- Shared module has text-cleaning utility tests.
-- React frontend currently has no committed automated test suite.
-- Angular frontend still has Karma/Jasmine tests.
+**Agents: clean up what you start.** Before you report back, stop every dev server, `go run`, watcher and container you started to test something, and remove the containers. Don't leave them running for the user to look at; they start their own. Never stop a process or container you didn't start: other sessions and the user's own servers run alongside yours.
 
 ## Maintenance
 
-When architecture, routes, service responsibilities, or build/test commands change, update this file in the same PR.
-
-Cipher also supports `lumo` via lumo-tamer using the shared OpenAI Responses adapter. Set `LUMO_BASE_URL` to register it, optional `LUMO_API_KEY` for authentication, and `AGENT_PROVIDER=lumo` to select it (default model `lumo-max`).
+When a change makes an `AGENTS.md` wrong, fix it in the same change. Keep these files lean: rules and gotchas only, no feature narratives.

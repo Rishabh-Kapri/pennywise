@@ -78,6 +78,12 @@ type ChatRequest struct {
 	Stream      bool
 	Format      any // "json" forces JSON output; a JSON-schema map constrains the output shape via structured outputs (Ollama only for now)
 	ChatType    ChatType
+	// ReasoningEffort ("low", "medium", "high") caps how long a reasoning
+	// model thinks before answering. Empty keeps the provider's default.
+	// Honoured by the Responses-API providers (OpenRouter, OpenAI, Lumo);
+	// mechanical steps such as transcribing a statement set it low, since
+	// the thinking otherwise eats the output budget the answer needs.
+	ReasoningEffort string
 }
 
 type ChatResponse struct {

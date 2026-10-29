@@ -14,6 +14,7 @@ type PayeeRuleRepository interface {
 	CreatePayeeRule(ctx context.Context, tx pgx.Tx, payeeMatch model.PayeeRule) error
 	FindByMatchString(ctx context.Context, budgetId uuid.UUID, matchString string) (*model.PayeeRule, error)
 	FindByPayeeID(ctx context.Context, budgetId uuid.UUID, payeeId uuid.UUID) ([]model.PayeeRuleDetails, error)
+	GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.PayeeRuleDetails, error)
 	Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, payeeRule model.PayeeRule) error
 	DeleteByID(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error
 }
@@ -119,6 +120,47 @@ func (r *payeeRuleRepo) FindByPayeeID(ctx context.Context, budgetId uuid.UUID, p
 		rules = append(rules, rule)
 	}
 
+	return rules, rows.Err()
+}
+
+// GetAll lists every live rule in the budget with its payee and category names,
+// for searching rules across payees.
+func (r *payeeRuleRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.PayeeRuleDetails, error) {
+	rows, err := r.Executor(nil).Query(
+		ctx, `
+		  SELECT pr.id, pr.budget_id, pr.payee_id, pr.category_id, c.name, p.name, pr.match_string, pr.match_type, pr.created_at, pr.updated_at
+		  FROM payee_rules pr
+		  JOIN payees p ON p.id = pr.payee_id AND p.budget_id = pr.budget_id AND p.deleted = FALSE
+		  LEFT JOIN categories c ON c.id = pr.category_id AND c.budget_id = pr.budget_id AND c.deleted = FALSE
+		  WHERE pr.budget_id = $1
+		    AND pr.deleted = FALSE
+		  ORDER BY pr.match_string ASC`,
+		budgetId,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	rules := []model.PayeeRuleDetails{}
+	for rows.Next() {
+		var rule model.PayeeRuleDetails
+		if err := rows.Scan(
+			&rule.ID,
+			&rule.BudgetID,
+			&rule.PayeeID,
+			&rule.CategoryID,
+			&rule.CategoryName,
+			&rule.PayeeName,
+			&rule.MatchString,
+			&rule.MatchType,
+			&rule.CreatedAt,
+			&rule.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		rules = append(rules, rule)
+	}
 	return rules, rows.Err()
 }
 

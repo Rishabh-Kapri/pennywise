@@ -66,7 +66,10 @@ const (
 
 // Agent
 const (
-	CodeLLMNotConfigured              Code = "AGENT_LLM_NOT_CONFIGURED"
+	CodeLLMNotConfigured Code = "AGENT_LLM_NOT_CONFIGURED"
+	// CodeAIProviderNotConfigured: the budget owner has no enabled AI provider
+	// (user_llm_providers). Not retryable until they add one.
+	CodeAIProviderNotConfigured       Code = "AI_PROVIDER_NOT_CONFIGURED"
 	CodeAgentCreateFailed             Code = "AGENT_CREATE_FAILED"
 	CodeAgentRunNotFound              Code = "AGENT_RUN_NOT_FOUND"
 	CodeAgentRunLookupFailed          Code = "AGENT_RUN_LOOKUP_FAILED"

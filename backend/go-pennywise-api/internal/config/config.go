@@ -30,6 +30,9 @@ type Config struct {
 	DocumentStorage       string
 	UploadsDir            string
 	ExpoPushURL           string
+	// LLMCredentialsKey seals user AI provider keys (base64, 32 bytes). Cipher
+	// needs the same value to open them.
+	LLMCredentialsKey string
 }
 
 func Load() Config {
@@ -72,6 +75,8 @@ func Load() Config {
 
 		// Expo push endpoint (empty = the public https://exp.host one)
 		ExpoPushURL: os.Getenv("EXPO_PUSH_URL"),
+
+		LLMCredentialsKey: os.Getenv("LLM_CREDENTIALS_KEY"),
 	}
 }
 

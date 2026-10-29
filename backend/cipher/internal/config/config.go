@@ -20,11 +20,7 @@ type LLMTarget struct {
 	Model    string
 }
 
-// defaultEmailPipelineTargets preserves the pre-config behaviour: local ollama
-// only. Set EMAIL_PIPELINE_PROVIDERS to add cloud fallbacks.
-var defaultEmailPipelineTargets = []LLMTarget{{Provider: "ollama", Model: "gemma4:12b"}}
-
-// defaultEmailEmbeddingTargets likewise defaults to local ollama. Every target
+// defaultEmailEmbeddingTargets defaults to local ollama. Every target
 // in this chain must serve the same embedding model — see EmailEmbeddingTargets.
 var defaultEmailEmbeddingTargets = []LLMTarget{{Provider: "ollama", Model: "bge-m3"}}
 
@@ -71,21 +67,21 @@ type Config struct {
 	LumoBaseURL          string
 	LumoAPIKey           string
 	OpenAIAPIKey         string
-	AnthropicAPIKey      string
 	OpenRouterAPIKey     string
 	TypesafeAPIKey       string
-	DefaultAgentProvider string // "anthropic", "openai", "openrouter", "lumo", or "ollama"
 	InternalAuthToken    string
 	TemporalServerHost   string
 	TemporalServerPort   string
 	Port                 string
 	// LLMCallTimeout bounds each individual LLM/embedding HTTP call.
 	LLMCallTimeout time.Duration
-	// EmailPipelineTargets is the ordered provider chain the email parse/predict
-	// steps use. Each target is tried in turn until one answers, so a local
-	// ollama outage falls through to a cloud provider instead of stalling the
-	// pipeline.
-	EmailPipelineTargets []LLMTarget
+	// LLMCredentialsKey opens user AI provider keys (user_llm_providers). Must
+	// match the API's. Chat models (pipeline, statements, agent) come only from
+	// those user providers; the server's own keys serve embeddings alone.
+	LLMCredentialsKey string
+	// AllowPrivateLLMURLs lets a user's Ollama URL reach private addresses.
+	// Only for single-tenant self-hosting.
+	AllowPrivateLLMURLs bool
 	// EmailEmbeddingTargets is the ordered chain for semantic-search embeddings.
 	// Every target MUST serve the same model as the stored vectors (bge-m3, 1024
 	// dims) — a different model would put query vectors in a different space and
@@ -145,11 +141,6 @@ func Load() Config {
 		}
 	}
 
-	emailPipelineTargets := parseLLMTargets(os.Getenv("EMAIL_PIPELINE_PROVIDERS"))
-	if len(emailPipelineTargets) == 0 {
-		emailPipelineTargets = defaultEmailPipelineTargets
-	}
-
 	emailEmbeddingTargets := parseLLMTargets(os.Getenv("EMAIL_EMBEDDING_PROVIDERS"))
 	if len(emailEmbeddingTargets) == 0 {
 		emailEmbeddingTargets = defaultEmailEmbeddingTargets
@@ -164,12 +155,10 @@ func Load() Config {
 		MLPServiceURL:            os.Getenv("MLP_SERVICE_URL"),
 		PennywiseServiceURL:      os.Getenv("PENNYWISE_SERVICE_URL"),
 		OpenAIAPIKey:             os.Getenv("OPENAI_API_KEY"),
-		AnthropicAPIKey:          os.Getenv("ANTHROPIC_API_KEY"),
 		OpenRouterAPIKey:         os.Getenv("OPENROUTER_API_KEY"),
 		TypesafeAPIKey:           os.Getenv("TYPESAFE_API_KEY"),
 		LumoBaseURL:              strings.TrimSpace(os.Getenv("LUMO_BASE_URL")),
 		LumoAPIKey:               os.Getenv("LUMO_API_KEY"),
-		DefaultAgentProvider:     os.Getenv("AGENT_PROVIDER"),
 		InternalAuthToken:        os.Getenv("INTERNAL_AUTH_TOKEN"),
 		TemporalServerHost:       os.Getenv("TEMPORAL_SERVER_HOST"),
 		TemporalServerPort:       os.Getenv("TEMPORAL_SERVER_PORT"),
@@ -180,7 +169,8 @@ func Load() Config {
 		AgentReadOnlyDatabaseURL: strings.TrimSpace(os.Getenv("AGENT_DB_URL")),
 		AgentTimezone:            strings.TrimSpace(os.Getenv("AGENT_TIMEZONE")),
 		LLMCallTimeout:           llmCallTimeout,
-		EmailPipelineTargets:     emailPipelineTargets,
+		LLMCredentialsKey:        os.Getenv("LLM_CREDENTIALS_KEY"),
+		AllowPrivateLLMURLs:      os.Getenv("ALLOW_PRIVATE_LLM_URLS") == "true",
 		EmailEmbeddingTargets:    emailEmbeddingTargets,
 	}
 }

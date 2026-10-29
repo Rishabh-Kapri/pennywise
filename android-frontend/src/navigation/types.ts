@@ -12,11 +12,13 @@ export type AppTabParamList = {
         accountId?: string;
         categoryId?: string;
         categoryName?: string;
+        payeeId?: string;
+        payeeName?: string;
         month?: string;
       }
     | undefined;
+  Reports: undefined;
   Payees: undefined;
-  Loans: undefined;
   Penny: undefined;
 };
 
@@ -27,4 +29,5 @@ export type RootStackParamList = {
   Tags: undefined;
   Activity: undefined;
   AI: undefined;
+  Loans: undefined;
 };

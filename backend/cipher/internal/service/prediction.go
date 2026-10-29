@@ -21,6 +21,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/llmusage"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/progress"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/userllm"
 	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
@@ -114,6 +115,15 @@ type PredictionService interface {
 		req TransactionEmbeddingRequest,
 	) (*TransactionEmbeddingResponse, error)
 	HandleCorrection(ctx context.Context, req CorrectionRequest) error
+	// SuggestCategoryDescription drafts a one- or two-sentence description of
+	// what belongs in a budget category.
+	SuggestCategoryDescription(ctx context.Context, req sharedModel.CategoryDescriptionContext) (string, error)
+	// ExtractStatement pulls transaction rows out of one chunk of statement
+	// text for reconciliation.
+	ExtractStatement(
+		ctx context.Context,
+		req sharedModel.StatementExtractRequest,
+	) (*sharedModel.StatementExtractResponse, error)
 }
 
 type predictionService struct {
@@ -130,9 +140,6 @@ type predictionService struct {
 	// llmCallTimeout bounds each chat-endpoint LLM call made through the
 	// llmResolver (the OllamaClient bounds its own calls).
 	llmCallTimeout time.Duration
-	// pipelineTargets is the ordered provider chain for the email pipeline's
-	// LLM steps (extract, summarize, llm fallback).
-	pipelineTargets []config.LLMTarget
 	// embedders maps a provider name to its embedding backend, and
 	// embeddingTargets is the ordered chain drawn from it.
 	embedders        map[string]client.Embedder
@@ -183,7 +190,6 @@ func NewPredictionService(
 		categoryRepo:     categoryRepo,
 		tracer:           tracer,
 		llmCallTimeout:   config.Load().LLMCallTimeout,
-		pipelineTargets:  config.Load().EmailPipelineTargets,
 		embedders:        allEmbedders,
 		embeddingTargets: config.Load().EmailEmbeddingTargets,
 	}
@@ -284,14 +290,18 @@ func (s *predictionService) chatWithFallback(
 ) (*sharedModel.ChatResponse, error) {
 	log := logger.Logger(ctx)
 
-	targets := s.pipelineTargets
+	// The chain is the budget owner's own providers, in their order.
+	targets, err := s.llmResolver.Targets(ctx)
+	if err != nil {
+		return nil, err
+	}
 	if len(targets) == 0 {
-		return nil, errs.New(errs.CodeLLMNotConfigured, "no email pipeline providers configured")
+		return nil, userllm.ErrNotConfigured
 	}
 
 	var lastErr error
 	for _, target := range targets {
-		lc, model, err := s.llmResolver.Resolve(target.Provider, target.Model)
+		lc, model, err := s.llmResolver.Resolve(ctx, target.Provider, target.Model)
 		if err != nil {
 			// Provider has no API key / isn't registered — skip to the next.
 			log.Warn("pipeline provider unavailable, trying next",

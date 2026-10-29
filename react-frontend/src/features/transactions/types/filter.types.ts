@@ -15,6 +15,11 @@ export interface TransactionFilters {
   logicMode: FilterLogicMode;
 }
 
+/** Router state that opens the transactions list pre-filtered. */
+export interface TransactionsLocationState {
+  payeeFilter?: { id: string; name: string };
+}
+
 export const EMPTY_FILTERS: TransactionFilters = {
   note: '',
   dateFrom: '',

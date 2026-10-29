@@ -18,6 +18,7 @@ type BudgetRepository interface {
 	Create(ctx context.Context, tx pgx.Tx, name string, userID uuid.UUID) (*model.Budget, error)
 	UpdateById(ctx context.Context, tx pgx.Tx, id uuid.UUID, budget model.Budget) error
 	IsOwnedByUser(ctx context.Context, budgetID uuid.UUID, userID uuid.UUID) (bool, error)
+	UpdateOnboarding(ctx context.Context, tx pgx.Tx, id uuid.UUID, onboarding model.BudgetOnboarding) error
 }
 
 type budgetRepo struct {
@@ -31,7 +32,7 @@ func NewBudgetRepository(pool *pgxpool.Pool) BudgetRepository {
 func (r *budgetRepo) GetAll(ctx context.Context, userID uuid.UUID) ([]model.Budget, error) {
 	rows, err := r.Executor(nil).Query(
 		ctx, `
-			SELECT id, user_id, name, is_selected, created_at, updated_at, COALESCE(metadata, '{}')
+			SELECT id, user_id, name, is_selected, created_at, updated_at, COALESCE(metadata, '{}'), onboarding
 			FROM budgets
 			WHERE user_id = $1 AND deleted = FALSE
 		`, userID,
@@ -46,7 +47,7 @@ func (r *budgetRepo) GetAll(ctx context.Context, userID uuid.UUID) ([]model.Budg
 
 	for rows.Next() {
 		var b model.Budget
-		err := rows.Scan(&b.ID, &b.UserID, &b.Name, &b.IsSelected, &b.CreatedAt, &b.UpdatedAt, &b.Metadata)
+		err := rows.Scan(&b.ID, &b.UserID, &b.Name, &b.IsSelected, &b.CreatedAt, &b.UpdatedAt, &b.Metadata, &b.Onboarding)
 		if err != nil {
 			return nil, err
 		}
@@ -59,11 +60,11 @@ func (r *budgetRepo) GetById(ctx context.Context, tx pgx.Tx, id uuid.UUID) (*mod
 	var budget model.Budget
 	err := r.Executor(tx).QueryRow(
 		ctx, `
-				SELECT id, user_id, name, is_selected, created_at, updated_at, COALESCE(metadata, '{}')
+				SELECT id, user_id, name, is_selected, created_at, updated_at, COALESCE(metadata, '{}'), onboarding
 				FROM budgets
 				WHERE id = $1 AND deleted = FALSE
 			`, id,
-	).Scan(&budget.ID, &budget.UserID, &budget.Name, &budget.IsSelected, &budget.CreatedAt, &budget.UpdatedAt, &budget.Metadata)
+	).Scan(&budget.ID, &budget.UserID, &budget.Name, &budget.IsSelected, &budget.CreatedAt, &budget.UpdatedAt, &budget.Metadata, &budget.Onboarding)
 	if err != nil {
 		return nil, err
 	}
@@ -113,4 +114,19 @@ func (r *budgetRepo) IsOwnedByUser(ctx context.Context, budgetID uuid.UUID, user
 		return false, err
 	}
 	return exists, nil
+}
+
+func (r *budgetRepo) UpdateOnboarding(ctx context.Context, tx pgx.Tx, id uuid.UUID, onboarding model.BudgetOnboarding) error {
+	cmdTag, err := r.Executor(tx).Exec(
+		ctx,
+		`UPDATE budgets SET onboarding = $1, updated_at = NOW() WHERE id = $2 AND deleted = FALSE`,
+		onboarding, id,
+	)
+	if err != nil {
+		return err
+	}
+	if cmdTag.RowsAffected() == 0 {
+		return fmt.Errorf("budget not found for id %v", id)
+	}
+	return nil
 }

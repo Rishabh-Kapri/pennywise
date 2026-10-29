@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -58,6 +59,13 @@ func (m *svcAccountRepo) Search(ctx context.Context, budgetId uuid.UUID, query s
 }
 func (m *svcAccountRepo) Create(ctx context.Context, tx pgx.Tx, account model.Account) (*model.Account, error) {
 	args := m.Called(ctx, tx, account)
+	if v := args.Get(0); v != nil {
+		return v.(*model.Account), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+func (m *svcAccountRepo) Update(ctx context.Context, tx pgx.Tx, budgetId, id uuid.UUID, account model.Account) (*model.Account, error) {
+	args := m.Called(ctx, tx, budgetId, id, account)
 	if v := args.Get(0); v != nil {
 		return v.(*model.Account), args.Error(1)
 	}
@@ -161,6 +169,25 @@ func (m *svcPayeeRepo) DeleteById(ctx context.Context, budgetId, id uuid.UUID) e
 func (m *svcPayeeRepo) Update(ctx context.Context, budgetId, id uuid.UUID, payee model.Payee) error {
 	return m.Called(ctx, budgetId, id, payee).Error(0)
 }
+func (m *svcPayeeRepo) GetStats(ctx context.Context, budgetId uuid.UUID) ([]model.PayeeStats, error) {
+	args := m.Called(ctx, budgetId)
+	if v := args.Get(0); v != nil {
+		return v.([]model.PayeeStats), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+func (m *svcPayeeRepo) MergeTx(
+	ctx context.Context,
+	tx pgx.Tx,
+	budgetId, targetId uuid.UUID,
+	sourceIds []uuid.UUID,
+) (*model.PayeeMergeResult, error) {
+	args := m.Called(ctx, tx, budgetId, targetId, sourceIds)
+	if v := args.Get(0); v != nil {
+		return v.(*model.PayeeMergeResult), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
 
 // svcPayeeRuleRepo
 type svcPayeeRuleRepo struct {
@@ -190,6 +217,13 @@ func (m *svcPayeeRuleRepo) Update(ctx context.Context, budgetId, id uuid.UUID, p
 }
 func (m *svcPayeeRuleRepo) DeleteByID(ctx context.Context, budgetId, id uuid.UUID) error {
 	return m.Called(ctx, budgetId, id).Error(0)
+}
+func (m *svcPayeeRuleRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.PayeeRuleDetails, error) {
+	args := m.Called(ctx, budgetId)
+	if v := args.Get(0); v != nil {
+		return v.([]model.PayeeRuleDetails), args.Error(1)
+	}
+	return nil, args.Error(1)
 }
 
 // svcBudgetRepo — full BudgetRepository mock
@@ -225,6 +259,9 @@ func (m *svcBudgetRepo) UpdateById(ctx context.Context, tx pgx.Tx, id uuid.UUID,
 func (m *svcBudgetRepo) IsOwnedByUser(ctx context.Context, budgetID, userID uuid.UUID) (bool, error) {
 	args := m.Called(ctx, budgetID, userID)
 	return args.Bool(0), args.Error(1)
+}
+func (m *svcBudgetRepo) UpdateOnboarding(ctx context.Context, tx pgx.Tx, id uuid.UUID, onboarding model.BudgetOnboarding) error {
+	return m.Called(ctx, tx, id, onboarding).Error(0)
 }
 
 // svcCategoryRepo
@@ -310,6 +347,22 @@ func (m *svcCategoryRepo) DeleteById(ctx context.Context, budgetId, id uuid.UUID
 }
 func (m *svcCategoryRepo) Update(ctx context.Context, budgetId, id uuid.UUID, category model.Category) error {
 	return m.Called(ctx, budgetId, id, category).Error(0)
+}
+
+func (m *svcCategoryRepo) UpdateDetails(ctx context.Context, budgetId, id uuid.UUID, note, description *string) error {
+	return m.Called(ctx, budgetId, id, note, description).Error(0)
+}
+
+func (m *svcCategoryRepo) GetDescriptionContext(
+	ctx context.Context,
+	budgetId, categoryId uuid.UUID,
+	payeeLimit int,
+) (*model.CategoryDescriptionContext, error) {
+	args := m.Called(ctx, budgetId, categoryId, payeeLimit)
+	if v := args.Get(0); v != nil {
+		return v.(*model.CategoryDescriptionContext), args.Error(1)
+	}
+	return nil, args.Error(1)
 }
 
 // svcCategoryGroupRepo
@@ -544,6 +597,43 @@ func TestAccountService_Search(t *testing.T) {
 	repo.AssertExpectations(t)
 }
 
+// Validation runs before the transaction opens, so these need no database.
+func TestAccountService_Validation(t *testing.T) {
+	budgetID := uuid.New()
+	ctx := budgetCtxWith(budgetID)
+	otherID := uuid.New()
+	newSvc := func(repo *svcAccountRepo) AccountService { return NewAccountService(repo, &svcPayeeRepo{}) }
+
+	t.Run("create_rejects_blank_name", func(t *testing.T) {
+		_, err := newSvc(&svcAccountRepo{}).Create(ctx, model.Account{Name: "  ", Type: "checking"})
+		assert.ErrorContains(t, err, "name is required")
+	})
+	t.Run("create_rejects_unknown_type", func(t *testing.T) {
+		_, err := newSvc(&svcAccountRepo{}).Create(ctx, model.Account{Name: "X", Type: "nope"})
+		assert.ErrorContains(t, err, "invalid account type")
+	})
+	t.Run("create_rejects_non_digit_suffix", func(t *testing.T) {
+		_, err := newSvc(&svcAccountRepo{}).Create(ctx, model.Account{Name: "X", Type: "checking", Suffix: "12ab"})
+		assert.ErrorContains(t, err, "2-6 digits")
+	})
+	t.Run("create_rejects_suffix_used_by_another_account", func(t *testing.T) {
+		repo := &svcAccountRepo{}
+		repo.On("GetBySuffix", mock.Anything, budgetID, "1234").Return(&model.Account{ID: otherID}, nil)
+		_, err := newSvc(repo).Create(ctx, model.Account{Name: "X", Type: "creditCard", Suffix: "1234"})
+		assert.ErrorContains(t, err, "already uses suffix")
+	})
+	t.Run("update_rejects_blank_name", func(t *testing.T) {
+		_, err := newSvc(&svcAccountRepo{}).Update(ctx, uuid.New(), model.Account{Name: ""})
+		assert.ErrorContains(t, err, "name is required")
+	})
+	t.Run("update_rejects_suffix_used_by_another_account", func(t *testing.T) {
+		repo := &svcAccountRepo{}
+		repo.On("GetBySuffix", mock.Anything, budgetID, "1234").Return(&model.Account{ID: otherID}, nil)
+		_, err := newSvc(repo).Update(ctx, uuid.New(), model.Account{Name: "X", Suffix: "1234"})
+		assert.ErrorContains(t, err, "already uses suffix")
+	})
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // BudgetService tests
 // ─────────────────────────────────────────────────────────────────────────────
@@ -664,7 +754,7 @@ func TestCategoryService_GetAll(t *testing.T) {
 	ctx := budgetCtxWith(budgetID)
 	repo := &svcCategoryRepo{}
 	repo.On("GetAll", mock.Anything, budgetID).Return([]model.Category{{ID: uuid.New()}}, nil)
-	cats, err := NewCategoryService(repo, nil, nil).GetAll(ctx)
+	cats, err := NewCategoryService(repo, nil, nil, nil).GetAll(ctx)
 	assert.NoError(t, err)
 	assert.Len(t, cats, 1)
 	repo.AssertExpectations(t)
@@ -675,7 +765,7 @@ func TestCategoryService_GetInflowBalance(t *testing.T) {
 	ctx := budgetCtxWith(budgetID)
 	repo := &svcCategoryRepo{}
 	repo.On("GetInflowBalance", mock.Anything, budgetID).Return(float64(100.5), nil)
-	balance, err := NewCategoryService(repo, nil, nil).GetInflowBalance(ctx)
+	balance, err := NewCategoryService(repo, nil, nil, nil).GetInflowBalance(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, 100.5, balance)
 	repo.AssertExpectations(t)
@@ -691,7 +781,7 @@ func TestCategoryService_Create(t *testing.T) {
 		repo.On("Create", mock.Anything, (pgx.Tx)(nil), mock.MatchedBy(func(c model.Category) bool {
 			return c.Name == "Groceries" && c.BudgetID == budgetID
 		})).Return(created, nil)
-		result, err := NewCategoryService(repo, nil, nil).Create(ctx, model.Category{Name: "Groceries"})
+		result, err := NewCategoryService(repo, nil, nil, nil).Create(ctx, model.Category{Name: "Groceries"})
 		assert.NoError(t, err)
 		assert.Equal(t, created.ID, result.ID)
 		repo.AssertExpectations(t)
@@ -704,7 +794,7 @@ func TestCategoryService_DeleteById(t *testing.T) {
 	ctx := budgetCtxWith(budgetID)
 	repo := &svcCategoryRepo{}
 	repo.On("DeleteById", mock.Anything, budgetID, catID).Return(nil)
-	assert.NoError(t, NewCategoryService(repo, nil, nil).DeleteById(ctx, catID))
+	assert.NoError(t, NewCategoryService(repo, nil, nil, nil).DeleteById(ctx, catID))
 	repo.AssertExpectations(t)
 }
 
@@ -714,8 +804,74 @@ func TestCategoryService_Update(t *testing.T) {
 	ctx := budgetCtxWith(budgetID)
 	repo := &svcCategoryRepo{}
 	repo.On("Update", mock.Anything, budgetID, catID, mock.Anything).Return(nil)
-	assert.NoError(t, NewCategoryService(repo, nil, nil).Update(ctx, catID, model.Category{Name: "Updated"}))
+	assert.NoError(t, NewCategoryService(repo, nil, nil, nil).Update(ctx, catID, model.Category{Name: "Updated"}))
 	repo.AssertExpectations(t)
+}
+
+func TestCategoryService_UpdateDetails(t *testing.T) {
+	budgetID := uuid.New()
+	catID := uuid.New()
+	ctx := budgetCtxWith(budgetID)
+	desc := "Supermarket runs"
+
+	t.Run("updates_description_only", func(t *testing.T) {
+		repo := &svcCategoryRepo{}
+		repo.On("UpdateDetails", mock.Anything, budgetID, catID, (*string)(nil), &desc).Return(nil)
+		err := NewCategoryService(repo, nil, nil, nil).
+			UpdateDetails(ctx, catID, model.CategoryDetailsUpdate{Description: &desc})
+		assert.NoError(t, err)
+		repo.AssertExpectations(t)
+	})
+
+	t.Run("missing_category_is_not_found", func(t *testing.T) {
+		repo := &svcCategoryRepo{}
+		repo.On("UpdateDetails", mock.Anything, budgetID, catID, (*string)(nil), &desc).Return(pgx.ErrNoRows)
+		err := NewCategoryService(repo, nil, nil, nil).
+			UpdateDetails(ctx, catID, model.CategoryDetailsUpdate{Description: &desc})
+		assert.ErrorIs(t, err, ErrCategoryNotFound)
+	})
+}
+
+func TestCategoryService_SuggestDescription(t *testing.T) {
+	budgetID := uuid.New()
+	catID := uuid.New()
+	ctx := budgetCtxWith(budgetID)
+	descCtx := &model.CategoryDescriptionContext{
+		CategoryName:      "Groceries",
+		GroupName:         "Food",
+		SiblingCategories: []string{"Dining Out"},
+		TopPayees:         []string{"BigBasket"},
+	}
+
+	t.Run("returns_cipher_suggestion", func(t *testing.T) {
+		repo := &svcCategoryRepo{}
+		repo.On("GetDescriptionContext", mock.Anything, budgetID, catID, descriptionPayeeLimit).Return(descCtx, nil)
+		cipher := &mockCipherClient{}
+		cipher.On("SuggestCategoryDescription", mock.Anything, *descCtx).
+			Return(&CategoryDescriptionResponse{Description: "Food and household staples."}, nil)
+
+		got, err := NewCategoryService(repo, nil, nil, cipher).SuggestDescription(ctx, catID)
+		assert.NoError(t, err)
+		assert.Equal(t, "Food and household staples.", got)
+		repo.AssertExpectations(t)
+		cipher.AssertExpectations(t)
+	})
+
+	t.Run("missing_category_is_not_found", func(t *testing.T) {
+		repo := &svcCategoryRepo{}
+		repo.On("GetDescriptionContext", mock.Anything, budgetID, catID, descriptionPayeeLimit).Return(nil, pgx.ErrNoRows)
+		_, err := NewCategoryService(repo, nil, nil, &mockCipherClient{}).SuggestDescription(ctx, catID)
+		assert.ErrorIs(t, err, ErrCategoryNotFound)
+	})
+
+	t.Run("cipher_failure_is_unavailable", func(t *testing.T) {
+		repo := &svcCategoryRepo{}
+		repo.On("GetDescriptionContext", mock.Anything, budgetID, catID, descriptionPayeeLimit).Return(descCtx, nil)
+		cipher := &mockCipherClient{}
+		cipher.On("SuggestCategoryDescription", mock.Anything, *descCtx).Return(nil, errors.New("all providers failed"))
+		_, err := NewCategoryService(repo, nil, nil, cipher).SuggestDescription(ctx, catID)
+		assert.ErrorIs(t, err, ErrDescriptionUnavailable)
+	})
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -767,13 +923,67 @@ func TestPayeeService_Create(t *testing.T) {
 
 func TestPayeeService_DeleteById(t *testing.T) {
 	budgetID := uuid.New()
-	payeeID := uuid.New()
+	ctx := budgetCtxWith(budgetID)
+
+	t.Run("deletes_payee", func(t *testing.T) {
+		payeeID := uuid.New()
+		repo := &svcPayeeRepo{}
+		repo.On("GetById", mock.Anything, budgetID, payeeID).Return(&model.Payee{ID: payeeID}, nil)
+		repo.On("DeleteById", mock.Anything, budgetID, payeeID).Return(nil)
+		assert.NoError(t, NewPayeeService(repo, &svcPayeeRuleRepo{}).DeleteById(ctx, payeeID))
+		repo.AssertExpectations(t)
+	})
+
+	t.Run("refuses_transfer_payee", func(t *testing.T) {
+		payeeID, accountID := uuid.New(), uuid.New()
+		repo := &svcPayeeRepo{}
+		repo.On("GetById", mock.Anything, budgetID, payeeID).
+			Return(&model.Payee{ID: payeeID, TransferAccountID: &accountID}, nil)
+		err := NewPayeeService(repo, &svcPayeeRuleRepo{}).DeleteById(ctx, payeeID)
+		assert.ErrorIs(t, err, ErrTransferPayee)
+		repo.AssertNotCalled(t, "DeleteById", mock.Anything, mock.Anything, mock.Anything)
+	})
+
+	t.Run("unknown_payee", func(t *testing.T) {
+		payeeID := uuid.New()
+		repo := &svcPayeeRepo{}
+		repo.On("GetById", mock.Anything, budgetID, payeeID).Return(nil, pgx.ErrNoRows)
+		err := NewPayeeService(repo, &svcPayeeRuleRepo{}).DeleteById(ctx, payeeID)
+		assert.ErrorIs(t, err, ErrPayeeNotFound)
+	})
+}
+
+func TestPayeeService_MergeRejectsEmptySources(t *testing.T) {
+	ctx := budgetCtxWith(uuid.New())
+	svc := NewPayeeService(&svcPayeeRepo{}, &svcPayeeRuleRepo{})
+	target := uuid.New()
+
+	// the target as its own source, and nil ids, leave nothing to merge
+	for _, sources := range [][]uuid.UUID{nil, {target}, {uuid.Nil, target}} {
+		_, err := svc.Merge(ctx, model.PayeeMergeRequest{TargetID: target, SourceIDs: sources})
+		assert.ErrorIs(t, err, ErrInvalidPayeeMerge)
+	}
+	_, err := svc.Merge(ctx, model.PayeeMergeRequest{SourceIDs: []uuid.UUID{uuid.New()}})
+	assert.ErrorIs(t, err, ErrInvalidPayeeMerge)
+}
+
+func TestPayeeService_GetStatsAndAllRules(t *testing.T) {
+	budgetID := uuid.New()
 	ctx := budgetCtxWith(budgetID)
 	repo := &svcPayeeRepo{}
 	ruleRepo := &svcPayeeRuleRepo{}
-	repo.On("DeleteById", mock.Anything, budgetID, payeeID).Return(nil)
-	assert.NoError(t, NewPayeeService(repo, ruleRepo).DeleteById(ctx, payeeID))
+	repo.On("GetStats", mock.Anything, budgetID).Return([]model.PayeeStats{{RuleCount: 1}}, nil)
+	ruleRepo.On("GetAll", mock.Anything, budgetID).Return([]model.PayeeRuleDetails{{MatchString: "AMZN"}}, nil)
+
+	svc := NewPayeeService(repo, ruleRepo)
+	stats, err := svc.GetStats(ctx)
+	assert.NoError(t, err)
+	assert.Len(t, stats, 1)
+	rules, err := svc.GetAllRules(ctx)
+	assert.NoError(t, err)
+	assert.Len(t, rules, 1)
 	repo.AssertExpectations(t)
+	ruleRepo.AssertExpectations(t)
 }
 
 func TestPayeeService_Update(t *testing.T) {
@@ -1426,7 +1636,7 @@ func TestCategoryService_Search(t *testing.T) {
 	t.Run("returns_results", func(t *testing.T) {
 		repo := &svcCategoryRepo{}
 		repo.On("Search", mock.Anything, budgetID, "gro").Return([]model.Category{{Name: "Groceries"}}, nil)
-		cats, err := NewCategoryService(repo, nil, nil).Search(ctx, "gro")
+		cats, err := NewCategoryService(repo, nil, nil, nil).Search(ctx, "gro")
 		assert.NoError(t, err)
 		assert.Len(t, cats, 1)
 		repo.AssertExpectations(t)
@@ -1434,7 +1644,7 @@ func TestCategoryService_Search(t *testing.T) {
 	t.Run("repo_error_propagates", func(t *testing.T) {
 		repo := &svcCategoryRepo{}
 		repo.On("Search", mock.Anything, budgetID, "bad").Return(nil, assert.AnError)
-		cats, err := NewCategoryService(repo, nil, nil).Search(ctx, "bad")
+		cats, err := NewCategoryService(repo, nil, nil, nil).Search(ctx, "bad")
 		assert.Error(t, err)
 		assert.Nil(t, cats)
 		repo.AssertExpectations(t)
@@ -1449,7 +1659,7 @@ func TestCategoryService_GetById(t *testing.T) {
 	t.Run("returns_category", func(t *testing.T) {
 		repo := &svcCategoryRepo{}
 		repo.On("GetById", mock.Anything, budgetID, catID).Return(&model.Category{ID: catID}, nil)
-		cat, err := NewCategoryService(repo, nil, nil).GetById(ctx, catID)
+		cat, err := NewCategoryService(repo, nil, nil, nil).GetById(ctx, catID)
 		assert.NoError(t, err)
 		assert.Equal(t, catID, cat.ID)
 		repo.AssertExpectations(t)
@@ -1457,7 +1667,7 @@ func TestCategoryService_GetById(t *testing.T) {
 	t.Run("repo_error_propagates", func(t *testing.T) {
 		repo := &svcCategoryRepo{}
 		repo.On("GetById", mock.Anything, budgetID, catID).Return(nil, assert.AnError)
-		cat, err := NewCategoryService(repo, nil, nil).GetById(ctx, catID)
+		cat, err := NewCategoryService(repo, nil, nil, nil).GetById(ctx, catID)
 		assert.Error(t, err)
 		assert.Nil(t, cat)
 		repo.AssertExpectations(t)

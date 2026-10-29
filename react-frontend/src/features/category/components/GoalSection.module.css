@@ -1,0 +1,317 @@
+/* Matches the inspector's tiles (CategoryInfo.module.css): soft fill, rounded. */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.9rem 0.95rem;
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--color-text) 4.5%, transparent);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.label {
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.typeChip {
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  color: var(--color-primary-light, var(--color-primary));
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.summary {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.subtle {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.83rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Progress ── */
+
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.meter {
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-text) 9%, transparent);
+  overflow: hidden;
+}
+
+.meterFill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--goal-color);
+  transition: width 0.3s ease;
+}
+
+.funded {
+  --goal-color: var(--color-success);
+}
+
+.underfunded {
+  --goal-color: var(--color-warning);
+}
+
+.overspent {
+  --goal-color: var(--color-error);
+}
+
+.snoozed {
+  --goal-color: var(--color-text-secondary);
+}
+
+.progressRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.progressStatus {
+  color: var(--color-text);
+  font-size: 0.88rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Buttons ── */
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.primaryButton,
+.secondaryButton,
+.ghostButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border: 0;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.primaryButton {
+  padding: 0.55rem 0.9rem;
+  border-radius: 0.6rem;
+  background: var(--color-primary);
+  color: var(--on-accent, #fff);
+  font-size: 0.9rem;
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: var(--accent-hover, var(--color-primary));
+}
+
+.secondaryButton {
+  flex: 0 0 auto;
+  padding: 0.4rem 0.7rem;
+  border-radius: 0.55rem;
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  color: var(--color-primary-light, var(--color-primary));
+  font-size: 0.85rem;
+}
+
+.secondaryButton:hover {
+  background: color-mix(in srgb, var(--color-primary) 22%, transparent);
+}
+
+.ghostButton {
+  padding: 0.3rem 0.6rem;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 0.83rem;
+}
+
+.ghostButton:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-text) 8%, transparent);
+  color: var(--color-text);
+}
+
+.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-error) 12%, transparent);
+  color: var(--color-error);
+}
+
+.primaryButton:disabled,
+.ghostButton:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.primaryButton:focus-visible,
+.secondaryButton:focus-visible,
+.ghostButton:focus-visible,
+.segment:focus-visible,
+.segmentActive:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+/* ── Empty state ── */
+
+.empty {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px dashed var(--color-border-muted);
+  border-radius: 0.75rem;
+}
+
+.emptyIcon {
+  flex: 0 0 auto;
+  color: var(--color-text-secondary);
+}
+
+.emptyText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.83rem;
+}
+
+.emptyText strong {
+  color: var(--color-text);
+  font-size: 0.92rem;
+}
+
+/* ── Editor ── */
+
+.field {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.fieldRow {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.fieldLabel {
+  padding: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.input {
+  min-width: 0;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.55rem;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.92rem;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent);
+}
+
+.segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding: 0.2rem;
+  border-radius: 0.6rem;
+  background: color-mix(in srgb, var(--color-text) 5%, transparent);
+}
+
+.segment,
+.segmentActive {
+  flex: 1 0 auto;
+  padding: 0.3rem 0.55rem;
+  border: 0;
+  border-radius: 0.45rem;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.segment:hover {
+  color: var(--color-text);
+}
+
+.segmentActive {
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-sm, 0 1px 2px rgb(0 0 0 / 0.15));
+}
+
+.radioGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.radio {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  color: var(--color-text);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.radio input {
+  margin-top: 0.2rem;
+  accent-color: var(--color-primary);
+}
+
+.radio span {
+  display: flex;
+  flex-direction: column;
+}
+
+.radio small {
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+}

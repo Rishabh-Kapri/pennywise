@@ -70,8 +70,8 @@ func (a *GmailActivities) FetchEmailData(
 		result.EmailData = append(result.EmailData, sharedModel.EmailData{
 			MessageId: data.MessageId,
 			Body:      data.Body,
-			From:      headerValue(data.Headers, "From"),
-			Subject:   headerValue(data.Headers, "Subject"),
+			From:      HeaderValue(data.Headers, "From"),
+			Subject:   HeaderValue(data.Headers, "Subject"),
 			Snippet:   data.Snippet,
 		})
 	}
@@ -79,8 +79,8 @@ func (a *GmailActivities) FetchEmailData(
 	return result, nil
 }
 
-// headerValue returns the first matching MIME header, case-insensitively.
-func headerValue(headers []*gmailv1.MessagePartHeader, name string) string {
+// HeaderValue returns the first matching MIME header, case-insensitively.
+func HeaderValue(headers []*gmailv1.MessagePartHeader, name string) string {
 	for _, header := range headers {
 		if header != nil && strings.EqualFold(header.Name, name) {
 			return header.Value

@@ -310,7 +310,7 @@
     border: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
     border-radius: 999px;
     background: color-mix(in srgb, var(--color-surface) 92%, transparent);
-    box-shadow: 0 1.5rem 3rem rgb(0 0 0 / 0.34), inset 0 1px 0 rgb(255 255 255 / 0.04);
+    box-shadow: 0 1.5rem 3rem rgb(0 0 0 / 0.34), inset 0 1px 0 color-mix(in srgb, var(--color-text) 4%, transparent);
     backdrop-filter: blur(18px);
   }
 

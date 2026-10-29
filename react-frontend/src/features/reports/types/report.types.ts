@@ -1,25 +1,5 @@
 import type { LoadingState } from '@/utils';
 
-export interface SpendingCategoryReport {
-  categoryId: string;
-  name: string;
-  total: number;
-}
-
-export interface SpendingGroupReport {
-  categoryGroupId: string;
-  name: string;
-  total: number;
-  categories: SpendingCategoryReport[];
-}
-
-export interface SpendingReport {
-  startMonth: string;
-  endMonth: string;
-  total: number;
-  groups: SpendingGroupReport[];
-}
-
 export interface PayeeMonthlyAmounts {
   payeeId: string;
   name: string;
@@ -61,9 +41,51 @@ export interface IncomeExpenseReport {
 export interface NetWorthPoint {
   month: string;
   assets: number;
+  /** The tracking "asset" accounts within assets. */
+  investments: number;
   liabilities: number;
+  /** Amortized loan balances within liabilities (negative). */
+  loans: number;
   netWorth: number;
 }
+
+/** Money moved between on-budget accounts and one off-budget account. */
+export interface AccountFlow {
+  accountId: string;
+  name: string;
+  type: string;
+  kind: 'asset' | 'debt';
+  closed: boolean;
+  /** Came into on-budget accounts, by month. */
+  in: Record<string, number>;
+  /** Left on-budget accounts (positive), by month. */
+  out: Record<string, number>;
+  /** Inflows filed under a regular category instead of Ready to Assign. */
+  recategorizedCount: number;
+  recategorizedAmount: number;
+}
+
+/**
+ * GET /reports/cashflow. Income is earned income only (no transfers, no
+ * opening balances); spending excludes transfers; every transfer with an
+ * off-budget account is in `transfers`, whatever category it was filed under.
+ */
+export interface CashFlowReport {
+  startMonth: string;
+  endMonth: string;
+  months: string[];
+  income: IncomeMatrix;
+  spending: ExpenseMatrix;
+  transfers: AccountFlow[];
+  openingBalances: Record<string, number>;
+}
+
+/**
+ * How a category group counts in the reports: ordinary spending, spending
+ * that won't recur (shown apart in the spend rate), or money set aside
+ * (counted with investments, not spending).
+ */
+export type GroupTreatment = 'spending' | 'oneOff' | 'saving';
 
 export interface NetWorthReport {
   startMonth: string;
@@ -95,23 +117,21 @@ export const EMPTY_REPORT_FILTERS: ReportFilters = {
 };
 
 export function hasActiveReportFilters(filters: ReportFilters): boolean {
-  return (
-    filters.accountIds.length > 0 || filters.categoryIds.length > 0 || filters.tagIds.length > 0
-  );
+  return filters.accountIds.length > 0 || filters.categoryIds.length > 0 || filters.tagIds.length > 0;
 }
 
 export type ReportPreset = '3m' | '6m' | '12m' | 'ytd' | 'all' | 'custom';
 
-export type ReportTab = 'spending' | 'incomeExpense' | 'networth';
+export type ReportTab = 'overview' | 'spending' | 'income' | 'investing' | 'networth';
 
 export interface ReportState {
   range: ReportRange;
   preset: ReportPreset;
   filters: ReportFilters;
-  spending: SpendingReport | null;
-  spendingLoading: LoadingState;
-  incomeExpense: IncomeExpenseReport | null;
-  incomeExpenseLoading: LoadingState;
+  cashFlow: CashFlowReport | null;
+  cashFlowLoading: LoadingState;
+  /** Overrides of the name-based default, keyed by category group id. */
+  groupTreatments: Record<string, GroupTreatment>;
   netWorth: NetWorthReport | null;
   netWorthLoading: LoadingState;
   error: string | null;

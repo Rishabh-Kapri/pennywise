@@ -35,6 +35,15 @@ func NewHttpTransport(baseUrl string) transport.Transport {
 	}
 }
 
+// NewHttpTransportWithClient is NewHttpTransport with a caller-supplied
+// http.Client, e.g. one whose dialer refuses private addresses.
+func NewHttpTransportWithClient(baseUrl string, client *http.Client) transport.Transport {
+	return &httpTransport{
+		baseUrl: baseUrl,
+		client:  client,
+	}
+}
+
 func applyHeaders(ctx context.Context, req *http.Request, headers map[string][]string) {
 	for k, v := range headers {
 		if req.Header.Get(k) == "" {

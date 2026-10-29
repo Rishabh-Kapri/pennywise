@@ -135,15 +135,14 @@ export function TransactionLocationSection({ txn }: { txn: Transaction }) {
 
   return (
     <section className={styles.locationSection}>
-      <span className={styles.metaLabel}>
-        <MapPinIcon size={18} />
-        <span>Location</span>
+      <div className={styles.sectionHeader}>
+        <span className={styles.sectionTitle}>Location</span>
         {txn.locationSource === LocationSource.AUTO && (
           <span className={styles.autoBadge} title="Attached automatically from your phone's location">
-            auto
+            Auto
           </span>
         )}
-      </span>
+      </div>
 
       {hasLocation && !isPicking && (
         <div className={styles.locationNameRow}>

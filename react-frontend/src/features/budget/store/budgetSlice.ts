@@ -5,6 +5,7 @@ import {
   type PayloadAction,
 } from '@reduxjs/toolkit';
 import type { Budget, BudgetState } from '../types/budget.types';
+import type { BudgetOnboarding } from '@/features/onboarding/types';
 import { LoadingState, apiClient, getCurrentMonthKey } from '@/utils';
 import type { RootState } from '@/app/store';
 import { getSelectedMonthInHumanFormat } from '@/utils/date.utils';
@@ -70,6 +71,13 @@ const budgetSlice = createSlice({
     setSelectedMonth: (state, action: PayloadAction<string>) => {
       state.selectedMonth = action.payload;
     },
+    /** Stores the onboarding state the API returned for the selected budget. */
+    budgetOnboardingUpdated: (state, action: PayloadAction<BudgetOnboarding>) => {
+      if (!state.selectedBudget) return;
+      state.selectedBudget.onboarding = action.payload;
+      const budget = state.allBudgets.find((b) => b.id === state.selectedBudget?.id);
+      if (budget) budget.onboarding = action.payload;
+    },
     setSelectedBudget: (state, action: PayloadAction<Budget>) => {
       state.selectedBudget = { ...action.payload, isSelected: true };
       state.allBudgets = state.allBudgets.map((budget) => ({
@@ -121,7 +129,7 @@ const budgetSlice = createSlice({
   },
 });
 
-export const { setSelectedMonth, setSelectedBudget } = budgetSlice.actions;
+export const { setSelectedMonth, setSelectedBudget, budgetOnboardingUpdated } = budgetSlice.actions;
 
 export default budgetSlice.reducer;
 

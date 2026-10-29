@@ -16,38 +16,23 @@
   align-items: center;
 }
 
+/* Inline editors in a transaction row (payee, account). The note/amount
+   inputs in Transaction.module.css (.input) mirror this exactly. */
 .input {
-  font-size: 1.2rem;
   width: 100%;
-  height: 100%;
+  padding: 0.45rem 0.75rem;
   border: 2px solid transparent;
-  color: var(--color-text-secondary);
-  padding: 0.5rem 1rem;
   border-radius: 0.5rem;
   background: var(--color-surface-secondary);
   box-shadow: var(--shadow-sm);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 1rem;
 }
 
 .input:focus {
   outline: none;
   border-color: var(--color-border-light);
-}
-
-.autocompleteBase {
-  width: 100%;
-}
-
-.autocompleteInputWrapper {
-  min-height: auto;
-  height: auto;
-  padding: 0;
-  border: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-}
-
-.autocompleteInnerWrapper {
-  width: 100%;
 }
 
 .groupContainer {
@@ -67,29 +52,116 @@
 .formInput,
 .formTrigger {
   width: 100%;
-  min-height: 2.6rem;
-  padding: 0.55rem 0.75rem;
+  height: 2.5rem;
+  padding: 0 0.8rem;
   border: 1px solid var(--color-border-muted);
-  border-radius: 0.5rem;
+  border-radius: 0.6rem;
   background: var(--color-surface);
   box-shadow: none;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 450;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.formInput::placeholder {
   color: var(--color-text-secondary);
-  font-size: 1rem;
-  font-weight: 500;
+}
+
+.formInput:hover,
+.formTrigger:hover {
+  border-color: color-mix(in srgb, var(--color-border) 70%, transparent);
 }
 
 .formInput:focus,
-.formTrigger:focus {
+.formTrigger:focus-visible,
+.formTrigger.open {
   outline: none;
   border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent);
 }
 
 .formTrigger {
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
+  overflow: hidden;
   cursor: pointer;
   text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* multi-select triggers in the filter tray: full-width field, not a chip */
+.formTrigger.triggerButton {
+  width: 100%;
+  font-size: 0.92rem;
+}
+
+/* Detail-panel rows: reads as plain text until hovered or focused. */
+.ghostInput,
+.ghostTrigger {
+  width: 100%;
+  min-width: 0;
+  height: 2.1rem;
+  padding: 0 0.55rem;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 550;
+  text-align: right;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.ghostInput:hover,
+.ghostTrigger:hover {
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+}
+
+.ghostInput:focus,
+.ghostTrigger:focus-visible,
+.ghostTrigger.open {
+  outline: none;
+  border-color: var(--color-primary);
+  background: var(--color-surface);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent);
+}
+
+.ghostInput:focus {
+  min-width: 10rem;
+  cursor: text;
+  text-align: left;
+}
+
+.ghostTrigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: auto;
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+/* ghost fields hug their text so a logo can sit right beside it */
+.ghostField {
+  width: auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+@supports (field-sizing: content) {
+  .ghostInput {
+    field-sizing: content;
+    width: auto;
+    min-width: 4rem;
+    max-width: 100%;
+  }
 }
 
 .searchContainer {
@@ -177,57 +249,115 @@
   outline: none;
 }
 
-.popoverBase {
+/* Option lists for the inline payee/account editors: inset from the edges
+   with a rounded hover, like the category picker's grouped list. */
+.optionPopover.optionPopover {
+  gap: 0.1rem;
+  padding: 0.3rem;
 }
 
-.popoverContent {
-  background: var(--color-surface-secondary);
-  border: 1px solid var(--color-surface-tertiary);
-  box-shadow: var(--shadow-lg);
-  border-radius: 0.5rem;
-  /* box-shadow: var(--shadow-md); */
-  max-height: 400px;
-  overflow-y: auto;
-  padding: 0;
-  padding-top: 0 !important;
-  /* Override default padding of PopoverContent if necessary */
-}
-
-.selectorButton {
-  display: none; /* Hide completely */
-  /* OR customize it: */
-  /* width: 20px;
-  height: 20px;
-  padding: 0; */
-}
-
-.clearButton {
-  display: none; /* Hide completely */
-  /* OR customize it: */
-  /* width: 20px;
-  height: 20px;
-  padding: 0;
-  min-width: auto; */
-}
-
-/* Style the icons inside the buttons if you want to keep them */
-.selectorButton svg,
-.clearButton svg {
-  width: 16px;
-  height: 16px;
-}
-
-.listboxBase {
+.optionList {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
+  gap: 0.1rem;
 }
 
-.listboxList {
-  padding: 0;
+/* flex-shrink: 0 matters: the popover is a height-capped flex column, and an
+   overflow-hidden row may otherwise shrink until its text overlaps */
+.option {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  padding: 0.5rem 0.65rem;
+  border-radius: 0.45rem;
+  color: var(--color-text);
+  font-size: 0.95rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s ease;
 }
 
-.hideIcon {
-  display: none;
+.option:hover,
+.option:focus-visible,
+.optionActive {
+  outline: none;
+  background: color-mix(in srgb, var(--color-text) 8%, transparent);
+}
+
+.optionSelected {
+  font-weight: 600;
+}
+
+.optionLeading {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.optionTrailing {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.optionName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* the field: room for a leading logo inside the input */
+.selectField {
+  position: relative;
+}
+
+.selectLeading {
+  position: absolute;
+  top: 50%;
+  left: 0.65rem;
+  z-index: 1;
+  display: inline-flex;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.withLeading {
+  padding-left: 2.1rem !important;
+}
+
+.optionEmpty {
+  padding: 0.5rem 0.65rem;
+  color: var(--color-text-secondary);
+  font-size: 0.92rem;
+}
+
+.placeholderText {
+  color: var(--color-text-secondary);
+}
+
+/* multi-select lists in the filter tray: same inset rows as the pickers */
+.multiList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  max-height: 250px;
+  padding: 0.3rem 0.3rem 0;
+  overflow-y: auto;
+}
+
+.multiOption .optionName {
+  flex: 1;
+}
+
+.optionCheck {
+  flex: 0 0 auto;
+  color: var(--color-primary);
 }
 
 .item {
@@ -273,161 +403,10 @@
   color: var(--color-budget-negative);
 }
 
-/* Date popover styles */
-.datePopoverContent {
-  background: var(--color-surface-secondary);
-  border-radius: 12px;
+/* Date popover styles (doubled to beat the shared popover's list padding) */
+.datePopoverContent.datePopoverContent {
   padding: 0.375rem;
-  box-shadow: var(--shadow-lg);
+  max-height: none;
   overflow: visible;
 }
 
-.dateActions {
-  display: flex;
-  justify-content: flex-end;
-  padding: 0.25rem;
-}
-
-.dateOkButton {
-  border: 0;
-  border-radius: 0.5rem;
-  padding: 0.45rem 0.9rem;
-  background: var(--color-primary);
-  color: #fff;
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.dateOkButton:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-.calendarBase {
-  width: 16.25rem;
-  background: var(--color-surface-secondary) !important;
-  box-shadow: none;
-  color: var(--color-text);
-}
-
-.calendarContent {
-  width: 100%;
-  padding: 0;
-  background: var(--color-surface-secondary) !important;
-}
-
-.calendarHeaderWrapper {
-  padding: 0 0.125rem 0.25rem;
-  background: var(--color-surface-secondary) !important;
-}
-
-.calendarHeaderWrapper::after {
-  background: var(--color-surface-secondary) !important;
-}
-
-.calendarHeader {
-  background: var(--color-surface-secondary) !important;
-}
-
-.calendarTitle {
-  color: var(--color-text-secondary);
-  font-size: 0.95rem;
-  font-weight: 500;
-}
-
-.calendarNavButton {
-  min-width: 2rem;
-  width: 2rem;
-  height: 2rem;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--color-text-secondary);
-}
-
-.calendarNavButton:hover {
-  background: var(--color-surface-tertiary);
-  color: var(--color-text);
-}
-
-.calendarWeekday {
-  color: var(--color-text-secondary);
-  font-size: 0.78rem;
-  font-weight: 500;
-}
-
-.calendarGridWrapper,
-.calendarGrid,
-.calendarGridHeader,
-.calendarGridBody {
-  background: var(--color-surface-secondary) !important;
-}
-
-.calendarDayButton {
-  width: 2rem;
-  height: 2rem;
-  min-width: 2rem;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--color-text);
-  font-size: 0.9rem;
-  font-weight: 500;
-}
-
-.calendarPickerWrapper,
-.datePopoverContent :global([data-slot='header-wrapper']),
-.datePopoverContent :global([data-slot='header']),
-.datePopoverContent :global([data-slot='grid-wrapper']),
-.datePopoverContent :global([data-slot='grid']),
-.datePopoverContent :global([data-slot='grid-header']),
-.datePopoverContent :global([data-slot='grid-body']),
-.datePopoverContent :global([data-slot='picker-wrapper']) {
-  background: var(--color-surface-secondary) !important;
-}
-
-.calendarPickerList,
-.datePopoverContent :global([data-slot='picker-month-list']),
-.datePopoverContent :global([data-slot='picker-year-list']) {
-  background: transparent !important;
-}
-
-.datePopoverContent :global([data-slot='title']),
-.datePopoverContent :global([data-slot='selector-button']) {
-  background: transparent !important;
-}
-
-.calendarPickerHighlight,
-.datePopoverContent :global([data-slot='picker-highlight']) {
-  background: var(--color-surface-tertiary) !important;
-}
-
-.calendarPickerItem,
-.datePopoverContent :global([data-slot='picker-item']),
-.datePopoverContent :global([data-slot='picker-item-empty']) {
-  background: transparent !important;
-  color: var(--color-text-secondary) !important;
-}
-
-.calendarPickerItem:focus,
-.calendarPickerItem[data-focus='true'],
-.datePopoverContent :global([data-slot='picker-item']:focus),
-.datePopoverContent :global([data-slot='picker-item'][data-focus='true']) {
-  color: var(--color-text) !important;
-}
-
-.calendarDayButton:hover {
-  background: var(--color-surface-tertiary);
-}
-
-.calendarDayButton[data-selected='true'],
-.calendarDayButton[aria-selected='true'] {
-  background: var(--color-primary);
-  color: #fff;
-}
-
-.calendarDayButton[data-outside-month='true'],
-.calendarDayButton[aria-disabled='true'] {
-  color: var(--color-text-secondary);
-  opacity: 0.45;
-}

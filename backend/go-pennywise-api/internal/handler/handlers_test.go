@@ -78,6 +78,13 @@ func (m *mockAccountService) Create(ctx context.Context, account model.Account) 
 	}
 	return nil, args.Error(1)
 }
+func (m *mockAccountService) Update(ctx context.Context, id uuid.UUID, account model.Account) (*model.Account, error) {
+	args := m.Called(ctx, id, account)
+	if v := args.Get(0); v != nil {
+		return v.(*model.Account), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
 
 func TestAccountHandler_List(t *testing.T) {
 	t.Run("returns_accounts", func(t *testing.T) {
@@ -528,6 +535,15 @@ func (m *mockCategoryService) Update(ctx context.Context, id uuid.UUID, cat mode
 }
 func (m *mockCategoryService) UpdateMonthlyBudget(ctx context.Context, categoryId uuid.UUID, newBudgeted float64, month string) error {
 	return m.Called(ctx, categoryId, newBudgeted, month).Error(0)
+}
+
+func (m *mockCategoryService) UpdateDetails(ctx context.Context, id uuid.UUID, details model.CategoryDetailsUpdate) error {
+	return m.Called(ctx, id, details).Error(0)
+}
+
+func (m *mockCategoryService) SuggestDescription(ctx context.Context, id uuid.UUID) (string, error) {
+	args := m.Called(ctx, id)
+	return args.String(0), args.Error(1)
 }
 
 func TestCategoryHandler_List(t *testing.T) {
@@ -1061,6 +1077,78 @@ func (m *mockPayeeService) DeleteById(ctx context.Context, id uuid.UUID) error {
 }
 func (m *mockPayeeService) Update(ctx context.Context, id uuid.UUID, payee model.Payee) error {
 	return m.Called(ctx, id, payee).Error(0)
+}
+func (m *mockPayeeService) GetStats(ctx context.Context) ([]model.PayeeStats, error) {
+	args := m.Called(ctx)
+	if v := args.Get(0); v != nil {
+		return v.([]model.PayeeStats), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+func (m *mockPayeeService) GetAllRules(ctx context.Context) ([]model.PayeeRuleDetails, error) {
+	args := m.Called(ctx)
+	if v := args.Get(0); v != nil {
+		return v.([]model.PayeeRuleDetails), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+func (m *mockPayeeService) Merge(ctx context.Context, req model.PayeeMergeRequest) (*model.PayeeMergeResult, error) {
+	args := m.Called(ctx, req)
+	if v := args.Get(0); v != nil {
+		return v.(*model.PayeeMergeResult), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+
+func TestPayeeHandler_Merge(t *testing.T) {
+	target, source := uuid.New(), uuid.New()
+	body := model.PayeeMergeRequest{TargetID: target, SourceIDs: []uuid.UUID{source}}
+
+	t.Run("returns_result", func(t *testing.T) {
+		svc := &mockPayeeService{}
+		svc.On("Merge", mock.Anything, body).Return(&model.PayeeMergeResult{TargetID: target, Transactions: 3}, nil)
+		w, c := makeReq("POST", "/payees/merge", body)
+		NewPayeeHandler(svc).Merge(c)
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), `"transactions":3`)
+	})
+	t.Run("missing_sources_returns_400", func(t *testing.T) {
+		svc := &mockPayeeService{}
+		w, c := makeReq("POST", "/payees/merge", gin.H{"targetId": target})
+		NewPayeeHandler(svc).Merge(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		svc.AssertNotCalled(t, "Merge", mock.Anything, mock.Anything)
+	})
+	t.Run("transfer_payee_returns_400", func(t *testing.T) {
+		svc := &mockPayeeService{}
+		svc.On("Merge", mock.Anything, body).Return(nil, service.ErrTransferPayee)
+		w, c := makeReq("POST", "/payees/merge", body)
+		NewPayeeHandler(svc).Merge(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+	t.Run("unknown_payee_returns_404", func(t *testing.T) {
+		svc := &mockPayeeService{}
+		svc.On("Merge", mock.Anything, body).Return(nil, service.ErrPayeeNotFound)
+		w, c := makeReq("POST", "/payees/merge", body)
+		NewPayeeHandler(svc).Merge(c)
+		assert.Equal(t, http.StatusNotFound, w.Code)
+	})
+}
+
+func TestPayeeHandler_StatsAndRules(t *testing.T) {
+	svc := &mockPayeeService{}
+	svc.On("GetStats", mock.Anything).Return([]model.PayeeStats{{TransactionCount: 2}}, nil)
+	svc.On("GetAllRules", mock.Anything).Return([]model.PayeeRuleDetails{{MatchString: "AMZN"}}, nil)
+
+	w, c := makeReq("GET", "/payees/stats", nil)
+	NewPayeeHandler(svc).Stats(c)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), `"transactionCount":2`)
+
+	w, c = makeReq("GET", "/payees/rules", nil)
+	NewPayeeHandler(svc).ListRules(c)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "AMZN")
 }
 
 func TestPayeeHandler_List(t *testing.T) {

@@ -33,7 +33,7 @@
   width: 32px;
   height: 32px;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid color-mix(in srgb, var(--color-text) 10%, transparent);
   background: var(--color-surface);
   color: var(--color-text-secondary);
   cursor: pointer;
@@ -42,7 +42,7 @@
 
 .refreshButton:hover {
   color: var(--color-text);
-  border-color: rgba(255, 255, 255, 0.22);
+  border-color: color-mix(in srgb, var(--color-text) 22%, transparent);
 }
 
 /* ── Filters ──────────────────────────────────────────────────── */
@@ -73,7 +73,7 @@
 .searchInput {
   width: 100%;
   background: var(--color-surface);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid color-mix(in srgb, var(--color-text) 10%, transparent);
   border-radius: 8px;
   padding: 0.45rem 0.7rem 0.45rem 2rem;
   color: var(--color-text);
@@ -91,7 +91,7 @@
   padding: 0.15rem;
   border-radius: 9px;
   background: var(--color-surface);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent);
 }
 
 .kindTab {
@@ -111,7 +111,7 @@
 }
 
 .kindTabActive {
-  background: var(--color-surface-tertiary, rgba(255, 255, 255, 0.09));
+  background: var(--color-surface-tertiary, color-mix(in srgb, var(--color-text) 9%, transparent));
   color: var(--color-text);
 }
 
@@ -123,7 +123,7 @@
 
 .dateInput {
   background: var(--color-surface);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid color-mix(in srgb, var(--color-text) 10%, transparent);
   border-radius: 8px;
   padding: 0.4rem 0.55rem;
   color: var(--color-text);
@@ -146,7 +146,7 @@
   align-items: center;
   gap: 0.3rem;
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid color-mix(in srgb, var(--color-text) 12%, transparent);
   border-radius: 8px;
   padding: 0.4rem 0.7rem;
   color: var(--color-text-secondary);
@@ -156,7 +156,7 @@
 
 .clearButton:hover {
   color: var(--color-text);
-  border-color: rgba(255, 255, 255, 0.25);
+  border-color: color-mix(in srgb, var(--color-text) 25%, transparent);
 }
 
 /* ── Grid ─────────────────────────────────────────────────────── */
@@ -177,13 +177,13 @@
   gap: 0.5rem;
   padding: 0.5rem;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.07);
+  border: 1px solid color-mix(in srgb, var(--color-text) 7%, transparent);
   background: var(--color-surface);
   transition: border-color 0.15s ease;
 }
 
 .tile:hover {
-  border-color: rgba(255, 255, 255, 0.18);
+  border-color: color-mix(in srgb, var(--color-text) 18%, transparent);
 }
 
 .preview {
@@ -194,7 +194,7 @@
   padding: 0;
   border-radius: 8px;
   overflow: hidden;
-  background: var(--color-surface-secondary, rgba(255, 255, 255, 0.04));
+  background: var(--color-surface-secondary, color-mix(in srgb, var(--color-text) 4%, transparent));
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -314,9 +314,9 @@
   border-radius: 10px;
   background: linear-gradient(
     90deg,
-    rgba(255, 255, 255, 0.04) 25%,
-    rgba(255, 255, 255, 0.08) 37%,
-    rgba(255, 255, 255, 0.04) 63%
+    color-mix(in srgb, var(--color-text) 4%, transparent) 25%,
+    color-mix(in srgb, var(--color-text) 8%, transparent) 37%,
+    color-mix(in srgb, var(--color-text) 4%, transparent) 63%
   );
   background-size: 400% 100%;
   animation: shimmer 1.4s ease infinite;
@@ -362,7 +362,7 @@
 .loadMore {
   align-self: center;
   background: var(--color-surface);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid color-mix(in srgb, var(--color-text) 12%, transparent);
   border-radius: 8px;
   padding: 0.5rem 1.25rem;
   color: var(--color-text);
@@ -372,7 +372,7 @@
 }
 
 .loadMore:hover:not(:disabled) {
-  border-color: rgba(255, 255, 255, 0.25);
+  border-color: color-mix(in srgb, var(--color-text) 25%, transparent);
 }
 
 .loadMore:disabled {

@@ -1,22 +1,12 @@
 import {
-  ArrowsLeftRightIcon,
-  CalendarDotsIcon as CalendarDays,
-  CheckCircleIcon,
-  CodeIcon,
-  DatabaseIcon,
-  HandCoinsIcon,
-  MinusIcon,
-  NotePencilIcon,
+  CaretRightIcon,
+  CheckIcon,
   PlusIcon,
-  RobotIcon,
-  StorefrontIcon,
-  TagIcon,
-  ThumbsDownIcon,
-  ThumbsUpIcon,
+  ReceiptIcon,
   TrashIcon as Trash2,
   XIcon,
 } from '@phosphor-icons/react';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useAppSelector } from '@/app/hooks';
 import { apiClient } from '@/utils';
 import { Popover } from '@/components/common/Popover/Popover';
@@ -33,6 +23,7 @@ import { AccountDropdown } from '../popovers/AccountPopover';
 import { PayeeDropdown } from '../popovers/PayeePopover';
 import { CategoryDropdown } from '../popovers/CategoryPopover';
 import { DateDropdown } from '../popovers/DatePopover';
+import { BankLogo } from '@/features/accounts/components/BankLogo/BankLogo';
 import { TransactionLocationSection } from './TransactionLocationSection';
 import { TransactionDocumentsSection } from './TransactionDocumentsSection';
 import styles from './TransactionDetailPanel.module.css';
@@ -61,10 +52,12 @@ interface Props {
 }
 
 function getDisplayAmount(txn: Transaction) {
-  if ((txn.inflow ?? 0) !== 0) {
-    return { value: txn.inflow ?? 0, isInflow: true };
-  }
-  return { value: txn.outflow ?? 0, isInflow: false };
+  const inflow = Number(txn.inflow) || 0;
+  const outflow = Number(txn.outflow) || 0;
+  if (inflow !== 0) return { value: inflow, isInflow: true };
+  if (outflow !== 0) return { value: outflow, isInflow: false };
+  // nothing entered yet: the direction toggle nulls the other side
+  return { value: 0, isInflow: txn.inflow != null && txn.outflow == null };
 }
 
 function getSignedDisplayAmount(txn: Transaction) {
@@ -86,6 +79,8 @@ function formatOptionalAmount(value?: number | null) {
 }
 
 function PanelFrame({
+  leading,
+  eyebrow,
   title,
   isClosing,
   onClose,
@@ -93,6 +88,8 @@ function PanelFrame({
   children,
   footer,
 }: {
+  leading?: ReactNode;
+  eyebrow?: string;
   title: string;
   isClosing: boolean;
   onClose: () => void;
@@ -101,63 +98,113 @@ function PanelFrame({
   footer: ReactNode;
 }) {
   return (
-    <div className={`${styles.panel} ${isClosing ? styles.panelClosing : ''}`} onAnimationEnd={onAnimationEnd}>
-      <div className={styles.panelHeader}>
-        <span className={styles.panelTitle}>{title}</span>
+    <div
+      className={`${styles.panel} ${isClosing ? styles.panelClosing : ''}`}
+      onAnimationEnd={onAnimationEnd}
+      aria-label={`${title} details`}
+      role="region">
+      <header className={styles.panelHeader}>
+        <div className={styles.headingRow}>
+          {leading}
+          <div className={styles.heading}>
+            {eyebrow && <span className={styles.eyebrow}>{eyebrow}</span>}
+            <h2 className={styles.title}>{title}</h2>
+          </div>
+        </div>
         <button type="button" className={styles.closeButton} onClick={onClose} aria-label="Close">
           <XIcon size={18} />
         </button>
-      </div>
+      </header>
       {children}
-      <div className={styles.panelFooter}>{footer}</div>
+      <footer className={styles.panelFooter}>{footer}</footer>
     </div>
   );
 }
 
-function AmountField({
+/** The big amount at the top of the panel, editable in place, with its direction. */
+function AmountHero({
   txn,
   isInflow,
   onChange,
+  status,
+  autoFocus,
 }: {
   txn: Transaction;
   isInflow: boolean;
   onChange: TransactionChangeHandler;
+  status?: Transaction['status'];
+  autoFocus?: boolean;
 }) {
-  const setAmountType = (nextType: 'inflow' | 'outflow') => {
-    const current = isInflow ? (txn.inflow ?? 0) : (txn.outflow ?? 0);
-    onChange(nextType, Math.abs(current));
-    onChange(nextType === 'inflow' ? 'outflow' : 'inflow', null);
+  const key = isInflow ? 'inflow' : 'outflow';
+  const amount = Number(txn[key]) || 0;
+  // keep the typed text so "12." or "0.5" survive while typing
+  const [draft, setDraft] = useState(amount ? String(amount) : '');
+  const [isEditing, setIsEditing] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  // grouped (1,089) to read, raw while typing
+  const shown = isEditing ? draft : amount ? amount.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '';
+
+  useEffect(() => {
+    setDraft((current) => ((Number(current) || 0) === amount ? current : amount ? String(amount) : ''));
+  }, [amount]);
+
+  // select once the raw number has replaced the grouped one, before any typing
+  useLayoutEffect(() => {
+    if (isEditing) inputRef.current?.select();
+  }, [isEditing]);
+
+  const setDirection = (nextInflow: boolean) => {
+    if (nextInflow === isInflow) return;
+    onChange(nextInflow ? 'inflow' : 'outflow', amount);
+    onChange(nextInflow ? 'outflow' : 'inflow', null);
   };
 
   return (
-    <div className={styles.formGroup}>
-      <label className={styles.label}>Amount</label>
-      <div className={styles.amountInputRow}>
-        <div className={styles.amountTypeControl}>
-          <button
-            type="button"
-            className={`${styles.amountTypeBtn} ${!isInflow ? styles.amountTypeBtnActive : ''}`}
-            onClick={() => setAmountType('outflow')}
-            aria-pressed={!isInflow}>
-            Outflow
-          </button>
-          <button
-            type="button"
-            className={`${styles.amountTypeBtn} ${isInflow ? styles.amountTypeBtnActive : ''}`}
-            onClick={() => setAmountType('inflow')}
-            aria-pressed={isInflow}>
-            Inflow
-          </button>
+    <>
+      <div className={styles.heroTop}>
+        <div className={styles.amountTypeControl} role="radiogroup" aria-label="Direction">
+          {[false, true].map((inflow) => (
+            <button
+              key={String(inflow)}
+              type="button"
+              role="radio"
+              aria-checked={isInflow === inflow}
+              className={`${styles.amountTypeBtn} ${isInflow === inflow ? styles.amountTypeBtnActive : ''}`}
+              onClick={() => setDirection(inflow)}>
+              {inflow ? 'Received' : 'Spent'}
+            </button>
+          ))}
         </div>
-        <input
-          type="number"
-          className={styles.amountInput}
-          placeholder="0"
-          value={isInflow ? (txn.inflow ?? '') : (txn.outflow ?? '')}
-          onChange={(event) => onChange(isInflow ? 'inflow' : 'outflow', event.target.value)}
-        />
+        <StatusBadge status={status} />
       </div>
-    </div>
+      <label className={`${styles.heroAmount} ${isInflow ? styles.heroAmountInflow : ''}`}>
+        <span className={styles.heroAmountPrefix} aria-hidden="true">
+          {isInflow ? '+' : '−'}₹
+        </span>
+        <input
+          ref={inputRef}
+          type="text"
+          inputMode="decimal"
+          placeholder="0"
+          aria-label={isInflow ? 'Amount received' : 'Amount spent'}
+          className={styles.heroAmountInput}
+          style={{ width: `${Math.max(shown.length, 1) + 0.6}ch` }}
+          value={shown}
+          autoFocus={autoFocus}
+          onFocus={() => {
+            setIsEditing(true);
+            setDraft(amount ? String(amount) : '');
+          }}
+          onBlur={() => setIsEditing(false)}
+          onChange={(event) => {
+            // digits and one decimal point
+            const text = event.target.value.replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1');
+            setDraft(text);
+            onChange(key, Number(text) || 0);
+          }}
+        />
+      </label>
+    </>
   );
 }
 
@@ -174,7 +221,9 @@ function AddTransactionForm({
 }) {
   return (
     <div className={`${styles.panelBody} ${styles.addNewPanelBody}`}>
-      <AmountField txn={txn} isInflow={isInflow} onChange={onChange} />
+      <section className={styles.hero}>
+        <AmountHero txn={txn} isInflow={isInflow} onChange={onChange} autoFocus />
+      </section>
 
       <div className={styles.formGroup}>
         <label className={styles.label}>Date</label>
@@ -224,11 +273,18 @@ function TagList({ tags }: { tags: DisplayTag[] }) {
   return (
     <div className={styles.tagList}>
       {tags.map((tag) => (
-        <span key={tag.id} className={styles.tagBadge} style={{ backgroundColor: tag.color || '#6366f1' }}>
-          {tag.name}
-        </span>
+        <TagChip key={tag.id} tag={tag} />
       ))}
     </div>
+  );
+}
+
+function TagChip({ tag }: { tag: DisplayTag }) {
+  return (
+    <span className={styles.tagBadge}>
+      <span className={styles.tagDot} style={{ backgroundColor: tag.color || '#6366f1' }} aria-hidden="true" />
+      {tag.name}
+    </span>
   );
 }
 
@@ -260,12 +316,11 @@ function DetailTagPicker({
       <button
         ref={triggerRef}
         type="button"
-        className={`${styles.tagPickerButton} ${isOpen ? styles.tagPickerButtonOpen : ''}`}
+        className={`${styles.textButton} ${isOpen ? styles.textButtonOpen : ''}`}
         onClick={() => setIsOpen((value) => !value)}
-        aria-label="Edit tags"
-        aria-expanded={isOpen}
-        title="Edit tags">
-        <PlusIcon size={18} />
+        aria-expanded={isOpen}>
+        <PlusIcon size={13} weight="bold" />
+        {selectedTagIds.length > 0 ? 'Edit' : 'Add'}
       </button>
       <Popover
         id="transaction-detail-tags"
@@ -276,11 +331,15 @@ function DetailTagPicker({
         <div className={styles.tagPickerMenu}>
           {allTags.length === 0 && <div className={styles.emptyValue}>No tags yet</div>}
           {allTags.map((tag) => (
-            <button key={tag.id} type="button" className={styles.tagPickerItem} onClick={() => toggleTag(tag.id)}>
-              <input type="checkbox" checked={selectedSet.has(tag.id)} readOnly className={styles.tagPickerCheckbox} />
-              <span className={styles.tagBadge} style={{ backgroundColor: tag.color || '#6366f1' }}>
-                {tag.name}
-              </span>
+            <button
+              key={tag.id}
+              type="button"
+              className={styles.tagPickerItem}
+              onClick={() => toggleTag(tag.id)}
+              aria-pressed={selectedSet.has(tag.id)}>
+              <span className={styles.tagDot} style={{ backgroundColor: tag.color || '#6366f1' }} aria-hidden="true" />
+              <span className={styles.tagPickerName}>{tag.name}</span>
+              {selectedSet.has(tag.id) && <CheckIcon size={14} weight="bold" className={styles.tagPickerCheck} />}
             </button>
           ))}
         </div>
@@ -291,11 +350,16 @@ function DetailTagPicker({
 
 function DetailRow({ label, children, mono = false }: { label: string; children: ReactNode; mono?: boolean }) {
   return (
-    <div className={styles.detailRow}>
-      <span className={styles.detailLabel}>{label}</span>
-      <span className={`${styles.detailValue} ${mono ? styles.monoValue : ''}`}>{children}</span>
+    <div className={styles.fact}>
+      <dt>{label}</dt>
+      <dd className={`${styles.factWrap} ${mono ? styles.monoValue : ''}`}>{children}</dd>
     </div>
   );
+}
+
+function confidencePercent(value?: number | null) {
+  if (value === null || value === undefined) return null;
+  return Math.max(0, Math.min(value <= 1 ? value * 100 : value, 100));
 }
 
 function PredictionMetric({
@@ -307,13 +371,16 @@ function PredictionMetric({
   value?: string | null;
   confidence?: number | null;
 }) {
+  const percent = confidencePercent(confidence);
+  const tone = percent === null ? '' : percent >= 80 ? styles.confidenceHigh : percent >= 50 ? styles.confidenceMid : styles.confidenceLow;
   return (
-    <div className={styles.predictionMetric}>
-      <span className={styles.predictionValue}>
-        <span className={styles.detailLabel}>{label}</span>
-        <strong>{value || '-'}</strong>
-      </span>
+    <div className={`${styles.predictionMetric} ${tone}`}>
+      <span className={styles.detailLabel}>{label}</span>
+      <strong className={styles.predictionValue}>{value || '-'}</strong>
       <span className={styles.predictionConfidence}>{formatConfidence(confidence)}</span>
+      <span className={styles.confidenceMeter} aria-hidden="true">
+        <span style={{ width: `${percent ?? 0}%` }} />
+      </span>
     </div>
   );
 }
@@ -367,11 +434,11 @@ function CipherPredictionDetails({ prediction }: { prediction: CipherPrediction 
         />
         <PredictionMetric label="Category" value={predictedCategory?.name} confidence={prediction.categoryConfidence} />
       </div>
-      <div className={styles.detailRows}>
+      <dl className={styles.facts}>
         <DetailRow label="Predicted amount">{formatOptionalAmount(prediction.amount)}</DetailRow>
         <DetailRow label="Source">{prediction.source || '-'}</DetailRow>
         <DetailRow label="User corrected">{prediction.hasUserCorrected ? 'Yes' : 'No'}</DetailRow>
-      </div>
+      </dl>
       {prediction.llmReasoning && <pre className={styles.rawTextBlock}>{prediction.llmReasoning}</pre>}
     </div>
   );
@@ -385,13 +452,13 @@ function LegacyPredictionDetails({ prediction }: { prediction: TransactionPredic
         <PredictionMetric label="Payee" value={prediction.payee} confidence={prediction.payeePrediction} />
         <PredictionMetric label="Category" value={prediction.category} confidence={prediction.categoryPrediction} />
       </div>
-      <div className={styles.detailRows}>
+      <dl className={styles.facts}>
         <DetailRow label="Predicted amount">{formatOptionalAmount(prediction.amount)}</DetailRow>
         <DetailRow label="User corrected">{prediction.hasUserCorrected ? 'Yes' : 'No'}</DetailRow>
         <DetailRow label="Corrected account">{prediction.userCorrectedAccount || '-'}</DetailRow>
         <DetailRow label="Corrected payee">{prediction.userCorrectedPayee || '-'}</DetailRow>
         <DetailRow label="Corrected category">{prediction.userCorrectedCategory || '-'}</DetailRow>
-      </div>
+      </dl>
       {prediction.emailText && <pre className={styles.rawTextBlock}>{prediction.emailText}</pre>}
     </div>
   );
@@ -411,27 +478,18 @@ function AdvancedDetails({
   return (
     <details className={styles.advancedSection}>
       <summary className={styles.advancedSummary}>
-        <span>
-          <DatabaseIcon size={18} />
-          More Details
-        </span>
+        <CaretRightIcon size={13} weight="bold" className={styles.advancedCaret} />
+        <span>Prediction &amp; source</span>
       </summary>
 
       <div className={styles.advancedContent}>
         <section className={styles.advancedGroup}>
-          <span className={styles.metaLabel}>
-            <RobotIcon size={18} />
-            <span>Prediction</span>
-          </span>
           <PredictionDetails details={predictionDetails} isLoading={isPredictionLoading} error={predictionError} />
         </section>
 
         {txn.summary && (
           <section className={styles.advancedGroup}>
-            <span className={styles.metaLabel}>
-              <CodeIcon size={18} />
-              <span>Summary</span>
-            </span>
+            <span className={styles.sectionTitle}>Summary</span>
             <pre className={styles.rawTextBlock}>{txn?.summary ?? '-'}</pre>
           </section>
         )}
@@ -442,14 +500,12 @@ function AdvancedDetails({
 
 function TransactionView({
   txn,
-  displayAmount,
   isInflow,
   onChange,
   onSelectChange,
   onStatusChange,
 }: {
   txn: Transaction;
-  displayAmount: number;
   isInflow: boolean;
   onChange: TransactionChangeHandler;
   onSelectChange: TransactionSelectHandler;
@@ -466,6 +522,8 @@ function TransactionView({
     () => allTags.filter((tag) => (txn.tagIds ?? []).includes(tag.id)),
     [allTags, txn.tagIds],
   );
+
+  const account = allAccounts.find((acc) => acc.id === txn.accountId);
 
   const linkedAccount = useMemo(
     () => allAccounts.find((account) => account.id === txn.transferAccountId) ?? null,
@@ -516,82 +574,79 @@ function TransactionView({
 
   return (
     <div className={styles.panelBody}>
-      <section className={styles.heroSection}>
-        <div className={`${styles.heroAmount} ${isInflow ? styles.heroAmountInflow : styles.heroAmountOutflow}`}>
-          {isInflow ? (
-            <PlusIcon color="var(--color-text-secondary)" />
-          ) : (
-            <MinusIcon color="var(--color-text-secondary)" />
-          )}
-          {getCurrencyLocaleString(displayAmount)}
-        </div>
-        <div className={styles.heroCategoryControl}>
-          <CategoryDropdown value={txn.categoryName ?? ''} onClick={onSelectChange('categoryId', 'categoryName')} />
-        </div>
+      <section className={styles.hero}>
+        <AmountHero txn={txn} isInflow={isInflow} onChange={onChange} status={txn.status} />
+        {txn.status === TransactionStatus.UNAPPROVED && <ReviewActions onStatusChange={onStatusChange} />}
       </section>
 
-      <section className={styles.metaGrid}>
-        <MetaItem icon={<CalendarDays color="var(--color-text)" size={18} />}>
-          {getLocaleDate(txn.date, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }, ['en-US'])}
-        </MetaItem>
-        <MetaItem icon={<StorefrontIcon color="var(--color-text)" size={18} />}>{txn.payeeName || '-'}</MetaItem>
-        <MetaItem icon={<HandCoinsIcon color="var(--color-text)" size={18} />}>{txn.accountName || '-'}</MetaItem>
-      </section>
+      <dl className={styles.facts}>
+        <div className={styles.fact}>
+          <dt>Payee</dt>
+          <dd className={styles.factEditable}>
+            <PayeeDropdown value={txn.payeeName} onClick={onSelectChange('payeeId', 'payeeName')} variant="ghost" />
+          </dd>
+        </div>
+        <div className={styles.fact}>
+          <dt>Category</dt>
+          <dd className={styles.factControl}>
+            <CategoryDropdown value={txn.categoryName ?? ''} onClick={onSelectChange('categoryId', 'categoryName')} />
+          </dd>
+        </div>
+        <div className={styles.fact}>
+          <dt>Date</dt>
+          <dd className={styles.factEditable}>
+            <DateDropdown value={txn.date} onClick={onSelectChange('date', 'date')} variant="ghost" />
+          </dd>
+        </div>
+        <div className={styles.fact}>
+          <dt>Account</dt>
+          <dd className={styles.factEditable}>
+            <BankLogo name={txn.accountName} bank={account?.bank} type={account?.type} size="sm" />
+            <AccountDropdown value={txn.accountName} onClick={onSelectChange('accountId', 'accountName')} variant="ghost" />
+          </dd>
+        </div>
+        {hasLinkedTransfer && (
+          <>
+            <div className={styles.fact}>
+              <dt>Transfer {isInflow ? 'from' : 'to'}</dt>
+              <dd>{linkedAccount ? linkedAccount.name : txn.transferAccountId || '-'}</dd>
+            </div>
+            <div className={styles.fact}>
+              <dt>Linked</dt>
+              <dd className={styles.factWrap}>{linkedTransactionSummary}</dd>
+            </div>
+          </>
+        )}
+      </dl>
 
-      <section className={styles.tagsSection}>
-        <span className={styles.metaLabel}>
-          <TagIcon size={18} />
-          <span>Tags</span>
-        </span>
-        <div className={styles.tagEditor}>
-          <TagList tags={selectedTags} />
+      <section className={styles.section}>
+        <div className={styles.sectionHeader}>
+          <span className={styles.sectionTitle}>Tags</span>
           <DetailTagPicker
             allTags={allTags}
             selectedTagIds={txn.tagIds ?? []}
             onChange={(tagIds) => onChange('tagIds', tagIds)}
           />
         </div>
+        <TagList tags={selectedTags} />
       </section>
 
-      {hasLinkedTransfer && (
-        <section className={styles.linkedSection}>
-          <span className={styles.metaLabel}>
-            <ArrowsLeftRightIcon size={18} />
-            <span>Linked Transfer</span>
-          </span>
-          <div className={styles.detailRows}>
-            <DetailRow label="Linked account">
-              {linkedAccount ? `${linkedAccount.name} (${linkedAccount.type})` : txn.transferAccountId || '-'}
-            </DetailRow>
-            <DetailRow label="Linked transaction">{linkedTransactionSummary}</DetailRow>
-          </div>
-        </section>
-      )}
-
-      <section className={styles.statusSection}>
-        <span className={styles.metaLabel}>
-          <CheckCircleIcon size={18} />
-          <span>Status</span>
-        </span>
-        <StatusControl status={txn.status} onStatusChange={onStatusChange} />
-      </section>
-
-      <TransactionLocationSection txn={txn} />
-
-      <TransactionDocumentsSection txn={txn} />
-
-      <section className={styles.notesSection}>
-        <span className={styles.metaLabel}>
-          <NotePencilIcon color="var(--color-text)" size={18} />
-          <span>Notes</span>
-        </span>
+      <section className={styles.section}>
+        <label htmlFor={`transaction-note-${txn.id}`} className={styles.sectionTitle}>
+          Notes
+        </label>
         <textarea
+          id={`transaction-note-${txn.id}`}
           className={styles.notesInput}
-          placeholder="Something about this transaction you would like to recall later?"
+          placeholder="Anything you'd like to remember about this?"
           value={txn.note ?? ''}
           onChange={(event) => onChange('note', event.target.value)}
         />
       </section>
+
+      <TransactionDocumentsSection txn={txn} />
+
+      <TransactionLocationSection txn={txn} />
 
       <AdvancedDetails
         txn={txn}
@@ -603,54 +658,44 @@ function TransactionView({
   );
 }
 
-function MetaItem({ icon, children }: { icon: ReactNode; children: ReactNode }) {
+const statusLabels: Record<string, string> = {
+  [TransactionStatus.MANUAL]: 'Manual',
+  [TransactionStatus.APPROVED]: 'Approved',
+  [TransactionStatus.UNAPPROVED]: 'Needs review',
+  [TransactionStatus.REJECTED]: 'Rejected',
+};
+
+function StatusBadge({ status }: { status: Transaction['status'] }) {
+  if (!status) return null;
+  return <span className={`${styles.statusPill} ${styles[`status${status}`]}`}>{statusLabels[status] ?? status}</span>;
+}
+
+function ReviewActions({ onStatusChange }: { onStatusChange: (status: TransactionStatusAction) => void }) {
   return (
-    <div className={styles.metaItem}>
-      {icon}
-      <strong className={styles.metaValue}>{children}</strong>
+    <div className={styles.reviewActions}>
+      <button
+        type="button"
+        className={styles.approveBtn}
+        onClick={() => onStatusChange(TransactionStatus.APPROVED)}
+        aria-label="Approve transaction">
+        <CheckIcon size={15} weight="bold" />
+        Approve
+      </button>
+      <button
+        type="button"
+        className={styles.rejectBtn}
+        onClick={() => onStatusChange(TransactionStatus.REJECTED)}
+        aria-label="Reject transaction">
+        <XIcon size={15} weight="bold" />
+        Reject
+      </button>
     </div>
   );
 }
 
-function StatusControl({
-  status,
-  onStatusChange,
-}: {
-  status: Transaction['status'];
-  onStatusChange: (status: TransactionStatusAction) => void;
-}) {
-  if (status === TransactionStatus.UNAPPROVED) {
-    return (
-      <div className={styles.statusActions}>
-        <button
-          type="button"
-          className={styles.approveBtn}
-          onClick={() => onStatusChange(TransactionStatus.APPROVED)}
-          aria-label="Approve transaction">
-          <ThumbsUpIcon size={13} />
-          Approve
-        </button>
-        <button
-          type="button"
-          className={styles.rejectBtn}
-          onClick={() => onStatusChange(TransactionStatus.REJECTED)}
-          aria-label="Reject transaction">
-          <ThumbsDownIcon size={13} />
-          Reject
-        </button>
-      </div>
-    );
-  }
-
-  if (!status) {
-    return <span className={styles.metaValue}>-</span>;
-  }
-
-  return (
-    <span className={`${styles.statusPill} ${styles[`status${status}`]}`}>
-      {status.charAt(0) + status.slice(1).toLowerCase()}
-    </span>
-  );
+function PanelAccountLogo({ txn }: { txn: Transaction }) {
+  const account = useAppSelector((state) => state.accounts.allAccounts.find((acc) => acc.id === txn.accountId));
+  return <BankLogo name={txn.accountName} bank={account?.bank} type={account?.type} size="md" />;
 }
 
 export function TransactionDetailPanel({
@@ -667,12 +712,18 @@ export function TransactionDetailPanel({
 }: Props) {
   if (!selectedTxn) return null;
 
-  const { value: displayAmount, isInflow } = getDisplayAmount(selectedTxn);
+  const { isInflow } = getDisplayAmount(selectedTxn);
 
   if (isAddingNew) {
     return (
       <PanelFrame
-        title="New Transaction"
+        leading={
+          <span className={styles.headerIcon}>
+            <ReceiptIcon size={19} weight="fill" />
+          </span>
+        }
+        eyebrow="New transaction"
+        title={selectedTxn.payeeName || 'Add a transaction'}
         isClosing={isClosing}
         onClose={onClose}
         onAnimationEnd={onAnimationEnd}
@@ -693,7 +744,9 @@ export function TransactionDetailPanel({
 
   return (
     <PanelFrame
-      title="Transaction"
+      leading={<PanelAccountLogo txn={selectedTxn} />}
+      eyebrow={selectedTxn.accountName || 'Transaction'}
+      title={selectedTxn.payeeName || 'Transaction'}
       isClosing={isClosing}
       onClose={onClose}
       onAnimationEnd={onAnimationEnd}
@@ -701,7 +754,7 @@ export function TransactionDetailPanel({
         <>
           <button type="button" className={styles.deleteBtn} onClick={onDelete}>
             <Trash2 size={16} />
-            <span>Delete</span>
+            Delete
           </button>
           <button type="button" className={styles.saveBtn} onClick={onSave}>
             Save
@@ -710,7 +763,6 @@ export function TransactionDetailPanel({
       }>
       <TransactionView
         txn={selectedTxn}
-        displayAmount={displayAmount}
         isInflow={isInflow}
         onChange={onChange}
         onSelectChange={onSelectChange}

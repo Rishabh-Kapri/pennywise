@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
-	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/userllm"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/otelSDK"
 	"github.com/stretchr/testify/require"
@@ -51,10 +51,15 @@ func (f *fakeLLM) Stream(ctx context.Context, req sharedModel.ChatRequest) <-cha
 type fakeResolver struct {
 	clients   map[string]*fakeLLM
 	models    map[string]string
+	targets   []llm.Target
 	telemetry otelSDK.TelemetryProvider
 }
 
-func (r *fakeResolver) Resolve(provider, model string) (*llm.ObservedLLM, string, error) {
+func (r *fakeResolver) Targets(context.Context) ([]llm.Target, error) {
+	return r.targets, nil
+}
+
+func (r *fakeResolver) Resolve(_ context.Context, provider, model string) (*llm.ObservedLLM, string, error) {
 	client, ok := r.clients[provider]
 	if !ok {
 		return nil, "", errors.New("provider not configured: " + provider)
@@ -65,18 +70,20 @@ func (r *fakeResolver) Resolve(provider, model string) (*llm.ObservedLLM, string
 	return llm.NewObservedLLM(client, r.telemetry), model, nil
 }
 
-func newTestService(t *testing.T, resolver llm.LLMResolver, targets []config.LLMTarget) *predictionService {
+func newTestService(t *testing.T, resolver *fakeResolver, targets []llm.Target) *predictionService {
 	t.Helper()
-	return &predictionService{
-		llmResolver:     resolver,
-		pipelineTargets: targets,
-	}
+	resolver.targets = targets
+	return &predictionService{llmResolver: resolver}
 }
 
 func newTestTelemetry(t *testing.T) otelSDK.TelemetryProvider {
 	t.Helper()
-	// No OTEL_*_EXPORTER env vars in tests, so no exporters are attached.
-	tel, err := otelSDK.NewTelemetry(context.Background(), otelSDK.Config{ServiceName: "cipher-test"})
+	// Disabled like the agent tests: the full SDK can deadlock in its own
+	// error handler (otel error -> log bridge -> otel error).
+	tel, err := otelSDK.NewTelemetry(context.Background(), otelSDK.Config{
+		ServiceName:     "cipher-test",
+		OtelSdkDisabled: true,
+	})
 	require.NoError(t, err)
 	return tel
 }
@@ -101,7 +108,7 @@ func TestChatWithFallbackUsesFirstHealthyProvider(t *testing.T) {
 		models:    map[string]string{"ollama": "gemma4", "openrouter": "gemini"},
 		telemetry: newTestTelemetry(t),
 	}
-	service := newTestService(t, resolver, []config.LLMTarget{
+	service := newTestService(t, resolver, []llm.Target{
 		{Provider: "ollama", Model: "gemma4:12b"},
 		{Provider: "openrouter", Model: "google/gemini-2.5-flash"},
 	})
@@ -126,7 +133,7 @@ func TestChatWithFallbackFallsThroughOnFailure(t *testing.T) {
 		models:    map[string]string{"ollama": "gemma4", "openrouter": "gemini"},
 		telemetry: newTestTelemetry(t),
 	}
-	service := newTestService(t, resolver, []config.LLMTarget{
+	service := newTestService(t, resolver, []llm.Target{
 		{Provider: "ollama", Model: "gemma4:12b"},
 		{Provider: "openrouter", Model: "google/gemini-2.5-flash"},
 	})
@@ -149,7 +156,7 @@ func TestChatWithFallbackSkipsUnconfiguredProvider(t *testing.T) {
 		models:    map[string]string{"openrouter": "gemini"},
 		telemetry: newTestTelemetry(t),
 	}
-	service := newTestService(t, resolver, []config.LLMTarget{
+	service := newTestService(t, resolver, []llm.Target{
 		{Provider: "anthropic"}, // not configured
 		{Provider: "openrouter"},
 	})
@@ -172,7 +179,7 @@ func TestChatWithFallbackErrorsWhenAllProvidersFail(t *testing.T) {
 		models:    map[string]string{"ollama": "gemma4", "openrouter": "gemini"},
 		telemetry: newTestTelemetry(t),
 	}
-	service := newTestService(t, resolver, []config.LLMTarget{
+	service := newTestService(t, resolver, []llm.Target{
 		{Provider: "ollama"},
 		{Provider: "openrouter"},
 	})
@@ -200,7 +207,7 @@ func TestChatWithFallbackKeepsLocalTokenBudget(t *testing.T) {
 		clients:   map[string]*fakeLLM{"ollama": local},
 		telemetry: newTestTelemetry(t),
 	}
-	service := newTestService(t, resolver, []config.LLMTarget{{Provider: "ollama", Model: "gemma4:12b"}})
+	service := newTestService(t, resolver, []llm.Target{{Provider: "ollama", Model: "gemma4:12b"}})
 
 	_, err := service.chatWithFallback(context.Background(), "parse:extract", bigReq)
 
@@ -218,7 +225,7 @@ func TestChatWithFallbackCapsCloudTokenBudget(t *testing.T) {
 		clients:   map[string]*fakeLLM{"ollama": local, "openrouter": remote},
 		telemetry: newTestTelemetry(t),
 	}
-	service := newTestService(t, resolver, []config.LLMTarget{
+	service := newTestService(t, resolver, []llm.Target{
 		{Provider: "ollama", Model: "gemma4:12b"},
 		{Provider: "openrouter", Model: "anthropic/claude-haiku-4.5"},
 	})
@@ -239,7 +246,7 @@ func TestChatWithFallbackLeavesSmallBudgetsAlone(t *testing.T) {
 		clients:   map[string]*fakeLLM{"openrouter": remote},
 		telemetry: newTestTelemetry(t),
 	}
-	service := newTestService(t, resolver, []config.LLMTarget{{Provider: "openrouter", Model: "gemini"}})
+	service := newTestService(t, resolver, []llm.Target{{Provider: "openrouter", Model: "gemini"}})
 
 	_, err := service.chatWithFallback(context.Background(), "predict:summarize", func(model string) sharedModel.ChatRequest {
 		req := simpleReq(model)
@@ -258,5 +265,5 @@ func TestChatWithFallbackErrorsWithoutTargets(t *testing.T) {
 
 	_, err := service.chatWithFallback(context.Background(), "parse:extract", simpleReq)
 
-	require.Error(t, err)
+	require.ErrorIs(t, err, userllm.ErrNotConfigured)
 }

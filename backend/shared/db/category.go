@@ -28,6 +28,12 @@ type CategoryRepository interface {
 	Create(ctx context.Context, tx pgx.Tx, category model.Category) (*model.Category, error)
 	DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error
 	Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, category model.Category) error
+	// UpdateDetails sets the note and/or description; a nil field is left as is.
+	UpdateDetails(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, note *string, description *string) error
+	// GetDescriptionContext gathers what an AI description suggestion needs:
+	// the category and group names, the group's other categories, and the
+	// payees the category's transactions most often go to.
+	GetDescriptionContext(ctx context.Context, budgetId uuid.UUID, categoryId uuid.UUID, payeeLimit int) (*model.CategoryDescriptionContext, error)
 }
 
 type categoryRepo struct {
@@ -48,6 +54,8 @@ func (r *categoryRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.
 				categories.category_group_id, 
 				categories.hidden, 
 				categories.note, 
+				categories.description,
+				`+categoryGoalJSON("categories.id")+` AS goal,
 				categories.is_system, 
 				categories.created_at, 
 				categories.updated_at,
@@ -93,6 +101,8 @@ func (r *categoryRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.
 			&c.CategoryGroupID,
 			&c.Hidden,
 			&c.Note,
+			&c.Description,
+			&c.Goal,
 			&c.IsSystem,
 			&c.CreatedAt,
 			&c.UpdatedAt,
@@ -268,6 +278,8 @@ func (r *categoryRepo) Search(ctx context.Context, budgetId uuid.UUID, query str
 				categories.category_group_id,
 				categories.hidden,
 				categories.note,
+				categories.description,
+				`+categoryGoalJSON("categories.id")+` AS goal,
 				categories.is_system,
 				categories.created_at,
 				categories.updated_at,
@@ -313,6 +325,8 @@ func (r *categoryRepo) Search(ctx context.Context, budgetId uuid.UUID, query str
 			&c.CategoryGroupID,
 			&c.Hidden,
 			&c.Note,
+			&c.Description,
+			&c.Goal,
 			&c.IsSystem,
 			&c.CreatedAt,
 			&c.UpdatedAt,
@@ -338,6 +352,8 @@ func (r *categoryRepo) GetById(ctx context.Context, budgetId uuid.UUID, id uuid.
 				categories.category_group_id,
 				categories.hidden,
 				categories.note,
+				categories.description,
+				`+categoryGoalJSON("categories.id")+` AS goal,
 				categories.is_system,
 				categories.created_at,
 				categories.updated_at,
@@ -377,6 +393,8 @@ func (r *categoryRepo) GetById(ctx context.Context, budgetId uuid.UUID, id uuid.
 		&c.CategoryGroupID,
 		&c.Hidden,
 		&c.Note,
+		&c.Description,
+		&c.Goal,
 		&c.IsSystem,
 		&c.CreatedAt,
 		&c.UpdatedAt,
@@ -482,6 +500,104 @@ func (r *categoryRepo) Update(ctx context.Context, budgetId uuid.UUID, id uuid.U
 	)
 
 	return err
+}
+
+func (r *categoryRepo) UpdateDetails(
+	ctx context.Context,
+	budgetId uuid.UUID,
+	id uuid.UUID,
+	note *string,
+	description *string,
+) error {
+	cmdTag, err := r.Executor(nil).Exec(
+		ctx,
+		`UPDATE categories SET
+			note = COALESCE($1, note),
+			description = COALESCE($2, description),
+			updated_at = NOW()
+		WHERE budget_id = $3 AND id = $4 AND deleted = FALSE`,
+		note,
+		description,
+		budgetId,
+		id,
+	)
+	if err != nil {
+		return err
+	}
+	if cmdTag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+func (r *categoryRepo) GetDescriptionContext(
+	ctx context.Context,
+	budgetId uuid.UUID,
+	categoryId uuid.UUID,
+	payeeLimit int,
+) (*model.CategoryDescriptionContext, error) {
+	db := r.Executor(nil)
+	out := model.CategoryDescriptionContext{SiblingCategories: []string{}, TopPayees: []string{}}
+
+	var groupId *uuid.UUID
+	err := db.QueryRow(
+		ctx,
+		`SELECT c.name, c.description, c.category_group_id, COALESCE(cg.name, '')
+		FROM categories c
+		LEFT JOIN category_groups cg ON cg.id = c.category_group_id
+		WHERE c.budget_id = $1 AND c.id = $2 AND c.deleted = FALSE`,
+		budgetId,
+		categoryId,
+	).Scan(&out.CategoryName, &out.CurrentDescription, &groupId, &out.GroupName)
+	if err != nil {
+		return nil, err
+	}
+
+	if groupId != nil {
+		rows, err := db.Query(
+			ctx,
+			`SELECT name FROM categories
+			WHERE budget_id = $1 AND category_group_id = $2 AND id <> $3
+			  AND deleted = FALSE AND hidden = FALSE
+			ORDER BY name`,
+			budgetId,
+			*groupId,
+			categoryId,
+		)
+		if err != nil {
+			return nil, err
+		}
+		out.SiblingCategories, err = pgx.CollectRows(rows, pgx.RowTo[string])
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	rows, err := db.Query(
+		ctx,
+		`SELECT p.name
+		FROM transactions t
+		JOIN payees p ON p.id = t.payee_id AND p.budget_id = t.budget_id
+		WHERE t.budget_id = $1
+		  AND t.category_id = $2
+		  AND t.deleted = FALSE
+		  AND p.deleted = FALSE
+		  AND p.transfer_account_id IS NULL
+		GROUP BY p.name
+		ORDER BY COUNT(*) DESC, p.name
+		LIMIT $3`,
+		budgetId,
+		categoryId,
+		payeeLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	out.TopPayees, err = pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 // Charit Bhatt

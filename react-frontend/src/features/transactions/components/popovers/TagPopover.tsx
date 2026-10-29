@@ -7,12 +7,14 @@ import type { Tag } from '@/features/tags/types/tag.types';
 import { createTag } from '@/features/tags/store/tagSlice';
 import { getAutoColor } from '@/features/tags/utils';
 import { useDropdown } from '../../hooks/useDropdown';
+import type { DropdownVariant } from './types';
 
 interface TagPopoverProps {
   selectedTagIds: string[];
   onChange: (tagIds: string[]) => void;
   allowCreate?: boolean;
   placeholder?: string;
+  variant?: DropdownVariant;
 }
 
 export function TagDropdown({
@@ -20,6 +22,7 @@ export function TagDropdown({
   onChange,
   allowCreate = true,
   placeholder = 'Search or create tags',
+  variant = 'inline',
 }: TagPopoverProps) {
   const { allTags } = useAppSelector((state) => state.tags);
   const dispatch = useAppDispatch();
@@ -76,7 +79,7 @@ export function TagDropdown({
         ref={triggerRef}
         onFocus={() => setIsOpen(true)}
         onBlur={() => setIsOpen(false)}
-        className={`${styles.input} ${styles.trigger}`}
+        className={`${variant === 'form' ? styles.formInput : styles.input} ${styles.trigger}`}
         onChange={(e) => filterValues(e.target.value)}
         value={filterQuery}
         placeholder={placeholder}

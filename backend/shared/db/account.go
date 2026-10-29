@@ -20,6 +20,8 @@ type AccountRepository interface {
 	GetBySuffix(ctx context.Context, budgetId uuid.UUID, suffix string) (*model.Account, error)
 	Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.Account, error)
 	Create(ctx context.Context, tx pgx.Tx, account model.Account) (*model.Account, error)
+	// Update changes the editable fields (name, bank, suffix, closed); the type is fixed.
+	Update(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID, account model.Account) (*model.Account, error)
 	UpdateTransferPayee(ctx context.Context, tx pgx.Tx, accountId uuid.UUID, payeeId uuid.UUID) error
 }
 
@@ -40,6 +42,8 @@ func (r *accountRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.A
 		  accounts.budget_id,
 		  accounts.transfer_payee_id,
 		  accounts.type,
+		  COALESCE(accounts.bank, ''),
+		  COALESCE(accounts.suffix, ''),
 		  accounts.closed,
 		  accounts.created_at,
 		  accounts.updated_at,
@@ -66,6 +70,8 @@ func (r *accountRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.A
 			&a.BudgetID,
 			&a.TransferPayeeID,
 			&a.Type,
+			&a.Bank,
+			&a.Suffix,
 			&a.Closed,
 			&a.CreatedAt,
 			&a.UpdatedAt,
@@ -107,7 +113,7 @@ func (r *accountRepo) GetById(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID
 	var a model.Account
 	err := r.Executor(tx).QueryRow(
 		ctx, `
-		  SELECT id, name, budget_id, transfer_payee_id, type, closed, created_at, updated_at 
+		  SELECT id, name, budget_id, transfer_payee_id, type, COALESCE(bank, ''), COALESCE(suffix, ''), closed, created_at, updated_at 
 		  FROM accounts 
 		  WHERE id = $1 AND budget_id = $2 AND deleted = FALSE
 		`,
@@ -118,6 +124,8 @@ func (r *accountRepo) GetById(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID
 		&a.BudgetID,
 		&a.TransferPayeeID,
 		&a.Type,
+		&a.Bank,
+		&a.Suffix,
 		&a.Closed,
 		&a.CreatedAt,
 		&a.UpdatedAt,
@@ -133,7 +141,7 @@ func (r *accountRepo) GetBySuffix(ctx context.Context, budgetId uuid.UUID, suffi
 	var a model.Account
 	err := r.Executor(nil).QueryRow(
 		ctx, `
-		  SELECT id, name, budget_id, transfer_payee_id, type, closed, created_at, updated_at 
+		  SELECT id, name, budget_id, transfer_payee_id, type, COALESCE(bank, ''), COALESCE(suffix, ''), closed, created_at, updated_at 
 		  FROM accounts 
 		  WHERE budget_id = $1 AND deleted = FALSE AND suffix = $2
 		`,
@@ -144,6 +152,8 @@ func (r *accountRepo) GetBySuffix(ctx context.Context, budgetId uuid.UUID, suffi
 		&a.BudgetID,
 		&a.TransferPayeeID,
 		&a.Type,
+		&a.Bank,
+		&a.Suffix,
 		&a.Closed,
 		&a.CreatedAt,
 		&a.UpdatedAt,
@@ -163,6 +173,8 @@ func (r *accountRepo) Search(ctx context.Context, budgetId uuid.UUID, query stri
 				accounts.budget_id,
 				accounts.transfer_payee_id,
 				accounts.type,
+				COALESCE(accounts.bank, ''),
+				COALESCE(accounts.suffix, ''),
 				accounts.closed,
 				accounts.created_at,
 				accounts.updated_at,
@@ -189,6 +201,8 @@ func (r *accountRepo) Search(ctx context.Context, budgetId uuid.UUID, query stri
 			&a.BudgetID,
 			&a.TransferPayeeID,
 			&a.Type,
+			&a.Bank,
+			&a.Suffix,
 			&a.Closed,
 			&a.CreatedAt,
 			&a.UpdatedAt,
@@ -208,15 +222,35 @@ func (r *accountRepo) Create(ctx context.Context, tx pgx.Tx, account model.Accou
 	err := r.Executor(tx).QueryRow(
 		ctx,
 		`INSERT INTO accounts (
-		  name, type, budget_id, closed, deleted, created_at, updated_at
-		 ) VALUES ($1, $2, $3, FALSE, FALSE, NOW(), NOW()) 
-		 RETURNING id, name, type, budget_id`,
-		account.Name, account.Type, account.BudgetID,
-	).Scan(&createdAcc.ID, &createdAcc.Name, &createdAcc.Type, &createdAcc.BudgetID)
+		  name, type, bank, suffix, budget_id, closed, deleted, created_at, updated_at
+		 ) VALUES ($1, $2, NULLIF($3, ''), NULLIF($4, ''), $5, FALSE, FALSE, NOW(), NOW()) 
+		 RETURNING id, name, type, COALESCE(bank, ''), COALESCE(suffix, ''), budget_id`,
+		account.Name, account.Type, account.Bank, account.Suffix, account.BudgetID,
+	).Scan(&createdAcc.ID, &createdAcc.Name, &createdAcc.Type, &createdAcc.Bank, &createdAcc.Suffix, &createdAcc.BudgetID)
 	if err != nil {
 		return nil, err
 	}
 	return &createdAcc, nil
+}
+
+func (r *accountRepo) Update(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID, account model.Account) (*model.Account, error) {
+	var a model.Account
+	err := r.Executor(tx).QueryRow(
+		ctx,
+		`UPDATE accounts SET
+		   name = $1,
+		   bank = NULLIF($2, ''),
+		   suffix = NULLIF($3, ''),
+		   closed = $4,
+		   updated_at = NOW()
+		 WHERE id = $5 AND budget_id = $6 AND deleted = FALSE
+		 RETURNING id, name, budget_id, transfer_payee_id, type, COALESCE(bank, ''), COALESCE(suffix, ''), closed, created_at, updated_at`,
+		account.Name, account.Bank, account.Suffix, account.Closed, id, budgetId,
+	).Scan(&a.ID, &a.Name, &a.BudgetID, &a.TransferPayeeID, &a.Type, &a.Bank, &a.Suffix, &a.Closed, &a.CreatedAt, &a.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &a, nil
 }
 
 func (r *accountRepo) UpdateTransferPayee(ctx context.Context, tx pgx.Tx, accountId uuid.UUID, payeeId uuid.UUID) error {

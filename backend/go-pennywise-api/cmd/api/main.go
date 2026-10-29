@@ -238,8 +238,11 @@ func main() {
 	deviceHandler := handler.NewDeviceHandler(pushNotificationService)
 	geocodeHandler := handler.NewGeocodeHandler(geocodeService)
 
-	categoryService := service.NewCategoryService(categoryRepo, monthlyBudgetRepo, transactionRepo)
+	categoryService := service.NewCategoryService(categoryRepo, monthlyBudgetRepo, transactionRepo, cipherClient)
 	categoryHandler := handler.NewCategoryHandler(categoryService)
+	categoryGoalHandler := handler.NewCategoryGoalHandler(
+		service.NewCategoryGoalService(repository.NewCategoryGoalRepository(dbConn)),
+	)
 
 	embeddingService := service.NewEmbeddingService(embeddingRepo)
 	embeddingHandler := handler.NewEmbeddingHandler(embeddingService)
@@ -251,6 +254,23 @@ func main() {
 	gmailClient := transport.NewClient(config.GmailServiceName, gmailHttpTransport)
 	authService := service.NewAuthService(authRepo, googleProviderRepo, gmailClient)
 	authHandler := handler.NewAuthHandler(authService)
+
+	userLLMProviderRepo := repository.NewUserLLMProviderRepository(dbConn)
+	onboardingHandler := handler.NewOnboardingHandler(
+		service.NewOnboardingService(budgetRepo, authRepo, googleProviderRepo, userLLMProviderRepo, gmailClient),
+	)
+	llmCredentialsBox, err := utils.NewSecretBox(config.LLMCredentialsKey)
+	if err != nil {
+		// Saving AI providers is refused until the key is set; nothing else depends on it.
+		logger.Logger(ctx).Warn("user AI providers disabled", "error", err)
+		llmCredentialsBox = nil
+	}
+	aiProviderHandler := handler.NewAIProviderHandler(service.NewAIProviderService(
+		userLLMProviderRepo,
+		llmCredentialsBox,
+		cipherTransportClient,
+		service.NewDemoUserCheck(googleProviderRepo, config.DemoMode),
+	))
 
 	var demoHandler handler.DemoHandler
 	if config.DemoMode {
@@ -293,6 +313,19 @@ func main() {
 		transactionService,
 	)
 	predictionReviewHandler := handler.NewPredictionReviewHandler(predictionReviewService)
+
+	statementService := service.NewStatementService(
+		repository.NewStatementImportRepository(dbConn),
+		transactionRepo,
+		accountRepo,
+		payeeRepo,
+		categoryRepo,
+		transactionService,
+		cipherClient,
+	)
+	// Extraction runs in-process; anything still "processing" was cut off.
+	statementService.FailInterrupted(appCtx)
+	statementHandler := handler.NewStatementHandler(statementService)
 
 	websocketHub := websocket.NewConnectionHub()
 	websocketService := service.NewWebsocketService(websocketHub)
@@ -438,11 +471,33 @@ func main() {
 			)
 		}
 		{
+			onboardingGroup := router.Group("/api/onboarding")
+			onboardingGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
+			onboardingGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), onboardingHandler.Get)
+			onboardingGroup.PATCH("", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), onboardingHandler.Update)
+			onboardingGroup.POST(
+				"/email-backfill",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				onboardingHandler.BackfillEmails,
+			)
+		}
+		{
+			// Providers belong to the user; the budget header is only needed
+			// because cipher resolves a test call through the budget owner.
+			aiProviderGroup := router.Group("/api/ai-providers")
+			aiProviderGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
+			aiProviderGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), aiProviderHandler.List)
+			aiProviderGroup.PUT("/:provider", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), aiProviderHandler.Upsert)
+			aiProviderGroup.DELETE("/:provider", middleware.RouteAuthMiddleware(sharedModel.ScopeDelete), aiProviderHandler.Delete)
+			aiProviderGroup.POST("/:provider/test", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), aiProviderHandler.Test)
+		}
+		{
 			accountGroup := router.Group("/api/accounts")
 			accountGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
 			accountGroup.GET("/search", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), accountHandler.Search)
 			accountGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), accountHandler.List)
 			accountGroup.POST("", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), accountHandler.Create)
+			accountGroup.PATCH("/:id", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), accountHandler.Update)
 		}
 		{
 			userGroup := router.Group("/api/users")
@@ -480,6 +535,26 @@ func main() {
 			categoryGroup.GET("/search", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), categoryHandler.Search)
 			categoryGroup.GET(":id", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), categoryHandler.GetById)
 			categoryGroup.PUT(":id", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), categoryHandler.Update)
+			categoryGroup.PUT(
+				":id/details",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				categoryHandler.UpdateDetails,
+			)
+			categoryGroup.POST(
+				":id/description/suggest",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				categoryHandler.SuggestDescription,
+			)
+			categoryGroup.PUT(
+				":id/goal",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				categoryGoalHandler.Upsert,
+			)
+			categoryGroup.DELETE(
+				":id/goal",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				categoryGoalHandler.Delete,
+			)
 			categoryGroup.DELETE(
 				":id",
 				middleware.RouteAuthMiddleware(sharedModel.ScopeDelete),
@@ -552,10 +627,32 @@ func main() {
 			)
 		}
 		{
+			statementGroup := router.Group("/api/statements")
+			statementGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
+			statementGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), statementHandler.List)
+			statementGroup.POST("", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), statementHandler.Upload)
+			statementGroup.GET(":id", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), statementHandler.Get)
+			statementGroup.PATCH(
+				":id/sections/:section",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				statementHandler.SetSectionAccount,
+			)
+			statementGroup.POST(
+				":id/transactions",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				statementHandler.CreateMissing,
+			)
+			statementGroup.POST(":id/retry", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), statementHandler.Retry)
+			statementGroup.DELETE(":id", middleware.RouteAuthMiddleware(sharedModel.ScopeDelete), statementHandler.Delete)
+		}
+		{
 			payeeGroup := router.Group("/api/payees")
 			payeeGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
 			payeeGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), payeeHandler.List)
 			payeeGroup.GET("/search", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), payeeHandler.Search)
+			payeeGroup.GET("/stats", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), payeeHandler.Stats)
+			payeeGroup.GET("/rules", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), payeeHandler.ListRules)
+			payeeGroup.POST("/merge", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), payeeHandler.Merge)
 			payeeGroup.GET("/:id", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), payeeHandler.GetById)
 			payeeGroup.GET("/:id/rules", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), payeeHandler.GetRules)
 			payeeGroup.POST(
@@ -706,6 +803,8 @@ func main() {
 				reportHandler.GetIncomeExpense,
 			)
 			reportGroup.GET("/networth", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), reportHandler.GetNetWorth)
+			reportGroup.GET("/cashflow", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), reportHandler.GetCashFlow)
+			reportGroup.GET("/loans", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), reportHandler.GetLoanHistories)
 		}
 		{
 			pipelineGroup := router.Group("/api/pipeline")

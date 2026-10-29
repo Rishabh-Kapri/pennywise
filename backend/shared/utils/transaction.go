@@ -19,7 +19,7 @@ func getSortedMonths(values []string) []string {
 	return values
 }
 
-func FillCarryForward(values map[string]float32, month string) map[string]float32 {
+func FillCarryForward(values map[string]float64, month string) map[string]float64 {
 	_, exists := values[month]
 	if exists {
 		return values

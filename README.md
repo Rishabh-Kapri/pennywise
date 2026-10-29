@@ -133,11 +133,11 @@ All Go commands run from the respective `backend/<service>` directory; each has 
 
 ```bash
 cd backend/go-pennywise-api
-go run ./cmd/migrations -dir . up
-go run ./cmd/migrations -dir . status
+go run ./cmd/migrations up
+go run ./cmd/migrations status
 ```
 
-On a **fresh database**: `CREATE EXTENSION vector` first, then `up` → `baseline` → `up` (the legacy Go seed migrations 00002/00003 fail on empty databases; `baseline` marks them applied).
+Migrations live in `backend/shared/sql/migrations` (see its `README.md`). A **fresh database** just needs `up`; the migrations create the `vector`/`pg_trgm` extensions themselves. A database built by the old 29-file history needs `make migrate-baseline` once.
 
 ### Ports
 

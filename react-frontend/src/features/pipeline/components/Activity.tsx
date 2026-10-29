@@ -1,7 +1,7 @@
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { useHeader } from '@/context/HeaderContext';
 import { selectIsDemoUser } from '@/features/auth/store/authSlice';
-import { LoadingState, toast } from '@/utils';
+import { LoadingState, errorMessage, toast } from '@/utils';
 import { getCurrencyLocaleString } from '@/utils/date.utils';
 import {
   ArrowsClockwise,
@@ -441,7 +441,7 @@ function RunCard({
       await dispatch(retryPipelineRun(run.id)).unwrap();
       toast.success('Retry signal sent');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to retry run');
+      toast.error("Couldn't retry run", { description: errorMessage(err, 'Please try again.') });
     }
   };
 

@@ -1,187 +1,278 @@
-import { useMemo, useState } from 'react';
-import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
-import { ArrowLeft } from '@phosphor-icons/react';
-import { useAppSelector } from '@/app/hooks';
-import { LoadingState } from '@/utils';
+import { Fragment, useState } from 'react';
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { CaretDown, CaretRight, ChartBar, ListBullets } from '@phosphor-icons/react';
+import { useAppDispatch } from '@/app/hooks';
+import { DashboardCard, Segmented } from '@/features/dashboard/components/DashboardCard';
 import { formatCurrency } from '@/features/dashboard/utils';
-import { getSelectedMonthInHumanFormat } from '@/utils/date.utils';
-import { selectSpendingLoading, selectSpendingReport } from '../store/reportSlice';
+import {
+  defaultTreatment,
+  formatPercent,
+  monthLabel,
+  shareOfIncome,
+  type CashFlowSummary,
+  type GroupSummary,
+} from '../cashFlow';
+import { useCashFlowSummary } from '../hooks/useCashFlowSummary';
+import { setGroupTreatment } from '../store/reportSlice';
+import type { GroupTreatment } from '../types/report.types';
+import { AXIS_TICK, COLORS, CURSOR_FILL, GRID_COLOR, SERIES, axisCurrency, formatMonthTick } from '../chartTheme';
+import { EmptyState, MonthTable, RowBar, TooltipCard, type MonthTableRow } from './ReportParts';
 import styles from './SpendingReport.module.css';
 
-// Categorical palette in fixed assignment order, CVD-validated against the
-// card surface (#323232). Hex because SVG fills can't resolve CSS vars.
-const SERIES_COLORS = [
-  '#3987e5',
-  '#c08120',
-  '#1baf7a',
-  '#c356a7',
-  '#8f7fe8',
-  '#d55b33',
-  '#279cb2',
-  '#8f9a35',
+const TREATMENT_OPTIONS: { value: GroupTreatment; label: string }[] = [
+  { value: 'spending', label: 'Spending' },
+  { value: 'oneOff', label: 'One-off' },
+  { value: 'saving', label: 'Saving' },
 ];
-const OTHER_COLOR = '#8a8a8a';
-const SURFACE_COLOR = '#323232';
-const MAX_SLICES = SERIES_COLORS.length;
 
-interface Slice {
-  id: string;
-  name: string;
-  total: number;
-  color: string;
-  drillable: boolean;
+const VIEW_OPTIONS = [
+  { value: 'chart', label: 'Chart' },
+  { value: 'table', label: 'Table' },
+] as const;
+
+const OTHER_KEY = '__other__';
+
+/** Top spending groups keep a fixed series color; the rest fold into Other. */
+function colorGroups(groups: GroupSummary[]): Map<string, string> {
+  const colors = new Map<string, string>();
+  const spent = groups.filter((group) => group.treatment !== 'saving' && group.total > 0);
+  const named = spent.length > SERIES.length ? SERIES.length - 1 : SERIES.length;
+  spent.forEach((group, i) => colors.set(group.id, i < named ? SERIES[i] : COLORS.other));
+  return colors;
 }
-
-// Fold anything beyond the fixed palette into a gray "Other" slice —
-// categorical hues are never cycled.
-function toSlices(items: { id: string; name: string; total: number; drillable: boolean }[]): Slice[] {
-  const head = items.slice(0, items.length > MAX_SLICES ? MAX_SLICES - 1 : MAX_SLICES);
-  const rest = items.slice(head.length);
-  const slices: Slice[] = head.map((item, i) => ({ ...item, color: SERIES_COLORS[i] }));
-  if (rest.length > 0) {
-    slices.push({
-      id: '__other__',
-      name: `Other (${rest.length})`,
-      total: rest.reduce((sum, item) => sum + item.total, 0),
-      color: OTHER_COLOR,
-      drillable: false,
-    });
-  }
-  return slices;
-}
-
-interface SliceTooltipProps {
-  active?: boolean;
-  payload?: { payload?: Slice }[];
-}
-
-const SliceTooltip = ({ active, payload }: SliceTooltipProps) => {
-  const slice = payload?.[0]?.payload;
-  if (!active || !slice) return null;
-  return (
-    <div className={styles.tooltip}>
-      <span className={styles.tooltipSwatch} style={{ background: slice.color }} />
-      <span className={styles.tooltipName}>{slice.name}</span>
-      <span className={styles.tooltipValue}>{formatCurrency(slice.total)}</span>
-    </div>
-  );
-};
 
 export default function SpendingReport() {
-  const report = useAppSelector(selectSpendingReport);
-  const loading = useAppSelector(selectSpendingLoading);
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const { summary, loading } = useCashFlowSummary();
 
-  const selectedGroup = useMemo(
-    () => report?.groups.find((g) => g.categoryGroupId === selectedGroupId) ?? null,
-    [report, selectedGroupId],
+  if (!summary) {
+    return <EmptyState>{loading ? 'Loading spending…' : 'No data in the selected period'}</EmptyState>;
+  }
+  if (summary.groups.length === 0) {
+    return <EmptyState>No spending in the selected period</EmptyState>;
+  }
+
+  const colors = colorGroups(summary.groups);
+
+  return (
+    <div className={styles.stack}>
+      <GroupsCard summary={summary} colors={colors} />
+      <TrendCard summary={summary} colors={colors} />
+    </div>
   );
+}
 
-  const slices = useMemo(() => {
-    if (!report) return [];
-    if (selectedGroup) {
-      return toSlices(
-        selectedGroup.categories.map((c) => ({
-          id: c.categoryId,
-          name: c.name,
-          total: c.total,
-          drillable: false,
-        })),
-      );
-    }
-    return toSlices(
-      report.groups.map((g) => ({
-        id: g.categoryGroupId,
-        name: g.name,
-        total: g.total,
-        drillable: true,
-      })),
+function GroupsCard({ summary, colors }: { summary: CashFlowSummary; colors: Map<string, string> }) {
+  const dispatch = useAppDispatch();
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const monthCount = Math.max(summary.months.length, 1);
+  const spent = summary.groups.filter((group) => group.treatment !== 'saving');
+  const saving = summary.groups.filter((group) => group.treatment === 'saving');
+  // scale bars to everyday groups so one huge one-off doesn't flatten the rest
+  const everyday = summary.groups.filter((group) => group.treatment === 'spending');
+  const max = Math.max(...(everyday.length > 0 ? everyday : summary.groups).map((group) => group.total), 1);
+
+  const toggle = (id: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const changeTreatment = (group: GroupSummary, treatment: GroupTreatment) =>
+    dispatch(
+      setGroupTreatment({
+        groupId: group.id,
+        // picking the name-based guess drops the override
+        treatment: treatment === defaultTreatment(group.id, group.name) ? null : treatment,
+      }),
     );
-  }, [report, selectedGroup]);
 
-  if (loading === LoadingState.PENDING || loading === LoadingState.IDLE) {
-    return <div className={styles.emptyState}>Loading spending report…</div>;
-  }
-  if (!report || report.groups.length === 0) {
-    return <div className={styles.emptyState}>No spending in the selected period</div>;
-  }
-
-  const total = selectedGroup ? selectedGroup.total : report.total;
-  const rangeLabel = `${getSelectedMonthInHumanFormat(report.startMonth)} – ${getSelectedMonthInHumanFormat(report.endMonth)}`;
-
-  const handleSliceClick = (slice: Slice) => {
-    if (!selectedGroup && slice.drillable) {
-      setSelectedGroupId(slice.id);
-    }
+  const renderGroup = (group: GroupSummary) => {
+    const open = expanded.has(group.id);
+    const color = group.treatment === 'saving' ? COLORS.invested : (colors.get(group.id) ?? COLORS.other);
+    return (
+      <Fragment key={group.id}>
+        <li className={styles.row} data-treatment={group.treatment}>
+          <button
+            type="button"
+            className={styles.name}
+            aria-expanded={open}
+            onClick={() => toggle(group.id)}
+            disabled={group.categories.length === 0}
+          >
+            {open ? <CaretDown size={13} /> : <CaretRight size={13} />}
+            <span className={styles.dot} style={{ background: color }} />
+            <span className={styles.nameText}>{group.name}</span>
+            {group.treatment === 'oneOff' && <span className={styles.tag}>One-off</span>}
+          </button>
+          <select
+            className={styles.treatment}
+            value={group.treatment}
+            aria-label={`Count ${group.name} as`}
+            title={group.isDefault ? 'Guessed from the group name' : 'Your choice'}
+            onChange={(e) => changeTreatment(group, e.target.value as GroupTreatment)}
+          >
+            {TREATMENT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <RowBar value={group.total} max={max} color={color} />
+          <span className={styles.amount}>{formatSigned(group.total)}</span>
+          <span className={styles.share}>{formatPercent(shareOfIncome(group.total, summary.income))}</span>
+          <span className={styles.average}>{formatSigned(group.total / monthCount)}</span>
+        </li>
+        {open &&
+          group.categories.map((category) => (
+            <li key={category.id} className={styles.subRow}>
+              <span className={styles.subName}>{category.name}</span>
+              <span />
+              <RowBar value={category.total} max={max} color={color} />
+              <span className={styles.amount}>{formatSigned(category.total)}</span>
+              <span className={styles.share}>{formatPercent(shareOfIncome(category.total, summary.income))}</span>
+              <span className={styles.average}>{formatSigned(category.total / monthCount)}</span>
+            </li>
+          ))}
+      </Fragment>
+    );
   };
 
   return (
-    <div className={styles.card}>
-      <div className={styles.breadcrumb}>
-        {selectedGroup ? (
+    <DashboardCard title="Spending by group" icon={<ListBullets size={18} />}>
+      <p className={styles.help}>
+        Mark groups that won't recur (a house, a wedding) as <strong>One-off</strong> to see your everyday spend rate,
+        and groups that are really money set aside as <strong>Saving</strong> to count them with your investments.
+      </p>
+      <ul className={styles.list}>
+        <li className={styles.headRow} aria-hidden="true">
+          <span>Group</span>
+          <span>Counts as</span>
+          <span />
+          <span className={styles.amount}>Total</span>
+          <span className={styles.share}>Of income</span>
+          <span className={styles.average}>Per month</span>
+        </li>
+        {spent.map(renderGroup)}
+        {saving.length > 0 && (
           <>
-            <button className={styles.backBtn} onClick={() => setSelectedGroupId(null)}>
-              <ArrowLeft size={16} />
-              All groups
-            </button>
-            <span className={styles.breadcrumbSeparator}>/</span>
-            <span className={styles.breadcrumbCurrent}>{selectedGroup.name}</span>
+            <li className={styles.sectionRow}>Counted as saving</li>
+            {saving.map(renderGroup)}
           </>
-        ) : (
-          <span className={styles.breadcrumbCurrent}>Spending by category group</span>
         )}
-        <span className={styles.rangeLabel}>{rangeLabel}</span>
-      </div>
+      </ul>
+    </DashboardCard>
+  );
+}
 
-      <div className={styles.chartLayout}>
-        <div className={styles.donutWrap}>
-          <ResponsiveContainer width="100%" height={280} initialDimension={{ width: 280, height: 280 }}>
-            <PieChart>
-              <Tooltip content={<SliceTooltip />} />
-              <Pie
-                data={slices}
-                dataKey="total"
-                nameKey="name"
-                innerRadius="62%"
-                outerRadius="90%"
-                stroke={SURFACE_COLOR}
-                strokeWidth={2}
-                isAnimationActive={false}
-                onClick={(_, index) => handleSliceClick(slices[index])}>
-                {slices.map((slice) => (
-                  <Cell
-                    key={slice.id}
-                    fill={slice.color}
-                    cursor={slice.drillable ? 'pointer' : 'default'}
-                  />
-                ))}
-              </Pie>
-            </PieChart>
-          </ResponsiveContainer>
-          <div className={styles.donutCenter}>
-            <span className={styles.donutTotal}>{formatCurrency(total)}</span>
-            <span className={styles.donutCaption}>{selectedGroup ? selectedGroup.name : 'Total spending'}</span>
+function formatSigned(value: number) {
+  const rounded = Math.round(value);
+  return `${rounded < 0 ? '−' : ''}${formatCurrency(rounded)}`;
+}
+
+function TrendCard({ summary, colors }: { summary: CashFlowSummary; colors: Map<string, string> }) {
+  const [view, setView] = useState<'chart' | 'table'>('chart');
+  const spent = summary.groups.filter((group) => group.treatment !== 'saving');
+  const named = spent.filter((group) => colors.get(group.id) !== COLORS.other && colors.has(group.id));
+  const rest = spent.filter((group) => !named.includes(group));
+
+  const data = summary.months.map((month) => {
+    const row: Record<string, number | string> = { month };
+    for (const group of named) row[group.id] = Math.max(group.monthly[month] ?? 0, 0);
+    if (rest.length > 0) {
+      row[OTHER_KEY] = Math.max(
+        rest.reduce((sum, group) => sum + (group.monthly[month] ?? 0), 0),
+        0,
+      );
+    }
+    return row;
+  });
+  const series = [
+    ...named.map((group) => ({ key: group.id, name: group.name, color: colors.get(group.id)! })),
+    ...(rest.length > 0 ? [{ key: OTHER_KEY, name: `Other (${rest.length})`, color: COLORS.other }] : []),
+  ];
+
+  const tableRows: MonthTableRow[] = spent.flatMap((group) => [
+    { key: group.id, label: group.name, monthly: group.monthly, emphasis: true },
+    ...group.categories.map((category) => ({
+      key: `${group.id}:${category.id}`,
+      label: category.name,
+      monthly: category.monthly,
+      indent: true,
+    })),
+  ]);
+
+  return (
+    <DashboardCard
+      title="Spending trend"
+      icon={<ChartBar size={18} />}
+      actions={<Segmented label="View" options={VIEW_OPTIONS} value={view} onChange={setView} />}
+    >
+      {view === 'chart' ? (
+        <>
+          <div className={styles.legend}>
+            {series.map((s) => (
+              <span key={s.key} className={styles.legendItem}>
+                <span className={styles.dot} style={{ background: s.color }} />
+                {s.name}
+              </span>
+            ))}
           </div>
-        </div>
-
-        <ul className={styles.legendList}>
-          {slices.map((slice) => (
-            <li key={slice.id}>
-              <button
-                className={slice.drillable ? styles.legendRowDrillable : styles.legendRow}
-                onClick={() => handleSliceClick(slice)}
-                disabled={!slice.drillable}>
-                <span className={styles.legendDot} style={{ background: slice.color }} />
-                <span className={styles.legendName}>{slice.name}</span>
-                <span className={styles.legendPercent}>
-                  {total > 0 ? `${((slice.total / total) * 100).toFixed(1)}%` : '—'}
-                </span>
-                <span className={styles.legendValue}>{formatCurrency(slice.total)}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </div>
+          <ResponsiveContainer width="100%" height={300} initialDimension={{ width: 600, height: 300 }}>
+            <BarChart data={data} barCategoryGap="24%">
+              <CartesianGrid vertical={false} stroke={GRID_COLOR} />
+              <XAxis
+                dataKey="month"
+                tickFormatter={formatMonthTick}
+                axisLine={{ stroke: GRID_COLOR }}
+                tickLine={false}
+                tick={AXIS_TICK}
+                minTickGap={8}
+              />
+              <YAxis axisLine={false} tickLine={false} width={56} tick={AXIS_TICK} tickFormatter={axisCurrency} />
+              <Tooltip
+                cursor={{ fill: CURSOR_FILL }}
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null;
+                  const rows = [...payload]
+                    .filter((entry) => Number(entry.value) > 0)
+                    .reverse()
+                    .map((entry) => ({
+                      name: String(entry.name),
+                      color: String(entry.color),
+                      value: formatCurrency(Number(entry.value)),
+                    }));
+                  const total = payload.reduce((sum, entry) => sum + Number(entry.value ?? 0), 0);
+                  return (
+                    <TooltipCard
+                      title={monthLabel(String(label))}
+                      rows={rows}
+                      footer={`Total ${formatCurrency(total)}`}
+                    />
+                  );
+                }}
+              />
+              {series.map((s, i) => (
+                <Bar
+                  key={s.key}
+                  dataKey={s.key}
+                  name={s.name}
+                  stackId="spend"
+                  fill={s.color}
+                  stroke="var(--dash-surface)"
+                  strokeWidth={1}
+                  radius={i === series.length - 1 ? [4, 4, 0, 0] : 0}
+                  maxBarSize={28}
+                  isAnimationActive={false}
+                />
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+        </>
+      ) : (
+        <MonthTable months={summary.months} rows={tableRows} />
+      )}
+    </DashboardCard>
   );
 }

@@ -4,9 +4,11 @@ import agent from '../features/agent/store/agentSlice';
 import auth from '../features/auth/store/authSlice';
 import budgets from '../features/budget/store/budgetSlice';
 import categories from '../features/category/store/categorySlice';
+import dashboard from '../features/dashboard/store/dashboardSlice';
 import loans from '../features/loans/store/loanSlice';
 import payees from '../features/payees/store/payeeSlice';
 import pipeline from '../features/pipeline/store/pipelineSlice';
+import reports from '../features/reports/store/reportSlice';
 import tags from '../features/tags/store/tagSlice';
 import transactions from '../features/transactions/store/transactionSlice';
 import { apiClient } from '../utils/api';
@@ -25,9 +27,11 @@ export const store = configureStore({
     auth,
     budgets,
     categories,
+    dashboard,
     loans,
     payees,
     pipeline,
+    reports,
     tags,
     transactions
   },

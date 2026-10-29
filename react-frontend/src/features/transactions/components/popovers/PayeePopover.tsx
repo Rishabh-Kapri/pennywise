@@ -1,10 +1,11 @@
+import { Check } from '@phosphor-icons/react';
 import { Popover } from '@/components/common/Popover/Popover';
-import { type KeyboardEvent, useCallback, useRef, useState, useMemo } from 'react';
+import { useCallback, useRef, useState, useMemo } from 'react';
 import styles from './Popover.module.css';
 import { useAppSelector } from '@/app/hooks';
 import type { Payee } from '@/features/payees/types/payee.types';
-import { useDropdown } from '../../hooks/useDropdown';
 import type { TransactionDropdownProps } from './types';
+import { SearchSelect } from './SearchSelect';
 
 export function PayeeDropdown({
   value,
@@ -14,10 +15,10 @@ export function PayeeDropdown({
   multiple = false,
   selectedIds = [],
   onChangeMultiple,
+  placeholder,
 }: TransactionDropdownProps) {
   const { allPayees } = useAppSelector((state) => state.payees);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const inputTriggerRef = useRef<HTMLInputElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -32,31 +33,10 @@ export function PayeeDropdown({
     return filterPayees(allPayees, searchQuery);
   }, [allPayees, searchQuery, filterPayees]);
 
-  // Single select handling
-  const {
-    isOpen: isSingleOpen,
-    setIsOpen: setSingleIsOpen,
-    filterQuery,
-    setFilterQuery,
-    filteredItems: singleFilteredItems,
-    filterValues,
-  } = useDropdown(value, allPayees, filterPayees);
-
-  const handleOnClick = (payee: Payee) => {
-    setSingleIsOpen(false);
-    setFilterQuery(payee.name);
-    onClick(payee.id!, payee.name);
-  };
-
-  const handleInputKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key !== 'Enter') return;
-
-    const firstPayee = singleFilteredItems[0];
-    if (!firstPayee) return;
-
-    e.preventDefault();
-    handleOnClick(firstPayee);
-  };
+  const payeeItems = useMemo(
+    () => allPayees.filter((payee) => payee.id).map((payee) => ({ id: payee.id!, name: payee.name })),
+    [allPayees],
+  );
 
   const handleToggleMultiple = (payee: Payee) => {
     if (!onChangeMultiple) return;
@@ -82,14 +62,14 @@ export function PayeeDropdown({
   const triggerClassName = variant === 'form' ? styles.formTrigger : styles.input;
 
   if (multiple) {
-    const displayValue = value || 'Select Payee';
+    const displayValue = value || placeholder || 'Select Payee';
     return (
       <div className={styles.popoverContainer}>
         <button
           type="button"
           ref={triggerRef}
           onClick={() => setIsOpen((prev) => !prev)}
-          className={`${triggerClassName} ${styles.triggerButton} ${isOpen ? styles.open : ''}`}
+          className={`${triggerClassName} ${styles.triggerButton} ${isOpen ? styles.open : ''} ${value ? '' : styles.placeholderText}`}
           aria-haspopup="true"
           aria-expanded={isOpen}
           aria-controls="payee-popover-content"
@@ -101,6 +81,7 @@ export function PayeeDropdown({
           isOpen={isOpen}
           triggerRef={triggerRef}
           onClose={() => setIsOpen(false)}
+          width={Math.max(triggerRef.current?.offsetWidth ?? 0, 240)}
         >
           <div className={styles.searchContainer}>
             <input
@@ -112,14 +93,14 @@ export function PayeeDropdown({
               aria-label="Search payees"
             />
           </div>
-          <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
+          <div className={styles.multiList}>
             {filteredItemsMultiple.length > 0 ? (
               filteredItemsMultiple.map((item) => {
                 const isSelected = selectedIds.includes(item.id!);
                 return (
                   <div
                     key={item.id}
-                    className={`${styles.item} ${isSelected ? styles.selectedItem : ''}`}
+                    className={`${styles.option} ${styles.multiOption} ${isSelected ? styles.optionSelected : ''}`}
                     onClick={() => handleToggleMultiple(item)}
                     role="option"
                     aria-selected={isSelected}
@@ -131,7 +112,8 @@ export function PayeeDropdown({
                       }
                     }}
                   >
-                    {item.name}
+                    <span className={styles.optionName}>{item.name}</span>
+                    {isSelected && <Check className={styles.optionCheck} size={14} weight="bold" />}
                   </div>
                 );
               })
@@ -144,51 +126,16 @@ export function PayeeDropdown({
     );
   }
 
-  // Fallback to existing single select behavior
-  const singleInputClassName = variant === 'form' ? styles.formInput : styles.input;
-
   return (
-    <div className={styles.popoverContainer}>
-      <input
-        ref={inputTriggerRef}
-        onFocus={() => setSingleIsOpen(true)}
-        onBlur={() => setSingleIsOpen(false)}
-        className={singleInputClassName}
-        autoFocus={autoFocus}
-        onChange={(e) => filterValues(e.target.value)}
-        onKeyDown={handleInputKeyDown}
-        value={filterQuery}
-        placeholder="Select Payee"
-        aria-haspopup="true"
-        aria-expanded={isSingleOpen}
-        aria-controls="popover-content"
-      />
-      <Popover id="popover-content" isOpen={isSingleOpen} triggerRef={inputTriggerRef}>
-        {singleFilteredItems.length > 0 &&
-          singleFilteredItems.map((item) => (
-            <div
-              key={item.id}
-              className={styles.item}
-              tabIndex={0}
-              role="option"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                handleOnClick(item);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  handleOnClick(item);
-                }
-              }}
-            >
-              {item.name}
-            </div>
-          ))}
-        {singleFilteredItems.length === 0 && (
-          <div className={styles.item}>No payees found</div>
-        )}
-      </Popover>
-    </div>
+    <SearchSelect
+      value={value}
+      items={payeeItems}
+      onSelect={(item) => onClick(item.id, item.name)}
+      placeholder="Select payee"
+      emptyText="No payees found"
+      autoFocus={autoFocus}
+      variant={variant}
+      menuWidth={variant === 'ghost' ? 260 : undefined}
+    />
   );
 }

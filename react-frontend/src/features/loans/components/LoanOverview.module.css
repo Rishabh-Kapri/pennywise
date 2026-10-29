@@ -426,3 +426,18 @@
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
+
+.balanceSubRow {
+  display: flex;
+  justify-content: space-between;
+  margin-top: -0.4rem;
+  padding-left: 0.75rem;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.balanceNote {
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+}
