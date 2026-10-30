@@ -13,7 +13,6 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
-	"github.com/jackc/pgx/v5"
 	"go.temporal.io/sdk/activity"
 )
 
@@ -67,9 +66,8 @@ func (a *CreateCipherPredictionActivity) CreateCipherPrediction(
 	return nil
 }
 
-func createCipherPredictionWithTx(
+func createCipherPrediction(
 	ctx context.Context,
-	tx pgx.Tx,
 	service service.PredictionService,
 	budgetID uuid.UUID,
 	txn sharedModel.Transaction,
@@ -79,7 +77,7 @@ func createCipherPredictionWithTx(
 	if err != nil {
 		return err
 	}
-	_, err = service.CreateCipherPredictionWithTx(ctx, tx, record)
+	_, err = service.CreateCipherPrediction(ctx, record)
 	return err
 }
 

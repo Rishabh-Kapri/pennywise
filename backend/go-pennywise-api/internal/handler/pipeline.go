@@ -5,12 +5,13 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
+
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 type PipelineHandler interface {
@@ -56,7 +57,7 @@ func (h *pipelineHandler) GetRun(c *gin.Context) {
 
 	detail, err := h.service.GetRunDetail(ctx, runID)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, repository.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "run not found"})
 			return
 		}
@@ -77,7 +78,7 @@ func (h *pipelineHandler) RetryRun(c *gin.Context) {
 
 	run, err := h.service.RetryRun(ctx, runID)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, repository.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "run not found"})
 			return
 		}

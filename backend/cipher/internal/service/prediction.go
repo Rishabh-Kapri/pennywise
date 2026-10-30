@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
@@ -22,8 +21,9 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/progress"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/userllm"
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
+
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 
 	"go.opentelemetry.io/otel/attribute"
 	oteltrace "go.opentelemetry.io/otel/trace"
@@ -452,10 +452,8 @@ func (s *predictionService) handleSemanticSearch(
 		return nil, nil
 	}
 
-	embeddingStr := db.VectorToString(embedding)
-
 	// Step 2: pgvector similarity search
-	matches, err := s.embeddingRepo.SearchSimilar(ctx, budgetId, req.Amount, embeddingStr, 3)
+	matches, err := s.embeddingRepo.SearchSimilar(ctx, budgetId, req.Amount, embedding, 3)
 	log.Info("pgvector search", "matches", matches)
 	if err != nil {
 		log.Warn("pgvector search failed", "error", err)
@@ -871,7 +869,7 @@ func (s *predictionService) GenerateTransactionEmbedding(
 	return &TransactionEmbeddingResponse{
 		MatchString:   matchString,
 		EmbeddingText: embeddingText,
-		Embedding:     db.VectorToString(embedding),
+		Embedding:     sharedModel.FormatVector(embedding),
 	}, nil
 }
 
@@ -885,8 +883,6 @@ func (s *predictionService) HandleCorrection(ctx context.Context, req Correction
 		return errs.Wrap(errs.CodeInternalError, "embed correction", err)
 	}
 
-	embeddingStr := db.VectorToString(embedding)
-
 	data := sharedModel.TransactionEmbedding{
 		BudgetID:      budgetID,
 		EmbeddingText: req.EmailText,
@@ -896,7 +892,7 @@ func (s *predictionService) HandleCorrection(ctx context.Context, req Correction
 		Source: SourceUserCorrected,
 	}
 
-	if err := s.embeddingRepo.Upsert(ctx, nil, data, embeddingStr); err != nil {
+	if err := s.embeddingRepo.Upsert(ctx, data, embedding); err != nil {
 		return fmt.Errorf("upsert correction embedding: %w", err)
 	}
 
@@ -1159,7 +1155,7 @@ func (s *predictionService) storeEmbedding(
 	embeddingText string,
 	result *PredictResponse,
 	source string,
-	embeddingStr string,
+	embedding []float64,
 ) {
 	data := sharedModel.TransactionEmbedding{
 		BudgetID:      budgetID,
@@ -1170,7 +1166,7 @@ func (s *predictionService) storeEmbedding(
 		Source:        source,
 	}
 
-	if err := s.embeddingRepo.Upsert(ctx, nil, data, embeddingStr); err != nil {
+	if err := s.embeddingRepo.Upsert(ctx, data, embedding); err != nil {
 		logger.Logger(ctx).Error("failed to store prediction embedding", "error", err)
 	}
 }

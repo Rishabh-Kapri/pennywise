@@ -5,12 +5,11 @@ import (
 	"errors"
 	"time"
 
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 type CategoryGoalService interface {
@@ -42,7 +41,7 @@ func (s *categoryGoalService) Upsert(
 		return nil, err
 	}
 	err := s.repo.Upsert(ctx, utils.MustBudgetID(ctx), categoryId, goal)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, repository.ErrNotFound) {
 		return nil, ErrCategoryNotFound
 	}
 	if err != nil {
@@ -53,7 +52,7 @@ func (s *categoryGoalService) Upsert(
 
 func (s *categoryGoalService) Delete(ctx context.Context, categoryId uuid.UUID) error {
 	err := s.repo.Delete(ctx, utils.MustBudgetID(ctx), categoryId)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, repository.ErrNotFound) {
 		return ErrCategoryGoalNotFound
 	}
 	return err

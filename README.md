@@ -137,7 +137,7 @@ go run ./cmd/migrations up
 go run ./cmd/migrations status
 ```
 
-Migrations live in `backend/shared/sql/migrations` (see its `README.md`). A **fresh database** just needs `up`; the migrations create the `vector`/`pg_trgm` extensions themselves. A database built by the old 29-file history needs `make migrate-baseline` once.
+Migrations live in `backend/shared/migrations/sql` (see its `README.md`). A **fresh database** just needs `up`; the migrations create the `vector`/`pg_trgm` extensions themselves. A database built by the old 29-file history needs `make migrate-baseline` once.
 
 ### Ports
 

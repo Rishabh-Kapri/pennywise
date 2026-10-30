@@ -16,15 +16,17 @@ type Config struct {
 	ProjectID                        string
 	PubsubTopic                      string
 	SubscriptionName                 string
-	DatabaseURL                      string
-	MLPServiceURL                    string
-	PennywiseServiceURL              string
-	CipherServiceURL                 string
-	InternalAuthToken                string
-	NtfyTopic                        string
-	TemporalServerHost               string
-	TemporalServerPort               string
-	Port                             string
+	// DatabaseDriver picks the adapter behind the repositories (default postgres).
+	DatabaseDriver      string
+	DatabaseURL         string
+	MLPServiceURL       string
+	PennywiseServiceURL string
+	CipherServiceURL    string
+	InternalAuthToken   string
+	NtfyTopic           string
+	TemporalServerHost  string
+	TemporalServerPort  string
+	Port                string
 }
 
 func LoadConfig() *Config {
@@ -49,6 +51,7 @@ func LoadConfig() *Config {
 		ProjectID:                        os.Getenv("PROJECT_ID"),
 		PubsubTopic:                      os.Getenv("PUBSUB_TOPIC"),
 		SubscriptionName:                 os.Getenv("SUB_NAME"),
+		DatabaseDriver:                   os.Getenv("DATABASE_DRIVER"),
 		DatabaseURL:                      os.Getenv("DATABASE_URL"),
 		MLPServiceURL:                    os.Getenv("MLP_SERVICE_URL"),
 		PennywiseServiceURL:              os.Getenv("PENNYWISE_SERVICE_URL"),

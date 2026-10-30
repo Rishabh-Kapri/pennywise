@@ -7,8 +7,8 @@ import (
 	"net/url"
 	"strings"
 
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 

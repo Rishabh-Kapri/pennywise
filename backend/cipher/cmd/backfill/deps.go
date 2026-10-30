@@ -3,19 +3,20 @@ package main
 import (
 	"context"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/factory"
+
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/client"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
 
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/otelSDK"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // BackfillDeps holds all dependencies needed by backfill operations.
@@ -34,7 +35,7 @@ func initDeps(
 	cfg config.Config,
 	pennywiseAPI string,
 	budgetID uuid.UUID,
-	dbConn *pgxpool.Pool,
+	database *factory.Database,
 ) (*BackfillDeps, *transport.Client) {
 	ctx := context.Background()
 	otelCfg := otelSDK.Load()
@@ -54,10 +55,10 @@ func initDeps(
 
 	return &BackfillDeps{
 		OllamaClient:  ollamaClient,
-		EmbeddingRepo: repository.NewTransactionEmbeddingRepository(dbConn),
-		PayeeRepo:     repository.NewPayeesRepository(dbConn),
-		PayeeRuleRepo: repository.NewPayeeRuleRepository(dbConn),
-		CategoryRepo:  repository.NewCategoryRepository(dbConn),
+		EmbeddingRepo: database.TransactionEmbedding,
+		PayeeRepo:     database.Payee,
+		PayeeRuleRepo: database.PayeeRule,
+		CategoryRepo:  database.Category,
 		BudgetID:      budgetID,
 	}, pennywiseClient
 }
@@ -78,7 +79,7 @@ func (d *BackfillDeps) getPayee(
 				Name:     payeeName,
 				BudgetID: budgetID,
 			}
-			return d.PayeeRepo.Create(ctx, nil, newPayee)
+			return d.PayeeRepo.Create(ctx, newPayee)
 		}
 		return nil, errs.New(errs.CodeInternalError, "payee not found")
 	}
@@ -102,7 +103,7 @@ func (d *BackfillDeps) getCategory(
 				BudgetID:        budgetID,
 				CategoryGroupID: uuid.New(),
 			}
-			return d.CategoryRepo.Create(ctx, nil, newCategory)
+			return d.CategoryRepo.Create(ctx, newCategory)
 		}
 		return nil, errs.New(errs.CodeInternalError, "category not found")
 	}

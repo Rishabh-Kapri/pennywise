@@ -3,13 +3,13 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const (
@@ -23,11 +23,11 @@ type updateMemoryArgs struct {
 }
 
 type UpdateWorkingMemoryTool struct {
-	db.BaseRepository
+	memory repository.AgentMemoryRepository
 }
 
-func NewUpdateWorkingMemoryTool(pool *pgxpool.Pool) Tool {
-	return UpdateWorkingMemoryTool{BaseRepository: db.NewBaseRepository(pool)}
+func NewUpdateWorkingMemoryTool(memory repository.AgentMemoryRepository) Tool {
+	return UpdateWorkingMemoryTool{memory: memory}
 }
 
 func (t UpdateWorkingMemoryTool) Definition() sharedModel.ToolDefiniton {
@@ -59,7 +59,6 @@ func (t UpdateWorkingMemoryTool) Definition() sharedModel.ToolDefiniton {
 }
 
 func (t UpdateWorkingMemoryTool) Execute(ctx context.Context, call sharedModel.ToolCall) (*sharedModel.ToolResult, error) {
-	var query string
 	var args updateMemoryArgs
 
 	if err := json.Unmarshal(call.Arguments, &args); err != nil {
@@ -80,58 +79,10 @@ func (t UpdateWorkingMemoryTool) Execute(ctx context.Context, call sharedModel.T
 	// The budget comes from the request context, never from tool arguments: a
 	// model-supplied budget id here would let a hallucination or a prompt
 	// injection write into another tenant's memory.
-	queryArgs := []any{path, string(valueJSON), utils.MustBudgetID(ctx)}
-
-	switch args.Operation {
-	case "add":
-		query = `
-		  INSERT INTO working_memory(budget_id, document)
-		  VALUES ($3, jsonb_set('{}', $1::text[], $2::jsonb, true))
-		  ON CONFLICT (budget_id) DO UPDATE
-		  SET document = jsonb_set(
-		    working_memory.document,
-		    $1::text[],
-			  (COALESCE(working_memory.document #> $1::text[], '[]'::jsonb) || $2::jsonb),
-			  true
-			),
-			updated_at = now()
-			`
-
-	case "replace":
-		query = `
-		  INSERT INTO working_memory(budget_id, document)
-      VALUES ($3, jsonb_set('{}', $1::text[], $2::jsonb, true))
-		  ON CONFLICT (budget_id) DO UPDATE
-		  SET document = jsonb_set(
-		    working_memory.document,
-		    $1::text[],
-			  $2::jsonb,
-			  true
-			),
-			updated_at = now()
-			`
-	case "remove":
-		query = `
-		  INSERT INTO working_memory(budget_id, document)
-      VALUES ($3, '{}'::jsonb)
-		  ON CONFLICT (budget_id) DO UPDATE
-			SET document = jsonb_set(
-				working_memory.document,
-				$1::text[],
-				COALESCE((
-					SELECT jsonb_agg(elem)
-          FROM jsonb_array_elements(working_memory.document #> $1::text[]) elem
-					WHERE elem != $2::jsonb
-				), '[]'::jsonb),
-				true
-			),
-			updated_at = now()
-		`
-
-	default:
+	err := t.memory.PatchWorkingMemory(ctx, utils.MustBudgetID(ctx), repository.WorkingMemoryOp(args.Operation), path, valueJSON)
+	if errors.Is(err, repository.ErrUnknownWorkingMemoryOp) {
 		return nil, errs.New(errs.CodeInternalError, "wrong operation")
 	}
-	_, err := t.Executor(nil).Exec(ctx, query, queryArgs...)
 	if err != nil {
 		return nil, err
 	}

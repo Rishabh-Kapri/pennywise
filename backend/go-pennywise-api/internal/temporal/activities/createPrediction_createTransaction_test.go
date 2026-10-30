@@ -4,17 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"math"
 	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"go.temporal.io/sdk/testsuite"
 
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
@@ -72,14 +71,6 @@ func (f *fakePredictionService) CreateCipherPrediction(
 	ctx context.Context,
 	p model.CipherPredictionRecord,
 ) (*model.CipherPredictionRecord, error) {
-	return f.CreateCipherPredictionWithTx(ctx, nil, p)
-}
-
-func (f *fakePredictionService) CreateCipherPredictionWithTx(
-	ctx context.Context,
-	_ pgx.Tx,
-	p model.CipherPredictionRecord,
-) (*model.CipherPredictionRecord, error) {
 	if f.createCipherPrediction == nil {
 		return &p, nil
 	}
@@ -112,23 +103,23 @@ func (f *fakeTransactionService) UpdateLocation(context.Context, uuid.UUID, mode
 }
 
 func (f *fakeTransactionService) Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error) {
-	return f.CreateWithTx(ctx, nil, txn)
+	return f.CreateInTx(ctx, txn)
 }
 
-func (f *fakeTransactionService) CreateWithTx(ctx context.Context, _ pgx.Tx, txn model.Transaction) ([]model.Transaction, error) {
+func (f *fakeTransactionService) CreateInTx(ctx context.Context, txn model.Transaction) ([]model.Transaction, error) {
 	if f.create == nil {
 		return []model.Transaction{txn}, nil
 	}
 	return f.create(ctx, txn)
 }
 
-// CreateWithTxDeduped delegates to createDeduped when set, otherwise adapts
+// CreateDeduped delegates to createDeduped when set, otherwise adapts
 // the create hook so existing tests keep working unchanged.
-func (f *fakeTransactionService) CreateWithTxDeduped(ctx context.Context, tx pgx.Tx, txn model.Transaction) (*model.Transaction, bool, error) {
+func (f *fakeTransactionService) CreateDeduped(ctx context.Context, txn model.Transaction) (*model.Transaction, bool, error) {
 	if f.createDeduped != nil {
 		return f.createDeduped(ctx, txn)
 	}
-	created, err := f.CreateWithTx(ctx, tx, txn)
+	created, err := f.CreateInTx(ctx, txn)
 	if err != nil {
 		return nil, false, err
 	}
@@ -187,11 +178,19 @@ func (f *fakePayeeService) DeleteRule(context.Context, uuid.UUID) error {
 	return nil
 }
 
-func (f *fakePayeeService) Create(ctx context.Context, payee model.Payee) (*model.Payee, error) {
-	return f.CreateWithTx(ctx, nil, payee)
+func (f *fakePayeeService) GetAllRules(context.Context) ([]model.PayeeRuleDetails, error) {
+	return nil, nil
 }
 
-func (f *fakePayeeService) CreateWithTx(ctx context.Context, _ pgx.Tx, payee model.Payee) (*model.Payee, error) {
+func (f *fakePayeeService) GetStats(context.Context) ([]model.PayeeStats, error) {
+	return nil, nil
+}
+
+func (f *fakePayeeService) Merge(context.Context, model.PayeeMergeRequest) (*model.PayeeMergeResult, error) {
+	return nil, nil
+}
+
+func (f *fakePayeeService) Create(ctx context.Context, payee model.Payee) (*model.Payee, error) {
 	if f.create == nil {
 		return &payee, nil
 	}
@@ -891,7 +890,7 @@ func TestCreateTransactionAndCipherPrediction_RequiresPredictionService(t *testi
 	// DB non-nil sentinel: we can't pass a real pool, but we can get past the nil DB
 	// check by noting we need to verify the PredictionService nil guard is also tested.
 	// Since we can't pass a real pool, just verify nil DB check fires first.
-	act := CreateTransactionActivity{DB: nil, PredictionService: nil}
+	act := CreateTransactionActivity{DBTxn: nil, PredictionService: nil}
 	env.RegisterActivity(act.CreateTransactionAndCipherPrediction)
 	_, err := env.ExecuteActivity(act.CreateTransactionAndCipherPrediction, model.PredictionResultInput{
 		BudgetID:    uuid.New(),
@@ -924,7 +923,7 @@ func TestCreateTransactionAndCipherPrediction_ReturnsNilWhenNoPredictions(t *tes
 func TestCreateTransactionAndCipherPrediction_RequiresBudgetID(t *testing.T) {
 	suite := testsuite.WorkflowTestSuite{}
 	env := suite.NewTestActivityEnvironment()
-	act := CreateTransactionActivity{DB: nil}
+	act := CreateTransactionActivity{DBTxn: nil}
 	env.RegisterActivity(act.CreateTransactionAndCipherPrediction)
 	// DB nil check fires before budget ID check, so we expect CodeInvalidArgument from DB nil
 	_, err := env.ExecuteActivity(act.CreateTransactionAndCipherPrediction, model.PredictionResultInput{
@@ -960,10 +959,10 @@ func TestCreateTransactionsSkipsDuplicates(t *testing.T) {
 	}
 
 	ctx := utils.WithBudgetID(context.Background(), budgetID)
-	created, err := act.createTransactions(ctx, nil, []model.CipherPredictionResult{
+	created, err := act.createTransactions(ctx, []model.CipherPredictionResult{
 		{MessageId: "msg-dup", OriginalRawText: dupRaw, PayeeID: payeeID, Amount: -10, Date: "2026-07-14"},
 		{MessageId: "msg-new", OriginalRawText: newRaw, PayeeID: payeeID, Amount: -20, Date: "2026-07-14"},
-	}, budgetID, slog.Default())
+	}, budgetID, logger.Logger(ctx))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

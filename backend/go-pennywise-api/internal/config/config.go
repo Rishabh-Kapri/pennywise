@@ -7,8 +7,10 @@ import (
 )
 
 type Config struct {
-	Environment           string
-	ServiceName           string
+	Environment string
+	ServiceName string
+	// DatabaseDriver picks the adapter behind the repositories (default postgres).
+	DatabaseDriver        string
 	DatabaseURL           string
 	JWTSecret             string
 	Domain                string
@@ -44,6 +46,7 @@ func Load() Config {
 	return Config{
 		Environment:           env,
 		ServiceName:           "pennywise-api",
+		DatabaseDriver:        os.Getenv("DATABASE_DRIVER"),
 		DatabaseURL:           os.Getenv("DATABASE_URL"),
 		JWTSecret:             os.Getenv("JWT_SECRET"),
 		Domain:                os.Getenv("DOMAIN"),

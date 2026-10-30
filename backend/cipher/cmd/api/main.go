@@ -16,6 +16,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/factory"
+
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/memory"
 	agent "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/runtime"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/tools"
@@ -28,7 +30,6 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedMiddleware "github.com/Rishabh-Kapri/pennywise/backend/shared/middleware"
@@ -88,12 +89,12 @@ func main() {
 		}
 	}()
 
-	// Database connection via shared module
-	dbConn, err := repository.ConnectWithURL(cfg.DatabaseURL)
+	// The repository ports; DATABASE_DRIVER picks the adapter behind them.
+	database, err := factory.ConnectDB(factory.Config{Driver: cfg.DatabaseDriver, URL: cfg.DatabaseURL})
 	if err != nil {
 		logger.Fatal(err.Error())
 	}
-	defer dbConn.Close()
+	defer database.Close()
 
 	redisOptions := &redis.Options{Addr: "localhost:6379"}
 	if cfg.RedisURL != "" {
@@ -119,24 +120,15 @@ func main() {
 	pennywiseEngine := httpclient.NewHttpTransport(cfg.PennywiseServiceURL)
 	pennywiseHttpTransport := transport.NewClient("pennywise", pennywiseEngine)
 
-	// Repository
-	txnEmbeddingRepo := repository.NewTransactionEmbeddingRepository(dbConn)
-	accountRepo := repository.NewAccountRepository(dbConn)
-	budgetRepo := repository.NewBudgetRepository(dbConn)
-	payeeRepo := repository.NewPayeesRepository(dbConn)
-	payeeRuleRepo := repository.NewPayeeRuleRepository(dbConn)
-	categoryRepo := repository.NewCategoryRepository(dbConn)
-	agentMemoryRepo := repository.NewAgentMemoryRepository(dbConn)
-
 	// Service
 
 	// Read-only pool for the agent's query tools. When AGENT_DB_URL names a
 	// least-privilege role, row-level security confines every agent read to the
 	// caller's budget; without it we fall back to the app connection, where those
 	// policies do not apply.
-	agentReadDB := dbConn
+	agentReadDB := database.Pool
 	if cfg.AgentReadOnlyDatabaseURL != "" {
-		agentReadDB, err = repository.ConnectWithURL(cfg.AgentReadOnlyDatabaseURL)
+		agentReadDB, err = factory.OpenSQLPool(factory.Config{Driver: cfg.DatabaseDriver, URL: cfg.AgentReadOnlyDatabaseURL})
 		if err != nil {
 			logger.Fatal("error connecting to agent read-only database", "error", err)
 		}
@@ -167,7 +159,7 @@ func main() {
 	toolRegistry.RegisterTool(tools.NewGetTopTransactionsTool(agentReadDB))
 	toolRegistry.RegisterTool(tools.NewGetSchemaTool())
 	toolRegistry.RegisterTool(tools.NewExecuteSQLTool(agentReadDB))
-	toolRegistry.RegisterTool(tools.NewUpdateWorkingMemoryTool(dbConn))
+	toolRegistry.RegisterTool(tools.NewUpdateWorkingMemoryTool(database.AgentMemory))
 
 	// Every chat model call (pipeline, statements, agent) runs on the budget
 	// owner's own AI providers. There is no server-key fallback.
@@ -177,13 +169,13 @@ func main() {
 		llmCredentialsBox = nil
 	}
 	llmResolver := userllm.New(
-		repository.NewUserLLMProviderRepository(dbConn),
+		database.UserLLMProvider,
 		llmCredentialsBox,
 		tel,
 		cfg.AllowPrivateLLMURLs,
 	)
 	llmProviderHandler := handler.NewLLMProviderHandler(llmResolver)
-	memoryService := memory.NewMemoryService(agentMemoryRepo, llmResolver, agentLocation)
+	memoryService := memory.NewMemoryService(database.AgentMemory, llmResolver, agentLocation)
 
 	agent, err := agent.NewAgent(
 		llmResolver,
@@ -205,11 +197,11 @@ func main() {
 		llmResolver,
 		ollamaClient,
 		mlpClient,
-		txnEmbeddingRepo,
-		accountRepo,
-		payeeRepo,
-		payeeRuleRepo,
-		categoryRepo,
+		database.TransactionEmbedding,
+		database.Account,
+		database.Payee,
+		database.PayeeRule,
+		database.Category,
 		tel.Tracer,
 		// Optional remote embedding backends for EMAIL_EMBEDDING_PROVIDERS. Nil
 		// entries (no API key) are dropped, so this is safe to pass always.
@@ -283,7 +275,7 @@ func main() {
 		api.GET("", healthPage)
 
 		budgetApi := api.Group("")
-		budgetApi.Use(sharedMiddleware.BudgetIdMiddleware(budgetRepo))
+		budgetApi.Use(sharedMiddleware.BudgetIdMiddleware(database.Budget))
 		budgetApi.POST("/email/normalize", predictionHandler.NormalizeEmailText)
 		budgetApi.POST("/email/extract", predictionHandler.ExtractEmailData)
 		budgetApi.POST("/predict", predictionHandler.Predict)
@@ -299,7 +291,7 @@ func main() {
 
 		{
 			agentApi := api.Group("/agent")
-			agentApi.Use(sharedMiddleware.BudgetIdMiddleware(budgetRepo))
+			agentApi.Use(sharedMiddleware.BudgetIdMiddleware(database.Budget))
 			agentApi.GET("/runs", agentHandler.GetRun)
 			agentApi.POST("/runs", agentHandler.CreateRun)
 			agentApi.GET("/runs/cancel/:id", agentHandler.CancelRun)

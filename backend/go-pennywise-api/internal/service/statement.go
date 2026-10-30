@@ -10,14 +10,13 @@ import (
 	"strings"
 	"time"
 
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -63,6 +62,7 @@ type statementService struct {
 	// at once would otherwise all queue on the same local model anyway, each
 	// holding its timeout while it waits.
 	extractSlot chan struct{}
+	dbTxn       repository.DBTxn
 }
 
 func NewStatementService(
@@ -73,8 +73,10 @@ func NewStatementService(
 	categoryRepo repository.CategoryRepository,
 	transactionService TransactionService,
 	cipherClient CipherClient,
+	dbTxn repository.DBTxn,
 ) StatementService {
 	return &statementService{
+		dbTxn:              dbTxn,
 		repo:               repo,
 		transactionRepo:    transactionRepo,
 		accountRepo:        accountRepo,
@@ -99,7 +101,7 @@ func (s *statementService) Upload(
 		return nil, false, errs.New(errs.CodeInvalidArgument, "file is not a PDF")
 	}
 	if defaultAccountID != nil {
-		if _, err := s.accountRepo.GetById(ctx, nil, budgetID, *defaultAccountID); err != nil {
+		if _, err := s.accountRepo.GetById(ctx, budgetID, *defaultAccountID); err != nil {
 			return nil, false, errs.New(errs.CodeInvalidArgument, "account not found")
 		}
 	}
@@ -147,7 +149,7 @@ func (s *statementService) List(ctx context.Context) ([]model.StatementImport, e
 func (s *statementService) Retry(ctx context.Context, id uuid.UUID) (*model.StatementImport, error) {
 	budgetID := utils.MustBudgetID(ctx)
 	if err := s.repo.Restart(ctx, budgetID, id); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, repository.ErrNotFound) {
 			return nil, errs.New(errs.CodeInvalidArgument, "only a failed statement can be retried")
 		}
 		return nil, err
@@ -162,7 +164,7 @@ func (s *statementService) Retry(ctx context.Context, id uuid.UUID) (*model.Stat
 
 func (s *statementService) Delete(ctx context.Context, id uuid.UUID) error {
 	err := s.repo.Delete(ctx, utils.MustBudgetID(ctx), id)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, repository.ErrNotFound) {
 		return ErrStatementNotFound
 	}
 	return err
@@ -181,7 +183,7 @@ func (s *statementService) FailInterrupted(ctx context.Context) {
 
 func (s *statementService) load(ctx context.Context, budgetID, id uuid.UUID) (*model.StatementImport, error) {
 	imp, err := s.repo.GetByID(ctx, budgetID, id)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, repository.ErrNotFound) {
 		return nil, ErrStatementNotFound
 	}
 	if err != nil {
@@ -367,7 +369,7 @@ func (s *statementService) SetSectionAccount(
 		return nil, errs.New(errs.CodeInvalidArgument, "section %d does not exist", section)
 	}
 	if accountID != nil {
-		if _, err := s.accountRepo.GetById(ctx, nil, budgetID, *accountID); err != nil {
+		if _, err := s.accountRepo.GetById(ctx, budgetID, *accountID); err != nil {
 			return nil, errs.New(errs.CodeInvalidArgument, "account not found")
 		}
 	}
@@ -629,8 +631,8 @@ func (s *statementService) createFromRow(
 ) (*uuid.UUID, error) {
 	var createdID *uuid.UUID
 	var newPayee *model.Payee
-	err := withTx(ctx, s.repo.GetDB(), func(tx pgx.Tx) error {
-		payeeID, created, err := s.resolvePayee(ctx, tx, budgetID, row, item, payeeByName)
+	err := s.dbTxn.Do(ctx, func(ctx context.Context) error {
+		payeeID, created, err := s.resolvePayee(ctx, budgetID, row, item, payeeByName)
 		if err != nil {
 			return err
 		}
@@ -651,7 +653,7 @@ func (s *statementService) createFromRow(
 		if hash != "" {
 			txn.DedupeHash = &hash
 		}
-		txns, err := s.transactionService.CreateWithTx(ctx, tx, txn)
+		txns, err := s.transactionService.CreateInTx(ctx, txn)
 		if err != nil {
 			return err
 		}
@@ -674,7 +676,6 @@ func (s *statementService) createFromRow(
 // is returned so the caller can remember it after commit.
 func (s *statementService) resolvePayee(
 	ctx context.Context,
-	tx pgx.Tx,
 	budgetID uuid.UUID,
 	row model.StatementRow,
 	item model.StatementCreateItem,
@@ -693,7 +694,7 @@ func (s *statementService) resolvePayee(
 	if id, ok := payeeByName[strings.ToLower(name)]; ok {
 		return id, nil, nil
 	}
-	created, err := s.payeeRepo.Create(ctx, tx, model.Payee{BudgetID: budgetID, Name: name})
+	created, err := s.payeeRepo.Create(ctx, model.Payee{BudgetID: budgetID, Name: name})
 	if err != nil {
 		return uuid.Nil, nil, errs.Wrap(errs.CodeInternalError, "error creating payee "+name, err)
 	}

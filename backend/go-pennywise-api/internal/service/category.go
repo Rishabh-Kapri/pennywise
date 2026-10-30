@@ -5,13 +5,12 @@ import (
 	"errors"
 	"fmt"
 
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 type CategoryService interface {
@@ -43,6 +42,7 @@ type categoryService struct {
 	monthlyBudgetRepo repository.MonthlyBudgetRepository
 	transactionRepo   repository.TransactionRepository
 	cipherClient      CipherClient
+	dbTxn             repository.DBTxn
 }
 
 func NewCategoryService(
@@ -50,14 +50,15 @@ func NewCategoryService(
 	mbR repository.MonthlyBudgetRepository,
 	txnR repository.TransactionRepository,
 	cipher CipherClient,
+	dbTxn repository.DBTxn,
 ) CategoryService {
-	return &categoryService{repo: r, monthlyBudgetRepo: mbR, transactionRepo: txnR, cipherClient: cipher}
+	return &categoryService{dbTxn: dbTxn, repo: r, monthlyBudgetRepo: mbR, transactionRepo: txnR, cipherClient: cipher}
 }
 
 func (s *categoryService) UpdateDetails(ctx context.Context, id uuid.UUID, details model.CategoryDetailsUpdate) error {
 	budgetId := utils.MustBudgetID(ctx)
 	err := s.repo.UpdateDetails(ctx, budgetId, id, details.Note, details.Description)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, repository.ErrNotFound) {
 		return ErrCategoryNotFound
 	}
 	return err
@@ -69,7 +70,7 @@ func (s *categoryService) UpdateDetails(ctx context.Context, id uuid.UUID, detai
 func (s *categoryService) SuggestDescription(ctx context.Context, id uuid.UUID) (string, error) {
 	budgetId := utils.MustBudgetID(ctx)
 	descCtx, err := s.repo.GetDescriptionContext(ctx, budgetId, id, descriptionPayeeLimit)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, repository.ErrNotFound) {
 		return "", ErrCategoryNotFound
 	}
 	if err != nil {
@@ -136,7 +137,7 @@ func (s *categoryService) GetById(ctx context.Context, id uuid.UUID) (*model.Cat
 func (s *categoryService) Create(ctx context.Context, category model.Category) (*model.Category, error) {
 	budgetId := utils.MustBudgetID(ctx)
 	category.BudgetID = budgetId
-	return s.repo.Create(ctx, nil, category)
+	return s.repo.Create(ctx, category)
 }
 
 func (s *categoryService) DeleteById(ctx context.Context, id uuid.UUID) error {
@@ -160,10 +161,10 @@ func (s *categoryService) UpdateMonthlyBudget(
 ) error {
 	budgetId := utils.MustBudgetID(ctx)
 
-	return utils.WithTx(ctx, s.monthlyBudgetRepo.GetDB(), func(tx pgx.Tx) error {
-		exists, err := s.monthlyBudgetRepo.GetByCatIdAndMonth(ctx, tx, budgetId, categoryId, month)
+	return s.dbTxn.Do(ctx, func(ctx context.Context) error {
+		exists, err := s.monthlyBudgetRepo.GetByCatIdAndMonth(ctx, budgetId, categoryId, month)
 		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
+			if errors.Is(err, repository.ErrNotFound) {
 				logger.Logger(ctx).Info("monthly budget not found, creating", "month", month, "categoryId", categoryId)
 				// no budget exists for this category
 				monthyBudget := model.MonthlyBudget{
@@ -173,7 +174,7 @@ func (s *categoryService) UpdateMonthlyBudget(
 					Budgeted:         newBudgeted,
 					CarryoverBalance: 0.0,
 				}
-				err = s.monthlyBudgetRepo.Create(ctx, tx, budgetId, monthyBudget)
+				err = s.monthlyBudgetRepo.Create(ctx, budgetId, monthyBudget)
 				if err != nil {
 					return fmt.Errorf("error while creating monthly budget: %w", err)
 				}
@@ -185,7 +186,7 @@ func (s *categoryService) UpdateMonthlyBudget(
 				logger.Logger(ctx).Debug("budgeted unchanged, skipping")
 				return nil
 			}
-			err = s.monthlyBudgetRepo.UpdateBudgetedByCatIdAndMonth(ctx, tx, budgetId, categoryId, month, newBudgeted)
+			err = s.monthlyBudgetRepo.UpdateBudgetedByCatIdAndMonth(ctx, budgetId, categoryId, month, newBudgeted)
 			if err != nil {
 				return err
 			}

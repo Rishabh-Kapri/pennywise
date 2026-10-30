@@ -5,17 +5,16 @@ import (
 	"testing"
 	"time"
 
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
+
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
 type mockCategoryGoalRepo struct {
-	repository.BaseRepository
 	mock.Mock
 }
 
@@ -61,7 +60,7 @@ func TestCategoryGoalService_Upsert(t *testing.T) {
 
 	t.Run("missing_category_is_not_found", func(t *testing.T) {
 		repo := &mockCategoryGoalRepo{}
-		repo.On("Upsert", mock.Anything, budgetID, catID, mock.Anything).Return(pgx.ErrNoRows)
+		repo.On("Upsert", mock.Anything, budgetID, catID, mock.Anything).Return(repository.ErrNotFound)
 		_, err := newTestGoalService(repo).
 			Upsert(ctx, catID, model.CategoryGoal{Type: model.GoalTypeMonthlyFunding, Target: 50})
 		assert.ErrorIs(t, err, ErrCategoryNotFound)
@@ -82,7 +81,7 @@ func TestCategoryGoalService_Delete(t *testing.T) {
 
 	t.Run("no_goal_is_not_found", func(t *testing.T) {
 		repo := &mockCategoryGoalRepo{}
-		repo.On("Delete", mock.Anything, budgetID, catID).Return(pgx.ErrNoRows)
+		repo.On("Delete", mock.Anything, budgetID, catID).Return(repository.ErrNotFound)
 		assert.ErrorIs(t, newTestGoalService(repo).Delete(ctx, catID), ErrCategoryGoalNotFound)
 	})
 }

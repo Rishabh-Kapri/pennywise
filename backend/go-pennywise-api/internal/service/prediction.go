@@ -4,12 +4,11 @@ import (
 	"context"
 	"errors"
 
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 type PredictionService interface {
@@ -20,7 +19,6 @@ type PredictionService interface {
 	Update(ctx context.Context, id uuid.UUID, prediction model.Prediction) error
 	DeleteById(ctx context.Context, id uuid.UUID) error
 	CreateCipherPrediction(ctx context.Context, p model.CipherPredictionRecord) (*model.CipherPredictionRecord, error)
-	CreateCipherPredictionWithTx(ctx context.Context, tx pgx.Tx, p model.CipherPredictionRecord) (*model.CipherPredictionRecord, error)
 }
 
 type predictionService struct {
@@ -47,7 +45,7 @@ func (s *predictionService) GetByTransactionID(ctx context.Context, transactionI
 	details := &model.TransactionPredictionDetails{}
 
 	cipherPrediction, err := s.cipherRepo.GetByTransactionID(ctx, budgetID, transactionID)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	if err != nil && !errors.Is(err, repository.ErrNotFound) {
 		return nil, err
 	}
 	if err == nil {
@@ -55,7 +53,7 @@ func (s *predictionService) GetByTransactionID(ctx context.Context, transactionI
 	}
 
 	prediction, err := s.repo.GetByTxnId(ctx, budgetID, transactionID)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	if err != nil && !errors.Is(err, repository.ErrNotFound) {
 		return nil, err
 	}
 	if err == nil {
@@ -80,17 +78,11 @@ func (s *predictionService) Update(ctx context.Context, id uuid.UUID, prediction
 
 func (s *predictionService) DeleteById(ctx context.Context, id uuid.UUID) error {
 	budgetId := utils.MustBudgetID(ctx)
-	return s.repo.DeleteByTxnId(ctx, nil, budgetId, id)
+	return s.repo.DeleteByTxnId(ctx, budgetId, id)
 }
 
 func (s *predictionService) CreateCipherPrediction(ctx context.Context, p model.CipherPredictionRecord) (*model.CipherPredictionRecord, error) {
-	budgetId := utils.MustBudgetID(ctx)
-	p.BudgetID = budgetId
-	return s.CreateCipherPredictionWithTx(ctx, nil, p)
-}
-
-func (s *predictionService) CreateCipherPredictionWithTx(ctx context.Context, tx pgx.Tx, p model.CipherPredictionRecord) (*model.CipherPredictionRecord, error) {
 	budgetID := utils.MustBudgetID(ctx)
 	p.BudgetID = budgetID
-	return s.cipherRepo.Create(ctx, tx, p)
+	return s.cipherRepo.Create(ctx, p)
 }

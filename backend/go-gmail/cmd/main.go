@@ -9,6 +9,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/factory"
+
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/auth"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/client"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/config"
@@ -17,7 +19,6 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/pubsub"
 	temporalActivities "github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/temporal"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
@@ -223,11 +224,13 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
-	dbConn, err := db.ConnectWithURL(cfg.DatabaseURL)
+	// The repository ports; DATABASE_DRIVER picks the adapter behind them.
+	database, err := factory.ConnectDB(factory.Config{Driver: cfg.DatabaseDriver, URL: cfg.DatabaseURL})
 	if err != nil {
 		logger.Fatal(err.Error())
 	}
-	log.Info("db connected", "url", cfg.DatabaseURL)
+	defer database.Close()
+	log.Info("db connected")
 
 	if cfg.Environment != "local" && cfg.TemporalServerHost != "" {
 		temporalClient, err = connectToTemporal(ctx, *cfg)
@@ -277,9 +280,8 @@ func main() {
 	api := router.Group("/api")
 	api.GET("", healthPage)
 
-	budgetRepo := db.NewBudgetRepository(dbConn)
 	budgetApiGroup := api.Group("")
-	budgetApiGroup.Use(sharedMiddleware.BudgetIdMiddleware(budgetRepo))
+	budgetApiGroup.Use(sharedMiddleware.BudgetIdMiddleware(database.Budget))
 
 	budgetApiGroup.POST("/watch", watchHandler)
 	budgetApiGroup.POST("/test/setup-watch", setupWatchTestHandler)

@@ -10,9 +10,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/factory"
+
 	apiClient "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/client"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/config"
-	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/handler"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/middleware"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
@@ -21,7 +22,6 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/websocket"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedMiddleware "github.com/Rishabh-Kapri/pennywise/backend/shared/middleware"
@@ -64,8 +64,13 @@ func main() {
 		}
 	}()
 
-	dbConn := db.Connect(ctx)
-	defer dbConn.Close()
+	// The repository ports; DATABASE_DRIVER picks the adapter behind them.
+	database, err := factory.ConnectDB(factory.Config{Driver: config.DatabaseDriver, URL: config.DatabaseURL})
+	if err != nil {
+		logger.Fatal("error opening database", "error", err)
+	}
+	defer database.Close()
+	logger.Logger(ctx).Info("connected to database")
 
 	redisOptions := &redis.Options{Addr: "localhost:6379"}
 	if config.RedisURL != "" {
@@ -133,44 +138,30 @@ func main() {
 		AllowCredentials: true,
 	}))
 
-	budgetRepo := repository.NewBudgetRepository(dbConn)
-	payeeRepo := repository.NewPayeesRepository(dbConn)
-	payeeRuleRepo := repository.NewPayeeRuleRepository(dbConn)
-	categoryRepo := repository.NewCategoryRepository(dbConn)
-	categoryGroupRepo := repository.NewCategoryGroupRepository(dbConn)
-	predictionRepo := repository.NewPredictionRepository(dbConn)
-	cipherPredictionRepo := repository.NewCipherPredictionRepository(dbConn)
-	accountRepo := repository.NewAccountRepository(dbConn)
-	userRepo := repository.NewUserRepository(dbConn)
-	transactionRepo := repository.NewTransactionRepository(dbConn)
-	embeddingRepo := repository.NewEmbeddingRepository(dbConn)
-	transactionEmbeddingRepo := repository.NewTransactionEmbeddingRepository(dbConn)
-	tagRepo := repository.NewTagRepository(dbConn)
-	authRepo := repository.NewAuthRepository(dbConn)
-	googleProviderRepo := repository.NewGoogleProviderRepository(dbConn)
-	apiKeyRepo := repository.NewAPIKeyRepository(dbConn)
-	agentRepo := repository.NewAgentRepository(dbConn)
-	pipelineRunRepo := repository.NewPipelineRunRepository(dbConn)
-
-	budgetService := service.NewBudgetService(budgetRepo, payeeRepo, categoryRepo, categoryGroupRepo)
+	budgetService := service.NewBudgetService(
+		database.Budget,
+		database.Payee,
+		database.Category,
+		database.CategoryGroup,
+		database.DBTxn,
+	)
 	budgetHandler := handler.NewBudgetHandler(budgetService)
 
-	accountService := service.NewAccountService(accountRepo, payeeRepo)
+	accountService := service.NewAccountService(database.Account, database.Payee, database.DBTxn)
 	accountHandler := handler.NewAccountHandler(accountService)
 
-	userService := service.NewUserService(userRepo)
+	userService := service.NewUserService(database.User)
 	userHandler := handler.NewUserHandler(userService)
 
-	payeeService := service.NewPayeeService(payeeRepo, payeeRuleRepo)
+	payeeService := service.NewPayeeService(database.Payee, database.PayeeRule, database.DBTxn)
 	payeeHandler := handler.NewPayeeHandler(payeeService)
 
-	categoryGroupService := service.NewCategoryGroupService(categoryGroupRepo)
+	categoryGroupService := service.NewCategoryGroupService(database.CategoryGroup)
 	categoryGroupHandler := handler.NewCategoryGroupHandler(categoryGroupService)
 
-	monthlyBudgetRepo := repository.NewMonthlyBudgetRepository(dbConn)
-	monthlyBudgetService := service.NewMonthlyBudgetService(monthlyBudgetRepo)
+	monthlyBudgetService := service.NewMonthlyBudgetService(database.MonthlyBudget)
 
-	predictionService := service.NewPredictionService(predictionRepo, cipherPredictionRepo)
+	predictionService := service.NewPredictionService(database.Prediction, database.CipherPrediction)
 	predictionHandler := handler.NewPredictionHandler(predictionService)
 
 	cipherHttpTransport := httpclient.NewHttpTransport(config.CipherServiceURL)
@@ -185,27 +176,26 @@ func main() {
 	)
 	cipherClient := service.NewCipherClient(cipherTransportClient)
 	agentClient := service.NewCipherAgentClient(cipherTransportClient)
-	agentService := service.NewAgentService(agentClient, agentRepo)
+	agentService := service.NewAgentService(agentClient, database.Agent, database.DBTxn)
 	agentHandler := handler.NewAgentHandler(agentService)
 
 	geocodeService := service.NewGeocodeService(config.NominatimURL, config.GeocodeCountryCodes)
 	transactionService := service.NewTransactionService(
-		transactionRepo,
-		budgetRepo,
-		transactionEmbeddingRepo,
+		database.Transaction,
+		database.Budget,
+		database.TransactionEmbedding,
 		cipherClient,
-		predictionRepo,
-		cipherPredictionRepo,
-		payeeRuleRepo,
-		accountRepo,
-		payeeRepo,
-		categoryRepo,
+		database.Prediction,
+		database.CipherPrediction,
+		database.PayeeRule,
+		database.Account,
+		database.Payee,
+		database.Category,
 		monthlyBudgetService,
 		geocodeService,
+		database.DBTxn,
 	)
 	transactionHandler := handler.NewTransactionHandler(transactionService)
-
-	transactionDocumentRepo := repository.NewTransactionDocumentRepository(dbConn)
 
 	// Document bodies live in Postgres. Local disk stays available for anyone
 	// who wants it, but the default keeps receipts inside the same backup and
@@ -219,7 +209,10 @@ func main() {
 		}
 		logger.Logger(ctx).Info("documents stored on local disk", "dir", config.UploadsDir)
 	} else {
-		documentStore, err = storage.NewPostgresStore(dbConn)
+		if database.Pool == nil {
+			logger.Fatal("DOCUMENT_STORAGE=postgres needs DATABASE_DRIVER=postgres; set DOCUMENT_STORAGE=local")
+		}
+		documentStore, err = storage.NewPostgresStore(database.Pool)
 		if err != nil {
 			logger.Logger(ctx).Error("failed to init document storage", "error", err)
 			panic(err)
@@ -227,37 +220,52 @@ func main() {
 		logger.Logger(ctx).Info("documents stored in postgres")
 	}
 
-	documentService := service.NewDocumentService(transactionDocumentRepo, transactionRepo, payeeRepo, documentStore)
+	documentService := service.NewDocumentService(
+		database.TransactionDocument,
+		database.Transaction,
+		database.Payee,
+		documentStore,
+	)
 	documentHandler := handler.NewDocumentHandler(documentService)
 
-	devicePushTokenRepo := repository.NewDevicePushTokenRepository(dbConn)
 	pushNotificationService := service.NewPushNotificationService(
-		devicePushTokenRepo,
+		database.DevicePushToken,
 		apiClient.NewExpoPushClient(config.ExpoPushURL),
 	)
 	deviceHandler := handler.NewDeviceHandler(pushNotificationService)
 	geocodeHandler := handler.NewGeocodeHandler(geocodeService)
 
-	categoryService := service.NewCategoryService(categoryRepo, monthlyBudgetRepo, transactionRepo, cipherClient)
+	categoryService := service.NewCategoryService(
+		database.Category,
+		database.MonthlyBudget,
+		database.Transaction,
+		cipherClient,
+		database.DBTxn,
+	)
 	categoryHandler := handler.NewCategoryHandler(categoryService)
 	categoryGoalHandler := handler.NewCategoryGoalHandler(
-		service.NewCategoryGoalService(repository.NewCategoryGoalRepository(dbConn)),
+		service.NewCategoryGoalService(database.CategoryGoal),
 	)
 
-	embeddingService := service.NewEmbeddingService(embeddingRepo)
+	embeddingService := service.NewEmbeddingService(database.Embedding)
 	embeddingHandler := handler.NewEmbeddingHandler(embeddingService)
 
-	tagService := service.NewTagService(tagRepo)
+	tagService := service.NewTagService(database.Tag)
 	tagHandler := handler.NewTagHandler(tagService)
 
 	gmailHttpTransport := httpclient.NewHttpTransport(config.GmailServiceURL)
 	gmailClient := transport.NewClient(config.GmailServiceName, gmailHttpTransport)
-	authService := service.NewAuthService(authRepo, googleProviderRepo, gmailClient)
+	authService := service.NewAuthService(database.Auth, database.GoogleProvider, gmailClient, database.DBTxn)
 	authHandler := handler.NewAuthHandler(authService)
 
-	userLLMProviderRepo := repository.NewUserLLMProviderRepository(dbConn)
 	onboardingHandler := handler.NewOnboardingHandler(
-		service.NewOnboardingService(budgetRepo, authRepo, googleProviderRepo, userLLMProviderRepo, gmailClient),
+		service.NewOnboardingService(
+			database.Budget,
+			database.Auth,
+			database.GoogleProvider,
+			database.UserLLMProvider,
+			gmailClient,
+		),
 	)
 	llmCredentialsBox, err := utils.NewSecretBox(config.LLMCredentialsKey)
 	if err != nil {
@@ -266,62 +274,64 @@ func main() {
 		llmCredentialsBox = nil
 	}
 	aiProviderHandler := handler.NewAIProviderHandler(service.NewAIProviderService(
-		userLLMProviderRepo,
+		database.UserLLMProvider,
 		llmCredentialsBox,
 		cipherTransportClient,
-		service.NewDemoUserCheck(googleProviderRepo, config.DemoMode),
+		service.NewDemoUserCheck(database.GoogleProvider, config.DemoMode),
 	))
 
 	var demoHandler handler.DemoHandler
 	if config.DemoMode {
 		demoService := service.NewDemoService(
 			authService,
-			authRepo,
-			googleProviderRepo,
-			budgetRepo,
-			categoryGroupRepo,
-			categoryRepo,
-			payeeRepo,
-			accountRepo,
-			payeeRuleRepo,
+			database.Auth,
+			database.GoogleProvider,
+			database.Budget,
+			database.CategoryGroup,
+			database.Category,
+			database.Payee,
+			database.Account,
+			database.PayeeRule,
+			database.DBTxn,
+			database.BulkInserter,
 		)
 		demoHandler = handler.NewDemoHandler(demoService)
 	}
 
-	apiKeyService := service.NewApiKeyService(apiKeyRepo)
+	apiKeyService := service.NewApiKeyService(database.APIKey)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 
-	loanMetadataRepo := repository.NewLoanMetadataRepository(dbConn)
-	loanMetadataService := service.NewLoanMetadataService(loanMetadataRepo)
+	loanMetadataService := service.NewLoanMetadataService(database.LoanMetadata)
 	loanMetadataHandler := handler.NewLoanMetadataHandler(loanMetadataService)
 
-	reportRepo := repository.NewReportRepository(dbConn)
-	reportService := service.NewReportService(reportRepo)
+	reportService := service.NewReportService(database.Report)
 	reportHandler := handler.NewReportHandler(reportService)
 
-	pipelineService := service.NewPipelineService(pipelineRunRepo, temporalClient)
+	pipelineService := service.NewPipelineService(database.PipelineRun, temporalClient)
 	pipelineHandler := handler.NewPipelineHandler(pipelineService)
 
-	recurringTransactionRepo := repository.NewRecurringTransactionRepository(dbConn)
-	recurringTransactionService := service.NewRecurringTransactionService(recurringTransactionRepo, transactionService)
+	recurringTransactionService := service.NewRecurringTransactionService(
+		database.RecurringTransaction,
+		transactionService,
+	)
 	recurringTransactionHandler := handler.NewRecurringTransactionHandler(recurringTransactionService)
 
-	predictionReviewRepo := repository.NewPredictionReviewRepository(dbConn)
 	predictionReviewService := service.NewPredictionReviewService(
-		predictionReviewRepo,
-		transactionRepo,
+		database.PredictionReview,
+		database.Transaction,
 		transactionService,
 	)
 	predictionReviewHandler := handler.NewPredictionReviewHandler(predictionReviewService)
 
 	statementService := service.NewStatementService(
-		repository.NewStatementImportRepository(dbConn),
-		transactionRepo,
-		accountRepo,
-		payeeRepo,
-		categoryRepo,
+		database.StatementImport,
+		database.Transaction,
+		database.Account,
+		database.Payee,
+		database.Category,
 		transactionService,
 		cipherClient,
+		database.DBTxn,
 	)
 	// Extraction runs in-process; anything still "processing" was cut off.
 	statementService.FailInterrupted(appCtx)
@@ -336,7 +346,7 @@ func main() {
 	// Auth middleware
 	authMiddleware := middleware.AuthMiddleware(authService, apiKeyService)
 	rateLimitMiddleware := middleware.RateLimitMiddleware(service.NewRateLimitService(redisClient))
-	budgetMiddleware := sharedMiddleware.BudgetIdMiddleware(budgetRepo)
+	budgetMiddleware := sharedMiddleware.BudgetIdMiddleware(database.Budget)
 
 	// Websocket routes
 	{
@@ -487,9 +497,21 @@ func main() {
 			aiProviderGroup := router.Group("/api/ai-providers")
 			aiProviderGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
 			aiProviderGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), aiProviderHandler.List)
-			aiProviderGroup.PUT("/:provider", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), aiProviderHandler.Upsert)
-			aiProviderGroup.DELETE("/:provider", middleware.RouteAuthMiddleware(sharedModel.ScopeDelete), aiProviderHandler.Delete)
-			aiProviderGroup.POST("/:provider/test", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), aiProviderHandler.Test)
+			aiProviderGroup.PUT(
+				"/:provider",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				aiProviderHandler.Upsert,
+			)
+			aiProviderGroup.DELETE(
+				"/:provider",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeDelete),
+				aiProviderHandler.Delete,
+			)
+			aiProviderGroup.POST(
+				"/:provider/test",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				aiProviderHandler.Test,
+			)
 		}
 		{
 			accountGroup := router.Group("/api/accounts")
@@ -642,8 +664,16 @@ func main() {
 				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
 				statementHandler.CreateMissing,
 			)
-			statementGroup.POST(":id/retry", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), statementHandler.Retry)
-			statementGroup.DELETE(":id", middleware.RouteAuthMiddleware(sharedModel.ScopeDelete), statementHandler.Delete)
+			statementGroup.POST(
+				":id/retry",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				statementHandler.Retry,
+			)
+			statementGroup.DELETE(
+				":id",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeDelete),
+				statementHandler.Delete,
+			)
 		}
 		{
 			payeeGroup := router.Group("/api/payees")
@@ -796,15 +826,31 @@ func main() {
 		{
 			reportGroup := router.Group("/api/reports")
 			reportGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
-			reportGroup.GET("/spending", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), reportHandler.GetSpending)
+			reportGroup.GET(
+				"/spending",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				reportHandler.GetSpending,
+			)
 			reportGroup.GET(
 				"/income-expense",
 				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
 				reportHandler.GetIncomeExpense,
 			)
-			reportGroup.GET("/networth", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), reportHandler.GetNetWorth)
-			reportGroup.GET("/cashflow", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), reportHandler.GetCashFlow)
-			reportGroup.GET("/loans", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), reportHandler.GetLoanHistories)
+			reportGroup.GET(
+				"/networth",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				reportHandler.GetNetWorth,
+			)
+			reportGroup.GET(
+				"/cashflow",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				reportHandler.GetCashFlow,
+			)
+			reportGroup.GET(
+				"/loans",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				reportHandler.GetLoanHistories,
+			)
 		}
 		{
 			pipelineGroup := router.Group("/api/pipeline")
@@ -904,7 +950,7 @@ func main() {
 			PredictionService:  predictionService,
 			WebsocketService:   websocketService,
 			PushService:        pushNotificationService,
-			DB:                 dbConn,
+			DBTxn:              database.DBTxn,
 		})
 		w.RegisterActivity(&temporalActivities.CreateCipherPredictionActivity{
 			PredictionService: predictionService,
@@ -913,8 +959,9 @@ func main() {
 			AuthService: authService,
 		})
 		w.RegisterActivity(&temporalActivities.PipelineStatusActivity{
-			PipelineRunRepo:  pipelineRunRepo,
+			PipelineRunRepo:  database.PipelineRun,
 			WebsocketService: websocketService,
+			DBTxn:            database.DBTxn,
 		})
 
 		if err := w.Start(); err != nil {

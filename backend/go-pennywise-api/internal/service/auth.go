@@ -10,16 +10,14 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/config"
 
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
@@ -52,6 +50,7 @@ type authService struct {
 	repo           repository.AuthRepository
 	googleProvider repository.GoogleProviderRepository
 	transport      *transport.Client
+	dbTxn          repository.DBTxn
 }
 
 const googleUserInfoURL = "https://www.googleapis.com/oauth2/v2/userinfo"
@@ -120,8 +119,9 @@ func NewAuthService(
 	r repository.AuthRepository,
 	googleProvider repository.GoogleProviderRepository,
 	transport *transport.Client,
+	dbTxn repository.DBTxn,
 ) AuthService {
-	return &authService{repo: r, googleProvider: googleProvider, config: config.Load(), transport: transport}
+	return &authService{dbTxn: dbTxn, repo: r, googleProvider: googleProvider, config: config.Load(), transport: transport}
 }
 
 func (s *authService) SetupGmailWatch(
@@ -316,14 +316,14 @@ func (s *authService) createGoogleUser(
 	log.Info("creating new google user", "googleId", profile.ID, "email", profile.Email, "oauthClientType", oauthClientType)
 
 	var result *model.UserWithCredentials
-	err := utils.WithTx(ctx, s.repo.GetDB(), func(tx pgx.Tx) error {
-		authUser, err := s.repo.CreateUser(ctx, tx)
+	err := s.dbTxn.Do(ctx, func(ctx context.Context) error {
+		authUser, err := s.repo.CreateUser(ctx)
 		if err != nil {
 			return errs.Wrap(errs.CodeAuthCreateFailed, "failed to create auth user", err)
 		}
 
 		userWithCreds, err := s.googleProvider.Create(
-			ctx, tx, authUser.ID,
+			ctx, authUser.ID,
 			profile.ID, oauthClientType, profile.Name, profile.Picture, profile.Email,
 			refreshToken,
 			nil,
@@ -356,9 +356,9 @@ func (s *authService) createGoogleProviderForUser(
 	log.Info("creating google provider for existing user", "authUserId", authUser.ID, "googleId", profile.ID, "email", profile.Email, "oauthClientType", oauthClientType)
 
 	var result *model.UserWithCredentials
-	err := utils.WithTx(ctx, s.repo.GetDB(), func(tx pgx.Tx) error {
+	err := s.dbTxn.Do(ctx, func(ctx context.Context) error {
 		userWithCreds, err := s.googleProvider.Create(
-			ctx, tx, authUser.ID,
+			ctx, authUser.ID,
 			profile.ID, oauthClientType, profile.Name, profile.Picture, profile.Email,
 			refreshToken,
 			nil,
@@ -435,7 +435,7 @@ func (s *authService) GetUserById(ctx context.Context, userID uuid.UUID) (*model
 }
 
 func (s *authService) GetAllGoogleUsers(ctx context.Context) ([]model.GoogleProviderUser, error) {
-	return s.googleProvider.GetAll(ctx, nil)
+	return s.googleProvider.GetAll(ctx)
 }
 
 func (s *authService) GetCurrentUser(ctx context.Context, userID uuid.UUID) (*model.CurrentAuthUserResponse, error) {

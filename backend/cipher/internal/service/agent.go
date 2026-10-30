@@ -12,10 +12,10 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/memory"
 	agent "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/runtime"
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
@@ -41,7 +41,7 @@ func (e *ClarifyError) StatusCode() int { return http.StatusUnprocessableEntity 
 type agentService struct {
 	redis           *redis.Client
 	agent           *agent.Agent
-	agentMemoryRepo db.AgentMemoryRepository
+	agentMemoryRepo repository.AgentMemoryRepository
 	pennywiseAPI    *transport.Client
 	memoryService   memory.Memory
 	llmResolver     llm.LLMResolver

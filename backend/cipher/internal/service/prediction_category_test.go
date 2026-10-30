@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"

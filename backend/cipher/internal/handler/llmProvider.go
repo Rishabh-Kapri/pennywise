@@ -5,8 +5,9 @@ import (
 	"net/http"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/userllm"
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
+
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 
 	"github.com/gin-gonic/gin"
 )

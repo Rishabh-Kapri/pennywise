@@ -8,13 +8,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
+
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/config"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -36,8 +37,8 @@ func (m *svcAccountRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]mode
 	}
 	return nil, args.Error(1)
 }
-func (m *svcAccountRepo) GetById(ctx context.Context, tx pgx.Tx, budgetId, accountId uuid.UUID) (*model.Account, error) {
-	args := m.Called(ctx, tx, budgetId, accountId)
+func (m *svcAccountRepo) GetById(ctx context.Context, budgetId, accountId uuid.UUID) (*model.Account, error) {
+	args := m.Called(ctx, budgetId, accountId)
 	if v := args.Get(0); v != nil {
 		return v.(*model.Account), args.Error(1)
 	}
@@ -57,22 +58,22 @@ func (m *svcAccountRepo) Search(ctx context.Context, budgetId uuid.UUID, query s
 	}
 	return nil, args.Error(1)
 }
-func (m *svcAccountRepo) Create(ctx context.Context, tx pgx.Tx, account model.Account) (*model.Account, error) {
-	args := m.Called(ctx, tx, account)
+func (m *svcAccountRepo) Create(ctx context.Context, account model.Account) (*model.Account, error) {
+	args := m.Called(ctx, account)
 	if v := args.Get(0); v != nil {
 		return v.(*model.Account), args.Error(1)
 	}
 	return nil, args.Error(1)
 }
-func (m *svcAccountRepo) Update(ctx context.Context, tx pgx.Tx, budgetId, id uuid.UUID, account model.Account) (*model.Account, error) {
-	args := m.Called(ctx, tx, budgetId, id, account)
+func (m *svcAccountRepo) Update(ctx context.Context, budgetId, id uuid.UUID, account model.Account) (*model.Account, error) {
+	args := m.Called(ctx, budgetId, id, account)
 	if v := args.Get(0); v != nil {
 		return v.(*model.Account), args.Error(1)
 	}
 	return nil, args.Error(1)
 }
-func (m *svcAccountRepo) UpdateTransferPayee(ctx context.Context, tx pgx.Tx, accountId, payeeId uuid.UUID) error {
-	return m.Called(ctx, tx, accountId, payeeId).Error(0)
+func (m *svcAccountRepo) UpdateTransferPayee(ctx context.Context, accountId, payeeId uuid.UUID) error {
+	return m.Called(ctx, accountId, payeeId).Error(0)
 }
 func (m *svcAccountRepo) GetAllSimplified(ctx context.Context, budgetId uuid.UUID) ([]model.AccountSimplified, error) {
 	args := m.Called(ctx, budgetId)
@@ -108,8 +109,8 @@ func (m *svcTagRepo) GetById(ctx context.Context, budgetId, id uuid.UUID) (*mode
 	}
 	return nil, args.Error(1)
 }
-func (m *svcTagRepo) Create(ctx context.Context, tx pgx.Tx, tag model.Tag) (*model.Tag, error) {
-	args := m.Called(ctx, tx, tag)
+func (m *svcTagRepo) Create(ctx context.Context, tag model.Tag) (*model.Tag, error) {
+	args := m.Called(ctx, tag)
 	if v := args.Get(0); v != nil {
 		return v.(*model.Tag), args.Error(1)
 	}
@@ -149,15 +150,8 @@ func (m *svcPayeeRepo) GetById(ctx context.Context, budgetId, id uuid.UUID) (*mo
 	}
 	return nil, args.Error(1)
 }
-func (m *svcPayeeRepo) GetByIdTx(ctx context.Context, tx pgx.Tx, budgetId, id uuid.UUID) (*model.Payee, error) {
-	args := m.Called(ctx, tx, budgetId, id)
-	if v := args.Get(0); v != nil {
-		return v.(*model.Payee), args.Error(1)
-	}
-	return nil, args.Error(1)
-}
-func (m *svcPayeeRepo) Create(ctx context.Context, tx pgx.Tx, payee model.Payee) (*model.Payee, error) {
-	args := m.Called(ctx, tx, payee)
+func (m *svcPayeeRepo) Create(ctx context.Context, payee model.Payee) (*model.Payee, error) {
+	args := m.Called(ctx, payee)
 	if v := args.Get(0); v != nil {
 		return v.(*model.Payee), args.Error(1)
 	}
@@ -176,13 +170,12 @@ func (m *svcPayeeRepo) GetStats(ctx context.Context, budgetId uuid.UUID) ([]mode
 	}
 	return nil, args.Error(1)
 }
-func (m *svcPayeeRepo) MergeTx(
+func (m *svcPayeeRepo) Merge(
 	ctx context.Context,
-	tx pgx.Tx,
 	budgetId, targetId uuid.UUID,
 	sourceIds []uuid.UUID,
 ) (*model.PayeeMergeResult, error) {
-	args := m.Called(ctx, tx, budgetId, targetId, sourceIds)
+	args := m.Called(ctx, budgetId, targetId, sourceIds)
 	if v := args.Get(0); v != nil {
 		return v.(*model.PayeeMergeResult), args.Error(1)
 	}
@@ -195,8 +188,8 @@ type svcPayeeRuleRepo struct {
 	mock.Mock
 }
 
-func (m *svcPayeeRuleRepo) CreatePayeeRule(ctx context.Context, tx pgx.Tx, payeeMatch model.PayeeRule) error {
-	return m.Called(ctx, tx, payeeMatch).Error(0)
+func (m *svcPayeeRuleRepo) CreatePayeeRule(ctx context.Context, payeeMatch model.PayeeRule) error {
+	return m.Called(ctx, payeeMatch).Error(0)
 }
 func (m *svcPayeeRuleRepo) FindByMatchString(ctx context.Context, budgetId uuid.UUID, matchString string) (*model.PayeeRule, error) {
 	args := m.Called(ctx, budgetId, matchString)
@@ -239,29 +232,29 @@ func (m *svcBudgetRepo) GetAll(ctx context.Context, userID uuid.UUID) ([]model.B
 	}
 	return nil, args.Error(1)
 }
-func (m *svcBudgetRepo) GetById(ctx context.Context, tx pgx.Tx, id uuid.UUID) (*model.Budget, error) {
-	args := m.Called(ctx, tx, id)
+func (m *svcBudgetRepo) GetById(ctx context.Context, id uuid.UUID) (*model.Budget, error) {
+	args := m.Called(ctx, id)
 	if v := args.Get(0); v != nil {
 		return v.(*model.Budget), args.Error(1)
 	}
 	return nil, args.Error(1)
 }
-func (m *svcBudgetRepo) Create(ctx context.Context, tx pgx.Tx, name string, userID uuid.UUID) (*model.Budget, error) {
-	args := m.Called(ctx, tx, name, userID)
+func (m *svcBudgetRepo) Create(ctx context.Context, name string, userID uuid.UUID) (*model.Budget, error) {
+	args := m.Called(ctx, name, userID)
 	if v := args.Get(0); v != nil {
 		return v.(*model.Budget), args.Error(1)
 	}
 	return nil, args.Error(1)
 }
-func (m *svcBudgetRepo) UpdateById(ctx context.Context, tx pgx.Tx, id uuid.UUID, budget model.Budget) error {
-	return m.Called(ctx, tx, id, budget).Error(0)
+func (m *svcBudgetRepo) UpdateById(ctx context.Context, id uuid.UUID, budget model.Budget) error {
+	return m.Called(ctx, id, budget).Error(0)
 }
 func (m *svcBudgetRepo) IsOwnedByUser(ctx context.Context, budgetID, userID uuid.UUID) (bool, error) {
 	args := m.Called(ctx, budgetID, userID)
 	return args.Bool(0), args.Error(1)
 }
-func (m *svcBudgetRepo) UpdateOnboarding(ctx context.Context, tx pgx.Tx, id uuid.UUID, onboarding model.BudgetOnboarding) error {
-	return m.Called(ctx, tx, id, onboarding).Error(0)
+func (m *svcBudgetRepo) UpdateOnboarding(ctx context.Context, id uuid.UUID, onboarding model.BudgetOnboarding) error {
+	return m.Called(ctx, id, onboarding).Error(0)
 }
 
 // svcCategoryRepo
@@ -328,15 +321,8 @@ func (m *svcCategoryRepo) GetByIdSimplified(ctx context.Context, budgetId, id uu
 	}
 	return nil, args.Error(1)
 }
-func (m *svcCategoryRepo) GetByIdSimplifiedTx(ctx context.Context, tx pgx.Tx, budgetId, id uuid.UUID) (*model.Category, error) {
-	args := m.Called(ctx, tx, budgetId, id)
-	if v := args.Get(0); v != nil {
-		return v.(*model.Category), args.Error(1)
-	}
-	return nil, args.Error(1)
-}
-func (m *svcCategoryRepo) Create(ctx context.Context, tx pgx.Tx, category model.Category) (*model.Category, error) {
-	args := m.Called(ctx, tx, category)
+func (m *svcCategoryRepo) Create(ctx context.Context, category model.Category) (*model.Category, error) {
+	args := m.Called(ctx, category)
 	if v := args.Get(0); v != nil {
 		return v.(*model.Category), args.Error(1)
 	}
@@ -378,8 +364,8 @@ func (m *svcCategoryGroupRepo) GetAll(ctx context.Context, budgetId uuid.UUID) (
 	}
 	return nil, args.Error(1)
 }
-func (m *svcCategoryGroupRepo) Create(ctx context.Context, tx pgx.Tx, categoryGroup model.CategoryGroup) (*model.CategoryGroup, error) {
-	args := m.Called(ctx, tx, categoryGroup)
+func (m *svcCategoryGroupRepo) Create(ctx context.Context, categoryGroup model.CategoryGroup) (*model.CategoryGroup, error) {
+	args := m.Called(ctx, categoryGroup)
 	if v := args.Get(0); v != nil {
 		return v.(*model.CategoryGroup), args.Error(1)
 	}
@@ -398,8 +384,8 @@ type svcAPIKeyRepo struct {
 	mock.Mock
 }
 
-func (m *svcAPIKeyRepo) Create(ctx context.Context, tx pgx.Tx, apiKey *model.APIKey) error {
-	return m.Called(ctx, tx, apiKey).Error(0)
+func (m *svcAPIKeyRepo) Create(ctx context.Context, apiKey *model.APIKey) error {
+	return m.Called(ctx, apiKey).Error(0)
 }
 func (m *svcAPIKeyRepo) GetAll(ctx context.Context, userID uuid.UUID) ([]model.APIKey, error) {
 	args := m.Called(ctx, userID)
@@ -408,22 +394,22 @@ func (m *svcAPIKeyRepo) GetAll(ctx context.Context, userID uuid.UUID) ([]model.A
 	}
 	return nil, args.Error(1)
 }
-func (m *svcAPIKeyRepo) GetByKeyID(ctx context.Context, tx pgx.Tx, keyID string) (*model.APIKey, error) {
-	args := m.Called(ctx, tx, keyID)
+func (m *svcAPIKeyRepo) GetByKeyID(ctx context.Context, keyID string) (*model.APIKey, error) {
+	args := m.Called(ctx, keyID)
 	if v := args.Get(0); v != nil {
 		return v.(*model.APIKey), args.Error(1)
 	}
 	return nil, args.Error(1)
 }
-func (m *svcAPIKeyRepo) GetByHash(ctx context.Context, tx pgx.Tx, keyHash string) (*model.APIKey, error) {
-	args := m.Called(ctx, tx, keyHash)
+func (m *svcAPIKeyRepo) GetByHash(ctx context.Context, keyHash string) (*model.APIKey, error) {
+	args := m.Called(ctx, keyHash)
 	if v := args.Get(0); v != nil {
 		return v.(*model.APIKey), args.Error(1)
 	}
 	return nil, args.Error(1)
 }
-func (m *svcAPIKeyRepo) UpdateLastUsed(ctx context.Context, tx pgx.Tx, id uuid.UUID) error {
-	return m.Called(ctx, tx, id).Error(0)
+func (m *svcAPIKeyRepo) UpdateLastUsed(ctx context.Context, id uuid.UUID) error {
+	return m.Called(ctx, id).Error(0)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -501,7 +487,7 @@ func TestTagService_Create(t *testing.T) {
 
 	t.Run("creates_tag", func(t *testing.T) {
 		repo := &svcTagRepo{}
-		repo.On("Create", mock.Anything, (pgx.Tx)(nil), mock.MatchedBy(func(tag model.Tag) bool {
+		repo.On("Create", mock.Anything, mock.MatchedBy(func(tag model.Tag) bool {
 			return tag.Name == "groceries" && tag.BudgetID == budgetID
 		})).Return(created, nil)
 		result, err := NewTagService(repo).Create(ctx, model.Tag{Name: "groceries"})
@@ -569,7 +555,7 @@ func TestAccountService_GetAll(t *testing.T) {
 		repo := &svcAccountRepo{}
 		payeeRepo := &svcPayeeRepo{}
 		repo.On("GetAll", mock.Anything, budgetID).Return([]model.Account{{ID: uuid.New()}}, nil)
-		accounts, err := NewAccountService(repo, payeeRepo).GetAll(ctx)
+		accounts, err := NewAccountService(repo, payeeRepo, fakeDBTxn{}).GetAll(ctx)
 		assert.NoError(t, err)
 		assert.Len(t, accounts, 1)
 		repo.AssertExpectations(t)
@@ -578,7 +564,7 @@ func TestAccountService_GetAll(t *testing.T) {
 		repo := &svcAccountRepo{}
 		payeeRepo := &svcPayeeRepo{}
 		repo.On("GetAll", mock.Anything, budgetID).Return(nil, assert.AnError)
-		accounts, err := NewAccountService(repo, payeeRepo).GetAll(ctx)
+		accounts, err := NewAccountService(repo, payeeRepo, fakeDBTxn{}).GetAll(ctx)
 		assert.Error(t, err)
 		assert.Nil(t, accounts)
 		repo.AssertExpectations(t)
@@ -591,7 +577,7 @@ func TestAccountService_Search(t *testing.T) {
 	repo := &svcAccountRepo{}
 	payeeRepo := &svcPayeeRepo{}
 	repo.On("Search", mock.Anything, budgetID, "savings").Return([]model.Account{{Name: "Savings"}}, nil)
-	accounts, err := NewAccountService(repo, payeeRepo).Search(ctx, "savings")
+	accounts, err := NewAccountService(repo, payeeRepo, fakeDBTxn{}).Search(ctx, "savings")
 	assert.NoError(t, err)
 	assert.Len(t, accounts, 1)
 	repo.AssertExpectations(t)
@@ -602,7 +588,9 @@ func TestAccountService_Validation(t *testing.T) {
 	budgetID := uuid.New()
 	ctx := budgetCtxWith(budgetID)
 	otherID := uuid.New()
-	newSvc := func(repo *svcAccountRepo) AccountService { return NewAccountService(repo, &svcPayeeRepo{}) }
+	newSvc := func(repo *svcAccountRepo) AccountService {
+		return NewAccountService(repo, &svcPayeeRepo{}, fakeDBTxn{})
+	}
 
 	t.Run("create_rejects_blank_name", func(t *testing.T) {
 		_, err := newSvc(&svcAccountRepo{}).Create(ctx, model.Account{Name: "  ", Type: "checking"})
@@ -645,7 +633,7 @@ func TestBudgetService_GetAll(t *testing.T) {
 	t.Run("returns_budgets", func(t *testing.T) {
 		repo := &svcBudgetRepo{}
 		repo.On("GetAll", mock.Anything, userID).Return([]model.Budget{{ID: uuid.New(), Name: "Main"}}, nil)
-		svc := NewBudgetService(repo, &svcPayeeRepo{}, &svcCategoryRepo{}, &svcCategoryGroupRepo{})
+		svc := NewBudgetService(repo, &svcPayeeRepo{}, &svcCategoryRepo{}, &svcCategoryGroupRepo{}, fakeDBTxn{})
 		budgets, err := svc.GetAll(ctx, userID)
 		assert.NoError(t, err)
 		assert.Len(t, budgets, 1)
@@ -654,7 +642,7 @@ func TestBudgetService_GetAll(t *testing.T) {
 	t.Run("repo_error_propagates", func(t *testing.T) {
 		repo := &svcBudgetRepo{}
 		repo.On("GetAll", mock.Anything, userID).Return(nil, assert.AnError)
-		svc := NewBudgetService(repo, &svcPayeeRepo{}, &svcCategoryRepo{}, &svcCategoryGroupRepo{})
+		svc := NewBudgetService(repo, &svcPayeeRepo{}, &svcCategoryRepo{}, &svcCategoryGroupRepo{}, fakeDBTxn{})
 		budgets, err := svc.GetAll(ctx, userID)
 		assert.Error(t, err)
 		assert.Nil(t, budgets)
@@ -668,7 +656,7 @@ func TestBudgetService_Create_ValidationErrors(t *testing.T) {
 
 	t.Run("empty_name_returns_error", func(t *testing.T) {
 		repo := &svcBudgetRepo{}
-		svc := NewBudgetService(repo, &svcPayeeRepo{}, &svcCategoryRepo{}, &svcCategoryGroupRepo{})
+		svc := NewBudgetService(repo, &svcPayeeRepo{}, &svcCategoryRepo{}, &svcCategoryGroupRepo{}, fakeDBTxn{})
 		result, err := svc.Create(ctx, model.CreateBudgetRequest{Name: "   "}, userID)
 		assert.Error(t, err)
 		assert.Nil(t, result)
@@ -676,7 +664,7 @@ func TestBudgetService_Create_ValidationErrors(t *testing.T) {
 	t.Run("get_all_error_propagates", func(t *testing.T) {
 		repo := &svcBudgetRepo{}
 		repo.On("GetAll", mock.Anything, userID).Return(nil, assert.AnError)
-		svc := NewBudgetService(repo, &svcPayeeRepo{}, &svcCategoryRepo{}, &svcCategoryGroupRepo{})
+		svc := NewBudgetService(repo, &svcPayeeRepo{}, &svcCategoryRepo{}, &svcCategoryGroupRepo{}, fakeDBTxn{})
 		result, err := svc.Create(ctx, model.CreateBudgetRequest{Name: "Budget"}, userID)
 		assert.Error(t, err)
 		assert.Nil(t, result)
@@ -716,7 +704,7 @@ func TestCategoryGroupService_Create(t *testing.T) {
 	created := &model.CategoryGroup{ID: uuid.New(), Name: "Savings"}
 
 	repo := &svcCategoryGroupRepo{}
-	repo.On("Create", mock.Anything, (pgx.Tx)(nil), mock.MatchedBy(func(g model.CategoryGroup) bool {
+	repo.On("Create", mock.Anything, mock.MatchedBy(func(g model.CategoryGroup) bool {
 		return g.Name == "Savings" && g.BudgetID == budgetID
 	})).Return(created, nil)
 	result, err := NewCategoryGroupService(repo).Create(ctx, model.CategoryGroup{Name: "Savings"})
@@ -754,7 +742,7 @@ func TestCategoryService_GetAll(t *testing.T) {
 	ctx := budgetCtxWith(budgetID)
 	repo := &svcCategoryRepo{}
 	repo.On("GetAll", mock.Anything, budgetID).Return([]model.Category{{ID: uuid.New()}}, nil)
-	cats, err := NewCategoryService(repo, nil, nil, nil).GetAll(ctx)
+	cats, err := NewCategoryService(repo, nil, nil, nil, fakeDBTxn{}).GetAll(ctx)
 	assert.NoError(t, err)
 	assert.Len(t, cats, 1)
 	repo.AssertExpectations(t)
@@ -765,7 +753,7 @@ func TestCategoryService_GetInflowBalance(t *testing.T) {
 	ctx := budgetCtxWith(budgetID)
 	repo := &svcCategoryRepo{}
 	repo.On("GetInflowBalance", mock.Anything, budgetID).Return(float64(100.5), nil)
-	balance, err := NewCategoryService(repo, nil, nil, nil).GetInflowBalance(ctx)
+	balance, err := NewCategoryService(repo, nil, nil, nil, fakeDBTxn{}).GetInflowBalance(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, 100.5, balance)
 	repo.AssertExpectations(t)
@@ -778,10 +766,10 @@ func TestCategoryService_Create(t *testing.T) {
 
 	t.Run("creates_category", func(t *testing.T) {
 		repo := &svcCategoryRepo{}
-		repo.On("Create", mock.Anything, (pgx.Tx)(nil), mock.MatchedBy(func(c model.Category) bool {
+		repo.On("Create", mock.Anything, mock.MatchedBy(func(c model.Category) bool {
 			return c.Name == "Groceries" && c.BudgetID == budgetID
 		})).Return(created, nil)
-		result, err := NewCategoryService(repo, nil, nil, nil).Create(ctx, model.Category{Name: "Groceries"})
+		result, err := NewCategoryService(repo, nil, nil, nil, fakeDBTxn{}).Create(ctx, model.Category{Name: "Groceries"})
 		assert.NoError(t, err)
 		assert.Equal(t, created.ID, result.ID)
 		repo.AssertExpectations(t)
@@ -794,7 +782,7 @@ func TestCategoryService_DeleteById(t *testing.T) {
 	ctx := budgetCtxWith(budgetID)
 	repo := &svcCategoryRepo{}
 	repo.On("DeleteById", mock.Anything, budgetID, catID).Return(nil)
-	assert.NoError(t, NewCategoryService(repo, nil, nil, nil).DeleteById(ctx, catID))
+	assert.NoError(t, NewCategoryService(repo, nil, nil, nil, fakeDBTxn{}).DeleteById(ctx, catID))
 	repo.AssertExpectations(t)
 }
 
@@ -804,7 +792,7 @@ func TestCategoryService_Update(t *testing.T) {
 	ctx := budgetCtxWith(budgetID)
 	repo := &svcCategoryRepo{}
 	repo.On("Update", mock.Anything, budgetID, catID, mock.Anything).Return(nil)
-	assert.NoError(t, NewCategoryService(repo, nil, nil, nil).Update(ctx, catID, model.Category{Name: "Updated"}))
+	assert.NoError(t, NewCategoryService(repo, nil, nil, nil, fakeDBTxn{}).Update(ctx, catID, model.Category{Name: "Updated"}))
 	repo.AssertExpectations(t)
 }
 
@@ -817,7 +805,7 @@ func TestCategoryService_UpdateDetails(t *testing.T) {
 	t.Run("updates_description_only", func(t *testing.T) {
 		repo := &svcCategoryRepo{}
 		repo.On("UpdateDetails", mock.Anything, budgetID, catID, (*string)(nil), &desc).Return(nil)
-		err := NewCategoryService(repo, nil, nil, nil).
+		err := NewCategoryService(repo, nil, nil, nil, fakeDBTxn{}).
 			UpdateDetails(ctx, catID, model.CategoryDetailsUpdate{Description: &desc})
 		assert.NoError(t, err)
 		repo.AssertExpectations(t)
@@ -825,8 +813,8 @@ func TestCategoryService_UpdateDetails(t *testing.T) {
 
 	t.Run("missing_category_is_not_found", func(t *testing.T) {
 		repo := &svcCategoryRepo{}
-		repo.On("UpdateDetails", mock.Anything, budgetID, catID, (*string)(nil), &desc).Return(pgx.ErrNoRows)
-		err := NewCategoryService(repo, nil, nil, nil).
+		repo.On("UpdateDetails", mock.Anything, budgetID, catID, (*string)(nil), &desc).Return(repository.ErrNotFound)
+		err := NewCategoryService(repo, nil, nil, nil, fakeDBTxn{}).
 			UpdateDetails(ctx, catID, model.CategoryDetailsUpdate{Description: &desc})
 		assert.ErrorIs(t, err, ErrCategoryNotFound)
 	})
@@ -850,7 +838,7 @@ func TestCategoryService_SuggestDescription(t *testing.T) {
 		cipher.On("SuggestCategoryDescription", mock.Anything, *descCtx).
 			Return(&CategoryDescriptionResponse{Description: "Food and household staples."}, nil)
 
-		got, err := NewCategoryService(repo, nil, nil, cipher).SuggestDescription(ctx, catID)
+		got, err := NewCategoryService(repo, nil, nil, cipher, fakeDBTxn{}).SuggestDescription(ctx, catID)
 		assert.NoError(t, err)
 		assert.Equal(t, "Food and household staples.", got)
 		repo.AssertExpectations(t)
@@ -859,8 +847,8 @@ func TestCategoryService_SuggestDescription(t *testing.T) {
 
 	t.Run("missing_category_is_not_found", func(t *testing.T) {
 		repo := &svcCategoryRepo{}
-		repo.On("GetDescriptionContext", mock.Anything, budgetID, catID, descriptionPayeeLimit).Return(nil, pgx.ErrNoRows)
-		_, err := NewCategoryService(repo, nil, nil, &mockCipherClient{}).SuggestDescription(ctx, catID)
+		repo.On("GetDescriptionContext", mock.Anything, budgetID, catID, descriptionPayeeLimit).Return(nil, repository.ErrNotFound)
+		_, err := NewCategoryService(repo, nil, nil, &mockCipherClient{}, fakeDBTxn{}).SuggestDescription(ctx, catID)
 		assert.ErrorIs(t, err, ErrCategoryNotFound)
 	})
 
@@ -869,7 +857,7 @@ func TestCategoryService_SuggestDescription(t *testing.T) {
 		repo.On("GetDescriptionContext", mock.Anything, budgetID, catID, descriptionPayeeLimit).Return(descCtx, nil)
 		cipher := &mockCipherClient{}
 		cipher.On("SuggestCategoryDescription", mock.Anything, *descCtx).Return(nil, errors.New("all providers failed"))
-		_, err := NewCategoryService(repo, nil, nil, cipher).SuggestDescription(ctx, catID)
+		_, err := NewCategoryService(repo, nil, nil, cipher, fakeDBTxn{}).SuggestDescription(ctx, catID)
 		assert.ErrorIs(t, err, ErrDescriptionUnavailable)
 	})
 }
@@ -884,7 +872,7 @@ func TestPayeeService_GetAll(t *testing.T) {
 	repo := &svcPayeeRepo{}
 	ruleRepo := &svcPayeeRuleRepo{}
 	repo.On("GetAll", mock.Anything, budgetID).Return([]model.Payee{{ID: uuid.New(), Name: "Amazon"}}, nil)
-	payees, err := NewPayeeService(repo, ruleRepo).GetAll(ctx)
+	payees, err := NewPayeeService(repo, ruleRepo, fakeDBTxn{}).GetAll(ctx)
 	assert.NoError(t, err)
 	assert.Len(t, payees, 1)
 	repo.AssertExpectations(t)
@@ -897,7 +885,7 @@ func TestPayeeService_GetById(t *testing.T) {
 	repo := &svcPayeeRepo{}
 	ruleRepo := &svcPayeeRuleRepo{}
 	repo.On("GetById", mock.Anything, budgetID, payeeID).Return(&model.Payee{ID: payeeID}, nil)
-	p, err := NewPayeeService(repo, ruleRepo).GetById(ctx, payeeID)
+	p, err := NewPayeeService(repo, ruleRepo, fakeDBTxn{}).GetById(ctx, payeeID)
 	assert.NoError(t, err)
 	assert.Equal(t, payeeID, p.ID)
 	repo.AssertExpectations(t)
@@ -911,10 +899,10 @@ func TestPayeeService_Create(t *testing.T) {
 	t.Run("creates_payee", func(t *testing.T) {
 		repo := &svcPayeeRepo{}
 		ruleRepo := &svcPayeeRuleRepo{}
-		repo.On("Create", mock.Anything, (pgx.Tx)(nil), mock.MatchedBy(func(p model.Payee) bool {
+		repo.On("Create", mock.Anything, mock.MatchedBy(func(p model.Payee) bool {
 			return p.Name == "Walmart" && p.BudgetID == budgetID
 		})).Return(created, nil)
-		result, err := NewPayeeService(repo, ruleRepo).Create(ctx, model.Payee{Name: "Walmart"})
+		result, err := NewPayeeService(repo, ruleRepo, fakeDBTxn{}).Create(ctx, model.Payee{Name: "Walmart"})
 		assert.NoError(t, err)
 		assert.Equal(t, created.ID, result.ID)
 		repo.AssertExpectations(t)
@@ -930,7 +918,7 @@ func TestPayeeService_DeleteById(t *testing.T) {
 		repo := &svcPayeeRepo{}
 		repo.On("GetById", mock.Anything, budgetID, payeeID).Return(&model.Payee{ID: payeeID}, nil)
 		repo.On("DeleteById", mock.Anything, budgetID, payeeID).Return(nil)
-		assert.NoError(t, NewPayeeService(repo, &svcPayeeRuleRepo{}).DeleteById(ctx, payeeID))
+		assert.NoError(t, NewPayeeService(repo, &svcPayeeRuleRepo{}, fakeDBTxn{}).DeleteById(ctx, payeeID))
 		repo.AssertExpectations(t)
 	})
 
@@ -939,7 +927,7 @@ func TestPayeeService_DeleteById(t *testing.T) {
 		repo := &svcPayeeRepo{}
 		repo.On("GetById", mock.Anything, budgetID, payeeID).
 			Return(&model.Payee{ID: payeeID, TransferAccountID: &accountID}, nil)
-		err := NewPayeeService(repo, &svcPayeeRuleRepo{}).DeleteById(ctx, payeeID)
+		err := NewPayeeService(repo, &svcPayeeRuleRepo{}, fakeDBTxn{}).DeleteById(ctx, payeeID)
 		assert.ErrorIs(t, err, ErrTransferPayee)
 		repo.AssertNotCalled(t, "DeleteById", mock.Anything, mock.Anything, mock.Anything)
 	})
@@ -947,15 +935,15 @@ func TestPayeeService_DeleteById(t *testing.T) {
 	t.Run("unknown_payee", func(t *testing.T) {
 		payeeID := uuid.New()
 		repo := &svcPayeeRepo{}
-		repo.On("GetById", mock.Anything, budgetID, payeeID).Return(nil, pgx.ErrNoRows)
-		err := NewPayeeService(repo, &svcPayeeRuleRepo{}).DeleteById(ctx, payeeID)
+		repo.On("GetById", mock.Anything, budgetID, payeeID).Return(nil, repository.ErrNotFound)
+		err := NewPayeeService(repo, &svcPayeeRuleRepo{}, fakeDBTxn{}).DeleteById(ctx, payeeID)
 		assert.ErrorIs(t, err, ErrPayeeNotFound)
 	})
 }
 
 func TestPayeeService_MergeRejectsEmptySources(t *testing.T) {
 	ctx := budgetCtxWith(uuid.New())
-	svc := NewPayeeService(&svcPayeeRepo{}, &svcPayeeRuleRepo{})
+	svc := NewPayeeService(&svcPayeeRepo{}, &svcPayeeRuleRepo{}, fakeDBTxn{})
 	target := uuid.New()
 
 	// the target as its own source, and nil ids, leave nothing to merge
@@ -975,7 +963,7 @@ func TestPayeeService_GetStatsAndAllRules(t *testing.T) {
 	repo.On("GetStats", mock.Anything, budgetID).Return([]model.PayeeStats{{RuleCount: 1}}, nil)
 	ruleRepo.On("GetAll", mock.Anything, budgetID).Return([]model.PayeeRuleDetails{{MatchString: "AMZN"}}, nil)
 
-	svc := NewPayeeService(repo, ruleRepo)
+	svc := NewPayeeService(repo, ruleRepo, fakeDBTxn{})
 	stats, err := svc.GetStats(ctx)
 	assert.NoError(t, err)
 	assert.Len(t, stats, 1)
@@ -993,7 +981,7 @@ func TestPayeeService_Update(t *testing.T) {
 	repo := &svcPayeeRepo{}
 	ruleRepo := &svcPayeeRuleRepo{}
 	repo.On("Update", mock.Anything, budgetID, payeeID, mock.Anything).Return(nil)
-	assert.NoError(t, NewPayeeService(repo, ruleRepo).Update(ctx, payeeID, model.Payee{Name: "Updated"}))
+	assert.NoError(t, NewPayeeService(repo, ruleRepo, fakeDBTxn{}).Update(ctx, payeeID, model.Payee{Name: "Updated"}))
 	repo.AssertExpectations(t)
 }
 
@@ -1004,7 +992,7 @@ func TestPayeeService_GetRules(t *testing.T) {
 	repo := &svcPayeeRepo{}
 	ruleRepo := &svcPayeeRuleRepo{}
 	ruleRepo.On("FindByPayeeID", mock.Anything, budgetID, payeeID).Return([]model.PayeeRuleDetails{{ID: uuid.New()}}, nil)
-	rules, err := NewPayeeService(repo, ruleRepo).GetRules(ctx, payeeID)
+	rules, err := NewPayeeService(repo, ruleRepo, fakeDBTxn{}).GetRules(ctx, payeeID)
 	assert.NoError(t, err)
 	assert.Len(t, rules, 1)
 	ruleRepo.AssertExpectations(t)
@@ -1016,10 +1004,10 @@ func TestPayeeService_CreateRule(t *testing.T) {
 	ctx := budgetCtxWith(budgetID)
 	repo := &svcPayeeRepo{}
 	ruleRepo := &svcPayeeRuleRepo{}
-	ruleRepo.On("CreatePayeeRule", mock.Anything, (pgx.Tx)(nil), mock.MatchedBy(func(r model.PayeeRule) bool {
+	ruleRepo.On("CreatePayeeRule", mock.Anything, mock.MatchedBy(func(r model.PayeeRule) bool {
 		return r.MatchType == "EXACT" && r.PayeeID == payeeID && r.BudgetID == budgetID
 	})).Return(nil)
-	err := NewPayeeService(repo, ruleRepo).CreateRule(ctx, payeeID, model.PayeeRule{MatchString: "test"})
+	err := NewPayeeService(repo, ruleRepo, fakeDBTxn{}).CreateRule(ctx, payeeID, model.PayeeRule{MatchString: "test"})
 	assert.NoError(t, err)
 	ruleRepo.AssertExpectations(t)
 }
@@ -1031,7 +1019,7 @@ func TestPayeeService_DeleteRule(t *testing.T) {
 	repo := &svcPayeeRepo{}
 	ruleRepo := &svcPayeeRuleRepo{}
 	ruleRepo.On("DeleteByID", mock.Anything, budgetID, ruleID).Return(nil)
-	assert.NoError(t, NewPayeeService(repo, ruleRepo).DeleteRule(ctx, ruleID))
+	assert.NoError(t, NewPayeeService(repo, ruleRepo, fakeDBTxn{}).DeleteRule(ctx, ruleID))
 	ruleRepo.AssertExpectations(t)
 }
 
@@ -1115,7 +1103,7 @@ func TestAPIKeyService_Create_Success(t *testing.T) {
 	repo := &svcAPIKeyRepo{}
 	svc := NewApiKeyService(repo)
 	ctx := utils.WithUserID(context.Background(), uuid.New())
-	repo.On("Create", mock.Anything, (pgx.Tx)(nil), mock.Anything).Return(nil)
+	repo.On("Create", mock.Anything, mock.Anything).Return(nil)
 	fullKey, err := svc.Create(ctx, &model.APIKey{Name: "my-key"})
 	assert.NoError(t, err)
 	assert.NotEmpty(t, fullKey)
@@ -1127,7 +1115,7 @@ func TestAPIKeyService_GetByKeyID(t *testing.T) {
 	repo := &svcAPIKeyRepo{}
 	svc := NewApiKeyService(repo)
 	expected := &model.APIKey{Name: "key"}
-	repo.On("GetByKeyID", mock.Anything, (pgx.Tx)(nil), "kid123").Return(expected, nil)
+	repo.On("GetByKeyID", mock.Anything, "kid123").Return(expected, nil)
 	result, err := svc.GetByKeyID(context.Background(), "kid123")
 	assert.NoError(t, err)
 	assert.Equal(t, expected, result)
@@ -1138,7 +1126,7 @@ func TestAPIKeyService_UpdateLastUsed(t *testing.T) {
 	repo := &svcAPIKeyRepo{}
 	svc := NewApiKeyService(repo)
 	id := uuid.New()
-	repo.On("UpdateLastUsed", mock.Anything, (pgx.Tx)(nil), id).Return(nil)
+	repo.On("UpdateLastUsed", mock.Anything, id).Return(nil)
 	assert.NoError(t, svc.UpdateLastUsed(context.Background(), id))
 	repo.AssertExpectations(t)
 }
@@ -1166,13 +1154,6 @@ func (m *svcPredictionRepo) GetByTxnId(ctx context.Context, budgetId uuid.UUID, 
 	}
 	return nil, args.Error(1)
 }
-func (m *svcPredictionRepo) GetByTxnIdTx(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, txnId uuid.UUID) (*model.Prediction, error) {
-	args := m.Called(ctx, tx, budgetId, txnId)
-	if v := args.Get(0); v != nil {
-		return v.(*model.Prediction), args.Error(1)
-	}
-	return nil, args.Error(1)
-}
 func (m *svcPredictionRepo) Create(ctx context.Context, prediction model.Prediction) ([]model.Prediction, error) {
 	args := m.Called(ctx, prediction)
 	if v := args.Get(0); v != nil {
@@ -1180,11 +1161,11 @@ func (m *svcPredictionRepo) Create(ctx context.Context, prediction model.Predict
 	}
 	return nil, args.Error(1)
 }
-func (m *svcPredictionRepo) Update(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, id uuid.UUID, prediction model.Prediction) error {
-	return m.Called(ctx, tx, budgetId, id, prediction).Error(0)
+func (m *svcPredictionRepo) Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, prediction model.Prediction) error {
+	return m.Called(ctx, budgetId, id, prediction).Error(0)
 }
-func (m *svcPredictionRepo) DeleteByTxnId(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, txnId uuid.UUID) error {
-	return m.Called(ctx, tx, budgetId, txnId).Error(0)
+func (m *svcPredictionRepo) DeleteByTxnId(ctx context.Context, budgetId uuid.UUID, txnId uuid.UUID) error {
+	return m.Called(ctx, budgetId, txnId).Error(0)
 }
 
 type svcCipherPredictionRepo struct {
@@ -1192,8 +1173,8 @@ type svcCipherPredictionRepo struct {
 	mock.Mock
 }
 
-func (m *svcCipherPredictionRepo) Create(ctx context.Context, tx pgx.Tx, p model.CipherPredictionRecord) (*model.CipherPredictionRecord, error) {
-	args := m.Called(ctx, tx, p)
+func (m *svcCipherPredictionRepo) Create(ctx context.Context, p model.CipherPredictionRecord) (*model.CipherPredictionRecord, error) {
+	args := m.Called(ctx, p)
 	if v := args.Get(0); v != nil {
 		return v.(*model.CipherPredictionRecord), args.Error(1)
 	}
@@ -1213,8 +1194,8 @@ func (m *svcCipherPredictionRepo) GetByTransactionID(ctx context.Context, budget
 	}
 	return nil, args.Error(1)
 }
-func (m *svcCipherPredictionRepo) MarkLearned(ctx context.Context, tx pgx.Tx, budgetID uuid.UUID, txnID uuid.UUID) error {
-	return m.Called(ctx, tx, budgetID, txnID).Error(0)
+func (m *svcCipherPredictionRepo) MarkLearned(ctx context.Context, budgetID uuid.UUID, txnID uuid.UUID) error {
+	return m.Called(ctx, budgetID, txnID).Error(0)
 }
 
 func (m *svcCipherPredictionRepo) MarkLearnFailed(ctx context.Context, budgetID uuid.UUID, txnID uuid.UUID, reason string) error {
@@ -1234,8 +1215,8 @@ func (m *svcCipherPredictionRepo) LearningStats(ctx context.Context, budgetID uu
 	return args.Get(0).(model.LearningStats), args.Error(1)
 }
 
-func (m *svcCipherPredictionRepo) MarkUserCorrected(ctx context.Context, tx pgx.Tx, budgetID uuid.UUID, txnID uuid.UUID, actualPayeeID *uuid.UUID, actualCategoryID *uuid.UUID) error {
-	return m.Called(ctx, tx, budgetID, txnID, actualPayeeID, actualCategoryID).Error(0)
+func (m *svcCipherPredictionRepo) MarkUserCorrected(ctx context.Context, budgetID uuid.UUID, txnID uuid.UUID, actualPayeeID *uuid.UUID, actualCategoryID *uuid.UUID) error {
+	return m.Called(ctx, budgetID, txnID, actualPayeeID, actualCategoryID).Error(0)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1311,14 +1292,14 @@ func TestPredictionService_DeleteById(t *testing.T) {
 	t.Run("deletes_prediction", func(t *testing.T) {
 		repo := &svcPredictionRepo{}
 		cipherRepo := &svcCipherPredictionRepo{}
-		repo.On("DeleteByTxnId", mock.Anything, (pgx.Tx)(nil), budgetID, txnID).Return(nil)
+		repo.On("DeleteByTxnId", mock.Anything, budgetID, txnID).Return(nil)
 		assert.NoError(t, NewPredictionService(repo, cipherRepo).DeleteById(ctx, txnID))
 		repo.AssertExpectations(t)
 	})
 	t.Run("repo_error_propagates", func(t *testing.T) {
 		repo := &svcPredictionRepo{}
 		cipherRepo := &svcCipherPredictionRepo{}
-		repo.On("DeleteByTxnId", mock.Anything, (pgx.Tx)(nil), budgetID, txnID).Return(assert.AnError)
+		repo.On("DeleteByTxnId", mock.Anything, budgetID, txnID).Return(assert.AnError)
 		assert.Error(t, NewPredictionService(repo, cipherRepo).DeleteById(ctx, txnID))
 		repo.AssertExpectations(t)
 	})
@@ -1332,7 +1313,7 @@ func TestPredictionService_CreateCipherPrediction(t *testing.T) {
 	t.Run("creates_cipher_prediction_with_budget_id", func(t *testing.T) {
 		repo := &svcPredictionRepo{}
 		cipherRepo := &svcCipherPredictionRepo{}
-		cipherRepo.On("Create", mock.Anything, (pgx.Tx)(nil), mock.MatchedBy(func(p model.CipherPredictionRecord) bool {
+		cipherRepo.On("Create", mock.Anything, mock.MatchedBy(func(p model.CipherPredictionRecord) bool {
 			return p.BudgetID == budgetID
 		})).Return(created, nil)
 		result, err := NewPredictionService(repo, cipherRepo).CreateCipherPrediction(ctx, model.CipherPredictionRecord{})
@@ -1343,7 +1324,7 @@ func TestPredictionService_CreateCipherPrediction(t *testing.T) {
 	t.Run("repo_error_propagates", func(t *testing.T) {
 		repo := &svcPredictionRepo{}
 		cipherRepo := &svcCipherPredictionRepo{}
-		cipherRepo.On("Create", mock.Anything, (pgx.Tx)(nil), mock.Anything).Return(nil, assert.AnError)
+		cipherRepo.On("Create", mock.Anything, mock.Anything).Return(nil, assert.AnError)
 		result, err := NewPredictionService(repo, cipherRepo).CreateCipherPrediction(ctx, model.CipherPredictionRecord{})
 		assert.Error(t, err)
 		assert.Nil(t, result)
@@ -1360,8 +1341,8 @@ type svcAuthRepo struct {
 	mock.Mock
 }
 
-func (m *svcAuthRepo) CreateUser(ctx context.Context, tx pgx.Tx) (*model.AuthUser, error) {
-	args := m.Called(ctx, tx)
+func (m *svcAuthRepo) CreateUser(ctx context.Context) (*model.AuthUser, error) {
+	args := m.Called(ctx)
 	if v := args.Get(0); v != nil {
 		return v.(*model.AuthUser), args.Error(1)
 	}
@@ -1552,28 +1533,21 @@ type svcMonthlyBudgetRepo struct {
 	mock.Mock
 }
 
-func (m *svcMonthlyBudgetRepo) GetPgxTx(ctx context.Context) (pgx.Tx, error) {
-	args := m.Called(ctx)
-	if v := args.Get(0); v != nil {
-		return v.(pgx.Tx), args.Error(1)
-	}
-	return nil, args.Error(1)
-}
-func (m *svcMonthlyBudgetRepo) GetByCatIdAndMonth(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categoryId uuid.UUID, month string) (*model.MonthlyBudget, error) {
-	args := m.Called(ctx, tx, budgetId, categoryId, month)
+func (m *svcMonthlyBudgetRepo) GetByCatIdAndMonth(ctx context.Context, budgetId uuid.UUID, categoryId uuid.UUID, month string) (*model.MonthlyBudget, error) {
+	args := m.Called(ctx, budgetId, categoryId, month)
 	if v := args.Get(0); v != nil {
 		return v.(*model.MonthlyBudget), args.Error(1)
 	}
 	return nil, args.Error(1)
 }
-func (m *svcMonthlyBudgetRepo) Create(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, monthlyBudget model.MonthlyBudget) error {
-	return m.Called(ctx, tx, budgetId, monthlyBudget).Error(0)
+func (m *svcMonthlyBudgetRepo) Create(ctx context.Context, budgetId uuid.UUID, monthlyBudget model.MonthlyBudget) error {
+	return m.Called(ctx, budgetId, monthlyBudget).Error(0)
 }
-func (m *svcMonthlyBudgetRepo) UpdateBudgetedByCatIdAndMonth(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categoryId uuid.UUID, month string, newBudgeted float64) error {
-	return m.Called(ctx, tx, budgetId, categoryId, month, newBudgeted).Error(0)
+func (m *svcMonthlyBudgetRepo) UpdateBudgetedByCatIdAndMonth(ctx context.Context, budgetId uuid.UUID, categoryId uuid.UUID, month string, newBudgeted float64) error {
+	return m.Called(ctx, budgetId, categoryId, month, newBudgeted).Error(0)
 }
-func (m *svcMonthlyBudgetRepo) UpdateCarryoverByCatIdAndMonth(ctx context.Context, tx pgx.Tx, budgetId uuid.UUID, categoryId uuid.UUID, month string, amount float64) error {
-	return m.Called(ctx, tx, budgetId, categoryId, month, amount).Error(0)
+func (m *svcMonthlyBudgetRepo) UpdateCarryoverByCatIdAndMonth(ctx context.Context, budgetId uuid.UUID, categoryId uuid.UUID, month string, amount float64) error {
+	return m.Called(ctx, budgetId, categoryId, month, amount).Error(0)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1586,13 +1560,13 @@ func TestMonthlyBudgetService_UpsertCarryover_CreatesWhenNotFound(t *testing.T) 
 	repo := &svcMonthlyBudgetRepo{}
 	svc := NewMonthlyBudgetService(repo)
 
-	// Simulate: GetByCatIdAndMonth returns pgx.ErrNoRows → repo.Create is called
-	repo.On("GetByCatIdAndMonth", mock.Anything, (pgx.Tx)(nil), budgetID, catID, "2025-01").Return(nil, pgx.ErrNoRows)
-	repo.On("Create", mock.Anything, (pgx.Tx)(nil), budgetID, mock.MatchedBy(func(mb model.MonthlyBudget) bool {
+	// Simulate: GetByCatIdAndMonth returns repository.ErrNotFound → repo.Create is called
+	repo.On("GetByCatIdAndMonth", mock.Anything, budgetID, catID, "2025-01").Return(nil, repository.ErrNotFound)
+	repo.On("Create", mock.Anything, budgetID, mock.MatchedBy(func(mb model.MonthlyBudget) bool {
 		return mb.CategoryID == catID && mb.CarryoverBalance == 50.0
 	})).Return(nil)
 
-	err := svc.UpsertCarryover(context.Background(), nil, budgetID, catID, "2025-01", 50.0)
+	err := svc.UpsertCarryover(context.Background(), budgetID, catID, "2025-01", 50.0)
 	assert.NoError(t, err)
 	repo.AssertExpectations(t)
 }
@@ -1604,10 +1578,10 @@ func TestMonthlyBudgetService_UpsertCarryover_UpdatesWhenExists(t *testing.T) {
 	svc := NewMonthlyBudgetService(repo)
 	existing := &model.MonthlyBudget{CategoryID: catID}
 
-	repo.On("GetByCatIdAndMonth", mock.Anything, (pgx.Tx)(nil), budgetID, catID, "2025-01").Return(existing, nil)
-	repo.On("UpdateCarryoverByCatIdAndMonth", mock.Anything, (pgx.Tx)(nil), budgetID, catID, "2025-01", -20.0).Return(nil)
+	repo.On("GetByCatIdAndMonth", mock.Anything, budgetID, catID, "2025-01").Return(existing, nil)
+	repo.On("UpdateCarryoverByCatIdAndMonth", mock.Anything, budgetID, catID, "2025-01", -20.0).Return(nil)
 
-	err := svc.UpsertCarryover(context.Background(), nil, budgetID, catID, "2025-01", -20.0)
+	err := svc.UpsertCarryover(context.Background(), budgetID, catID, "2025-01", -20.0)
 	assert.NoError(t, err)
 	repo.AssertExpectations(t)
 }
@@ -1618,9 +1592,9 @@ func TestMonthlyBudgetService_UpsertCarryover_LookupErrorPropagates(t *testing.T
 	repo := &svcMonthlyBudgetRepo{}
 	svc := NewMonthlyBudgetService(repo)
 
-	repo.On("GetByCatIdAndMonth", mock.Anything, (pgx.Tx)(nil), budgetID, catID, "2025-01").Return(nil, assert.AnError)
+	repo.On("GetByCatIdAndMonth", mock.Anything, budgetID, catID, "2025-01").Return(nil, assert.AnError)
 
-	err := svc.UpsertCarryover(context.Background(), nil, budgetID, catID, "2025-01", 10.0)
+	err := svc.UpsertCarryover(context.Background(), budgetID, catID, "2025-01", 10.0)
 	assert.Error(t, err)
 	repo.AssertExpectations(t)
 }
@@ -1636,7 +1610,7 @@ func TestCategoryService_Search(t *testing.T) {
 	t.Run("returns_results", func(t *testing.T) {
 		repo := &svcCategoryRepo{}
 		repo.On("Search", mock.Anything, budgetID, "gro").Return([]model.Category{{Name: "Groceries"}}, nil)
-		cats, err := NewCategoryService(repo, nil, nil, nil).Search(ctx, "gro")
+		cats, err := NewCategoryService(repo, nil, nil, nil, fakeDBTxn{}).Search(ctx, "gro")
 		assert.NoError(t, err)
 		assert.Len(t, cats, 1)
 		repo.AssertExpectations(t)
@@ -1644,7 +1618,7 @@ func TestCategoryService_Search(t *testing.T) {
 	t.Run("repo_error_propagates", func(t *testing.T) {
 		repo := &svcCategoryRepo{}
 		repo.On("Search", mock.Anything, budgetID, "bad").Return(nil, assert.AnError)
-		cats, err := NewCategoryService(repo, nil, nil, nil).Search(ctx, "bad")
+		cats, err := NewCategoryService(repo, nil, nil, nil, fakeDBTxn{}).Search(ctx, "bad")
 		assert.Error(t, err)
 		assert.Nil(t, cats)
 		repo.AssertExpectations(t)
@@ -1659,7 +1633,7 @@ func TestCategoryService_GetById(t *testing.T) {
 	t.Run("returns_category", func(t *testing.T) {
 		repo := &svcCategoryRepo{}
 		repo.On("GetById", mock.Anything, budgetID, catID).Return(&model.Category{ID: catID}, nil)
-		cat, err := NewCategoryService(repo, nil, nil, nil).GetById(ctx, catID)
+		cat, err := NewCategoryService(repo, nil, nil, nil, fakeDBTxn{}).GetById(ctx, catID)
 		assert.NoError(t, err)
 		assert.Equal(t, catID, cat.ID)
 		repo.AssertExpectations(t)
@@ -1667,7 +1641,7 @@ func TestCategoryService_GetById(t *testing.T) {
 	t.Run("repo_error_propagates", func(t *testing.T) {
 		repo := &svcCategoryRepo{}
 		repo.On("GetById", mock.Anything, budgetID, catID).Return(nil, assert.AnError)
-		cat, err := NewCategoryService(repo, nil, nil, nil).GetById(ctx, catID)
+		cat, err := NewCategoryService(repo, nil, nil, nil, fakeDBTxn{}).GetById(ctx, catID)
 		assert.Error(t, err)
 		assert.Nil(t, cat)
 		repo.AssertExpectations(t)
@@ -1692,7 +1666,7 @@ func TestPayeeService_Search(t *testing.T) {
 
 	t.Run("returns_payees", func(t *testing.T) {
 		repo.On("Search", mock.Anything, budgetID, "ama").Return([]model.Payee{{Name: "Amazon"}}, nil)
-		payees, err := NewPayeeService(repo, ruleRepo).Search(ctx, "ama")
+		payees, err := NewPayeeService(repo, ruleRepo, fakeDBTxn{}).Search(ctx, "ama")
 		assert.NoError(t, err)
 		assert.Len(t, payees, 1)
 		repo.AssertExpectations(t)
@@ -1711,14 +1685,14 @@ func TestPayeeService_UpdateRule(t *testing.T) {
 		ruleRepo.On("Update", mock.Anything, budgetID, ruleID, mock.MatchedBy(func(r model.PayeeRule) bool {
 			return r.MatchType == "EXACT" && r.PayeeID == payeeID && r.BudgetID == budgetID
 		})).Return(nil)
-		err := NewPayeeService(repo, ruleRepo).UpdateRule(ctx, payeeID, ruleID, model.PayeeRule{MatchString: "test"})
+		err := NewPayeeService(repo, ruleRepo, fakeDBTxn{}).UpdateRule(ctx, payeeID, ruleID, model.PayeeRule{MatchString: "test"})
 		assert.NoError(t, err)
 		ruleRepo.AssertExpectations(t)
 	})
 	t.Run("repo_error_propagates", func(t *testing.T) {
 		ruleRepo2 := &svcPayeeRuleRepo{}
 		ruleRepo2.On("Update", mock.Anything, budgetID, ruleID, mock.Anything).Return(assert.AnError)
-		err := NewPayeeService(repo, ruleRepo2).UpdateRule(ctx, payeeID, ruleID, model.PayeeRule{MatchString: "test"})
+		err := NewPayeeService(repo, ruleRepo2, fakeDBTxn{}).UpdateRule(ctx, payeeID, ruleID, model.PayeeRule{MatchString: "test"})
 		assert.Error(t, err)
 		ruleRepo2.AssertExpectations(t)
 	})
@@ -1734,15 +1708,15 @@ func TestBudgetService_UpdateById(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		repo := &svcBudgetRepo{}
-		repo.On("UpdateById", mock.Anything, (pgx.Tx)(nil), budgetID, mock.Anything).Return(nil)
-		svc := NewBudgetService(repo, &svcPayeeRepo{}, &svcCategoryRepo{}, &svcCategoryGroupRepo{})
+		repo.On("UpdateById", mock.Anything, budgetID, mock.Anything).Return(nil)
+		svc := NewBudgetService(repo, &svcPayeeRepo{}, &svcCategoryRepo{}, &svcCategoryGroupRepo{}, fakeDBTxn{})
 		assert.NoError(t, svc.UpdateById(ctx, budgetID, model.Budget{Name: "Updated"}))
 		repo.AssertExpectations(t)
 	})
 	t.Run("repo_error_propagates", func(t *testing.T) {
 		repo := &svcBudgetRepo{}
-		repo.On("UpdateById", mock.Anything, (pgx.Tx)(nil), budgetID, mock.Anything).Return(assert.AnError)
-		svc := NewBudgetService(repo, &svcPayeeRepo{}, &svcCategoryRepo{}, &svcCategoryGroupRepo{})
+		repo.On("UpdateById", mock.Anything, budgetID, mock.Anything).Return(assert.AnError)
+		svc := NewBudgetService(repo, &svcPayeeRepo{}, &svcCategoryRepo{}, &svcCategoryGroupRepo{}, fakeDBTxn{})
 		assert.Error(t, svc.UpdateById(ctx, budgetID, model.Budget{}))
 		repo.AssertExpectations(t)
 	})
@@ -1762,7 +1736,7 @@ func TestAPIKeyService_GetByHash(t *testing.T) {
 	assert.NoError(t, err)
 
 	t.Run("success", func(t *testing.T) {
-		repo.On("GetByHash", mock.Anything, (pgx.Tx)(nil), mock.AnythingOfType("string")).Return(expected, nil)
+		repo.On("GetByHash", mock.Anything, mock.AnythingOfType("string")).Return(expected, nil)
 		result, err := svc.GetByHash(context.Background(), fullKey)
 		assert.NoError(t, err)
 		assert.Equal(t, expected, result)
@@ -1770,7 +1744,7 @@ func TestAPIKeyService_GetByHash(t *testing.T) {
 	})
 	t.Run("repo_error_propagates", func(t *testing.T) {
 		repo2 := &svcAPIKeyRepo{}
-		repo2.On("GetByHash", mock.Anything, (pgx.Tx)(nil), mock.AnythingOfType("string")).Return(nil, assert.AnError)
+		repo2.On("GetByHash", mock.Anything, mock.AnythingOfType("string")).Return(nil, assert.AnError)
 		svc2 := NewApiKeyService(repo2)
 		result, err := svc2.GetByHash(context.Background(), fullKey)
 		assert.Error(t, err)
@@ -1858,15 +1832,15 @@ type svcGoogleProviderRepo struct {
 	mock.Mock
 }
 
-func (m *svcGoogleProviderRepo) GetAll(ctx context.Context, tx pgx.Tx) ([]model.GoogleProviderUser, error) {
-	args := m.Called(ctx, tx)
+func (m *svcGoogleProviderRepo) GetAll(ctx context.Context) ([]model.GoogleProviderUser, error) {
+	args := m.Called(ctx)
 	if v := args.Get(0); v != nil {
 		return v.([]model.GoogleProviderUser), args.Error(1)
 	}
 	return nil, args.Error(1)
 }
-func (m *svcGoogleProviderRepo) Create(ctx context.Context, tx pgx.Tx, authUserID uuid.UUID, googleID string, oauthClientType model.GoogleOAuthClientType, name string, picture string, email string, refreshToken string, expiryAt *int64) (*model.UserWithCredentials, error) {
-	args := m.Called(ctx, tx, authUserID, googleID, oauthClientType, name, picture, email, refreshToken, expiryAt)
+func (m *svcGoogleProviderRepo) Create(ctx context.Context, authUserID uuid.UUID, googleID string, oauthClientType model.GoogleOAuthClientType, name string, picture string, email string, refreshToken string, expiryAt *int64) (*model.UserWithCredentials, error) {
+	args := m.Called(ctx, authUserID, googleID, oauthClientType, name, picture, email, refreshToken, expiryAt)
 	if v := args.Get(0); v != nil {
 		return v.(*model.UserWithCredentials), args.Error(1)
 	}
@@ -1915,7 +1889,7 @@ func TestAuthService_GetAllGoogleUsers(t *testing.T) {
 	t.Run("returns_users", func(t *testing.T) {
 		authRepo := &svcAuthRepo{}
 		googleRepo := &svcGoogleProviderRepo{}
-		googleRepo.On("GetAll", mock.Anything, (pgx.Tx)(nil)).Return([]model.GoogleProviderUser{{Email: "a@b.com"}}, nil)
+		googleRepo.On("GetAll", mock.Anything).Return([]model.GoogleProviderUser{{Email: "a@b.com"}}, nil)
 		svc := newAuthSvcWithGoogle(authRepo, googleRepo)
 		users, err := svc.GetAllGoogleUsers(context.Background())
 		assert.NoError(t, err)
@@ -1925,7 +1899,7 @@ func TestAuthService_GetAllGoogleUsers(t *testing.T) {
 	t.Run("repo_error_propagates", func(t *testing.T) {
 		authRepo := &svcAuthRepo{}
 		googleRepo := &svcGoogleProviderRepo{}
-		googleRepo.On("GetAll", mock.Anything, (pgx.Tx)(nil)).Return(nil, assert.AnError)
+		googleRepo.On("GetAll", mock.Anything).Return(nil, assert.AnError)
 		svc := newAuthSvcWithGoogle(authRepo, googleRepo)
 		users, err := svc.GetAllGoogleUsers(context.Background())
 		assert.Error(t, err)
@@ -2015,7 +1989,7 @@ func TestMonthlyBudgetService_ApplyCarryoverOps_SameCategoryAndMonth_NoDiff(t *t
 		newAmount:   100.0, // diff == 0, no ops expected
 	}
 	cc := carryoverCase{sameCategory: true, sameMonth: true}
-	err := svc.ApplyCarryoverOps(context.Background(), nil, budgetID, diff, cc)
+	err := svc.ApplyCarryoverOps(context.Background(), budgetID, diff, cc)
 	assert.NoError(t, err)
 	repo.AssertExpectations(t)
 }
@@ -2225,7 +2199,7 @@ func TestTransactionMappingChanged(t *testing.T) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 func TestLearnTransactionMappingAsync_NilCipherClient(t *testing.T) {
-	svc := &transactionService{
+	svc := &transactionService{dbTxn: fakeDBTxn{},
 		cipherClient:     nil,
 		payeeRuleRepo:    nil,
 		txnEmbeddingRepo: nil,
@@ -2237,7 +2211,7 @@ func TestLearnTransactionMappingAsync_NilCipherClient(t *testing.T) {
 func TestLearnTransactionMappingAsync_NilPayeeID(t *testing.T) {
 	// Use a non-nil cipherClient to pass the first guard, but payeeID is nil
 	mockCC := &mockCipherClient{}
-	svc := &transactionService{
+	svc := &transactionService{dbTxn: fakeDBTxn{},
 		cipherClient:     mockCC,
 		payeeRuleRepo:    &mockPayeeRuleRepo{},
 		txnEmbeddingRepo: &mockTransactionEmbeddingRepo{},
@@ -2251,7 +2225,7 @@ func TestLearnTransactionMappingAsync_NilRawBankText(t *testing.T) {
 	mockCC2 := &mockCipherClient{}
 	pid := uuid.New()
 	cid := uuid.New()
-	svc := &transactionService{
+	svc := &transactionService{dbTxn: fakeDBTxn{},
 		cipherClient:     mockCC2,
 		payeeRuleRepo:    &mockPayeeRuleRepo{},
 		txnEmbeddingRepo: &mockTransactionEmbeddingRepo{},
@@ -2265,7 +2239,7 @@ func TestLearnTransactionMappingAsync_BlankRawBankText(t *testing.T) {
 	pid := uuid.New()
 	cid := uuid.New()
 	blank := "   "
-	svc := &transactionService{
+	svc := &transactionService{dbTxn: fakeDBTxn{},
 		cipherClient:     mockCC3,
 		payeeRuleRepo:    &mockPayeeRuleRepo{},
 		txnEmbeddingRepo: &mockTransactionEmbeddingRepo{},
@@ -2293,7 +2267,7 @@ func TestMonthlyBudgetService_ApplyCarryoverOps_SameCategoryAndMonth_NilNewCatId
 		newAmount:   200.0,
 	}
 	cc := carryoverCase{sameCategory: true, sameMonth: true}
-	err := svc.ApplyCarryoverOps(context.Background(), nil, budgetID, diff, cc)
+	err := svc.ApplyCarryoverOps(context.Background(), budgetID, diff, cc)
 	assert.NoError(t, err)
 	repo.AssertExpectations(t) // no calls expected
 }
@@ -2314,10 +2288,10 @@ func TestMonthlyBudgetService_ApplyCarryoverOps_SameCategoryAndMonth_AmountChang
 	}
 	cc := carryoverCase{sameCategory: true, sameMonth: true}
 	existing := &model.MonthlyBudget{CategoryID: catID}
-	repo.On("GetByCatIdAndMonth", mock.Anything, (pgx.Tx)(nil), budgetID, catID, "2025-01").Return(existing, nil)
-	repo.On("UpdateCarryoverByCatIdAndMonth", mock.Anything, (pgx.Tx)(nil), budgetID, catID, "2025-01", 50.0).Return(nil)
+	repo.On("GetByCatIdAndMonth", mock.Anything, budgetID, catID, "2025-01").Return(existing, nil)
+	repo.On("UpdateCarryoverByCatIdAndMonth", mock.Anything, budgetID, catID, "2025-01", 50.0).Return(nil)
 
-	err := svc.ApplyCarryoverOps(context.Background(), nil, budgetID, diff, cc)
+	err := svc.ApplyCarryoverOps(context.Background(), budgetID, diff, cc)
 	assert.NoError(t, err)
 	repo.AssertExpectations(t)
 }
@@ -2342,13 +2316,13 @@ func TestMonthlyBudgetService_ApplyCarryoverOps_DifferentCategory(t *testing.T) 
 	existingOld := &model.MonthlyBudget{CategoryID: oldCatID}
 	existingNew := &model.MonthlyBudget{CategoryID: newCatID}
 	// op1: subtract oldAmount from old category
-	repo.On("GetByCatIdAndMonth", mock.Anything, (pgx.Tx)(nil), budgetID, oldCatID, "2025-01").Return(existingOld, nil)
-	repo.On("UpdateCarryoverByCatIdAndMonth", mock.Anything, (pgx.Tx)(nil), budgetID, oldCatID, "2025-01", -100.0).Return(nil)
+	repo.On("GetByCatIdAndMonth", mock.Anything, budgetID, oldCatID, "2025-01").Return(existingOld, nil)
+	repo.On("UpdateCarryoverByCatIdAndMonth", mock.Anything, budgetID, oldCatID, "2025-01", -100.0).Return(nil)
 	// op2: add newAmount to new category
-	repo.On("GetByCatIdAndMonth", mock.Anything, (pgx.Tx)(nil), budgetID, newCatID, "2025-01").Return(existingNew, nil)
-	repo.On("UpdateCarryoverByCatIdAndMonth", mock.Anything, (pgx.Tx)(nil), budgetID, newCatID, "2025-01", 200.0).Return(nil)
+	repo.On("GetByCatIdAndMonth", mock.Anything, budgetID, newCatID, "2025-01").Return(existingNew, nil)
+	repo.On("UpdateCarryoverByCatIdAndMonth", mock.Anything, budgetID, newCatID, "2025-01", 200.0).Return(nil)
 
-	err := svc.ApplyCarryoverOps(context.Background(), nil, budgetID, diff, cc)
+	err := svc.ApplyCarryoverOps(context.Background(), budgetID, diff, cc)
 	assert.NoError(t, err)
 	repo.AssertExpectations(t)
 }
@@ -2397,7 +2371,7 @@ func TestAPIKeyService_Create_EmptyName(t *testing.T) {
 
 func TestAPIKeyService_Create_RepoError(t *testing.T) {
 	repo := &svcAPIKeyRepo{}
-	repo.On("Create", mock.Anything, (pgx.Tx)(nil), mock.Anything).Return(assert.AnError)
+	repo.On("Create", mock.Anything, mock.Anything).Return(assert.AnError)
 	svc := NewApiKeyService(repo)
 	ctx := utils.WithUserID(context.Background(), uuid.New())
 	_, err := svc.Create(ctx, &model.APIKey{Name: "mykey"})
@@ -2415,9 +2389,9 @@ func TestMonthlyBudgetService_UpsertCarryover_UpdateError(t *testing.T) {
 	repo := &svcMonthlyBudgetRepo{}
 	svc := NewMonthlyBudgetService(repo)
 	existing := &model.MonthlyBudget{CategoryID: catID}
-	repo.On("GetByCatIdAndMonth", mock.Anything, (pgx.Tx)(nil), budgetID, catID, "2025-01").Return(existing, nil)
-	repo.On("UpdateCarryoverByCatIdAndMonth", mock.Anything, (pgx.Tx)(nil), budgetID, catID, "2025-01", 50.0).Return(assert.AnError)
-	err := svc.UpsertCarryover(context.Background(), nil, budgetID, catID, "2025-01", 50.0)
+	repo.On("GetByCatIdAndMonth", mock.Anything, budgetID, catID, "2025-01").Return(existing, nil)
+	repo.On("UpdateCarryoverByCatIdAndMonth", mock.Anything, budgetID, catID, "2025-01", 50.0).Return(assert.AnError)
+	err := svc.UpsertCarryover(context.Background(), budgetID, catID, "2025-01", 50.0)
 	assert.Error(t, err)
 	repo.AssertExpectations(t)
 }
@@ -2440,8 +2414,8 @@ func TestMonthlyBudgetService_ApplyCarryoverOps_UpsertError(t *testing.T) {
 		newAmount:   150.0,
 	}
 	cc := carryoverCase{sameCategory: true, sameMonth: true}
-	repo.On("GetByCatIdAndMonth", mock.Anything, (pgx.Tx)(nil), budgetID, catID, "2025-01").Return((*model.MonthlyBudget)(nil), assert.AnError)
-	err := svc.ApplyCarryoverOps(context.Background(), nil, budgetID, diff, cc)
+	repo.On("GetByCatIdAndMonth", mock.Anything, budgetID, catID, "2025-01").Return((*model.MonthlyBudget)(nil), assert.AnError)
+	err := svc.ApplyCarryoverOps(context.Background(), budgetID, diff, cc)
 	assert.Error(t, err)
 	repo.AssertExpectations(t)
 }
@@ -2493,7 +2467,7 @@ func TestNewCipherClient(t *testing.T) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 func TestValidateTransactionPayload_BudgetMismatch(t *testing.T) {
-	svc := &transactionService{}
+	svc := &transactionService{dbTxn: fakeDBTxn{}}
 	txn := model.Transaction{
 		BudgetID:  uuid.New(),
 		AccountID: uuidPtr(uuid.New()),
@@ -2505,7 +2479,7 @@ func TestValidateTransactionPayload_BudgetMismatch(t *testing.T) {
 }
 
 func TestValidateTransactionPayload_AccountIDNil(t *testing.T) {
-	svc := &transactionService{}
+	svc := &transactionService{dbTxn: fakeDBTxn{}}
 	budgetID := uuid.New()
 	txn := model.Transaction{
 		BudgetID:  budgetID,
@@ -2518,7 +2492,7 @@ func TestValidateTransactionPayload_AccountIDNil(t *testing.T) {
 }
 
 func TestValidateTransactionPayload_PayeeIDNil(t *testing.T) {
-	svc := &transactionService{}
+	svc := &transactionService{dbTxn: fakeDBTxn{}}
 	budgetID := uuid.New()
 	txn := model.Transaction{
 		BudgetID:  budgetID,
@@ -2554,12 +2528,12 @@ func TestLoadDependencies_TransferAccountError(t *testing.T) {
 	account := &model.Account{ID: accountID}
 	payee := &model.Payee{ID: payeeID, TransferAccountID: &transferAccountID}
 
-	budgetRepo.On("GetById", mock.Anything, (pgx.Tx)(nil), budgetID).Return(budget, nil)
-	accountRepo.On("GetById", mock.Anything, (pgx.Tx)(nil), budgetID, accountID).Return(account, nil)
-	payeeRepo.On("GetByIdTx", mock.Anything, (pgx.Tx)(nil), budgetID, payeeID).Return(payee, nil)
-	accountRepo.On("GetById", mock.Anything, (pgx.Tx)(nil), budgetID, transferAccountID).Return((*model.Account)(nil), assert.AnError)
+	budgetRepo.On("GetById", mock.Anything, budgetID).Return(budget, nil)
+	accountRepo.On("GetById", mock.Anything, budgetID, accountID).Return(account, nil)
+	payeeRepo.On("GetById", mock.Anything, budgetID, payeeID).Return(payee, nil)
+	accountRepo.On("GetById", mock.Anything, budgetID, transferAccountID).Return((*model.Account)(nil), assert.AnError)
 
-	svc := &transactionService{
+	svc := &transactionService{dbTxn: fakeDBTxn{},
 		repo:        txnRepo,
 		budgetRepo:  budgetRepo,
 		accountRepo: accountRepo,
@@ -2570,7 +2544,7 @@ func TestLoadDependencies_TransferAccountError(t *testing.T) {
 		AccountID: &accountID,
 		PayeeID:   &payeeID,
 	}
-	_, _, _, _, err := svc.loadDependencies(ctx, nil, budgetID, txn)
+	_, _, _, _, err := svc.loadDependencies(ctx, budgetID, txn)
 	assert.Error(t, err)
 }
 
@@ -2579,7 +2553,7 @@ func TestLoadDependencies_TransferAccountError(t *testing.T) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 func TestLearnTransactionMappingAsync_PayeeRuleRepoNil(t *testing.T) {
-	svc := &transactionService{
+	svc := &transactionService{dbTxn: fakeDBTxn{},
 		cipherClient:     &mockCipherClient{},
 		payeeRuleRepo:    nil,
 		txnEmbeddingRepo: &mockTransactionEmbeddingRepo{},
@@ -2597,7 +2571,7 @@ func TestUpdateStatus_TxnNotFound(t *testing.T) {
 	txnRepo := &mockTransactionRepo{}
 	cipherPredRepo := &mockCipherPredictionRepo{}
 	txnRepo.On("GetById", mock.Anything, budgetID, txnID).Return((*model.Transaction)(nil), nil)
-	svc := &transactionService{
+	svc := &transactionService{dbTxn: fakeDBTxn{},
 		repo:                 txnRepo,
 		cipherPredictionRepo: cipherPredRepo,
 	}
@@ -2612,7 +2586,7 @@ func TestUpdateStatus_NilCipherPredRepo(t *testing.T) {
 	txnRepo := &mockTransactionRepo{}
 	foundTxn := &model.Transaction{ID: txnID}
 	txnRepo.On("GetById", mock.Anything, budgetID, txnID).Return(foundTxn, nil)
-	svc := &transactionService{
+	svc := &transactionService{dbTxn: fakeDBTxn{},
 		repo:                 txnRepo,
 		cipherPredictionRepo: nil,
 	}
@@ -2629,7 +2603,7 @@ func TestUpdateStatus_CipherPredRepoError(t *testing.T) {
 	foundTxn := &model.Transaction{ID: txnID}
 	txnRepo.On("GetById", mock.Anything, budgetID, txnID).Return(foundTxn, nil)
 	cipherPredRepo.On("GetByTransactionID", mock.Anything, budgetID, txnID).Return((*model.CipherPredictionRecord)(nil), assert.AnError)
-	svc := &transactionService{
+	svc := &transactionService{dbTxn: fakeDBTxn{},
 		repo:                 txnRepo,
 		cipherPredictionRepo: cipherPredRepo,
 	}
@@ -2649,7 +2623,7 @@ func TestUpdateStatus_PayeeIDNil(t *testing.T) {
 	cipherPred := &model.CipherPredictionRecord{}
 	txnRepo.On("GetById", mock.Anything, budgetID, txnID).Return(foundTxn, nil)
 	cipherPredRepo.On("GetByTransactionID", mock.Anything, budgetID, txnID).Return(cipherPred, nil)
-	svc := &transactionService{
+	svc := &transactionService{dbTxn: fakeDBTxn{},
 		repo:                 txnRepo,
 		cipherPredictionRepo: cipherPredRepo,
 	}
@@ -2669,7 +2643,7 @@ func TestUpdateStatus_CategoryIDNil(t *testing.T) {
 	cipherPred := &model.CipherPredictionRecord{}
 	txnRepo.On("GetById", mock.Anything, budgetID, txnID).Return(foundTxn, nil)
 	cipherPredRepo.On("GetByTransactionID", mock.Anything, budgetID, txnID).Return(cipherPred, nil)
-	svc := &transactionService{
+	svc := &transactionService{dbTxn: fakeDBTxn{},
 		repo:                 txnRepo,
 		cipherPredictionRepo: cipherPredRepo,
 	}
@@ -2689,7 +2663,7 @@ func TestUpdateStatus_RawBankTextNil(t *testing.T) {
 	cipherPred := &model.CipherPredictionRecord{}
 	txnRepo.On("GetById", mock.Anything, budgetID, txnID).Return(foundTxn, nil)
 	cipherPredRepo.On("GetByTransactionID", mock.Anything, budgetID, txnID).Return(cipherPred, nil)
-	svc := &transactionService{
+	svc := &transactionService{dbTxn: fakeDBTxn{},
 		repo:                 txnRepo,
 		cipherPredictionRepo: cipherPredRepo,
 	}
@@ -2706,7 +2680,7 @@ func TestTransactionService_Update_ValidationFails(t *testing.T) {
 	budgetID := uuid.New()
 	txnID := uuid.New()
 	txnRepo := &mockTransactionRepo{}
-	svc := &transactionService{repo: txnRepo}
+	svc := &transactionService{dbTxn: fakeDBTxn{}, repo: txnRepo}
 	wrongBudgetID := uuid.New()
 	txn := model.Transaction{BudgetID: wrongBudgetID, Date: "2025-01-15"}
 	ctx := utils.WithBudgetID(context.Background(), budgetID)
