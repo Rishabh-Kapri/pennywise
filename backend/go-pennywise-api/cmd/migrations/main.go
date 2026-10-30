@@ -11,20 +11,23 @@ import (
 	"text/template"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/config"
-	pwsql "github.com/Rishabh-Kapri/pennywise/backend/shared/sql"
+	pwsql "github.com/Rishabh-Kapri/pennywise/backend/shared/migrations/sql"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 )
 
 // legacyFinalVersion is the last version of the pre-squash migration history
-// (29 files, since replaced by the ones in backend/shared/sql/migrations).
+// (29 files, since replaced by the ones in backend/shared/migrations/sql).
 const legacyFinalVersion = 29
+
+// migrationsSourceDir is where create writes new files, relative to go-pennywise-api.
+const migrationsSourceDir = "../shared/migrations/sql"
 
 const helpText = `
 Pennywise Database Migrations (via pressly/goose)
 
-Migrations live in backend/shared/sql/migrations and are embedded in the binary.
+Migrations live in backend/shared/migrations/sql and are embedded in the binary.
 
 Commands:
   up                   Migrate the DB to the most recent version available
@@ -52,7 +55,7 @@ var createTemplate = template.Must(template.New("migration").Parse(`-- +goose Up
 func main() {
 	var dir string
 	flag.StringVar(&dir, "dir", "", "migrations directory: inside the embedded FS (default \""+
-		pwsql.MigrationsDir+"\"), or on disk for create (default \"../shared/sql/"+pwsql.MigrationsDir+"\")")
+		pwsql.MigrationsDir+"\"), or on disk for create (default \""+migrationsSourceDir+"\")")
 	flag.Parse()
 
 	args := flag.Args()
@@ -70,7 +73,7 @@ func main() {
 			log.Fatalf("usage: create NAME")
 		}
 		if dir == "" {
-			dir = "../shared/sql/" + pwsql.MigrationsDir
+			dir = migrationsSourceDir
 		}
 		goose.SetSequential(true)
 		if err := goose.CreateWithTemplate(nil, dir, createTemplate, arguments[0], "sql"); err != nil {

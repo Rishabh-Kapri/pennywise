@@ -3,8 +3,8 @@ package service
 import (
 	"context"
 
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
@@ -45,7 +45,7 @@ func (s *tagService) GetById(ctx context.Context, id uuid.UUID) (*model.Tag, err
 func (s *tagService) Create(ctx context.Context, tag model.Tag) (*model.Tag, error) {
 	budgetId := utils.MustBudgetID(ctx)
 	tag.BudgetID = budgetId
-	return s.repo.Create(ctx, nil, tag)
+	return s.repo.Create(ctx, tag)
 }
 
 func (s *tagService) DeleteById(ctx context.Context, id uuid.UUID) error {

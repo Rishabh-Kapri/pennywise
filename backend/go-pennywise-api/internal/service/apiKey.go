@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 	"github.com/google/uuid"
 )
@@ -134,7 +134,7 @@ func (s *apiKeyService) Create(ctx context.Context, apiKey *model.APIKey) (strin
 	apiKey.UserID = userID
 
 	// Create the API key
-	err = s.repo.Create(ctx, nil, apiKey)
+	err = s.repo.Create(ctx, apiKey)
 	if err != nil {
 		return "", errs.Wrap(errs.CodeInternalError, "failed to create api key", err)
 	}
@@ -147,15 +147,15 @@ func (s *apiKeyService) GetAll(ctx context.Context) ([]model.APIKey, error) {
 }
 
 func (s *apiKeyService) GetByKeyID(ctx context.Context, keyID string) (*model.APIKey, error) {
-	return s.repo.GetByKeyID(ctx, nil, keyID)
+	return s.repo.GetByKeyID(ctx, keyID)
 }
 
 func (s *apiKeyService) GetByHash(ctx context.Context, fullKey string) (*model.APIKey, error) {
 	keyHash := utils.Hash(fullKey)
 	logger.Logger(ctx).Debug("GetByHash", "fullKey", fullKey, "keyHash", keyHash)
-	return s.repo.GetByHash(ctx, nil, keyHash)
+	return s.repo.GetByHash(ctx, keyHash)
 }
 
 func (s *apiKeyService) UpdateLastUsed(ctx context.Context, id uuid.UUID) error {
-	return s.repo.UpdateLastUsed(ctx, nil, id)
+	return s.repo.UpdateLastUsed(ctx, id)
 }

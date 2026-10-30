@@ -1,6 +1,6 @@
 # go-pennywise-api
 
-Core REST API for Pennywise: auth, budgets, accounts, transactions, categories, payees, tags, loan metadata, predictions, agent runs, and websocket fanout. Built with Gin and PostgreSQL (pgx), layered as handler → service → repository (repositories live in [`backend/shared/db`](../shared)).
+Core REST API for Pennywise: auth, budgets, accounts, transactions, categories, payees, tags, loan metadata, predictions, agent runs, and websocket fanout. Built with Gin and PostgreSQL (pgx), layered as handler → service → repository (repository ports in [`backend/shared/ports/repository`](../shared), Postgres adapter in `shared/adapters/postgres`).
 
 ## Run
 
@@ -19,11 +19,11 @@ make test           # go test ./...
 make check          # fmt + vet + test
 make migrate-up     # apply pending migrations
 make migrate-status # show migration state
-make migrate-create name=add_x # new migration in backend/shared/sql/migrations
+make migrate-create name=add_x # new migration in backend/shared/migrations/sql
 make migrate-baseline # one-off, for a DB built by the old 29 migrations
 ```
 
-A **fresh database** just needs `make migrate-up`. The migrations and how to write them: `../shared/sql/README.md`.
+A **fresh database** just needs `make migrate-up`. The migrations and how to write them: `../shared/migrations/sql/README.md`.
 
 ## Routes
 

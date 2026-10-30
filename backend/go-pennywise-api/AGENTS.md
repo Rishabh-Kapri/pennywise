@@ -1,6 +1,6 @@
 # AGENTS.md — go-pennywise-api
 
-Core REST API for Pennywise (Gin + pgx/PostgreSQL). Layering: handler → service → repository. Repositories live in `backend/shared/db`, not here.
+Core REST API for Pennywise (Gin + pgx/PostgreSQL). Layering: handler → service → repository. Repository ports live in `backend/shared/ports/repository` (Postgres adapter in `shared/adapters/postgres`), not here. Services depend on ports only; transactions go through the injected `repository.DBTxn`.
 
 ## Commands
 
@@ -11,7 +11,7 @@ make test             # go test ./...
 make check            # fmt + vet + test
 make vendor           # GOWORK=off go mod vendor
 make migrate-up       # also: migrate-one, migrate-down, migrate-redo, migrate-status, migrate-version
-make migrate-create name=add_x # next migration file in backend/shared/sql/migrations
+make migrate-create name=add_x # next migration file in backend/shared/migrations/sql
 make migrate-baseline # one-off: adopt the squashed history on a DB built by the old 29 migrations
 go test -run TestName ./internal/service
 ```
@@ -21,7 +21,7 @@ go test -run TestName ./internal/service
 ## Layout
 
 - `cmd/api/main.go` — wiring: config, DB, Redis, Temporal (skipped when `RAILWAY_ENVIRONMENT_NAME=local` or no `TEMPORAL_SERVER_HOST`), all routes, background jobs.
-- `cmd/migrations/` — goose runner (`up|down|status|version|redo|create|baseline`). The SQL lives in `backend/shared/sql/migrations`, embedded via `shared/sql`.
+- `cmd/migrations/` — goose runner (`up|down|status|version|redo|create|baseline`). The SQL lives in `backend/shared/migrations/sql`, embedded via that package.
 - `internal/handler/` — Gin handlers; parse request, call service, map errors to JSON.
 - `internal/service/` — business logic, background jobs, Cipher/Gmail/Temporal clients wiring.
 - `internal/middleware/` — API auth (`AuthMiddleware`), `RouteAuthMiddleware` (scopes), rate limit. Shared `BudgetIdMiddleware` and internal-request auth live in `backend/shared/middleware`.
@@ -42,7 +42,7 @@ go test -run TestName ./internal/service
 
 ## Gotchas
 
-- **Migration versions must be sequential and unique.** goose panics on duplicates and blocks all pending migrations. When rebasing onto a branch that added migrations, renumber yours to the end. `cd backend/shared && go test ./sql` guards this. Changing the migrations means changing `shared`, so re-vendor (below). Authoring rules: `backend/shared/sql/README.md`.
+- **Migration versions must be sequential and unique.** goose panics on duplicates and blocks all pending migrations. When rebasing onto a branch that added migrations, renumber yours to the end. `cd backend/shared && go test ./migrations/sql` guards this. Changing the migrations means changing `shared`, so re-vendor (below). Authoring rules: `backend/shared/migrations/sql/README.md`.
 - **Shared module changes:** `go.mod` uses `replace ... => ../shared` and `go.work` puts local builds in workspace mode. After any change under `backend/shared`, re-vendor (`make vendor` here, and in every consumer service) and verify with `GOWORK=off go build -mod=vendor ./cmd/api`. Docker only sees `shared` through `vendor/`.
 - **Recurring transactions** materialize from an hourly `time.Ticker` in `cmd/api/main.go` (`RunDueAllBudgets`), not Temporal. Works without the Temporal worker.
 - **Statement PDFs need `pdftotext`** (poppler). It is installed in the Docker image; a local run without it fails statement uploads. Binary path is the `pdftotextBinary` var in `statementText.go`.
@@ -66,5 +66,5 @@ go test -run TestName ./internal/service
 | Statement import pipeline | `internal/service/statement.go`, `statementReconcile.go`, `statementText.go` |
 | Document storage | `internal/storage/postgres.go`, `internal/service/document.go` |
 | Recurring scheduler | `internal/service/recurringTransaction.go` |
-| Migrations | `backend/shared/sql/migrations/`, `backend/shared/sql/README.md`, `cmd/migrations/main.go` |
+| Migrations | `backend/shared/migrations/sql/`, its `README.md`, `cmd/migrations/main.go` |
 | Dockerfile | `Dockerfile` (vendored build, poppler-utils runtime) |

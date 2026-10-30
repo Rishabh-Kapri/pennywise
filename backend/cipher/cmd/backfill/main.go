@@ -6,7 +6,8 @@ import (
 	"os"
 	"strings"
 
-	db "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/factory"
+
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
@@ -65,13 +66,13 @@ func main() {
 		logger.Fatal("Invalid or missing BUDGET_ID: %v", err)
 	}
 
-	dbConn, err := db.ConnectWithURL(cfg.DatabaseURL)
+	database, err := factory.ConnectDB(factory.Config{Driver: cfg.DatabaseDriver, URL: cfg.DatabaseURL})
 	if err != nil {
 		logger.Fatal(err.Error())
 	}
-	defer dbConn.Close()
+	defer database.Close()
 
-	deps, pennywiseClient := initDeps(cfg, pennywiseAPI, budgetID, dbConn)
+	deps, pennywiseClient := initDeps(cfg, pennywiseAPI, budgetID, database)
 	predictions := loadPredictions(ctx, pennywiseClient, budgetID, dataPath)
 
 	log.Info("loaded predictions", "count", len(predictions))

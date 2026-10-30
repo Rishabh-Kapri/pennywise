@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"image"
+
 	// registered for image.DecodeConfig so page dimensions can be read
 	_ "image/jpeg"
 	_ "image/png"

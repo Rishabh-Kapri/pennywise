@@ -11,10 +11,10 @@ import (
 	agentPrompts "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/context"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
@@ -64,7 +64,7 @@ type Memory interface {
 }
 
 type memory struct {
-	agentMemoryRepo  db.AgentMemoryRepository
+	agentMemoryRepo  repository.AgentMemoryRepository
 	llmResolver      llm.LLMResolver
 	bufferTokens     int
 	messageTokens    int
@@ -94,7 +94,7 @@ func (m *memory) countTokens(messages []sharedModel.AgentMessage, lastSequence i
 
 // memory service should be singleton
 func NewMemoryService(
-	agentMemoryRepo db.AgentMemoryRepository,
+	agentMemoryRepo repository.AgentMemoryRepository,
 	llmResolver llm.LLMResolver,
 	loc *time.Location,
 ) Memory {
@@ -325,7 +325,7 @@ func observationsToMessages(b *strings.Builder, observations []sharedModel.Agent
 }
 
 func (m *memory) GetWorkingMemory(ctx context.Context, budgetID uuid.UUID) string {
-	workingMemory, err := m.agentMemoryRepo.GetWorkingMemory(ctx, nil, budgetID)
+	workingMemory, err := m.agentMemoryRepo.GetWorkingMemory(ctx, budgetID)
 	if err != nil {
 		return ""
 	}
@@ -365,7 +365,6 @@ func (m *memory) PrepareContext(ctx context.Context, req MemoryContextRequest) (
 
 	observations, err := m.agentMemoryRepo.GetObservationalMemory(
 		ctx,
-		nil,
 		req.BudgetID,
 		req.UserID,
 		req.ConversationID,
@@ -648,7 +647,6 @@ func (m *memory) OnRunPersisted(ctx context.Context, data AgentRunData) error {
 	// find the last observed sequence
 	lastSequence, err := m.agentMemoryRepo.GetLastObservedSequence(
 		ctx,
-		nil,
 		data.BudgetID,
 		data.UserID,
 		data.ConversationID,
@@ -773,7 +771,7 @@ func (m *memory) OnRunPersisted(ctx context.Context, data AgentRunData) error {
 		return nil
 	}
 
-	_, err = m.agentMemoryRepo.CreateObservationalMemory(ctx, nil, sharedModel.AgentObservationalMemory{
+	_, err = m.agentMemoryRepo.CreateObservationalMemory(ctx, sharedModel.AgentObservationalMemory{
 		BudgetID:          data.BudgetID,
 		UserID:            data.UserID,
 		ConversationID:    data.ConversationID,

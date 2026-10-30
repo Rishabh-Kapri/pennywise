@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
@@ -26,7 +25,6 @@ const (
 )
 
 type ExecuteSQLTool struct {
-	db.BaseRepository
 	pool *pgxpool.Pool
 }
 
@@ -36,7 +34,7 @@ type executeSQLArgs struct {
 }
 
 func NewExecuteSQLTool(pool *pgxpool.Pool) Tool {
-	return ExecuteSQLTool{BaseRepository: db.NewBaseRepository(pool), pool: pool}
+	return ExecuteSQLTool{pool: pool}
 }
 
 func (t ExecuteSQLTool) Definition() sharedModel.ToolDefiniton {

@@ -178,7 +178,7 @@ services:
       # which shifts day boundaries for anyone who is not.
       AGENT_TIMEZONE: ${AGENT_TIMEZONE:-}
       # Least-privilege connection for the agent's read-only SQL tools. Point it
-      # at a login role granted pennywise_agent_ro (see backend/shared/sql/migrations/00009_agent_readonly_rls.sql) so
+      # at a login role granted pennywise_agent_ro (see backend/shared/migrations/sql/00009_agent_readonly_rls.sql) so
       # row-level security confines agent queries to one budget. Left unset, the
       # tools fall back to the application role and that isolation is lost —
       # cipher logs a warning at startup when that happens.

@@ -9,12 +9,12 @@ type PredictionPort interface {
 	ExtractEmailData(ctx context.Context, req ExtractEmailDataRequest) (*ExtractedInputs, error)
 }
 
-type jevPredictionAdapter struct{
-	url string
+type jevPredictionAdapter struct {
+	url    string
 	apiKey string
 }
 
-type jevClient struct {}
+type jevClient struct{}
 
 func NewJevPredictionAdapter() PredictionPort {
 	return &jevPredictionAdapter{}

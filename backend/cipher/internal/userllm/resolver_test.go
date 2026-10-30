@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/otelSDK"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"

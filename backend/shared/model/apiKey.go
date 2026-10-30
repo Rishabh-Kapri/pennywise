@@ -22,8 +22,8 @@ const (
 type APIKey struct {
 	ID          uuid.UUID `json:"id"`
 	KeyID       string    `json:"keyId"` // short identifier for lookup
-	MaskedKey   *string    `json:"maskedKey,omitempty"`
-	HashedKey   string    `json:"-"`     // dont'expose HashedKey in JSON
+	MaskedKey   *string   `json:"maskedKey,omitempty"`
+	HashedKey   string    `json:"-"` // dont'expose HashedKey in JSON
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 

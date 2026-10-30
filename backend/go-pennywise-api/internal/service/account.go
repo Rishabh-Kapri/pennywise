@@ -5,14 +5,13 @@ import (
 	"errors"
 	"strings"
 
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 type AccountService interface {
@@ -25,10 +24,11 @@ type AccountService interface {
 type accountService struct {
 	repo      repository.AccountRepository
 	payeeRepo repository.PayeesRepository
+	dbTxn     repository.DBTxn
 }
 
-func NewAccountService(r repository.AccountRepository, payeeRepo repository.PayeesRepository) AccountService {
-	return &accountService{repo: r, payeeRepo: payeeRepo}
+func NewAccountService(r repository.AccountRepository, payeeRepo repository.PayeesRepository, dbTxn repository.DBTxn) AccountService {
+	return &accountService{dbTxn: dbTxn, repo: r, payeeRepo: payeeRepo}
 }
 
 func (s *accountService) GetAll(ctx context.Context) ([]model.Account, error) {
@@ -67,9 +67,9 @@ func (s *accountService) Create(ctx context.Context, account model.Account) (*mo
 	}
 
 	var createdAcc *model.Account
-	err := utils.WithTx(ctx, s.repo.GetDB(), func(tx pgx.Tx) error {
+	err := s.dbTxn.Do(ctx, func(ctx context.Context) error {
 		// 1. create account
-		acc, err := s.repo.Create(ctx, tx, account)
+		acc, err := s.repo.Create(ctx, account)
 		if err != nil {
 			return errs.Wrap(errs.CodeAccountCreateFailed, "error creating account", err)
 		}
@@ -81,13 +81,13 @@ func (s *accountService) Create(ctx context.Context, account model.Account) (*mo
 			BudgetID:          budgetId,
 			TransferAccountID: &createdAcc.ID,
 		}
-		createdPayee, err := s.payeeRepo.Create(ctx, tx, transferPayee)
+		createdPayee, err := s.payeeRepo.Create(ctx, transferPayee)
 		if err != nil {
 			return errs.Wrap(errs.CodeAccountCreateFailed, "error creating transfer payee", err)
 		}
 
 		// 3. update account with transfer payee id
-		err = s.repo.UpdateTransferPayee(ctx, tx, createdAcc.ID, createdPayee.ID)
+		err = s.repo.UpdateTransferPayee(ctx, createdAcc.ID, createdPayee.ID)
 		if err != nil {
 			return errs.Wrap(errs.CodeAccountCreateFailed, "error updating transfer payee", err)
 		}
@@ -111,7 +111,7 @@ func (s *accountService) checkSuffix(ctx context.Context, budgetId, selfId uuid.
 		return errors.New("account suffix must be 2-6 digits")
 	}
 	existing, err := s.repo.GetBySuffix(ctx, budgetId, suffix)
-	if errors.Is(err, pgx.ErrNoRows) {
+	if errors.Is(err, repository.ErrNotFound) {
 		return nil
 	}
 	if err != nil {
@@ -140,13 +140,13 @@ func (s *accountService) Update(ctx context.Context, id uuid.UUID, account model
 
 	var updated *model.Account
 	var renamedFrom string
-	err := utils.WithTx(ctx, s.repo.GetDB(), func(tx pgx.Tx) error {
-		current, err := s.repo.GetById(ctx, tx, budgetId, id)
+	err := s.dbTxn.Do(ctx, func(ctx context.Context) error {
+		current, err := s.repo.GetById(ctx, budgetId, id)
 		if err != nil {
 			return errors.New("account not found")
 		}
 		renamedFrom = current.Name
-		updated, err = s.repo.Update(ctx, tx, budgetId, id, account)
+		updated, err = s.repo.Update(ctx, budgetId, id, account)
 		return err
 	})
 	if err != nil {

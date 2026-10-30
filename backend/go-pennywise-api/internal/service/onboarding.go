@@ -7,8 +7,8 @@ import (
 	"slices"
 	"time"
 
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
@@ -53,7 +53,7 @@ func NewOnboardingService(
 }
 
 func (s *onboardingService) Get(ctx context.Context) (*model.BudgetOnboarding, error) {
-	budget, err := s.budgetRepo.GetById(ctx, nil, utils.MustBudgetID(ctx))
+	budget, err := s.budgetRepo.GetById(ctx, utils.MustBudgetID(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +65,7 @@ func (s *onboardingService) Update(
 	req model.UpdateBudgetOnboardingRequest,
 ) (*model.BudgetOnboarding, error) {
 	budgetID := utils.MustBudgetID(ctx)
-	budget, err := s.budgetRepo.GetById(ctx, nil, budgetID)
+	budget, err := s.budgetRepo.GetById(ctx, budgetID)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func (s *onboardingService) Update(
 	if err != nil {
 		return nil, err
 	}
-	if err := s.budgetRepo.UpdateOnboarding(ctx, nil, budgetID, onboarding); err != nil {
+	if err := s.budgetRepo.UpdateOnboarding(ctx, budgetID, onboarding); err != nil {
 		return nil, err
 	}
 	return &onboarding, nil

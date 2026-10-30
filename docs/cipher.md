@@ -13,7 +13,7 @@ The system utilizes an event-driven, distributed monolith architecture to balanc
 - **Ingestion (`go-gmail`):** A lightweight service triggered by Google PubSub. It intercepts the raw Gmail event and starts a Temporal `EmailToTransactionWorkflow`. The workflow invokes cipher's `PredictionActivity` for the full classification pipeline. The old python-mlp prediction path is deprecated and no longer used.
 - **The Brain (`cipher`):** The core business logic service. It handles all LLM interactions, data extraction, and routing logic. Exposes `POST /api/predict`, `POST /api/corrections`, and `POST /api/workflows/:workflowId/retry-predict`.
 - **The Ledger (`api`):** The backend that manages the frontend API and state mutations.
-- **The Shared Repository (`shared/db`):** Rather than strict, latency-heavy microservice communication over HTTP/gRPC, both `cipher` and `api` import a shared Go repository package. This allows `cipher` to execute sub-millisecond database reads for classification rules without network hops, while keeping SQL queries centralized.
+- **The Shared Repository (`shared/ports/repository` + `shared/adapters/postgres`):** Rather than strict, latency-heavy microservice communication over HTTP/gRPC, both `cipher` and `api` import a shared Go repository package. This allows `cipher` to execute sub-millisecond database reads for classification rules without network hops, while keeping SQL queries centralized.
 
 ### Temporal Integration
 

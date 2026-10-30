@@ -16,7 +16,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -858,13 +857,6 @@ func (m *mockPredictionService) CreateCipherPrediction(ctx context.Context, p mo
 	}
 	return nil, args.Error(1)
 }
-func (m *mockPredictionService) CreateCipherPredictionWithTx(ctx context.Context, tx pgx.Tx, p model.CipherPredictionRecord) (*model.CipherPredictionRecord, error) {
-	args := m.Called(ctx, tx, p)
-	if v := args.Get(0); v != nil {
-		return v.(*model.CipherPredictionRecord), args.Error(1)
-	}
-	return nil, args.Error(1)
-}
 
 func TestPredictionHandler_List(t *testing.T) {
 	t.Run("returns_predictions", func(t *testing.T) {
@@ -1060,13 +1052,6 @@ func (m *mockPayeeService) DeleteRule(ctx context.Context, ruleId uuid.UUID) err
 }
 func (m *mockPayeeService) Create(ctx context.Context, payee model.Payee) (*model.Payee, error) {
 	args := m.Called(ctx, payee)
-	if v := args.Get(0); v != nil {
-		return v.(*model.Payee), args.Error(1)
-	}
-	return nil, args.Error(1)
-}
-func (m *mockPayeeService) CreateWithTx(ctx context.Context, tx pgx.Tx, payee model.Payee) (*model.Payee, error) {
-	args := m.Called(ctx, tx, payee)
 	if v := args.Get(0); v != nil {
 		return v.(*model.Payee), args.Error(1)
 	}
@@ -1344,16 +1329,16 @@ func (m *mockTransactionService) Create(ctx context.Context, txn model.Transacti
 	}
 	return nil, args.Error(1)
 }
-func (m *mockTransactionService) CreateWithTxDeduped(ctx context.Context, tx pgx.Tx, txn model.Transaction) (*model.Transaction, bool, error) {
-	args := m.Called(ctx, tx, txn)
+func (m *mockTransactionService) CreateDeduped(ctx context.Context, txn model.Transaction) (*model.Transaction, bool, error) {
+	args := m.Called(ctx, txn)
 	if v := args.Get(0); v != nil {
 		return v.(*model.Transaction), args.Bool(1), args.Error(2)
 	}
 	return nil, args.Bool(1), args.Error(2)
 }
 
-func (m *mockTransactionService) CreateWithTx(ctx context.Context, tx pgx.Tx, txn model.Transaction) ([]model.Transaction, error) {
-	args := m.Called(ctx, tx, txn)
+func (m *mockTransactionService) CreateInTx(ctx context.Context, txn model.Transaction) ([]model.Transaction, error) {
+	args := m.Called(ctx, txn)
 	if v := args.Get(0); v != nil {
 		return v.([]model.Transaction), args.Error(1)
 	}

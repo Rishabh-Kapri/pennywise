@@ -57,22 +57,24 @@ func parseLLMTargets(raw string) []LLMTarget {
 }
 
 type Config struct {
-	Environment          string
-	ServiceName          string
-	DatabaseURL          string
-	RedisURL             string
-	OllamaURL            string
-	MLPServiceURL        string
-	PennywiseServiceURL  string
-	LumoBaseURL          string
-	LumoAPIKey           string
-	OpenAIAPIKey         string
-	OpenRouterAPIKey     string
-	TypesafeAPIKey       string
-	InternalAuthToken    string
-	TemporalServerHost   string
-	TemporalServerPort   string
-	Port                 string
+	Environment string
+	ServiceName string
+	// DatabaseDriver picks the adapter behind the repositories (default postgres).
+	DatabaseDriver      string
+	DatabaseURL         string
+	RedisURL            string
+	OllamaURL           string
+	MLPServiceURL       string
+	PennywiseServiceURL string
+	LumoBaseURL         string
+	LumoAPIKey          string
+	OpenAIAPIKey        string
+	OpenRouterAPIKey    string
+	TypesafeAPIKey      string
+	InternalAuthToken   string
+	TemporalServerHost  string
+	TemporalServerPort  string
+	Port                string
 	// LLMCallTimeout bounds each individual LLM/embedding HTTP call.
 	LLMCallTimeout time.Duration
 	// LLMCredentialsKey opens user AI provider keys (user_llm_providers). Must
@@ -149,6 +151,7 @@ func Load() Config {
 	return Config{
 		Environment:              env,
 		ServiceName:              os.Getenv("SERVICE_NAME"),
+		DatabaseDriver:           os.Getenv("DATABASE_DRIVER"),
 		DatabaseURL:              os.Getenv("DATABASE_URL"),
 		RedisURL:                 os.Getenv("REDIS_URL"),
 		OllamaURL:                os.Getenv("OLLAMA_URL"),

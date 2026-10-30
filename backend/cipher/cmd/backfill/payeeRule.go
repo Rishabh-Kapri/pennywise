@@ -110,7 +110,7 @@ func (d *BackfillDeps) handleUPIMerchant(
 			Name:     merchantName,
 			BudgetID: budgetID,
 		}
-		payee, err = d.PayeeRepo.Create(ctx, nil, newPayee)
+		payee, err = d.PayeeRepo.Create(ctx, newPayee)
 		if err != nil {
 			return errs.Wrap(errs.CodeInternalError, "failed to create payee", err)
 		}
@@ -126,5 +126,5 @@ func (d *BackfillDeps) handleUPIMerchant(
 		MatchString: upiText,
 		MatchType:   "EXACT",
 	}
-	return d.PayeeRuleRepo.CreatePayeeRule(ctx, nil, data)
+	return d.PayeeRuleRepo.CreatePayeeRule(ctx, data)
 }
