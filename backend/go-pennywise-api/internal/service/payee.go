@@ -2,13 +2,14 @@ package service
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 type PayeeService interface {
@@ -20,18 +21,27 @@ type PayeeService interface {
 	UpdateRule(ctx context.Context, id uuid.UUID, ruleId uuid.UUID, payeeRule model.PayeeRule) error
 	DeleteRule(ctx context.Context, ruleId uuid.UUID) error
 	Create(ctx context.Context, payee model.Payee) (*model.Payee, error)
-	CreateWithTx(ctx context.Context, tx pgx.Tx, payee model.Payee) (*model.Payee, error)
 	DeleteById(ctx context.Context, id uuid.UUID) error
 	Update(ctx context.Context, id uuid.UUID, payee model.Payee) error
+	GetStats(ctx context.Context) ([]model.PayeeStats, error)
+	GetAllRules(ctx context.Context) ([]model.PayeeRuleDetails, error)
+	Merge(ctx context.Context, req model.PayeeMergeRequest) (*model.PayeeMergeResult, error)
 }
+
+var (
+	ErrPayeeNotFound     = errors.New("payee not found")
+	ErrTransferPayee     = errors.New("transfer payees belong to an account and can't be merged or deleted")
+	ErrInvalidPayeeMerge = errors.New("pick a target and at least one other payee to merge")
+)
 
 type payeeService struct {
 	repo          repository.PayeesRepository
 	payeeRuleRepo repository.PayeeRuleRepository
+	dbTxn         repository.DBTxn
 }
 
-func NewPayeeService(repo repository.PayeesRepository, payeeRuleRepo repository.PayeeRuleRepository) PayeeService {
-	return &payeeService{repo: repo, payeeRuleRepo: payeeRuleRepo}
+func NewPayeeService(repo repository.PayeesRepository, payeeRuleRepo repository.PayeeRuleRepository, dbTxn repository.DBTxn) PayeeService {
+	return &payeeService{dbTxn: dbTxn, repo: repo, payeeRuleRepo: payeeRuleRepo}
 }
 
 func (s *payeeService) GetAll(ctx context.Context) ([]model.Payee, error) {
@@ -61,7 +71,7 @@ func (s *payeeService) CreateRule(ctx context.Context, id uuid.UUID, payeeRule m
 	if payeeRule.MatchType == "" {
 		payeeRule.MatchType = "EXACT"
 	}
-	return s.payeeRuleRepo.CreatePayeeRule(ctx, nil, payeeRule)
+	return s.payeeRuleRepo.CreatePayeeRule(ctx, payeeRule)
 }
 
 func (s *payeeService) UpdateRule(ctx context.Context, id uuid.UUID, ruleId uuid.UUID, payeeRule model.PayeeRule) error {
@@ -79,24 +89,82 @@ func (s *payeeService) DeleteRule(ctx context.Context, ruleId uuid.UUID) error {
 	return s.payeeRuleRepo.DeleteByID(ctx, budgetId, ruleId)
 }
 
+// Create joins the caller's transaction when ctx carries one (repository.DBTxn).
 func (s *payeeService) Create(ctx context.Context, payee model.Payee) (*model.Payee, error) {
 	budgetId := utils.MustBudgetID(ctx)
 	payee.BudgetID = budgetId
-	return s.CreateWithTx(ctx, nil, payee)
-}
-
-func (s *payeeService) CreateWithTx(ctx context.Context, tx pgx.Tx, payee model.Payee) (*model.Payee, error) {
-	budgetId := utils.MustBudgetID(ctx)
-	payee.BudgetID = budgetId
-	return s.repo.Create(ctx, tx, payee)
+	return s.repo.Create(ctx, payee)
 }
 
 func (s *payeeService) DeleteById(ctx context.Context, id uuid.UUID) error {
 	budgetId := utils.MustBudgetID(ctx)
+	payee, err := s.repo.GetById(ctx, budgetId, id)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return ErrPayeeNotFound
+		}
+		return err
+	}
+	if payee.TransferAccountID != nil {
+		return ErrTransferPayee
+	}
 	return s.repo.DeleteById(ctx, budgetId, id)
 }
 
 func (s *payeeService) Update(ctx context.Context, id uuid.UUID, payee model.Payee) error {
 	budgetId := utils.MustBudgetID(ctx)
 	return s.repo.Update(ctx, budgetId, id, payee)
+}
+
+func (s *payeeService) GetStats(ctx context.Context) ([]model.PayeeStats, error) {
+	budgetId := utils.MustBudgetID(ctx)
+	return s.repo.GetStats(ctx, budgetId)
+}
+
+func (s *payeeService) GetAllRules(ctx context.Context) ([]model.PayeeRuleDetails, error) {
+	budgetId := utils.MustBudgetID(ctx)
+	return s.payeeRuleRepo.GetAll(ctx, budgetId)
+}
+
+// Merge folds the source payees into the target in one transaction:
+// transactions, rules, recurring schedules, learned embeddings and prediction
+// history move over, and the sources are deleted.
+func (s *payeeService) Merge(ctx context.Context, req model.PayeeMergeRequest) (*model.PayeeMergeResult, error) {
+	budgetId := utils.MustBudgetID(ctx)
+
+	seen := map[uuid.UUID]bool{req.TargetID: true}
+	sourceIds := make([]uuid.UUID, 0, len(req.SourceIDs))
+	for _, id := range req.SourceIDs {
+		if id == uuid.Nil || seen[id] {
+			continue
+		}
+		seen[id] = true
+		sourceIds = append(sourceIds, id)
+	}
+	if req.TargetID == uuid.Nil || len(sourceIds) == 0 {
+		return nil, ErrInvalidPayeeMerge
+	}
+
+	var result *model.PayeeMergeResult
+	err := s.dbTxn.Do(ctx, func(ctx context.Context) error {
+		for _, id := range append([]uuid.UUID{req.TargetID}, sourceIds...) {
+			payee, err := s.repo.GetById(ctx, budgetId, id)
+			if err != nil {
+				if errors.Is(err, repository.ErrNotFound) {
+					return fmt.Errorf("%w: %s", ErrPayeeNotFound, id)
+				}
+				return err
+			}
+			if payee.TransferAccountID != nil {
+				return ErrTransferPayee
+			}
+		}
+		var err error
+		result, err = s.repo.Merge(ctx, budgetId, req.TargetID, sourceIds)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }

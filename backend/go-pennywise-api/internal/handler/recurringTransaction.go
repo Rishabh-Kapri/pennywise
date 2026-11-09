@@ -4,13 +4,14 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
+
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 type RecurringTransactionHandler interface {
@@ -77,7 +78,7 @@ func (h *recurringTransactionHandler) Update(c *gin.Context) {
 
 	updated, err := h.service.Update(ctx, id, body)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, repository.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "recurring transaction not found"})
 			return
 		}
@@ -98,7 +99,7 @@ func (h *recurringTransactionHandler) DeleteById(c *gin.Context) {
 	}
 
 	if err := h.service.DeleteById(ctx, id); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, repository.ErrNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "recurring transaction not found"})
 			return
 		}

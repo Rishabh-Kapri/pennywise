@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Check } from 'lucide-react-native';
@@ -8,34 +8,29 @@ import { useAppDispatch, useAppSelector } from '../../../app/hooks';
 import { Card } from '../../../components/Card';
 import { Screen } from '../../../components/Screen';
 import { AppText } from '../../../components/AppText';
+import { AmountSheet } from '../../../components/AmountKeypad';
 import { fetchAllCategoryGroups, fetchInflowAmount, toggleGroupCollapse, updateCategoryBudget } from '../../category/store/categorySlice';
 import { selectMonthInHumanFormat, selectSelectedMonth, setSelectedMonth } from '../store/budgetSlice';
 import { formatCurrency, shiftMonth } from '../../../utils/date';
 import { colors, radii, spacing } from '../../../theme';
 
-function BudgetInput({ categoryId, value, month }: { categoryId: string; value: number; month: string }) {
-  const dispatch = useAppDispatch();
-  const [text, setText] = useState(value ? String(value) : '');
-
-  const commit = () => {
-    const next = Number(text.replace(/,/g, ''));
-    if (!Number.isFinite(next) || next === value) return;
-    dispatch(updateCategoryBudget({ categoryId, month, budgeted: next }));
-  };
-
+/** The assigned amount; tapping opens the calculator sheet. */
+function AssignedButton({ value, onPress }: { value: number; onPress: () => void }) {
   return (
-    <TextInput
-      value={text}
-      onChangeText={setText}
-      onBlur={commit}
-      onSubmitEditing={commit}
-      keyboardType="numeric"
-      placeholder="0"
-      placeholderTextColor={colors.faint}
-      style={styles.input}
-    />
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Assigned ${formatCurrency(value)}. Edit`}
+      style={({ pressed }) => [styles.input, pressed && styles.pressed]}
+      onPress={onPress}
+    >
+      <AppText tabular style={!value && styles.inputPlaceholder}>
+        {value ? formatCurrency(value) : '₹0'}
+      </AppText>
+    </Pressable>
   );
 }
+
+type EditingCategory = { id: string; name: string; budgeted: number; balance: number };
 
 function AvailablePill({ amount }: { amount: number }) {
   const tone = amount < 0 ? styles.pillNegative : amount > 0 ? styles.pillPositive : styles.pillNeutral;
@@ -58,6 +53,7 @@ export function BudgetScreen() {
   const groups = useAppSelector((state) => state.categories.allCategoryGroups);
   const inflowAmount = useAppSelector((state) => state.categories.inflowAmount);
   const refreshing = useAppSelector((state) => state.categories.loading === 'pending');
+  const [editing, setEditing] = useState<EditingCategory | null>(null);
 
   const assigned = groups.reduce((sum, group) => sum + (group.budgeted?.[month] ?? 0), 0);
   const activity = groups.reduce((sum, group) => sum + (group.activity?.[month] ?? 0), 0);
@@ -158,12 +154,37 @@ export function BudgetScreen() {
                     <AvailablePill amount={balance} />
                   </View>
                 </Pressable>
-                {category.id ? <BudgetInput categoryId={category.id} month={month} value={budgeted} /> : null}
+                {category.id ? (
+                  <AssignedButton
+                    value={budgeted}
+                    onPress={() =>
+                      setEditing({ id: category.id as string, name: category.name, budgeted, balance })
+                    }
+                  />
+                ) : null}
               </View>
             );
           })}
         </Card>
       ))}
+
+      <AmountSheet
+        visible={editing !== null}
+        title={editing ? `Assign to ${editing.name}` : ''}
+        subtitle={
+          editing
+            ? `${formatCurrency(editing.balance)} available · type a sum like 1200+300`
+            : undefined
+        }
+        initialValue={editing?.budgeted ?? 0}
+        onClose={() => setEditing(null)}
+        onSave={(budgeted) => {
+          if (editing && budgeted !== editing.budgeted) {
+            dispatch(updateCategoryBudget({ categoryId: editing.id, month, budgeted }));
+          }
+          setEditing(null);
+        }}
+      />
     </Screen>
   );
 }
@@ -295,13 +316,15 @@ const styles = StyleSheet.create({
     color: colors.muted
   },
   input: {
-    width: 88,
+    minWidth: 88,
     minHeight: 40,
     borderRadius: radii.sm,
     backgroundColor: colors.surfaceStrong,
-    textAlign: 'right',
-    paddingHorizontal: spacing.md,
-    color: colors.text,
-    fontVariant: ['tabular-nums']
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md
+  },
+  inputPlaceholder: {
+    color: colors.faint
   }
 });

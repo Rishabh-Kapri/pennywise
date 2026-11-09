@@ -1,11 +1,48 @@
 package model
 
 import (
+	"encoding/base64"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+// API key format: <prefix>_<version>_<random>, e.g. "pwk_v1_<43 base64url chars>".
+// go-pennywise-api generates keys in this format and the auth adapter checks
+// it, so both read it from here.
+const (
+	APIKeyPrefix  = "pwk" // PennyWise Key
+	APIKeyVersion = "v1"
+	APIKeyLength  = 32 // random bytes, before base64url encoding
+
+	// APIKeyIDPrefix and APIKeyIDLength shape the public key id ("k_" + 12
+	// hex chars). The id comes from its own random bytes, never from the
+	// secret, so it is safe to show, log and look keys up by.
+	APIKeyIDPrefix = "k_"
+	APIKeyIDLength = 6
+)
+
+// ParseAPIKey splits a key into its three parts. ok is false when the key
+// doesn't have three underscore-separated parts.
+func ParseAPIKey(fullKey string) (prefix, version, random string, ok bool) {
+	parts := strings.SplitN(fullKey, "_", 3)
+	if len(parts) != 3 {
+		return "", "", "", false
+	}
+	return parts[0], parts[1], parts[2], true
+}
+
+// ValidAPIKeyFormat reports whether fullKey has the shape of a key this
+// system issues. It doesn't say the key exists.
+func ValidAPIKeyFormat(fullKey string) bool {
+	prefix, version, random, ok := ParseAPIKey(fullKey)
+	return ok &&
+		prefix == APIKeyPrefix &&
+		version == APIKeyVersion &&
+		len(random) == base64.RawURLEncoding.EncodedLen(APIKeyLength)
+}
 
 // Scope represents permission scope for the API Key
 type Scope string
@@ -22,8 +59,8 @@ const (
 type APIKey struct {
 	ID          uuid.UUID `json:"id"`
 	KeyID       string    `json:"keyId"` // short identifier for lookup
-	MaskedKey   *string    `json:"maskedKey,omitempty"`
-	HashedKey   string    `json:"-"`     // dont'expose HashedKey in JSON
+	MaskedKey   *string   `json:"maskedKey,omitempty"`
+	HashedKey   string    `json:"-"` // dont'expose HashedKey in JSON
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 

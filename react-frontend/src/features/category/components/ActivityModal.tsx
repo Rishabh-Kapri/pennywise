@@ -4,7 +4,8 @@ import { Popover } from '@/components/common/Popover/Popover';
 import type { Transaction } from '@/features/transactions/types/transaction.types';
 import { apiClient } from '@/utils';
 import { type PaginationResponse } from '@/utils/common.constants';
-import { getCurrencyLocaleString } from '@/utils/date.utils';
+import { getLocaleDate } from '@/utils/date.utils';
+import { formatBudgetAmount } from './budgetFormat';
 import styles from './ActivityModal.module.css';
 
 interface ActivityPopoverProps {
@@ -86,64 +87,56 @@ export function ActivityPopover({
       id={`activity-popover-${categoryId}`}
       isOpen={isOpen}
       triggerRef={triggerRef}
-      width={520}
+      width={380}
       alignment="center"
       onClose={onClose}
     >
       <div className={styles.popoverContainer}>
-        {/* Header */}
-        <div className={styles.header}>
-          <span className={styles.title}>{categoryName}</span>
-          <span className={styles.totalAmount}>
-            {getCurrencyLocaleString(activityAmount)}
-          </span>
-        </div>
+        <header className={styles.header}>
+          <div className={styles.heading}>
+            <span className={styles.eyebrow}>
+              {getLocaleDate(month, { month: 'long' })} activity
+              {!loading && transactions.length > 0 &&
+                ` · ${transactions.length} transaction${transactions.length === 1 ? '' : 's'}`}
+            </span>
+            <span className={styles.title}>{categoryName}</span>
+          </div>
+          <span className={styles.totalAmount}>{formatBudgetAmount(activityAmount)}</span>
+        </header>
 
-        {/* Body */}
         {loading || error || transactions.length === 0 ? (
           <div className={styles.emptyState}>
-            <ReceiptText size={28} className={styles.emptyIcon} />
-            <div className={styles.emptyText}>
-              {loading
-                ? 'Loading transactions…'
-                : (error ?? 'No transactions this month')}
-            </div>
+            <ReceiptText size={24} className={styles.emptyIcon} />
+            <span className={styles.emptyText}>
+              {loading ? 'Loading transactions…' : (error ?? 'No transactions this month')}
+            </span>
           </div>
         ) : (
-          <table className={styles.txnTable}>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Payee</th>
-                <th>Memo</th>
-                <th className={styles.amountCol}>Amount</th>
-              </tr>
-            </thead>
-            <tbody>
+            <ul className={styles.list}>
               {transactions.map((txn) => {
-                const amount = txn.outflow ?? txn.inflow ?? 0;
                 const isInflow = (txn.inflow ?? 0) > 0;
+                const amount = isInflow ? (txn.inflow ?? 0) : -(txn.outflow ?? 0);
+                const date = new Date(txn.date).toLocaleDateString('en-IN', {
+                  day: 'numeric',
+                  month: 'short',
+                });
                 return (
-                  <tr key={txn.id}>
-                    <td>
-                      {new Date(txn.date).toLocaleDateString('en-IN', {
-                        day: 'numeric',
-                        month: 'short',
-                      })}
-                    </td>
-                    <td>{txn.payeeName || '—'}</td>
-                    <td>{txn.note || '—'}</td>
-                    <td
-                      className={`${styles.amountCol} ${
-                        isInflow ? styles.amountInflow : styles.amountOutflow
-                      }`}>
-                      {getCurrencyLocaleString(amount)}
-                    </td>
-                  </tr>
+                  <li key={txn.id} className={styles.item}>
+                    <div className={styles.itemMain}>
+                      <span className={styles.payee}>{txn.payeeName || 'No payee'}</span>
+                      <span className={styles.meta}>
+                        {date}
+                        {txn.note ? ` · ${txn.note}` : ''}
+                      </span>
+                    </div>
+                    <span className={`${styles.amount} ${isInflow ? styles.amountInflow : ''}`}>
+                      {isInflow ? '+' : ''}
+                      {formatBudgetAmount(amount)}
+                    </span>
+                  </li>
                 );
               })}
-            </tbody>
-          </table>
+            </ul>
         )}
       </div>
     </Popover>

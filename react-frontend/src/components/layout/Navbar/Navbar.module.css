@@ -32,8 +32,10 @@
 .navTab {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.4375rem 0.9rem;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2rem;
+  padding: 0;
   border-radius: 0.5rem;
   font-size: 1rem;
   background: transparent;
@@ -42,6 +44,11 @@
   text-decoration: none;
   transition: all 0.15s ease;
   white-space: nowrap;
+}
+
+.navTab svg {
+  width: 1.125rem;
+  height: 1.125rem;
 }
 
 .navTab:hover {
@@ -303,7 +310,7 @@
     border: 1px solid color-mix(in srgb, var(--color-border) 55%, transparent);
     border-radius: 999px;
     background: color-mix(in srgb, var(--color-surface) 92%, transparent);
-    box-shadow: 0 1.5rem 3rem rgb(0 0 0 / 0.34), inset 0 1px 0 rgb(255 255 255 / 0.04);
+    box-shadow: 0 1.5rem 3rem rgb(0 0 0 / 0.34), inset 0 1px 0 color-mix(in srgb, var(--color-text) 4%, transparent);
     backdrop-filter: blur(18px);
   }
 

@@ -1,0 +1,296 @@
+.swatch {
+  flex: 0 0 auto;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 0.2rem;
+}
+
+/* ── Tooltip ── */
+
+.tooltip {
+  min-width: 12rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.6rem;
+  background: var(--color-popover);
+  box-shadow: var(--shadow-popover);
+  font-size: 0.8rem;
+}
+
+.tooltipTitle {
+  margin-bottom: 0.35rem;
+  color: var(--color-text);
+  font-weight: 650;
+}
+
+.tooltipRow {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.1rem 0;
+}
+
+.tooltipName {
+  flex: 1;
+  color: var(--color-text-secondary);
+}
+
+.tooltipValue {
+  color: var(--color-text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.tooltipFooter {
+  margin-top: 0.4rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--line);
+  color: var(--color-text-secondary);
+}
+
+/* ── Stat tiles ── */
+
+.statRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.75rem;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 1rem;
+  background: var(--dash-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.statLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.statValue {
+  color: var(--color-text);
+  font-size: 1.75rem;
+  font-weight: 650;
+}
+
+.statDetail {
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.statDetail strong {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+/* ── Flow bars ── */
+
+.flow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.flowHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.flowTitle {
+  color: var(--color-text);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.flowTotal {
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.flowTrack {
+  display: flex;
+  gap: 2px;
+  height: 1rem;
+  overflow: hidden;
+  border-radius: 0.3rem;
+  background: var(--track-bg);
+}
+
+.flowSegment {
+  min-width: 2px;
+  height: 100%;
+}
+
+.flowSegment:first-child {
+  border-radius: 0.3rem 0 0 0.3rem;
+}
+
+.flowSegment:last-child {
+  border-radius: 0 0.3rem 0.3rem 0;
+}
+
+.flowSegment:only-child {
+  border-radius: 0.3rem;
+}
+
+.flowLegend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.flowItem {
+  display: grid;
+  grid-template-columns: auto 1fr auto 3.5rem;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.3rem 0;
+  font-size: 0.85rem;
+}
+
+.flowLabel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  color: var(--color-text);
+}
+
+.flowHint {
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+}
+
+.flowAmount {
+  color: var(--color-text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.flowShare {
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ── Month table ── */
+
+.tableScroll {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.table th,
+.table td {
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.table th {
+  color: var(--color-text-secondary);
+  font-weight: 600;
+}
+
+.table td {
+  color: var(--color-text);
+}
+
+.table .nameCol,
+.table .nameColIndent {
+  position: sticky;
+  left: 0;
+  max-width: 14rem;
+  overflow: hidden;
+  background: var(--dash-surface);
+  text-align: left;
+  text-overflow: ellipsis;
+}
+
+.table .nameColIndent {
+  padding-left: 1.5rem;
+  color: var(--color-text-secondary);
+}
+
+.rowEmphasis td {
+  font-weight: 650;
+}
+
+/* ── Misc ── */
+
+.empty {
+  padding: 3rem 1rem;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.note {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.85rem;
+  background: color-mix(in srgb, var(--accent) 7%, var(--dash-surface));
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.noteIcon {
+  flex: 0 0 auto;
+  margin-top: 0.1rem;
+  color: var(--accent);
+}
+
+.noteBody p {
+  margin: 0;
+}
+
+.noteBody p + p {
+  margin-top: 0.4rem;
+}
+
+.noteBody strong {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.rowBarTrack {
+  display: block;
+  height: 0.4rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--track-bg);
+}
+
+.rowBarFill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}

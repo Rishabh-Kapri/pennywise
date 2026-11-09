@@ -1,168 +1,202 @@
-import {
-  Area,
-  CartesianGrid,
-  ComposedChart,
-  Line,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
+import { useState } from 'react';
+import { Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { TrendUp } from '@phosphor-icons/react';
 import { useAppSelector } from '@/app/hooks';
 import { LoadingState } from '@/utils';
-import { formatCompactCurrency, formatCurrency } from '@/features/dashboard/utils';
-import { getSelectedMonthInHumanFormat } from '@/utils/date.utils';
+import { DashboardCard, Segmented } from '@/features/dashboard/components/DashboardCard';
+import { formatCurrency } from '@/features/dashboard/utils';
+import { monthLabel } from '../cashFlow';
 import { selectNetWorthLoading, selectNetWorthReport } from '../store/reportSlice';
+import { AXIS_TICK, COLORS, GRID_COLOR, SERIES, axisCurrency, formatMonthTick } from '../chartTheme';
+import { EmptyState, MonthTable, Stat, StatRow, TooltipCard } from './ReportParts';
 import styles from './NetworthReport.module.css';
 
-// CVD-validated against the card surface (#323232); hex because SVG
-// fills can't resolve CSS vars.
-const NET_WORTH_COLOR = '#3987e5';
-const ASSETS_COLOR = '#1baf7a';
-const DEBT_COLOR = '#d55b33';
-const AXIS_COLOR = '#a9a9a9';
-const GRID_COLOR = 'rgba(255, 255, 255, 0.07)';
+const NET_WORTH_COLOR = SERIES[0];
+const CASH_COLOR = SERIES[2];
 
-function monthLabel(monthKey: string): string {
-  const [year, month] = monthKey.split('-');
-  const date = new Date(parseInt(year, 10), parseInt(month, 10) - 1, 1);
-  return `${date.toLocaleString('en-us', { month: 'short' })} ${year.slice(2)}`;
+const VIEW_OPTIONS = [
+  { value: 'chart', label: 'Chart' },
+  { value: 'table', label: 'Table' },
+] as const;
+
+const SERIES_DEFS = [
+  { key: 'netWorth', name: 'Net worth', color: NET_WORTH_COLOR },
+  { key: 'cash', name: 'Cash', color: CASH_COLOR },
+  { key: 'investments', name: 'Investments', color: COLORS.invested },
+  { key: 'debt', name: 'Debt', color: COLORS.debt },
+] as const;
+
+interface Datum {
+  month: string;
+  netWorth: number;
+  cash: number;
+  investments: number;
+  debt: number;
+  loans: number;
 }
 
-interface TooltipEntry {
-  dataKey?: string | number;
-  name?: string | number;
-  value?: string | number;
-  color?: string;
-  stroke?: string;
+function signed(value: number) {
+  const rounded = Math.round(value);
+  return `${rounded < 0 ? '−' : '+'}${formatCurrency(rounded)}`;
 }
-
-interface ChartTooltipProps {
-  active?: boolean;
-  payload?: TooltipEntry[];
-  label?: string | number;
-}
-
-const ChartTooltip = ({ active, payload, label }: ChartTooltipProps) => {
-  if (!active || !payload || payload.length === 0) return null;
-  return (
-    <div className={styles.tooltip}>
-      <div className={styles.tooltipLabel}>{label}</div>
-      {payload.map((entry) => (
-        <div key={String(entry.dataKey)} className={styles.tooltipRow}>
-          <span
-            className={styles.tooltipSwatch}
-            style={{ background: entry.stroke ?? entry.color }}
-          />
-          <span className={styles.tooltipName}>{entry.name}</span>
-          <span className={styles.tooltipValue}>{formatCurrency(Number(entry.value ?? 0))}</span>
-        </div>
-      ))}
-    </div>
-  );
-};
 
 export default function NetworthReport() {
   const report = useAppSelector(selectNetWorthReport);
   const loading = useAppSelector(selectNetWorthLoading);
+  const [view, setView] = useState<'chart' | 'table'>('chart');
 
   if (loading === LoadingState.PENDING || loading === LoadingState.IDLE) {
-    return <div className={styles.emptyState}>Loading net worth report…</div>;
+    return <EmptyState>Loading net worth…</EmptyState>;
   }
   if (!report || report.months.length === 0) {
-    return <div className={styles.emptyState}>No data in the selected period</div>;
+    return <EmptyState>No data in the selected period</EmptyState>;
   }
 
-  const chartData = report.months.map((point) => ({
-    monthLabel: monthLabel(point.month),
+  // drop leading months before any account existed ("All" starts in 2020)
+  const firstActive = report.months.findIndex((p) => p.assets !== 0 || p.liabilities !== 0);
+  const points = firstActive === -1 ? report.months : report.months.slice(firstActive);
+  const data: Datum[] = points.map((point) => ({
+    month: point.month,
     netWorth: point.netWorth,
-    assets: point.assets,
+    cash: point.assets - point.investments,
+    investments: point.investments,
     debt: Math.abs(point.liabilities),
+    loans: Math.abs(point.loans ?? 0),
   }));
-  const latest = report.months[report.months.length - 1];
-  const rangeLabel = `${getSelectedMonthInHumanFormat(report.startMonth)} – ${getSelectedMonthInHumanFormat(report.endMonth)}`;
+  const first = data[0];
+  const latest = data[data.length - 1];
+  const change = latest.netWorth - first.netWorth;
+  const byKey = (key: keyof Omit<Datum, 'month'>) => Object.fromEntries(data.map((d) => [d.month, d[key]]));
 
   return (
-    <div className={styles.card}>
-      <div className={styles.cardHeader}>
-        <h2 className={styles.cardTitle}>Net worth over time</h2>
-        <div className={styles.legend}>
-          <span className={styles.legendItem}>
-            <span className={styles.legendDot} style={{ background: NET_WORTH_COLOR }} />
-            Net worth
-          </span>
-          <span className={styles.legendItem}>
-            <span className={styles.legendDot} style={{ background: ASSETS_COLOR }} />
-            Assets
-          </span>
-          <span className={styles.legendItem}>
-            <span className={styles.legendDot} style={{ background: DEBT_COLOR }} />
-            Debt
-          </span>
-        </div>
-        <span className={styles.rangeLabel}>{rangeLabel}</span>
-      </div>
+    <div className={styles.stack}>
+      <StatRow>
+        <Stat
+          label="Net worth"
+          color={NET_WORTH_COLOR}
+          value={latest.netWorth}
+          detail={
+            <>
+              <strong>{signed(change)}</strong> since {monthLabel(first.month)}
+            </>
+          }
+        />
+        <Stat label="Cash" color={CASH_COLOR} value={latest.cash} detail="Checking and savings accounts" />
+        <Stat
+          label="Investments"
+          color={COLORS.invested}
+          value={latest.investments}
+          detail={
+            <>
+              <strong>{signed(latest.investments - first.investments)}</strong> since {monthLabel(first.month)}
+            </>
+          }
+        />
+        <Stat
+          label="Debt"
+          color={COLORS.debt}
+          value={latest.debt}
+          detail={
+            latest.loans > 0 ? (
+              <>
+                <strong>{formatCurrency(latest.loans)}</strong> in loans · {formatCurrency(latest.debt - latest.loans)}{' '}
+                other
+              </>
+            ) : (
+              'Credit cards, liability and loan accounts'
+            )
+          }
+        />
+      </StatRow>
 
-      <div className={styles.stats}>
-        <div className={styles.stat}>
-          <span className={styles.statLabel}>Current net worth</span>
-          <span className={styles.statValue}>{formatCurrency(latest.netWorth)}</span>
-        </div>
-        <div className={styles.stat}>
-          <span className={styles.statLabel}>Assets</span>
-          <span className={styles.statValue}>{formatCurrency(latest.assets)}</span>
-        </div>
-        <div className={styles.stat}>
-          <span className={styles.statLabel}>Debt</span>
-          <span className={styles.statValue}>{formatCurrency(Math.abs(latest.liabilities))}</span>
-        </div>
-      </div>
-
-      <ResponsiveContainer width="100%" height={300} initialDimension={{ width: 600, height: 300 }}>
-        <ComposedChart data={chartData}>
-          <CartesianGrid vertical={false} stroke={GRID_COLOR} />
-          <XAxis
-            dataKey="monthLabel"
-            axisLine={{ stroke: GRID_COLOR }}
-            tickLine={false}
-            tick={{ fill: AXIS_COLOR, fontSize: 13.5 }}
+      <DashboardCard
+        title="Net worth over time"
+        icon={<TrendUp size={18} />}
+        actions={<Segmented label="View" options={VIEW_OPTIONS} value={view} onChange={setView} />}
+      >
+        {view === 'chart' ? (
+          <>
+            <div className={styles.legend}>
+              {SERIES_DEFS.map((s) => (
+                <span key={s.key} className={styles.legendItem}>
+                  <span className={styles.legendSwatch} style={{ background: s.color }} />
+                  {s.name}
+                </span>
+              ))}
+            </div>
+            <ResponsiveContainer width="100%" height={320} initialDimension={{ width: 600, height: 320 }}>
+              <ComposedChart data={data}>
+                <CartesianGrid vertical={false} stroke={GRID_COLOR} />
+                <XAxis
+                  dataKey="month"
+                  tickFormatter={formatMonthTick}
+                  axisLine={{ stroke: GRID_COLOR }}
+                  tickLine={false}
+                  tick={AXIS_TICK}
+                  minTickGap={8}
+                />
+                <YAxis axisLine={false} tickLine={false} width={56} tick={AXIS_TICK} tickFormatter={axisCurrency} />
+                <Tooltip
+                  cursor={{ stroke: 'var(--color-border)', strokeWidth: 1 }}
+                  content={({ active, payload }) => {
+                    const datum = payload?.[0]?.payload as Datum | undefined;
+                    if (!active || !datum) return null;
+                    return (
+                      <TooltipCard
+                        title={monthLabel(datum.month)}
+                        rows={SERIES_DEFS.map((s) => ({
+                          name: s.name,
+                          color: s.color,
+                          value: formatCurrency(datum[s.key]),
+                        }))}
+                      />
+                    );
+                  }}
+                />
+                <Area
+                  dataKey="netWorth"
+                  name="Net worth"
+                  stroke={NET_WORTH_COLOR}
+                  strokeWidth={2}
+                  fill={NET_WORTH_COLOR}
+                  fillOpacity={0.12}
+                  dot={false}
+                  isAnimationActive={false}
+                />
+                {SERIES_DEFS.slice(1).map((s) => (
+                  <Line
+                    key={s.key}
+                    dataKey={s.key}
+                    name={s.name}
+                    stroke={s.color}
+                    strokeWidth={2}
+                    dot={false}
+                    isAnimationActive={false}
+                  />
+                ))}
+              </ComposedChart>
+            </ResponsiveContainer>
+          </>
+        ) : (
+          <MonthTable
+            months={data.map((d) => d.month)}
+            rows={SERIES_DEFS.map((s) => ({
+              key: s.key,
+              label: s.name,
+              monthly: byKey(s.key),
+              total: null,
+              emphasis: s.key === 'netWorth',
+            }))}
           />
-          <YAxis
-            axisLine={false}
-            tickLine={false}
-            width={60}
-            tick={{ fill: AXIS_COLOR, fontSize: 13.5 }}
-            tickFormatter={(value: number) => formatCompactCurrency(value)}
-          />
-          <Tooltip content={<ChartTooltip />} cursor={{ stroke: 'rgba(255, 255, 255, 0.2)' }} />
-          <Area
-            dataKey="netWorth"
-            name="Net worth"
-            stroke={NET_WORTH_COLOR}
-            strokeWidth={2}
-            fill={NET_WORTH_COLOR}
-            fillOpacity={0.12}
-            dot={false}
-            isAnimationActive={false}
-          />
-          <Line
-            dataKey="assets"
-            name="Assets"
-            stroke={ASSETS_COLOR}
-            strokeWidth={2}
-            dot={false}
-            isAnimationActive={false}
-          />
-          <Line
-            dataKey="debt"
-            name="Debt"
-            stroke={DEBT_COLOR}
-            strokeWidth={2}
-            dot={false}
-            isAnimationActive={false}
-          />
-        </ComposedChart>
-      </ResponsiveContainer>
+        )}
+        {latest.loans > 0 && (
+          <p className={styles.caption}>
+            Loan balances are worked out from each loan's rate and the payments recorded against it, so the interest
+            part of every EMI isn't counted as repaid. A home bought with a loan only adds to net worth if you track it
+            as an asset account.
+          </p>
+        )}
+      </DashboardCard>
     </div>
   );
 }

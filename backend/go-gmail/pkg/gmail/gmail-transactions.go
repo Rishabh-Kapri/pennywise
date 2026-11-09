@@ -39,6 +39,16 @@ type GmailSyncRequest struct {
 	IsStop          bool                        `json:"isStop"`
 }
 
+// GmailBackfillRequest asks for recent bank alert emails, sent by the API
+// during onboarding.
+type GmailBackfillRequest struct {
+	RefreshToken    string                      `json:"refreshToken"`
+	OAuthClientType model.GoogleOAuthClientType `json:"oauthClientType"`
+	Email           string                      `json:"email"`
+	Days            int                         `json:"days"`
+	MaxResults      int64                       `json:"maxResults"`
+}
+
 type EventData struct {
 	Email     string `json:"email"`
 	HistoryId uint64 `json:"historyId"`

@@ -7,8 +7,8 @@ import (
 	"sort"
 	"time"
 
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
@@ -24,6 +24,8 @@ type ReportService interface {
 	GetSpending(ctx context.Context, params model.ReportParams) (*model.SpendingReport, error)
 	GetIncomeExpense(ctx context.Context, params model.ReportParams) (*model.IncomeExpenseReport, error)
 	GetNetWorth(ctx context.Context, params model.ReportParams) (*model.NetWorthReport, error)
+	GetCashFlow(ctx context.Context, params model.ReportParams) (*model.CashFlowReport, error)
+	GetLoanHistories(ctx context.Context, params model.ReportParams) ([]model.LoanHistory, error)
 }
 
 type reportService struct {
@@ -91,7 +93,139 @@ func (s *reportService) GetNetWorth(ctx context.Context, params model.ReportPara
 	if points == nil {
 		points = []model.NetWorthPoint{}
 	}
+
+	loans, err := s.repo.GetLoanBalanceInputs(ctx, budgetId, endDateExcl, params.AccountIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, loan := range loans {
+		balances := amortizeLoan(loan, endMonth)
+		for i := range points {
+			points[i].Loans -= balances[points[i].Month]
+		}
+	}
+	for i := range points {
+		points[i].Liabilities += points[i].Loans
+		points[i].NetWorth = points[i].Assets + points[i].Liabilities
+	}
 	return &model.NetWorthReport{StartMonth: startMonth, EndMonth: endMonth, Months: points}, nil
+}
+
+func (s *reportService) GetCashFlow(ctx context.Context, params model.ReportParams) (*model.CashFlowReport, error) {
+	budgetId := utils.MustBudgetID(ctx)
+	startMonth, endMonth, err := normalizeMonthRange(params.StartMonth, params.EndMonth)
+	if err != nil {
+		return nil, err
+	}
+	startDate, endDateExcl := monthBounds(startMonth, endMonth)
+
+	incomeRows, err := s.repo.GetCashFlowIncomeRows(ctx, budgetId, startDate, endDateExcl, params.AccountIDs, params.TagIDs)
+	if err != nil {
+		return nil, err
+	}
+	spendingRows, err := s.repo.GetCashFlowSpendingRows(ctx, budgetId, startDate, endDateExcl, params.AccountIDs, params.CategoryIDs, params.TagIDs)
+	if err != nil {
+		return nil, err
+	}
+	transferRows, err := s.repo.GetTransferFlowRows(ctx, budgetId, startDate, endDateExcl, params.AccountIDs, params.TagIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	report := assembleCashFlowReport(monthRange(startMonth, endMonth), incomeRows, spendingRows, transferRows)
+	report.StartMonth = startMonth
+	report.EndMonth = endMonth
+	return report, nil
+}
+
+func (s *reportService) GetLoanHistories(ctx context.Context, params model.ReportParams) ([]model.LoanHistory, error) {
+	budgetId := utils.MustBudgetID(ctx)
+	endMonth := time.Now().Format("2006-01")
+	_, endDateExcl := monthBounds(endMonth, endMonth)
+
+	loans, err := s.repo.GetLoanBalanceInputs(ctx, budgetId, endDateExcl, params.AccountIDs)
+	if err != nil {
+		return nil, err
+	}
+	histories := make([]model.LoanHistory, 0, len(loans))
+	for _, loan := range loans {
+		history := model.LoanHistory{AccountID: loan.AccountID, Balance: loan.OriginalBalance, Months: loanSchedule(loan, endMonth)}
+		for _, m := range history.Months {
+			history.PrincipalPaid += m.Principal
+			history.InterestPaid += m.Interest
+			history.Balance = m.Balance
+		}
+		histories = append(histories, history)
+	}
+	return histories, nil
+}
+
+// amortizeLoan returns the outstanding balance (positive) at the end of each
+// month from the loan's start month to endMonth; see loanSchedule.
+func amortizeLoan(loan model.LoanBalanceInput, endMonth string) map[string]float64 {
+	balances := map[string]float64{}
+	for _, m := range loanSchedule(loan, endMonth) {
+		balances[m.Month] = m.Balance
+	}
+	return balances
+}
+
+// loanSchedule walks a loan month by month from its start month to
+// endMonth the way lenders charge it: interest accrues on the outstanding
+// principal (pro-rated by day in the start month) and each payment first
+// clears the interest accrued so far, the rest reducing principal. Balance is
+// the principal outstanding after the month's payment, which is what a loan
+// statement shows. Months before the first booked payment assume the
+// scheduled payment was made, so a loan that predates the app doesn't
+// balloon. A missing or unparseable start date yields no months.
+func loanSchedule(loan model.LoanBalanceInput, endMonth string) []model.LoanMonth {
+	months := []model.LoanMonth{}
+	start, err := time.Parse("2006-01-02", loan.StartDate)
+	if err != nil {
+		if start, err = time.Parse("2006-01", loan.StartDate); err != nil {
+			return months
+		}
+	}
+	startMonth := start.Format("2006-01")
+
+	firstPaid := ""
+	for month, amount := range loan.Payments {
+		if month >= startMonth && amount != 0 && (firstPaid == "" || month < firstPaid) {
+			firstPaid = month
+		}
+	}
+
+	rate := loan.InterestRate / 100
+	principal := loan.OriginalBalance
+	accrued := 0.0 // interest charged but not yet paid
+	for m := startMonth; m <= endMonth; m = addMonthsToKey(m, 1) {
+		payment := loan.Payments[m]
+		assumed := m != startMonth && (firstPaid == "" || m < firstPaid)
+		if assumed {
+			payment = loan.MonthlyPayment
+		}
+
+		toInterest := math.Max(math.Min(payment, accrued), 0)
+		toPrincipal := math.Min(payment-toInterest, principal)
+		accrued -= toInterest
+		principal -= toPrincipal
+		months = append(months, model.LoanMonth{
+			Month:     m,
+			Payment:   payment,
+			Interest:  toInterest,
+			Principal: toPrincipal,
+			Balance:   principal,
+			Assumed:   assumed,
+		})
+
+		if m == startMonth {
+			daysInMonth := time.Date(start.Year(), start.Month()+1, 0, 0, 0, 0, 0, time.UTC).Day()
+			accrued += principal * rate * float64(daysInMonth-start.Day()+1) / 365
+		} else {
+			accrued += principal * rate / 12
+		}
+	}
+	return months
 }
 
 // normalizeMonthRange fills in defaults (endMonth = current month,
@@ -249,4 +383,83 @@ func assembleIncomeExpenseReport(months []string, incomeRows []model.IncomeRow, 
 		report.Net[m] = report.Income.Totals[m] - report.Expense.Totals[m]
 	}
 	return report
+}
+
+// assembleCashFlowReport reuses the income-expense matrices for earned
+// income and spending, sets opening balances apart from income, and folds
+// transfer rows into one AccountFlow per off-budget account. Accounts are
+// sorted by total money moved, largest first.
+func assembleCashFlowReport(
+	months []string,
+	incomeRows []model.CashFlowIncomeRow,
+	spendingRows []model.ExpenseRow,
+	transferRows []model.TransferFlowRow,
+) *model.CashFlowReport {
+	earned := []model.IncomeRow{}
+	opening := map[string]float64{}
+	for _, m := range months {
+		opening[m] = 0
+	}
+	for _, row := range incomeRows {
+		if row.Opening {
+			opening[row.Month] += row.Amount
+			continue
+		}
+		earned = append(earned, model.IncomeRow{Month: row.Month, PayeeID: row.PayeeID, PayeeName: row.PayeeName, Amount: row.Amount})
+	}
+	matrices := assembleIncomeExpenseReport(months, earned, spendingRows)
+	sort.SliceStable(matrices.Income.Payees, func(i, j int) bool {
+		return sumAmounts(matrices.Income.Payees[i].Amounts) > sumAmounts(matrices.Income.Payees[j].Amounts)
+	})
+
+	flowsById := map[uuid.UUID]*model.AccountFlow{}
+	order := []uuid.UUID{}
+	for _, row := range transferRows {
+		flow, ok := flowsById[row.AccountID]
+		if !ok {
+			kind := "asset"
+			if row.AccountType != "asset" {
+				kind = "debt"
+			}
+			flow = &model.AccountFlow{
+				AccountID: row.AccountID,
+				Name:      row.AccountName,
+				Type:      row.AccountType,
+				Kind:      kind,
+				Closed:    row.Closed,
+				In:        map[string]float64{},
+				Out:       map[string]float64{},
+			}
+			flowsById[row.AccountID] = flow
+			order = append(order, row.AccountID)
+		}
+		flow.In[row.Month] += row.In
+		flow.Out[row.Month] += row.Out
+		flow.RecategorizedCount += row.RecategorizedCount
+		flow.RecategorizedAmount += row.RecategorizedAmount
+	}
+	transfers := make([]model.AccountFlow, 0, len(order))
+	for _, id := range order {
+		transfers = append(transfers, *flowsById[id])
+	}
+	sort.SliceStable(transfers, func(i, j int) bool {
+		return sumAmounts(transfers[i].In)+sumAmounts(transfers[i].Out) >
+			sumAmounts(transfers[j].In)+sumAmounts(transfers[j].Out)
+	})
+
+	return &model.CashFlowReport{
+		Months:          months,
+		Income:          matrices.Income,
+		Spending:        matrices.Expense,
+		Transfers:       transfers,
+		OpeningBalances: opening,
+	}
+}
+
+func sumAmounts(amounts map[string]float64) float64 {
+	total := 0.0
+	for _, v := range amounts {
+		total += v
+	}
+	return total
 }

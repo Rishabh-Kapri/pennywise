@@ -22,6 +22,7 @@ export function CategoryDropdown({
   multiple = false,
   selectedIds = [],
   onChangeMultiple,
+  placeholder,
 }: TransactionDropdownProps) {
   const { allCategoryGroups } = useAppSelector(selectCategoryGroups);
   const inflowCategory = useAppSelector(selectInflowCategory);
@@ -142,7 +143,7 @@ export function CategoryDropdown({
   };
 
   const triggerClassName = variant === 'form' ? styles.formTrigger : styles.categoryTrigger;
-  const displayValue = value || 'Select Category';
+  const displayValue = value || placeholder || 'Select Category';
 
   return (
     <div className={styles.popoverContainer}>
@@ -150,7 +151,7 @@ export function CategoryDropdown({
         type="button"
         ref={triggerRef}
         onClick={() => setIsOpen((prev) => !prev)}
-        className={`${triggerClassName} ${styles.triggerButton} ${isOpen ? styles.open : ''}`}
+        className={`${triggerClassName} ${styles.triggerButton} ${isOpen ? styles.open : ''} ${variant === 'form' && !value ? styles.placeholderText : ''}`}
         autoFocus={autoFocus}
         aria-haspopup="true"
         aria-expanded={isOpen}

@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-MODULES := shared go-pennywise-api go-gmail cipher workflows
+MODULES := shared go-pennywise-api ingest cipher workflows
 .PHONY: help setup dev stop check check-go check-web smoke status logs
 help:
 	@echo "setup | dev | stop | check | smoke | status | logs (see docs/development.md)"

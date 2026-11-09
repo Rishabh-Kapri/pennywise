@@ -336,11 +336,42 @@ func TestLoanMetadataHandler_Update(t *testing.T) {
 				LoanStartDate:   "2024-06-01",
 			},
 			setupMocks: func(m *mockLoanMetadataService) {
+				m.On("GetByAccountId", mock.Anything, accountId).Return(createTestLoanMetadata(accountId, nil), nil)
 				m.On("Update", mock.Anything, accountId, mock.MatchedBy(func(l model.LoanMetadata) bool {
 					return l.InterestRate == 4.0
 				})).Return(createTestLoanMetadata(accountId, nil), nil)
 			},
 			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "partial_body_keeps_unsent_fields",
+			budgetIdHeader: budgetId.String(),
+			accountIdParam: accountId.String(),
+			body: map[string]any{
+				"interestRate":    9.5,
+				"monthlyPayment":  0,
+				"originalBalance": 30000,
+			},
+			setupMocks: func(m *mockLoanMetadataService) {
+				catId := uuid.New()
+				stored := createTestLoanMetadata(accountId, &catId)
+				m.On("GetByAccountId", mock.Anything, accountId).Return(stored, nil)
+				m.On("Update", mock.Anything, accountId, mock.MatchedBy(func(l model.LoanMetadata) bool {
+					return l.InterestRate == 9.5 && l.MonthlyPayment == 0 && l.OriginalBalance == 30000 &&
+						l.LoanStartDate == stored.LoanStartDate && l.CategoryID != nil && *l.CategoryID == catId
+				})).Return(stored, nil)
+			},
+			expectedStatus: http.StatusOK,
+		},
+		{
+			name:           "missing_loan_returns_404",
+			budgetIdHeader: budgetId.String(),
+			accountIdParam: accountId.String(),
+			body:           map[string]any{"interestRate": 4.0},
+			setupMocks: func(m *mockLoanMetadataService) {
+				m.On("GetByAccountId", mock.Anything, accountId).Return(nil, assert.AnError)
+			},
+			expectedStatus: http.StatusNotFound,
 		},
 		{
 			name:           "invalid_account_id_returns_400",
@@ -357,7 +388,9 @@ func TestLoanMetadataHandler_Update(t *testing.T) {
 			budgetIdHeader: budgetId.String(),
 			accountIdParam: accountId.String(),
 			body:           "not json",
-			setupMocks:     func(m *mockLoanMetadataService) {},
+			setupMocks: func(m *mockLoanMetadataService) {
+				m.On("GetByAccountId", mock.Anything, accountId).Return(createTestLoanMetadata(accountId, nil), nil)
+			},
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
@@ -368,6 +401,7 @@ func TestLoanMetadataHandler_Update(t *testing.T) {
 				InterestRate: 4.0,
 			},
 			setupMocks: func(m *mockLoanMetadataService) {
+				m.On("GetByAccountId", mock.Anything, accountId).Return(createTestLoanMetadata(accountId, nil), nil)
 				m.On("Update", mock.Anything, accountId, mock.Anything).Return(nil, assert.AnError)
 			},
 			expectedStatus: http.StatusInternalServerError,

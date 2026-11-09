@@ -43,6 +43,7 @@
   border-radius: 0;
 }
 
+/* A bare slot: what goes in it (the transaction inspector) draws its own card. */
 .sidePanel {
   flex: 0 0 24rem;
   min-width: 0;
@@ -50,12 +51,42 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
-  overflow-x: hidden;
-  background: var(--color-surface);
-  border: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
-  border-radius: 1rem;
-  padding: 1rem 1.25rem;
+  overflow: hidden;
+}
+
+/* Beside the page the slot opens by growing, so the list eases over instead of
+   jumping; its content keeps its width and is revealed rather than squashed. */
+@media (min-width: 901px) {
+  .sidePanel {
+    animation: sidePanelOpen 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .sidePanel > * {
+    min-width: 24rem;
+  }
+}
+
+@keyframes sidePanelOpen {
+  from {
+    flex-basis: 0;
+  }
+  to {
+    flex-basis: 24rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidePanel {
+    animation: none;
+  }
+}
+
+/* The Ask Penny launcher floats in the bottom-right corner, right where the
+   side panel's Save button sits. Lift it clear while a panel is open. */
+@media (min-width: 901px) {
+  .mainWrapper:has(> .sidePanel) [aria-controls='agent-chat-panel'] {
+    bottom: 5.25rem;
+  }
 }
 
 @media (max-width: 1024px) {
@@ -91,6 +122,18 @@
 
   .dashboardMainContent {
     padding: 0;
+  }
+
+  /* No room for a side column on a phone: the panel becomes a bottom sheet
+     above the tab bar (950) and below popovers (1000), dimming the page. */
+  .sidePanel {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 980;
+    height: min(85dvh, calc(100dvh - 4rem));
+    padding: 0 0.5rem calc(0.5rem + env(safe-area-inset-bottom, 0px));
+    background: rgb(0 0 0 / 0.45);
+    box-shadow: 0 0 0 100vmax rgb(0 0 0 / 0.45);
   }
 
   .backdrop {

@@ -3,6 +3,17 @@ import { config } from '@/config/env';
 
 type AppDispatch = (action: unknown) => unknown;
 
+/** A response from the server, as opposed to not reaching it at all. */
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
 class ApiClient {
   private baseUrl: string;
   private getState: (() => RootState) | null = null;
@@ -37,6 +48,7 @@ class ApiClient {
 
       const selectedBudget = state.budgets.selectedBudget;
       if (selectedBudget?.id && !endpoint.includes('budgets')) {
+        console.log('skipping budget header for route', endpoint);
         headers['x-budget-id'] = selectedBudget.id;
       }
     }
@@ -56,6 +68,15 @@ class ApiClient {
     return endpoint === 'auth/refresh';
   }
 
+  private async expireSession(): Promise<never> {
+    if (this.dispatch) {
+      const { resetAuth } = await import('@/features/auth/store/authSlice');
+      this.dispatch(resetAuth());
+    }
+    window.location.href = '/login';
+    throw new Error('Session expired');
+  }
+
   private async tryRefreshToken(): Promise<string> {
     // If a refresh is already in flight, reuse it (prevents parallel refresh calls)
     if (this.refreshPromise) {
@@ -66,9 +87,8 @@ class ApiClient {
       try {
         const state = this.getState?.();
         const refreshToken = state?.auth?.tokens?.refreshToken;
-        console.log('refreshToken', refreshToken);
         if (!refreshToken) {
-          throw new Error('No refresh token');
+          return await this.expireSession();
         }
 
         const res = await fetch(`${this.baseUrl}/auth/refresh`, {
@@ -77,8 +97,13 @@ class ApiClient {
           body: JSON.stringify({ refreshToken }),
         });
 
+        // Only a 401 means the session is over. A server that's down or
+        // failing says nothing about it, so the user stays signed in.
+        if (res.status === 401) {
+          return await this.expireSession();
+        }
         if (!res.ok) {
-          throw new Error('Refresh failed');
+          throw new ApiError('Refresh failed', res.status);
         }
 
         const data = await res.json();
@@ -90,14 +115,6 @@ class ApiClient {
           this.dispatch(refreshAccessToken.fulfilled(data, '', undefined));
         }
         return data.accessToken as string;
-      } catch {
-        // Refresh failed — clear auth and redirect to login
-        if (this.dispatch) {
-          const { resetAuth } = await import('@/features/auth/store/authSlice');
-          this.dispatch(resetAuth());
-        }
-        window.location.href = '/login';
-        throw new Error('Session expired');
       } finally {
         this.refreshPromise = null;
       }
@@ -142,7 +159,7 @@ class ApiClient {
     if (!res.ok) {
       const message =
         (data as Record<string, unknown>)?.error ?? res.statusText;
-      throw new Error(String(message));
+      throw new ApiError(String(message), res.status);
     }
     return data;
   }
@@ -256,6 +273,16 @@ class ApiClient {
       credentials: 'include',
     });
     return this.handleResponse<T>(res, 'PATCH', endpoint, data);
+  }
+
+  async put<T, B = Partial<T>>(endpoint: string, data: B): Promise<T> {
+    const res = await fetch(`${this.baseUrl}/${endpoint}`, {
+      method: 'PUT',
+      headers: this.getHeaders(endpoint),
+      body: JSON.stringify(data),
+      credentials: 'include',
+    });
+    return this.handleResponse<T>(res, 'PUT', endpoint, data);
   }
 }
 

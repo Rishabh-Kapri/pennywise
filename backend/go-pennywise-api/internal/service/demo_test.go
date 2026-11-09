@@ -343,6 +343,8 @@ func TestDemoService_LoginAsDemo_ExistingUser(t *testing.T) {
 		authRepo,
 		googleRepo,
 		nil, nil, nil, nil, nil, nil,
+		fakeDBTxn{},
+		nil,
 	)
 
 	user, accessToken, refreshToken, err := svc.LoginAsDemo(context.Background())

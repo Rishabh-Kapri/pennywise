@@ -1,6 +1,7 @@
 package service
 
 import (
+	"math"
 	"reflect"
 	"testing"
 
@@ -167,4 +168,118 @@ func TestAssembleIncomeExpenseReport(t *testing.T) {
 	if len(report.Income.Payees) != 1 || report.Income.Payees[0].Amounts["2026-06"] != 1000 {
 		t.Errorf("income payees wrong: %+v", report.Income.Payees)
 	}
+}
+
+func TestAssembleCashFlowReport(t *testing.T) {
+	months := []string{"2026-01", "2026-02"}
+	salary, startBal := uuid.New(), uuid.New()
+	funds, loan := uuid.New(), uuid.New()
+
+	incomeRows := []model.CashFlowIncomeRow{
+		{Month: "2026-01", PayeeID: startBal, PayeeName: "Starting Balance", Opening: true, Amount: 5000},
+		{Month: "2026-01", PayeeID: salary, PayeeName: "Employer", Amount: 100},
+		{Month: "2026-02", PayeeID: salary, PayeeName: "Employer", Amount: 100},
+	}
+	transferRows := []model.TransferFlowRow{
+		{Month: "2026-01", AccountID: loan, AccountName: "Home loan", AccountType: "mortgage", Out: 10},
+		{Month: "2026-01", AccountID: funds, AccountName: "Funds", AccountType: "asset", Out: 40},
+		{Month: "2026-02", AccountID: funds, AccountName: "Funds", AccountType: "asset", In: 30, RecategorizedCount: 1, RecategorizedAmount: 30},
+	}
+
+	report := assembleCashFlowReport(months, incomeRows, nil, transferRows)
+
+	if len(report.Income.Payees) != 1 || report.Income.Payees[0].PayeeID != salary {
+		t.Fatalf("income payees = %+v, want only the employer", report.Income.Payees)
+	}
+	if report.Income.Totals["2026-01"] != 100 {
+		t.Errorf("income 2026-01 = %v, want 100 (opening balance excluded)", report.Income.Totals["2026-01"])
+	}
+	if report.OpeningBalances["2026-01"] != 5000 || report.OpeningBalances["2026-02"] != 0 {
+		t.Errorf("openingBalances = %v", report.OpeningBalances)
+	}
+	if len(report.Transfers) != 2 {
+		t.Fatalf("transfers = %d, want 2", len(report.Transfers))
+	}
+	got := report.Transfers[0]
+	if got.AccountID != funds || got.Kind != "asset" {
+		t.Fatalf("first transfer = %+v, want Funds (largest) as asset", got)
+	}
+	wantIn := map[string]float64{"2026-02": 30, "2026-01": 0}
+	wantOut := map[string]float64{"2026-01": 40, "2026-02": 0}
+	if !reflect.DeepEqual(got.In, wantIn) || !reflect.DeepEqual(got.Out, wantOut) {
+		t.Errorf("funds in/out = %v / %v, want %v / %v", got.In, got.Out, wantIn, wantOut)
+	}
+	if got.RecategorizedCount != 1 || got.RecategorizedAmount != 30 {
+		t.Errorf("recategorized = %d / %v, want 1 / 30", got.RecategorizedCount, got.RecategorizedAmount)
+	}
+	if report.Transfers[1].Kind != "debt" {
+		t.Errorf("mortgage kind = %q, want debt", report.Transfers[1].Kind)
+	}
+}
+
+func TestLoanSchedule(t *testing.T) {
+	near := func(got, want float64) bool { return math.Abs(got-want) < 0.01 }
+
+	t.Run("payments clear accrued interest first", func(t *testing.T) {
+		loan := model.LoanBalanceInput{
+			StartDate:       "2026-01-23",
+			OriginalBalance: 120000,
+			InterestRate:    12, // 1% a month
+			MonthlyPayment:  5000,
+			Payments:        map[string]float64{"2026-02": 6000, "2026-03": 0},
+		}
+		months := loanSchedule(loan, "2026-04")
+		if len(months) != 4 {
+			t.Fatalf("months = %d, want 4", len(months))
+		}
+		broken := 120000 * 0.12 * 9 / 365 // 23rd–31st Jan, paid with the Feb payment
+		jan, feb, mar, apr := months[0], months[1], months[2], months[3]
+		if jan.Payment != 0 || !near(jan.Balance, 120000) {
+			t.Errorf("jan = %+v, want no payment and full principal", jan)
+		}
+		if !near(feb.Interest, broken) || !near(feb.Principal, 6000-broken) || !near(feb.Balance, 120000-(6000-broken)) {
+			t.Errorf("feb = %+v, want interest %.2f", feb, broken)
+		}
+		// March pays nothing (missed payments after the first are not assumed);
+		// April's empty payment leaves two months of interest accrued, not
+		// added to principal
+		if mar.Payment != 0 || apr.Payment != 0 || !near(apr.Balance, feb.Balance) || mar.Assumed {
+			t.Errorf("mar = %+v apr = %+v, want no payments and principal unchanged", mar, apr)
+		}
+		if _, ok := amortizeLoan(loan, "2026-04")["2025-12"]; ok {
+			t.Error("no balance expected before the loan started")
+		}
+	})
+
+	t.Run("assumes scheduled payments before tracking began", func(t *testing.T) {
+		loan := model.LoanBalanceInput{
+			StartDate:       "2025-11-01",
+			OriginalBalance: 10000,
+			InterestRate:    0,
+			MonthlyPayment:  1000,
+			Payments:        map[string]float64{"2026-02": 1000},
+		}
+		months := loanSchedule(loan, "2026-02")
+		// Dec and Jan assumed; Feb recorded
+		if !months[1].Assumed || !months[2].Assumed || months[3].Assumed || !near(months[3].Balance, 7000) {
+			t.Errorf("months = %+v, want Dec/Jan assumed and 7000 left", months)
+		}
+	})
+
+	t.Run("paid off never goes negative", func(t *testing.T) {
+		loan := model.LoanBalanceInput{
+			StartDate:       "2026-01-01",
+			OriginalBalance: 1000,
+			Payments:        map[string]float64{"2026-02": 5000},
+		}
+		if got := amortizeLoan(loan, "2026-02"); got["2026-02"] != 0 {
+			t.Errorf("feb balance = %v, want 0", got["2026-02"])
+		}
+	})
+
+	t.Run("bad start date", func(t *testing.T) {
+		if got := loanSchedule(model.LoanBalanceInput{StartDate: "soon"}, "2026-02"); len(got) != 0 {
+			t.Errorf("months = %v, want none", got)
+		}
+	})
 }

@@ -165,6 +165,13 @@ export function WebSocketProvider() {
 
     let shouldReconnect = true;
 
+    const scheduleReconnect = () => {
+      reconnectTimerRef.current = window.setTimeout(() => {
+        reconnectTimerRef.current = null;
+        void connect();
+      }, RECONNECT_DELAY_MS);
+    };
+
     const connect = async () => {
       if (!shouldReconnect) {
         return;
@@ -176,8 +183,12 @@ export function WebSocketProvider() {
           const refreshedToken = await dispatch(refreshAccessToken()).unwrap();
           token = refreshedToken.accessToken;
         } catch (error) {
-          shouldReconnect = false;
+          // A dead session clears the token, which ends this effect. Anything
+          // else is a server that's away, so keep trying.
           console.error('failed to refresh token for websocket', error);
+          if (shouldReconnect) {
+            scheduleReconnect();
+          }
           return;
         }
       }
@@ -257,10 +268,7 @@ export function WebSocketProvider() {
           return;
         }
 
-        reconnectTimerRef.current = window.setTimeout(() => {
-          reconnectTimerRef.current = null;
-          void connect();
-        }, RECONNECT_DELAY_MS);
+        scheduleReconnect();
       };
     };
 

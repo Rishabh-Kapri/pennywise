@@ -31,3 +31,7 @@ CI runs `npm run build` (which type-checks), `npm run lint`, and Playwright brow
 - **Auth**: Google auth-code flow or demo login; session persists in `localStorage` (`pennywise_auth`); routes guarded by `features/auth/components/ProtectedRoute.tsx`
 - **Demo account**: `selectIsDemoUser` (auth slice) disables AI config editing and budget creation for `demo@pennywise.local`
 - **Websockets**: `features/websocket/WebSocketProvider.tsx` connects to the API's budget-scoped hub for agent streaming events
+
+## Credit card statements
+
+Credit card accounts expose Transactions and Statements views on `/accounts` (`view=statements` selects the latter). The statement UI supports PDF selection, size/type validation (20 MB limit), and local preview. Files are not uploaded, persisted, or analysed yet. The explicitly labelled sample analysis uses the planning excerpts, including charges, evidence, rewards, EMI snapshots, and review checkboxes that last only while the view is mounted. Sample data is never presented as extraction from a selected PDF. Backend extraction, password handling, saved corrections, and ledger matching remain planned in [the statement analysis plan](../docs/credit-card-statement-analysis-plan.md).

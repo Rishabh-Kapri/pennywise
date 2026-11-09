@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react';
 import { useHeader } from '../../../context/HeaderContext';
 import { DateSelector, Skeleton } from '@/components/common';
 import styles from './Budget.module.css';
-import { CheckIcon as Check } from '@phosphor-icons/react';
+import { CheckCircle } from '@phosphor-icons/react';
 import { CategoryGroup } from '@/features/category';
 import { useAppSelector } from '@/app/hooks';
 import {
@@ -13,48 +13,14 @@ import {
 } from '@/features/category/store/categorySlice';
 import { selectSelectedMonth } from '../store';
 import { LoadingState } from '@/utils';
-import { CategoryGroupSkeleton } from './BudgetSkeleton';
-import { getCurrencyLocaleString } from '@/utils/date.utils';
+import { BudgetTableSkeleton } from './BudgetSkeleton';
+import { formatBudgetAmount } from '@/features/category/components/budgetFormat';
 
-interface BudgetProps {
-  inflowAmount: number;
-  inflowLoading: LoadingState;
+function readyToAssignCopy(amount: number) {
+  if (amount < 0) return { label: 'Assigned more than you have', tone: styles.toneOver };
+  if (amount === 0) return { label: 'Every rupee has a job', tone: styles.toneDone };
+  return { label: 'Ready to assign', tone: styles.toneReady };
 }
-
-const formatSummaryAmount = (value: number): string =>
-  getCurrencyLocaleString(value || 0, 'INR', 'en-IN', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  });
-
-const BudgetHeaderContent = ({ inflowAmount, inflowLoading }: BudgetProps) => (
-  <div className={styles.container}>
-    <DateSelector monthYearOnly />
-    {inflowLoading === LoadingState.PENDING && <div>
-      <Skeleton width={130} height={64} />
-    </div>}
-    {inflowLoading === LoadingState.SUCCESS && (
-      <div
-        className={
-          inflowAmount === 0
-            ? `${styles.amountContainer} ${styles.allAssigned}`
-            : `${styles.amountContainer}`
-        }>
-        <div className={styles.assignAmount}>
-          <span className={styles.title}>
-            {getCurrencyLocaleString(inflowAmount)}
-          </span>
-          <span className={styles.subtitle}>
-            {inflowAmount === 0 ? 'All assigned' : 'Ready to assign'}
-          </span>
-        </div>
-        {inflowAmount === 0 && (
-          <Check size="1.5rem" className={styles.allAssignedIcon} />
-        )}
-      </div>
-    )}
-  </div>
-);
 
 export default function Budget() {
   const { setHeaderContent } = useHeader();
@@ -65,66 +31,67 @@ export default function Budget() {
   const categoryGroupsLoading = useAppSelector(selectCategoryLoading);
   const inflowLoading = useAppSelector(selectInflowLoading);
 
-  const budgetSummary = useMemo(() => {
-    return groups.reduce(
-      (summary, group) => {
-        summary.assigned += group.budgeted?.[month] ?? 0;
-        summary.activity += group.activity?.[month] ?? 0;
-        summary.available += group.balance?.[month] ?? 0;
-        summary.categories += group.categories?.length ?? 0;
-        return summary;
-      },
-      { assigned: 0, activity: 0, available: 0, categories: 0 },
-    );
-  }, [groups, month]);
+  const totals = useMemo(
+    () =>
+      groups.reduce(
+        (sum, group) => ({
+          assigned: sum.assigned + (group.budgeted?.[month] ?? 0),
+          activity: sum.activity + (group.activity?.[month] ?? 0),
+          available: sum.available + (group.balance?.[month] ?? 0),
+        }),
+        { assigned: 0, activity: 0, available: 0 },
+      ),
+    [groups, month],
+  );
 
+  // The month picker lives in the page heading, so the shared header slot stays empty.
   useEffect(() => {
-    setHeaderContent(
-      <BudgetHeaderContent
-        inflowAmount={inflowAmount}
-        inflowLoading={inflowLoading}
-      />,
-    );
+    setHeaderContent(null);
+  }, [setHeaderContent]);
 
-    // clear header content when component unmounts
-    return () => setHeaderContent(null);
-  }, [setHeaderContent, inflowAmount, inflowLoading]);
-
-  if (categoryGroupsLoading === LoadingState.PENDING) {
-    return (
-      <section className={styles.page}>
-        <CategoryGroupSkeleton />
-      </section>
-    );
-  }
+  const ready = readyToAssignCopy(inflowAmount);
+  const isLoading = categoryGroupsLoading === LoadingState.PENDING;
 
   return (
     <section className={styles.page}>
-      <div className={styles.heading}>
-        <div>
-          <h1>Budget</h1>
-          <p>Assign your inflow, track category activity, and keep available money in view.</p>
+      <header className={styles.top}>
+        <h1>Budget</h1>
+        <DateSelector monthYearOnly />
+      </header>
+
+      <div className={styles.overview}>
+        <div className={`${styles.ready} ${ready.tone}`}>
+          <span className={styles.readyLabel}>
+            {inflowAmount === 0 && <CheckCircle size={15} weight="fill" />}
+            {ready.label}
+          </span>
+          {inflowLoading === LoadingState.PENDING ? (
+            <Skeleton width={180} height={40} />
+          ) : (
+            <strong className={styles.readyAmount}>{formatBudgetAmount(inflowAmount)}</strong>
+          )}
         </div>
-        <div className={styles.countBadge}>{budgetSummary.categories} categories</div>
+
+        <dl className={styles.stats}>
+          <div>
+            <dt>Assigned</dt>
+            <dd>{formatBudgetAmount(totals.assigned)}</dd>
+          </div>
+          <div>
+            <dt>Activity</dt>
+            <dd>{formatBudgetAmount(totals.activity)}</dd>
+          </div>
+          <div>
+            <dt>Available</dt>
+            <dd className={totals.available < 0 ? styles.negative : undefined}>
+              {formatBudgetAmount(totals.available)}
+            </dd>
+          </div>
+        </dl>
       </div>
 
-      <div className={styles.summaryGrid}>
-        <div className={styles.summaryCard}>
-          <span>Assigned</span>
-          <strong>{formatSummaryAmount(budgetSummary.assigned)}</strong>
-        </div>
-        <div className={styles.summaryCard}>
-          <span>Activity</span>
-          <strong>{formatSummaryAmount(budgetSummary.activity)}</strong>
-        </div>
-        <div className={styles.summaryCard}>
-          <span>Available</span>
-          <strong>{formatSummaryAmount(budgetSummary.available)}</strong>
-        </div>
-      </div>
-
-      <div className={styles.budgetPanel}>
-        <CategoryGroup groups={groups} month={month} />
+      <div className={styles.content}>
+        {isLoading ? <BudgetTableSkeleton /> : <CategoryGroup groups={groups} month={month} />}
       </div>
     </section>
   );

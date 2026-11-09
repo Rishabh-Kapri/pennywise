@@ -7,16 +7,30 @@ import type { ExpoConfig } from 'expo/config';
  * untracked copy in this directory. Without this file the Android build has no
  * FCM credentials and `expo-notifications` cannot obtain a push token.
  */
+const EAS_PROJECT_ID = '285e8ad2-57bb-47e7-85f4-331d05616208';
+
 const googleServicesFile = process.env.GOOGLE_SERVICES_JSON ?? './google-services.json';
 
 const config: ExpoConfig = {
   name: 'Pennywise',
   slug: 'pennywise-android',
-  version: '0.1.0',
+  version: '0.1.3',
   orientation: 'portrait',
   scheme: 'dev.pennywise.cloud',
   userInterfaceStyle: 'automatic',
   assetBundlePatterns: ['**/*'],
+  // OTA updates (EAS Update). A JS update only reaches builds with the same
+  // runtime version, i.e. the same `version`. Bump `version` with any change
+  // that touches native code (a native module, plugin or native config) and
+  // ship a new APK. Not the fingerprint policy: google-services.json lives at a
+  // different path on EAS, so local and EAS fingerprints never match and the
+  // build fails.
+  runtimeVersion: { policy: 'appVersion' },
+  updates: {
+    url: `https://u.expo.dev/${EAS_PROJECT_ID}`,
+    // updates install only from Settings → App → Check for updates
+    checkAutomatically: 'NEVER'
+  },
   icon: './assets/icon.png',
   ios: {
     supportsTablet: false
@@ -29,14 +43,18 @@ const config: ExpoConfig = {
       // the app canvas, so the knocked-out "P" reads the same under every
       // launcher mask.
       foregroundImage: './assets/adaptive-icon.png',
-      backgroundColor: '#0B0B0F'
+      backgroundColor: '#1F1F1E'
     },
     permissions: [
       'android.permission.ACCESS_COARSE_LOCATION',
       'android.permission.ACCESS_FINE_LOCATION',
       'android.permission.CAMERA',
       'android.permission.RECEIVE_BOOT_COMPLETED',
-      'android.permission.POST_NOTIFICATIONS'
+      'android.permission.POST_NOTIFICATIONS',
+      // modules/sms-receiver forwards bank SMS to the API; READ_SMS is only for
+      // the inbox import in Settings
+      'android.permission.RECEIVE_SMS',
+      'android.permission.READ_SMS'
     ]
   },
   plugins: [
@@ -54,7 +72,7 @@ const config: ExpoConfig = {
         // channel only, so this asset is white-on-transparent; anything with
         // colour would come out as a solid blob.
         icon: './assets/notification-icon.png',
-        color: '#8B93FF'
+        color: '#5D9CBB'
       }
     ],
     [
@@ -136,6 +154,7 @@ const config: ExpoConfig = {
   ],
   extra: {
     apiUrl: process.env.EXPO_PUBLIC_API_URL,
+    ingestUrl: process.env.EXPO_PUBLIC_INGEST_URL,
     googleClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID,
     androidGoogleClientId: process.env.EXPO_PUBLIC_ANDROID_GOOGLE_CLIENT_ID,
     router: {
@@ -143,7 +162,7 @@ const config: ExpoConfig = {
     },
     // Read by src/features/notifications/push.ts to request an Expo push token.
     eas: {
-      projectId: '285e8ad2-57bb-47e7-85f4-331d05616208'
+      projectId: EAS_PROJECT_ID
     }
   }
 };

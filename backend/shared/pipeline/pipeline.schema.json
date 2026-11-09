@@ -1,0 +1,181 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://pennywise.cloud/schemas/pipeline.schema.json",
+  "title": "Pennywise pipeline",
+  "description": "One system pipeline: its steps in run order and the adapters each step may run. Budgets can override a step's adapter and AI model; they can't add or remove steps.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "label",
+    "description",
+    "version",
+    "steps"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "id": {
+      "$ref": "#/$defs/id",
+      "description": "Must match the file name (message.json → \"message\"). Stored in budget overrides: never rename."
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Shown in the UI."
+    },
+    "description": {
+      "type": "string",
+      "description": "One sentence on what the pipeline does, shown in the UI."
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Bump whenever the steps change. Jobs record the version they ran under."
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "description": "In the order they run. Step IDs must be unique.",
+      "items": {
+        "$ref": "#/$defs/step"
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "maxLength": 64
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "description",
+        "defaultAdapter",
+        "adapters"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id",
+          "description": "Stored in budget overrides: never rename."
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "defaultAdapter": {
+          "$ref": "#/$defs/id",
+          "description": "The adapter used when a budget hasn't chosen one. Must be one of this step's adapters and not unavailable."
+        },
+        "fallback": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether a model adapter tries the owner's other models of the same kind, by priority, when its model fails. Budgets can override it."
+        },
+        "adapters": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Ways this step can run. Adapter IDs must be unique within the step.",
+          "items": {
+            "$ref": "#/$defs/adapter"
+          }
+        }
+      }
+    },
+    "adapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "description"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id",
+          "description": "Stored in budget overrides: never rename."
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "usesModel": {
+          "type": "boolean",
+          "default": false,
+          "description": "Calls a model from the budget owner's own AI setup, so a model can be chosen for it. Set modelKind too."
+        },
+        "modelKind": {
+          "enum": [
+            "chat",
+            "decision"
+          ],
+          "description": "The kind of model the adapter calls: \"chat\" for a conversational LLM, \"decision\" for a decisions-API model. Required when usesModel is true; the step's model picker only lists the user's models of this kind."
+        },
+        "unavailable": {
+          "type": "boolean",
+          "default": false,
+          "description": "Listed but not built yet; budgets can't choose it."
+        },
+        "maxTokens": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Caps the model's output. Only for adapters with usesModel."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "maxTokens"
+            ]
+          },
+          "then": {
+            "required": [
+              "usesModel"
+            ],
+            "properties": {
+              "usesModel": {
+                "const": true
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "usesModel"
+            ],
+            "properties": {
+              "usesModel": {
+                "const": true
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "modelKind"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "modelKind"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	db "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 )
@@ -49,8 +48,6 @@ func (d *BackfillDeps) backfillEmbedding(ctx context.Context, p resolvedPredicti
 		return err
 	}
 
-	embeddingStr := db.VectorToString(embedding)
-
 	data := model.TransactionEmbedding{
 		BudgetID:      budgetID,
 		EmbeddingText: embeddingText,
@@ -60,7 +57,7 @@ func (d *BackfillDeps) backfillEmbedding(ctx context.Context, p resolvedPredicti
 		Source:        p.Source,
 	}
 
-	if err := d.EmbeddingRepo.Upsert(ctx, nil, data, embeddingStr); err != nil {
+	if err := d.EmbeddingRepo.Upsert(ctx, data, embedding); err != nil {
 		return err
 	}
 

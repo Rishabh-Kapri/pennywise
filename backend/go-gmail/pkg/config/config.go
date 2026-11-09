@@ -16,15 +16,24 @@ type Config struct {
 	ProjectID                        string
 	PubsubTopic                      string
 	SubscriptionName                 string
-	DatabaseURL                      string
-	MLPServiceURL                    string
-	PennywiseServiceURL              string
-	CipherServiceURL                 string
-	InternalAuthToken                string
-	NtfyTopic                        string
-	TemporalServerHost               string
-	TemporalServerPort               string
-	Port                             string
+	// DatabaseDriver picks the adapter behind the repositories (default postgres).
+	DatabaseDriver      string
+	DatabaseURL         string
+	MLPServiceURL       string
+	PennywiseServiceURL string
+	CipherServiceURL    string
+	InternalAuthToken   string
+	// ServiceTokens is SERVICE_TOKENS: "name:token,..." for each service that may call in.
+	ServiceTokens      string
+	NtfyTopic          string
+	TemporalServerHost string
+	TemporalServerPort string
+	Port               string
+
+	// Job
+	JobDriver    string
+	JobBrokerURL string
+	JobStoreURL  string
 }
 
 func LoadConfig() *Config {
@@ -49,14 +58,20 @@ func LoadConfig() *Config {
 		ProjectID:                        os.Getenv("PROJECT_ID"),
 		PubsubTopic:                      os.Getenv("PUBSUB_TOPIC"),
 		SubscriptionName:                 os.Getenv("SUB_NAME"),
+		DatabaseDriver:                   os.Getenv("DATABASE_DRIVER"),
 		DatabaseURL:                      os.Getenv("DATABASE_URL"),
 		MLPServiceURL:                    os.Getenv("MLP_SERVICE_URL"),
 		PennywiseServiceURL:              os.Getenv("PENNYWISE_SERVICE_URL"),
 		CipherServiceURL:                 os.Getenv("CIPHER_SERVICE_URL"),
 		InternalAuthToken:                os.Getenv("INTERNAL_AUTH_TOKEN"),
+		ServiceTokens:                    os.Getenv("SERVICE_TOKENS"),
 		NtfyTopic:                        os.Getenv("NTFY_TOPIC"),
 		TemporalServerHost:               os.Getenv("TEMPORAL_SERVER_HOST"),
 		TemporalServerPort:               os.Getenv("TEMPORAL_SERVER_PORT"),
 		Port:                             port,
+
+		JobDriver:    os.Getenv("JOB_DRIVER"),
+		JobBrokerURL: os.Getenv("JOB_BROKER_URL"),
+		JobStoreURL:  os.Getenv("JOB_STORE_URL"),
 	}
 }

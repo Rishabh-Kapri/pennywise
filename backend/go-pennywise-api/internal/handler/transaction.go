@@ -1,15 +1,15 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 )
 
@@ -35,6 +35,64 @@ type transactionHandler struct {
 
 func NewTransactionHandler(service service.TransactionService) TransactionHandler {
 	return &transactionHandler{service: service}
+}
+
+// transactionIDURI is the :id path param of the transaction routes.
+type transactionIDURI struct {
+	ID string `uri:"id" binding:"required,uuid"`
+}
+
+// bindTransactionID reads :id, or answers 400 and returns false.
+func bindTransactionID(c *gin.Context) (uuid.UUID, bool) {
+	var uri transactionIDURI
+	if err := c.ShouldBindUri(&uri); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid transaction id"})
+		return uuid.Nil, false
+	}
+	// The uuid rule already checked the format.
+	return uuid.MustParse(uri.ID), true
+}
+
+// listTransactionsQuery is the query string of ListNormalized. Each ID
+// filter comes either repeated (accountId[]=a&accountId[]=b) or as one
+// comma-joined value (accountId=a,b).
+type listTransactionsQuery struct {
+	AccountID   string   `form:"accountId"`
+	AccountIDs  []string `form:"accountId[]"`
+	CategoryID  string   `form:"categoryId"`
+	CategoryIDs []string `form:"categoryId[]"`
+	PayeeID     string   `form:"payeeId"`
+	PayeeIDs    []string `form:"payeeId[]"`
+	TagID       string   `form:"tagId"`
+	TagIDs      []string `form:"tagId[]"`
+
+	StartDate string `form:"startDate" binding:"omitempty,datetime=2006-01-02"`
+	EndDate   string `form:"endDate"   binding:"omitempty,datetime=2006-01-02"`
+	Note      string `form:"note"`
+
+	Limit     uint64 `form:"limit,default=30"`
+	GroupBy   string `form:"groupBy,default=month"`
+	SortOrder string `form:"sortOrder,default=DESC" binding:"oneof=ASC DESC asc desc"`
+	Cursor    string `form:"cursor"`
+}
+
+// idParam merges the two ways an ID filter can arrive.
+func idParam(repeated []string, joined string) []string {
+	if len(repeated) == 0 && strings.TrimSpace(joined) != "" {
+		return []string{joined}
+	}
+	return repeated
+}
+
+// bindingError turns a binding failure into a short message naming the
+// field, instead of the validator's "Key: 'X.Y' Error:Field validation ...".
+func bindingError(err error) string {
+	var verrs validator.ValidationErrors
+	if errors.As(err, &verrs) && len(verrs) > 0 {
+		f := verrs[0].Field()
+		return "invalid " + strings.ToLower(f[:1]) + f[1:]
+	}
+	return err.Error()
 }
 
 func (h *transactionHandler) List(c *gin.Context) {
@@ -73,52 +131,22 @@ func stringToUUIDs(ids []string) ([]uuid.UUID, error) {
 func (h *transactionHandler) ListNormalized(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	accountIdParam := strings.TrimSpace(c.Query("accountId"))
-	categoryIdParam := strings.TrimSpace(c.Query("categoryId"))
-	payeeIdParam := strings.TrimSpace(c.Query("payeeId"))
-	tagIdParam := strings.TrimSpace(c.Query("tagId"))
-	startDateParam := strings.TrimSpace(c.DefaultQuery("startDate", ""))
-	endDateParam := strings.TrimSpace(c.DefaultQuery("endDate", ""))
-	noteParam := strings.TrimSpace(c.DefaultQuery("note", ""))
-
-	limit := c.DefaultQuery("limit", "30")
-	limitInt, err := strconv.ParseUint(limit, 10, 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing limit"})
+	var q listTransactionsQuery
+	if err := c.ShouldBindQuery(&q); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": bindingError(err)})
 		return
 	}
 
-	groupBy := c.DefaultQuery("groupBy", "month")
-	sortOrder := c.DefaultQuery("sortOrder", "DESC")
-	cursor := c.Query("cursor")
-
-	accountIds := c.QueryArray("accountId[]")
-	if len(accountIds) == 0 && accountIdParam != "" {
-		accountIds = strings.Split(accountIdParam, ",")
-	}
-
-	categoryIds := c.QueryArray("categoryId[]")
-	if len(categoryIds) == 0 && categoryIdParam != "" {
-		categoryIds = strings.Split(categoryIdParam, ",")
-	}
-
-	payeeIds := c.QueryArray("payeeId[]")
-	if len(payeeIds) == 0 && payeeIdParam != "" {
-		payeeIds = strings.Split(payeeIdParam, ",")
-	}
-
-	tagIds := c.QueryArray("tagId[]")
-	if len(tagIds) == 0 && tagIdParam != "" {
-		tagIds = strings.Split(tagIdParam, ",")
-	}
-
-	logger.Logger(ctx).Info("listing normalized transactions", "accountIdParam", accountIdParam)
+	accountIds := idParam(q.AccountIDs, q.AccountID)
+	categoryIds := idParam(q.CategoryIDs, q.CategoryID)
+	payeeIds := idParam(q.PayeeIDs, q.PayeeID)
+	tagIds := idParam(q.TagIDs, q.TagID)
 
 	txnFilter := model.TransactionFilter{
-		Limit:        limitInt,
-		GroupBy:      &groupBy,
-		SortOrder:    sortOrder,
-		CursorString: cursor,
+		Limit:        q.Limit,
+		GroupBy:      &q.GroupBy,
+		SortOrder:    q.SortOrder,
+		CursorString: q.Cursor,
 	}
 
 	if len(accountIds) > 0 {
@@ -157,16 +185,14 @@ func (h *transactionHandler) ListNormalized(c *gin.Context) {
 		txnFilter.TagIDs = ids
 	}
 
-	if noteParam != "" {
-		txnFilter.Note = &noteParam
+	if note := strings.TrimSpace(q.Note); note != "" {
+		txnFilter.Note = &note
 	}
-
-	if startDateParam != "" {
-		txnFilter.StartDate = &startDateParam
+	if q.StartDate != "" {
+		txnFilter.StartDate = &q.StartDate
 	}
-
-	if endDateParam != "" {
-		txnFilter.EndDate = &endDateParam
+	if q.EndDate != "" {
+		txnFilter.EndDate = &q.EndDate
 	}
 
 	transactions, err := h.service.GetAllNormalized(ctx, &txnFilter)
@@ -182,7 +208,7 @@ func (h *transactionHandler) Create(c *gin.Context) {
 
 	var body model.Transaction
 	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	createdTxns, err := h.service.Create(ctx, body)
@@ -195,23 +221,18 @@ func (h *transactionHandler) Create(c *gin.Context) {
 
 func (h *transactionHandler) Update(c *gin.Context) {
 	ctx := c.Request.Context()
-	id, ok := c.Params.Get("id")
+	parsedId, ok := bindTransactionID(c)
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})
 		return
-	}
-	parsedId, err := uuid.Parse(id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error while parsing id"})
 	}
 
 	var body model.Transaction
 	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	err = h.service.Update(ctx, parsedId, body)
+	err := h.service.Update(ctx, parsedId, body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -221,14 +242,8 @@ func (h *transactionHandler) Update(c *gin.Context) {
 
 func (h *transactionHandler) UpdateLocation(c *gin.Context) {
 	ctx := c.Request.Context()
-	id, ok := c.Params.Get("id")
+	parsedId, ok := bindTransactionID(c)
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})
-		return
-	}
-	parsedId, err := uuid.Parse(id)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing id"})
 		return
 	}
 
@@ -248,22 +263,17 @@ func (h *transactionHandler) UpdateLocation(c *gin.Context) {
 
 func (h *transactionHandler) UpdateStatus(c *gin.Context) {
 	ctx := c.Request.Context()
-	id, ok := c.Params.Get("id")
+	parsedId, ok := bindTransactionID(c)
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})
 		return
-	}
-	parsedId, err := uuid.Parse(id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error while parsing id"})
 	}
 
 	var body model.TransactionStatusReq
 	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	err = h.service.UpdateStatus(ctx, parsedId, body.Status)
+	err := h.service.UpdateStatus(ctx, parsedId, body.Status)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -317,18 +327,12 @@ func (h *transactionHandler) BackfillLearning(c *gin.Context) {
 func (h *transactionHandler) DeleteById(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	id, ok := c.Params.Get("id")
+	parsedId, ok := bindTransactionID(c)
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})
 		return
 	}
 
-	parsedId, err := uuid.Parse(id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error while parsing id"})
-	}
-
-	err = h.service.DeleteById(ctx, parsedId)
+	err := h.service.DeleteById(ctx, parsedId)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

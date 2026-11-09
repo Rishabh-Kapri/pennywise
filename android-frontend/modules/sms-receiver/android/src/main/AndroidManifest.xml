@@ -1,0 +1,16 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <!-- BROADCAST_SMS: only the telephony stack may deliver to this receiver. -->
+    <receiver
+      android:name="dev.pennywise.smsreceiver.SmsBroadcastReceiver"
+      android:exported="true"
+      android:permission="android.permission.BROADCAST_SMS">
+      <intent-filter>
+        <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+      </intent-filter>
+    </receiver>
+    <service
+      android:name="dev.pennywise.smsreceiver.SmsHeadlessTaskService"
+      android:exported="false" />
+  </application>
+</manifest>

@@ -9,16 +9,15 @@ import (
 	"fmt"
 	"strings"
 
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 const (
@@ -77,10 +76,11 @@ type AgentService interface {
 type agentService struct {
 	client AgentClient
 	repo   repository.AgentRepository
+	dbTxn  repository.DBTxn
 }
 
-func NewAgentService(client AgentClient, repo repository.AgentRepository) AgentService {
-	return &agentService{client: client, repo: repo}
+func NewAgentService(client AgentClient, repo repository.AgentRepository, dbTxn repository.DBTxn) AgentService {
+	return &agentService{dbTxn: dbTxn, client: client, repo: repo}
 }
 
 func (s *agentService) GetConversations(ctx context.Context) ([]sharedModel.AgentConversation, error) {
@@ -116,7 +116,7 @@ func (s *agentService) continueRun(
 	var prevMessages []sharedModel.ConversationMessage
 	var prevAgentRuns []sharedModel.AgentRun
 
-	err := utils.WithTx(ctx, s.repo.GetDB(), func(tx pgx.Tx) error {
+	err := s.dbTxn.Do(ctx, func(ctx context.Context) error {
 		var err error
 
 		prevMessages, err = s.repo.ListConversationMessages(ctx, *req.ConversationID, nil)
@@ -128,7 +128,7 @@ func (s *agentService) continueRun(
 			)
 		}
 
-		prevAgentRuns, err = s.repo.GetAllConversationRuns(ctx, tx, *req.ConversationID)
+		prevAgentRuns, err = s.repo.GetAllConversationRuns(ctx, *req.ConversationID)
 		if err != nil {
 			return wrapAgentRepoError(
 				errs.CodeAgentRunLookupFailed,
@@ -165,7 +165,7 @@ func (s *agentService) continueRun(
 		}
 		req.Metadata = runMetadata
 
-		run, err = s.repo.CreateRun(ctx, tx, repository.CreateAgentRunParams{
+		run, err = s.repo.CreateRun(ctx, repository.CreateAgentRunParams{
 			UserID:         userID,
 			BudgetID:       budgetID,
 			AgentKey:       agentKey,
@@ -189,7 +189,7 @@ func (s *agentService) continueRun(
 			return errs.Wrap(errs.CodeInternalError, "failed to marshal user message", err)
 		}
 
-		userMessage, err = s.repo.CreateConversationMessage(ctx, tx, repository.CreateConversationMessageParams{
+		userMessage, err = s.repo.CreateConversationMessage(ctx, repository.CreateConversationMessageParams{
 			ConversationID: conversation.ID,
 			RunID:          &run.ID,
 			Role:           sharedModel.RoleUser,
@@ -210,7 +210,7 @@ func (s *agentService) continueRun(
 			return errs.Wrap(errs.CodeInternalError, "failed to marshal assistant message", err)
 		}
 
-		assistantMsg, err = s.repo.CreateConversationMessage(ctx, tx, repository.CreateConversationMessageParams{
+		assistantMsg, err = s.repo.CreateConversationMessage(ctx, repository.CreateConversationMessageParams{
 			ConversationID: conversation.ID,
 			RunID:          &run.ID,
 			Role:           sharedModel.RoleAssistant,
@@ -311,7 +311,6 @@ func (s *agentService) CreateRun(
 	if req.ConversationID != nil {
 		conversation, err = s.repo.GetConversationForUpdate(
 			ctx,
-			nil,
 			*req.ConversationID,
 			userID,
 			budgetID,
@@ -342,7 +341,7 @@ func (s *agentService) CreateRun(
 			conversationMetadata["titleSource"] = "auto"
 		}
 
-		conversation, err = s.repo.CreateConversation(ctx, nil, repository.CreateAgentConversationParams{
+		conversation, err = s.repo.CreateConversation(ctx, repository.CreateAgentConversationParams{
 			UserID:   userID,
 			BudgetID: budgetID,
 			AgentKey: agentKey,
@@ -418,7 +417,7 @@ func (s *agentService) UpdateConversation(
 	conversationID uuid.UUID,
 	data sharedModel.AgentConversation,
 ) error {
-	return s.repo.UpdateConversation(ctx, nil, conversationID, data)
+	return s.repo.UpdateConversation(ctx, conversationID, data)
 }
 
 func (s *agentService) DeleteConversation(ctx context.Context, conversationID uuid.UUID) error {
@@ -431,8 +430,8 @@ func (s *agentService) DeleteConversation(ctx context.Context, conversationID uu
 		return err
 	}
 
-	return utils.WithTx(ctx, s.repo.GetDB(), func(tx pgx.Tx) error {
-		return s.repo.DeleteConversation(ctx, tx, conversationID, userID, budgetID)
+	return s.dbTxn.Do(ctx, func(ctx context.Context) error {
+		return s.repo.DeleteConversation(ctx, conversationID, userID, budgetID)
 	})
 }
 
@@ -441,7 +440,7 @@ func (s *agentService) UpdateConversationMessageContent(
 	messageID uuid.UUID,
 	content []sharedModel.MessagePart,
 ) error {
-	return s.repo.UpdateConversationMessageContent(ctx, nil, messageID, content)
+	return s.repo.UpdateConversationMessageContent(ctx, messageID, content)
 }
 
 func (s *agentService) UpdateEntityMetadata(
@@ -450,7 +449,7 @@ func (s *agentService) UpdateEntityMetadata(
 	id uuid.UUID,
 	data map[string]any,
 ) error {
-	return s.repo.UpdateEntityMetadata(ctx, nil, entity, id, data)
+	return s.repo.UpdateEntityMetadata(ctx, entity, id, data)
 }
 
 func (s *agentService) getRun(

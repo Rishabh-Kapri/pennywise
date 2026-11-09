@@ -1,14 +1,13 @@
 .defaultTrigger {
-  background: var(--color-surface-secondary);
-  border-radius: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.9rem;
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  box-shadow: var(--shadow-md);
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  background: var(--color-surface-secondary);
+  font-size: 0.9rem;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background 0.15s ease;
 }
 
 .dropdownOpen {
@@ -24,101 +23,80 @@
 }
 
 .form {
-  padding: 1.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-}
-
-.title {
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--color-text);
-  margin: 0;
-}
-
-.field {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  margin-bottom: -1rem; /* cancel the shared popover's bottom padding */
+  padding: 0.85rem;
 }
 
 .label {
-  font-size: 0.75rem;
-  font-weight: 600;
   color: var(--color-text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.025em;
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.inputRow {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.25rem 0.25rem 0.75rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.6rem;
+  background: var(--color-surface);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.inputRow:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent);
 }
 
 .input {
-  padding: 0.625rem 0.75rem;
-  border: 1px solid var(--color-border);
-  border-radius: 0.5rem;
-  background: var(--color-background);
+  flex: 1;
+  min-width: 0;
+  padding: 0.35rem 0;
+  border: 0;
+  background: transparent;
   color: var(--color-text);
-  font-size: 0.875rem;
-  transition: border-color 0.2s ease;
+  font: inherit;
+  font-size: 0.95rem;
 }
 
 .input:focus {
   outline: none;
-  border-color: var(--color-primary);
 }
 
-.inputGroup {
-  position: relative;
-  display: flex;
+.input::placeholder {
+  color: color-mix(in srgb, var(--color-text-secondary) 75%, transparent);
+}
+
+.saveButton {
+  display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
-}
-
-.prefix {
-  position: absolute;
-  left: 0.75rem;
-  color: var(--color-text-secondary);
-  font-weight: 600;
-  font-size: 0.875rem;
-}
-
-.inputWithPrefix {
-  padding-left: 2rem;
-}
-
-.actions {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 0.25rem;
-}
-
-.cancelButton,
-.saveButton {
-  flex: 1;
-  padding: 0.625rem;
-  border-radius: 0.5rem;
-  font-weight: 600;
-  font-size: 0.875rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.cancelButton {
-  background: transparent;
-  border: 1px solid var(--color-border);
-  color: var(--color-text-secondary);
-}
-
-.cancelButton:hover {
-  background: var(--color-surface-secondary);
-  color: var(--color-text);
-}
-
-.saveButton {
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.45rem;
   background: var(--color-primary);
-  border: none;
-  color: var(--color-text);
-  transition: all 0.2s ease;
+  color: var(--on-accent, #fff);
+  cursor: pointer;
+  transition: background 0.15s ease, opacity 0.15s ease;
 }
 
-.saveButton:hover {
-  filter: brightness(1.2);
+.saveButton:hover:not(:disabled) {
+  background: var(--accent-hover, var(--color-primary));
+}
+
+.saveButton:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.hint {
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
 }

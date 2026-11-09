@@ -34,8 +34,7 @@ const LogoIcon = () => (
 function GoogleSignInButton() {
   const dispatch = useAppDispatch();
   const onGoogleLogin = useGoogleLogin({
-    flow: 'auth-code',
-    scope: 'https://mail.google.com/',
+    flow: 'auth-code', // the library adds `openid profile email`; Gmail is granted in Settings → Email sync
     onSuccess: async (codeResponse) => {
       dispatch(loginWithGoogle(codeResponse.code))
         .unwrap()

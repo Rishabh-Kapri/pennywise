@@ -1,403 +1,1701 @@
+/* Page chrome follows Accounts/Budget: big title with stats on the right, then
+   a toolbar and a list/detail split of floating cards. */
+.page,
+.dialog {
+  --payees-card: var(--card-bg, var(--color-surface-secondary));
+  --payees-hairline: color-mix(in srgb, var(--color-border) 28%, transparent);
+  --payees-hover: color-mix(in srgb, var(--color-text) 4%, transparent);
+  --payees-selected: color-mix(in srgb, var(--color-primary) 12%, transparent);
+}
+
 .page {
-  height: 100%;
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
-  padding: 1.5rem;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 1.5rem 1.5rem 1.25rem;
   color: var(--color-text);
   overflow: hidden;
 }
 
-.heading {
+/* ── Header ─────────────────────────────────────────────────────────────── */
+
+.top {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 1rem;
+  flex-wrap: wrap;
+  gap: 1rem 2rem;
 }
 
-.heading h1,
-.detailHeader h2 {
+.titleBlock h1 {
   margin: 0;
-  color: var(--color-text);
+  font-size: 1.85rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  line-height: 1.3;
 }
 
-.heading h1 {
-  font-size: clamp(2rem, 4vw, 3.25rem);
-  letter-spacing: -0.06em;
-}
-
-.heading p {
+.titleBlock p {
+  margin: 0.15rem 0 0;
   color: var(--color-text-secondary);
-  margin-top: 0.25rem;
+  font-size: 1rem;
 }
 
-.kicker {
-  color: var(--color-primary-light);
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+.topActions {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 1rem 2rem;
 }
 
-.countBadge,
-.summaryCard {
-  border: 1px solid var(--color-border-muted);
-  border-radius: 999px;
-  background: var(--color-surface);
-  color: var(--color-text-secondary);
-  padding: 0.5rem 0.85rem;
-  white-space: nowrap;
+.stats {
+  display: flex;
+  gap: 2.25rem;
+  margin: 0;
 }
 
-.contentGrid {
-  min-height: 0;
-  flex: 1;
-  display: grid;
-  grid-template-columns: minmax(17rem, 24rem) minmax(0, 1fr);
-  gap: 1rem;
-}
-
-.listPanel,
-.detailPanel {
-  min-height: 0;
-  border: 1px solid var(--color-border-muted);
-  border-radius: 1rem;
-  background: color-mix(in srgb, var(--color-surface) 88%, transparent);
-  overflow: hidden;
-}
-
-.listPanel {
+.stats > div {
   display: flex;
   flex-direction: column;
-  padding: 0.75rem;
+  align-items: flex-end;
+  gap: 0.25rem;
 }
 
-.addPayeeForm,
-.ruleForm,
-.searchBox {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.addPayeeForm,
-.ruleForm {
-  margin-bottom: 0.75rem;
-}
-
-.ruleForm {
-  flex-wrap: wrap;
-  border: 1px solid var(--color-border-muted);
-  border-radius: 0.9rem;
-  background: var(--color-background);
-  padding: 0.75rem;
-}
-
-.searchBox {
-  border: 1px solid var(--color-border-muted);
-  border-radius: 0.75rem;
-  background: var(--color-background);
+.stats dt {
   color: var(--color-text-secondary);
-  padding: 0.65rem 0.75rem;
-  margin-bottom: 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 500;
 }
 
-.addPayeeForm input,
-.payeeSelectButton input,
-.ruleForm input,
-.ruleForm select,
-.searchBox input {
-  width: 100%;
-  border: 0;
-  outline: 0;
-  border-radius: 0.6rem;
-  background: transparent;
-  color: var(--color-text);
-  font: inherit;
+.stats dd {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
-.addPayeeForm input,
-.payeeSelectButton input,
-.ruleForm input,
-.ruleForm select {
-  border: 1px solid var(--color-border-muted);
-  background: var(--color-background);
-  padding: 0.65rem 0.75rem;
-}
+/* ── Buttons ────────────────────────────────────────────────────────────── */
 
-.ruleForm input {
-  min-width: 14rem;
-  flex: 2;
-}
-
-.ruleForm select {
-  min-width: 12rem;
-  flex: 1;
-}
-
+.addButton,
 .primaryButton,
-.secondaryButton {
+.secondaryButton,
+.ghostButton,
+.dangerButton {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.35rem;
-  border-radius: 0.65rem;
-  padding: 0.65rem 0.8rem;
-  color: var(--color-text);
+  gap: 0.4rem;
+  height: 2.25rem;
+  padding: 0 0.9rem;
+  border: 1px solid transparent;
+  border-radius: 0.6rem;
+  font: inherit;
+  font-size: 0.98rem;
+  font-weight: 600;
   white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
 }
 
+.addButton,
 .primaryButton {
   background: var(--color-primary);
+  color: var(--on-accent, #fff);
+}
+
+.addButton {
+  height: 2.4rem;
+  padding: 0 1rem;
+}
+
+.addButton:hover,
+.primaryButton:hover:not(:disabled) {
+  background: var(--accent-hover, var(--color-primary));
 }
 
 .secondaryButton {
   border-color: var(--color-border-muted);
-  background: var(--color-surface-secondary);
+  background: var(--payees-card);
+  color: var(--color-text);
 }
 
+.secondaryButton:hover:not(:disabled) {
+  background: var(--payees-hover);
+  border-color: color-mix(in srgb, var(--color-border) 70%, transparent);
+}
+
+.ghostButton {
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
+.ghostButton:hover {
+  background: var(--payees-hover);
+  color: var(--color-text);
+}
+
+.dangerButton {
+  background: var(--color-error);
+  color: #fff;
+}
+
+.dangerButton:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.addButton:disabled,
 .primaryButton:disabled,
-.secondaryButton:disabled {
+.secondaryButton:disabled,
+.dangerButton:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
-  opacity: 0.65;
 }
 
-.payeeList,
-.rulesList {
+.iconButton,
+.dangerIconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.iconButton:hover {
+  background: var(--payees-hover);
+  color: var(--color-text);
+}
+
+.iconButton.iconDanger:hover,
+.dangerIconButton:hover {
+  background: color-mix(in srgb, var(--color-error) 12%, transparent);
+  color: var(--color-error);
+}
+
+.dangerIconButton {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-color: var(--color-border-muted);
+}
+
+.linkButton {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 550;
+  text-align: left;
+  cursor: pointer;
+}
+
+.linkButton:hover {
+  color: var(--color-primary-light);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+:where(.page, .dialog) button:focus-visible,
+:where(.page, .dialog) [tabindex]:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* ── Toolbar: view tabs + search ────────────────────────────────────────── */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.tabs {
+  display: inline-flex;
+  gap: 0.2rem;
+  padding: 0.2rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.7rem;
+  background: var(--payees-card);
+}
+
+.tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 2rem;
+  padding: 0 0.85rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 0.98rem;
+  font-weight: 550;
+  cursor: pointer;
+}
+
+.tabs button:hover {
+  color: var(--color-text);
+}
+
+.tabs .tabActive {
+  background: var(--payees-selected);
+  color: var(--color-text);
+}
+
+.search {
+  flex: 1;
+  min-width: 14rem;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  height: 2.5rem;
+  padding: 0 0.6rem 0 0.8rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.7rem;
+  background: var(--payees-card);
+  color: var(--color-text-secondary);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.search:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent);
+}
+
+.search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 1rem;
+}
+
+.searchClear {
+  display: inline-flex;
+  padding: 0.25rem;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.searchClear:hover {
+  background: var(--payees-hover);
+  color: var(--color-text);
+}
+
+.page kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  padding: 0 0.3rem;
+  border: 1px solid var(--color-border-muted);
+  border-bottom-width: 2px;
+  border-radius: 0.35rem;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+/* ── Split layout ───────────────────────────────────────────────────────── */
+
+.contentGrid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(19rem, 26rem) minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.listPanel,
+.detailPanel,
+.rulesTable,
+.tester {
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.9rem;
+  background: var(--payees-card);
+  box-shadow: var(--shadow-sm);
+}
+
+.listPanel {
+  position: relative;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.detailPanel {
   min-height: 0;
   overflow: auto;
 }
 
-.payeeList {
+/* ── Filter chips (shared) ──────────────────────────────────────────────── */
+
+.listToolbar {
   display: flex;
   flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.75rem 0.75rem 0.5rem;
+  border-bottom: 1px solid var(--payees-hairline);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.35rem;
 }
 
-.payeeItem {
-  width: 100%;
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 1.75rem;
+  padding: 0 0.6rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 550;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.chip:hover {
+  color: var(--color-text);
+  background: var(--payees-hover);
+}
+
+.chip.chipActive {
+  border-color: color-mix(in srgb, var(--color-primary) 55%, transparent);
+  background: var(--payees-selected);
+  color: var(--color-text);
+}
+
+.chipAccent:not(.chipActive) {
+  border-color: color-mix(in srgb, var(--color-warning) 45%, transparent);
+  color: var(--color-warning);
+}
+
+.chipWarn:not(.chipActive) {
+  color: var(--color-warning);
+}
+
+.chipCount {
+  color: var(--color-text-secondary);
+  font-size: 0.84rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.listHeaderRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.65rem;
-  border: 1px solid transparent;
-  border-radius: 0.75rem;
-  background: transparent;
-  color: var(--color-text-secondary);
-  padding: 0.35rem;
-  text-align: left;
+  gap: 0.5rem;
 }
 
-.payeeSelectButton {
-  min-width: 0;
+.selectAll {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding-left: 0.4rem;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.sortSelect {
+  height: 1.85rem;
+  padding: 0 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.sortSelect:hover,
+.sortSelect:focus-visible {
+  border-color: var(--color-border-muted);
+  color: var(--color-text);
+  outline: none;
+}
+
+.sortSelect option {
+  background: var(--color-popover);
+  color: var(--color-text);
+}
+
+/* ── Payee rows ─────────────────────────────────────────────────────────── */
+
+.payeeList {
   flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.35rem 0.4rem 0.6rem;
+  outline: none;
+}
+
+.payeeRow {
   display: flex;
   align-items: center;
   gap: 0.65rem;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  padding: 0.35rem;
-  text-align: left;
+  padding: 0.5rem 0.55rem 0.5rem 0.45rem;
+  border-radius: 0.65rem;
+  cursor: pointer;
+  user-select: none;
 }
 
-.payeeSelectButton span:last-child {
+.payeeRow:hover {
+  background: var(--payees-hover);
+}
+
+.payeeRow.payeeRowSelected {
+  background: var(--payees-selected);
+}
+
+.payeeRow.payeeRowChecked:not(.payeeRowSelected) {
+  background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+}
+
+.payeeList:focus-visible .payeeRowSelected {
+  box-shadow: inset 0 0 0 1.5px var(--color-primary);
+}
+
+.checkbox {
+  width: 0.95rem;
+  height: 0.95rem;
+  flex-shrink: 0;
+  margin: 0;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.payeeRow:hover .checkbox,
+.checkbox:focus-visible,
+.checkbox:checked,
+.checkboxVisible {
+  opacity: 1;
+}
+
+.checkSpacer {
+  width: 0.95rem;
+  flex-shrink: 0;
+}
+
+.avatar {
+  --avatar-hue: 210;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 0.6rem;
+  background: hsl(var(--avatar-hue) 70% 50% / 0.14);
+  color: hsl(var(--avatar-hue) 50% 36%);
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+:global(:root[data-theme='dark']) .avatar {
+  background: hsl(var(--avatar-hue) 60% 55% / 0.2);
+  color: hsl(var(--avatar-hue) 70% 78%);
+}
+
+.avatar.avatarTransfer {
+  background: var(--payees-hover);
+  color: var(--color-text-secondary);
+}
+
+.avatarLarge {
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 0.9rem;
+  font-size: 1.12rem;
+}
+
+.payeeRowText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.payeeRowName,
+.payeeRowMeta {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.rowActions {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  flex-shrink: 0;
+.payeeRowName {
+  font-size: 1rem;
+  font-weight: 550;
 }
 
-.rowActions button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2rem;
-  height: 2rem;
-  border: 1px solid var(--color-border-muted);
-  border-radius: 0.55rem;
-  background: var(--color-surface);
+.payeeRowMeta {
   color: var(--color-text-secondary);
-  padding: 0;
+  font-size: 0.88rem;
 }
 
-.rowActions button:hover {
-  color: var(--color-text);
-  background: var(--color-surface-tertiary);
+.payeeRowMeta code,
+.mono,
+.ruleString {
+  font-family: ui-monospace, 'SFMono-Regular', 'JetBrains Mono', Menlo, Consolas, monospace;
 }
 
-.rowActions .editButton {
-  border-color: color-mix(in srgb, var(--color-primary) 70%, var(--color-border-muted));
-  color: color-mix(in srgb, var(--color-primary-light) 80%, var(--color-text-secondary));
+.payeeRowMeta code {
+  font-size: 0.84rem;
 }
 
-.rowActions .editButton:hover {
-  border-color: color-mix(in srgb, var(--color-primary) 75%, var(--color-border-muted));
-  background: color-mix(in srgb, var(--color-primary) 70%, var(--color-surface-secondary));
-  color: #fff;
+.page mark {
+  border-radius: 0.2rem;
+  background: color-mix(in srgb, var(--color-warning) 30%, transparent);
+  color: inherit;
 }
 
-.rowActions .deleteButton {
-  border-color: color-mix(in srgb, var(--color-error) 58%, var(--color-border-muted));
-  color: color-mix(in srgb, var(--color-error) 68%, var(--color-text-secondary));
-}
-
-.rowActions .deleteButton:hover {
-  border-color: color-mix(in srgb, var(--color-error) 62%, var(--color-border-muted));
-  background: color-mix(in srgb, var(--color-error) 72%, var(--color-surface-secondary));
-  color: #fff;
-}
-
-.payeeItem:hover,
-.payeeItemSelected {
-  border-color: var(--color-border-muted);
-  background: var(--color-surface-secondary);
-  color: var(--color-text);
-}
-
-.payeeIcon,
-.detailIcon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 0.7rem;
-  background: color-mix(in srgb, var(--color-primary) 30%, transparent);
-  color: var(--color-primary-light);
-  flex-shrink: 0;
-}
-
-.payeeIcon {
-  width: 2rem;
-  height: 2rem;
-}
-
-.detailPanel {
+.payeeRowEnd {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  padding: 1rem;
+  align-items: flex-end;
+  gap: 0.2rem;
+  flex-shrink: 0;
+}
+
+.payeeRowAmount {
+  color: var(--color-text-secondary);
+  font-size: 0.88rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.rulePill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  height: 1.15rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  color: var(--color-primary-light);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.payeeRowCaret {
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+  opacity: 0;
+}
+
+.payeeRowSelected .payeeRowCaret {
+  opacity: 0.8;
+}
+
+.rowSkeleton {
+  height: 3rem;
+  margin: 0.25rem 0.3rem;
+  border-radius: 0.6rem;
+  background: linear-gradient(90deg, var(--skeleton-base), var(--skeleton-highlight), var(--skeleton-base));
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.listEmpty {
+  padding: 2rem 1rem;
+  color: var(--color-text-secondary);
+  font-size: 0.98rem;
+  text-align: center;
+}
+
+.errorState {
+  padding: 0.75rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--color-error) 40%, transparent);
+  border-radius: 0.7rem;
+  background: color-mix(in srgb, var(--color-error) 8%, transparent);
+  color: var(--color-error);
+}
+
+/* duplicate suggestions */
+.dupGroup {
+  margin: 0.25rem 0 0.6rem;
+  padding: 0.25rem;
+  border: 1px dashed color-mix(in srgb, var(--color-warning) 45%, transparent);
+  border-radius: 0.75rem;
+}
+
+.dupGroupHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.35rem 0.4rem 0.35rem 0.55rem;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.dupGroupHeader strong {
+  color: var(--color-text);
+}
+
+.dupMergeButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+  height: 1.75rem;
+  padding: 0 0.6rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--color-warning) 16%, transparent);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dupMergeButton:hover {
+  background: color-mix(in srgb, var(--color-warning) 26%, transparent);
+}
+
+/* bulk selection bar, floating over the bottom of the list */
+.bulkBar {
+  position: absolute;
+  right: 0.6rem;
+  bottom: 0.6rem;
+  left: 0.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.45rem 0.45rem 0.9rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.75rem;
+  background: var(--color-popover);
+  color: var(--color-text);
+  box-shadow: var(--shadow-popover, var(--shadow-lg));
+  font-size: 0.95rem;
+  animation: rise 0.18s ease-out;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.bulkActions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.bulkButton,
+.bulkIcon {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 1.9rem;
+  padding: 0 0.65rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.93rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bulkIcon {
+  padding: 0 0.45rem;
+}
+
+.bulkButton:hover:not(:disabled),
+.bulkIcon:hover {
+  background: var(--payees-hover);
+}
+
+.bulkButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.bulkDanger {
+  color: var(--color-error);
+}
+
+.bulkDanger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-error) 12%, transparent) !important;
+}
+
+/* ── Detail ─────────────────────────────────────────────────────────────── */
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.25rem 1.4rem 1.5rem;
+}
+
+.backButton {
+  display: none;
+  align-items: center;
+  gap: 0.35rem;
+  width: fit-content;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 0.98rem;
+  cursor: pointer;
 }
 
 .detailHeader {
   display: flex;
   align-items: center;
   gap: 0.9rem;
+  flex-wrap: wrap;
 }
 
-.detailIcon {
-  width: 2.75rem;
-  height: 2.75rem;
+.detailTitle {
+  flex: 1;
+  min-width: 12rem;
 }
 
-.summaryCard {
-  width: fit-content;
+.detailTitle h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  font-size: 1.55rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  word-break: break-word;
+}
+
+.detailTitle p {
+  margin: 0.1rem 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+}
+
+.inlineEdit {
+  display: inline-flex;
+  padding: 0.3rem;
+  border: 0;
+  border-radius: 0.4rem;
+  background: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.detailTitle:hover .inlineEdit,
+.inlineEdit:focus-visible {
+  opacity: 1;
+}
+
+.inlineEdit:hover {
+  background: var(--payees-hover);
+  color: var(--color-text);
+}
+
+.renameForm {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.renameInput {
+  flex: 1;
+  min-width: 0;
+  height: 2.4rem;
+  padding: 0 0.6rem;
+  border: 1px solid var(--color-primary);
+  border-radius: 0.55rem;
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+
+.detailActions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.statGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: 0.6rem;
+  margin: 0;
+}
+
+.statGrid > div {
+  min-width: 0;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--payees-hairline);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--color-text) 2%, transparent);
+}
+
+.statGrid dt {
+  color: var(--color-text-secondary);
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+
+.statGrid dd {
+  margin: 0.2rem 0 0;
+  overflow: hidden;
+  font-size: 1.2rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.positive {
+  color: var(--color-budget-positive);
+}
+
+.rulesSection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.sectionHeader h3,
+.testerHead h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  font-size: 1.08rem;
+  font-weight: 650;
+}
+
+.sectionHeader p,
+.testerHead p {
+  margin: 0.15rem 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.93rem;
+}
+
+.sectionCount {
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: var(--payees-hover);
+  color: var(--color-text-secondary);
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.notice {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.6rem;
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  color: var(--color-text);
+  font-size: 0.93rem;
+}
+
+.notice svg {
+  flex-shrink: 0;
+  color: var(--color-warning);
+}
+
+.inlineSearch {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  height: 2.1rem;
+  padding: 0 0.65rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.55rem;
+  color: var(--color-text-secondary);
+}
+
+.inlineSearch:focus-within {
+  border-color: var(--color-primary);
+}
+
+.inlineSearch input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.95rem;
+}
+
+.ruleCards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.ruleCard {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 2.9rem;
+  padding: 0.4rem 0.4rem 0.4rem 0.7rem;
+  border: 1px solid var(--payees-hairline);
+  border-radius: 0.7rem;
+}
+
+.ruleCard:hover {
+  background: var(--payees-hover);
+}
+
+.typeExact,
+.typePattern {
+  flex-shrink: 0;
+  padding: 0.12rem 0.45rem;
+  border-radius: 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.typeExact {
+  background: color-mix(in srgb, var(--color-info) 14%, transparent);
+  color: var(--color-info);
+}
+
+.typePattern {
+  background: color-mix(in srgb, #a855f7 16%, transparent);
+  color: #9333ea;
+}
+
+:global(:root[data-theme='dark']) .typePattern {
+  color: #c084fc;
+}
+
+.ruleString {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.95rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ruleCard .ruleString {
+  flex: 0 1 auto;
+}
+
+.ruleArrow {
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+}
+
+.categoryChip,
+.categoryMissing {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.88rem;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.categoryChip {
+  background: var(--payees-hover);
+  color: var(--color-text);
+}
+
+.categoryMissing {
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+  color: var(--color-warning);
+}
+
+.ruleCardActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.1rem;
+  margin-left: auto;
+  opacity: 0.55;
+  transition: opacity 0.12s ease;
+}
+
+.ruleCard:hover .ruleCardActions,
+.rulesRow:hover .ruleCardActions,
+.ruleCardActions:focus-within {
+  opacity: 1;
+}
+
+.emptyRules {
+  padding: 1.5rem 1.25rem;
+  border: 1px dashed var(--color-border-muted);
+  border-radius: 0.75rem;
+  text-align: center;
+}
+
+.emptyRules p {
+  margin: 0 0 0.25rem;
+  font-weight: 600;
+}
+
+.emptyRules span {
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+}
+
+.emptyDetail {
+  height: 100%;
+  min-height: 18rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 2rem;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.emptyDetail h3 {
+  margin: 0.25rem 0 0;
+  color: var(--color-text);
+  font-size: 1.12rem;
+}
+
+.emptyDetail p {
+  max-width: 24rem;
+  margin: 0 0 0.5rem;
+  font-size: 0.98rem;
+}
+
+.kbdHint {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 1rem !important;
+  font-size: 0.88rem !important;
+}
+
+/* ── Rule editor ────────────────────────────────────────────────────────── */
+
+.ruleEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 45%, transparent);
+  border-radius: 0.8rem;
+  background: color-mix(in srgb, var(--color-primary) 4%, var(--payees-card));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+
+.ruleEditorGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.7rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.field > span {
+  color: var(--color-text-secondary);
+  font-size: 0.88rem;
+  font-weight: 550;
+}
+
+.input {
+  width: 100%;
+  height: 2.5rem;
+  padding: 0 0.8rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.6rem;
+  outline: none;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 1rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.input::placeholder {
+  color: var(--color-text-secondary);
+  opacity: 0.8;
+}
+
+.input:hover {
+  border-color: color-mix(in srgb, var(--color-border) 70%, transparent);
+}
+
+.input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent);
+}
+
+.input.mono {
+  font-size: 0.95rem;
+}
+
+.segmented {
+  display: flex;
+  height: 2.5rem;
+  padding: 0.2rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.6rem;
+  background: var(--color-surface);
+}
+
+.segmented button {
+  flex: 1;
+  border: 0;
+  border-radius: 0.45rem;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 550;
+  cursor: pointer;
+}
+
+.segmented .segmentActive {
+  background: var(--payees-selected);
+  color: var(--color-text);
+}
+
+.ruleHints {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.ruleHints p,
+.hintWarn,
+.hintError,
+.sampleYes,
+.sampleNo {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.ruleHints svg,
+.hintWarn svg,
+.hintError svg,
+.sampleYes svg,
+.sampleNo svg {
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.ruleHints code,
+.testerResult code,
+.modalBodyText code {
+  padding: 0 0.25rem;
+  border-radius: 0.25rem;
+  background: var(--payees-hover);
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 0.85em;
+}
+
+.ruleHints .hintWarn,
+.hintWarn {
+  color: var(--color-warning);
+}
+
+.ruleHints .hintError,
+.hintError {
+  color: var(--color-error);
+}
+
+.sampleRow {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.sampleRow .input {
+  flex: 1;
+  height: 2.2rem;
+}
+
+.sampleYes {
+  align-items: center;
+  color: var(--color-success);
+  font-weight: 550;
+  white-space: nowrap;
+}
+
+.sampleNo {
+  align-items: center;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.editorActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+/* ── Rules view ─────────────────────────────────────────────────────────── */
+
+.rulesView {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.tester {
+  display: grid;
+  grid-template-columns: minmax(14rem, 22rem) minmax(0, 1fr);
+  align-items: center;
+  gap: 0.6rem 1.25rem;
+  padding: 0.9rem 1.1rem;
+}
+
+.testerHead {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+}
+
+.testerHead > svg {
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+  color: var(--color-primary-light);
+}
+
+.testerResult {
+  grid-column: 1 / -1;
+}
+
+.testerResult p {
+  white-space: normal;
+}
+
+.rulesToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.rulesToolbarEnd {
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
 
-.summaryCard strong {
-  color: var(--color-text);
-}
-
-.rulesList {
-  display: grid;
-  gap: 0.65rem;
-}
-
-.ruleRow {
-  display: grid;
-  grid-template-columns: minmax(0, 1.3fr) minmax(12rem, 0.7fr) auto;
-  align-items: center;
-  gap: 1rem;
-  border: 1px solid var(--color-border-muted);
-  border-radius: 0.9rem;
-  background: var(--color-background);
-  padding: 0.9rem;
-}
-
-.ruleMatch,
-.ruleCategory {
-  min-width: 0;
+.rulesTable {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
-}
-
-.ruleMatch strong,
-.ruleCategory strong {
   overflow: hidden;
-  color: var(--color-text);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.ruleType,
-.ruleCategory span {
+.rulesHead,
+.rulesRow {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1.5fr) minmax(9rem, 1fr) minmax(8rem, 1fr) 7rem 4.5rem;
+  align-items: center;
+  gap: 1rem;
+  padding: 0 1rem;
+}
+
+.rulesHead {
+  height: 2.4rem;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--payees-hairline);
   color: var(--color-text-secondary);
-  font-size: 0.78rem;
+  font-size: 0.84rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
 }
 
-.ruleCreatedAt {
+.rulesBody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.rulesRow {
+  min-height: 3rem;
+  border-bottom: 1px solid var(--payees-hairline);
+}
+
+.rulesRow:hover {
+  background: var(--payees-hover);
+}
+
+.rulesRow.rulesRowMatched {
+  background: color-mix(in srgb, var(--color-success) 6%, transparent);
+}
+
+.rulesRow.rulesRowWinner {
+  background: color-mix(in srgb, var(--color-success) 13%, transparent);
+  box-shadow: inset 3px 0 0 var(--color-success);
+}
+
+.rulesMatch,
+.rulesPayee {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.rulesPayee .linkButton {
+  min-width: 0;
   overflow: hidden;
-  color: var(--color-text-secondary);
-  font-size: 0.75rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.emptyState,
-.emptyDetail,
-.errorState {
-  border: 1px dashed var(--color-border-muted);
-  border-radius: 0.85rem;
+.rulesDate {
   color: var(--color-text-secondary);
-  padding: 1rem;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
 }
 
-.emptyDetail {
-  margin: auto;
+.rulesEditRow {
+  padding: 0.6rem;
+  border-bottom: 1px solid var(--payees-hairline);
 }
 
-.errorState {
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ── Dialogs ────────────────────────────────────────────────────────────── */
+
+.dialog {
+  border-color: var(--color-border-muted) !important;
+  background: var(--color-popover) !important;
+  color: var(--color-text);
+}
+
+.mergeModal {
+  max-width: 580px !important;
+}
+
+.modalHeader {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.8rem;
+}
+
+.modalHeader > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.modalHeader h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 650;
+}
+
+.modalHeader p,
+.modalBodyText p {
+  margin: 0.25rem 0 0;
+  color: var(--color-text-secondary);
+  font-size: 0.98rem;
+  line-height: 1.45;
+}
+
+.modalIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 0.7rem;
+  background: var(--payees-selected, color-mix(in srgb, var(--color-primary) 12%, transparent));
+  color: var(--color-primary-light);
+}
+
+.modalIconDanger {
+  background: color-mix(in srgb, var(--color-error) 12%, transparent);
   color: var(--color-error);
 }
 
-@media (max-width: 800px) {
-  .page {
-    overflow: auto;
-    padding: 1rem;
+.modalFooter {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.newPayeeForm {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+.mergeList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: 16rem;
+  overflow: auto;
+}
+
+.mergeItem {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.55rem 0.5rem 0.55rem 0.75rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.7rem;
+  cursor: pointer;
+}
+
+.mergeItem:hover {
+  background: color-mix(in srgb, var(--color-text) 4%, transparent);
+}
+
+.mergeItem input {
+  flex-shrink: 0;
+  accent-color: var(--color-primary);
+}
+
+.mergeItem.mergeItemTarget {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+
+.mergeItemText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mergeItemText strong {
+  overflow: hidden;
+  font-size: 1rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mergeItemText span {
+  color: var(--color-text-secondary);
+  font-size: 0.88rem;
+}
+
+.keepBadge,
+.mergeBadge {
+  flex-shrink: 0;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+
+.keepBadge {
+  background: var(--color-primary);
+  color: var(--on-accent, #fff);
+}
+
+.mergeBadge {
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+  color: var(--color-text-secondary);
+}
+
+.nameOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.15rem;
+}
+
+.mergeSummary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.8rem 0.9rem;
+  border-radius: 0.7rem;
+  background: color-mix(in srgb, var(--color-text) 4%, transparent);
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.mergeSummary p {
+  margin: 0;
+}
+
+.mergeHint {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+}
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+
+@media (max-width: 1100px) {
+  .rulesHead,
+  .rulesRow {
+    grid-template-columns: minmax(10rem, 1.4fr) minmax(8rem, 1fr) minmax(7rem, 1fr) 4.5rem;
   }
 
-  .heading {
+  .rulesHead > :nth-child(4),
+  .rulesRow > :nth-child(4) {
+    display: none;
+  }
+
+  .tester {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 860px) {
+  .page {
+    padding: 1rem 1rem 0.75rem;
+    gap: 1rem;
+  }
+
+  .stats {
+    gap: 1.5rem;
+  }
+
+  .stats > div {
     align-items: flex-start;
-    flex-direction: column;
   }
 
   .contentGrid {
     grid-template-columns: 1fr;
   }
 
-  .listPanel {
-    max-height: 24rem;
+  /* one pane at a time: the list, or the payee picked from it */
+  .hasSelection .listPanel,
+  .page:not(.hasSelection) .detailPanel {
+    display: none;
   }
 
-  .ruleRow {
-    grid-template-columns: 1fr;
-    gap: 0.65rem;
+  .backButton {
+    display: inline-flex;
   }
 
-  .addPayeeForm,
-  .ruleForm {
-    align-items: stretch;
-    flex-direction: column;
+  .detail {
+    padding: 1rem;
+  }
+
+  .checkbox {
+    opacity: 1;
+  }
+
+  .ruleCard {
+    flex-wrap: wrap;
+  }
+
+  .ruleCardActions,
+  .payeeRowCaret {
+    opacity: 1;
+  }
+
+  .rulesHead {
+    display: none;
+  }
+
+  .rulesRow {
+    grid-template-columns: 1fr auto;
+    gap: 0.35rem 0.75rem;
+    padding: 0.65rem 0.85rem;
+  }
+
+  .rulesRow > :nth-child(1) {
+    grid-column: 1;
+  }
+
+  .rulesRow > :nth-child(2),
+  .rulesRow > :nth-child(3) {
+    grid-column: 1;
+  }
+
+  .rulesRow > :nth-child(5) {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+    opacity: 1;
   }
 }

@@ -8,22 +8,20 @@ on:
         required: true
         type: choice
         default: all
-        options: [all, go-gmail, go-pennywise-api, cipher, workflows]
+        options: [all, go-pennywise-api, cipher, ingest]
   pull_request:
     paths:
-      - 'backend/go-gmail/**'
       - 'backend/go-pennywise-api/**'
       - 'backend/cipher/**'
-      - 'backend/workflows/**'
+      - 'backend/ingest/**'
       - 'backend/shared/**'
       - '.github/workflows/workflow.yml'
   push:
     branches: [dev]
     paths:
-      - 'backend/go-gmail/**'
       - 'backend/go-pennywise-api/**'
       - 'backend/cipher/**'
-      - 'backend/workflows/**'
+      - 'backend/ingest/**'
       - 'backend/shared/**'
       - '.github/workflows/workflow.yml'
 
@@ -53,10 +51,9 @@ jobs:
           import subprocess
 
           services = [
-              ('go-gmail', './cmd', 'RAILWAY_GO_GMAIL_SERVICE_ID'),
               ('go-pennywise-api', './cmd/api ./cmd/migrations', 'RAILWAY_GO_PENNYWISE_API_SERVICE_ID'),
-              ('cipher', './cmd/api ./cmd/backfill', 'RAILWAY_CIPHER_SERVICE_ID'),
-              ('workflows', './cmd/worker', 'RAILWAY_WORKFLOWS_SERVICE_ID'),
+              ('cipher', './cmd/api ./cmd/backfill ./cmd/backfill-sources ./cmd/eval-lookup', 'RAILWAY_CIPHER_SERVICE_ID'),
+              ('ingest', './cmd/api', 'RAILWAY_INGEST_SERVICE_ID'),
           ]
           event = os.environ['EVENT_NAME']
           if event == 'workflow_dispatch':
@@ -78,7 +75,12 @@ jobs:
                       if any(path.startswith(f'backend/{name}/') for path in changed)
                   }
           matrix = {'include': [
-              {'module': name, 'build_targets': targets, 'service_var': service_var}
+              {
+                  'module': name,
+                  'build_targets': targets,
+                  'service_var': service_var,
+                  'env_secret': service_var.replace('_SERVICE_ID', '_ENV'),
+              }
               for name, targets, service_var in services if name in selected
           ]}
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
@@ -140,6 +142,44 @@ jobs:
       - name: Install Railway CLI
         if: github.ref == 'refs/heads/dev' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: npm install --global @railway/cli
+      - name: Sync environment variables
+        if: github.ref == 'refs/heads/dev' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        env:
+          ENV_SECRET: ${{ matrix.env_secret }}
+          SERVICE_ENV: ${{ secrets[matrix.env_secret] }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SERVICE_ENV:-}" ]; then
+            echo "No $ENV_SECRET secret set, so Railway's variables are left as they are."
+            exit 0
+          fi
+          count=0
+          line_number=0
+          while IFS= read -r line || [ -n "$line" ]; do
+            line_number=$((line_number + 1))
+            line="${line%$'\r'}"
+            case "$line" in
+              '' | '#'*) continue ;;
+            esac
+            key="${line%%=*}"
+            # Never print the line itself: it holds the value.
+            if [ "$key" = "$line" ] || ! [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+              echo "$ENV_SECRET line $line_number isn't KEY=value" >&2
+              exit 1
+            fi
+            value="${line#*=}"
+            case "$value" in
+              \"*\") value="${value:1:${#value}-2}" ;;
+              \'*\') value="${value:1:${#value}-2}" ;;
+            esac
+            # From stdin, so values stay out of the process list.
+            printf '%s' "$value" | railway variable set "$key" --stdin --skip-deploys \
+              --project "$RAILWAY_PROJECT_ID" \
+              --environment "$RAILWAY_DEV_ENVIRONMENT_ID" \
+              --service "$RAILWAY_SERVICE_ID" > /dev/null
+            count=$((count + 1))
+          done <<< "$SERVICE_ENV"
+          echo "Set $count variables from $ENV_SECRET."
       - name: Deploy prepared source
         if: github.ref == 'refs/heads/dev' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: |

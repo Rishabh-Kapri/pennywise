@@ -6,12 +6,11 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 	"go.temporal.io/sdk/activity"
 )
@@ -22,7 +21,7 @@ type CreateTransactionActivity struct {
 	PredictionService  service.PredictionService
 	WebsocketService   service.WebsocketService
 	PushService        service.PushNotificationService
-	DB                 *pgxpool.Pool
+	DBTxn              repository.DBTxn
 }
 
 func (a *CreateTransactionActivity) CreateTransaction(
@@ -111,8 +110,8 @@ func (a *CreateTransactionActivity) CreateTransactionAndCipherPrediction(
 		"activity_type", activityInfo.ActivityType.Name,
 	)
 
-	if a.DB == nil {
-		return nil, errs.New(errs.CodeInvalidArgument, "database pool is required")
+	if a.DBTxn == nil {
+		return nil, errs.New(errs.CodeInvalidArgument, "database transaction runner is required")
 	}
 	if a.PredictionService == nil {
 		return nil, errs.New(errs.CodeInvalidArgument, "prediction service is required")
@@ -130,8 +129,8 @@ func (a *CreateTransactionActivity) CreateTransactionAndCipherPrediction(
 
 	var createdTxns []sharedModel.Transaction
 
-	err := utils.WithTx(ctx, a.DB, func(tx pgx.Tx) error {
-		created, err := a.createTransactions(ctx, tx, input.Predictions, input.BudgetID, log)
+	err := a.DBTxn.Do(ctx, func(ctx context.Context) error {
+		created, err := a.createTransactions(ctx, input.Predictions, input.BudgetID, log)
 		if err != nil {
 			return err
 		}
@@ -139,9 +138,8 @@ func (a *CreateTransactionActivity) CreateTransactionAndCipherPrediction(
 		createdTxns = createdTxns[:0]
 		for _, pair := range created {
 			log.Info("creating cipher prediction", "transactionId", pair.Txn.ID, "source", pair.Prediction.Source)
-			if err = createCipherPredictionWithTx(
+			if err = createCipherPrediction(
 				ctx,
-				tx,
 				a.PredictionService,
 				input.BudgetID,
 				pair.Txn,
@@ -200,7 +198,6 @@ type createdTransaction struct {
 
 func (a *CreateTransactionActivity) createTransactions(
 	ctx context.Context,
-	tx pgx.Tx,
 	predictions []sharedModel.CipherPredictionResult,
 	budgetId uuid.UUID,
 	log *logger.ContextLogger,
@@ -215,7 +212,7 @@ func (a *CreateTransactionActivity) createTransactions(
 				payeeName = "Unknown Payee"
 			}
 			log.Info("payee missing, creating new payee", "name", payeeName)
-			newPayee, err := a.PayeeService.CreateWithTx(ctx, tx, sharedModel.Payee{Name: payeeName})
+			newPayee, err := a.PayeeService.Create(ctx, sharedModel.Payee{Name: payeeName})
 			if err != nil {
 				return nil, errs.Wrap(errs.CodePayeeCreateFailed, "error creating payee", err)
 			}
@@ -238,7 +235,7 @@ func (a *CreateTransactionActivity) createTransactions(
 			Summary:     &p.Summary,
 		}
 
-		createdTxn, created, err := a.TransactionService.CreateWithTxDeduped(ctx, tx, txn)
+		createdTxn, created, err := a.TransactionService.CreateDeduped(ctx, txn)
 		if err != nil {
 			return nil, err
 		}
