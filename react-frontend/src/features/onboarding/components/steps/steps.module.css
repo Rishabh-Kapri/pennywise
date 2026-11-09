@@ -118,6 +118,10 @@
 }
 
 .segment {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
   padding: 0.5rem 0.85rem;
   border: 1px solid var(--color-border-muted);
   border-radius: 999px;
@@ -310,5 +314,21 @@
 
   .actions .primary {
     width: 100%;
+  }
+}
+
+.spin {
+  animation: spin 1.2s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
   }
 }

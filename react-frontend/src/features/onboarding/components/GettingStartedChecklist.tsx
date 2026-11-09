@@ -4,7 +4,7 @@ import { CheckCircle, Circle, X } from '@phosphor-icons/react';
 import { useAppSelector } from '@/app/hooks';
 import type { Category } from '@/features/category/types/category.types';
 import { apiClient, errorMessage, toast } from '@/utils';
-import { fetchAIProviders } from '../api';
+import { fetchHasChatModel } from '../api';
 import { useOnboarding } from '../hooks/useOnboarding';
 import styles from './GettingStartedChecklist.module.css';
 
@@ -38,13 +38,13 @@ export function GettingStartedChecklist() {
     if (!visible) return;
     Promise.all([
       apiClient.get<Category[]>('categories').catch(() => []),
-      fetchAIProviders().catch(() => []),
-      apiClient.get<unknown[]>('pipeline/runs?limit=1').catch(() => []),
-    ]).then(([categories, providers, runs]) =>
+      fetchHasChatModel().catch(() => false),
+      apiClient.get<unknown[]>('mail-connections').catch(() => []),
+    ]).then(([categories, hasChatModel, mailboxes]) =>
       setFacts({
         bills: (categories ?? []).some((category) => category.goal),
-        ai: (providers ?? []).some((provider) => provider.enabled),
-        emails: (runs ?? []).length > 0,
+        ai: hasChatModel,
+        emails: (mailboxes ?? []).length > 0,
       }),
     );
   }, [visible]);
@@ -53,9 +53,24 @@ export function GettingStartedChecklist() {
 
   const items: Item[] = [
     { label: 'Add your accounts', hint: 'With last digits, so emails match', to: '/accounts', done: hasAccounts },
-    { label: 'Set targets for your bills', hint: 'Know what to set aside each month', to: '/budget', done: facts.bills },
-    { label: 'Connect an AI provider', hint: 'Needed for email import and the assistant', to: '/settings?section=ai', done: facts.ai },
-    { label: 'Import transactions from email', hint: 'Bank alerts become transactions', to: '/settings?section=activity', done: facts.emails },
+    {
+      label: 'Set targets for your bills',
+      hint: 'Know what to set aside each month',
+      to: '/budget',
+      done: facts.bills,
+    },
+    {
+      label: 'Connect an AI provider',
+      hint: 'Needed for email import and the assistant',
+      to: '/settings?section=ai',
+      done: facts.ai,
+    },
+    {
+      label: 'Connect Gmail',
+      hint: 'Bank alerts become transactions',
+      to: '/settings?section=mail',
+      done: facts.emails,
+    },
     { label: 'Assign all your money', hint: 'Get Ready to Assign to zero', to: '/budget', done: readyToAssign <= 0 },
   ];
   const doneCount = items.filter((item) => item.done).length;

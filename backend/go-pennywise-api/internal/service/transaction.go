@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"sync/atomic"
@@ -10,6 +11,7 @@ import (
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/job"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
@@ -59,6 +61,9 @@ type transactionService struct {
 	mbService            MonthlyBudgetService
 	geocodeService       GeocodeService
 	dbTxn                repository.DBTxn
+
+	// jobBroker queues learning. Nil when the job queue is off.
+	jobBroker job.Broker
 }
 
 func NewTransactionService(
@@ -75,6 +80,7 @@ func NewTransactionService(
 	mbService MonthlyBudgetService,
 	geocodeService GeocodeService,
 	dbTxn repository.DBTxn,
+	jobBroker job.Broker,
 ) TransactionService {
 	return &transactionService{
 		dbTxn:                dbTxn,
@@ -90,6 +96,8 @@ func NewTransactionService(
 		categoryRepo:         catRepo,
 		mbService:            mbService,
 		geocodeService:       geocodeService,
+
+		jobBroker: jobBroker,
 	}
 }
 
@@ -306,6 +314,8 @@ func (s *transactionService) learnTransactionMappingAsync(
 	budgetId uuid.UUID,
 	txn model.Transaction,
 ) {
+	s.queueAliasConfirm(ctx, budgetId, txn)
+
 	if !s.canLearnFrom(ctx, txn) {
 		return
 	}
@@ -320,6 +330,30 @@ func (s *transactionService) learnTransactionMappingAsync(
 			logger.Logger(bgCtx).Error("transaction learning failed", "txnId", txn.ID, "error", err)
 		}
 	}()
+}
+
+// queueAliasConfirm queues a job to tell the lookup step what the user decided
+// about this transaction's merchant. It runs after the user's change is saved,
+// and a failure is only logged: the change stands either way.
+func (s *transactionService) queueAliasConfirm(ctx context.Context, budgetId uuid.UUID, txn model.Transaction) {
+	if s.jobBroker == nil || txn.PayeeID == nil {
+		return
+	}
+	payload, err := json.Marshal(model.TransactionLearnPayload{
+		TransactionID: txn.ID,
+		PayeeID:       *txn.PayeeID,
+		CategoryID:    txn.CategoryID,
+		Confirmed:     true,
+	})
+	if err == nil {
+		_, err = s.jobBroker.Enqueue(ctx, model.JobTypeTransactionLearn, payload,
+			job.WithQueue(model.QueuePennywise),
+			job.WithBudgetID(&budgetId),
+		)
+	}
+	if err != nil {
+		logger.Logger(ctx).Warn("failed to queue alias confirmation", "txnId", txn.ID, "error", err)
+	}
 }
 
 // LearnFromTransaction queues learning for a transaction the user just

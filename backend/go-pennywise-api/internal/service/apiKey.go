@@ -4,8 +4,8 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
-	"strings"
 	"time"
 
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
@@ -16,10 +16,14 @@ import (
 	"github.com/google/uuid"
 )
 
-var (
-	KeyLength  = 32
-	KeyPrefix  = "pwk" // PennyWise Key
-	KeyVersion = "v1"
+// The key format lives in shared/model so the auth adapter checks exactly
+// what Generate produces.
+const (
+	KeyLength   = model.APIKeyLength
+	KeyPrefix   = model.APIKeyPrefix
+	KeyVersion  = model.APIKeyVersion
+	KeyIDPrefix = model.APIKeyIDPrefix
+	KeyIDLength = model.APIKeyIDLength
 )
 
 type APIKeyService interface {
@@ -68,47 +72,29 @@ func (s *apiKeyService) Generate() (fullKey string, keyID string, err error) {
 	// Encode to URL-safe base64 for easy transmission
 	base64String := base64.RawURLEncoding.EncodeToString(randomBytes)
 
-	// Generate a short key ID for lookup
 	fullKey = fmt.Sprintf("%s_%s_%s", s.prefix, s.version, base64String)
+
+	// A short public id for lookup and display, independent of the secret.
+	idBytes := make([]byte, KeyIDLength)
+	if _, err := rand.Read(idBytes); err != nil {
+		return "", "", errs.Wrap(errs.CodeInternalError, "failed to generate key id", err)
+	}
+	keyID = KeyIDPrefix + hex.EncodeToString(idBytes)
 
 	return fullKey, keyID, nil
 }
 
 func (s *apiKeyService) ParseKey(fullKey string) (prefix, version, base64String string, err error) {
-	parts := strings.SplitN(fullKey, "_", 3)
-	if len(parts) != 3 {
+	prefix, version, base64String, ok := model.ParseAPIKey(fullKey)
+	if !ok {
 		return "", "", "", errs.New(errs.CodeInvalidArgument, "invalid api key format")
 	}
-
-	return parts[0], parts[1], parts[2], nil
+	return prefix, version, base64String, nil
 }
 
+// ValidateFormat never logs fullKey: it is the secret.
 func (s *apiKeyService) ValidateFormat(fullKey string) bool {
-	log := logger.Logger(context.Background())
-	prefix, version, randomPart, err := s.ParseKey(fullKey)
-	log.Info("ValidateFormat", "prefix", prefix, "version", version, "randomPart", randomPart, "err", err)
-	log.Info("ValidateFormat", "prefix", s.prefix, "version", s.version, "randomPart", randomPart, "err", err)
-	if err != nil {
-		return false
-	}
-
-	// Verify prefix matches
-	if prefix != s.prefix {
-		return false
-	}
-
-	// Verify version is recognized
-	if version != s.version {
-		return false
-	}
-
-	// Verify random part has expected length
-	expectedLen := base64.RawURLEncoding.EncodedLen(KeyLength)
-	if len(randomPart) != expectedLen {
-		return false
-	}
-
-	return true
+	return model.ValidAPIKeyFormat(fullKey)
 }
 
 func (s *apiKeyService) Create(ctx context.Context, apiKey *model.APIKey) (string, error) {
@@ -152,7 +138,7 @@ func (s *apiKeyService) GetByKeyID(ctx context.Context, keyID string) (*model.AP
 
 func (s *apiKeyService) GetByHash(ctx context.Context, fullKey string) (*model.APIKey, error) {
 	keyHash := utils.Hash(fullKey)
-	logger.Logger(ctx).Debug("GetByHash", "fullKey", fullKey, "keyHash", keyHash)
+	logger.Logger(ctx).Debug("looking up api key by hash", "keyHash", keyHash)
 	return s.repo.GetByHash(ctx, keyHash)
 }
 

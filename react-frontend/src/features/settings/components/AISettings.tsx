@@ -11,8 +11,8 @@ import {
 } from '@phosphor-icons/react';
 import { useAppSelector } from '@/app/hooks';
 import { selectIsDemoUser } from '@/features/auth/store';
-import { AIProvidersPanel } from '@/features/onboarding/components/AIProvidersPanel';
-import type { AIProvider } from '@/features/onboarding/types';
+import { AIProvidersPanel, type AISetup } from '@/features/onboarding/components/AIProvidersPanel';
+import { usableModels } from '@/features/onboarding/types';
 import type { CipherPrediction } from '@/features/transactions/types/transaction.types';
 import { apiClient, errorMessage, toast } from '@/utils';
 import settingsStyles from './Settings.module.css';
@@ -147,15 +147,16 @@ function SourceTag({ source }: { source: PredictionSource }) {
 
 function ProvidersCard() {
   const isDemoUser = useAppSelector(selectIsDemoUser);
-  const [providers, setProviders] = useState<AIProvider[] | null>(null);
-  const handleChange = useCallback((list: AIProvider[]) => setProviders(list), []);
-  const enabled = providers?.filter((p) => p.enabled).length ?? 0;
+  const [setup, setSetup] = useState<AISetup | null>(null);
+  const handleChange = useCallback((next: AISetup) => setSetup(next), []);
+  const usable = setup ? usableModels(setup.providers, setup.models).length : 0;
+  const hasChat = setup ? usableModels(setup.providers, setup.models, 'chat').length > 0 : false;
 
   const status =
-    providers === null ? null : enabled > 0 ? (
+    setup === null ? null : hasChat ? (
       <span className={`${styles.statusPill} ${styles.statusGood}`}>
         <CheckCircle size={14} weight="fill" aria-hidden="true" />
-        {enabled} active
+        {usable} {usable === 1 ? 'model' : 'models'}
       </span>
     ) : (
       <span className={`${styles.statusPill} ${styles.statusWarning}`}>
@@ -167,12 +168,13 @@ function ProvidersCard() {
   return (
     <Card
       icon={<Sparkle size={18} weight="duotone" />}
-      title="AI providers"
-      description="Email parsing, statement import and the assistant run on your own keys, tried top to bottom. Keys are encrypted and never shown again."
-      aside={status}>
-      {providers !== null && enabled === 0 && (
+      title="AI keys and models"
+      description="Email parsing, statement import and the assistant run on your own keys. Each kind of model has a default; pipeline steps can pick another in Jobs → Pipelines. Keys are encrypted and never shown again."
+      aside={status}
+    >
+      {setup !== null && !hasChat && (
         <p className={styles.notice}>
-          Without a provider, bank emails can't become transactions and the assistant is off.
+          Without a chat model, bank emails can't become transactions and the assistant is off.
         </p>
       )}
       <AIProvidersPanel onChange={handleChange} readOnly={isDemoUser} />
@@ -225,7 +227,8 @@ function SourceBreakdown({ predictions }: { predictions: CipherPrediction[] }) {
               data-source={source.id}
               style={{ flexGrow: share }}
               onMouseEnter={() => setHovered(source.id)}
-              onMouseLeave={() => setHovered(null)}>
+              onMouseLeave={() => setHovered(null)}
+            >
               {hovered === source.id && (
                 <span className={styles.barTooltip} role="tooltip">
                   <strong>{source.label}</strong>
@@ -243,7 +246,8 @@ function SourceBreakdown({ predictions }: { predictions: CipherPrediction[] }) {
             key={source.id}
             className={hovered && hovered !== source.id ? styles.legendDim : undefined}
             onMouseEnter={() => setHovered(source.id)}
-            onMouseLeave={() => setHovered(null)}>
+            onMouseLeave={() => setHovered(null)}
+          >
             <span className={styles.sourceDot} data-source={source.id} aria-hidden="true" />
             <span className={styles.legendLabel}>{source.label}</span>
             <span className={styles.legendValue}>{formatCount(counts[source.id])}</span>
@@ -269,7 +273,8 @@ function PerformanceCard({ predictions }: { predictions: CipherPrediction[] }) {
     <Card
       icon={<CheckCircle size={18} weight="duotone" />}
       title="Prediction performance"
-      description="How often Pennywise picks the right payee and category for imported transactions.">
+      description="How often Pennywise picks the right payee and category for imported transactions."
+    >
       {total === 0 ? (
         <p className={styles.empty}>
           No predictions yet. They appear once bank emails start turning into transactions.
@@ -277,7 +282,11 @@ function PerformanceCard({ predictions }: { predictions: CipherPrediction[] }) {
       ) : (
         <>
           <div className={styles.statGrid}>
-            <StatTile label="Predictions" value={formatCount(total)} sub={`${formatCount(recent)} in the last 30 days`} />
+            <StatTile
+              label="Predictions"
+              value={formatCount(total)}
+              sub={`${formatCount(recent)} in the last 30 days`}
+            />
             <StatTile
               label="Kept as predicted"
               value={formatPercent((total - changed) / total)}
@@ -421,7 +430,8 @@ function HistoryCard({ predictions }: { predictions: CipherPrediction[] }) {
       icon={<MagnifyingGlass size={18} weight="duotone" />}
       title="Prediction history"
       description="Every prediction, newest first. Open one to see what was read from the email and why."
-      aside={<span className={styles.countPill}>{formatCount(rows.length)}</span>}>
+      aside={<span className={styles.countPill}>{formatCount(rows.length)}</span>}
+    >
       {rows.length === 0 ? (
         <p className={styles.empty}>No predictions yet.</p>
       ) : (
@@ -442,7 +452,8 @@ function HistoryCard({ predictions }: { predictions: CipherPrediction[] }) {
                 type="button"
                 className={`${styles.chip} ${sourceFilter === 'ALL' ? styles.chipActive : ''}`}
                 aria-pressed={sourceFilter === 'ALL'}
-                onClick={() => setSourceFilter('ALL')}>
+                onClick={() => setSourceFilter('ALL')}
+              >
                 All
               </button>
               {SOURCES.filter((s) => sourceCounts[s.id]).map((source) => (
@@ -451,7 +462,8 @@ function HistoryCard({ predictions }: { predictions: CipherPrediction[] }) {
                   type="button"
                   className={`${styles.chip} ${sourceFilter === source.id ? styles.chipActive : ''}`}
                   aria-pressed={sourceFilter === source.id}
-                  onClick={() => setSourceFilter(sourceFilter === source.id ? 'ALL' : source.id)}>
+                  onClick={() => setSourceFilter(sourceFilter === source.id ? 'ALL' : source.id)}
+                >
                   <span className={styles.sourceDot} data-source={source.id} aria-hidden="true" />
                   {source.label}
                   <span className={styles.chipCount}>{sourceCounts[source.id]}</span>
@@ -492,12 +504,8 @@ function HistoryCard({ predictions }: { predictions: CipherPrediction[] }) {
                           <td>
                             <SourceTag source={row.source} />
                           </td>
-                          <td className={styles.truncate}>
-                            {row.payee ?? <span className={styles.muted}>—</span>}
-                          </td>
-                          <td className={styles.truncate}>
-                            {row.category ?? <span className={styles.muted}>—</span>}
-                          </td>
+                          <td className={styles.truncate}>{row.payee ?? <span className={styles.muted}>—</span>}</td>
+                          <td className={styles.truncate}>{row.category ?? <span className={styles.muted}>—</span>}</td>
                           <td className={styles.numeric}>{formatPercent(row.payeeConfidence)}</td>
                           <td>
                             {row.changed ? (
@@ -521,7 +529,8 @@ function HistoryCard({ predictions }: { predictions: CipherPrediction[] }) {
                               onClick={(event) => {
                                 event.stopPropagation();
                                 toggle();
-                              }}>
+                              }}
+                            >
                               <CaretDown size={14} weight="bold" />
                             </button>
                           </td>
@@ -619,7 +628,8 @@ function APIKeysCard() {
       icon={<Key size={18} weight="duotone" />}
       title="Pennywise API keys"
       description="For scripts and other apps that read or write this budget through the Pennywise API."
-      aside={<span className={styles.countPill}>{keys.length}</span>}>
+      aside={<span className={styles.countPill}>{keys.length}</span>}
+    >
       {createdKey && (
         <div className={styles.newKey} role="status">
           <div>

@@ -1,0 +1,178 @@
+package job
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"time"
+
+	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
+)
+
+// appendTimeout bounds one history write. It runs on a ctx detached from the
+// caller's cancellation (see record), so it needs its own limit.
+const appendTimeout = 5 * time.Second
+
+// ObservedBroker wraps any Broker and records each state change it makes as
+// a JobEvent in a JobLog. It is itself a Broker, so callers can't tell it from
+// the adapter it wraps. factory.ConnectJob wraps the broker in it when a job
+// store is configured; broker adapters write no history themselves.
+//
+// The event is written after the broker call succeeds, as a separate write,
+// so the history is best-effort: if the append fails, the state change stands
+// and the failure is logged. Calls that change nothing (Heartbeat,
+// UpdateProgress, a duplicate Enqueue, a failed call) record no event.
+type ObservedBroker struct {
+	broker Broker
+	log    JobLog
+}
+
+func NewObservedBroker(broker Broker, log JobLog) *ObservedBroker {
+	return &ObservedBroker{broker: broker, log: log}
+}
+
+// Unwrap returns the adapter underneath.
+func (o *ObservedBroker) Unwrap() Broker {
+	return o.broker
+}
+
+func (o *ObservedBroker) Enqueue(
+	ctx context.Context,
+	jobType string,
+	payload []byte,
+	opts ...EnqueueOption,
+) (EnqueueResult, error) {
+	logger.Logger(ctx).Info("enqueuing message", "payload", string(payload))
+	res, err := o.broker.Enqueue(ctx, jobType, payload, opts...)
+	if err == nil && !res.Duplicate {
+		o.record(ctx, JobEvent{
+			JobID:   res.JobID,
+			Type:    EventEnqueued,
+			Status:  QueuedJobStatus,
+			Attempt: 0,
+			Actor:   enqueueActor(ctx),
+		})
+	}
+	return res, err
+}
+
+func (o *ObservedBroker) ClaimJob(ctx context.Context, queues []string, workerID string) (*Job, error) {
+	j, err := o.broker.ClaimJob(ctx, queues, workerID)
+	if err == nil && j != nil {
+		o.record(ctx, JobEvent{
+			JobID:   j.ID,
+			Type:    EventClaimed,
+			Status:  RunningJobStatus,
+			Attempt: j.Attempt,
+			Actor:   workerID,
+		})
+	}
+	return j, err
+}
+
+func (o *ObservedBroker) Heartbeat(ctx context.Context, claim Claim) error {
+	return o.broker.Heartbeat(ctx, claim)
+}
+
+func (o *ObservedBroker) UpdateProgress(ctx context.Context, claim Claim, progress json.RawMessage) error {
+	return o.broker.UpdateProgress(ctx, claim, progress)
+}
+
+func (o *ObservedBroker) MarkCompleted(
+	ctx context.Context,
+	claim Claim,
+	result json.RawMessage,
+	duration time.Duration,
+) error {
+	err := o.broker.MarkCompleted(ctx, claim, result, duration)
+	reason := fmt.Sprintf("completed by worker %s after %s", claim.WorkerID, duration)
+	if err == nil {
+		o.record(
+			ctx, claimEvent(
+				claim,
+				EventCompleted,
+				SucceededJobStatus,
+				reason,
+				new(duration.Milliseconds()),
+			),
+		)
+	}
+	return err
+}
+
+func (o *ObservedBroker) MarkPending(
+	ctx context.Context,
+	job *Job,
+	claim Claim,
+	lastError string,
+	runAt time.Time,
+) error {
+	err := o.broker.MarkPending(ctx, job, claim, lastError, runAt)
+	reason := fmt.Sprintf(
+		"attempt %d/%d failed, retrying at %s : %s",
+		job.Attempt,
+		job.MaxAttempts,
+		runAt.UTC().Format(time.RFC3339),
+		lastError,
+	)
+	if err == nil {
+		e := claimEvent(claim, EventRetryScheduled, QueuedJobStatus, reason, nil)
+		e.Error = lastError
+		e.NextRunAt = &runAt
+		o.record(ctx, e)
+		return nil
+	}
+	if errs.HasCode(err, errs.CodeJobClaimLost) {
+		return nil
+	}
+	return err
+}
+
+func (o *ObservedBroker) MarkDead(ctx context.Context, claim Claim, lastError string, reason string) error {
+	err := o.broker.MarkDead(ctx, claim, lastError, reason)
+	if err == nil {
+		e := claimEvent(claim, EventDead, DeadJobStatus, reason, nil)
+		e.Error = lastError
+		o.record(ctx, e)
+	}
+	return err
+}
+
+// RequeueStaleRunning records nothing: the port returns only a count, not
+// which jobs were reaped, so there is no job to attach an event to.
+func (o *ObservedBroker) RequeueStaleRunning(
+	ctx context.Context,
+	staleThreshold time.Duration,
+	reaperID string,
+) (int64, error) {
+	return o.broker.RequeueStaleRunning(ctx, staleThreshold, reaperID)
+}
+
+// record appends e, logging (not returning) a failure. It keeps ctx's values
+// (correlation ID) but not its cancellation: the state change already
+// happened, so its history should be written even during shutdown.
+func (o *ObservedBroker) record(ctx context.Context, e JobEvent) {
+	appendCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), appendTimeout)
+	defer cancel()
+	if err := o.log.Append(appendCtx, e); err != nil {
+		logger.Logger(ctx).Error("job history not recorded",
+			"job_id", e.JobID, "event", e.Type, "attempt", e.Attempt, "err", err)
+	}
+}
+
+func claimEvent(c Claim, t JobEventType, s JobStatus, r string, durationMs *int64) JobEvent {
+	return JobEvent{
+		JobID: c.JobID, Type: t, Status: s, Attempt: c.Attempt, Actor: c.WorkerID,
+		Reason: r, DurationMs: durationMs,
+	}
+}
+
+// enqueueActor names who enqueued a job: the service in ctx, if any.
+func enqueueActor(ctx context.Context) string {
+	if name := utils.ServiceNameFromContext(ctx); name != "" {
+		return name
+	}
+	return "unknown"
+}

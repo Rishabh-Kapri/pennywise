@@ -1,0 +1,565 @@
+/* Shown in Settings → AI and in the onboarding wizard, so it carries its own
+   styles. index.css resets margin and padding at one class's specificity and
+   loads later: rules that set either are prefixed with `.panel`. Buttons,
+   fields and the editor box follow the payee rule editor's look. */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  color: var(--color-text);
+  font-size: 0.9375rem;
+}
+
+.muted {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── Groups ─────────────────────────────────────────────────────────────── */
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.groupHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.groupTitle {
+  min-width: 0;
+}
+
+.panel .groupTitle h4 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 650;
+}
+
+.panel .groupTitle p {
+  margin: 0.15rem 0 0;
+  max-width: 62ch;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.panel .count {
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: var(--color-surface-tertiary);
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.panel .empty {
+  margin: 0;
+  padding: 0.9rem 1rem;
+  border: 1px dashed var(--color-border-muted);
+  border-radius: 0.75rem;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+/* ── List rows ──────────────────────────────────────────────────────────── */
+
+.panel .list {
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.75rem;
+  background: var(--color-surface-secondary);
+  list-style: none;
+}
+
+.panel .row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0.9rem;
+  transition: background-color 0.15s ease;
+}
+
+.row + .row {
+  border-top: 1px solid var(--color-border-muted);
+}
+
+.row:hover {
+  background: color-mix(in srgb, var(--color-text) 3%, transparent);
+}
+
+.rowOff .mark,
+.rowOff .rowText {
+  opacity: 0.55;
+}
+
+.mark {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.55rem;
+  background: color-mix(in srgb, var(--mark) 16%, transparent);
+  color: var(--mark);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+/* Sized to fit the space the app's dropdowns leave for a logo. */
+.markSmall {
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 0.3rem;
+  font-size: 0.56rem;
+}
+
+.mark[data-provider='openai'] {
+  --mark: #10a37f;
+}
+
+.mark[data-provider='anthropic'] {
+  --mark: #d97757;
+}
+
+.mark[data-provider='openrouter'] {
+  --mark: #6467f2;
+}
+
+.mark[data-provider='ollama'] {
+  --mark: var(--color-text-secondary);
+}
+
+.rowText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.rowTitle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.slug {
+  overflow: hidden;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.875rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowMeta {
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowError {
+  color: var(--color-error);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.rowStatus {
+  flex: none;
+}
+
+.actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+/* ── Pills ──────────────────────────────────────────────────────────────── */
+
+.panel .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pillGood {
+  background: var(--color-budget-positive-bg);
+  color: var(--color-budget-positive-fg);
+}
+
+.pillBad {
+  background: var(--color-budget-negative-bg);
+  color: var(--color-budget-negative-fg);
+}
+
+.pillNeutral {
+  background: var(--color-surface-tertiary);
+  color: var(--color-text-secondary);
+}
+
+.pillAccent {
+  background: color-mix(in srgb, var(--color-primary) 16%, transparent);
+  color: var(--color-primary);
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+
+.panel .primaryButton,
+.panel .secondaryButton,
+.panel .ghostButton,
+.panel .textButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  height: 2.25rem;
+  padding: 0 0.9rem;
+  border: 1px solid transparent;
+  border-radius: 0.6rem;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.panel .primaryButton {
+  background: var(--color-primary);
+  color: var(--on-accent, #fff);
+}
+
+.panel .primaryButton:hover:not(:disabled) {
+  background: var(--accent-hover, var(--color-primary));
+}
+
+.panel .secondaryButton {
+  flex: none;
+  height: 2rem;
+  padding: 0 0.75rem;
+  border-color: var(--color-border-muted);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.panel .secondaryButton:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--color-border) 70%, transparent);
+  background: var(--color-surface-secondary);
+}
+
+.panel .ghostButton {
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
+.panel .ghostButton:hover:not(:disabled) {
+  background: var(--color-surface-tertiary);
+  color: var(--color-text);
+}
+
+.panel .textButton {
+  height: 2rem;
+  padding: 0 0.6rem;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.panel .textButton:hover {
+  background: var(--color-surface-tertiary);
+  color: var(--color-text);
+}
+
+.panel .iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.panel .iconButton:hover:not(:disabled) {
+  background: var(--color-surface-tertiary);
+  color: var(--color-text);
+}
+
+.panel .danger:hover:not(:disabled) {
+  background: var(--color-budget-negative-bg);
+  color: var(--color-error);
+}
+
+.panel .primaryButton:disabled,
+.panel .secondaryButton:disabled,
+.panel .ghostButton:disabled,
+.panel .iconButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.panel button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* ── Editor ─────────────────────────────────────────────────────────────── */
+
+.panel .editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 1rem;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 45%, transparent);
+  border-radius: 0.8rem;
+  background: color-mix(in srgb, var(--color-primary) 4%, var(--color-surface));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+
+.editorTitle {
+  font-size: 0.9375rem;
+  font-weight: 650;
+}
+
+.fieldGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.75rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.fieldWide {
+  grid-column: 1 / -1;
+}
+
+.field > span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  font-weight: 550;
+}
+
+.field > span a {
+  color: var(--color-primary);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.field > small {
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.panel .input {
+  width: 100%;
+  height: 2.5rem;
+  padding: 0 0.8rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.6rem;
+  outline: none;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.92rem;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.input.mono {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.875rem;
+}
+
+.input::placeholder {
+  color: var(--color-text-secondary);
+  opacity: 0.8;
+}
+
+.input:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--color-border) 70%, transparent);
+}
+
+.input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent);
+}
+
+.input:disabled {
+  color: var(--color-text-secondary);
+  cursor: not-allowed;
+}
+
+.panel .segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  padding: 0.2rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.6rem;
+  background: var(--color-surface);
+}
+
+.panel .segmented button {
+  flex: 1 1 auto;
+  height: 2.1rem;
+  padding: 0 0.75rem;
+  border: 0;
+  border-radius: 0.45rem;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 550;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.panel .segmented button:hover {
+  color: var(--color-text);
+}
+
+.panel .segmented .segmentActive {
+  background: var(--color-surface-tertiary);
+  color: var(--color-text);
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.check input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--color-primary);
+}
+
+.panel .callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.65rem 0.8rem;
+  border-radius: 0.6rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.callout svg {
+  flex: none;
+  margin-top: 0.1rem;
+}
+
+.calloutWarn {
+  background: var(--color-budget-upcoming-bg);
+  color: var(--color-budget-upcoming-fg);
+}
+
+.calloutBad {
+  background: var(--color-budget-negative-bg);
+  color: var(--color-budget-negative-fg);
+}
+
+.editorActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.editorNote {
+  margin-left: auto;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+}
+
+/* ── Narrow ─────────────────────────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+  .groupHeader {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .panel .row {
+    flex-wrap: wrap;
+  }
+
+  .rowText {
+    flex-basis: calc(100% - 2.75rem);
+  }
+
+  .rowStatus {
+    margin-left: 2.75rem;
+  }
+
+  .actions {
+    margin-left: auto;
+  }
+
+  .editorNote {
+    margin-left: 0;
+  }
+}

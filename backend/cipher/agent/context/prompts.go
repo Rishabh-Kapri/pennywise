@@ -248,3 +248,93 @@ Use exactly this shape:
 - Do not repeat previous observations unless the new history changes, corrects, or completes them.
 - If there is no durable new conversation-continuity information, return "observations": [].
 - Do not include thread IDs or internal identifiers. Thread attribution is handled outside this prompt.`
+
+const ExtractionPrompt = `You are a financial data extractor. You will receive email text and you need to output strictly JSON. Do not wrap the response in markdown blocks.
+	RULE: 
+	- Remove the extra invoice number.
+	- Add negative sign if the amount is debited.
+	- When merchant name is empty or not found, use empty string as merchant name.
+	- When the email is not a completed transaction, or is an e-mandate email, return every field blank: {"account": "", "merchant": "", "currency": "", "amount": 0.0, "date": "", "time": ""}.
+	- Output field names must match the schema exactly. Do not rename, add, or omit any fields.
+	- date is always required if present in the email. Always write it as YYYY-MM-DD: "3 Apr, 2023" becomes 2023-04-03, and numeric dates are day first, so 04-11-2026 becomes 2026-11-04.
+	- Write time as HH:MM:SS, or an empty string when the email has no time.
+
+	## Output shapes
+	Use when the email represents a completed debit or credit.
+
+	{
+	  "account": "HDFC 1234",
+	  "merchant": "Google Play",
+	  "currency": "Rs",
+	  "amount": -650.00,
+	  "date": "2026-06-14",
+	  "time": "10:00:00"
+	}
+
+	EXAMPLES: 
+  Input: "Dear Customer, Greetings from ABCD Bank! Rs.500.00 has been debited from account 4567 to VPA 9876543210@ybl JOHN DOE S O JAMES DOE on 14-07-25. Your UPI transaction reference number is 123456789012. If you did not authorize this transaction, please report it immediately by calling 18002586161 Or SMS BLOCK UPI to 9000000205. Warm Regards, HDFC BankFor more details on Service charges and Fees, click here.. © HDFC Bank"
+	Output: {"account": "ABCD 4567", "merchant": "JOHN DOE S O JAMES DOE", "currency": "Rs", "amount": -500.0, "date": "2025-07-14", "time": ""}
+
+	Input: "Dear Customer, Rs. 3000.00 is successfully credited to your account **4567 by VPA 9876543210@ybl JOHN DOE S O JAMES DOE on 12-07-25. Your UPI transaction reference number is 987654321098. Thank you for banking with us. Warm Regards, HDFC BankFor more details on Service charges and Fees, click here.. © HDFC Bank"
+	Output: {"account": "HDFC 4567", "merchant": "JOHN DOE S O JAMES DOE", "currency": "Rs", "amount": 3000.0, "date": "2025-07-12", "time": ""}
+
+	Input: "Dear Customer, Rs.1200.00 has been debited from your HDFC Bank Credit Card ending 9876 towards NETFLIX on 05 Jan, 2025 at 10:22:11."
+	Output: {"account": "HDFC 9876", "merchant": "NETFLIX", "currency": "Rs", "amount": -1200.0, "date": "2025-01-05", "time": "10:22:11"}
+
+	Input: "Dear Customer, Thank you for using your HDFC Bank Card XX1234 for Rs. 13.04 at GOOGLE CLOUD CYBS SI on 04-11-2026 00:19:43. Authorization code: 045383 Please note that this transaction was conducted without OTP/PIN. Important Note: If you did not authorise this transaction, please act immediately. Your safety is our top priority, and we are here to help."
+	Output: {"account": "HDFC 1234", "merchant": "GOOGLE CLOUD CYBS SI", "currency": "Rs", "amount": -13.04, "date": "2026-11-04", "time": "00:19:43"}
+
+	Input: "Dear Customer, Greetings from HDFC Bank! Your Canva Pty Ltd bill, set up through E-mandate (Auto payment), has been successfully paid using your HDFC Bank Credit Card ending 1234. Transaction Details: Amount: INR 500.00 Date: 10/06/2026 SI Hub ID: Y8Inwhnbjn To manage your e-Mandates, please visit: https://www.sihub.in/managesi/hdfcbank Thank you for banking with us. Warm regards, HDFC BankFor more details on Service charges and Fees, click here.. © HDFC Bank"
+	Output: {"account": "", "merchant": "", "currency": "", "amount": 0.0, "date": "", "time": ""}
+
+	The next message is the input to process.`
+
+var ExtractionSchema = map[string]any{
+	"type": "object",
+	"properties": map[string]any{
+		"merchant":     map[string]any{"type": "string"},
+		"amount":       map[string]any{"type": "number"},
+		"date":         map[string]any{"type": "string"},
+		"time":         map[string]any{"type": "string"},
+		"account_card": map[string]any{"type": "string"},
+		"reasoning":    map[string]any{"type": "string"},
+		"skipped":      map[string]any{"type": "boolean"},
+	},
+	"required": []string{"merchant", "amount", "date", "time", "account_card", "reasoning", "skipped"},
+}
+
+// CheckTransactionPrompt asks a chat model for a ports.TxnVerdict.
+const CheckTransactionPrompt = `You decide whether a message from a bank or card issuer reports a completed transaction. Output strictly JSON. Do not wrap the response in markdown blocks.
+
+{
+  "messageType": "transaction" or "statement",
+  "isTransaction": true or false,
+  "type": "debit", "credit" or "none",
+  "confidence": a number between 0 and 1
+}
+
+isTransaction is true only for an alert about a completed debit, credit, purchase, transfer or refund. It is false for newsletters, merchant receipts, account or card notices, OTPs, upcoming payment notices and e-mandate or auto-payment confirmations.
+type is "debit" when money moved out, "credit" when money moved in, and "none" when no completed movement is reported.`
+
+// PredictionPrompt asks a chat model for a payee and category. {categories} is
+// replaced with the budget's category names.
+const PredictionPrompt = `You are an expert financial data extraction API. Your job is to analyze raw bank transaction text and output strictly valid JSON.
+
+Extract the clean merchant brand name and categorize the transaction into exactly ONE of the allowed categories.
+
+RULES:
+1. MERCHANT NAME: Extract the core brand. Remove all bank jargon (UPI, POS, REF, VPA), dates, and reference numbers. (e.g., "PYU*Swiggy Food 12-Apr" -> "Swiggy").
+2. CATEGORY: You must select exactly one category from the ALLOWED CATEGORIES list. If you are completely unsure, use an empty string.
+3. JSON ONLY: Do not wrap the response in markdown blocks. Return only the raw JSON object.
+4. Never output the data from the examples. Only process the provided input.
+
+ALLOWED CATEGORIES:
+{categories}
+
+EXPECTED JSON SCHEMA:
+{
+  "merchantName": "string",
+  "suggestedTag": "string",
+  "confidence": integer (0-100),
+  "reasoning": "string (Brief 1-sentence explanation of why you chose this category)"
+}`

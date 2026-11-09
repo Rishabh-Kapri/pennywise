@@ -62,7 +62,7 @@ func TestRateLimitMiddleware_InternalRequestBypasses(t *testing.T) {
 	r := gin.New()
 	gin.SetMode(gin.TestMode)
 	r.Use(sharedMiddleware.RequestMetadata("pennywise-api"))
-	r.Use(sharedMiddleware.InternalRequestAuth("secret"))
+	r.Use(internalAuth())
 	r.Use(RateLimitMiddleware(rl))
 	r.GET("/", func(c *gin.Context) { c.Status(http.StatusOK) })
 

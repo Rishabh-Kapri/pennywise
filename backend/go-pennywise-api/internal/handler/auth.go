@@ -6,6 +6,7 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/config"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
+	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
@@ -18,7 +19,6 @@ type AuthHandler interface {
 	RefreshToken(c *gin.Context)
 	GetCurrentUser(c *gin.Context)
 	GetProviderUser(c *gin.Context)
-	UpdateProviderUser(c *gin.Context)
 	// Logout(c *gin.Context)
 	// LogoutAll(c *gin.Context)
 }
@@ -71,8 +71,15 @@ func (h *authHandler) RefreshToken(c *gin.Context) {
 
 	response, err := h.service.RefreshToken(c.Request.Context(), req.RefreshToken)
 	logger.Logger(c.Request.Context()).Debug("refresh token response", "response", response, "error", err)
-	if err != nil {
+	// Clients sign the user out on a 401, so it's only for a token that's
+	// really no good, never for an outage.
+	if errs.HasCode(err, errs.CodeAuthInvalidCredentials) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+	if err != nil {
+		logger.Logger(c.Request.Context()).Error("refresh token failed", "error", err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "could not refresh the session, try again"})
 		return
 	}
 
@@ -144,34 +151,6 @@ func (h *authHandler) GetProviderUser(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusOK, user)
-	default:
-		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported provider: " + provider})
-	}
-}
-
-// UpdateProviderUser handles PATCH /api/auth/:provider/users
-func (h *authHandler) UpdateProviderUser(c *gin.Context) {
-	ctx := c.Request.Context()
-	provider := c.Param("provider")
-
-	switch provider {
-	case "google":
-		var req model.UpdateGmailHistoryRequest
-		if err := c.ShouldBindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-		if err := h.service.UpdateGmailHistoryID(
-			ctx,
-			req.Email,
-			model.NormalizeGoogleOAuthClientType(req.OAuthClientType),
-			req.GmailHistoryID,
-			nil,
-		); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"message": "history ID updated"})
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported provider: " + provider})
 	}

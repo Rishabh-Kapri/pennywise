@@ -18,6 +18,14 @@ top to bottom with no ALTER history to replay.
 | `00009_agent_readonly_rls` | `pennywise_agent_ro` role, grants, row-level security |
 | `00010_budget_onboarding` | `budgets.onboarding` (wizard progress) |
 | `00011_user_llm_providers` | users' own AI provider keys (encrypted); deliberately not granted to the agent role |
+| `00012_api_key_ids` | real `api_keys.key_id` values, non-empty constraint |
+| `00013_api_key_allowed_referrers` | renames the legacy `allowed_referers` column |
+| `00014_mail_connections` | connected mailboxes for ingest (budgets, sealed credentials, cursor, watch, pause) |
+| `00015_jobs` | job queue: `jobs` (also the outbox, with named queues), `job_events` history, `job_schedules` |
+| `00016_google_provider_identity_only` | `google_provider_users`: drops the Gmail columns, which moved to `mail_connections` |
+| `00017_user_llm_models` | AI models split from keys: `user_llm_models` (chat, decision or embedding; one default per kind; enable and order); drops `model` and `priority` from `user_llm_providers` |
+| `00018_budget_pipeline_steps` | a budget's changes to the steps of the system pipelines (`shared/pipeline`), including fallback |
+| `00019_transaction_sources` | `transaction_sources` (the emails/statement lines behind a transaction, and who wrote them) and `counterparty_aliases` (`CHANNEL \| MERCHANT` → payee); not granted to the agent role |
 
 ## Commands (from `backend/go-pennywise-api`)
 

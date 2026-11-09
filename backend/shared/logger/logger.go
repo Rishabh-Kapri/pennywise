@@ -4,11 +4,11 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
-	"github.com/lmittmann/tint"
 )
 
 type ContextLogger struct {
@@ -16,20 +16,28 @@ type ContextLogger struct {
 	ctx context.Context
 }
 
-func (l *ContextLogger) Debug(msg string, args ...any) {
-	l.Logger.DebugContext(l.ctx, msg, args...)
+func (l *ContextLogger) Debug(msg string, args ...any) { l.log(slog.LevelDebug, msg, args...) }
+func (l *ContextLogger) Info(msg string, args ...any)  { l.log(slog.LevelInfo, msg, args...) }
+func (l *ContextLogger) Warn(msg string, args ...any)  { l.log(slog.LevelWarn, msg, args...) }
+func (l *ContextLogger) Error(msg string, args ...any) { l.log(slog.LevelError, msg, args...) }
+
+// log records the caller of Debug/Info/Warn/Error as the source. Going through
+// slog.Logger's own methods would report this file instead.
+func (l *ContextLogger) log(level slog.Level, msg string, args ...any) {
+	if !l.Logger.Enabled(l.ctx, level) {
+		return
+	}
+	writeRecord(l.ctx, l.Logger.Handler(), level, msg, 4, args...)
 }
 
-func (l *ContextLogger) Info(msg string, args ...any) {
-	l.Logger.InfoContext(l.ctx, msg, args...)
-}
-
-func (l *ContextLogger) Warn(msg string, args ...any) {
-	l.Logger.WarnContext(l.ctx, msg, args...)
-}
-
-func (l *ContextLogger) Error(msg string, args ...any) {
-	l.Logger.ErrorContext(l.ctx, msg, args...)
+// writeRecord builds a record whose source is skip frames up the stack
+// (counting runtime.Callers itself, writeRecord, and the wrappers above it).
+func writeRecord(ctx context.Context, h slog.Handler, level slog.Level, msg string, skip int, args ...any) {
+	var pcs [1]uintptr
+	runtime.Callers(skip, pcs[:])
+	r := slog.NewRecord(time.Now(), level, msg, pcs[0])
+	r.Add(args...)
+	_ = h.Handle(ctx, r)
 }
 
 func (l *ContextLogger) With(args ...any) *ContextLogger {
@@ -46,8 +54,9 @@ func (l *ContextLogger) WithGroup(name string) *ContextLogger {
 	}
 }
 
-// Setup initializes a structured JSON logger as the default slog logger with the service name.
-// It reads the RAILWAY_ENVIRONMENT_NAME environment variable to determine the log level.
+// Setup installs the default slog logger, tagged with the service name. Local
+// runs (RAILWAY_ENVIRONMENT_NAME unset or "local") get a colored, human-readable
+// console format; set NO_COLOR to drop the colors. Everything else logs JSON.
 func Setup(service string) {
 	env := os.Getenv("RAILWAY_ENVIRONMENT_NAME")
 	if env == "" {
@@ -58,21 +67,10 @@ func Setup(service string) {
 	var handler slog.Handler
 
 	if env == "local" {
-		// handler = slogpretty.New(os.Stdout, &slogpretty.Options{
-		// 	Level:      logLevel,
-		// 	TimeFormat: "15:04:05",
-		// 	AddSource:  logLevel == slog.LevelDebug,
-		// 	Colorful:   true,
-		// 	Multiline:  true,
-		// })
-		// handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		// 	Level:     logLevel,
-		// 	AddSource: logLevel == slog.LevelDebug,
-		// })
-		handler = tint.NewHandler(os.Stdout, &tint.Options{
-			Level:      logLevel,
-			AddSource:  logLevel == slog.LevelDebug,
-			TimeFormat: time.Kitchen,
+		handler = newConsoleHandler(os.Stdout, consoleOptions{
+			Level:     logLevel,
+			Color:     os.Getenv("NO_COLOR") == "",
+			AddSource: true,
 		})
 	} else {
 		handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
@@ -95,13 +93,13 @@ func logLevelFromEnv(env string) slog.Level {
 // Fatal logs at error level and exits with code 1.
 // Use this as a replacement for log.Fatalf.
 func Fatal(msg string, args ...any) {
-	slog.Error(msg, args...)
+	writeRecord(context.Background(), slog.Default().Handler(), slog.LevelError, msg, 3, args...)
 	os.Exit(1)
 }
 
 // FatalContext logs at error level with context and exits with code 1.
 func FatalContext(ctx context.Context, msg string, args ...any) {
-	slog.ErrorContext(ctx, msg, args...)
+	writeRecord(ctx, Logger(ctx).Handler(), slog.LevelError, msg, 3, args...)
 	os.Exit(1)
 }
 

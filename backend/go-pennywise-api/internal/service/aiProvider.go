@@ -9,7 +9,6 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
@@ -33,24 +32,24 @@ type AIProviderService interface {
 		provider model.LLMProviderName,
 		req model.UpsertUserLLMProviderRequest,
 	) (*model.UserLLMProvider, error)
+	// Delete removes the key and every model that used it.
 	Delete(ctx context.Context, userID uuid.UUID, provider model.LLMProviderName) error
-	Test(ctx context.Context, provider model.LLMProviderName) (*model.TestUserLLMProviderResponse, error)
 }
 
+// aiProviderService manages a user's keys, one per provider. Models used with
+// the keys are AIModelService's.
 type aiProviderService struct {
 	repo       repository.UserLLMProviderRepository
 	box        *utils.SecretBox // nil when LLM_CREDENTIALS_KEY is unset
-	cipher     *transport.Client
 	isDemoUser IsDemoUser
 }
 
 func NewAIProviderService(
 	repo repository.UserLLMProviderRepository,
 	box *utils.SecretBox,
-	cipher *transport.Client,
 	isDemoUser IsDemoUser,
 ) AIProviderService {
-	return &aiProviderService{repo: repo, box: box, cipher: cipher, isDemoUser: isDemoUser}
+	return &aiProviderService{repo: repo, box: box, isDemoUser: isDemoUser}
 }
 
 func (s *aiProviderService) List(ctx context.Context, userID uuid.UUID) ([]model.UserLLMProvider, error) {
@@ -87,22 +86,12 @@ func (s *aiProviderService) buildUpsert(
 	}
 	in := repository.UserLLMProviderUpsert{
 		Provider: provider,
-		Model:    strings.TrimSpace(req.Model),
 		Enabled:  req.Enabled == nil || *req.Enabled,
-	}
-	if in.Model == "" {
-		return nil, fmt.Errorf("%w: model is required", ErrInvalidAIProvider)
 	}
 
 	existing, err := s.findExisting(ctx, userID, provider)
 	if err != nil {
 		return nil, err
-	}
-
-	if req.Priority != nil {
-		in.Priority = *req.Priority
-	} else if existing != nil {
-		in.Priority = existing.Priority
 	}
 
 	if provider == model.LLMProviderOllama {
@@ -163,21 +152,8 @@ func (s *aiProviderService) Delete(ctx context.Context, userID uuid.UUID, provid
 	return s.repo.Delete(ctx, userID, provider)
 }
 
-// Test asks cipher to make a one-token call with the saved config. Cipher
-// records the outcome on the row.
-func (s *aiProviderService) Test(
-	ctx context.Context,
-	provider model.LLMProviderName,
-) (*model.TestUserLLMProviderResponse, error) {
-	if !provider.Valid() {
-		return nil, fmt.Errorf("%w: %q", ErrInvalidAIProvider, provider)
-	}
-	return transport.Post[*model.TestUserLLMProviderResponse](
-		ctx, s.cipher, "/api/llm/providers/test", nil, map[string]string{"provider": string(provider)})
-}
-
 // normalizeProviderURL accepts an http(s) origin with an optional path.
-// Cipher additionally refuses to dial private addresses (see its safedial).
+// Cipher additionally refuses to dial private addresses (transport.NewUserURLClient).
 func normalizeProviderURL(raw string) (string, error) {
 	raw = strings.TrimRight(strings.TrimSpace(raw), "/")
 	if raw == "" {

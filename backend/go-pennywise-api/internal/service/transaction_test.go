@@ -805,6 +805,7 @@ func newTestTransactionService(
 		NewMonthlyBudgetService(mockMonthlyBudget),
 		nil,
 		fakeDBTxn{},
+		nil,
 	)
 
 	return service.(*transactionService)

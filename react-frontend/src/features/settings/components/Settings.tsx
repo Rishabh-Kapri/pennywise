@@ -6,9 +6,11 @@ import {
   ListChecks,
   MagnifyingGlass,
   Money as Banknote,
+  EnvelopeSimple,
   Pulse,
   Sparkle,
   Tag,
+  TreeStructure,
   type IconProps,
 } from '@phosphor-icons/react';
 import {
@@ -35,8 +37,10 @@ const PredictionReview = lazy(
 );
 const LoanOverview = lazy(() => import('@/features/loans/components/LoanOverview'));
 const Activity = lazy(() => import('@/features/pipeline/components/Activity'));
+const Jobs = lazy(() => import('@/features/jobs/components/Jobs'));
 const DocumentLibrary = lazy(() => import('@/features/documents/components/DocumentLibrary'));
 const StatementReconcile = lazy(() => import('@/features/reconcile/components/StatementReconcile'));
+import { MailSettings } from './MailSettings';
 import styles from './Settings.module.css';
 
 /* ────────────────────────────────────────────────────────────── */
@@ -49,7 +53,6 @@ interface ConnectedProvider {
   email?: string;
   name?: string;
   picture?: string;
-  lastGmailSync?: string;
 }
 
 interface CurrentUser {
@@ -67,6 +70,8 @@ type SectionId =
   | 'documents'
   | 'reconcile'
   | 'activity'
+  | 'mail'
+  | 'jobs'
   | 'review'
   | 'tags'
   | 'ai';
@@ -97,7 +102,7 @@ const SECTIONS: SectionDef[] = [
     group: 'account',
     label: 'General',
     icon: GearSix,
-    description: 'Your profile, connected Google accounts and Gmail sync.',
+    description: 'Your profile and the Google account you sign in with.',
     keywords: 'profile google gmail delete account',
   },
   {
@@ -162,12 +167,28 @@ const SECTIONS: SectionDef[] = [
     keywords: 'approve correct classify',
   },
   {
+    id: 'mail',
+    group: 'automation',
+    label: 'Email sync',
+    icon: EnvelopeSimple,
+    description: 'The Gmail accounts Pennywise reads bank alerts from.',
+    keywords: 'gmail mailbox connect inbox permissions',
+  },
+  {
     id: 'activity',
     group: 'automation',
     label: 'Activity',
     icon: Pulse,
     description: 'Email pipeline runs, what each email became, and retries.',
     keywords: 'pipeline email gmail runs retry',
+  },
+  {
+    id: 'jobs',
+    group: 'automation',
+    label: 'Jobs',
+    icon: TreeStructure,
+    description: 'What happened to each email, and why anything stopped.',
+    keywords: 'queue worker retry failed error mailbox message',
   },
 ];
 
@@ -347,9 +368,15 @@ export default function Settings() {
             <StatementReconcile />
           </Suspense>
         )}
+        {activeSection === 'mail' && <MailSettings />}
         {activeSection === 'activity' && (
           <Suspense fallback={loading}>
             <Activity />
+          </Suspense>
+        )}
+        {activeSection === 'jobs' && (
+          <Suspense fallback={loading}>
+            <Jobs />
           </Suspense>
         )}
         {activeSection === 'review' && (

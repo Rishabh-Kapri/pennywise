@@ -26,7 +26,7 @@ Expo (SDK 54, RN 0.81) Android client mirroring `react-frontend`. Android only; 
 ## Architecture
 - Navigation: React Navigation (native-stack + bottom-tabs), not Expo Router. `src/App.tsx` owns the navigators. `src/app/` is the Redux store, not a route folder. `app.config.ts` `extra.router.root` is a leftover.
 - Bottom tabs (`AppTabParamList`): Dashboard, Budget, Transactions, Reports, Payees, Penny (AgentChat).
-- Root stack (`src/navigation/types.ts`, `RootStackParamList`): Main, Settings, Documents, Tags, Activity, AI, Loans. Occasional screens are pushed here; there is no settings shell. Settings groups them under Library (Documents, Tags, Loans) and Automation (Activity, AI). Stack screens use `components/StackHeader`.
+- Root stack (`src/navigation/types.ts`, `RootStackParamList`): Main, Settings, Documents, Tags, Activity, Jobs, Pipelines, AI, Loans. Occasional screens are pushed here; there is no settings shell. Settings groups them under Library (Documents, Tags, Loans) and Automation (Activity, AI). Stack screens use `components/StackHeader`.
 - State: feature slices in `src/features/*/store/`, registered in `src/app/store.ts`. Typed hooks in `src/app/hooks.ts`.
 - Transport: `src/utils/api.ts` (`apiClient`) is the only REST client. It injects `Authorization` and `x-budget-id`, and refreshes on 401. It is wired to the store at boot, so it is unusable headlessly.
 - Headless code (widget task handler, location snap task) must use `src/utils/headlessApi.ts`. It reads tokens from AsyncStorage and does not clear the session on failure.
@@ -41,6 +41,7 @@ Expo (SDK 54, RN 0.81) Android client mirroring `react-frontend`. Android only; 
 - Charts: `components/charts.tsx` (bars are Views; lines and rings use `react-native-svg`, already in the native build via lucide).
 
 ## Data ported from react-frontend
+- Jobs (`features/jobs`): `jobTree.ts` is a copy of the web's; keep the two in step. AI keys and models are in `features/ai/llmSetup.ts` and `AIModelsPanel.tsx`.
 - Reports (`features/reports`): `cashFlow.ts` is a verbatim copy of the web's; keep the two in step. Group treatments persist per device in AsyncStorage.
 - Dashboard (`features/dashboard/store`): its own 6-month transaction window plus `reports/income-expense`, never the shared transactions slice (same rule as the web).
 - Loans: balances come from `GET /reports/loans` (amortized server-side); don't go back to original-minus-payments.
@@ -48,7 +49,9 @@ Expo (SDK 54, RN 0.81) Android client mirroring `react-frontend`. Android only; 
 
 ## Native modules
 - `react-native-pdf` (needs `react-native-blob-util`), `react-native-document-scanner-plugin`, `react-native-android-widget`, expo-notifications, expo-location, expo-task-manager.
+- Local module `modules/sms-receiver` (autolinked from `modules/`): a manifest `SMS_RECEIVED` receiver that starts headless task `SmsReceived` (registered in `index.js`), plus `getInboxMessages` (needs `READ_SMS`). Task key lives in `SmsHeadlessTaskService.TASK_KEY` and `SMS_TASK_KEY`; keep them equal.
 - None of these run in Expo Go. Rebuild the dev client after adding or updating one.
+- EAS uploads only files git doesn't ignore. Keep `.gitignore`'s `/android/` rooted: unrooted, it hid `modules/sms-receiver/android`, the build passed without the module, and the APK opened to a grey screen. Check with `git check-ignore -v modules/*/android/build.gradle`.
 
 ## Documents
 - View: `ensureDocumentCached` (`src/features/documents/documentFile.ts`) downloads into the app cache. `DocumentViewer` renders from there, so nothing reaches the gallery.
@@ -60,8 +63,15 @@ Expo (SDK 54, RN 0.81) Android client mirroring `react-frontend`. Android only; 
 - On `transaction.created`, a fix under 15 min old is PATCHed to `transactions/:id/location` with source `auto`. Otherwise (no permission or stale fix) the transaction is queued in AsyncStorage (1h TTL, max 10) for a "Tag location?" prompt.
 - The prompt is shown on notification tap and on AppState change. "Attach" saves a fresh fix as `manual`.
 
+## SMS forwarding
+- `features/sms/smsForwarder.ts` POSTs `{sender, body, receivedAt, source}` to ingest's `ingest/sms` (`EXPO_PUBLIC_INGEST_URL`, budget-scoped, headlessApi), not the main API. `source` is `live` or `inbox`; ingest ignores it and dedupes on sender + body + `receivedAt`, so both paths must send the same time: `getInboxMessages` reads `DATE_SENT` to match the live timestamp. Only alphanumeric sender IDs are sent; phone-number senders never leave the device.
+- Failed sends wait in an AsyncStorage outbox (max 50), retried on the next SMS and on app start. Signed out drops them.
+- `RECEIVE_SMS` is requested on boot, after the push permission (concurrent permission dialogs get dropped). `READ_SMS` is requested by Settings → SMS → Import recent messages (`smsInbox.ts`, always the last 30 days, so re-imports resend).
+- Settings → SMS → Test mode swaps only the SMS base URL (`headlessApi` `baseUrl` option); same token, budget header and outbox. The test ingest must accept production tokens. Release APKs block cleartext http, so use an https URL (`tailscale serve`).
+- Any non-2xx from ingest keeps the message in the outbox and shows the error. SMS permissions are Play-restricted; fine for sideloaded APKs.
+
 ## Parity gaps vs react-frontend
-- Not ported: Recurring, Prediction Review, report filters (account/category/tag) and custom report ranges, loan creation. Delete-account Danger Zone and AI Configuration editor are also not ported.
+- Not ported: Recurring, Prediction Review, report filters (account/category/tag) and custom report ranges, loan creation. Delete-account Danger Zone is also not ported.
 - Android does not show category goals.
 
 ## Key files
@@ -76,4 +86,5 @@ Expo (SDK 54, RN 0.81) Android client mirroring `react-frontend`. Android only; 
 | Location snap, prompts | `src/features/notifications/locationSnapTask.ts` |
 | Push registration | `src/features/notifications/push.ts` |
 | Widgets | `src/features/widgets/`, `index.js` |
+| SMS forwarding | `src/features/sms/`, `modules/sms-receiver/` |
 | Realtime | `src/features/websocket/WebSocketProvider.tsx` |

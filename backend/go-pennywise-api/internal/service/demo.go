@@ -218,8 +218,6 @@ func (s *demoService) seedDemoUser(ctx context.Context) (*model.UserWithCredenti
 		userWithCreds, err = s.googleProvider.Create(
 			ctx, authUser.ID,
 			demoGoogleID, model.GoogleOAuthClientTypeWeb, demoUserName, "", demoUserEmail,
-			"", // no google refresh token; also keeps gmail watch flows away from this user
-			nil,
 		)
 		if err != nil {
 			return fmt.Errorf("error creating demo provider: %w", err)

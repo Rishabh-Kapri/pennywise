@@ -6,12 +6,17 @@ type Code string
 const (
 	CodeInternalError   Code = "INTERNAL_ERROR"
 	CodeInvalidArgument Code = "INVALID_ARGUMENT"
+	// CodeNotImplemented: the code path exists but its logic isn't written yet.
+	CodeNotImplemented Code = "NOT_IMPLEMENTED"
 )
 
 // Auth error codes
 const (
 	CodeAuthLookupFailed Code = "AUTH_LOOKUP_FAILED"
 	CodeAuthCreateFailed Code = "AUTH_CREATE_FAILED"
+	// CodeAuthInvalidCredentials: a credential was presented and rejected
+	// (malformed, unknown, inactive, expired or revoked). Maps to 401.
+	CodeAuthInvalidCredentials Code = "AUTH_INVALID_CREDENTIALS"
 )
 
 // HTTP client error codes
@@ -35,6 +40,8 @@ const (
 const (
 	CodeTransactionCreateFailed Code = "TRANSACTION_CREATE_FAILED"
 	CodeTransactionNotCreated   Code = "TRANSACTION_NOT_CREATED"
+	// CodeTransactionLearnFailed: a transaction.learn job couldn't save what it learned.
+	CodeTransactionLearnFailed  Code = "TRANSACTION_LEARN_FAILED"
 	CodeTransactionUpdateFailed Code = "TRANSACTION_UPDATE_FAILED"
 	CodeTransactionLookupFailed Code = "TRANSACTION_LOOKUP_FAILED"
 	CodeTransactionDeleteFailed Code = "TRANSACTION_DELETE_FAILED"
@@ -88,4 +95,117 @@ const (
 const (
 	CodeToolNotFound    Code = "TOOL_NOT_FOUND"
 	CodeToolExecuteFail Code = "TOOL_EXECUTION_FAILED"
+)
+
+// System pipelines (shared/pipeline)
+const (
+	// CodePipelineInvalid: a pipeline file or the pipeline schema is broken.
+	// Found at startup; the service can't run until the file is fixed.
+	CodePipelineInvalid Code = "PIPELINE_INVALID"
+	// CodePipelineInvalidOverride: a budget's change to a pipeline step was
+	// rejected. The message is written for the user. Maps to 400.
+	CodePipelineInvalidOverride Code = "PIPELINE_INVALID_OVERRIDE"
+)
+
+// Prediction adapters (cipher)
+const (
+	// CodeAdapterNotConfigured: config names an adapter the factory doesn't know.
+	CodeAdapterNotConfigured Code = "ADAPTER_NOT_CONFIGURED"
+	// CodeDecisionsNotConfigured: the decisions adapter is selected but its
+	// URL, key or model is missing.
+	CodeDecisionsNotConfigured Code = "DECISIONS_NOT_CONFIGURED"
+	// CodeDecisionsRequestFailed: the decisions API call failed; StatusOf
+	// gives the upstream HTTP status when there was one.
+	CodeDecisionsRequestFailed Code = "DECISIONS_REQUEST_FAILED"
+	// CodeDecisionsAnswerMissing: the API answered without a usable answer
+	// for a question that was asked.
+	CodeDecisionsAnswerMissing Code = "DECISIONS_ANSWER_MISSING"
+)
+
+// Ingest
+const (
+	// CodeIngestInvalidMessage: the message is missing something it needs
+	// (body, sender, a budget, a dedupe ID). Maps to 400.
+	CodeIngestInvalidMessage Code = "INGEST_INVALID_MESSAGE"
+	// CodeIngestQueueUnavailable: no job queue is configured (JOB_DRIVER
+	// unset), so messages can't be accepted. Maps to 503.
+	CodeIngestQueueUnavailable Code = "INGEST_QUEUE_UNAVAILABLE"
+)
+
+// Mail connections (ingest)
+const (
+	CodeConnectionNotFound     Code = "CONNECTION_NOT_FOUND"
+	CodeConnectionLookupFailed Code = "CONNECTION_LOOKUP_FAILED"
+	CodeConnectionUpdateFailed Code = "CONNECTION_UPDATE_FAILED"
+)
+
+// Mail providers (ingest)
+const (
+	// CodeMailNotConfigured: the provider's app settings (client ID, Pub/Sub
+	// topic, ...) are missing.
+	CodeMailNotConfigured Code = "MAIL_NOT_CONFIGURED"
+	// CodeMailInvalidConnection: the connection row can't be used as is
+	// (wrong credentials type, missing or malformed cursor).
+	CodeMailInvalidConnection Code = "MAIL_INVALID_CONNECTION"
+	// CodeMailAuthFailed: the provider refused the stored credentials
+	// (revoked or expired grant). Retrying won't help; the user must reconnect.
+	CodeMailAuthFailed Code = "MAIL_AUTH_FAILED"
+	// CodeMailNoRefreshToken: the provider granted access but gave no long-lived
+	// token, usually because it didn't show the consent screen.
+	CodeMailNoRefreshToken Code = "MAIL_NO_REFRESH_TOKEN"
+	// CodeMailCursorExpired: the provider no longer has history that far
+	// back. Call Watch for a fresh cursor (and Search to fill the gap).
+	CodeMailCursorExpired Code = "MAIL_CURSOR_EXPIRED"
+	// CodeMailRequestFailed: a provider API call failed; StatusOf gives the
+	// HTTP status when there was one.
+	CodeMailRequestFailed Code = "MAIL_REQUEST_FAILED"
+)
+
+// Jobs
+const (
+	CodeJobDatabaseURLMissing Code = "JOB_DATABASE_URL_MISSING"
+	CodeJobStoreURLMissing    Code = "JOB_DATABASE_STORE_URL_MISSING"
+	CodeJobInvalidOption      Code = "JOB_INVALID_OPTION"
+	// CodeJobInvalidPayload: a job's payload can't be decoded, or it has no
+	// budget. A retry can't fix it; it dies after MaxAttempts.
+	CodeJobInvalidPayload    Code = "JOB_INVALID_PAYLOAD"
+	CodeJobPayloadParseError Code = "JOB_PAYLOAD_PARSE_FAILED"
+	// CodeJobsUnavailable: ClaimJob found no job ready to run. Not a failure;
+	// the worker waits and claims again.
+	CodeJobsUnavailable  Code = "JOBS_UNAVAILABLE"
+	CodeJobHandlerError  Code = "JOB_HANDLER_ERROR"
+	CodeJobEnqueueFailed Code = "JOB_ENQUEUE_FAILED"
+	CodeJobClaimFailed   Code = "JOB_CLAIM_FAILED"
+	// CodeJobClaimLost: the worker no longer owns the job (the reaper requeued
+	// it, or it was cancelled). Stop working on it and don't retry the write.
+	CodeJobClaimLost    Code = "JOB_CLAIM_LOST"
+	CodeJobUpdateFailed Code = "JOB_UPDATE_FAILED"
+	CodeJobLookupFailed Code = "JOB_LOOKUP_FAILED"
+	CodeJobNotFound     Code = "JOB_NOT_FOUND"
+	// CodeJobEventAppendFailed: writing a job_events row failed.
+	CodeJobEventAppendFailed Code = "JOB_EVENT_APPEND_FAILED"
+	// CodeJobInvalidState: the job isn't in a state that allows the action,
+	// e.g. cancelling a job that already succeeded.
+	CodeJobInvalidState Code = "JOB_INVALID_STATE"
+)
+
+// Message pipeline job steps
+const (
+	CodeMessageCheckFailed   Code = "MESSAGE_CHECK_FAILED"
+	CodeMessageExtractFailed Code = "MESSAGE_EXTRACT_FAILED"
+	CodeMessageVerifyFailed  Code = "MESSAGE_VERIFY_FAILED"
+	CodeMessageLookupFailed  Code = "MESSAGE_LOOKUP_FAILED"
+	CodeMessagePredictFailed Code = "MESSAGE_PREDICT_FAILED"
+	// CodePipelineReportFailed: recording how a message ended failed.
+	CodePipelineReportFailed Code = "PIPELINE_REPORT_FAILED"
+)
+
+// Workers
+const (
+	CodeWorkerCreateError Code = "WORKER_CREATE_FAILED"
+	CodeWorkerRunError    Code = "WORKER_RUN_FAILED"
+)
+
+const (
+	CodeCredentialsNotSet Code = "CREDENTIAL_KEY_NOT_SET"
 )

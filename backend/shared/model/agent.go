@@ -39,6 +39,7 @@ type Usage struct {
 	// turns means something volatile has crept into the prompt prefix.
 	CacheReadTokens  int
 	CacheWriteTokens int
+	Cost             *float64
 }
 
 type ContentBlock struct {

@@ -11,7 +11,7 @@ import type {
   LoginResponse,
   User,
 } from '../types/auth.types';
-import { apiClient } from '@/utils';
+import { ApiError, apiClient } from '@/utils';
 
 const AUTH_STORAGE_KEY = 'pennywise_auth';
 
@@ -102,16 +102,24 @@ export const loginAsDemo = createAsyncThunk<
   }
 });
 
+interface RefreshFailure {
+  message: string;
+  sessionExpired: boolean; // false when the server just couldn't be reached
+}
+
 // Async thunk to refresh access token
 export const refreshAccessToken = createAsyncThunk<
   { accessToken: string; expiresIn: number },
   void,
-  { state: RootState; rejectValue: string }
+  { state: RootState; rejectValue: RefreshFailure }
 >('auth/refreshToken', async (_, { getState, rejectWithValue }) => {
   try {
     const { tokens } = getState().auth;
     if (!tokens?.refreshToken) {
-      return rejectWithValue('No refresh token available');
+      return rejectWithValue({
+        message: 'No refresh token available',
+        sessionExpired: true,
+      });
     }
     const response = await apiClient.post<{
       accessToken: string;
@@ -123,7 +131,10 @@ export const refreshAccessToken = createAsyncThunk<
   } catch (error) {
     const message =
       error instanceof Error ? error.message : 'Token refresh failed';
-    return rejectWithValue(message);
+    return rejectWithValue({
+      message,
+      sessionExpired: error instanceof ApiError && error.status === 401,
+    });
   }
 });
 
@@ -219,8 +230,10 @@ const authSlice = createSlice({
           }
         }
       })
-      .addCase(refreshAccessToken.rejected, (state) => {
-        // Token refresh failed - clear auth state
+      .addCase(refreshAccessToken.rejected, (state, action) => {
+        if (!action.payload?.sessionExpired) {
+          return;
+        }
         state.user = null;
         state.tokens = null;
         state.isAuthenticated = false;

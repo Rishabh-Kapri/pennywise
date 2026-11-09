@@ -30,3 +30,7 @@ func UnmarshalResponse[T any](res []byte) (T, error) {
 	}
 	return result, nil
 }
+
+func Ptr[T any](val T) *T {
+	return &val
+}

@@ -1,8 +1,9 @@
 node_modules/
 .expo/
 dist/
-android/
-ios/
+# Rooted: an unrooted `android/` also hid modules/*/android from EAS.
+/android/
+/ios/
 *.log
 
 # Android signing credentials

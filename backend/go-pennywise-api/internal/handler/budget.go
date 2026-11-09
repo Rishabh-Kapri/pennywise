@@ -39,6 +39,9 @@ func (h *budgetHandler) List(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	if budgets == nil {
+		budgets = []model.Budget{} // a new user: clients expect a list, not null
+	}
 	c.JSON(http.StatusOK, budgets)
 }
 

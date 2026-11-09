@@ -14,7 +14,7 @@ const googleServicesFile = process.env.GOOGLE_SERVICES_JSON ?? './google-service
 const config: ExpoConfig = {
   name: 'Pennywise',
   slug: 'pennywise-android',
-  version: '0.1.1',
+  version: '0.1.3',
   orientation: 'portrait',
   scheme: 'dev.pennywise.cloud',
   userInterfaceStyle: 'automatic',
@@ -50,7 +50,11 @@ const config: ExpoConfig = {
       'android.permission.ACCESS_FINE_LOCATION',
       'android.permission.CAMERA',
       'android.permission.RECEIVE_BOOT_COMPLETED',
-      'android.permission.POST_NOTIFICATIONS'
+      'android.permission.POST_NOTIFICATIONS',
+      // modules/sms-receiver forwards bank SMS to the API; READ_SMS is only for
+      // the inbox import in Settings
+      'android.permission.RECEIVE_SMS',
+      'android.permission.READ_SMS'
     ]
   },
   plugins: [
@@ -150,6 +154,7 @@ const config: ExpoConfig = {
   ],
   extra: {
     apiUrl: process.env.EXPO_PUBLIC_API_URL,
+    ingestUrl: process.env.EXPO_PUBLIC_INGEST_URL,
     googleClientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID,
     androidGoogleClientId: process.env.EXPO_PUBLIC_ANDROID_GOOGLE_CLIENT_ID,
     router: {

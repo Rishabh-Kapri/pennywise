@@ -197,6 +197,13 @@ func (r *transactionRepo) GetById(ctx context.Context, budgetId uuid.UUID, id uu
 	return &txn, nil
 }
 
+// Page size for GetAllNormalized: Limit 0 means defaultPageSize, and larger
+// requests are capped at maxPageSize.
+const (
+	defaultPageSize = 30
+	maxPageSize     = 100
+)
+
 func (r *transactionRepo) GetAllNormalized(
 	ctx context.Context,
 	budgetId uuid.UUID,
@@ -204,16 +211,18 @@ func (r *transactionRepo) GetAllNormalized(
 ) (model.PaginatedResponse[model.Transaction], error) {
 	balanceExpr := "0 AS balance"
 
+	// The running balance orders by the same (date, updated_at, id) key as the
+	// list, so tied rows each get their own balance.
 	if filter != nil && len(filter.AccountIDs) > 0 {
 		balanceExpr = `SUM(transactions.amount) OVER (
-			ORDER BY transactions.date ASC, transactions.updated_at ASC
+			ORDER BY transactions.date ASC, transactions.updated_at ASC, transactions.id ASC
 			ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
 		) AS balance`
 	}
 
-	limit := 30
+	limit := defaultPageSize
 	if filter != nil && filter.Limit > 0 {
-		limit = int(filter.Limit)
+		limit = int(min(filter.Limit, maxPageSize))
 	}
 
 	// sortOrder is spliced into ORDER BY, so it is reduced to one of two
@@ -260,7 +269,12 @@ func (r *transactionRepo) GetAllNormalized(
 		}
 	}
 
-	query := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
+	// filtered is every row the filters match, with its running balance. The
+	// cursor, order and limit are applied outside it: a window function sees
+	// only the rows its query's WHERE keeps, so filtering by the cursor in here
+	// would restart the balance at every page boundary. It keeps the default
+	// "?" placeholders; the outer query renumbers them all as $n.
+	filtered := sq.
 		Select(
 			"transactions.id",
 			"transactions.budget_id",
@@ -268,7 +282,7 @@ func (r *transactionRepo) GetAllNormalized(
 			"transactions.payee_id",
 			"transactions.category_id",
 			"transactions.account_id",
-			"COALESCE(transactions.note, '')",
+			"COALESCE(transactions.note, '') AS note",
 			"transactions.amount",
 			"transactions.dedupe_hash",
 			"transactions.status",
@@ -303,7 +317,7 @@ func (r *transactionRepo) GetAllNormalized(
 		Where(sq.Eq{"transactions.budget_id": budgetId}).
 		Where(sq.Eq{"transactions.deleted": false})
 
-	query = applyTransactionFilters(query, filter)
+	filtered = applyTransactionFilters(filtered, filter)
 	countQuery = applyTransactionFilters(countQuery, filter)
 
 	countSQL, countArgs, err := countQuery.ToSql()
@@ -321,11 +335,14 @@ func (r *transactionRepo) GetAllNormalized(
 		queryOrder = utils.ReverseSortOrder(sortOrder)
 	}
 
+	query := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
+		Select("*").
+		FromSelect(filtered, "t")
 	if !isFirstPage {
 		query = query.Where(
 			sq.Expr(
 				fmt.Sprintf(
-					"(transactions.date, transactions.updated_at, transactions.id) %s (?, ?, ?)",
+					"(t.date, t.updated_at, t.id) %s (?, ?, ?)",
 					utils.CursorOperator(sortOrder, pointsNext),
 				),
 				cursorDate,
@@ -338,9 +355,9 @@ func (r *transactionRepo) GetAllNormalized(
 	// database transaction share now(). It must be the last key so the order
 	// is total and matches the (date, updated_at, id) cursor comparison.
 	query = query.OrderBy(
-		"transactions.date "+queryOrder,
-		"transactions.updated_at "+queryOrder,
-		"transactions.id "+queryOrder,
+		"t.date "+queryOrder,
+		"t.updated_at "+queryOrder,
+		"t.id "+queryOrder,
 	)
 
 	query = query.Limit(uint64(limit + 1))
@@ -584,12 +601,15 @@ func (r *transactionRepo) CreateDeduped(
 	var existingStatus *model.TransactionStatus
 	err = r.Executor(ctx).QueryRow(
 		ctx,
-		`SELECT id, amount, budget_id, status, summary
+		`SELECT id, amount, budget_id, status, summary, payee_id, category_id, created_at
 		 FROM transactions
 		 WHERE budget_id = $1 AND dedupe_hash = $2 AND deleted = FALSE`,
 		txn.BudgetID,
 		txn.DedupeHash,
-	).Scan(&existing.ID, &existing.Amount, &existing.BudgetID, &existingStatus, &existing.Summary)
+	).Scan(
+		&existing.ID, &existing.Amount, &existing.BudgetID, &existingStatus, &existing.Summary,
+		&existing.PayeeID, &existing.CategoryID, &existing.CreatedAt,
+	)
 	if err != nil {
 		return nil, false, err
 	}

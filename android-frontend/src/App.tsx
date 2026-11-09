@@ -28,11 +28,15 @@ import { SettingsScreen } from './features/settings/screens/SettingsScreen';
 import { DocumentsScreen } from './features/documents/screens/DocumentsScreen';
 import { TagsScreen } from './features/tags/screens/TagsScreen';
 import { ActivityScreen } from './features/pipeline/screens/ActivityScreen';
+import { JobsScreen } from './features/jobs/screens/JobsScreen';
+import { PipelinesScreen } from './features/jobs/screens/PipelinesScreen';
 import { AIScreen } from './features/ai/screens/AIScreen';
 import { WebSocketProvider } from './features/websocket/WebSocketProvider';
 import { AgentChat } from './features/agent/components/AgentChat';
 import { registerDevicePushToken } from './features/notifications/push';
 import { setupLocationSnap } from './features/notifications/locationSnapTask';
+import { flushSmsOutbox } from './features/sms/smsForwarder';
+import { ensureSmsPermission } from './features/sms/smsPermission';
 
 // defines the background notification task; must happen at module scope so the
 // task exists when Android wakes the app headlessly
@@ -149,6 +153,8 @@ function AppNavigator() {
         <RootStack.Screen name="Documents" component={DocumentsScreen} />
         <RootStack.Screen name="Tags" component={TagsScreen} />
         <RootStack.Screen name="Activity" component={ActivityScreen} />
+        <RootStack.Screen name="Jobs" component={JobsScreen} />
+        <RootStack.Screen name="Pipelines" component={PipelinesScreen} />
         <RootStack.Screen name="AI" component={AIScreen} />
         <RootStack.Screen name="Loans" component={LoansScreen} />
       </RootStack.Navigator>
@@ -219,7 +225,12 @@ function RootContent() {
   useEffect(() => {
     if (auth.hydrated && auth.isAuthenticated) {
       dispatch(fetchAllBudgets());
-      void registerDevicePushToken();
+      // Sequential: Android drops a permission request made while another
+      // permission dialog is still showing.
+      void registerDevicePushToken()
+        .then(ensureSmsPermission)
+        .catch((error) => console.log('[sms] permission request failed', error))
+        .then(flushSmsOutbox);
     }
   }, [auth.hydrated, auth.isAuthenticated, dispatch]);
 

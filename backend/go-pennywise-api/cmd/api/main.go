@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,8 +17,8 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/middleware"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/storage"
-	temporalActivities "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/temporal/activities"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/websocket"
+	jobWorker "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/worker"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
@@ -27,7 +26,8 @@ import (
 	sharedMiddleware "github.com/Rishabh-Kapri/pennywise/backend/shared/middleware"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/otelSDK"
-	sharedTemporal "github.com/Rishabh-Kapri/pennywise/backend/shared/temporal"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/pipeline"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/job"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
@@ -35,9 +35,11 @@ import (
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
-	"go.temporal.io/sdk/client"
-	"go.temporal.io/sdk/worker"
 )
+
+// workerShutdownTimeout is a little over the job worker's own 30s, so it can
+// report its result first.
+const workerShutdownTimeout = 35 * time.Second
 
 func healthPage(c *gin.Context) {
 	c.String(http.StatusOK, "Health OK!")
@@ -65,7 +67,7 @@ func main() {
 	}()
 
 	// The repository ports; DATABASE_DRIVER picks the adapter behind them.
-	database, err := factory.ConnectDB(factory.Config{Driver: config.DatabaseDriver, URL: config.DatabaseURL})
+	database, err := factory.ConnectDB(ctx, factory.Config{Driver: config.DatabaseDriver, URL: config.DatabaseURL})
 	if err != nil {
 		logger.Fatal("error opening database", "error", err)
 	}
@@ -84,27 +86,19 @@ func main() {
 	redisClient := redis.NewClient(redisOptions)
 	defer redisClient.Close()
 
-	// Temporal client — nil when Temporal is not configured (e.g. local dev).
-	// Shared by the pipeline retry endpoint and the activity worker below.
-	var temporalClient client.Client
-	if config.Environment != "local" && config.TemporalServerHost != "" {
-		tcl, err := client.Dial(client.Options{
-			HostPort:           fmt.Sprintf("%s:%s", config.TemporalServerHost, config.TemporalServerPort),
-			ContextPropagators: sharedTemporal.ContextPropagators(),
-		})
-		if err != nil {
-			logger.Logger(ctx).Error("failed to create temporal client", "error", err)
-			panic(err)
-		}
-		temporalClient = tcl
-	}
-
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(gzip.Gzip(gzip.DefaultCompression))
 	router.Use(sharedMiddleware.StripInternalHeaders())
 	router.Use(sharedMiddleware.RequestMetadata(config.ServiceName))
-	router.Use(sharedMiddleware.InternalRequestAuth(config.InternalAuthToken))
+	serviceAuth, err := factory.NewServiceAuthenticator(ctx, factory.ServiceAuthConfig{
+		Tokens:   config.ServiceTokens,
+		OwnToken: config.InternalAuthToken,
+	})
+	if err != nil {
+		logger.Fatal("invalid SERVICE_TOKENS", "error", err)
+	}
+	router.Use(sharedMiddleware.InternalRequestAuth(config.InternalAuthToken, serviceAuth))
 	router.Use(sharedMiddleware.RequestLogger())
 	router.Use(otelgin.Middleware(otelConfig.ServiceName))
 
@@ -180,6 +174,23 @@ func main() {
 	agentHandler := handler.NewAgentHandler(agentService)
 
 	geocodeService := service.NewGeocodeService(config.NominatimURL, config.GeocodeCountryCodes)
+	// Job queue. nil when JOB_DRIVER is unset; the store is also nil on memory.
+	var broker job.Broker
+	var jobStore job.JobStore
+	jobs, err := factory.ConnectJob(ctx, factory.JobConfig{
+		Driver:    config.JobDriver,
+		BrokerURL: config.JobBrokerURL,
+		StoreURL:  config.JobStoreURL,
+	})
+	if err != nil {
+		logger.Fatal("connect job queue", "error", err)
+	}
+	if jobs != nil {
+		defer jobs.Close()
+		broker = jobs.Broker
+		jobStore = jobs.Store
+	}
+
 	transactionService := service.NewTransactionService(
 		database.Transaction,
 		database.Budget,
@@ -194,6 +205,7 @@ func main() {
 		monthlyBudgetService,
 		geocodeService,
 		database.DBTxn,
+		broker,
 	)
 	transactionHandler := handler.NewTransactionHandler(transactionService)
 
@@ -253,18 +265,13 @@ func main() {
 	tagService := service.NewTagService(database.Tag)
 	tagHandler := handler.NewTagHandler(tagService)
 
-	gmailHttpTransport := httpclient.NewHttpTransport(config.GmailServiceURL)
-	gmailClient := transport.NewClient(config.GmailServiceName, gmailHttpTransport)
-	authService := service.NewAuthService(database.Auth, database.GoogleProvider, gmailClient, database.DBTxn)
+	authService := service.NewAuthService(database.Auth, database.GoogleProvider, database.DBTxn)
 	authHandler := handler.NewAuthHandler(authService)
 
 	onboardingHandler := handler.NewOnboardingHandler(
 		service.NewOnboardingService(
 			database.Budget,
-			database.Auth,
-			database.GoogleProvider,
-			database.UserLLMProvider,
-			gmailClient,
+			database.UserLLMModel,
 		),
 	)
 	llmCredentialsBox, err := utils.NewSecretBox(config.LLMCredentialsKey)
@@ -273,11 +280,16 @@ func main() {
 		logger.Logger(ctx).Warn("user AI providers disabled", "error", err)
 		llmCredentialsBox = nil
 	}
+	isDemoUser := service.NewDemoUserCheck(database.GoogleProvider, config.DemoMode)
 	aiProviderHandler := handler.NewAIProviderHandler(service.NewAIProviderService(
 		database.UserLLMProvider,
 		llmCredentialsBox,
-		cipherTransportClient,
-		service.NewDemoUserCheck(database.GoogleProvider, config.DemoMode),
+		isDemoUser,
+	))
+	aiModelHandler := handler.NewAIModelHandler(service.NewAIModelService(
+		database.UserLLMModel,
+		service.NewCipherModelTester(cipherTransportClient),
+		isDemoUser,
 	))
 
 	var demoHandler handler.DemoHandler
@@ -307,8 +319,33 @@ func main() {
 	reportService := service.NewReportService(database.Report)
 	reportHandler := handler.NewReportHandler(reportService)
 
-	pipelineService := service.NewPipelineService(database.PipelineRun, temporalClient)
+	pipelineService := service.NewPipelineService(database.PipelineRun, nil)
 	pipelineHandler := handler.NewPipelineHandler(pipelineService)
+	pipelines, err := pipeline.Load()
+	if err != nil {
+		logger.Fatal("invalid pipeline definitions", "error", err)
+	}
+	pipelineStepHandler := handler.NewPipelineStepHandler(
+		service.NewPipelineStepService(pipelines, database.PipelineStep, database.UserLLMModel),
+	)
+	jobHandler := handler.NewJobHandler(service.NewJobService(jobStore, database.MailConnection))
+
+	var ingestClient *transport.Client
+	if config.IngestServiceURL != "" {
+		ingestHeaders := map[string][]string{}
+		if config.InternalAuthToken != "" {
+			ingestHeaders[utils.HeaderInternalToken] = []string{config.InternalAuthToken}
+		}
+		ingestClient = transport.NewClient(
+			config.IngestServiceName,
+			httpclient.NewHttpTransport(config.IngestServiceURL),
+			transport.WithDefaultHeaders(ingestHeaders),
+		)
+	}
+	mailConnectionHandler := handler.NewMailConnectionHandler(service.NewMailConnectionService(ingestClient))
+	smsHandler := handler.NewSmsHandler(
+		service.NewSmsService(service.NewDecisionsClient(cipherTransportClient), config.SmsDecisionsLog),
+	)
 
 	recurringTransactionService := service.NewRecurringTransactionService(
 		database.RecurringTransaction,
@@ -344,7 +381,12 @@ func main() {
 	go websocket.NewRedisStreamListener(redisClient, websocketHub).Listen(appCtx)
 
 	// Auth middleware
-	authMiddleware := middleware.AuthMiddleware(authService, apiKeyService)
+	authMiddleware := sharedMiddleware.Authenticate(factory.NewAuthenticators(
+		ctx,
+		factory.AuthConfig{JWTSecret: config.JWTSecret},
+		database.APIKey,
+		database.Auth,
+	)...)
 	rateLimitMiddleware := middleware.RateLimitMiddleware(service.NewRateLimitService(redisClient))
 	budgetMiddleware := sharedMiddleware.BudgetIdMiddleware(database.Budget)
 
@@ -474,11 +516,6 @@ func main() {
 				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
 				authHandler.GetProviderUser,
 			)
-			providerUserGroup.PATCH(
-				"",
-				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
-				authHandler.UpdateProviderUser,
-			)
 		}
 		{
 			onboardingGroup := router.Group("/api/onboarding")
@@ -507,11 +544,29 @@ func main() {
 				middleware.RouteAuthMiddleware(sharedModel.ScopeDelete),
 				aiProviderHandler.Delete,
 			)
-			aiProviderGroup.POST(
-				"/:provider/test",
+		}
+		{
+			// Models run with those keys. Each is tested (through cipher) before
+			// it's saved or changed. Like keys, they belong to the user; the budget
+			// header is only for cipher's test call.
+			aiModelGroup := router.Group("/api/ai-models")
+			aiModelGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
+			aiModelGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), aiModelHandler.List)
+			aiModelGroup.POST("", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), aiModelHandler.Create)
+			aiModelGroup.PUT("/order", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), aiModelHandler.Reorder)
+			aiModelGroup.PUT("/:id", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), aiModelHandler.Update)
+			aiModelGroup.PUT(
+				"/:id/enabled",
 				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
-				aiProviderHandler.Test,
+				aiModelHandler.SetEnabled,
 			)
+			aiModelGroup.POST(
+				"/:id/default",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				aiModelHandler.SetDefault,
+			)
+			aiModelGroup.POST("/:id/test", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), aiModelHandler.Test)
+			aiModelGroup.DELETE("/:id", middleware.RouteAuthMiddleware(sharedModel.ScopeDelete), aiModelHandler.Delete)
 		}
 		{
 			accountGroup := router.Group("/api/accounts")
@@ -853,6 +908,24 @@ func main() {
 			)
 		}
 		{
+			// The budget's pipeline settings: every system pipeline (shared/pipeline)
+			// with the budget's step overrides applied. /api/pipeline below is the
+			// older email-run history.
+			pipelinesGroup := router.Group("/api/pipelines")
+			pipelinesGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
+			pipelinesGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), pipelineStepHandler.List)
+			pipelinesGroup.PUT(
+				"/:pipeline/steps/:step",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				pipelineStepHandler.Update,
+			)
+			pipelinesGroup.DELETE(
+				"/:pipeline/steps/:step",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeDelete),
+				pipelineStepHandler.Reset,
+			)
+		}
+		{
 			pipelineGroup := router.Group("/api/pipeline")
 			pipelineGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
 			pipelineGroup.GET(
@@ -871,14 +944,57 @@ func main() {
 				pipelineHandler.RetryRun,
 			)
 		}
+		{
+			mailConnectionGroup := router.Group("/api/mail-connections")
+			mailConnectionGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
+			mailConnectionGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), mailConnectionHandler.List)
+			mailConnectionGroup.POST(
+				"",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				mailConnectionHandler.Connect,
+			)
+			mailConnectionGroup.PATCH(
+				"/:id",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				mailConnectionHandler.Update,
+			)
+			mailConnectionGroup.DELETE(
+				"/:id",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				mailConnectionHandler.Disconnect,
+			)
+			mailConnectionGroup.GET(
+				"/:id/backfill",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				mailConnectionHandler.BackfillCandidates,
+			)
+			mailConnectionGroup.POST(
+				"/:id/backfill",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				mailConnectionHandler.Backfill,
+			)
+
+			jobGroup := router.Group("/api/jobs")
+			jobGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
+			jobGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), jobHandler.List)
+			jobGroup.GET("/:id", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), jobHandler.Get)
+			jobGroup.POST("/:id/retry", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), jobHandler.Retry)
+			jobGroup.POST("/:id/cancel", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), jobHandler.Cancel)
+		}
+		{
+			smsGroup := router.Group("/api/sms")
+			smsGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
+			smsGroup.POST(
+				"/ingest",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				smsHandler.Ingest,
+			)
+		}
 	}
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 
-	// Recurring transactions scheduler. Deliberately a plain ticker rather
-	// than a Temporal schedule: the Temporal worker below is skipped in local
-	// and Docker-only setups, and recurring transactions must still fire
-	// there. Materialization is driven by each rule's next_date, so a missed
+	// Recurring transactions scheduler. Materialization is driven by each rule's next_date, so a missed
 	// tick (or a restart) is caught up on the following pass.
 	go func() {
 		schedulerCtx := utils.WithInternalAuthToken(
@@ -920,63 +1036,34 @@ func main() {
 		}
 	}()
 
-	// Temporal worker — skipped if TEMPORAL_SERVER_HOST is not set
-	if temporalClient != nil {
-		_, err := temporalClient.ScheduleClient().Create(ctx, client.ScheduleOptions{
-			ID: "sync-gmail-watch-workflow-schedule",
-			Spec: client.ScheduleSpec{
-				CronExpressions: []string{"0 12 */2 * *"}, // every 2 days at 12:00 PM
-				StartAt:         time.Date(2026, 4, 29, 7, 30, 0, 0, time.UTC),
-			},
-			Action: &client.ScheduleWorkflowAction{
-				ID:        "",
-				Workflow:  sharedModel.RefreshGmailWatchWorkflowName,
-				TaskQueue: sharedModel.PennywiseTaskQueue,
-			},
+	// Job worker: the message pipeline's last steps. Off without a job queue.
+	messageJobService := service.NewMessageJobService(service.MessageJobDeps{
+		Transactions: transactionService,
+		Payees:       payeeService,
+		Predictions:  predictionService,
+		Websocket:    websocketService,
+		Push:         pushNotificationService,
+		PipelineRuns: database.PipelineRun,
+		DBTxn:        database.DBTxn,
+
+		Accounts:            database.Account,
+		Categories:          database.Category,
+		CounterpartyAliases: database.CounterpartyAlias,
+		TransactionSources:  database.TransactionSource,
+	})
+	workerErr := make(chan error, 1)
+	workerDone := make(chan struct{})
+	go func() {
+		defer close(workerDone)
+		err := jobWorker.Setup(appCtx, jobWorker.Deps{
+			Queues:   config.JobQueues,
+			Broker:   broker,
+			Messages: messageJobService,
 		})
 		if err != nil {
-			logger.Logger(ctx).Warn("failed to create gmail watch schedule", "error", err)
+			workerErr <- err
 		}
-
-		w := worker.New(temporalClient, sharedModel.PennywiseActivitiesTaskQueue, worker.Options{
-			BackgroundActivityContext: utils.WithInternalAuthToken(
-				utils.WithServiceName(context.Background(), config.ServiceName),
-				config.InternalAuthToken,
-			),
-		})
-		w.RegisterActivity(&temporalActivities.CreateTransactionActivity{
-			TransactionService: transactionService,
-			PayeeService:       payeeService,
-			PredictionService:  predictionService,
-			WebsocketService:   websocketService,
-			PushService:        pushNotificationService,
-			DBTxn:              database.DBTxn,
-		})
-		w.RegisterActivity(&temporalActivities.CreateCipherPredictionActivity{
-			PredictionService: predictionService,
-		})
-		w.RegisterActivity(&temporalActivities.FetchGoogleUsersActivity{
-			AuthService: authService,
-		})
-		w.RegisterActivity(&temporalActivities.PipelineStatusActivity{
-			PipelineRunRepo:  database.PipelineRun,
-			WebsocketService: websocketService,
-			DBTxn:            database.DBTxn,
-		})
-
-		if err := w.Start(); err != nil {
-			logger.Logger(ctx).Error("failed to start temporal worker", "error", err)
-			panic(err)
-		}
-		logger.Logger(ctx).Info("temporal worker started", "taskQueue", sharedModel.PennywiseActivitiesTaskQueue)
-
-		go func() {
-			<-quit
-			logger.Logger(ctx).Info("shutting down temporal worker")
-			w.Stop()
-			temporalClient.Close()
-		}()
-	}
+	}()
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -988,7 +1075,18 @@ func main() {
 		}
 	}()
 
-	<-quit
+	select {
+	case <-quit:
+	case err := <-workerErr:
+		logger.Logger(ctx).Error("unexpected worker error", "error", err)
+	}
 	cancel()
 	logger.Logger(ctx).Info("server shutdown")
+
+	// Let running jobs finish before the deferred Close calls.
+	select {
+	case <-workerDone:
+	case <-time.After(workerShutdownTimeout):
+		logger.Logger(ctx).Error("job worker didn't stop in time")
+	}
 }

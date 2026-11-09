@@ -14,7 +14,7 @@ const (
 	TextSource  Source = "text" // used for api calls
 )
 
-// Defines the raw input data for this port
+// Defines the raw input data for this the prediction input flow
 type Message struct {
 	// The input that we want to extract the information from
 	Body   string `json:"body"`
@@ -22,16 +22,40 @@ type Message struct {
 	Sender string `json:"sender"` // api call, bank email address etc
 }
 
-type TransactionType string
+type (
+	TransactionType string
+	MessageType     string
+)
+
+const (
+	TransactionMessageType MessageType = "transaction"
+	StatementMessageType   MessageType = "statement"
+)
 
 type TxnVerdict struct {
-	IsTransaction bool    `json:"IsTransaction"`
-	Confidence    float64 `json:"confidence"` // between 0 - 1
+	MessageType   MessageType     `json:"messageType"` //
+	IsTransaction bool            `json:"isTransaction"`
+	Type          TransactionType `json:"type"`
+	Confidence    *float64        `json:"confidence,omitempty"` // between 0 - 1
+	// Usage is what the model call behind this verdict cost. Nil for adapters
+	// that make no paid call (regex, noop).
+	Usage *Usage `json:"usage,omitempty"`
+}
+
+// Usage of one model call, as the provider reported it.
+type Usage struct {
+	Provider         string   `json:"provider,omitempty"`
+	Model            string   `json:"model"`
+	InputTokens      int      `json:"inputTokens"`
+	OutputTokens     int      `json:"outputTokens"`
+	CacheReadTokens  *int     `json:"cacheReadTokens"`
+	CacheWriteTokens *int     `json:"cacheWriteTokens"`
+	Cost             *float64 `json:"cost,omitempty"` // nil when the provider doesn't report one
 }
 
 // Defines the port that checks whether the current input provided is a transaction or not
 type CheckTransaction interface {
-	IsTransaction(ctx context.Context, msg Message) (TxnVerdict, error)
+	Check(ctx context.Context, msg Message) (TxnVerdict, error)
 }
 
 const (
@@ -39,16 +63,17 @@ const (
 	CreditTransactionType TransactionType = "credit"
 )
 
-type ExtractEntities struct {
-	Account  string          `json:"account"`
-	Merchant string          `json:"merchant"`
-	Amount   float64         `json:"amount"`
-	Type     TransactionType `json:"type"`
-	Date     time.Time       `json:"date"`
+type ExtractedEntities struct {
+	Account   string    `json:"account"`
+	Merchant  string    `json:"merchant"`
+	Currency  string    `json:"currency"`
+	Amount    float64   `json:"amount"`
+	Timestamp time.Time `json:"timestamp"`
+	Usage     *Usage     `json:"usage"`
 }
 
 type Extract interface {
-	Extract(ctx context.Context, msg Message) (ExtractEntities, error)
+	Extract(ctx context.Context, msg Message) (ExtractedEntities, error)
 }
 
 type VerifyResult struct {
@@ -57,7 +82,7 @@ type VerifyResult struct {
 }
 
 type Verifier interface {
-	Verify(ctx context.Context, msg Message, entities ExtractEntities) (VerifyResult, error)
+	Verify(ctx context.Context, msg Message, entities ExtractedEntities) (VerifyResult, error)
 }
 
 type PredictionResult struct {
@@ -66,6 +91,20 @@ type PredictionResult struct {
 	Confidence   float64 `json:"confidence"`
 }
 
+// MemoryLookup finds a payee and category from what the budget already knows:
+// payee rules first, then similar past transactions. found is false on a miss,
+// which sends the message to the Predictor; a miss is not an error.
+type MemoryLookup interface {
+	Lookup(
+		ctx context.Context,
+		msg Message,
+		entities ExtractedEntities,
+	) (result PredictionResult, found bool, err error)
+}
+
+// Predictor picks a payee and category when memory has no answer. An empty
+// CategoryName means it couldn't decide, which ends the message without a
+// transaction; errors are for calls that failed and are worth retrying.
 type Predictor interface {
-	Predict(ctx context.Context, msg Message, entities ExtractEntities) (PredictionResult, error)
+	Predict(ctx context.Context, msg Message, entities ExtractedEntities) (PredictionResult, error)
 }

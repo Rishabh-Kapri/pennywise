@@ -235,16 +235,23 @@ export function WebSocketProvider() {
 
     let shouldReconnect = true;
 
+    const scheduleReconnect = () => {
+      reconnectRef.current = setTimeout(() => void connect(), RECONNECT_DELAY_MS);
+    };
+
     const connect = async () => {
       let token = accessToken;
       if (isTokenExpiringSoon(token)) {
         try {
           token = (await dispatch(refreshAccessToken()).unwrap()).accessToken;
         } catch {
-          shouldReconnect = false;
+          // A dead session clears the token, which ends this effect. Anything
+          // else is a server that's away, so keep trying.
+          if (shouldReconnect) scheduleReconnect();
           return;
         }
       }
+      if (!shouldReconnect) return;
 
       const socket = new WebSocket(getWebSocketUrl(token, budgetId));
       socketRef.current = socket;
@@ -329,7 +336,7 @@ export function WebSocketProvider() {
       };
       socket.onclose = () => {
         if (!shouldReconnect) return;
-        reconnectRef.current = setTimeout(() => void connect(), RECONNECT_DELAY_MS);
+        scheduleReconnect();
       };
     };
 

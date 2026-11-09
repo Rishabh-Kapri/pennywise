@@ -12,9 +12,9 @@ func NewCheckTransaction() *checkTransaction {
 	return &checkTransaction{}
 }
 
-func (c *checkTransaction) IsTransaction(ctx context.Context, msg ports.Message) (ports.TxnVerdict, error) {
+func (c *checkTransaction) Check(ctx context.Context, msg ports.Message) (ports.TxnVerdict, error) {
 	return ports.TxnVerdict{
 		IsTransaction: false,
-		Confidence:    0.0,
+		Confidence:    new(0.0),
 	}, nil
 }

@@ -66,7 +66,7 @@ func main() {
 		logger.Fatal("Invalid or missing BUDGET_ID: %v", err)
 	}
 
-	database, err := factory.ConnectDB(factory.Config{Driver: cfg.DatabaseDriver, URL: cfg.DatabaseURL})
+	database, err := factory.ConnectDB(ctx, factory.Config{Driver: cfg.DatabaseDriver, URL: cfg.DatabaseURL})
 	if err != nil {
 		logger.Fatal(err.Error())
 	}

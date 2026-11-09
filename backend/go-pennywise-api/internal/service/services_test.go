@@ -1824,7 +1824,7 @@ func TestUserService_Update(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AuthService.GetAllGoogleUsers / GetCurrentUser / GetGoogleUserByEmail / UpdateGmailHistoryID
+// AuthService.GetCurrentUser / GetGoogleUserByEmail
 // ─────────────────────────────────────────────────────────────────────────────
 
 type svcGoogleProviderRepo struct {
@@ -1832,15 +1832,8 @@ type svcGoogleProviderRepo struct {
 	mock.Mock
 }
 
-func (m *svcGoogleProviderRepo) GetAll(ctx context.Context) ([]model.GoogleProviderUser, error) {
-	args := m.Called(ctx)
-	if v := args.Get(0); v != nil {
-		return v.([]model.GoogleProviderUser), args.Error(1)
-	}
-	return nil, args.Error(1)
-}
-func (m *svcGoogleProviderRepo) Create(ctx context.Context, authUserID uuid.UUID, googleID string, oauthClientType model.GoogleOAuthClientType, name string, picture string, email string, refreshToken string, expiryAt *int64) (*model.UserWithCredentials, error) {
-	args := m.Called(ctx, authUserID, googleID, oauthClientType, name, picture, email, refreshToken, expiryAt)
+func (m *svcGoogleProviderRepo) Create(ctx context.Context, authUserID uuid.UUID, googleID string, oauthClientType model.GoogleOAuthClientType, name string, picture string, email string) (*model.UserWithCredentials, error) {
+	args := m.Called(ctx, authUserID, googleID, oauthClientType, name, picture, email)
 	if v := args.Get(0); v != nil {
 		return v.(*model.UserWithCredentials), args.Error(1)
 	}
@@ -1870,42 +1863,12 @@ func (m *svcGoogleProviderRepo) GetUserByEmail(ctx context.Context, email string
 func (m *svcGoogleProviderRepo) UpdateUserByGoogleIDAndClientType(ctx context.Context, googleID string, oauthClientType model.GoogleOAuthClientType, data *model.GoogleProviderUser) error {
 	return m.Called(ctx, googleID, oauthClientType, data).Error(0)
 }
-func (m *svcGoogleProviderRepo) UpdateHistoryID(ctx context.Context, googleID string, oauthClientType model.GoogleOAuthClientType, historyID uint64, expiryAt *int64) error {
-	return m.Called(ctx, googleID, oauthClientType, historyID, expiryAt).Error(0)
-}
-func (m *svcGoogleProviderRepo) UpdateHistoryIDByEmail(ctx context.Context, email string, oauthClientType model.GoogleOAuthClientType, historyID uint64, expiryAt *int64) error {
-	return m.Called(ctx, email, oauthClientType, historyID, expiryAt).Error(0)
-}
-
 func newAuthSvcWithGoogle(authRepo *svcAuthRepo, googleRepo *svcGoogleProviderRepo) *authService {
 	return &authService{
 		config:         authTestConfig(),
 		repo:           authRepo,
 		googleProvider: googleRepo,
 	}
-}
-
-func TestAuthService_GetAllGoogleUsers(t *testing.T) {
-	t.Run("returns_users", func(t *testing.T) {
-		authRepo := &svcAuthRepo{}
-		googleRepo := &svcGoogleProviderRepo{}
-		googleRepo.On("GetAll", mock.Anything).Return([]model.GoogleProviderUser{{Email: "a@b.com"}}, nil)
-		svc := newAuthSvcWithGoogle(authRepo, googleRepo)
-		users, err := svc.GetAllGoogleUsers(context.Background())
-		assert.NoError(t, err)
-		assert.Len(t, users, 1)
-		googleRepo.AssertExpectations(t)
-	})
-	t.Run("repo_error_propagates", func(t *testing.T) {
-		authRepo := &svcAuthRepo{}
-		googleRepo := &svcGoogleProviderRepo{}
-		googleRepo.On("GetAll", mock.Anything).Return(nil, assert.AnError)
-		svc := newAuthSvcWithGoogle(authRepo, googleRepo)
-		users, err := svc.GetAllGoogleUsers(context.Background())
-		assert.Error(t, err)
-		assert.Nil(t, users)
-		googleRepo.AssertExpectations(t)
-	})
 }
 
 func TestAuthService_GetGoogleUserByEmail(t *testing.T) {
@@ -1928,17 +1891,6 @@ func TestAuthService_GetGoogleUserByEmail(t *testing.T) {
 		result, err := svc.GetGoogleUserByEmail(context.Background(), "x@y.com")
 		assert.Error(t, err)
 		assert.Nil(t, result)
-		googleRepo.AssertExpectations(t)
-	})
-}
-
-func TestAuthService_UpdateGmailHistoryID(t *testing.T) {
-	t.Run("success", func(t *testing.T) {
-		authRepo := &svcAuthRepo{}
-		googleRepo := &svcGoogleProviderRepo{}
-		googleRepo.On("UpdateHistoryIDByEmail", mock.Anything, "a@b.com", model.GoogleOAuthClientTypeWeb, uint64(42), (*int64)(nil)).Return(nil)
-		svc := newAuthSvcWithGoogle(authRepo, googleRepo)
-		assert.NoError(t, svc.UpdateGmailHistoryID(context.Background(), "a@b.com", model.GoogleOAuthClientTypeWeb, 42, nil))
 		googleRepo.AssertExpectations(t)
 	})
 }

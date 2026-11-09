@@ -9,7 +9,6 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
@@ -21,13 +20,6 @@ var (
 	ErrNoAIProvider          = errors.New("add an AI provider before importing emails")
 )
 
-const (
-	defaultBackfillDays = 14
-	maxBackfillDays     = 30
-	// Bounds what one backfill can cost the user's AI provider.
-	backfillMaxEmails = 25
-)
-
 type OnboardingService interface {
 	Get(ctx context.Context) (*model.BudgetOnboarding, error)
 	Update(ctx context.Context, req model.UpdateBudgetOnboardingRequest) (*model.BudgetOnboarding, error)
@@ -35,21 +27,15 @@ type OnboardingService interface {
 }
 
 type onboardingService struct {
-	budgetRepo     repository.BudgetRepository
-	authRepo       repository.AuthRepository
-	googleProvider repository.GoogleProviderRepository
-	llmProviders   repository.UserLLMProviderRepository
-	gmail          *transport.Client
+	budgetRepo repository.BudgetRepository
+	llmModels  repository.UserLLMModelRepository
 }
 
 func NewOnboardingService(
 	budgetRepo repository.BudgetRepository,
-	authRepo repository.AuthRepository,
-	googleProvider repository.GoogleProviderRepository,
-	llmProviders repository.UserLLMProviderRepository,
-	gmail *transport.Client,
+	llmModels repository.UserLLMModelRepository,
 ) OnboardingService {
-	return &onboardingService{budgetRepo, authRepo, googleProvider, llmProviders, gmail}
+	return &onboardingService{budgetRepo, llmModels}
 }
 
 func (s *onboardingService) Get(ctx context.Context) (*model.BudgetOnboarding, error) {
@@ -106,70 +92,27 @@ func applyOnboardingUpdate(
 	if req.ChecklistDismissed != nil {
 		current.ChecklistDismissed = *req.ChecklistDismissed
 	}
+	if req.EmailsImported != nil && *req.EmailsImported && current.EmailsImportedAt == nil {
+		current.EmailsImportedAt = &now
+	}
 	return current, nil
 }
 
-type gmailBackfillRequest struct {
-	RefreshToken    string                      `json:"refreshToken"`
-	OAuthClientType model.GoogleOAuthClientType `json:"oauthClientType"`
-	Email           string                      `json:"email"`
-	Days            int                         `json:"days"`
-	MaxResults      int64                       `json:"maxResults"`
-}
-
-// BackfillEmails runs the email pipeline over the user's recent bank alerts,
-// which arrived before Pennywise started watching their inbox. Transactions
-// show up over the websocket as each email finishes.
+// BackfillEmails should run the email pipeline over the user's recent bank
+// alerts. Gmail credentials moved to mail_connections, which only ingest can
+// open, so until ingest offers a backfill this always returns
+// ErrNoGmailConnected once an AI provider exists.
 func (s *onboardingService) BackfillEmails(
 	ctx context.Context,
 	userID uuid.UUID,
 	days int,
 ) (*model.OnboardingEmailBackfillResponse, error) {
-	if days <= 0 {
-		days = defaultBackfillDays
-	}
-	days = min(days, maxBackfillDays)
-
-	providers, err := s.llmProviders.ListEnabledForBudget(ctx, utils.MustBudgetID(ctx))
+	models, err := s.llmModels.ListUsableForBudget(ctx, utils.MustBudgetID(ctx), model.LLMModelChat)
 	if err != nil {
 		return nil, err
 	}
-	if len(providers) == 0 {
+	if len(models) == 0 {
 		return nil, ErrNoAIProvider
-	}
-
-	google, err := s.googleCredentials(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-
-	return transport.Post[*model.OnboardingEmailBackfillResponse](ctx, s.gmail, "/api/backfill", nil, gmailBackfillRequest{
-		RefreshToken:    google.RefreshToken,
-		OAuthClientType: google.OAuthClientType,
-		Email:           google.Email,
-		Days:            days,
-		MaxResults:      backfillMaxEmails,
-	})
-}
-
-// googleCredentials returns the user's first Google login that has Gmail access.
-func (s *onboardingService) googleCredentials(ctx context.Context, userID uuid.UUID) (*model.GoogleProviderUser, error) {
-	user, err := s.authRepo.GetUserWithProviders(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-	for _, provider := range user.Providers {
-		if provider.ProviderType != model.GoogleAuthProviderType {
-			continue
-		}
-		creds, err := s.googleProvider.GetUserByGoogleIDAndClientType(
-			ctx, provider.ProviderID, model.NormalizeGoogleOAuthClientType(provider.OAuthClientType))
-		if err != nil {
-			return nil, err
-		}
-		if creds.GoogleProvider != nil && creds.GoogleProvider.RefreshToken != "" {
-			return creds.GoogleProvider, nil
-		}
 	}
 	return nil, ErrNoGmailConnected
 }

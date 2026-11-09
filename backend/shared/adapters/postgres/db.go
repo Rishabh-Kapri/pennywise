@@ -32,17 +32,17 @@ func Connect() *pgxpool.Pool {
 	return dbpool
 }
 
-func ConnectWithURL(databaseURL string) (*pgxpool.Pool, error) {
+func ConnectWithURL(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	if databaseURL == "" {
 		return nil, errs.New(errs.CodeInvalidArgument, "database URL cannot be empty")
 	}
 
-	dbpool, err := pgxpool.New(context.Background(), databaseURL)
+	dbpool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
 		return nil, errs.Wrap(errs.CodeHTTPClientError, "Unable to connect to database", err)
 	}
 
-	if err := dbpool.Ping(context.Background()); err != nil {
+	if err := dbpool.Ping(ctx); err != nil {
 		return nil, errs.Wrap(errs.CodeHTTPClientError, "Unable to ping database", err)
 	}
 
