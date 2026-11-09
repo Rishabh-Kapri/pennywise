@@ -44,9 +44,9 @@ test('demo transaction changes balances and survives reload', async ({ page }, t
     await page.getByRole('link', { name: 'Transactions', exact: true }).click();
     await page.getByRole('button', { name: 'Add Expense' }).click();
     await page.getByPlaceholder('0', { exact: true }).fill('123');
-    await page.getByPlaceholder('Select Payee', { exact: true }).fill('BigBasket');
-    await page.getByText('BigBasket', { exact: true }).last().click();
-    await page.getByRole('combobox', { name: 'Select Account' }).fill('HDFC');
+    await page.getByPlaceholder('Select payee', { exact: true }).fill('BigBasket');
+    await page.getByRole('option', { name: 'BigBasket' }).click();
+    await page.getByPlaceholder('Select account', { exact: true }).fill('HDFC');
     await page.getByRole('option', { name: 'HDFC Checking' }).click();
     await page.getByPlaceholder('Add a note...').fill(note);
     const createdResponse = page.waitForResponse(r => r.url().endsWith('/api/transactions') && r.request().method() === 'POST');
@@ -63,8 +63,8 @@ test('demo transaction changes balances and survives reload', async ({ page }, t
     await page.reload();
     await page.getByPlaceholder('Search transactions').fill(note);
     await expect(page.getByText(note, { exact: true })).toBeVisible();
-    await page.getByTestId(`transaction-${transactionId}`).getByText('₹123.00', { exact: true }).click();
-    await page.getByPlaceholder('Something about this transaction you would like to recall later?').fill(`${note} edited`);
+    await page.getByTestId(`transaction-${transactionId}`).click();
+    await page.getByPlaceholder("Anything you'd like to remember about this?").fill(`${note} edited`);
     const updatedResponse = page.waitForResponse(r => r.url().includes(`/api/transactions/${transactionId}`) && r.request().method() === 'PATCH');
     await page.getByRole('button', { name: 'Save', exact: true }).click();
     expect((await updatedResponse).ok()).toBeTruthy();

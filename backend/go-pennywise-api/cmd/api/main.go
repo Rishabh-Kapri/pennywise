@@ -267,8 +267,6 @@ func main() {
 
 	authService := service.NewAuthService(database.Auth, database.GoogleProvider, database.DBTxn)
 	authHandler := handler.NewAuthHandler(authService)
-	gmailService := service.NewGmailService(repository.NewGmailRepository(dbConn), googleProviderRepo, gmailClient, temporalClient)
-	gmailHandler := handler.NewGmailHandler(gmailService)
 
 	onboardingHandler := handler.NewOnboardingHandler(
 		service.NewOnboardingService(
@@ -424,14 +422,6 @@ func main() {
 		// }
 
 		// Protected routes - all require authentication
-		{
-			// Gmail controls apply to the user's mailbox across budgets.
-			gmailGroup := router.Group("/api/auth/gmail")
-			gmailGroup.Use(authMiddleware, rateLimitMiddleware)
-			gmailGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), gmailHandler.ListConnections)
-			gmailGroup.POST("/reconnect", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), gmailHandler.Reconnect)
-			gmailGroup.POST("/:action", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), gmailHandler.Control)
-		}
 		{
 			authUserGroup := router.Group("/api/auth/users")
 			authUserGroup.Use(authMiddleware, rateLimitMiddleware)

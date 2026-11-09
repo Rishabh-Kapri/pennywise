@@ -3,7 +3,6 @@ import {
   Files,
   FileMagnifyingGlass,
   GearSix,
-  Envelope,
   ListChecks,
   MagnifyingGlass,
   Money as Banknote,
@@ -30,7 +29,6 @@ import { apiClient } from '@/utils';
 import { GeneralSettings } from './GeneralSettings';
 import { AISettings } from './AISettings';
 import { TagSettings } from './TagSettings';
-import { GmailSettings } from './GmailSettings';
 
 // heavier, data-driven sections: keep them out of the settings entry chunk
 const Recurring = lazy(() => import('@/features/recurring/components/Recurring'));
@@ -67,7 +65,6 @@ interface CurrentUser {
 
 type SectionId =
   | 'general'
-  | 'gmail'
   | 'loans'
   | 'recurring'
   | 'documents'
@@ -107,12 +104,6 @@ const SECTIONS: SectionDef[] = [
     icon: GearSix,
     description: 'Your profile and the Google account you sign in with.',
     keywords: 'profile google gmail delete account',
-  },
-  {
-    id: 'gmail',
-    label: 'Gmail',
-    icon: <Envelope size={18} />,
-    description: 'Connection health and automatic email imports',
   },
   {
     id: 'loans',

@@ -130,15 +130,14 @@ type JWTClaims struct {
 // fields are always empty: Gmail access moved to mail_connections, and they stay
 // only until the Temporal workflows that read them are removed.
 type GoogleUserInfo struct {
-	GoogleID             string                `json:"googleId"`
-	OAuthClientType      GoogleOAuthClientType `json:"oauthClientType"`
-	Email                string                `json:"email"`
-	GmailHistoryID       uint64                `json:"gmailHistoryId"`
-	RefreshToken         string                `json:"refreshToken"`
-	LastGmailSync        *time.Time            `json:"lastGmailSync"`
-	UserID               uuid.UUID             `json:"userId"`
-	BudgetID             uuid.UUID             `json:"budgetId"`
-	GmailIngestionPaused bool                  `json:"gmailIngestionPaused"`
+	GoogleID        string                `json:"googleId"`
+	OAuthClientType GoogleOAuthClientType `json:"oauthClientType"`
+	Email           string                `json:"email"`
+	GmailHistoryID  uint64                `json:"gmailHistoryId"`
+	RefreshToken    string                `json:"refreshToken"`
+	LastGmailSync   *time.Time            `json:"lastGmailSync"`
+	UserID          uuid.UUID             `json:"userId"`
+	BudgetID        uuid.UUID             `json:"budgetId"`
 }
 
 // GoogleTokenPayload represents the decoded Google ID token

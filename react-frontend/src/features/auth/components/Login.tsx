@@ -34,8 +34,7 @@ const LogoIcon = () => (
 function GoogleSignInButton() {
   const dispatch = useAppDispatch();
   const onGoogleLogin = useGoogleLogin({
-    flow: 'auth-code',
-    scope: 'https://mail.google.com/',
+    flow: 'auth-code', // the library adds `openid profile email`; Gmail is granted in Settings → Email sync
     onSuccess: async (codeResponse) => {
       dispatch(loginWithGoogle(codeResponse.code))
         .unwrap()
@@ -84,20 +83,6 @@ export function Login() {
   //   [dispatch],
   // );
 
-  const onGoogleLogin = useGoogleLogin({
-    flow: 'auth-code', // the library adds `openid profile email`; Gmail is granted in Settings → Email sync
-    onSuccess: async (codeResponse) => {
-      dispatch(loginWithGoogle(codeResponse.code))
-        .unwrap()
-        .catch((err: unknown) => {
-          const message = err instanceof Error ? err.message : typeof err === 'string' ? err : 'Login failed';
-          toast.error(message);
-        });
-    },
-    onError: (error) => {
-      console.log('inside onError', error);
-    },
-  });
 
   const onDemoLogin = () => {
     dispatch(loginAsDemo())
