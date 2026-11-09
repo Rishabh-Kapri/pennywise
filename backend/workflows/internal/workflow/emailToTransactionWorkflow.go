@@ -27,7 +27,7 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailToT
 	}
 	workflow.GetLogger(ctx).Info("starting email-to-transaction workflow", workflowLogFields...)
 
-	// ----- Step 1: Fetch user data -----
+	// ----- Step 1: Fetch user data and update history id in Pennywise -----
 	pennywiseCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 		TaskQueue:           sharedModel.PennywiseActivitiesTaskQueue,
 		StartToCloseTimeout: 300 * time.Second,
@@ -42,15 +42,6 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailToT
 	if err != nil {
 		return err
 	}
-	controlsEnabled := workflow.GetVersion(ctx, "gmail-ingestion-controls", workflow.DefaultVersion, 1) >= 1
-	if controlsEnabled && googleUser.GmailIngestionPaused {
-		workflow.GetLogger(ctx).Info("Gmail ingestion is paused", "email", input.Email)
-		return nil
-	}
-	trigger := sharedModel.PipelineTriggerGmailPush
-	if controlsEnabled && input.ManualSync {
-		trigger = sharedModel.PipelineTriggerManual
-	}
 
 	// Budget is known now — start pipeline run tracking for the UI. Gated on a
 	// version marker so in-flight pre-observability workflows replay without
@@ -61,7 +52,7 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailToT
 			BudgetID:       googleUser.BudgetID,
 			WorkflowID:     workflowInfo.WorkflowExecution.ID,
 			WorkflowRunID:  workflowInfo.WorkflowExecution.RunID,
-			Trigger:        trigger,
+			Trigger:        sharedModel.PipelineTriggerGmailPush,
 			EmailAccount:   input.Email,
 			GmailHistoryID: input.HistoryId,
 		})
@@ -72,24 +63,10 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailToT
 		OAuthClientType: googleUser.OAuthClientType,
 		GmailHistoryID:  input.HistoryId,
 	}
-	if controlsEnabled && input.ManualSync {
-		// Record a successful manual sync without replacing its starting cursor.
-		updateHistoryInput.GmailHistoryID = googleUser.GmailHistoryID
-	}
-	// Older executions updated the cursor before fetching. New executions only
-	// advance it after success, so Sync now can recover a failed import.
-	updateHistory := func() error {
-		if err := workflow.ExecuteActivity(pennywiseCtx, "UpdateGmailHistoryID", updateHistoryInput).
-			Get(pennywiseCtx, nil); err != nil {
-			reporter.reportFailed(ctx, sharedModel.PipelineStepFetchUser, err)
-			return err
-		}
-		return nil
-	}
-	if !controlsEnabled {
-		if err := updateHistory(); err != nil {
-			return err
-		}
+	if err := workflow.ExecuteActivity(pennywiseCtx, "UpdateGmailHistoryID", updateHistoryInput).
+		Get(pennywiseCtx, nil); err != nil {
+		reporter.reportFailed(ctx, sharedModel.PipelineStepFetchUser, err)
+		return err
 	}
 
 	// ----- Step 2: Fetch emails data from Gmail using Pennywise-owned user data -----
@@ -128,11 +105,6 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailToT
 	emailCount := len(emailDataInput.EmailData)
 	workflow.GetLogger(ctx).Info("fetched emails", append(workflowLogFields, "count", emailCount)...)
 	if emailCount == 0 {
-		if controlsEnabled {
-			if err := updateHistory(); err != nil {
-				return err
-			}
-		}
 		reporter.report(ctx, sharedModel.ReportPipelineStatusInput{
 			RunStatus:     sharedModel.PipelineRunStatusCompleted,
 			CurrentStep:   sharedModel.PipelineStepDone,
@@ -196,9 +168,6 @@ func EmailToTransactionWorkflow(ctx workflow.Context, input sharedModel.EmailToT
 	}
 
 	workflow.GetLogger(ctx).Info("email-to-transaction workflow completed", workflowLogFields...)
-	if controlsEnabled {
-		return updateHistory()
-	}
 	return nil
 }
 

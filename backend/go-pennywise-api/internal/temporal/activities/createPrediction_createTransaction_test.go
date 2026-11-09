@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"math"
 	"net/http"
 	"strings"

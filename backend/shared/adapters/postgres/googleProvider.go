@@ -178,7 +178,7 @@ func (r *googleProviderRepo) UpdateUserByGoogleIDAndClientType(
 	data *model.GoogleProviderUser,
 ) error {
 	oauthClientType = model.NormalizeGoogleOAuthClientType(oauthClientType)
-	logger.Logger(ctx).Info("updating user", "googleID", googleID, "oauthClientType", oauthClientType)
+	logger.Logger(ctx).Info("updating user", "googleID", googleID, "oauthClientType", oauthClientType, "data", data)
 	query := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).Update("google_provider_users")
 	isUpdate := false
 	if data.Name != "" {

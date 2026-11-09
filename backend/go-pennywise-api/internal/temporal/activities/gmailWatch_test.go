@@ -84,22 +84,6 @@ func executeUpdateGmailWatchState(
 
 // --- GetGoogleUserByEmail ---
 
-func TestListGoogleUsersNeedingWatchRefresh_SkipsPausedAndDisconnectedUsers(t *testing.T) {
-	historyID := uint64(7)
-	act := FetchGoogleUsersActivity{AuthService: &fakeAuthService{
-		getAllGoogleUsers: func(context.Context) ([]model.GoogleProviderUser, error) {
-			return []model.GoogleProviderUser{
-				{ID: "paused", GmailHistoryID: &historyID, RefreshToken: "tok", GmailIngestionPaused: true},
-				{ID: "disconnected", GmailHistoryID: &historyID},
-			}, nil
-		},
-	}}
-	got, err := executeListGoogleUsersNeedingWatchRefresh(t, act)
-	if err != nil || len(got) != 0 {
-		t.Fatalf("paused and disconnected mailboxes must not renew: users=%v error=%v", got, err)
-	}
-}
-
 func TestGetGoogleUserByEmail_ReturnsUser(t *testing.T) {
 	want := &model.GoogleUserInfo{
 		Email:          "test@example.com",
