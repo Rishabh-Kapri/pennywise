@@ -31,7 +31,7 @@ func (f *fakeLLMProviderRepo) Upsert(
 	in repository.UserLLMProviderUpsert,
 ) (*model.UserLLMProvider, error) {
 	f.upserted = &in
-	return &model.UserLLMProvider{Provider: in.Provider, Model: in.Model}, nil
+	return &model.UserLLMProvider{Provider: in.Provider}, nil
 }
 
 func newTestAIProviderService(t *testing.T, repo *fakeLLMProviderRepo, demo bool) (AIProviderService, *utils.SecretBox) {
@@ -41,7 +41,7 @@ func newTestAIProviderService(t *testing.T, repo *fakeLLMProviderRepo, demo bool
 		t.Fatal(err)
 	}
 	isDemo := func(context.Context, uuid.UUID) bool { return demo }
-	return NewAIProviderService(repo, box, nil, isDemo), box
+	return NewAIProviderService(repo, box, isDemo), box
 }
 
 func TestAIProviderUpsert(t *testing.T) {
@@ -53,7 +53,7 @@ func TestAIProviderUpsert(t *testing.T) {
 		repo := &fakeLLMProviderRepo{}
 		svc, box := newTestAIProviderService(t, repo, false)
 		_, err := svc.Upsert(ctx, userID, model.LLMProviderOpenAI, model.UpsertUserLLMProviderRequest{
-			APIKey: key("sk-test-abcd1234"), Model: "gpt-5-mini",
+			APIKey: key("sk-test-abcd1234"),
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -69,7 +69,7 @@ func TestAIProviderUpsert(t *testing.T) {
 
 	t.Run("hosted provider needs a key", func(t *testing.T) {
 		svc, _ := newTestAIProviderService(t, &fakeLLMProviderRepo{}, false)
-		_, err := svc.Upsert(ctx, userID, model.LLMProviderAnthropic, model.UpsertUserLLMProviderRequest{Model: "claude-haiku-5-5"})
+		_, err := svc.Upsert(ctx, userID, model.LLMProviderAnthropic, model.UpsertUserLLMProviderRequest{})
 		if !errors.Is(err, ErrAIProviderKeyRequired) {
 			t.Fatalf("err = %v", err)
 		}
@@ -77,14 +77,14 @@ func TestAIProviderUpsert(t *testing.T) {
 
 	t.Run("omitted key keeps the saved one", func(t *testing.T) {
 		repo := &fakeLLMProviderRepo{existing: []model.UserLLMProvider{
-			{Provider: model.LLMProviderOpenRouter, HasAPIKey: true, Priority: 2},
+			{Provider: model.LLMProviderOpenRouter, HasAPIKey: true},
 		}}
 		svc, _ := newTestAIProviderService(t, repo, false)
-		_, err := svc.Upsert(ctx, userID, model.LLMProviderOpenRouter, model.UpsertUserLLMProviderRequest{Model: "x/y"})
+		_, err := svc.Upsert(ctx, userID, model.LLMProviderOpenRouter, model.UpsertUserLLMProviderRequest{})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !repo.upserted.KeepAPIKey || repo.upserted.Priority != 2 {
+		if !repo.upserted.KeepAPIKey {
 			t.Fatalf("upsert = %+v", repo.upserted)
 		}
 	})
@@ -92,12 +92,12 @@ func TestAIProviderUpsert(t *testing.T) {
 	t.Run("ollama needs a URL but no key", func(t *testing.T) {
 		repo := &fakeLLMProviderRepo{}
 		svc, _ := newTestAIProviderService(t, repo, false)
-		_, err := svc.Upsert(ctx, userID, model.LLMProviderOllama, model.UpsertUserLLMProviderRequest{Model: "gemma"})
+		_, err := svc.Upsert(ctx, userID, model.LLMProviderOllama, model.UpsertUserLLMProviderRequest{})
 		if !errors.Is(err, ErrInvalidAIProvider) {
 			t.Fatalf("missing URL err = %v", err)
 		}
 		_, err = svc.Upsert(ctx, userID, model.LLMProviderOllama, model.UpsertUserLLMProviderRequest{
-			Model: "gemma", BaseURL: "https://ollama.example.com/",
+			BaseURL: "https://ollama.example.com/",
 		})
 		if err != nil || repo.upserted.BaseURL != "https://ollama.example.com" {
 			t.Fatalf("err = %v, upsert = %+v", err, repo.upserted)
@@ -107,7 +107,7 @@ func TestAIProviderUpsert(t *testing.T) {
 	t.Run("base URL only for ollama", func(t *testing.T) {
 		svc, _ := newTestAIProviderService(t, &fakeLLMProviderRepo{}, false)
 		_, err := svc.Upsert(ctx, userID, model.LLMProviderOpenAI, model.UpsertUserLLMProviderRequest{
-			APIKey: key("sk-test-abcd1234"), Model: "m", BaseURL: "https://evil.example.com",
+			APIKey: key("sk-test-abcd1234"), BaseURL: "https://evil.example.com",
 		})
 		if !errors.Is(err, ErrInvalidAIProvider) {
 			t.Fatalf("err = %v", err)
@@ -116,7 +116,7 @@ func TestAIProviderUpsert(t *testing.T) {
 
 	t.Run("unknown provider and demo user are refused", func(t *testing.T) {
 		svc, _ := newTestAIProviderService(t, &fakeLLMProviderRepo{}, false)
-		if _, err := svc.Upsert(ctx, userID, "lumo", model.UpsertUserLLMProviderRequest{Model: "m"}); !errors.Is(err, ErrInvalidAIProvider) {
+		if _, err := svc.Upsert(ctx, userID, "lumo", model.UpsertUserLLMProviderRequest{}); !errors.Is(err, ErrInvalidAIProvider) {
 			t.Fatalf("err = %v", err)
 		}
 		demoSvc, _ := newTestAIProviderService(t, &fakeLLMProviderRepo{}, true)

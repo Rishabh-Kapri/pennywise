@@ -2,16 +2,17 @@ import { useCallback, useState } from 'react';
 import { ArrowLeft, ArrowRight, LockSimple } from '@phosphor-icons/react';
 import { useAppSelector } from '@/app/hooks';
 import { selectIsDemoUser } from '@/features/auth/store';
-import { AIProvidersPanel } from '../AIProvidersPanel';
-import type { AIProvider } from '../../types';
+import { AIProvidersPanel, type AISetup } from '../AIProvidersPanel';
+import { usableModels } from '../../types';
 import type { StepProps } from '../OnboardingWizard';
 import styles from './steps.module.css';
 
 export function AIStep({ onNext, onBack, busy }: StepProps) {
   const isDemo = useAppSelector(selectIsDemoUser);
-  const [providers, setProviders] = useState<AIProvider[]>([]);
-  const handleChange = useCallback((list: AIProvider[]) => setProviders(list), []);
-  const hasProvider = providers.some((provider) => provider.enabled);
+  const [setup, setSetup] = useState<AISetup>({ providers: [], models: [] });
+  const handleChange = useCallback((next: AISetup) => setSetup(next), []);
+  // Email import and the assistant need a chat model on an enabled key.
+  const hasProvider = usableModels(setup.providers, setup.models, 'chat').length > 0;
 
   return (
     <>
@@ -36,8 +37,8 @@ export function AIStep({ onNext, onBack, busy }: StepProps) {
 
       {!hasProvider && (
         <div className={`${styles.callout} ${styles.calloutWarning}`}>
-          Without a provider, bank emails can't be turned into transactions and the assistant stays off. You can add one
-          later in Settings → AI.
+          Without a chat model, bank emails can't be turned into transactions and the assistant stays off. You can add
+          one later in Settings → AI.
         </div>
       )}
 

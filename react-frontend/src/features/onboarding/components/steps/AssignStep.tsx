@@ -94,7 +94,12 @@ export function AssignStep({ onNext, onBack, busy }: StepProps) {
             ))}
           </ul>
           <div className={styles.actions} style={{ marginTop: '1rem' }}>
-            <button type="button" className={styles.secondary} onClick={fundBills} disabled={funding || readyToAssign <= 0}>
+            <button
+              type="button"
+              className={styles.secondary}
+              onClick={fundBills}
+              disabled={funding || readyToAssign <= 0}
+            >
               {funding ? 'Assigning…' : `Fund bills (${formatCurrency(Math.min(needed, Math.max(readyToAssign, 0)))})`}
             </button>
             {needed > readyToAssign && readyToAssign > 0 && (
@@ -115,7 +120,12 @@ export function AssignStep({ onNext, onBack, busy }: StepProps) {
           <ArrowLeft size={16} /> Back
         </button>
         <span className={styles.spacer} />
-        <button type="button" className={styles.ghost} onClick={() => finishTo('/dashboard')} disabled={busy || funding}>
+        <button
+          type="button"
+          className={styles.ghost}
+          onClick={() => finishTo('/dashboard')}
+          disabled={busy || funding}
+        >
           Finish
         </button>
         <button type="button" className={styles.primary} onClick={() => finishTo('/budget')} disabled={busy || funding}>

@@ -1,10 +1,12 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/factory"
 	sharedMiddleware "github.com/Rishabh-Kapri/pennywise/backend/shared/middleware"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
@@ -12,6 +14,16 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
+
+// internalAuth verifies X-Internal-Token "secret" as the cipher service.
+func internalAuth() gin.HandlerFunc {
+	services, err := factory.NewServiceAuthenticator(context.Background(),
+		factory.ServiceAuthConfig{Tokens: "cipher:secret"})
+	if err != nil {
+		panic(err)
+	}
+	return sharedMiddleware.InternalRequestAuth("own", services)
+}
 
 func setupRouteAuthRouter(requiredScopes ...model.Scope) *gin.Engine {
 	gin.SetMode(gin.TestMode)
@@ -28,7 +40,7 @@ func TestRouteAuthMiddleware_InternalRequestSkipsScopes(t *testing.T) {
 	r := gin.New()
 	gin.SetMode(gin.TestMode)
 	r.Use(sharedMiddleware.RequestMetadata("pennywise-api"))
-	r.Use(sharedMiddleware.InternalRequestAuth("secret"))
+	r.Use(internalAuth())
 	r.Use(RouteAuthMiddleware(model.ScopeWrite))
 	r.GET("/", func(c *gin.Context) { c.Status(http.StatusOK) })
 

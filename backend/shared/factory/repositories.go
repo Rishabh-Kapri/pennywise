@@ -4,6 +4,7 @@
 package factory
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -58,14 +59,18 @@ func (d *Database) Close() {
 }
 
 // ConnectDB connects to the database cfg names and builds its repositories.
-func ConnectDB(cfg Config) (*Database, error) {
+func ConnectDB(ctx context.Context, cfg Config) (*Database, error) {
 	switch cfg.driver() {
 	case DriverPostgres:
-		pool, err := postgres.ConnectWithURL(cfg.URL)
+		pool, close, err := acquirePool(ctx, cfg.URL)
 		if err != nil {
 			return nil, err
 		}
-		return &Database{Repositories: newPostgresRepositories(pool), Pool: pool, close: pool.Close}, nil
+		return &Database{
+			Repositories: newPostgresRepositories(pool),
+			Pool:         pool,
+			close:        close,
+		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported database driver %q", cfg.Driver)
 	}
@@ -74,10 +79,10 @@ func ConnectDB(cfg Config) (*Database, error) {
 // OpenSQLPool opens a bare connection pool, for components that issue SQL
 // themselves (the agent's read-only query tools). It fails for drivers that
 // are not SQL databases.
-func OpenSQLPool(cfg Config) (*pgxpool.Pool, error) {
+func OpenSQLPool(ctx context.Context, cfg Config) (*pgxpool.Pool, error) {
 	switch cfg.driver() {
 	case DriverPostgres:
-		return postgres.ConnectWithURL(cfg.URL)
+		return postgres.ConnectWithURL(ctx, cfg.URL)
 	default:
 		return nil, fmt.Errorf("database driver %q has no SQL pool", cfg.Driver)
 	}
@@ -100,10 +105,14 @@ type Repositories struct {
 	Embedding            repository.EmbeddingRepository
 	GoogleProvider       repository.GoogleProviderRepository
 	LoanMetadata         repository.LoanMetadataRepository
+	MailConnection       repository.MailConnectionRepository
 	MonthlyBudget        repository.MonthlyBudgetRepository
 	Payee                repository.PayeesRepository
 	PayeeRule            repository.PayeeRuleRepository
 	PipelineRun          repository.PipelineRunRepository
+	PipelineStep         repository.PipelineStepRepository
+	CounterpartyAlias    repository.CounterpartyAliasRepository
+	TransactionSource    repository.TransactionSourceRepository
 	Prediction           repository.PredictionRepository
 	PredictionReview     repository.PredictionReviewRepository
 	RecurringTransaction repository.RecurringTransactionRepository
@@ -116,6 +125,7 @@ type Repositories struct {
 	DBTxn                repository.DBTxn
 	User                 repository.UserRepository
 	UserLLMProvider      repository.UserLLMProviderRepository
+	UserLLMModel         repository.UserLLMModelRepository
 }
 
 // newPostgresRepositories builds every repository on one pool.
@@ -136,10 +146,14 @@ func newPostgresRepositories(pool *pgxpool.Pool) *Repositories {
 		Embedding:            postgres.NewEmbeddingRepository(pool),
 		GoogleProvider:       postgres.NewGoogleProviderRepository(pool),
 		LoanMetadata:         postgres.NewLoanMetadataRepository(pool),
+		MailConnection:       postgres.NewMailConnectionRepository(pool),
 		MonthlyBudget:        postgres.NewMonthlyBudgetRepository(pool),
 		Payee:                postgres.NewPayeesRepository(pool),
 		PayeeRule:            postgres.NewPayeeRuleRepository(pool),
 		PipelineRun:          postgres.NewPipelineRunRepository(pool),
+		PipelineStep:         postgres.NewPipelineStepRepository(pool),
+		CounterpartyAlias:    postgres.NewCounterpartyAliasRepository(pool),
+		TransactionSource:    postgres.NewTransactionSourceRepository(pool),
 		Prediction:           postgres.NewPredictionRepository(pool),
 		PredictionReview:     postgres.NewPredictionReviewRepository(pool),
 		RecurringTransaction: postgres.NewRecurringTransactionRepository(pool),
@@ -152,5 +166,6 @@ func newPostgresRepositories(pool *pgxpool.Pool) *Repositories {
 		DBTxn:                postgres.NewDBTxn(pool),
 		User:                 postgres.NewUserRepository(pool),
 		UserLLMProvider:      postgres.NewUserLLMProviderRepository(pool),
+		UserLLMModel:         postgres.NewUserLLMModelRepository(pool),
 	}
 }

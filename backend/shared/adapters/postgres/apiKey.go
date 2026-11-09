@@ -3,10 +3,10 @@ package postgres
 import (
 	"context"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -24,7 +24,7 @@ func NewAPIKeyRepository(pool *pgxpool.Pool) repository.APIKeyRepository {
 func (r *apiKeyRepo) Create(ctx context.Context, key *model.APIKey) error {
 	query := `
     INSERT INTO api_keys (
-        key_id, hashed_key, name, description, user_id, scopes, allowed_ips, allowed_referers, rate_limit, expires_at
+        key_id, hashed_key, name, description, user_id, scopes, allowed_ips, allowed_referrers, rate_limit, expires_at
     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     RETURNING id, created_at
     `
@@ -46,37 +46,10 @@ func (r *apiKeyRepo) Create(ctx context.Context, key *model.APIKey) error {
 	return nil
 }
 
-// Return a list of all API keys for a user
+// GetAll lists a user's API keys, newest first.
 func (r *apiKeyRepo) GetAll(ctx context.Context, userID uuid.UUID) ([]model.APIKey, error) {
-	rows, err := r.Executor(ctx).Query(
-		ctx, `
-		  SELECT 
-		    id,
-		    key_id,
-		    hashed_key,
-		    masked_key,
-		    name,
-				description,
-			  user_id,
-			  scopes,
-			  allowed_ips,
-			  allowed_referers,
-			  rate_limit,
-			  expires_at,
-			  rotation_due_at,
-			  created_at,
-			  expires_at,
-			  last_used_at,
-			  revoked_at,
-			  rotation_enabled,
-			  rotated_from_id,
-			  rotation_due_at,
-			  is_active
-		  FROM api_keys
-		  WHERE user_id = $1
-		  ORDER BY created_at DESC
-		`, userID,
-	)
+	rows, err := r.Executor(ctx).Query(ctx,
+		`SELECT `+apiKeyColumns+` FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -84,117 +57,25 @@ func (r *apiKeyRepo) GetAll(ctx context.Context, userID uuid.UUID) ([]model.APIK
 
 	var keys []model.APIKey
 	for rows.Next() {
-		var key model.APIKey
-		err := rows.Scan(
-			&key.ID,
-			&key.KeyID,
-			&key.HashedKey,
-			&key.MaskedKey,
-			&key.Name,
-			&key.Description,
-			&key.UserID,
-			&key.Scopes,
-			&key.AllowedIPs,
-			&key.AllowedReferers,
-			&key.RateLimit,
-			&key.ExpiresAt,
-			&key.RotationDueAt,
-			&key.CreatedAt,
-			&key.ExpiresAt,
-			&key.LastUsedAt,
-			&key.RevokedAt,
-			&key.RotationEnabled,
-			&key.RotatedFromID,
-			&key.RotationDueAt,
-			&key.IsActive,
-		)
+		key, err := scanAPIKey(rows)
 		if err != nil {
 			return nil, err
 		}
-		keys = append(keys, key)
+		keys = append(keys, *key)
 	}
-	return keys, nil
+	return keys, rows.Err()
 }
 
-func (r *apiKeyRepo) GetByKeyID(ctx context.Context, keyID string) (*model.APIKey, error) {
-	var key model.APIKey
-	err := r.Executor(ctx).QueryRow(
-		ctx,
-		`SELECT 
-		  id,
-		  key_id,
-		  hashed_key,
-	    masked_key,
-		  name,
-			description,
-		  user_id,
-		  scopes,
-		  allowed_ips,
-		  allowed_referers,
-		  rate_limit,
-		  expires_at,
-		  rotation_due_at,
-		  created_at,
-		  expires_at,
-		  last_used_at,
-		  revoked_at,
-		  rotation_enabled,
-		  rotated_from_id,
-		  rotation_due_at,
-		  is_active
-		FROM api_keys
-		WHERE key_id = $1`,
-		keyID,
-	).Scan(
-		&key.ID,
-		&key.KeyID,
-		&key.HashedKey,
-		&key.MaskedKey,
-		&key.Name,
-		&key.Description,
-		&key.UserID,
-		&key.Scopes,
-		&key.AllowedIPs,
-		&key.AllowedReferers,
-		&key.RateLimit,
-		&key.ExpiresAt,
-		&key.RotationDueAt,
-		&key.CreatedAt,
-	)
-	if err != nil {
-		return nil, err
-	}
-	return &key, nil
-}
+// apiKeyColumns and scanAPIKey are shared by the single-key lookups so the
+// selected columns and the scan targets cannot drift apart.
+const apiKeyColumns = `
+	id, key_id, hashed_key, name, description, user_id, scopes, allowed_ips,
+	allowed_referrers, rate_limit, created_at, expires_at, last_used_at,
+	revoked_at, rotation_enabled, rotated_from_id, rotation_due_at, is_active`
 
-func (r *apiKeyRepo) GetByHash(ctx context.Context, keyHash string) (*model.APIKey, error) {
+func scanAPIKey(row pgx.Row) (*model.APIKey, error) {
 	var key model.APIKey
-	err := r.Executor(ctx).QueryRow(
-		ctx,
-		`SELECT 
-		  id,
-		  key_id,
-		  hashed_key,
-		  name,
-			description,
-		  user_id,
-		  scopes,
-		  allowed_ips,
-		  allowed_referers,
-		  rate_limit,
-		  rotation_due_at,
-		  created_at,
-		  expires_at,
-		  last_used_at,
-		  revoked_at,
-		  rotation_enabled,
-		  rotated_from_id,
-		  rotation_due_at,
-		  is_active
-		FROM api_keys
-		WHERE hashed_key = $1`,
-		keyHash,
-	).Scan(
+	err := row.Scan(
 		&key.ID,
 		&key.KeyID,
 		&key.HashedKey,
@@ -205,7 +86,6 @@ func (r *apiKeyRepo) GetByHash(ctx context.Context, keyHash string) (*model.APIK
 		&key.AllowedIPs,
 		&key.AllowedReferers,
 		&key.RateLimit,
-		&key.RotationDueAt,
 		&key.CreatedAt,
 		&key.ExpiresAt,
 		&key.LastUsedAt,
@@ -215,11 +95,20 @@ func (r *apiKeyRepo) GetByHash(ctx context.Context, keyHash string) (*model.APIK
 		&key.RotationDueAt,
 		&key.IsActive,
 	)
-	logger.Logger(ctx).Debug("GetByHash", "keyHash", keyHash, "key", key, "err", err)
 	if err != nil {
 		return nil, err
 	}
 	return &key, nil
+}
+
+func (r *apiKeyRepo) GetByKeyID(ctx context.Context, keyID string) (*model.APIKey, error) {
+	return scanAPIKey(r.Executor(ctx).QueryRow(ctx,
+		`SELECT `+apiKeyColumns+` FROM api_keys WHERE key_id = $1`, keyID))
+}
+
+func (r *apiKeyRepo) GetByHash(ctx context.Context, keyHash string) (*model.APIKey, error) {
+	return scanAPIKey(r.Executor(ctx).QueryRow(ctx,
+		`SELECT `+apiKeyColumns+` FROM api_keys WHERE hashed_key = $1`, keyHash))
 }
 
 func (r *apiKeyRepo) UpdateLastUsed(ctx context.Context, id uuid.UUID) error {

@@ -80,7 +80,11 @@ export default function OnboardingWizard() {
 
   // Leaving early marks every step not yet reached as skipped, so the
   // dashboard checklist picks them up.
-  const finishLater = () => goTo('done', VISIBLE_STEPS.slice(stepIndex).filter((s) => s !== 'welcome'));
+  const finishLater = () =>
+    goTo(
+      'done',
+      VISIBLE_STEPS.slice(stepIndex).filter((s) => s !== 'welcome'),
+    );
 
   const StepComponent = STEP_COMPONENTS[step];
 
@@ -92,7 +96,11 @@ export default function OnboardingWizard() {
           {VISIBLE_STEPS.map((s, index) => {
             const state = index < stepIndex ? 'done' : index === stepIndex ? 'current' : 'todo';
             return (
-              <li key={s} className={`${styles.stepItem} ${styles[state]}`} aria-current={state === 'current' ? 'step' : undefined}>
+              <li
+                key={s}
+                className={`${styles.stepItem} ${styles[state]}`}
+                aria-current={state === 'current' ? 'step' : undefined}
+              >
                 <span className={styles.stepDot}>
                   {state === 'done' && !skipped.includes(s) ? <Check size={12} weight="bold" /> : index + 1}
                 </span>

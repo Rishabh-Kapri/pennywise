@@ -94,12 +94,12 @@ const budgetSlice = createSlice({
       })
       .addCase(fetchAllBudgets.fulfilled, (state, action) => {
         state.loading = LoadingState.SUCCESS;
-        state.allBudgets = action.payload;
-        if (!state.selectedBudget) {
-          state.selectedBudget =
-            action.payload.find((budget) => budget.isSelected) ??
-            action.payload[0] ??
-            null;
+        const budgets = action.payload ?? [];
+        state.allBudgets = budgets;
+        // After switching accounts the old selection isn't in this user's list.
+        const selectedId = state.selectedBudget?.id;
+        if (!budgets.some((budget) => budget.id === selectedId)) {
+          state.selectedBudget = budgets.find((budget) => budget.isSelected) ?? budgets[0] ?? null;
         }
         state.selectedMonth = getCurrentMonthKey();
         state.error = null;

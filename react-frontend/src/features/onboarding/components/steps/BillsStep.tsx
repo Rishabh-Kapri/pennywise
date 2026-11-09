@@ -1,11 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, ArrowRight, Plus, Trash } from '@phosphor-icons/react';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
-import {
-  createCategory,
-  fetchAllCategoryGroups,
-  updateCategoryGoal,
-} from '@/features/category/store/categorySlice';
+import { createCategory, fetchAllCategoryGroups, updateCategoryGoal } from '@/features/category/store/categorySlice';
 import type { CategoryGroup } from '@/features/category/types/category.types';
 import { apiClient, errorMessage, getCurrentMonthKey, toast } from '@/utils';
 import type { StepProps } from '../OnboardingWizard';
@@ -124,7 +120,8 @@ export function BillsStep({ onNext, onBack, busy }: StepProps) {
             type="button"
             className={styles.segment}
             onClick={() => addPreset(preset)}
-            disabled={rows.some((row) => row.name === preset)}>
+            disabled={rows.some((row) => row.name === preset)}
+          >
             <Plus size={12} /> {preset}
           </button>
         ))}
@@ -169,7 +166,10 @@ export function BillsStep({ onNext, onBack, busy }: StepProps) {
                   type="button"
                   className={styles.iconButton}
                   aria-label={`Remove ${row.name || 'bill'}`}
-                  onClick={() => setRows((current) => (current.length > 1 ? current.filter((r) => r.key !== row.key) : [emptyRow()]))}>
+                  onClick={() =>
+                    setRows((current) => (current.length > 1 ? current.filter((r) => r.key !== row.key) : [emptyRow()]))
+                  }
+                >
                   <Trash size={16} />
                 </button>
               </div>
@@ -177,7 +177,11 @@ export function BillsStep({ onNext, onBack, busy }: StepProps) {
           </div>
         ))}
         <div>
-          <button type="button" className={styles.secondary} onClick={() => setRows((current) => [...current, emptyRow()])}>
+          <button
+            type="button"
+            className={styles.secondary}
+            onClick={() => setRows((current) => [...current, emptyRow()])}
+          >
             <Plus size={14} /> Add another
           </button>
         </div>
@@ -188,7 +192,12 @@ export function BillsStep({ onNext, onBack, busy }: StepProps) {
           <ArrowLeft size={16} /> Back
         </button>
         <span className={styles.spacer} />
-        <button type="button" className={styles.ghost} onClick={() => onNext({ skipped: true })} disabled={busy || saving}>
+        <button
+          type="button"
+          className={styles.ghost}
+          onClick={() => onNext({ skipped: true })}
+          disabled={busy || saving}
+        >
           Skip
         </button>
         <button type="button" className={styles.primary} onClick={save} disabled={busy || saving || invalidDay}>

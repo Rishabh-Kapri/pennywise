@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -55,16 +56,17 @@ func applyHeaders(ctx context.Context, req *http.Request, headers map[string][]s
 	}
 }
 
-func (h *httpTransport) get(
+func (h *httpTransport) requestWithoutBody(
 	ctx context.Context,
+	method string,
 	path string,
 	headers map[string][]string,
 ) (doResult, error) {
 	var resp doResult
 	url := h.baseUrl + path
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, method, url, nil)
 	if err != nil {
-		logger.Logger(ctx).Error("error creating GET request", "url", url, "error", err)
+		logger.Logger(ctx).Error("error creating request", "method", method, "url", url, "error", err)
 		resp.StatusCode = http.StatusInternalServerError
 		return resp, err
 	}
@@ -242,23 +244,11 @@ func (h *httpTransport) do(
 		if len(errBody) > 512 {
 			errBody = errBody[:512] + "..."
 		}
-		if errBody == "" {
-			return result, errs.New(
-				errs.CodeHTTPClientError,
-				"%s request for %s failed with status code: %d",
-				req.Method,
-				req.URL.String(),
-				res.StatusCode,
-			)
+		msg := fmt.Sprintf("%s request for %s failed with status code: %d", req.Method, req.URL.String(), res.StatusCode)
+		if errBody != "" {
+			msg += ": " + errBody
 		}
-		return result, errs.New(
-			errs.CodeHTTPClientError,
-			"%s request for %s failed with status code: %d: %s",
-			req.Method,
-			req.URL.String(),
-			res.StatusCode,
-			errBody,
-		)
+		return result, errs.NewWith(errs.CodeHTTPClientError, msg, errs.WithStatus(res.StatusCode))
 	}
 	result.Body = res.Body
 	result.OriginalReq = req
@@ -271,8 +261,8 @@ func (h *httpTransport) Send(ctx context.Context, req *transport.Request) (trans
 	var doReq doResult
 	var err error
 	switch req.Method {
-	case http.MethodGet:
-		doReq, err = h.get(ctx, req.Path, req.MergedHeaders)
+	case http.MethodGet, http.MethodDelete:
+		doReq, err = h.requestWithoutBody(ctx, req.Method, req.Path, req.MergedHeaders)
 	case http.MethodPost, http.MethodPatch, http.MethodPut:
 		doReq, err = h.requestWithBody(ctx, req.Method, req.Path, req.MergedHeaders, req.Payload)
 	default:

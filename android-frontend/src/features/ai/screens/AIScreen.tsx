@@ -8,6 +8,7 @@ import { Screen } from '../../../components/Screen';
 import { colors, spacing } from '../../../theme';
 import { apiClient } from '../../../utils/api';
 import type { CipherPrediction } from '../../transactions/types';
+import { AIModelsPanel } from '../components/AIModelsPanel';
 import { APIKeys } from '../components/APIKeys';
 import { ClassificationPipeline } from '../components/ClassificationPipeline';
 import { PredictionHistory } from '../components/PredictionHistory';
@@ -69,6 +70,8 @@ export function AIScreen() {
           <AppText variant="caption" tone="danger">{error}</AppText>
         </Card>
       ) : null}
+
+      <AIModelsPanel />
 
       {loading ? (
         <Card>

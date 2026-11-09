@@ -23,10 +23,17 @@ type Config struct {
 	PennywiseServiceURL string
 	CipherServiceURL    string
 	InternalAuthToken   string
-	NtfyTopic           string
-	TemporalServerHost  string
-	TemporalServerPort  string
-	Port                string
+	// ServiceTokens is SERVICE_TOKENS: "name:token,..." for each service that may call in.
+	ServiceTokens      string
+	NtfyTopic          string
+	TemporalServerHost string
+	TemporalServerPort string
+	Port               string
+
+	// Job
+	JobDriver    string
+	JobBrokerURL string
+	JobStoreURL  string
 }
 
 func LoadConfig() *Config {
@@ -57,9 +64,14 @@ func LoadConfig() *Config {
 		PennywiseServiceURL:              os.Getenv("PENNYWISE_SERVICE_URL"),
 		CipherServiceURL:                 os.Getenv("CIPHER_SERVICE_URL"),
 		InternalAuthToken:                os.Getenv("INTERNAL_AUTH_TOKEN"),
+		ServiceTokens:                    os.Getenv("SERVICE_TOKENS"),
 		NtfyTopic:                        os.Getenv("NTFY_TOPIC"),
 		TemporalServerHost:               os.Getenv("TEMPORAL_SERVER_HOST"),
 		TemporalServerPort:               os.Getenv("TEMPORAL_SERVER_PORT"),
 		Port:                             port,
+
+		JobDriver:    os.Getenv("JOB_DRIVER"),
+		JobBrokerURL: os.Getenv("JOB_BROKER_URL"),
+		JobStoreURL:  os.Getenv("JOB_STORE_URL"),
 	}
 }

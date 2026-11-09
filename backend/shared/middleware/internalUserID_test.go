@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	authAdapter "github.com/Rishabh-Kapri/pennywise/backend/shared/adapters/auth"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -17,7 +18,7 @@ func TestInternalUserIDMiddlewareSetsUserIDForVerifiedInternalRequest(t *testing
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(RequestMetadata("cipher"))
-	router.Use(InternalRequestAuth("shared-secret"))
+	router.Use(InternalRequestAuth("own-secret", authAdapter.NewServiceTokenAdapter(map[string]string{"api": "shared-secret"})))
 	router.Use(InternalUserIDMiddleware())
 
 	userID := uuid.New()
@@ -45,7 +46,7 @@ func TestInternalUserIDMiddlewareIgnoresUnverifiedUserIDHeader(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(RequestMetadata("cipher"))
-	router.Use(InternalRequestAuth("shared-secret"))
+	router.Use(InternalRequestAuth("own-secret", authAdapter.NewServiceTokenAdapter(map[string]string{"api": "shared-secret"})))
 	router.Use(InternalUserIDMiddleware())
 
 	router.GET("/", func(c *gin.Context) {
@@ -69,7 +70,7 @@ func TestInternalUserIDMiddlewareRejectsInvalidVerifiedUserIDHeader(t *testing.T
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(RequestMetadata("cipher"))
-	router.Use(InternalRequestAuth("shared-secret"))
+	router.Use(InternalRequestAuth("own-secret", authAdapter.NewServiceTokenAdapter(map[string]string{"api": "shared-secret"})))
 	router.Use(InternalUserIDMiddleware())
 
 	router.GET("/", func(c *gin.Context) {

@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"testing"
 	"time"
@@ -664,4 +665,107 @@ func TestTransactionRepo_WritesReportNotFoundForMissingRows(t *testing.T) {
 	require.NoError(t, err, "a write scoped to one budget never reaches another")
 	assert.Equal(t, -10.0, untouched.Amount)
 	assert.Nil(t, untouched.LocationLat)
+}
+
+// The running balance of an account-filtered list must be the account's balance
+// at that row (the sum of every earlier row, ordered by date, updated_at, id),
+// whichever page the row lands on, in either sort order, walking either way.
+func TestTransactionRepo_GetAllNormalizedRunningBalanceIsStableAcrossPages(t *testing.T) {
+	pool, repo, s := setup(t)
+	ctx := context.Background()
+
+	mustCreate(t, repo, newTxn(s, "2026-10-01", 1000))
+	// Three rows in one database transaction: same date, same updated_at. They
+	// are inserted in descending id order, so anything that does not break ties
+	// by id (physical order, say) disagrees with the expected order every time.
+	tied := []uuid.UUID{uuid.New(), uuid.New(), uuid.New()}
+	sort.Slice(tied, func(i, j int) bool { return tied[i].String() > tied[j].String() })
+	tx, err := pool.Begin(ctx)
+	require.NoError(t, err)
+	for i, id := range tied {
+		_, err := tx.Exec(ctx, `INSERT INTO transactions (id, budget_id, date, account_id, amount)
+			VALUES ($1, $2, '2026-10-05', $3, $4)`, id, s.budgetID, s.accountID, float64(-10*(i+1)))
+		require.NoError(t, err)
+	}
+	require.NoError(t, tx.Commit(ctx))
+	mustCreate(t, repo, newTxn(s, "2026-10-08", -100))
+	mustCreate(t, repo, newTxn(s, "2026-10-09", 500))
+	other := newTxn(s, "2026-10-06", -7777) // another account: excluded from the balance
+	other.AccountID = &s.account2ID
+	mustCreate(t, repo, other)
+
+	want := map[uuid.UUID]float64{}
+	rows, err := pool.Query(ctx, `SELECT id, amount::float8 FROM transactions
+		WHERE budget_id = $1 AND account_id = $2 AND deleted = FALSE
+		ORDER BY date, updated_at, id`, s.budgetID, s.accountID)
+	require.NoError(t, err)
+	running := 0.0
+	for rows.Next() {
+		var id uuid.UUID
+		var amount float64
+		require.NoError(t, rows.Scan(&id, &amount))
+		running += amount
+		want[id] = running
+	}
+	require.NoError(t, rows.Err())
+	require.Len(t, want, 6)
+
+	check := func(t *testing.T, label string, page model.PaginatedResponse[model.Transaction]) {
+		t.Helper()
+		for _, txn := range page.Data {
+			assert.InDelta(t, want[txn.ID], txn.Balance, 0.001, "%s: balance of row %s", label, txn.ID)
+		}
+	}
+	for _, order := range []string{"DESC", "ASC"} {
+		t.Run(order, func(t *testing.T) {
+			filter := func(cursor string) *model.TransactionFilter {
+				return &model.TransactionFilter{AccountIDs: []uuid.UUID{s.accountID}, SortOrder: order, Limit: 2, CursorString: cursor}
+			}
+			var pages []model.PaginatedResponse[model.Transaction]
+			page, err := repo.GetAllNormalized(ctx, s.budgetID, filter(""))
+			require.NoError(t, err)
+			pages = append(pages, page)
+			check(t, "page 0", page)
+			for i := 1; page.Pagination.NextCursor != "" && i < 10; i++ {
+				page, err = repo.GetAllNormalized(ctx, s.budgetID, filter(page.Pagination.NextCursor))
+				require.NoError(t, err)
+				pages = append(pages, page)
+				check(t, fmt.Sprintf("forward page %d", i), page)
+			}
+			for i := len(pages) - 1; i > 0; i-- {
+				page, err = repo.GetAllNormalized(ctx, s.budgetID, filter(pages[i].Pagination.PrevCursor))
+				require.NoError(t, err)
+				check(t, fmt.Sprintf("back to page %d", i-1), page)
+			}
+		})
+	}
+}
+
+func TestTransactionRepo_GetAllNormalizedPageSize(t *testing.T) {
+	pool, repo, s := setup(t)
+	ctx := context.Background()
+	rows := make([][]any, 105)
+	for i := range rows {
+		rows[i] = []any{s.budgetID, fmt.Sprintf("2026-%02d-%02d", 1+i/28, 1+i%28), s.accountID, -1.0}
+	}
+	_, err := NewBulkInserter(pool).BulkInsert(ctx, "transactions", []string{"budget_id", "date", "account_id", "amount"}, rows)
+	require.NoError(t, err)
+
+	tests := []struct {
+		limit    uint64
+		wantRows int
+	}{
+		{0, 30},     // unset: default page
+		{7, 7},      // honoured
+		{100, 100},  // the cap itself
+		{101, 100},  // capped
+		{5000, 100}, // capped
+	}
+	for _, tt := range tests {
+		page, err := repo.GetAllNormalized(ctx, s.budgetID, &model.TransactionFilter{Limit: tt.limit})
+		require.NoError(t, err)
+		assert.Len(t, page.Data, tt.wantRows, "limit %d", tt.limit)
+		assert.Equal(t, 105, page.Total)
+		assert.NotEmpty(t, page.Pagination.NextCursor, "limit %d leaves rows for a next page", tt.limit)
+	}
 }

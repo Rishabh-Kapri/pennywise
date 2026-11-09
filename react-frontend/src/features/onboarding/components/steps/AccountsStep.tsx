@@ -85,7 +85,7 @@ export function AccountsStep({ onNext, onBack, busy }: StepProps) {
             budgetId: budget.id,
             accountId: account.id,
             payeeId,
-            categoryId: isCard ? null : budget.metadata?.inflowCategoryId ?? null,
+            categoryId: isCard ? null : (budget.metadata?.inflowCategoryId ?? null),
             date: today(),
             amount: isCard ? -amount : amount,
           }),
@@ -150,7 +150,8 @@ export function AccountsStep({ onNext, onBack, busy }: StepProps) {
               role="radio"
               aria-checked={type === option.value}
               className={`${styles.segment} ${type === option.value ? styles.segmentSelected : ''}`}
-              onClick={() => setType(option.value)}>
+              onClick={() => setType(option.value)}
+            >
               {option.name}
             </button>
           ))}
@@ -206,8 +207,8 @@ export function AccountsStep({ onNext, onBack, busy }: StepProps) {
         </div>
 
         <p className={styles.hint}>
-          <Info size={14} weight="bold" aria-hidden="true" /> Bank alerts name the account by its last digits ("A/c XX1234",
-          "card ending 1234"). Without them an email can't be matched to this account, so it is skipped.
+          <Info size={14} weight="bold" aria-hidden="true" /> Bank alerts name the account by its last digits ("A/c
+          XX1234", "card ending 1234"). Without them an email can't be matched to this account, so it is skipped.
         </p>
 
         <div>
@@ -227,7 +228,8 @@ export function AccountsStep({ onNext, onBack, busy }: StepProps) {
           className={styles.primary}
           onClick={() => onNext()}
           disabled={busy || accounts.length === 0}
-          title={accounts.length === 0 ? 'Add at least one account to continue' : undefined}>
+          title={accounts.length === 0 ? 'Add at least one account to continue' : undefined}
+        >
           Continue <ArrowRight size={16} />
         </button>
       </div>

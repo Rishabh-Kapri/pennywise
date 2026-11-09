@@ -12,7 +12,6 @@ interface ConnectedProvider {
   email?: string;
   name?: string;
   picture?: string;
-  lastGmailSync?: string;
 }
 
 interface CurrentUser {
@@ -27,7 +26,14 @@ interface Props {
   user: CurrentUser | null;
 }
 
+/** One sign-in has a row per app (web, Android) with the same provider ID. */
+function uniqueProviders(providers: ConnectedProvider[] = []): ConnectedProvider[] {
+  const byId = new Map(providers.map((provider) => [`${provider.providerType}-${provider.providerId}`, provider]));
+  return [...byId.values()];
+}
+
 export function GeneralSettings({ user }: Props) {
+  const providers = uniqueProviders(user?.providers);
   const dispatch = useAppDispatch();
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [confirmEmail, setConfirmEmail] = useState('');
@@ -65,12 +71,12 @@ export function GeneralSettings({ user }: Props) {
       <div className={styles.card}>
         <div className={styles.cardHeader}>
           <h2>Connected providers</h2>
-          <span>{user?.providers.length ?? 0} connected</span>
+          <span>{providers.length} connected</span>
         </div>
 
-        {user?.providers.length ? (
+        {providers.length ? (
           <div className={styles.providerList}>
-            {user.providers.map((provider) => (
+            {providers.map((provider) => (
               <article key={`${provider.providerType}-${provider.providerId}`} className={styles.providerCard}>
                 {provider.picture ? (
                   <img src={provider.picture} alt="" className={styles.providerImage} />
@@ -82,18 +88,6 @@ export function GeneralSettings({ user }: Props) {
                 <div className={styles.providerInfo}>
                   <strong>{provider.providerType}</strong>
                   <span>{provider.email || provider.name || provider.providerId}</span>
-                  {provider.lastGmailSync && (
-                    <small>
-                      Last Gmail sync:{' '}
-                      {new Date(provider.lastGmailSync).toLocaleString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                        hour: 'numeric',
-                        minute: 'numeric',
-                      })}
-                    </small>
-                  )}
                 </div>
               </article>
             ))}

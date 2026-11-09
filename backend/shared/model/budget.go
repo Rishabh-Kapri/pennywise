@@ -51,6 +51,9 @@ type BudgetOnboarding struct {
 	CompletedAt        *time.Time `json:"completedAt,omitempty"`
 	SkippedSteps       []string   `json:"skippedSteps,omitempty"`
 	ChecklistDismissed bool       `json:"checklistDismissed"`
+	// EmailsImportedAt is when this budget's onboarding import started. Step 4
+	// offers the import only once.
+	EmailsImportedAt *time.Time `json:"emailsImportedAt,omitempty"`
 }
 
 // UpdateBudgetOnboardingRequest is PATCH /api/onboarding. Nil fields are left
@@ -59,6 +62,7 @@ type UpdateBudgetOnboardingRequest struct {
 	Step               *string  `json:"step"`
 	SkippedSteps       []string `json:"skippedSteps"`
 	ChecklistDismissed *bool    `json:"checklistDismissed"`
+	EmailsImported     *bool    `json:"emailsImported"`
 }
 
 // OnboardingEmailBackfillRequest is POST /api/onboarding/email-backfill.

@@ -17,7 +17,6 @@ type AIProviderHandler interface {
 	List(c *gin.Context)
 	Upsert(c *gin.Context)
 	Delete(c *gin.Context)
-	Test(c *gin.Context)
 }
 
 type aiProviderHandler struct {
@@ -89,17 +88,4 @@ func (h *aiProviderHandler) Delete(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
-}
-
-func (h *aiProviderHandler) Test(c *gin.Context) {
-	res, err := h.service.Test(c.Request.Context(), model.LLMProviderName(c.Param("provider")))
-	if err != nil {
-		status := aiProviderErrorStatus(err)
-		if status == http.StatusInternalServerError {
-			status = http.StatusBadGateway
-		}
-		c.JSON(status, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, res)
 }

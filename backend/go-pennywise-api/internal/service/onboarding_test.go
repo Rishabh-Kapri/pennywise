@@ -86,3 +86,20 @@ func TestKeyHint(t *testing.T) {
 		t.Errorf("short key leaked hint %q", got)
 	}
 }
+
+func TestApplyOnboardingUpdateStampsEmailsImportedOnce(t *testing.T) {
+	yes := true
+	first := time.Date(2026, 11, 6, 0, 0, 0, 0, time.UTC)
+
+	current, err := applyOnboardingUpdate(model.BudgetOnboarding{}, model.UpdateBudgetOnboardingRequest{EmailsImported: &yes}, first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := applyOnboardingUpdate(current, model.UpdateBudgetOnboardingRequest{EmailsImported: &yes}, first.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.EmailsImportedAt == nil || !again.EmailsImportedAt.Equal(first) {
+		t.Fatalf("stamped %v", again.EmailsImportedAt)
+	}
+}

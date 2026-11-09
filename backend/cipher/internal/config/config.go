@@ -13,49 +13,6 @@ import (
 // ollama model can take 1-2 minutes, so this must stay comfortably above that.
 const DefaultLLMCallTimeout = 3 * time.Minute
 
-// LLMTarget is one provider+model pair in an ordered fallback chain. An empty
-// Model defers to the provider's registry default.
-type LLMTarget struct {
-	Provider string
-	Model    string
-}
-
-// defaultEmailEmbeddingTargets defaults to local ollama. Every target
-// in this chain must serve the same embedding model — see EmailEmbeddingTargets.
-var defaultEmailEmbeddingTargets = []LLMTarget{{Provider: "ollama", Model: "bge-m3"}}
-
-// parseLLMTargets reads an ordered, comma-separated provider list where each
-// entry is "provider" or "provider=model", e.g.
-//
-//	ollama=gemma4:12b,openrouter=google/gemini-2.5-flash
-//
-// Only the first "=" splits, so model names containing "=" , ":" or "/" survive
-// intact. Returns nil for empty or entirely malformed input so callers can fall
-// back to the default chain.
-func parseLLMTargets(raw string) []LLMTarget {
-	var targets []LLMTarget
-
-	for _, entry := range strings.Split(raw, ",") {
-		entry = strings.TrimSpace(entry)
-		if entry == "" {
-			continue
-		}
-
-		provider, model, _ := strings.Cut(entry, "=")
-		provider = strings.TrimSpace(provider)
-		if provider == "" {
-			continue
-		}
-
-		targets = append(targets, LLMTarget{
-			Provider: provider,
-			Model:    strings.TrimSpace(model),
-		})
-	}
-
-	return targets
-}
-
 type Config struct {
 	Environment string
 	ServiceName string
@@ -69,12 +26,11 @@ type Config struct {
 	LumoBaseURL         string
 	LumoAPIKey          string
 	OpenAIAPIKey        string
-	OpenRouterAPIKey    string
 	TypesafeAPIKey      string
 	InternalAuthToken   string
-	TemporalServerHost  string
-	TemporalServerPort  string
-	Port                string
+	// ServiceTokens is SERVICE_TOKENS: "name:token,..." for each service that may call in.
+	ServiceTokens string
+	Port          string
 	// LLMCallTimeout bounds each individual LLM/embedding HTTP call.
 	LLMCallTimeout time.Duration
 	// LLMCredentialsKey opens user AI provider keys (user_llm_providers). Must
@@ -84,11 +40,6 @@ type Config struct {
 	// AllowPrivateLLMURLs lets a user's Ollama URL reach private addresses.
 	// Only for single-tenant self-hosting.
 	AllowPrivateLLMURLs bool
-	// EmailEmbeddingTargets is the ordered chain for semantic-search embeddings.
-	// Every target MUST serve the same model as the stored vectors (bge-m3, 1024
-	// dims) — a different model would put query vectors in a different space and
-	// silently invalidate every stored pgvector row.
-	EmailEmbeddingTargets []LLMTarget
 	// AgentTitleModel is the "provider/model" used to generate conversation
 	// titles. Empty means "use the resolver's default provider and model", which
 	// is what keeps titles working on whatever provider is actually configured.
@@ -107,6 +58,14 @@ type Config struct {
 	// this when running somewhere that does not, or "yesterday" queries drift by
 	// a day at the boundary.
 	AgentTimezone string
+
+	// Adapters
+
+	// Job
+	JobDriver    string
+	JobBrokerURL string
+	JobStoreURL  string
+	JobQueues    []string // JOB_QUEUES, e.g. "cipher,cipher-backfill"
 }
 
 // envInt reads a positive integer env var, returning 0 when unset or malformed
@@ -143,11 +102,6 @@ func Load() Config {
 		}
 	}
 
-	emailEmbeddingTargets := parseLLMTargets(os.Getenv("EMAIL_EMBEDDING_PROVIDERS"))
-	if len(emailEmbeddingTargets) == 0 {
-		emailEmbeddingTargets = defaultEmailEmbeddingTargets
-	}
-
 	return Config{
 		Environment:              env,
 		ServiceName:              os.Getenv("SERVICE_NAME"),
@@ -158,13 +112,11 @@ func Load() Config {
 		MLPServiceURL:            os.Getenv("MLP_SERVICE_URL"),
 		PennywiseServiceURL:      os.Getenv("PENNYWISE_SERVICE_URL"),
 		OpenAIAPIKey:             os.Getenv("OPENAI_API_KEY"),
-		OpenRouterAPIKey:         os.Getenv("OPENROUTER_API_KEY"),
 		TypesafeAPIKey:           os.Getenv("TYPESAFE_API_KEY"),
 		LumoBaseURL:              strings.TrimSpace(os.Getenv("LUMO_BASE_URL")),
 		LumoAPIKey:               os.Getenv("LUMO_API_KEY"),
 		InternalAuthToken:        os.Getenv("INTERNAL_AUTH_TOKEN"),
-		TemporalServerHost:       os.Getenv("TEMPORAL_SERVER_HOST"),
-		TemporalServerPort:       os.Getenv("TEMPORAL_SERVER_PORT"),
+		ServiceTokens:            os.Getenv("SERVICE_TOKENS"),
 		Port:                     port,
 		AgentTitleModel:          strings.TrimSpace(os.Getenv("AGENT_TITLE_MODEL")),
 		AgentMaxTurns:            envInt("AGENT_MAX_TURNS"),
@@ -174,6 +126,22 @@ func Load() Config {
 		LLMCallTimeout:           llmCallTimeout,
 		LLMCredentialsKey:        os.Getenv("LLM_CREDENTIALS_KEY"),
 		AllowPrivateLLMURLs:      os.Getenv("ALLOW_PRIVATE_LLM_URLS") == "true",
-		EmailEmbeddingTargets:    emailEmbeddingTargets,
+
+		JobDriver:    os.Getenv("JOB_DRIVER"),
+		JobBrokerURL: os.Getenv("JOB_BROKER_URL"),
+		JobStoreURL:  os.Getenv("JOB_STORE_URL"),
+		JobQueues:    splitList(os.Getenv("JOB_QUEUES")),
 	}
+}
+
+// splitList splits a comma-separated setting, trimming spaces and dropping
+// empty parts, so an unset variable gives an empty list, not [""].
+func splitList(s string) []string {
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }

@@ -20,14 +20,16 @@ go test -run TestName ./internal/service
 
 ## Layout
 
-- `cmd/api/main.go` — wiring: config, DB, Redis, Temporal (skipped when `RAILWAY_ENVIRONMENT_NAME=local` or no `TEMPORAL_SERVER_HOST`), all routes, background jobs.
+- `cmd/api/main.go` — wiring: config, DB, Redis, all routes, background jobs.
 - `cmd/migrations/` — goose runner (`up|down|status|version|redo|create|baseline`). The SQL lives in `backend/shared/migrations/sql`, embedded via that package.
 - `internal/handler/` — Gin handlers; parse request, call service, map errors to JSON.
 - `internal/service/` — business logic, background jobs, Cipher/Gmail/Temporal clients wiring.
-- `internal/middleware/` — API auth (`AuthMiddleware`), `RouteAuthMiddleware` (scopes), rate limit. Shared `BudgetIdMiddleware` and internal-request auth live in `backend/shared/middleware`.
+- `internal/middleware/` — `RouteAuthMiddleware` (API key scopes), rate limit. User auth (JWT, API keys) is shared `middleware.Authenticate` built from `factory.NewAuthenticators`; it, `BudgetIdMiddleware` and internal-request auth live in `backend/shared/middleware`.
 - `internal/storage/` — document blob `Store`: `postgres.go` (default) and `local.go` (`DOCUMENT_STORAGE=local`, `UPLOADS_DIR`).
 - `internal/client/` — outbound HTTP (Expo push).
-- `internal/temporal/activities/` — activities registered on the API-hosted worker (`CreateTransaction`, `CreateCipherPrediction`, pipeline status, Gmail watch).
+- `internal/temporal/activities/` — Temporal activities (`CreateTransaction`, `CreateCipherPrediction`, pipeline status, Gmail watch). Kept, but the API no longer connects to Temporal or runs a worker, so nothing registers them. `PipelineService.RetryRun` returns an error for the same reason.
+- `internal/worker/` — job worker for the message pipeline's last steps (`transaction.create`, `transaction.learn`, `pipeline.report`). Off without `JOB_DRIVER`. The logic is in `internal/service/messageJob.go`. `ReportPipeline` writes one `pipeline_runs` row per message, and it must keep sending fetch and parse events or Activity spins on that email; `CreateTransaction` is still a `NOT_IMPLEMENTED` stub. `/api/jobs` (`service/job.go`) serves the Jobs screen, and needs a job store, so it reports `enabled: false` on the memory driver. It is budget-scoped: `mailbox.changed` jobs have no budget, so they're visible through the budget's mail connections or a job of the budget under them. Keep `ListTrees` and `jobService.visibleJob` agreeing on that rule.
+- `/api/mail-connections` (`service/mailConnection.go`) forwards to ingest, which owns the Gmail adapter and the sealing key. It's off without `INGEST_SERVICE_URL`, and ingest must accept this service's token.
 - `internal/websocket/` — budget-scoped hub; Redis stream listener rebroadcasts Cipher agent events.
 - `internal/config/config.go` — all env parsing.
 - `vendor/` — required for Docker builds (`go build -mod=vendor`).
@@ -37,20 +39,22 @@ go test -run TestName ./internal/service
 - Budget scoping: `BudgetIdMiddleware` reads the `X-Budget-ID` header, checks ownership, and puts the id on the context. Services call `utils.MustBudgetID(ctx)` (`backend/shared/utils`). Handlers do not parse the header themselves.
 - Errors: `c.JSON(status, gin.H{"error": err.Error()})`. Extra machine-readable codes go in a sibling `"code"` field (e.g. statements `password_required`, `no_text`). Map sentinel errors with `errors.Is` in the handler (see `handler/categoryGoal.go`).
 - Repositories: use `*Tx` methods (e.g. `GetByIdTx(ctx, tx, budgetId, id)`) when a service operation must be atomic.
-- Internal service calls: `InternalRequestAuth` verifies `X-Internal-Token` (`INTERNAL_AUTH_TOKEN`); only `VerifiedInternal` context may bypass user auth.
+- Internal service calls: `InternalRequestAuth` verifies `X-Internal-Token` against `SERVICE_TOKENS` (falls back to `INTERNAL_AUTH_TOKEN` when unset); only `VerifiedInternal` context may bypass user auth.
 - Imports: stdlib / third-party / local, separated by blank lines.
 
 ## Gotchas
 
 - **Migration versions must be sequential and unique.** goose panics on duplicates and blocks all pending migrations. When rebasing onto a branch that added migrations, renumber yours to the end. `cd backend/shared && go test ./migrations/sql` guards this. Changing the migrations means changing `shared`, so re-vendor (below). Authoring rules: `backend/shared/migrations/sql/README.md`.
 - **Shared module changes:** `go.mod` uses `replace ... => ../shared` and `go.work` puts local builds in workspace mode. After any change under `backend/shared`, re-vendor (`make vendor` here, and in every consumer service) and verify with `GOWORK=off go build -mod=vendor ./cmd/api`. Docker only sees `shared` through `vendor/`.
-- **Recurring transactions** materialize from an hourly `time.Ticker` in `cmd/api/main.go` (`RunDueAllBudgets`), not Temporal. Works without the Temporal worker.
+- **Recurring transactions** materialize from an hourly `time.Ticker` in `cmd/api/main.go` (`RunDueAllBudgets`), not Temporal.
 - **Statement PDFs need `pdftotext`** (poppler). It is installed in the Docker image; a local run without it fails statement uploads. Binary path is the `pdftotextBinary` var in `statementText.go`.
 - **Long-running work is async and single-flighted.** Returns `202`, clients poll:
   - Statement extraction: serialised per process via `extractSlot`; any import still `processing` at startup is marked failed (`FailInterrupted`). Retry via `POST /api/statements/:id/retry` (text is stored, not the PDF).
   - Learning backfill (`transactionService.BackfillLearning`): guarded by `learningBackfillRunning` (atomic CAS); progress is in `cipher_predictions.learned_at`/`learn_error`, not in the response.
-- **User AI provider keys** (`/api/ai-providers`) are sealed with `LLM_CREDENTIALS_KEY` (AES-GCM, `shared/utils/secretbox.go`) and never returned; responses carry only `hasApiKey`/`apiKeyHint`. Cipher opens them with the same key, so the two services must share it. Without it, saving a provider returns 503. Demo users can't save providers.
-- **Onboarding** state is `budgets.onboarding` (`/api/onboarding`). Steps are `model.OnboardingSteps`; keep the web app's `ONBOARDING_STEPS` in step. `POST /api/onboarding/email-backfill` needs an enabled AI provider (409 `ai_provider_required`) and calls go-gmail `/api/backfill`.
+- **Login grants no Gmail access.** `google_provider_users` is identity only (migration 00016); `LoginWithGoogle` keeps no Google token and starts no watch. Mailboxes connect through `/api/mail-connections`. Android still requests `mail.google.com` at login, but nothing uses that grant. `POST /api/onboarding/email-backfill` returns `ErrNoGmailConnected` until ingest offers a backfill, and the Temporal Gmail activities are no-ops until Temporal is removed.
+- **User AI keys** (`/api/ai-providers`, one per provider) are sealed with `LLM_CREDENTIALS_KEY` (AES-GCM, `shared/utils/secretbox.go`) and never returned; responses carry only `hasApiKey`/`apiKeyHint`. Cipher opens them with the same key, so the two services must share it. Without it, saving a key returns 503. Deleting a key deletes its models. **Models** (`/api/ai-models`) say which model runs with which key: kind `chat` or `decision` (decision models also carry the user's endpoint: https, or http only for a private address, because the key is sent there). A model is tested through cipher before it's created or changed; a failed test is 422 and saves nothing. Each kind has one default; deleting it promotes the first remaining one by priority. A model can be disabled without deleting it (`PUT /:id/enabled`), and `PUT /order` sets the order of a kind's models. A disabled default stays the default, and the next model by priority stands in until it's enabled. Demo users can't change keys or models.
+- **Onboarding** state is `budgets.onboarding` (`/api/onboarding`). Steps are `model.OnboardingSteps`; keep the web app's `ONBOARDING_STEPS` in step. `POST /api/onboarding/email-backfill` needs a chat model on an enabled key (409 `ai_provider_required`).
+- **SMS ingest is a decisions test harness** (`POST /api/sms/ingest`, `service/sms.go`). The Android app now posts to ingest's `POST /api/ingest/sms`; only older APKs call this: each SMS goes to cipher's `/api/test-decisions` and is appended to `SMS_DECISIONS_LOG` (default `./data/sms-decisions.jsonl`) with its cost and a running `totalCost` (re-summed from the file on first write after a restart). No dedupe: every re-import is billed again. Uses `DecisionsClient`, not `CipherClient`, so the CipherClient fakes don't grow.
 - **Go version:** `go.mod` says `go 1.26.0`, but the Dockerfile builds with `golang:1.25-alpine`. Keep them in agreement when touching either.
 
 ## Key files

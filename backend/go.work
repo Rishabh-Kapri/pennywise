@@ -4,6 +4,7 @@ use (
 	./cipher
 	./go-gmail
 	./go-pennywise-api
+	./ingest
 	./shared
 	./workflows
 )

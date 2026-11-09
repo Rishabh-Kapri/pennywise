@@ -11,6 +11,7 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/factory"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/internal/handler"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/auth"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/client"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/config"
@@ -225,7 +226,7 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	// The repository ports; DATABASE_DRIVER picks the adapter behind them.
-	database, err := factory.ConnectDB(factory.Config{Driver: cfg.DatabaseDriver, URL: cfg.DatabaseURL})
+	database, err := factory.ConnectDB(ctx, factory.Config{Driver: cfg.DatabaseDriver, URL: cfg.DatabaseURL})
 	if err != nil {
 		logger.Fatal(err.Error())
 	}
@@ -270,23 +271,47 @@ func main() {
 		}()
 	}
 
+	smsHandler := handler.NewSmsHandler()
+
+	authMiddleware := sharedMiddleware.Authenticate(
+		factory.NewAuthenticators(
+			ctx,
+			factory.AuthConfig{JWTSecret: config.JWTSecret},
+			database.APIKey,
+			database.Auth,
+		),
+	)
+	budgetMiddleware := sharedMiddleware.BudgetIdMiddleware(database.Budget)
+
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(sharedMiddleware.StripInternalHeaders())
 	router.Use(sharedMiddleware.RequestMetadata("gmail-pubsub"))
-	router.Use(sharedMiddleware.InternalRequestAuth(cfg.InternalAuthToken))
+	router.Use(sharedMiddleware.Authenticate())
+	serviceAuth, err := factory.NewServiceAuthenticator(ctx, factory.ServiceAuthConfig{
+		Tokens:   cfg.ServiceTokens,
+		OwnToken: cfg.InternalAuthToken,
+	})
+	if err != nil {
+		logger.Fatal("invalid SERVICE_TOKENS", "error", err)
+	}
+	router.Use(sharedMiddleware.InternalRequestAuth(cfg.InternalAuthToken, serviceAuth))
 	router.Use(sharedMiddleware.RequestLogger())
 
 	api := router.Group("/api")
 	api.GET("", healthPage)
 
 	budgetApiGroup := api.Group("")
-	budgetApiGroup.Use(sharedMiddleware.BudgetIdMiddleware(database.Budget))
+	budgetApiGroup.Use(budgetMiddleware)
 
 	budgetApiGroup.POST("/watch", watchHandler)
 	budgetApiGroup.POST("/test/setup-watch", setupWatchTestHandler)
 	budgetApiGroup.POST("/temporal", temporalHandler)
 	budgetApiGroup.POST("/backfill", backfillHandler)
+	{
+		ingestGroup := api.Group("/ingest")
+		ingestGroup.POST("/sms", smsHandler.Ingest)
+	}
 
 	server := &http.Server{
 		Addr:    ":" + cfg.Port,

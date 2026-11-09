@@ -53,3 +53,42 @@ func (c *cipherClient) ExtractStatement(
 ) (*model.StatementExtractResponse, error) {
 	return transport.Post[*model.StatementExtractResponse](ctx, c.client, "/api/statements/extract", nil, req)
 }
+
+// DecisionMessage is the input cipher's /api/test-decisions classifies
+// (cipher's ports.Message).
+type DecisionMessage struct {
+	Body   string `json:"body"`
+	Source string `json:"source"`
+	Sender string `json:"sender"`
+}
+
+// DecisionUsage mirrors cipher's ports.Usage: one model call, as the provider reported it.
+type DecisionUsage struct {
+	Provider     string   `json:"provider,omitempty"`
+	Model        string   `json:"model"`
+	InputTokens  int      `json:"inputTokens"`
+	OutputTokens int      `json:"outputTokens"`
+	Cost         *float64 `json:"cost,omitempty"`
+}
+
+// DecisionVerdict mirrors cipher's ports.TxnVerdict.
+type DecisionVerdict struct {
+	IsTransaction bool           `json:"isTransaction"`
+	Type          string         `json:"type"`
+	Confidence    *float64       `json:"confidence,omitempty"`
+	Usage         *DecisionUsage `json:"usage,omitempty"`
+}
+
+// DecisionsClient is kept apart from CipherClient so the SMS test flow
+// doesn't widen the interface every CipherClient fake implements.
+type DecisionsClient interface {
+	TestDecisions(ctx context.Context, msg DecisionMessage) (*DecisionVerdict, error)
+}
+
+func NewDecisionsClient(client *transport.Client) DecisionsClient {
+	return &cipherClient{client: client}
+}
+
+func (c *cipherClient) TestDecisions(ctx context.Context, msg DecisionMessage) (*DecisionVerdict, error) {
+	return transport.Post[*DecisionVerdict](ctx, c.client, "/api/test-decisions", nil, msg)
+}

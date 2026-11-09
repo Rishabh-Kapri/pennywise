@@ -169,6 +169,12 @@ func Patch[T any](ctx context.Context, c *Client, path string, headers map[strin
 	return result, nil
 }
 
+func Delete(ctx context.Context, c *Client, path string) error {
+	req := &Request{Method: "DELETE", Path: path, MergedHeaders: c.getMergedHeader(ctx, nil)}
+	_, err := c.transport.Send(ctx, req)
+	return err
+}
+
 func StreamPost(
 	ctx context.Context,
 	c *Client,

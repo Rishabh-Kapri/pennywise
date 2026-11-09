@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
+	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
@@ -1529,13 +1530,6 @@ func (m *mockAuthService) GetUserById(ctx context.Context, userID uuid.UUID) (*m
 	}
 	return nil, args.Error(1)
 }
-func (m *mockAuthService) GetAllGoogleUsers(ctx context.Context) ([]model.GoogleProviderUser, error) {
-	args := m.Called(ctx)
-	if v := args.Get(0); v != nil {
-		return v.([]model.GoogleProviderUser), args.Error(1)
-	}
-	return nil, args.Error(1)
-}
 func (m *mockAuthService) GetCurrentUser(ctx context.Context, userID uuid.UUID) (*model.CurrentAuthUserResponse, error) {
 	args := m.Called(ctx, userID)
 	if v := args.Get(0); v != nil {
@@ -1549,9 +1543,6 @@ func (m *mockAuthService) GetGoogleUserByEmail(ctx context.Context, email string
 		return v.(*model.GoogleUserInfo), args.Error(1)
 	}
 	return nil, args.Error(1)
-}
-func (m *mockAuthService) UpdateGmailHistoryID(ctx context.Context, email string, oauthClientType model.GoogleOAuthClientType, historyID uint64, expiryAt *int64) error {
-	return m.Called(ctx, email, oauthClientType, historyID, expiryAt).Error(0)
 }
 func (m *mockAuthService) RefreshToken(ctx context.Context, refreshToken string) (*model.RefreshTokenResponse, error) {
 	args := m.Called(ctx, refreshToken)
@@ -1640,32 +1631,6 @@ func TestAuthHandler_GetProviderUser(t *testing.T) {
 	})
 }
 
-func TestAuthHandler_UpdateProviderUser(t *testing.T) {
-	t.Run("unknown_provider_returns_400", func(t *testing.T) {
-		svc := &mockAuthService{}
-		w, c := makeReq("PATCH", "/auth/github/users", model.UpdateGmailHistoryRequest{})
-		c.Params = gin.Params{{Key: "provider", Value: "github"}}
-		NewAuthHandler(svc).UpdateProviderUser(c)
-		assert.Equal(t, http.StatusBadRequest, w.Code)
-	})
-	t.Run("google_updates_history_id", func(t *testing.T) {
-		svc := &mockAuthService{}
-		svc.On("UpdateGmailHistoryID", mock.Anything, "a@b.com", model.GoogleOAuthClientTypeWeb, uint64(42), (*int64)(nil)).Return(nil)
-		w, c := makeReq("PATCH", "/auth/google/users", model.UpdateGmailHistoryRequest{Email: "a@b.com", GmailHistoryID: 42})
-		c.Params = gin.Params{{Key: "provider", Value: "google"}}
-		NewAuthHandler(svc).UpdateProviderUser(c)
-		assert.Equal(t, http.StatusOK, w.Code)
-	})
-	t.Run("google_service_error_returns_500", func(t *testing.T) {
-		svc := &mockAuthService{}
-		svc.On("UpdateGmailHistoryID", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(assert.AnError)
-		w, c := makeReq("PATCH", "/auth/google/users", model.UpdateGmailHistoryRequest{Email: "a@b.com", GmailHistoryID: 1})
-		c.Params = gin.Params{{Key: "provider", Value: "google"}}
-		NewAuthHandler(svc).UpdateProviderUser(c)
-		assert.Equal(t, http.StatusInternalServerError, w.Code)
-	})
-}
-
 func TestAuthHandler_RefreshToken(t *testing.T) {
 	t.Run("invalid_json_returns_400", func(t *testing.T) {
 		svc := &mockAuthService{}
@@ -1681,6 +1646,22 @@ func TestAuthHandler_RefreshToken(t *testing.T) {
 		NewAuthHandler(svc).RefreshToken(c)
 		assert.Equal(t, http.StatusOK, w.Code)
 		svc.AssertExpectations(t)
+	})
+	t.Run("bad_token_returns_401", func(t *testing.T) {
+		svc := &mockAuthService{}
+		svc.On("RefreshToken", mock.Anything, "my-refresh-token").
+			Return(nil, errs.New(errs.CodeAuthInvalidCredentials, "invalid refresh token"))
+		w, c := makeReq("POST", "/auth/refresh", model.RefreshTokenRequest{RefreshToken: "my-refresh-token"})
+		NewAuthHandler(svc).RefreshToken(c)
+		assert.Equal(t, http.StatusUnauthorized, w.Code)
+	})
+	t.Run("outage_is_not_a_401", func(t *testing.T) {
+		svc := &mockAuthService{}
+		svc.On("RefreshToken", mock.Anything, "my-refresh-token").
+			Return(nil, errs.New(errs.CodeAuthLookupFailed, "database is down"))
+		w, c := makeReq("POST", "/auth/refresh", model.RefreshTokenRequest{RefreshToken: "my-refresh-token"})
+		NewAuthHandler(svc).RefreshToken(c)
+		assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 	})
 }
 
@@ -1868,22 +1849,22 @@ func TestTransactionHandler_ListNormalized_InvalidAccountId(t *testing.T) {
 }
 
 func TestTransactionHandler_Create_BindError(t *testing.T) {
-	t.Run("bind_error_returns_500", func(t *testing.T) {
+	t.Run("bad_json_returns_400", func(t *testing.T) {
 		svc := &mockTransactionService{}
 		w, c := makeReq("POST", "/transactions", "not-json")
 		NewTransactionHandler(svc).Create(c)
-		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
 }
 
 func TestTransactionHandler_Update_BindError(t *testing.T) {
 	id := uuid.New()
-	t.Run("bind_error_returns_500", func(t *testing.T) {
+	t.Run("bad_json_returns_400", func(t *testing.T) {
 		svc := &mockTransactionService{}
 		w, c := makeReq("PATCH", "/transactions/"+id.String(), "not-json")
 		c.Params = gin.Params{{Key: "id", Value: id.String()}}
 		NewTransactionHandler(svc).Update(c)
-		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
 }
 
@@ -1895,12 +1876,12 @@ func TestTransactionHandler_UpdateStatus_Extra(t *testing.T) {
 		NewTransactionHandler(svc).UpdateStatus(c)
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
-	t.Run("bind_error_returns_500", func(t *testing.T) {
+	t.Run("bad_json_returns_400", func(t *testing.T) {
 		svc := &mockTransactionService{}
 		w, c := makeReq("PATCH", "/transactions/"+id.String()+"/status", "not-json")
 		c.Params = gin.Params{{Key: "id", Value: id.String()}}
 		NewTransactionHandler(svc).UpdateStatus(c)
-		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
 }
 
@@ -1919,16 +1900,6 @@ func TestAuthHandler_GetProviderUser_Success(t *testing.T) {
 		NewAuthHandler(svc).GetProviderUser(c)
 		assert.Equal(t, http.StatusOK, w.Code)
 		svc.AssertExpectations(t)
-	})
-}
-
-func TestAuthHandler_UpdateProviderUser_BindError(t *testing.T) {
-	t.Run("google_bind_error_returns_400", func(t *testing.T) {
-		svc := &mockAuthService{}
-		w, c := makeReq("PATCH", "/auth/google/users", "not-json")
-		c.Params = gin.Params{{Key: "provider", Value: "google"}}
-		NewAuthHandler(svc).UpdateProviderUser(c)
-		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
 }
 
@@ -2423,24 +2394,6 @@ func TestAuthHandler_GetProviderUser_UnsupportedProvider(t *testing.T) {
 	c.Request.URL.RawQuery = "email=a@b.com"
 	NewAuthHandler(svc).GetProviderUser(c)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
-}
-
-func TestAuthHandler_UpdateProviderUser_UnsupportedProvider(t *testing.T) {
-	svc := &mockAuthService{}
-	w, c := makeReq("PATCH", "/auth/facebook/users", map[string]any{"email": "a@b.com"})
-	c.Params = gin.Params{{Key: "provider", Value: "facebook"}}
-	NewAuthHandler(svc).UpdateProviderUser(c)
-	assert.Equal(t, http.StatusBadRequest, w.Code)
-}
-
-func TestAuthHandler_UpdateProviderUser_ServiceError(t *testing.T) {
-	svc := &mockAuthService{}
-	svc.On("UpdateGmailHistoryID", mock.Anything, "a@b.com", model.GoogleOAuthClientTypeWeb, uint64(123), (*int64)(nil)).Return(assert.AnError)
-	body := model.UpdateGmailHistoryRequest{Email: "a@b.com", GmailHistoryID: 123}
-	w, c := makeReq("PATCH", "/auth/google/users", body)
-	c.Params = gin.Params{{Key: "provider", Value: "google"}}
-	NewAuthHandler(svc).UpdateProviderUser(c)
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
 func TestAuthHandler_GetProviderUser_ServiceError(t *testing.T) {

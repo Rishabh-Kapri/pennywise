@@ -22,15 +22,15 @@ var transactionPatterns = []*regexp.Regexp{
 type checkTransaction struct {}
 
 
-func NewCheckTransaction() *checkTransaction {
+func NewCheckTransaction() ports.CheckTransaction {
 	return &checkTransaction{}
 }
 
-func (c *checkTransaction) IsTransaction(ctx context.Context, msg ports.Message) (ports.TxnVerdict, error) {
+func (c *checkTransaction) Check(ctx context.Context, msg ports.Message) (ports.TxnVerdict, error) {
 	for _, pattern := range transactionPatterns {
 		if pattern.MatchString(msg.Body) {
-			return ports.TxnVerdict{IsTransaction: true, Confidence: 1}, nil
+			return ports.TxnVerdict{IsTransaction: true, Confidence: new(1.0)}, nil
 		}
 	}
-	return ports.TxnVerdict{IsTransaction: false, Confidence: 0}, nil
+	return ports.TxnVerdict{IsTransaction: false, Confidence: new(0.0)}, nil
 }

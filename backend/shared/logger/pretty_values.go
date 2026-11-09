@@ -2,11 +2,9 @@ package logger
 
 import (
 	"bytes"
-	"context"
 	"encoding"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"reflect"
 	"strings"
 )
@@ -17,87 +15,8 @@ var (
 	textMarshalerType = reflect.TypeOf((*encoding.TextMarshaler)(nil)).Elem()
 )
 
-type prettyHandler struct {
-	next slog.Handler
-}
-
-func newPrettyHandler(next slog.Handler) slog.Handler {
-	return &prettyHandler{next: next}
-}
-
-func (h *prettyHandler) Enabled(ctx context.Context, level slog.Level) bool {
-	return h.next.Enabled(ctx, level)
-}
-
-func (h *prettyHandler) Handle(ctx context.Context, record slog.Record) error {
-	prettyRecord := slog.NewRecord(record.Time, record.Level, record.Message, record.PC)
-	record.Attrs(func(attr slog.Attr) bool {
-		prettyRecord.AddAttrs(normalizeAttr(attr))
-		return true
-	})
-
-	return h.next.Handle(ctx, prettyRecord)
-}
-
-func (h *prettyHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return &prettyHandler{next: h.next.WithAttrs(normalizeAttrs(attrs))}
-}
-
-func (h *prettyHandler) WithGroup(name string) slog.Handler {
-	return &prettyHandler{next: h.next.WithGroup(name)}
-}
-
-func normalizeAttrs(attrs []slog.Attr) []slog.Attr {
-	normalized := make([]slog.Attr, 0, len(attrs))
-	for _, attr := range attrs {
-		normalized = append(normalized, normalizeAttr(attr))
-	}
-
-	return normalized
-}
-
-func normalizeAttr(attr slog.Attr) slog.Attr {
-	attr.Key = prettifyKey(attr.Key)
-	attr.Value = normalizeValue(attr.Value)
-	return attr
-}
-
-func prettifyKey(key string) string {
-	switch key {
-	case "correlation_id":
-		return "cid"
-	case "budget_id", "budgetId", "X-Budget-ID":
-		return "budget"
-	case "user_id", "X-User-ID":
-		return "user"
-	default:
-		return key
-	}
-}
-
-func normalizeValue(value slog.Value) slog.Value {
-	value = value.Resolve()
-
-	switch value.Kind() {
-	case slog.KindGroup:
-		attrs := value.Group()
-		normalized := make([]slog.Attr, 0, len(attrs))
-		for _, attr := range attrs {
-			normalized = append(normalized, normalizeAttr(attr))
-		}
-		return slog.GroupValue(normalized...)
-	case slog.KindString:
-		if pretty, ok := prettyJSONString(value.String()); ok {
-			return slog.StringValue(pretty)
-		}
-	case slog.KindAny:
-		if pretty, ok := prettyAny(value.Any()); ok {
-			return slog.StringValue(pretty)
-		}
-	}
-
-	return value
-}
+// Helpers that turn JSON strings, structs and maps into indented JSON for the
+// console handler. Errors, Stringers and TextMarshalers keep their own text.
 
 func prettyJSONString(text string) (string, bool) {
 	trimmed := strings.TrimSpace(text)

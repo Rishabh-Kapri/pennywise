@@ -9,46 +9,42 @@ package main
 
 import (
 	"context"
-	"log"
+	"errors"
 	"net/http"
-	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/factory"
-
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/memory"
 	agent "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/runtime"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/tools"
+	aliasAdapter "github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/adapters/alias"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/client"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/factory"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/handler"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/resolver"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/service"
-	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/temporal"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/userllm"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/worker"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 
+	sharedFactory "github.com/Rishabh-Kapri/pennywise/backend/shared/factory"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedMiddleware "github.com/Rishabh-Kapri/pennywise/backend/shared/middleware"
-	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/otelSDK"
-	sharedTemporal "github.com/Rishabh-Kapri/pennywise/backend/shared/temporal"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/job"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
-
-	tc "go.temporal.io/sdk/client"
-	"go.temporal.io/sdk/worker"
 )
 
-// package-level Temporal client, set in main() and used by handlers
-var temporalClient tc.Client
+const shutdownTimeout = 10 * time.Second
 
 func setupLogger(service string) {
 	logger.Setup(service)
@@ -58,25 +54,17 @@ func healthPage(c *gin.Context) {
 	c.String(http.StatusOK, "cipher Health OK!")
 }
 
-func connectToTemporal(ctx context.Context, cfg config.Config) (tc.Client, error) {
-	logger.Logger(ctx).Info("temporal", "host", cfg.TemporalServerHost, "port", cfg.TemporalServerPort)
-	c, err := tc.Dial(tc.Options{
-		HostPort:           cfg.TemporalServerHost + ":" + cfg.TemporalServerPort,
-		Logger:             logger.Logger(ctx),
-		ContextPropagators: sharedTemporal.ContextPropagators(),
-	})
-	if err != nil {
-		return nil, err
-	}
-	logger.Logger(ctx).Info("connected to temporal")
-	return c, nil
-}
-
 func main() {
 	cfg := config.Load()
 	setupLogger(cfg.ServiceName)
 
-	ctx := utils.WithInternalAuthToken(utils.WithServiceName(context.Background(), "cipher"), cfg.InternalAuthToken)
+	ctx, stop := signal.NotifyContext(utils.WithInternalAuthToken(
+		utils.WithServiceName(context.Background(), "cipher"),
+		cfg.InternalAuthToken,
+	), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	log := logger.Logger(ctx)
 
 	otelConfig := otelSDK.Load()
 	tel, err := otelSDK.NewTelemetry(ctx, *otelConfig)
@@ -90,7 +78,10 @@ func main() {
 	}()
 
 	// The repository ports; DATABASE_DRIVER picks the adapter behind them.
-	database, err := factory.ConnectDB(factory.Config{Driver: cfg.DatabaseDriver, URL: cfg.DatabaseURL})
+	database, err := sharedFactory.ConnectDB(
+		ctx,
+		sharedFactory.Config{Driver: cfg.DatabaseDriver, URL: cfg.DatabaseURL},
+	)
 	if err != nil {
 		logger.Fatal(err.Error())
 	}
@@ -128,7 +119,10 @@ func main() {
 	// policies do not apply.
 	agentReadDB := database.Pool
 	if cfg.AgentReadOnlyDatabaseURL != "" {
-		agentReadDB, err = factory.OpenSQLPool(factory.Config{Driver: cfg.DatabaseDriver, URL: cfg.AgentReadOnlyDatabaseURL})
+		agentReadDB, err = sharedFactory.OpenSQLPool(
+			ctx,
+			sharedFactory.Config{Driver: cfg.DatabaseDriver, URL: cfg.AgentReadOnlyDatabaseURL},
+		)
 		if err != nil {
 			logger.Fatal("error connecting to agent read-only database", "error", err)
 		}
@@ -168,7 +162,10 @@ func main() {
 		logger.Logger(ctx).Warn("user AI provider keys can't be opened", "error", err)
 		llmCredentialsBox = nil
 	}
+	safeHTTPClient := transport.NewUserURLClient(cfg.AllowPrivateLLMURLs)
+	userModelsResolver := resolver.NewResolver(llmCredentialsBox, safeHTTPClient, tel)
 	llmResolver := userllm.New(
+		database.UserLLMModel,
 		database.UserLLMProvider,
 		llmCredentialsBox,
 		tel,
@@ -203,40 +200,14 @@ func main() {
 		database.PayeeRule,
 		database.Category,
 		tel.Tracer,
-		// Optional remote embedding backends for EMAIL_EMBEDDING_PROVIDERS. Nil
-		// entries (no API key) are dropped, so this is safe to pass always.
-		map[string]client.Embedder{
-			"openrouter": client.NewOpenRouterEmbedClient(tel.Tracer),
-		},
+		database.UserLLMModel,
+		userModelsResolver,
 	)
 
 	agentService := service.NewAgentService(redisClient, agent, pennywiseHttpTransport, memoryService, llmResolver)
 
-	if cfg.Environment != "local" {
-		temporalClient, err = connectToTemporal(ctx, cfg)
-		if err != nil {
-			logger.Fatal("Unable to connect to Temporal", "error", err)
-		}
-		defer temporalClient.Close()
-
-		w := worker.New(temporalClient, sharedModel.CipherActivitiesTaskQueue, worker.Options{
-			UseBuildIDForVersioning: false,
-			BackgroundActivityContext: utils.WithInternalAuthToken(
-				utils.WithServiceName(context.Background(), "cipher"),
-				cfg.InternalAuthToken,
-			),
-		})
-		w.RegisterActivity(&temporal.PredictionActivity{PredictionService: predictionService})
-
-		go func() {
-			if err := w.Run(worker.InterruptCh()); err != nil {
-				logger.Fatal("Temporal activity worker failed", "error", err)
-			}
-		}()
-	}
 	// Handler
 	predictionHandler := handler.NewPredictionHandler(predictionService)
-	workflowHandler := handler.NewWorkflowHandler(temporalClient)
 	agentHandler := handler.NewAgentHandler(agentService)
 
 	// Router
@@ -245,7 +216,14 @@ func main() {
 	router.Use(gzip.Gzip(gzip.DefaultCompression))
 	router.Use(sharedMiddleware.StripInternalHeaders())
 	router.Use(sharedMiddleware.RequestMetadata("cipher"))
-	router.Use(sharedMiddleware.InternalRequestAuth(cfg.InternalAuthToken))
+	serviceAuth, err := sharedFactory.NewServiceAuthenticator(ctx, sharedFactory.ServiceAuthConfig{
+		Tokens:   cfg.ServiceTokens,
+		OwnToken: cfg.InternalAuthToken,
+	})
+	if err != nil {
+		logger.Fatal("invalid SERVICE_TOKENS", "error", err)
+	}
+	router.Use(sharedMiddleware.InternalRequestAuth(cfg.InternalAuthToken, serviceAuth))
 	router.Use(sharedMiddleware.InternalUserIDMiddleware())
 	router.Use(sharedMiddleware.RequestLogger())
 	router.Use(otelgin.Middleware(otelConfig.ServiceName))
@@ -283,11 +261,7 @@ func main() {
 		budgetApi.POST("/corrections", predictionHandler.HandleCorrection)
 		budgetApi.POST("/categories/describe", predictionHandler.SuggestCategoryDescription)
 		budgetApi.POST("/statements/extract", predictionHandler.ExtractStatement)
-		budgetApi.POST("/llm/providers/test", llmProviderHandler.Test)
-
-		api.POST("/workflows/:workflowId/retry-predict", workflowHandler.RetryPredict)
-		api.POST("/workflows/:workflowId/retry-parse", workflowHandler.RetryParse)
-		api.POST("/workflows/parsed-to-transaction", workflowHandler.StartParsedEmailToTransaction)
+		budgetApi.POST("/llm/models/test", llmProviderHandler.TestModel)
 
 		{
 			agentApi := api.Group("/agent")
@@ -299,10 +273,82 @@ func main() {
 	}
 
 	addr := "0.0.0.0:" + cfg.Port
-	log.Printf("cipher listening on %s\n", addr)
-	go router.Run(addr)
+	log.Info("cipher listening on", "addr", addr)
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+	// setup server with graceful shutdown
+	serverErr := make(chan error, 1)
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: router.Handler(),
+	}
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			serverErr <- err
+			return
+		}
+	}()
+
+	// setup worker
+	var broker job.Broker // nil: no queue, so ingestion answers 503
+	jobs, err := sharedFactory.ConnectJob(ctx, sharedFactory.JobConfig{
+		Driver:    cfg.JobDriver,
+		BrokerURL: cfg.JobBrokerURL,
+		StoreURL:  cfg.JobStoreURL,
+	})
+	if err != nil {
+		logger.Fatal("connect job queue", "err", err)
+	}
+	if jobs != nil {
+		defer jobs.Close()
+		broker = jobs.Broker
+	}
+
+	messagePipeline, err := factory.NewMessagePipeline(database.PipelineStep, database.UserLLMModel, database.Category, userModelsResolver)
+	if err != nil {
+		logger.Fatal("error building message pipeline", "err", err)
+	}
+
+	workerErr := make(chan error, 1)
+	workerDone := make(chan struct{})
+	go func() {
+		defer close(workerDone)
+		err := worker.Setup(ctx, worker.WorkerDeps{
+			Queues:   cfg.JobQueues,
+			Broker:   broker,
+			Pipeline: messagePipeline,
+			Memory:   aliasAdapter.NewLookup(database.CounterpartyAlias),
+		})
+		if err != nil {
+			workerErr <- err
+			return
+		}
+	}()
+
+	select {
+	case <-ctx.Done():
+		log.Info("server shutdown")
+	case e := <-serverErr:
+		if e != nil {
+			log.Error("error starting server", "err", e)
+		}
+	case e := <-workerErr:
+		if e != nil && !errors.Is(e, context.Canceled) {
+			log.Error("unexpected worker error", "err", e)
+		}
+	}
+	stop()
+
+	// wait for a timeout for active connections to close
+	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Error("forced shutdown", "err", err)
+	}
+
+	select {
+	case <-workerDone:
+		log.Info("worker done")
+	case <-shutdownCtx.Done():
+		log.Info("worker didn't shutdown on time")
+	}
 }

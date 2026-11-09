@@ -111,17 +111,24 @@ async function getAccessToken(): Promise<string> {
 
 async function parse<T>(res: Response): Promise<T> {
   const text = await res.text();
-  const data = text ? (JSON.parse(text) as unknown) : {};
   if (!res.ok) {
-    const message = (data as { error?: string })?.error ?? res.statusText;
-    throw new Error(String(message));
+    // Error bodies aren't always JSON (a proxy's or the router's 404 page).
+    let message = res.statusText;
+    try {
+      message = (JSON.parse(text) as { error?: string })?.error ?? message;
+    } catch {
+      message = text.slice(0, 120) || message;
+    }
+    throw new Error(`${res.status}: ${message}`);
   }
-  return data as T;
+  return (text ? JSON.parse(text) : {}) as T;
 }
 
 type RequestOptions = {
   /** Overrides the persisted budget, for callers that already know it (e.g. a push payload). */
   budgetId?: string;
+  /** Overrides `config.apiBaseUrl` for this request only (SMS test mode). Token refresh still uses the default. */
+  baseUrl?: string;
   body?: unknown;
 };
 
@@ -136,7 +143,7 @@ async function request<T>(method: string, path: string, options: RequestOptions 
     // Mirrors apiClient: budget endpoints are not budget-scoped.
     if (budgetId && !path.includes('budgets')) headers['x-budget-id'] = budgetId;
 
-    return fetch(`${config.apiBaseUrl}/${path}`, {
+    return fetch(`${options.baseUrl ?? config.apiBaseUrl}/${path}`, {
       method,
       headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body)
