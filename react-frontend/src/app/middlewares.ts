@@ -25,7 +25,9 @@ export const dataFetchMiddleware: Middleware =
     const dispatch = store.dispatch as AppDispatch;
 
     const month = (store.getState() as RootState).budgets.selectedMonth;
-    if (fetchAllBudgets.fulfilled.match(action)) {
+    // A new user has no budget yet, and these all need one. Creating it fetches
+    // the budgets again, which lands back here.
+    if (fetchAllBudgets.fulfilled.match(action) && (store.getState() as RootState).budgets.selectedBudget) {
       dispatch(fetchAllAccounts());
       dispatch(fetchAllTransaction());
       dispatch(fetchAllCategoryGroups(month));

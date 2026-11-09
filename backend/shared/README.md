@@ -6,7 +6,9 @@ Common Go module imported by all Pennywise Go services (`go-pennywise-api`, `cip
 
 | Package | Purpose |
 |---------|---------|
-| `db` | All repositories (budgets, transactions, categories, payees + rules, accounts, auth, cipher predictions, embeddings, agent runs, …). Methods accept a `pgx.Tx` so callers control atomicity. |
+| `ports/repository` | Repository ports for every aggregate (budgets, transactions, categories, payees + rules, accounts, auth, cipher predictions, embeddings, agent runs, …), plus `DBTxn` for atomic units of work |
+| `adapters/postgres` | Postgres implementation of those ports |
+| `factory` | `ConnectDB(Config)` picks the adapter from `DATABASE_DRIVER` and returns the ports |
 | `model` | Shared domain models and enums (prediction sources, transaction status, …) |
 | `middleware` | `RequestMetadata` (ingress normalization), `InternalRequestAuth` (verifies `X-Internal-Token`, sets `VerifiedInternal`), `BudgetIdMiddleware` |
 | `transport` / `httpclient` | Protocol-agnostic client/engine split for service-to-service calls; injects canonical `X-Correlation-ID`, `X-Caller-Service`, `X-Origin-Service`, and `X-Internal-Token` from context |
@@ -14,7 +16,7 @@ Common Go module imported by all Pennywise Go services (`go-pennywise-api`, `cip
 | `logger` | Structured logging with request metadata |
 | `errors` | Typed error wrappers with error codes |
 | `otelSDK` | OpenTelemetry setup (see [docs/observability.md](../../docs/observability.md)) |
-| `utils` | Context helpers (`MustUserID`, `MustBudgetID`), `WithTx`, text cleaning for merchant/UPI strings |
+| `utils` | Context helpers (`MustUserID`, `MustBudgetID`), text cleaning for merchant/UPI strings |
 
 ## Conventions
 

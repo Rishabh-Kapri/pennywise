@@ -146,7 +146,7 @@
   padding: 0;
   border: 1px solid var(--color-border-muted);
   border-radius: 0.4rem;
-  background: rgb(255 255 255 / 0.04);
+  background: color-mix(in srgb, var(--color-text) 4%, transparent);
   color: var(--color-text-secondary);
   font: inherit;
   font-size: 0.78rem;
@@ -251,7 +251,7 @@
   padding: 0;
   border: 1px solid var(--color-border-muted);
   border-radius: 0.4rem;
-  background: rgb(255 255 255 / 0.04);
+  background: color-mix(in srgb, var(--color-text) 4%, transparent);
   color: var(--color-text-secondary);
 }
 

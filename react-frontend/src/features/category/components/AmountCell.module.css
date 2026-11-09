@@ -1,0 +1,50 @@
+.amount,
+.noAmount {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.amount {
+  color: var(--color-text);
+}
+
+.noAmount {
+  color: var(--color-text-secondary);
+}
+
+.itemBalance {
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-weight: 600;
+  color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
+}
+
+.itemOverspent {
+  color: var(--color-error);
+  background: color-mix(in srgb, var(--color-error) 14%, transparent);
+}
+
+.itemBalance.noAmount {
+  color: var(--color-text-secondary);
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+}
+
+.input {
+  width: 100%;
+  min-width: 0;
+  height: 2.1rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--color-primary);
+  border-radius: 0.4rem;
+  background: var(--color-surface);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 22%, transparent);
+  color: var(--color-text);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.input:focus {
+  outline: none;
+}

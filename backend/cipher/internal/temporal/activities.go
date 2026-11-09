@@ -8,6 +8,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/llmusage"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/progress"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/service"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/userllm"
 	"github.com/google/uuid"
 
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
@@ -231,7 +232,7 @@ func (a *PredictionActivity) ParseEmail(
 	)
 	if err != nil {
 		log.Error("error extracting email", "error", err)
-		return sharedModel.ParseEmailResult{LLMCalls: usage.Calls()}, err
+		return sharedModel.ParseEmailResult{LLMCalls: usage.Calls()}, terminalIfNoAIProvider(err)
 	}
 	if extracted == nil {
 		return sharedModel.ParseEmailResult{LLMCalls: usage.Calls()},
@@ -313,7 +314,7 @@ func (a *PredictionActivity) PredictEmail(
 	summary, err := a.PredictionService.SummarizeEmailText(ctx, email.EmailText)
 	if err != nil {
 		log.Error("summarization failed", "error", err)
-		return sharedModel.PredictEmailResult{LLMCalls: usage.Calls()}, err
+		return sharedModel.PredictEmailResult{LLMCalls: usage.Calls()}, terminalIfNoAIProvider(err)
 	}
 
 	prediction, err := a.PredictionService.Predict(ctx, predictionInput)
@@ -337,7 +338,7 @@ func (a *PredictionActivity) PredictEmail(
 				temporal.NewNonRetryableApplicationError(err.Error(), string(errs.CodeCategoryLookupFailed), err)
 		}
 		log.Error("prediction failed", "error", err)
-		return sharedModel.PredictEmailResult{LLMCalls: usage.Calls()}, err
+		return sharedModel.PredictEmailResult{LLMCalls: usage.Calls()}, terminalIfNoAIProvider(err)
 	}
 	if prediction == nil {
 		log.Warn("no prediction result, skipping email")
@@ -371,4 +372,16 @@ func (a *PredictionActivity) PredictEmail(
 		},
 		LLMCalls: usage.Calls(),
 	}, nil
+}
+
+// terminalIfNoAIProvider stops Temporal retrying an email whose budget owner
+// has no AI provider: retries can't fix that, so the workflow parks the email
+// right away, and it can be retried from Activity once a provider is added.
+func terminalIfNoAIProvider(err error) error {
+	// errors.Is, not errors.As: services wrap it in errs.Errors of their own.
+	if errors.Is(err, userllm.ErrNotConfigured) {
+		return temporal.NewNonRetryableApplicationError(
+			err.Error(), string(errs.CodeAIProviderNotConfigured), err)
+	}
+	return err
 }

@@ -12,19 +12,17 @@
 }
 
 .container {
-  /* position: fixed; */
-  /* z-index: 1000; */
   padding: 1rem 0;
   padding-top: 0;
-  background: var(--color-surface-secondary);
-  border: 1px solid var(--color-surface-tertiary);
-  box-shadow: var(--shadow-lg);
-  border-radius: 0.5rem;
-  /* box-shadow: var(--shadow-md); */
+  background: var(--color-popover, var(--color-surface-secondary));
+  border: 1px solid var(--color-border-muted);
+  box-shadow: var(--shadow-popover, var(--shadow-lg));
+  border-radius: 0.75rem;
   max-height: 400px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+  animation: fadeIn 0.14s ease-out;
 }
 
 /* Custom scrollbar */
@@ -55,7 +53,7 @@
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(-8px);
+    transform: translateY(-4px);
   }
   to {
     opacity: 1;

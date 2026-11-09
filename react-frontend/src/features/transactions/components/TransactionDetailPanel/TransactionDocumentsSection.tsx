@@ -81,10 +81,7 @@ export function TransactionDocumentsSection({ txn }: { txn: Transaction }) {
 
   return (
     <section className={styles.documentsSection}>
-      <span className={styles.metaLabel}>
-        <PaperclipIcon size={18} />
-        <span>Receipts &amp; Documents</span>
-      </span>
+      <span className={styles.sectionTitle}>Receipts &amp; documents</span>
 
       <div className={styles.documentGrid}>
         {documents.map((doc) => (

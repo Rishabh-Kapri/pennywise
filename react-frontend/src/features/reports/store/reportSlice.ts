@@ -1,16 +1,17 @@
 import { createAsyncThunk, createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import {
   EMPTY_REPORT_FILTERS,
-  type IncomeExpenseReport,
+  type CashFlowReport,
+  type GroupTreatment,
   type NetWorthReport,
   type ReportFilters,
   type ReportPreset,
   type ReportRange,
   type ReportState,
-  type SpendingReport,
 } from '../types/report.types';
 import { apiClient, LoadingState } from '@/utils';
 import { addMonths, getCurrentMonthKey } from '@/utils/date.utils';
+import { setSelectedBudget } from '@/features/budget/store/budgetSlice';
 import type { RootState } from '@/app';
 
 export interface ReportQueryArgs {
@@ -34,17 +35,10 @@ function reportQuery({ range, filters }: ReportQueryArgs): string {
   return params.toString();
 }
 
-export const fetchSpendingReport = createAsyncThunk<SpendingReport, ReportQueryArgs>(
-  'reports/fetchSpending',
+export const fetchCashFlowReport = createAsyncThunk<CashFlowReport, ReportQueryArgs>(
+  'reports/fetchCashFlow',
   async (args) => {
-    return await apiClient.get<SpendingReport>(`reports/spending?${reportQuery(args)}`);
-  },
-);
-
-export const fetchIncomeExpenseReport = createAsyncThunk<IncomeExpenseReport, ReportQueryArgs>(
-  'reports/fetchIncomeExpense',
-  async (args) => {
-    return await apiClient.get<IncomeExpenseReport>(`reports/income-expense?${reportQuery(args)}`);
+    return await apiClient.get<CashFlowReport>(`reports/cashflow?${reportQuery(args)}`);
   },
 );
 
@@ -55,17 +49,28 @@ export const fetchNetWorthReport = createAsyncThunk<NetWorthReport, ReportQueryA
   },
 );
 
+// Group treatments are a per-device preference; group ids are globally
+// unique, so one map serves every budget.
+const TREATMENTS_KEY = 'pennywise.reports.groupTreatments';
+
+function loadTreatments(): Record<string, GroupTreatment> {
+  try {
+    return JSON.parse(localStorage.getItem(TREATMENTS_KEY) ?? '{}') as Record<string, GroupTreatment>;
+  } catch {
+    return {};
+  }
+}
+
 const initialState: ReportState = {
   range: {
-    startMonth: addMonths(getCurrentMonthKey(), -5),
+    startMonth: addMonths(getCurrentMonthKey(), -11),
     endMonth: getCurrentMonthKey(),
   },
-  preset: '6m',
+  preset: '12m',
   filters: EMPTY_REPORT_FILTERS,
-  spending: null,
-  spendingLoading: LoadingState.IDLE,
-  incomeExpense: null,
-  incomeExpenseLoading: LoadingState.IDLE,
+  cashFlow: null,
+  cashFlowLoading: LoadingState.IDLE,
+  groupTreatments: loadTreatments(),
   netWorth: null,
   netWorthLoading: LoadingState.IDLE,
   error: null,
@@ -86,31 +91,33 @@ const reportSlice = createSlice({
       state.filters = action.payload;
       invalidateReports(state);
     },
+    setGroupTreatment: (state, action: PayloadAction<{ groupId: string; treatment: GroupTreatment | null }>) => {
+      const { groupId, treatment } = action.payload;
+      if (treatment === null) {
+        delete state.groupTreatments[groupId];
+      } else {
+        state.groupTreatments[groupId] = treatment;
+      }
+      localStorage.setItem(TREATMENTS_KEY, JSON.stringify(state.groupTreatments));
+    },
   },
   extraReducers: (builder) => {
     builder
-      .addCase(fetchSpendingReport.pending, (state) => {
-        state.spendingLoading = LoadingState.PENDING;
+      .addCase(setSelectedBudget, (state) => {
+        // filters hold the old budget's account/category ids
+        state.filters = EMPTY_REPORT_FILTERS;
+        invalidateReports(state);
+      })
+      .addCase(fetchCashFlowReport.pending, (state) => {
+        state.cashFlowLoading = LoadingState.PENDING;
         state.error = null;
       })
-      .addCase(fetchSpendingReport.fulfilled, (state, action) => {
-        state.spendingLoading = LoadingState.SUCCESS;
-        state.spending = action.payload;
+      .addCase(fetchCashFlowReport.fulfilled, (state, action) => {
+        state.cashFlowLoading = LoadingState.SUCCESS;
+        state.cashFlow = action.payload;
       })
-      .addCase(fetchSpendingReport.rejected, (state, action) => {
-        state.spendingLoading = LoadingState.ERROR;
-        state.error = action.error.message ?? null;
-      })
-      .addCase(fetchIncomeExpenseReport.pending, (state) => {
-        state.incomeExpenseLoading = LoadingState.PENDING;
-        state.error = null;
-      })
-      .addCase(fetchIncomeExpenseReport.fulfilled, (state, action) => {
-        state.incomeExpenseLoading = LoadingState.SUCCESS;
-        state.incomeExpense = action.payload;
-      })
-      .addCase(fetchIncomeExpenseReport.rejected, (state, action) => {
-        state.incomeExpenseLoading = LoadingState.ERROR;
+      .addCase(fetchCashFlowReport.rejected, (state, action) => {
+        state.cashFlowLoading = LoadingState.ERROR;
         state.error = action.error.message ?? null;
       })
       .addCase(fetchNetWorthReport.pending, (state) => {
@@ -129,16 +136,14 @@ const reportSlice = createSlice({
 });
 
 function invalidateReports(state: ReportState) {
-  state.spending = null;
-  state.spendingLoading = LoadingState.IDLE;
-  state.incomeExpense = null;
-  state.incomeExpenseLoading = LoadingState.IDLE;
+  state.cashFlow = null;
+  state.cashFlowLoading = LoadingState.IDLE;
   state.netWorth = null;
   state.netWorthLoading = LoadingState.IDLE;
   state.error = null;
 }
 
-export const { setRange, setReportFilters } = reportSlice.actions;
+export const { setRange, setReportFilters, setGroupTreatment } = reportSlice.actions;
 
 export default reportSlice.reducer;
 
@@ -146,11 +151,9 @@ export default reportSlice.reducer;
 export const selectReportRange = (state: RootState) => state.reports.range;
 export const selectReportFilters = (state: RootState) => state.reports.filters;
 export const selectReportPreset = (state: RootState) => state.reports.preset;
-export const selectSpendingReport = (state: RootState) => state.reports.spending;
-export const selectSpendingLoading = (state: RootState) => state.reports.spendingLoading;
-export const selectIncomeExpenseReport = (state: RootState) => state.reports.incomeExpense;
-export const selectIncomeExpenseLoading = (state: RootState) =>
-  state.reports.incomeExpenseLoading;
+export const selectCashFlowReport = (state: RootState) => state.reports.cashFlow;
+export const selectCashFlowLoading = (state: RootState) => state.reports.cashFlowLoading;
+export const selectGroupTreatments = (state: RootState) => state.reports.groupTreatments;
 export const selectNetWorthReport = (state: RootState) => state.reports.netWorth;
 export const selectNetWorthLoading = (state: RootState) => state.reports.netWorthLoading;
 export const selectReportError = (state: RootState) => state.reports.error;

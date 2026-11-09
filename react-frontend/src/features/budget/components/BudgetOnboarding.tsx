@@ -71,7 +71,8 @@ export default function BudgetOnboarding() {
       .then(() => {
         toast.success('Budget created');
         dispatch(fetchAllBudgets());
-        navigate('/budget', { replace: true });
+        // The new budget opens the setup wizard (Layout shows it until it's done).
+        navigate('/dashboard', { replace: true });
       })
       .catch((err: unknown) => {
         const message =

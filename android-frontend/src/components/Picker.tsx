@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
-import { FlatList, Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
-import { Check, ChevronDown, Search, X } from 'lucide-react-native';
+import { FlatList, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Check, ChevronDown, Plus, Search, X } from 'lucide-react-native';
 import { AppText } from './AppText';
+import { Sheet, SheetOverlay } from './Sheet';
 import { colors, radii, spacing } from '../theme';
 
 export type PickerOption = {
@@ -9,6 +10,8 @@ export type PickerOption = {
   label: string;
   sublabel?: string;
   color?: string;
+  /** options sharing a group are listed under one header, in the order given */
+  group?: string;
 };
 
 /** Tappable form row that shows the current selection and opens a picker. */
@@ -50,69 +53,146 @@ type PickerListProps = {
   onSelect: (id: string | null) => void;
   onClose: () => void;
   searchPlaceholder?: string;
+  /** adds a "none" row on top that selects null */
   clearLabel?: string;
+  /** offers to create the typed name when nothing matches it exactly */
+  onCreate?: (name: string) => void;
+  autoFocusSearch?: boolean;
 };
 
-/**
- * Searchable option list rendered as an overlay. Use this variant inside an
- * existing Modal (nested Modals misbehave on Android); use PickerModal when
- * there is no surrounding modal.
- */
-export function PickerOverlay({
-  title,
+type Row =
+  | { kind: 'clear'; key: string }
+  | { kind: 'create'; key: string; name: string }
+  | { kind: 'header'; key: string; label: string }
+  | { kind: 'option'; key: string; option: PickerOption };
+
+// Fixed heights let the list jump straight to the selected row on open.
+const ROW_HEIGHT = 52;
+const HEADER_HEIGHT = 34;
+const rowHeight = (row: Row) => (row.kind === 'header' ? HEADER_HEIGHT : ROW_HEIGHT);
+
+function buildRows(options: PickerOption[], query: string, clearLabel?: string, canCreate?: boolean): Row[] {
+  const q = query.trim().toLowerCase();
+  const matches = q
+    ? options.filter(
+        (option) => option.label.toLowerCase().includes(q) || (option.sublabel ?? '').toLowerCase().includes(q)
+      )
+    : options;
+
+  const rows: Row[] = [];
+  if (canCreate && q && !options.some((option) => option.label.trim().toLowerCase() === q)) {
+    rows.push({ kind: 'create', key: '__create__', name: query.trim() });
+  }
+  if (clearLabel && !q) rows.push({ kind: 'clear', key: '__clear__' });
+
+  let group: string | undefined;
+  for (const option of matches) {
+    if (option.group !== undefined && option.group !== group) {
+      group = option.group;
+      rows.push({ kind: 'header', key: `__group__${group}`, label: group });
+    }
+    rows.push({ kind: 'option', key: option.id, option });
+  }
+  return rows;
+}
+
+function PickerBody({
   options,
   selectedId,
   onSelect,
-  onClose,
   searchPlaceholder = 'Search',
-  clearLabel
-}: PickerListProps) {
+  clearLabel,
+  onCreate,
+  autoFocusSearch
+}: Omit<PickerListProps, 'title' | 'onClose'>) {
   const [query, setQuery] = useState('');
+  const rows = useMemo(() => buildRows(options, query, clearLabel, Boolean(onCreate)), [options, query, clearLabel, onCreate]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return options;
-    return options.filter(
-      (option) => option.label.toLowerCase().includes(q) || (option.sublabel ?? '').toLowerCase().includes(q)
-    );
-  }, [options, query]);
+  const offsets = useMemo(() => {
+    const result: number[] = [];
+    let offset = 0;
+    for (const row of rows) {
+      result.push(offset);
+      offset += rowHeight(row);
+    }
+    return result;
+  }, [rows]);
+
+  // Open on the current choice with a couple of rows of context above it.
+  // Computed once: later filtering shouldn't yank the list around.
+  const [initialIndex] = useState(() => {
+    const index = rows.findIndex((row) => row.kind === 'option' && row.option.id === selectedId);
+    return index > 2 ? index - 2 : undefined;
+  });
 
   return (
-    <View style={StyleSheet.absoluteFill}>
-      <Pressable style={styles.overlayBackdrop} onPress={onClose} />
-      <View style={styles.sheet}>
-        <View style={styles.sheetHandle} />
-        <View style={styles.sheetHeader}>
-          <AppText variant="heading" style={styles.grow}>
-            {title}
-          </AppText>
-          <Pressable style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]} onPress={onClose}>
-            <X size={18} color={colors.muted} />
+    <View style={styles.body}>
+      <View style={styles.searchBox}>
+        <Search size={16} color={colors.faint} />
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder={searchPlaceholder}
+          placeholderTextColor={colors.faint}
+          style={styles.searchInput}
+          autoCorrect={false}
+          autoFocus={autoFocusSearch}
+          returnKeyType="done"
+        />
+        {query ? (
+          <Pressable accessibilityLabel="Clear search" hitSlop={8} onPress={() => setQuery('')}>
+            <X size={16} color={colors.faint} />
           </Pressable>
-        </View>
+        ) : null}
+      </View>
 
-        <View style={styles.searchBox}>
-          <Search size={16} color={colors.faint} />
-          <TextInput
-            value={query}
-            onChangeText={setQuery}
-            placeholder={searchPlaceholder}
-            placeholderTextColor={colors.faint}
-            style={styles.searchInput}
-            autoCorrect={false}
-          />
-        </View>
-
-        <FlatList
-          data={filtered}
-          keyExtractor={(item) => item.id}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.listContent}
-          ListHeaderComponent={
-            clearLabel ? (
+      <FlatList
+        data={rows}
+        style={styles.list}
+        keyExtractor={(row) => row.key}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator={false}
+        initialScrollIndex={initialIndex}
+        getItemLayout={(_, index) => ({
+          length: rows[index] ? rowHeight(rows[index]) : ROW_HEIGHT,
+          offset: offsets[index] ?? 0,
+          index
+        })}
+        ListEmptyComponent={
+          <AppText variant="caption" muted style={styles.empty}>
+            No matches
+          </AppText>
+        }
+        renderItem={({ item: row }) => {
+          if (row.kind === 'header') {
+            return (
+              <View style={styles.groupHeader}>
+                <AppText variant="label" tone="faint" numberOfLines={1}>
+                  {row.label}
+                </AppText>
+              </View>
+            );
+          }
+          if (row.kind === 'create') {
+            return (
               <Pressable
                 style={({ pressed }) => [styles.option, pressed && styles.optionPressed]}
+                onPress={() => onCreate?.(row.name)}
+              >
+                <View style={styles.createIcon}>
+                  <Plus size={15} color={colors.primary} />
+                </View>
+                <AppText numberOfLines={1} style={[styles.grow, styles.createText]}>
+                  Create “{row.name}”
+                </AppText>
+              </Pressable>
+            );
+          }
+          if (row.kind === 'clear') {
+            return (
+              <Pressable
+                style={({ pressed }) => [styles.option, !selectedId && styles.optionSelected, pressed && styles.optionPressed]}
                 onPress={() => onSelect(null)}
               >
                 <AppText muted style={styles.grow}>
@@ -120,47 +200,55 @@ export function PickerOverlay({
                 </AppText>
                 {selectedId ? null : <Check size={16} color={colors.primary} />}
               </Pressable>
-            ) : null
-          }
-          ListEmptyComponent={
-            <AppText variant="caption" muted style={styles.empty}>
-              No matches
-            </AppText>
-          }
-          renderItem={({ item }) => {
-            const selected = item.id === selectedId;
-            return (
-              <Pressable
-                style={({ pressed }) => [styles.option, pressed && styles.optionPressed]}
-                onPress={() => onSelect(item.id)}
-              >
-                {item.color ? <View style={[styles.dot, { backgroundColor: item.color }]} /> : null}
-                <View style={styles.grow}>
-                  <AppText numberOfLines={1} style={selected ? styles.optionSelectedText : undefined}>
-                    {item.label}
-                  </AppText>
-                  {item.sublabel ? (
-                    <AppText variant="caption" muted numberOfLines={1}>
-                      {item.sublabel}
-                    </AppText>
-                  ) : null}
-                </View>
-                {selected ? <Check size={16} color={colors.primary} /> : null}
-              </Pressable>
             );
-          }}
-        />
-      </View>
+          }
+          const { option } = row;
+          const selected = option.id === selectedId;
+          return (
+            <Pressable
+              style={({ pressed }) => [styles.option, selected && styles.optionSelected, pressed && styles.optionPressed]}
+              onPress={() => onSelect(option.id)}
+            >
+              {option.color ? <View style={[styles.dot, { backgroundColor: option.color }]} /> : null}
+              <View style={styles.grow}>
+                <AppText numberOfLines={1} style={selected ? styles.optionSelectedText : undefined}>
+                  {option.label}
+                </AppText>
+                {option.sublabel ? (
+                  <AppText variant="caption" muted numberOfLines={1}>
+                    {option.sublabel}
+                  </AppText>
+                ) : null}
+              </View>
+              {selected ? <Check size={16} color={colors.primary} /> : null}
+            </Pressable>
+          );
+        }}
+      />
     </View>
   );
 }
 
-/** Standalone picker for screens that are not already inside a Modal. */
-export function PickerModal({ visible, ...props }: PickerListProps & { visible: boolean }) {
+/**
+ * Searchable option list rendered as an overlay sheet. Use this variant inside
+ * an existing Modal (nested Modals misbehave on Android); use PickerModal when
+ * there is no surrounding modal.
+ */
+export function PickerOverlay({ title, onClose, ...props }: PickerListProps) {
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={props.onClose}>
-      <PickerOverlay {...props} />
-    </Modal>
+    <SheetOverlay title={title} onClose={onClose} size="tall">
+      <PickerBody {...props} />
+    </SheetOverlay>
+  );
+}
+
+/** Standalone picker for screens that are not already inside a Modal. */
+export function PickerModal({ visible, title, onClose, ...props }: PickerListProps & { visible: boolean }) {
+  return (
+    <Sheet visible={visible} title={title} onClose={onClose} size="tall">
+      {/* remount per open so search and scroll start fresh */}
+      {visible ? <PickerBody {...props} /> : null}
+    </Sheet>
   );
 }
 
@@ -190,43 +278,12 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0
   },
-  overlayBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.55)'
+  body: {
+    flex: 1,
+    gap: spacing.sm
   },
-  sheet: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    maxHeight: '80%',
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: radii.xl,
-    borderTopRightRadius: radii.xl,
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xl,
-    gap: spacing.md
-  },
-  sheetHandle: {
-    alignSelf: 'center',
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.surfaceTertiary
-  },
-  sheetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md
-  },
-  closeButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surfaceStrong
+  list: {
+    flex: 1
   },
   searchBox: {
     flexDirection: 'row',
@@ -243,21 +300,39 @@ const styles = StyleSheet.create({
     fontSize: 15,
     paddingVertical: 0
   },
-  listContent: {
-    paddingBottom: spacing.sm
+  groupHeader: {
+    height: HEADER_HEIGHT,
+    justifyContent: 'flex-end',
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.xs
   },
   option: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    minHeight: 50,
+    height: ROW_HEIGHT,
     paddingHorizontal: spacing.md,
     borderRadius: radii.md
+  },
+  optionSelected: {
+    backgroundColor: colors.primaryMuted
   },
   optionPressed: {
     backgroundColor: colors.surfaceStrong
   },
   optionSelectedText: {
+    color: colors.primary,
+    fontWeight: '600'
+  },
+  createIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primaryMuted
+  },
+  createText: {
     color: colors.primary,
     fontWeight: '600'
   },

@@ -5,7 +5,7 @@ import styles from './Layout.module.css';
 import { HeaderProvider } from '../../../context/HeaderProvider';
 import { SidePanelProvider } from '../../../context/SidePanelProvider';
 import { useSidePanel } from '../../../context/SidePanelContext';
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import {
   fetchAllBudgets,
   selectAllBudgets,
@@ -14,6 +14,10 @@ import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import BudgetOnboarding from '@/features/budget/components/BudgetOnboarding';
 import { WebSocketProvider } from '@/features/websocket/WebSocketProvider';
 import { AgentChat } from '@/components/common';
+import { selectIsDemoUser } from '@/features/auth/store';
+import { selectOnboarding } from '@/features/onboarding/hooks/useOnboarding';
+
+const OnboardingWizard = lazy(() => import('@/features/onboarding/components/OnboardingWizard'));
 
 function MainWithSidePanel() {
   const { sidePanelContent } = useSidePanel();
@@ -38,6 +42,8 @@ function MainWithSidePanel() {
 export default function Layout() {
   const dispatch = useAppDispatch();
   const budgets = useAppSelector(selectAllBudgets);
+  const onboarding = useAppSelector(selectOnboarding);
+  const isDemoUser = useAppSelector(selectIsDemoUser);
   const [hasLoadedBudgets, setHasLoadedBudgets] = useState(false);
 
   useEffect(() => {
@@ -46,6 +52,19 @@ export default function Layout() {
 
   if (hasLoadedBudgets && budgets.length === 0) {
     return <BudgetOnboarding />;
+  }
+
+  // A budget that hasn't finished setup opens the wizard instead of the app.
+  // The websocket stays up so imported transactions arrive while it runs.
+  if (hasLoadedBudgets && onboarding && onboarding.step !== 'done' && !isDemoUser) {
+    return (
+      <>
+        <WebSocketProvider />
+        <Suspense fallback={null}>
+          <OnboardingWizard />
+        </Suspense>
+      </>
+    );
   }
 
   return (

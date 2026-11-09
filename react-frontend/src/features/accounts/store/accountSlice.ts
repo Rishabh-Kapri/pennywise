@@ -12,6 +12,7 @@ import {
 } from '../types/account.types';
 import { apiClient, LoadingState } from '@/utils';
 import type { RootState } from '@/app';
+import { fetchAllPayees } from '@/features/payees/store/payeeSlice';
 
 const initialState: AccountState = {
   selectedAccount: null,
@@ -57,6 +58,30 @@ export const fetchAllAccounts = createAsyncThunk<Account[]>(
   async () => {
     const accounts = await apiClient.get<Account[] | null>('accounts');
     return accounts ?? [];
+  },
+);
+
+export type NewAccount = Pick<Account, 'name' | 'type' | 'bank' | 'suffix'>;
+
+/** Opens an account, then reloads the list (the API also adds its transfer payee). */
+export const createAccount = createAsyncThunk<Account, NewAccount>(
+  'accounts/createAccount',
+  async (account, { dispatch }) => {
+    const created = await apiClient.post<Account, NewAccount>('accounts', account);
+    await Promise.all([dispatch(fetchAllAccounts()), dispatch(fetchAllPayees())]);
+    return created;
+  },
+);
+
+export type AccountEdits = Pick<Account, 'name' | 'type' | 'bank' | 'suffix' | 'closed'>;
+
+/** Saves an account's editable fields (the type stays as is), then reloads accounts and payees. */
+export const updateAccount = createAsyncThunk<Account, { id: string; edits: AccountEdits }>(
+  'accounts/updateAccount',
+  async ({ id, edits }, { dispatch }) => {
+    const updated = await apiClient.patch<Account, AccountEdits>(`accounts/${id}`, edits);
+    await Promise.all([dispatch(fetchAllAccounts()), dispatch(fetchAllPayees())]);
+    return updated;
   },
 );
 
@@ -126,6 +151,8 @@ export const selectAccountInfoFromId = (state: RootState, id: string) => {
     return {
       id: account?.id ?? '',
       name: account?.name ?? '',
+      type: account?.type,
+      bank: account?.bank,
       balance: account?.balance ?? 0,
     };
   }

@@ -10,13 +10,13 @@ import (
 	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
+	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -73,6 +73,13 @@ func (m *mockAccountService) Search(ctx context.Context, query string) ([]model.
 }
 func (m *mockAccountService) Create(ctx context.Context, account model.Account) (*model.Account, error) {
 	args := m.Called(ctx, account)
+	if v := args.Get(0); v != nil {
+		return v.(*model.Account), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+func (m *mockAccountService) Update(ctx context.Context, id uuid.UUID, account model.Account) (*model.Account, error) {
+	args := m.Called(ctx, id, account)
 	if v := args.Get(0); v != nil {
 		return v.(*model.Account), args.Error(1)
 	}
@@ -530,6 +537,15 @@ func (m *mockCategoryService) UpdateMonthlyBudget(ctx context.Context, categoryI
 	return m.Called(ctx, categoryId, newBudgeted, month).Error(0)
 }
 
+func (m *mockCategoryService) UpdateDetails(ctx context.Context, id uuid.UUID, details model.CategoryDetailsUpdate) error {
+	return m.Called(ctx, id, details).Error(0)
+}
+
+func (m *mockCategoryService) SuggestDescription(ctx context.Context, id uuid.UUID) (string, error) {
+	args := m.Called(ctx, id)
+	return args.String(0), args.Error(1)
+}
+
 func TestCategoryHandler_List(t *testing.T) {
 	t.Run("returns_categories", func(t *testing.T) {
 		svc := &mockCategoryService{}
@@ -842,13 +858,6 @@ func (m *mockPredictionService) CreateCipherPrediction(ctx context.Context, p mo
 	}
 	return nil, args.Error(1)
 }
-func (m *mockPredictionService) CreateCipherPredictionWithTx(ctx context.Context, tx pgx.Tx, p model.CipherPredictionRecord) (*model.CipherPredictionRecord, error) {
-	args := m.Called(ctx, tx, p)
-	if v := args.Get(0); v != nil {
-		return v.(*model.CipherPredictionRecord), args.Error(1)
-	}
-	return nil, args.Error(1)
-}
 
 func TestPredictionHandler_List(t *testing.T) {
 	t.Run("returns_predictions", func(t *testing.T) {
@@ -1049,18 +1058,83 @@ func (m *mockPayeeService) Create(ctx context.Context, payee model.Payee) (*mode
 	}
 	return nil, args.Error(1)
 }
-func (m *mockPayeeService) CreateWithTx(ctx context.Context, tx pgx.Tx, payee model.Payee) (*model.Payee, error) {
-	args := m.Called(ctx, tx, payee)
-	if v := args.Get(0); v != nil {
-		return v.(*model.Payee), args.Error(1)
-	}
-	return nil, args.Error(1)
-}
 func (m *mockPayeeService) DeleteById(ctx context.Context, id uuid.UUID) error {
 	return m.Called(ctx, id).Error(0)
 }
 func (m *mockPayeeService) Update(ctx context.Context, id uuid.UUID, payee model.Payee) error {
 	return m.Called(ctx, id, payee).Error(0)
+}
+func (m *mockPayeeService) GetStats(ctx context.Context) ([]model.PayeeStats, error) {
+	args := m.Called(ctx)
+	if v := args.Get(0); v != nil {
+		return v.([]model.PayeeStats), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+func (m *mockPayeeService) GetAllRules(ctx context.Context) ([]model.PayeeRuleDetails, error) {
+	args := m.Called(ctx)
+	if v := args.Get(0); v != nil {
+		return v.([]model.PayeeRuleDetails), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+func (m *mockPayeeService) Merge(ctx context.Context, req model.PayeeMergeRequest) (*model.PayeeMergeResult, error) {
+	args := m.Called(ctx, req)
+	if v := args.Get(0); v != nil {
+		return v.(*model.PayeeMergeResult), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+
+func TestPayeeHandler_Merge(t *testing.T) {
+	target, source := uuid.New(), uuid.New()
+	body := model.PayeeMergeRequest{TargetID: target, SourceIDs: []uuid.UUID{source}}
+
+	t.Run("returns_result", func(t *testing.T) {
+		svc := &mockPayeeService{}
+		svc.On("Merge", mock.Anything, body).Return(&model.PayeeMergeResult{TargetID: target, Transactions: 3}, nil)
+		w, c := makeReq("POST", "/payees/merge", body)
+		NewPayeeHandler(svc).Merge(c)
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), `"transactions":3`)
+	})
+	t.Run("missing_sources_returns_400", func(t *testing.T) {
+		svc := &mockPayeeService{}
+		w, c := makeReq("POST", "/payees/merge", gin.H{"targetId": target})
+		NewPayeeHandler(svc).Merge(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		svc.AssertNotCalled(t, "Merge", mock.Anything, mock.Anything)
+	})
+	t.Run("transfer_payee_returns_400", func(t *testing.T) {
+		svc := &mockPayeeService{}
+		svc.On("Merge", mock.Anything, body).Return(nil, service.ErrTransferPayee)
+		w, c := makeReq("POST", "/payees/merge", body)
+		NewPayeeHandler(svc).Merge(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+	t.Run("unknown_payee_returns_404", func(t *testing.T) {
+		svc := &mockPayeeService{}
+		svc.On("Merge", mock.Anything, body).Return(nil, service.ErrPayeeNotFound)
+		w, c := makeReq("POST", "/payees/merge", body)
+		NewPayeeHandler(svc).Merge(c)
+		assert.Equal(t, http.StatusNotFound, w.Code)
+	})
+}
+
+func TestPayeeHandler_StatsAndRules(t *testing.T) {
+	svc := &mockPayeeService{}
+	svc.On("GetStats", mock.Anything).Return([]model.PayeeStats{{TransactionCount: 2}}, nil)
+	svc.On("GetAllRules", mock.Anything).Return([]model.PayeeRuleDetails{{MatchString: "AMZN"}}, nil)
+
+	w, c := makeReq("GET", "/payees/stats", nil)
+	NewPayeeHandler(svc).Stats(c)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), `"transactionCount":2`)
+
+	w, c = makeReq("GET", "/payees/rules", nil)
+	NewPayeeHandler(svc).ListRules(c)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "AMZN")
 }
 
 func TestPayeeHandler_List(t *testing.T) {
@@ -1256,16 +1330,16 @@ func (m *mockTransactionService) Create(ctx context.Context, txn model.Transacti
 	}
 	return nil, args.Error(1)
 }
-func (m *mockTransactionService) CreateWithTxDeduped(ctx context.Context, tx pgx.Tx, txn model.Transaction) (*model.Transaction, bool, error) {
-	args := m.Called(ctx, tx, txn)
+func (m *mockTransactionService) CreateDeduped(ctx context.Context, txn model.Transaction) (*model.Transaction, bool, error) {
+	args := m.Called(ctx, txn)
 	if v := args.Get(0); v != nil {
 		return v.(*model.Transaction), args.Bool(1), args.Error(2)
 	}
 	return nil, args.Bool(1), args.Error(2)
 }
 
-func (m *mockTransactionService) CreateWithTx(ctx context.Context, tx pgx.Tx, txn model.Transaction) ([]model.Transaction, error) {
-	args := m.Called(ctx, tx, txn)
+func (m *mockTransactionService) CreateInTx(ctx context.Context, txn model.Transaction) ([]model.Transaction, error) {
+	args := m.Called(ctx, txn)
 	if v := args.Get(0); v != nil {
 		return v.([]model.Transaction), args.Error(1)
 	}
@@ -1456,13 +1530,6 @@ func (m *mockAuthService) GetUserById(ctx context.Context, userID uuid.UUID) (*m
 	}
 	return nil, args.Error(1)
 }
-func (m *mockAuthService) GetAllGoogleUsers(ctx context.Context) ([]model.GoogleProviderUser, error) {
-	args := m.Called(ctx)
-	if v := args.Get(0); v != nil {
-		return v.([]model.GoogleProviderUser), args.Error(1)
-	}
-	return nil, args.Error(1)
-}
 func (m *mockAuthService) GetCurrentUser(ctx context.Context, userID uuid.UUID) (*model.CurrentAuthUserResponse, error) {
 	args := m.Called(ctx, userID)
 	if v := args.Get(0); v != nil {
@@ -1476,9 +1543,6 @@ func (m *mockAuthService) GetGoogleUserByEmail(ctx context.Context, email string
 		return v.(*model.GoogleUserInfo), args.Error(1)
 	}
 	return nil, args.Error(1)
-}
-func (m *mockAuthService) UpdateGmailHistoryID(ctx context.Context, email string, oauthClientType model.GoogleOAuthClientType, historyID uint64, expiryAt *int64) error {
-	return m.Called(ctx, email, oauthClientType, historyID, expiryAt).Error(0)
 }
 func (m *mockAuthService) RefreshToken(ctx context.Context, refreshToken string) (*model.RefreshTokenResponse, error) {
 	args := m.Called(ctx, refreshToken)
@@ -1567,32 +1631,6 @@ func TestAuthHandler_GetProviderUser(t *testing.T) {
 	})
 }
 
-func TestAuthHandler_UpdateProviderUser(t *testing.T) {
-	t.Run("unknown_provider_returns_400", func(t *testing.T) {
-		svc := &mockAuthService{}
-		w, c := makeReq("PATCH", "/auth/github/users", model.UpdateGmailHistoryRequest{})
-		c.Params = gin.Params{{Key: "provider", Value: "github"}}
-		NewAuthHandler(svc).UpdateProviderUser(c)
-		assert.Equal(t, http.StatusBadRequest, w.Code)
-	})
-	t.Run("google_updates_history_id", func(t *testing.T) {
-		svc := &mockAuthService{}
-		svc.On("UpdateGmailHistoryID", mock.Anything, "a@b.com", model.GoogleOAuthClientTypeWeb, uint64(42), (*int64)(nil)).Return(nil)
-		w, c := makeReq("PATCH", "/auth/google/users", model.UpdateGmailHistoryRequest{Email: "a@b.com", GmailHistoryID: 42})
-		c.Params = gin.Params{{Key: "provider", Value: "google"}}
-		NewAuthHandler(svc).UpdateProviderUser(c)
-		assert.Equal(t, http.StatusOK, w.Code)
-	})
-	t.Run("google_service_error_returns_500", func(t *testing.T) {
-		svc := &mockAuthService{}
-		svc.On("UpdateGmailHistoryID", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(assert.AnError)
-		w, c := makeReq("PATCH", "/auth/google/users", model.UpdateGmailHistoryRequest{Email: "a@b.com", GmailHistoryID: 1})
-		c.Params = gin.Params{{Key: "provider", Value: "google"}}
-		NewAuthHandler(svc).UpdateProviderUser(c)
-		assert.Equal(t, http.StatusInternalServerError, w.Code)
-	})
-}
-
 func TestAuthHandler_RefreshToken(t *testing.T) {
 	t.Run("invalid_json_returns_400", func(t *testing.T) {
 		svc := &mockAuthService{}
@@ -1608,6 +1646,22 @@ func TestAuthHandler_RefreshToken(t *testing.T) {
 		NewAuthHandler(svc).RefreshToken(c)
 		assert.Equal(t, http.StatusOK, w.Code)
 		svc.AssertExpectations(t)
+	})
+	t.Run("bad_token_returns_401", func(t *testing.T) {
+		svc := &mockAuthService{}
+		svc.On("RefreshToken", mock.Anything, "my-refresh-token").
+			Return(nil, errs.New(errs.CodeAuthInvalidCredentials, "invalid refresh token"))
+		w, c := makeReq("POST", "/auth/refresh", model.RefreshTokenRequest{RefreshToken: "my-refresh-token"})
+		NewAuthHandler(svc).RefreshToken(c)
+		assert.Equal(t, http.StatusUnauthorized, w.Code)
+	})
+	t.Run("outage_is_not_a_401", func(t *testing.T) {
+		svc := &mockAuthService{}
+		svc.On("RefreshToken", mock.Anything, "my-refresh-token").
+			Return(nil, errs.New(errs.CodeAuthLookupFailed, "database is down"))
+		w, c := makeReq("POST", "/auth/refresh", model.RefreshTokenRequest{RefreshToken: "my-refresh-token"})
+		NewAuthHandler(svc).RefreshToken(c)
+		assert.Equal(t, http.StatusServiceUnavailable, w.Code)
 	})
 }
 
@@ -1795,22 +1849,22 @@ func TestTransactionHandler_ListNormalized_InvalidAccountId(t *testing.T) {
 }
 
 func TestTransactionHandler_Create_BindError(t *testing.T) {
-	t.Run("bind_error_returns_500", func(t *testing.T) {
+	t.Run("bad_json_returns_400", func(t *testing.T) {
 		svc := &mockTransactionService{}
 		w, c := makeReq("POST", "/transactions", "not-json")
 		NewTransactionHandler(svc).Create(c)
-		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
 }
 
 func TestTransactionHandler_Update_BindError(t *testing.T) {
 	id := uuid.New()
-	t.Run("bind_error_returns_500", func(t *testing.T) {
+	t.Run("bad_json_returns_400", func(t *testing.T) {
 		svc := &mockTransactionService{}
 		w, c := makeReq("PATCH", "/transactions/"+id.String(), "not-json")
 		c.Params = gin.Params{{Key: "id", Value: id.String()}}
 		NewTransactionHandler(svc).Update(c)
-		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
 }
 
@@ -1822,12 +1876,12 @@ func TestTransactionHandler_UpdateStatus_Extra(t *testing.T) {
 		NewTransactionHandler(svc).UpdateStatus(c)
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
-	t.Run("bind_error_returns_500", func(t *testing.T) {
+	t.Run("bad_json_returns_400", func(t *testing.T) {
 		svc := &mockTransactionService{}
 		w, c := makeReq("PATCH", "/transactions/"+id.String()+"/status", "not-json")
 		c.Params = gin.Params{{Key: "id", Value: id.String()}}
 		NewTransactionHandler(svc).UpdateStatus(c)
-		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
 }
 
@@ -1846,16 +1900,6 @@ func TestAuthHandler_GetProviderUser_Success(t *testing.T) {
 		NewAuthHandler(svc).GetProviderUser(c)
 		assert.Equal(t, http.StatusOK, w.Code)
 		svc.AssertExpectations(t)
-	})
-}
-
-func TestAuthHandler_UpdateProviderUser_BindError(t *testing.T) {
-	t.Run("google_bind_error_returns_400", func(t *testing.T) {
-		svc := &mockAuthService{}
-		w, c := makeReq("PATCH", "/auth/google/users", "not-json")
-		c.Params = gin.Params{{Key: "provider", Value: "google"}}
-		NewAuthHandler(svc).UpdateProviderUser(c)
-		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
 }
 
@@ -2350,24 +2394,6 @@ func TestAuthHandler_GetProviderUser_UnsupportedProvider(t *testing.T) {
 	c.Request.URL.RawQuery = "email=a@b.com"
 	NewAuthHandler(svc).GetProviderUser(c)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
-}
-
-func TestAuthHandler_UpdateProviderUser_UnsupportedProvider(t *testing.T) {
-	svc := &mockAuthService{}
-	w, c := makeReq("PATCH", "/auth/facebook/users", map[string]any{"email": "a@b.com"})
-	c.Params = gin.Params{{Key: "provider", Value: "facebook"}}
-	NewAuthHandler(svc).UpdateProviderUser(c)
-	assert.Equal(t, http.StatusBadRequest, w.Code)
-}
-
-func TestAuthHandler_UpdateProviderUser_ServiceError(t *testing.T) {
-	svc := &mockAuthService{}
-	svc.On("UpdateGmailHistoryID", mock.Anything, "a@b.com", model.GoogleOAuthClientTypeWeb, uint64(123), (*int64)(nil)).Return(assert.AnError)
-	body := model.UpdateGmailHistoryRequest{Email: "a@b.com", GmailHistoryID: 123}
-	w, c := makeReq("PATCH", "/auth/google/users", body)
-	c.Params = gin.Params{{Key: "provider", Value: "google"}}
-	NewAuthHandler(svc).UpdateProviderUser(c)
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
 func TestAuthHandler_GetProviderUser_ServiceError(t *testing.T) {

@@ -1,76 +1,106 @@
-.list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  padding: 0 0.75rem 0.35rem;
-}
-
-.categoryItem {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  padding: 0.85rem 0.75rem;
-  border-radius: 10px;
+/* Columns come from --budget-cols on the table (CategoryGroup.module.css). */
+.row {
+  display: grid;
+  grid-template-columns: var(--budget-cols);
+  align-items: center;
+  column-gap: var(--budget-gap);
+  min-height: 3.6rem;
+  position: relative;
+  padding: 0.6rem var(--budget-inset);
   cursor: pointer;
-  transition: background 0.15s ease, box-shadow 0.15s ease;
+  border-radius: 0.65rem;
+  transition: background 0.12s ease;
 }
 
-.categoryItem:hover {
-  background: rgba(255, 255, 255, 0.04);
+/* Dividers are inset to the cell edges rather than running card-wide, and
+   drop out next to a hovered or selected row so its rounded fill stands alone. */
+.row::before {
+  position: absolute;
+  top: 0;
+  right: var(--budget-inset);
+  left: var(--budget-inset);
+  height: 1px;
+  background: var(--budget-hairline);
+  content: '';
+  transition: opacity 0.12s ease;
 }
 
-.categoryItem.selected {
-  background: rgba(255, 255, 255, 0.06);
+.row:hover {
+  background: color-mix(in srgb, var(--color-text) 3.5%, transparent);
 }
 
-.topLine {
+/* Selection is a soft neutral fill; the hairlines around it are hidden so the
+   rounded corners read cleanly. */
+.row.selected {
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+}
+
+.row:hover::before,
+.row:hover + .row::before,
+.row.selected::before,
+.row.selected + .row::before {
+  opacity: 0;
+}
+
+.nameLine {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
-
-.categoryName {
+  gap: 0.35rem;
   min-width: 0;
-  overflow-wrap: anywhere;
-  color: var(--color-text);
-  font-size: 0.95rem;
-  font-weight: 550;
 }
 
-.availableChip {
-  flex: 0 0 auto;
-  padding: 0.2rem 0.7rem;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--color-text-secondary);
-  font-size: 0.85rem;
+.actions {
+  display: inline-flex;
+  margin: -0.4rem 0;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.row:hover .actions,
+.row.selected .actions,
+.actions:focus-within,
+.actions:has([aria-expanded='true']) {
+  opacity: 1;
+}
+
+.row.selected .name {
   font-weight: 600;
-  transition: background 0.15s ease;
 }
 
-.chipPositive {
-  background: color-mix(in srgb, var(--color-success) 16%, transparent);
-  color: var(--color-success);
-}
-
-.chipPositive:hover {
-  background: color-mix(in srgb, var(--color-success) 28%, transparent);
-}
-
-.chipOver {
-  background: color-mix(in srgb, var(--color-error) 16%, transparent);
-  color: var(--color-error);
-}
-
-.chipOver:hover {
-  background: color-mix(in srgb, var(--color-error) 28%, transparent);
-}
-
-.meterRow {
+.nameCell {
   display: flex;
-  align-items: center;
-  gap: 0.75rem;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+  padding-left: 1.6rem;
+}
+
+.name {
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: 1rem;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobileMeta {
+  display: none;
+}
+
+.meter {
+  width: min(100%, 14rem);
+  height: 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-text) 8%, transparent);
+  overflow: hidden;
+}
+
+.meterFill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--status-color);
+  transition: width 0.3s ease;
 }
 
 .healthy {
@@ -85,100 +115,129 @@
   --status-color: var(--color-error);
 }
 
-.idle {
-  --status-color: transparent;
+.snoozed {
+  --status-color: var(--color-text-secondary);
 }
 
-.meterTrack {
-  flex: 1;
-  height: 6px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--status-color) 18%, rgba(255, 255, 255, 0.07));
-  overflow: hidden;
-}
-
-.meterFill {
-  height: 100%;
-  border-radius: 999px;
-  background: var(--status-color);
-  transition: width 0.3s ease;
-}
-
-.percentLabel {
-  flex: 0 0 auto;
-  min-width: 2.6rem;
-  text-align: right;
-  color: var(--color-text-secondary);
-  font-size: 0.8rem;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-
-.bottomLine {
+.meterRow {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
-
-.activityText {
+  gap: 0.6rem;
   min-width: 0;
+}
+
+.goalHint {
   overflow: hidden;
-  color: var(--color-text-secondary);
-  font-size: 0.875rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  border-radius: 6px;
-}
-
-.activityText:hover {
-  color: var(--color-text);
-  text-decoration: underline;
-  text-decoration-color: rgba(255, 255, 255, 0.3);
-  text-underline-offset: 3px;
-}
-
-.assignControl {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  flex: 0 0 auto;
-}
-
-.assignControl input {
-  max-width: 7.5rem;
-}
-
-.assignLabel {
-  color: var(--color-text-secondary);
-  font-size: 0.875rem;
-  font-weight: 500;
-}
-
-.assignControl > span:last-child:not(.assignLabel) {
-  padding: 0.15rem 0.5rem;
-  margin: -0.15rem -0.5rem;
-  border-radius: 6px;
+  color: var(--status-color);
+  font-size: 0.78rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  transition: background 0.15s ease;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.assignControl > span:last-child:not(.assignLabel):hover {
-  background: rgba(255, 255, 255, 0.08);
+.cell {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+  font-size: 0.98rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.cellButton {
+  margin-right: -0.45rem;
+  padding: 0.2rem 0.45rem;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.cellButton:hover {
+  background: color-mix(in srgb, var(--color-text) 8%, transparent);
+}
+
+.cellButton:focus-visible,
+.pill:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.pill {
+  padding: 0.2rem 0.6rem;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.pill:hover {
+  background: color-mix(in srgb, var(--color-text) 11%, transparent);
+}
+
+.pillPositive {
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
+  color: var(--color-success);
+}
+
+.pillPositive:hover {
+  background: color-mix(in srgb, var(--color-success) 24%, transparent);
+}
+
+.pillOver {
+  background: color-mix(in srgb, var(--color-error) 14%, transparent);
+  color: var(--color-error);
+}
+
+.pillOver:hover {
+  background: color-mix(in srgb, var(--color-error) 24%, transparent);
+}
+
+.empty {
+  position: relative;
+  padding: 0.75rem var(--budget-inset) 0.9rem calc(var(--budget-inset) + 1.6rem);
+  border-top: 1px solid var(--budget-hairline);
+  margin: 0 var(--budget-inset);
+  padding-left: 1.6rem;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
 }
 
 @media (max-width: 768px) {
-  .list {
-    padding: 0 0.5rem 0.35rem;
+  .nameCell {
+    padding-left: 0;
   }
 
-  .categoryItem {
-    padding: 0.85rem 0.6rem;
+  .assignedCell,
+  .activityCell {
+    display: none;
   }
 
-  .bottomLine {
-    flex-wrap: wrap;
-    gap: 0.35rem 0.75rem;
+  .mobileMeta {
+    display: block;
+    color: var(--color-text-secondary);
+    font-size: 0.85rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .meter {
+    flex: 1;
+    width: auto;
+  }
+
+  .empty {
+    padding-left: 0;
+  }
+
+  .actions {
+    opacity: 1;
   }
 }

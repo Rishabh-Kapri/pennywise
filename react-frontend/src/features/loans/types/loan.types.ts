@@ -9,6 +9,27 @@ export interface LoanMetadata {
   categoryId?: string; // paired budget category for loan payments
 }
 
+/** One month of a loan's recorded history, from GET /reports/loans. */
+export interface LoanMonth {
+  month: string; // YYYY-MM
+  payment: number;
+  /** The part of the payment that cleared interest. */
+  interest: number;
+  principal: number;
+  /** Principal outstanding after the month's payment. */
+  balance: number;
+  /** No payment was recorded yet; the scheduled one stood in. */
+  assumed: boolean;
+}
+
+export interface LoanHistory {
+  accountId: string;
+  balance: number;
+  principalPaid: number;
+  interestPaid: number;
+  months: LoanMonth[];
+}
+
 export interface LoanPayoffProjection {
   month: number;
   date: string;

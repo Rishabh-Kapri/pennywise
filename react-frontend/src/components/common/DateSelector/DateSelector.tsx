@@ -79,11 +79,13 @@ export default function DateSelector({ monthYearOnly = false }: DateSelectorProp
 
   return (
     <div className={styles.container}>
-      <ChevronLeft
-        size="2rem"
-        className={styles.icon}
-        onClick={() => handleMonthChange(-1)}
-      />
+      <button
+        type="button"
+        className={styles.navButton}
+        aria-label="Previous month"
+        onClick={() => handleMonthChange(-1)}>
+        <ChevronLeft size="1rem" />
+      </button>
       <Popover
         isOpen={isOpen}
         onOpenChange={setIsOpen}
@@ -91,21 +93,18 @@ export default function DateSelector({ monthYearOnly = false }: DateSelectorProp
         showArrow
       >
         <PopoverTrigger>
-          <div className={styles.dateContainer}>
-            <CalendarIcon className={styles.icon} size="1.25rem" />
-            {loading === LoadingState.PENDING && (
-              <LoaderCircle
-                size="1.25rem"
-                className={`${styles.icon} ${styles.spinner}`}
-              />
+          <button type="button" className={styles.dateContainer}>
+            {loading === LoadingState.PENDING ? (
+              <LoaderCircle size="1rem" className={`${styles.icon} ${styles.spinner}`} />
+            ) : (
+              <CalendarIcon className={styles.icon} size="1rem" />
             )}
-            {(loading === LoadingState.SUCCESS ||
-              loading === LoadingState.ERROR) && <div>{selectedMonth}</div>}
+            <span className={styles.label}>{selectedMonth}</span>
             <ChevronDown
               className={`${styles.icon} ${styles.chevron} ${isOpen ? styles.chevronOpen : ''}`}
-              size="1.25rem"
+              size="0.85rem"
             />
-          </div>
+          </button>
         </PopoverTrigger>
         <PopoverContent className={styles.popoverContent}>
           {monthYearOnly ? (
@@ -151,11 +150,13 @@ export default function DateSelector({ monthYearOnly = false }: DateSelectorProp
           )}
         </PopoverContent>
       </Popover>
-      <ChevronRight
-        size="2rem"
-        className={styles.icon}
-        onClick={() => handleMonthChange(1)}
-      />
+      <button
+        type="button"
+        className={styles.navButton}
+        aria-label="Next month"
+        onClick={() => handleMonthChange(1)}>
+        <ChevronRight size="1rem" />
+      </button>
     </div>
   );
 }

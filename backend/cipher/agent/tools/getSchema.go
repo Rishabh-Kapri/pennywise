@@ -40,7 +40,7 @@ func (t GetSchemaTool) Definition() sharedModel.ToolDefiniton {
 			Properties: map[string]sharedModel.ToolSchema{
 				"tables": {
 					Type:        "array",
-					Description: "Optional list of tables to return. Supported values: transactions, accounts, categories, category_groups, payees, tags, monthly_budgets, category_balances_by_month. Omit to return all supported schemas.",
+					Description: "Optional list of tables to return. Supported values: transactions, accounts, categories, category_groups, payees, tags, monthly_budgets, category_goals, category_balances_by_month. Omit to return all supported schemas.",
 					Items: &sharedModel.ToolSchema{
 						Type: "string",
 					},
@@ -159,6 +159,7 @@ var allTables = map[string]tableSchema{
 			"budget_id UUID NOT NULL REFERENCES budgets(id)",
 			"category_group_id UUID REFERENCES category_groups(id)",
 			"note TEXT",
+			"description TEXT NOT NULL DEFAULT '' -- what belongs in the category",
 			"hidden BOOLEAN DEFAULT false",
 			"is_system BOOLEAN DEFAULT false",
 			"deleted BOOLEAN DEFAULT false",
@@ -215,6 +216,29 @@ var allTables = map[string]tableSchema{
 			"month is YYYY-MM.",
 			"A row exists only for months where an amount was assigned to the category.",
 			"Prefer category_balances_by_month, which joins this to actual activity.",
+		},
+	},
+	"category_goals": {
+		Columns: []string{
+			"id UUID PRIMARY KEY",
+			"budget_id UUID NOT NULL REFERENCES budgets(id)",
+			"category_id UUID NOT NULL UNIQUE REFERENCES categories(id)",
+			"type TEXT NOT NULL -- NEED | TB | TBD | MF | DEBT",
+			"target NUMERIC(12, 2) NOT NULL",
+			"cadence TEXT -- NEED only: none | weekly | monthly | yearly",
+			"cadence_frequency INTEGER -- every N months/years",
+			"day SMALLINT -- weekday (0 = Sunday) for weekly, else day of month; NULL = last day",
+			"needs_whole_amount BOOLEAN NOT NULL -- NEED: true refills up to target, false sets aside another",
+			"target_month TEXT -- YYYY-MM",
+			"creation_month TEXT NOT NULL -- YYYY-MM",
+			"snoozed_month TEXT -- YYYY-MM",
+		},
+		Notes: []string{
+			"A category's savings/spending target (YNAB goal); at most one per category, and most categories have none.",
+			"NEED = needed for spending on a cadence; TB = savings balance; TBD = savings balance by target_month; MF = assign target every month; DEBT = monthly debt payment.",
+			"target_month is the deadline for TBD and the first due month for once/yearly/every-N NEED targets.",
+			"Only the definition is stored. Whether a month is funded is derived: compare target with budgeted (MF, DEBT, set-aside NEED) or available_balance (TB, refill NEED) in category_balances_by_month.",
+			"Ignore a target for months before creation_month and for its snoozed_month.",
 		},
 	},
 	"category_balances_by_month": {

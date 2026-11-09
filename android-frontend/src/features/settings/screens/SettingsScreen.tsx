@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Activity, Bot, Check, ChevronLeft, ChevronRight, Files, LogOut, Tags, UserRound } from 'lucide-react-native';
+import { Activity, Bot, Check, ChevronLeft, ChevronRight, Files, Landmark, ListChecks, LogOut, Tags, UserRound, Workflow } from 'lucide-react-native';
 import Constants from 'expo-constants';
 import type { RootStackParamList } from '../../../navigation/types';
 import { useEffect } from 'react';
@@ -16,7 +16,9 @@ import { logout } from '../../auth/store/authSlice';
 import { selectAllBudgets, selectSelectedBudget, setSelectedBudget, updateBudgetSelection } from '../../budget/store/budgetSlice';
 import { fetchPipelineRuns, selectActivePipelineRunCount } from '../../pipeline/store/pipelineSlice';
 import { config } from '../../../config/env';
+import { AppUpdates } from '../components/AppUpdates';
 import { ConnectedProviders } from '../components/ConnectedProviders';
+import { SmsSettings } from '../components/SmsSettings';
 import { useCurrentUser } from '../hooks/useCurrentUser';
 import { colors, spacing } from '../../../theme';
 
@@ -151,6 +153,13 @@ export function SettingsScreen() {
             onPress={() => navigation.navigate('Tags')}
             divider
           />
+          <NavRow
+            icon={<Landmark color={colors.primary} size={18} />}
+            label="Loans"
+            description="Payoff progress, interest split, payoff simulator"
+            onPress={() => navigation.navigate('Loans')}
+            divider
+          />
         </Card>
       </View>
 
@@ -165,9 +174,23 @@ export function SettingsScreen() {
             badge={activeRunCount}
           />
           <NavRow
+            icon={<ListChecks color={colors.primary} size={18} />}
+            label="Jobs"
+            description="What happened to each message, step by step"
+            onPress={() => navigation.navigate('Jobs')}
+            divider
+          />
+          <NavRow
+            icon={<Workflow color={colors.primary} size={18} />}
+            label="Pipelines"
+            description="Which adapter and model each step uses"
+            onPress={() => navigation.navigate('Pipelines')}
+            divider
+          />
+          <NavRow
             icon={<Bot color={colors.primary} size={18} />}
             label="AI & Predictions"
-            description="Classifier performance, prediction history, API keys"
+            description="AI keys and models, classifier performance, API keys"
             onPress={() => navigation.navigate('AI')}
             divider
           />
@@ -202,6 +225,13 @@ export function SettingsScreen() {
       </View>
 
       <View style={styles.section}>
+        <AppText variant="label" tone="faint" style={styles.sectionLabel}>SMS</AppText>
+        <Card style={styles.listCard}>
+          <SmsSettings />
+        </Card>
+      </View>
+
+      <View style={styles.section}>
         <AppText variant="label" tone="faint" style={styles.sectionLabel}>App</AppText>
         <Card style={styles.listCard}>
           <View style={styles.infoRow}>
@@ -220,6 +250,7 @@ export function SettingsScreen() {
               {selectedBudget?.id ?? '—'}
             </AppText>
           </View>
+          <AppUpdates />
         </Card>
       </View>
 

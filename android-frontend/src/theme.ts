@@ -1,46 +1,68 @@
 // Design tokens for the Pennywise Android app.
-// Minimal dark palette: near-black canvas, borderless raised surfaces,
-// a single soft-indigo accent, and tonal (translucent) fills for states.
+// Mirrors react-frontend's dark theme (src/styles/theme.css): warm charcoal
+// canvas, borderless raised surfaces, the steel-blue accent, and tonal
+// (translucent) fills for states.
 
 export const colors = {
-  background: '#0B0B0F',
-  surface: '#15151A',
-  surfaceStrong: '#1E1E25',
-  surfaceTertiary: '#2A2A33',
-  text: '#F4F4F6',
-  muted: '#9C9CA6',
-  faint: '#5F5F6B',
-  textTertiary: '#8B93FF',
-  textQuaternary: '#2A2A33',
+  background: '#1F1F1E',
+  surface: '#2A2A2A',
+  surfaceStrong: '#343434',
+  surfaceTertiary: '#424242',
+  text: '#F6F6F6',
+  muted: '#A9A9A9',
+  faint: '#7A7A7A',
+  textTertiary: '#5D9CBB',
+  textQuaternary: '#333333',
   border: 'rgba(255, 255, 255, 0.08)',
   borderLight: 'rgba(255, 255, 255, 0.14)',
   borderMuted: 'rgba(255, 255, 255, 0.05)',
-  primary: '#8B93FF',
-  primaryMuted: 'rgba(139, 147, 255, 0.14)',
-  primaryLight: 'rgba(139, 147, 255, 0.14)',
-  primaryDark: '#6E77E8',
-  onPrimary: '#0B0B0F',
-  secondary: '#F4F4F6',
-  accent: '#8B93FF',
-  danger: '#FF7A7A',
-  dangerMuted: 'rgba(255, 122, 122, 0.14)',
-  success: '#5BD99B',
-  successMuted: 'rgba(91, 217, 155, 0.14)',
-  warning: '#FFC663',
-  warningMuted: 'rgba(255, 198, 99, 0.14)',
-  info: '#6FB7FF',
-  budgetPositive: '#5BD99B',
-  budgetNegative: '#FF7A7A',
-  budgetPositiveBg: 'rgba(91, 217, 155, 0.14)',
-  budgetPositiveFg: '#5BD99B',
-  budgetNegativeBg: 'rgba(255, 122, 122, 0.14)',
-  budgetNegativeFg: '#FF7A7A',
-  budgetUpcomingBg: 'rgba(255, 198, 99, 0.14)',
-  budgetUpcomingFg: '#FFC663',
-  slate: '#2A2A33',
+  primary: '#5D9CBB',
+  primaryMuted: 'rgba(93, 156, 187, 0.16)',
+  primaryLight: '#AEC2DD',
+  primaryDark: '#4483A2',
+  onPrimary: '#0E1B22',
+  secondary: '#F6F6F6',
+  accent: '#5D9CBB',
+  danger: '#EF6B6B',
+  dangerMuted: 'rgba(239, 107, 107, 0.15)',
+  success: '#34C38F',
+  successMuted: 'rgba(52, 195, 143, 0.15)',
+  warning: '#F2A93B',
+  warningMuted: 'rgba(242, 169, 59, 0.15)',
+  info: '#3B82F6',
+  budgetPositive: '#73EB95',
+  budgetNegative: '#FF6363',
+  budgetPositiveBg: 'rgba(115, 235, 149, 0.15)',
+  budgetPositiveFg: '#73EB95',
+  budgetNegativeBg: 'rgba(255, 99, 99, 0.16)',
+  budgetNegativeFg: '#FF7B7B',
+  budgetUpcomingBg: 'rgba(249, 225, 169, 0.15)',
+  budgetUpcomingFg: '#F9E1A9',
+  slate: '#424242',
   /** overlay behind controls floating on top of imagery (receipt thumbnails) */
   scrim: 'rgba(0, 0, 0, 0.55)'
 };
+
+/**
+ * Report roles, the web's dark-theme `--rp-*` steps. A role keeps its color on
+ * every chart (spending is always blue, investments always violet).
+ */
+export const chartColors = {
+  income: '#199E70',
+  spending: '#3987E5',
+  oneOff: '#D95926',
+  invested: '#9085E9',
+  debt: '#D55181',
+  cash: '#7A7A7A',
+  other: '#7A7A7A',
+  /** loan payment split: principal / interest */
+  principal: '#3987E5',
+  interest: '#D95926',
+  grid: 'rgba(255, 255, 255, 0.08)'
+};
+
+/** Fixed categorical order for per-group / per-source series; never cycled. */
+export const chartSeries = ['#3987E5', '#D95926', '#199E70', '#C98500', '#D55181', '#008300', '#9085E9'];
 
 export const spacing = {
   xs: 4,

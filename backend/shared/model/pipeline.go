@@ -63,8 +63,8 @@ type PipelineRun struct {
 	OutputTokens int                      `json:"outputTokens"`
 	LLMUsage     map[string]LLMModelUsage `json:"llmUsage,omitempty"`
 	StartedAt    time.Time                `json:"startedAt"`
-	UpdatedAt           time.Time         `json:"updatedAt"`
-	CompletedAt         *time.Time        `json:"completedAt,omitempty"`
+	UpdatedAt    time.Time                `json:"updatedAt"`
+	CompletedAt  *time.Time               `json:"completedAt,omitempty"`
 }
 
 // PipelineRunEvent is one append-only timeline entry (pipeline_run_events).
@@ -103,15 +103,15 @@ type PipelineEventInput struct {
 // events. Zero-valued run-level fields are left unchanged; Error uses a pointer
 // so nil means "unchanged" and empty string means "clear".
 type ReportPipelineStatusInput struct {
-	RunID               uuid.UUID            `json:"runId"`
-	BudgetID            uuid.UUID            `json:"budgetId"`
-	RunStatus           PipelineRunStatus    `json:"runStatus,omitempty"`
-	CurrentStep         PipelineStep         `json:"currentStep,omitempty"`
-	ChildWorkflowID     string               `json:"childWorkflowId,omitempty"`
-	Error               *string              `json:"error,omitempty"`
-	EmailsFetched       *int                 `json:"emailsFetched,omitempty"`
-	EmailsSkipped       *int                 `json:"emailsSkipped,omitempty"`
-	TransactionsCreated *int                 `json:"transactionsCreated,omitempty"`
+	RunID               uuid.UUID         `json:"runId"`
+	BudgetID            uuid.UUID         `json:"budgetId"`
+	RunStatus           PipelineRunStatus `json:"runStatus,omitempty"`
+	CurrentStep         PipelineStep      `json:"currentStep,omitempty"`
+	ChildWorkflowID     string            `json:"childWorkflowId,omitempty"`
+	Error               *string           `json:"error,omitempty"`
+	EmailsFetched       *int              `json:"emailsFetched,omitempty"`
+	EmailsSkipped       *int              `json:"emailsSkipped,omitempty"`
+	TransactionsCreated *int              `json:"transactionsCreated,omitempty"`
 	// LLM totals are absolute run-to-date values, like the counters above; nil
 	// leaves the stored value alone. LLMUsage replaces the stored breakdown.
 	LLMCalls     *int                     `json:"llmCalls,omitempty"`

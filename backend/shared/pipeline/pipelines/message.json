@@ -1,0 +1,110 @@
+{
+  "$schema": "../pipeline.schema.json",
+  "id": "message",
+  "label": "Messages",
+  "description": "Turns bank emails, SMS and text sent to the API into transactions.",
+  "version": 2,
+  "steps": [
+    {
+      "id": "check",
+      "label": "Check",
+      "description": "Decides whether the message is a transaction.",
+      "defaultAdapter": "decisions",
+      "adapters": [
+        {
+          "id": "decisions",
+          "label": "Decisions model classifier",
+          "description": "A fast model that is extremely cheap",
+          "usesModel": true,
+          "modelKind": "decision"
+        },
+        {
+          "id": "llm",
+          "label": "LLM",
+          "description": "Uses a large language model",
+          "maxTokens": 512,
+          "usesModel": true,
+          "modelKind": "chat"
+        },
+        {
+          "id": "regex",
+          "label": "Keyword Rules",
+          "description": "Looks for words like 'debited' and 'spent'. No AI."
+        }
+      ]
+    },
+    {
+      "id": "extract",
+      "label": "Extract",
+      "description": "Reads the amount, merchant, account and date.",
+      "defaultAdapter": "llm",
+      "adapters": [
+        {
+          "id": "llm",
+          "label": "LLM",
+          "description": "Uses a large language model",
+          "maxTokens": 512,
+          "usesModel": true,
+          "modelKind": "chat"
+        }
+      ]
+    },
+    {
+      "id": "verify",
+      "label": "Verify",
+      "description": "Checks the extracted details against the email.",
+      "defaultAdapter": "decisions",
+      "adapters": [
+        {
+          "id": "decisions",
+          "label": "Decision model",
+          "description": "A fast model that is extremely cheap",
+          "usesModel": true,
+          "modelKind": "decision"
+        }
+      ]
+    },
+    {
+      "id": "lookup",
+      "label": "Look up",
+      "description": "Finds the payee and category from merchants you've had before.",
+      "defaultAdapter": "aliases",
+      "adapters": [
+        {
+          "id": "aliases",
+          "label": "Known merchants",
+          "description": "Matches the merchant against ones this budget has seen. A new merchant goes on to Predict."
+        }
+      ]
+    },
+    {
+      "id": "predict",
+      "label": "Predict",
+      "description": "Picks a payee and category when nothing matched.",
+      "defaultAdapter": "llm",
+      "adapters": [
+        {
+          "id": "llm",
+          "label": "Your AI",
+          "description": "Asks your own AI provider.",
+          "usesModel": true,
+          "maxTokens": 512,
+          "modelKind": "chat"
+        }
+      ]
+    },
+    {
+      "id": "create",
+      "label": "Create",
+      "description": "Adds the transaction to your budget, skipping duplicates.",
+      "defaultAdapter": "api",
+      "adapters": [
+        {
+          "id": "api",
+          "label": "Pennywise API",
+          "description": "Saves the transaction."
+        }
+      ]
+    }
+  ]
+}

@@ -2,21 +2,21 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"strings"
 	"sync/atomic"
 	"time"
 
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/job"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
-
-var withTx = utils.WithTx
 
 type TransactionService interface {
 	GetAll(ctx context.Context) ([]model.Transaction, error)
@@ -29,8 +29,10 @@ type TransactionService interface {
 	UpdateLocation(ctx context.Context, id uuid.UUID, req model.TransactionLocationReq) (*model.Transaction, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status model.TransactionStatus) error
 	Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error)
-	CreateWithTx(ctx context.Context, tx pgx.Tx, txn model.Transaction) ([]model.Transaction, error)
-	CreateWithTxDeduped(ctx context.Context, tx pgx.Tx, txn model.Transaction) (*model.Transaction, bool, error)
+	// CreateInTx creates txn without location enrichment, inside the
+	// transaction carried in ctx or a new one.
+	CreateInTx(ctx context.Context, txn model.Transaction) ([]model.Transaction, error)
+	CreateDeduped(ctx context.Context, txn model.Transaction) (*model.Transaction, bool, error)
 	DeleteById(ctx context.Context, id uuid.UUID) error
 	// LearnFromTransaction queues best-effort learning for a confirmed
 	// transaction. Fire and forget: failures are recorded on the prediction,
@@ -58,6 +60,10 @@ type transactionService struct {
 	categoryRepo         repository.CategoryRepository
 	mbService            MonthlyBudgetService
 	geocodeService       GeocodeService
+	dbTxn                repository.DBTxn
+
+	// jobBroker queues learning. Nil when the job queue is off.
+	jobBroker job.Broker
 }
 
 func NewTransactionService(
@@ -73,8 +79,11 @@ func NewTransactionService(
 	catRepo repository.CategoryRepository,
 	mbService MonthlyBudgetService,
 	geocodeService GeocodeService,
+	dbTxn repository.DBTxn,
+	jobBroker job.Broker,
 ) TransactionService {
 	return &transactionService{
+		dbTxn:                dbTxn,
 		repo:                 r,
 		budgetRepo:           budgetRepo,
 		txnEmbeddingRepo:     txnEmbeddingRepo,
@@ -87,20 +96,21 @@ func NewTransactionService(
 		categoryRepo:         catRepo,
 		mbService:            mbService,
 		geocodeService:       geocodeService,
+
+		jobBroker: jobBroker,
 	}
 }
 
 // Deprecated: legacy MLP prediction corrections are no longer updated from transaction edits.
 func (s *transactionService) updatePrediction(
 	ctx context.Context,
-	tx pgx.Tx,
 	budgetId uuid.UUID,
 	txnId uuid.UUID,
 	txn model.Transaction,
 	account model.Account,
 	payee model.Payee,
 ) error {
-	prediction, err := s.predictionRepo.GetByTxnIdTx(ctx, tx, budgetId, txnId)
+	prediction, err := s.predictionRepo.GetByTxnId(ctx, budgetId, txnId)
 	if err != nil {
 		return errs.Wrap(errs.CodePredictionLookupFailed, "error getting prediction", err)
 	}
@@ -114,7 +124,7 @@ func (s *transactionService) updatePrediction(
 
 	var category *model.Category
 	if txn.CategoryID != nil {
-		category, err = s.categoryRepo.GetByIdSimplifiedTx(ctx, tx, budgetId, *txn.CategoryID)
+		category, err = s.categoryRepo.GetByIdSimplified(ctx, budgetId, *txn.CategoryID)
 		if err != nil {
 			return errs.Wrap(errs.CodeCategoryLookupFailed, "error getting category", err)
 		}
@@ -155,7 +165,7 @@ func (s *transactionService) updatePrediction(
 
 	if needsUpdate {
 		logger.Logger(ctx).Info("updating prediction", "txnId", txnId)
-		err = s.predictionRepo.Update(ctx, tx, budgetId, prediction.ID, *prediction)
+		err = s.predictionRepo.Update(ctx, budgetId, prediction.ID, *prediction)
 		if err != nil {
 			return errs.Wrap(errs.CodePredictionUpdateFailed, "failed to update prediction", err)
 		}
@@ -184,27 +194,26 @@ func (s *transactionService) validateTransactionPayload(txn model.Transaction, b
 // loadDependencies loads the budget, account, and payee for the transaction
 func (s *transactionService) loadDependencies(
 	ctx context.Context,
-	tx pgx.Tx,
 	budgetId uuid.UUID,
 	txn model.Transaction,
 ) (budget *model.Budget, account *model.Account, payee *model.Payee, transferAccount *model.Account, err error) {
-	budget, err = s.budgetRepo.GetById(ctx, tx, budgetId)
+	budget, err = s.budgetRepo.GetById(ctx, budgetId)
 	if err != nil {
 		return nil, nil, nil, nil, errs.Wrap(errs.CodeBudgetLookupFailed, "error fetching budget", err)
 	}
 
-	account, err = s.accountRepo.GetById(ctx, tx, budgetId, *txn.AccountID)
+	account, err = s.accountRepo.GetById(ctx, budgetId, *txn.AccountID)
 	if err != nil {
 		return nil, nil, nil, nil, errs.Wrap(errs.CodeAccountLookupFailed, "error getting account", err)
 	}
 
-	payee, err = s.payeeRepo.GetByIdTx(ctx, tx, budgetId, *txn.PayeeID)
+	payee, err = s.payeeRepo.GetById(ctx, budgetId, *txn.PayeeID)
 	if err != nil {
 		return nil, nil, nil, nil, errs.Wrap(errs.CodePayeeLookupFailed, "error getting payee", err)
 	}
 
 	if payee.TransferAccountID != nil {
-		transferAccount, err = s.accountRepo.GetById(ctx, tx, budgetId, *payee.TransferAccountID)
+		transferAccount, err = s.accountRepo.GetById(ctx, budgetId, *payee.TransferAccountID)
 		if err != nil {
 			return nil, nil, nil, nil, errs.Wrap(errs.CodeAccountLookupFailed, "error getting transfer account", err)
 		}
@@ -244,7 +253,6 @@ func (s *transactionService) validateCategory(
 // createCounterpartTxn creates the counterpart transaction for a transfer
 func (s *transactionService) createCounterpartTxn(
 	ctx context.Context,
-	tx pgx.Tx,
 	budgetId uuid.UUID,
 	parentId uuid.UUID,
 	txn model.Transaction,
@@ -266,7 +274,7 @@ func (s *transactionService) createCounterpartTxn(
 	if counterpart.Status == "" {
 		counterpart.Status = model.TransactionStatusManual
 	}
-	created, err := s.repo.Create(ctx, tx, counterpart)
+	created, err := s.repo.Create(ctx, counterpart)
 	if err != nil {
 		return uuid.Nil, errs.Wrap(errs.CodeTransferCreateFailed, "error creating transfer transaction", err)
 	}
@@ -306,6 +314,8 @@ func (s *transactionService) learnTransactionMappingAsync(
 	budgetId uuid.UUID,
 	txn model.Transaction,
 ) {
+	s.queueAliasConfirm(ctx, budgetId, txn)
+
 	if !s.canLearnFrom(ctx, txn) {
 		return
 	}
@@ -320,6 +330,30 @@ func (s *transactionService) learnTransactionMappingAsync(
 			logger.Logger(bgCtx).Error("transaction learning failed", "txnId", txn.ID, "error", err)
 		}
 	}()
+}
+
+// queueAliasConfirm queues a job to tell the lookup step what the user decided
+// about this transaction's merchant. It runs after the user's change is saved,
+// and a failure is only logged: the change stands either way.
+func (s *transactionService) queueAliasConfirm(ctx context.Context, budgetId uuid.UUID, txn model.Transaction) {
+	if s.jobBroker == nil || txn.PayeeID == nil {
+		return
+	}
+	payload, err := json.Marshal(model.TransactionLearnPayload{
+		TransactionID: txn.ID,
+		PayeeID:       *txn.PayeeID,
+		CategoryID:    txn.CategoryID,
+		Confirmed:     true,
+	})
+	if err == nil {
+		_, err = s.jobBroker.Enqueue(ctx, model.JobTypeTransactionLearn, payload,
+			job.WithQueue(model.QueuePennywise),
+			job.WithBudgetID(&budgetId),
+		)
+	}
+	if err != nil {
+		logger.Logger(ctx).Warn("failed to queue alias confirmation", "txnId", txn.ID, "error", err)
+	}
 }
 
 // LearnFromTransaction queues learning for a transaction the user just
@@ -395,14 +429,19 @@ func (s *transactionService) doLearnTransactionMapping(
 		return errs.New(errs.CodeInternalError, "cipher returned empty payee match string")
 	}
 
+	vector, err := model.ParseVector(generatedEmbedding.Embedding)
+	if err != nil {
+		return errs.Wrap(errs.CodeInternalError, "cipher returned an unreadable transaction embedding", err)
+	}
+
 	payeeRule := model.PayeeRule{
 		BudgetID:    budgetId,
 		PayeeID:     *txn.PayeeID,
 		CategoryID:  txn.CategoryID,
 		MatchString: generatedEmbedding.MatchString,
 	}
-	if err := withTx(ctx, s.repo.GetDB(), func(tx pgx.Tx) error {
-		if err := s.payeeRuleRepo.CreatePayeeRule(ctx, tx, payeeRule); err != nil {
+	if err := s.dbTxn.Do(ctx, func(ctx context.Context) error {
+		if err := s.payeeRuleRepo.CreatePayeeRule(ctx, payeeRule); err != nil {
 			return errs.Wrap(errs.CodeInternalError, "error creating payee rule", err)
 		}
 
@@ -414,14 +453,14 @@ func (s *transactionService) doLearnTransactionMapping(
 			Source:        "AUTO_LEARNED",
 			EmbeddingText: generatedEmbedding.EmbeddingText,
 		}
-		if err := s.txnEmbeddingRepo.Upsert(ctx, tx, embedding, generatedEmbedding.Embedding); err != nil {
+		if err := s.txnEmbeddingRepo.Upsert(ctx, embedding, vector); err != nil {
 			return errs.Wrap(errs.CodeInternalError, "error upserting transaction embedding", err)
 		}
 
 		if s.cipherPredictionRepo != nil {
 			// Absent for a transaction the pipeline did not create; the rule and
 			// embedding above are still worth keeping.
-			if err := s.cipherPredictionRepo.MarkLearned(ctx, tx, budgetId, txn.ID); err != nil && err != pgx.ErrNoRows {
+			if err := s.cipherPredictionRepo.MarkLearned(ctx, budgetId, txn.ID); err != nil && !errors.Is(err, repository.ErrNotFound) {
 				return errs.Wrap(errs.CodeInternalError, "error marking prediction learned", err)
 			}
 		}
@@ -575,7 +614,7 @@ func (s *transactionService) runLearningBackfill(
 	log.Info("learning backfill finished", "learned", learned, "failed", failed)
 }
 
-func (s *transactionService) applySideEffects(ctx context.Context, tx pgx.Tx, input sideEffectInput) error {
+func (s *transactionService) applySideEffects(ctx context.Context, input sideEffectInput) error {
 	isCreate := input.oldTxn == nil && input.newTxn != nil
 	isUpdate := input.oldTxn != nil && input.newTxn != nil
 	isDelete := input.oldTxn != nil && input.newTxn == nil
@@ -587,7 +626,6 @@ func (s *transactionService) applySideEffects(ctx context.Context, tx pgx.Tx, in
 			monthKey := utils.GetMonthKey(input.newTxn.Date.String())
 			if err := s.mbService.UpsertCarryover(
 				ctx,
-				tx,
 				input.budgetId,
 				*input.newTxn.CategoryID,
 				monthKey,
@@ -599,7 +637,6 @@ func (s *transactionService) applySideEffects(ctx context.Context, tx pgx.Tx, in
 	case isUpdate:
 		if err := s.mbService.UpdateCarryovers(
 			ctx,
-			tx,
 			input.budgetId,
 			input.oldTxn,
 			input.newTxn,
@@ -613,7 +650,6 @@ func (s *transactionService) applySideEffects(ctx context.Context, tx pgx.Tx, in
 			monthKey := utils.GetMonthKey(input.oldTxn.Date.String())
 			if err := s.mbService.UpsertCarryover(
 				ctx,
-				tx,
 				input.budgetId,
 				*input.oldTxn.CategoryID,
 				monthKey,
@@ -630,7 +666,6 @@ func (s *transactionService) applySideEffects(ctx context.Context, tx pgx.Tx, in
 		if input.payee != nil && input.payee.TransferAccountID != nil {
 			createdId, err := s.createCounterpartTxn(
 				ctx,
-				tx,
 				input.budgetId,
 				input.newTxn.ID,
 				*input.newTxn,
@@ -642,14 +677,13 @@ func (s *transactionService) applySideEffects(ctx context.Context, tx pgx.Tx, in
 			}
 			input.newTxn.TransferAccountID = input.payee.TransferAccountID
 			input.newTxn.TransferTransactionID = &createdId
-			if err = s.repo.Update(ctx, tx, input.budgetId, input.newTxn.ID, *input.newTxn); err != nil {
+			if err = s.repo.Update(ctx, input.budgetId, input.newTxn.ID, *input.newTxn); err != nil {
 				return errs.Wrap(errs.CodeTransactionUpdateFailed, "error linking transfer transaction", err)
 			}
 		}
 	case isUpdate:
 		if err := s.reconcileTransfer(
 			ctx,
-			tx,
 			input.budgetId,
 			*input.oldTxn,
 			input.newTxn,
@@ -660,7 +694,7 @@ func (s *transactionService) applySideEffects(ctx context.Context, tx pgx.Tx, in
 		}
 	case isDelete:
 		if input.oldTxn.TransferTransactionID != nil {
-			if err := s.repo.DeleteById(ctx, tx, input.budgetId, *input.oldTxn.TransferTransactionID); err != nil {
+			if err := s.repo.DeleteById(ctx, input.budgetId, *input.oldTxn.TransferTransactionID); err != nil {
 				return errs.Wrap(errs.CodeTransactionDeleteFailed, "error deleting transfer transaction", err)
 			}
 		}
@@ -683,7 +717,7 @@ func (s *transactionService) applySideEffects(ctx context.Context, tx pgx.Tx, in
 
 			cipherPrediction, err := s.cipherPredictionRepo.GetByTransactionID(ctx, input.budgetId, input.oldTxn.ID)
 			if err != nil {
-				if err == pgx.ErrNoRows {
+				if errors.Is(err, repository.ErrNotFound) {
 					return nil
 				}
 				return errs.Wrap(errs.CodeTransactionLookupFailed, "error getting cipher prediction", err)
@@ -702,7 +736,6 @@ func (s *transactionService) applySideEffects(ctx context.Context, tx pgx.Tx, in
 			if mappingChanged {
 				if err := s.cipherPredictionRepo.MarkUserCorrected(
 					ctx,
-					tx,
 					input.budgetId,
 					input.oldTxn.ID,
 					input.newTxn.PayeeID,
@@ -742,7 +775,6 @@ func predictionConfirmed(oldTxn, newTxn *model.Transaction) bool {
 
 func (s *transactionService) reconcileTransfer(
 	ctx context.Context,
-	tx pgx.Tx,
 	budgetId uuid.UUID,
 	foundTxn model.Transaction,
 	newTxn *model.Transaction,
@@ -759,7 +791,7 @@ func (s *transactionService) reconcileTransfer(
 		// transfer → regular: delete counterpart, clear fields
 		logger.Logger(ctx).
 			Info("converting transfer to regular, deleting counterpart", "transferTxnId", *foundTxn.TransferTransactionID)
-		if err := s.repo.DeleteById(ctx, tx, budgetId, *foundTxn.TransferTransactionID); err != nil {
+		if err := s.repo.DeleteById(ctx, budgetId, *foundTxn.TransferTransactionID); err != nil {
 			return errs.Wrap(errs.CodeTransactionDeleteFailed, "error deleting transfer transaction", err)
 		}
 		newTxn.TransferAccountID = nil
@@ -768,7 +800,7 @@ func (s *transactionService) reconcileTransfer(
 	case !wasTransfer && isTransfer:
 		// regular → transfer: create counterpart
 		logger.Logger(ctx).Info("converting regular to transfer, creating counterpart")
-		createdId, err := s.createCounterpartTxn(ctx, tx, budgetId, foundTxn.ID, *newTxn, account, payee)
+		createdId, err := s.createCounterpartTxn(ctx, budgetId, foundTxn.ID, *newTxn, account, payee)
 		if err != nil {
 			return err
 		}
@@ -778,10 +810,10 @@ func (s *transactionService) reconcileTransfer(
 	case wasTransfer && isTransfer && !samePayee:
 		// transfer → different transfer: delete old counterpart, create new
 		logger.Logger(ctx).Info("changing transfer destination, recreating counterpart")
-		if err := s.repo.DeleteById(ctx, tx, budgetId, *foundTxn.TransferTransactionID); err != nil {
+		if err := s.repo.DeleteById(ctx, budgetId, *foundTxn.TransferTransactionID); err != nil {
 			return errs.Wrap(errs.CodeTransactionDeleteFailed, "error deleting old transfer transaction", err)
 		}
-		createdId, err := s.createCounterpartTxn(ctx, tx, budgetId, foundTxn.ID, *newTxn, account, payee)
+		createdId, err := s.createCounterpartTxn(ctx, budgetId, foundTxn.ID, *newTxn, account, payee)
 		if err != nil {
 			return err
 		}
@@ -807,7 +839,7 @@ func (s *transactionService) reconcileTransfer(
 		if counterpart.Status == "" {
 			counterpart.Status = model.TransactionStatusManual
 		}
-		if err := s.repo.Update(ctx, tx, budgetId, *foundTxn.TransferTransactionID, counterpart); err != nil {
+		if err := s.repo.Update(ctx, budgetId, *foundTxn.TransferTransactionID, counterpart); err != nil {
 			return errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating transfer counterpart", err)
 		}
 		newTxn.TransferAccountID = foundTxn.TransferAccountID
@@ -841,21 +873,24 @@ func (s *transactionService) Create(ctx context.Context, txn model.Transaction) 
 
 	s.enrichLocation(txCtx, &txn)
 
-	var createdTxn []model.Transaction
-	err := withTx(txCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
-		var err error
-		createdTxn, err = s.CreateWithTx(txCtx, tx, txn)
-		return err
-	})
-	if err != nil {
-		return nil, err
-	}
-	return createdTxn, nil
+	return s.CreateInTx(txCtx, txn)
 }
 
-func (s *transactionService) CreateWithTx(
+func (s *transactionService) CreateInTx(
 	ctx context.Context,
-	tx pgx.Tx,
+	txn model.Transaction,
+) ([]model.Transaction, error) {
+	var createdTxn []model.Transaction
+	err := s.dbTxn.Do(ctx, func(ctx context.Context) error {
+		var err error
+		createdTxn, err = s.createInTx(ctx, txn)
+		return err
+	})
+	return createdTxn, err
+}
+
+func (s *transactionService) createInTx(
+	ctx context.Context,
 	txn model.Transaction,
 ) ([]model.Transaction, error) {
 	budgetID := utils.MustBudgetID(ctx)
@@ -869,7 +904,7 @@ func (s *transactionService) CreateWithTx(
 	}
 
 	var createdTxn []model.Transaction
-	budget, account, payee, transferAccount, err := s.loadDependencies(ctx, tx, budgetID, txn)
+	budget, account, payee, transferAccount, err := s.loadDependencies(ctx, budgetID, txn)
 	if err != nil {
 		return nil, err
 	}
@@ -889,7 +924,7 @@ func (s *transactionService) CreateWithTx(
 	txn.TransferAccountID = nil
 	txn.TransferTransactionID = nil
 
-	createdTxn, err = s.repo.Create(ctx, tx, txn)
+	createdTxn, err = s.repo.Create(ctx, txn)
 	if err != nil {
 		return nil, errs.Wrap(errs.CodeTransactionCreateFailed, "failed to create transaction", err)
 	}
@@ -899,7 +934,7 @@ func (s *transactionService) CreateWithTx(
 
 	txn.ID = createdTxn[0].ID
 
-	if err = s.applySideEffects(ctx, tx, sideEffectInput{
+	if err = s.applySideEffects(ctx, sideEffectInput{
 		budgetId: budgetID,
 		oldTxn:   nil,
 		newTxn:   &txn,
@@ -911,7 +946,7 @@ func (s *transactionService) CreateWithTx(
 	}
 
 	// Reload to pick up any mutations from side effects (e.g., transfer linking)
-	final, err := s.repo.GetByIdTx(ctx, tx, budgetID, txn.ID)
+	final, err := s.repo.GetById(ctx, budgetID, txn.ID)
 	if err != nil {
 		return nil, errs.Wrap(errs.CodeTransactionLookupFailed, "error reloading created transaction", err)
 	}
@@ -920,14 +955,29 @@ func (s *transactionService) CreateWithTx(
 	return createdTxn, nil
 }
 
-// CreateWithTxDeduped behaves like CreateWithTx, but when a transaction with
+// CreateDeduped behaves like CreateInTx, but when a transaction with
 // the same (budget_id, dedupe_hash) already exists it returns the existing row
 // with created=false instead of failing — and skips budget side effects, which
 // already ran when the row was first created. Used by the email pipeline so
 // activity retries and duplicate Gmail pushes are idempotent.
-func (s *transactionService) CreateWithTxDeduped(
+func (s *transactionService) CreateDeduped(
 	ctx context.Context,
-	tx pgx.Tx,
+	txn model.Transaction,
+) (*model.Transaction, bool, error) {
+	var (
+		final   *model.Transaction
+		created bool
+	)
+	err := s.dbTxn.Do(ctx, func(ctx context.Context) error {
+		var err error
+		final, created, err = s.createDeduped(ctx, txn)
+		return err
+	})
+	return final, created, err
+}
+
+func (s *transactionService) createDeduped(
+	ctx context.Context,
 	txn model.Transaction,
 ) (*model.Transaction, bool, error) {
 	budgetID := utils.MustBudgetID(ctx)
@@ -940,7 +990,7 @@ func (s *transactionService) CreateWithTxDeduped(
 		return nil, false, err
 	}
 
-	budget, account, payee, transferAccount, err := s.loadDependencies(ctx, tx, budgetID, txn)
+	budget, account, payee, transferAccount, err := s.loadDependencies(ctx, budgetID, txn)
 	if err != nil {
 		return nil, false, err
 	}
@@ -960,7 +1010,7 @@ func (s *transactionService) CreateWithTxDeduped(
 	txn.TransferAccountID = nil
 	txn.TransferTransactionID = nil
 
-	createdTxn, created, err := s.repo.CreateDeduped(ctx, tx, txn)
+	createdTxn, created, err := s.repo.CreateDeduped(ctx, txn)
 	if err != nil {
 		return nil, false, errs.Wrap(errs.CodeTransactionCreateFailed, "failed to create transaction", err)
 	}
@@ -970,7 +1020,7 @@ func (s *transactionService) CreateWithTxDeduped(
 
 	txn.ID = createdTxn.ID
 
-	if err = s.applySideEffects(ctx, tx, sideEffectInput{
+	if err = s.applySideEffects(ctx, sideEffectInput{
 		budgetId: budgetID,
 		oldTxn:   nil,
 		newTxn:   &txn,
@@ -982,7 +1032,7 @@ func (s *transactionService) CreateWithTxDeduped(
 	}
 
 	// Reload to pick up any mutations from side effects (e.g., transfer linking)
-	final, err := s.repo.GetByIdTx(ctx, tx, budgetID, txn.ID)
+	final, err := s.repo.GetById(ctx, budgetID, txn.ID)
 	if err != nil {
 		return nil, false, errs.Wrap(errs.CodeTransactionLookupFailed, "error reloading created transaction", err)
 	}
@@ -1008,8 +1058,8 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 	s.enrichLocation(txCtx, &toUpdate)
 
 	var learningTxn *model.Transaction
-	err := withTx(txCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
-		foundTxn, err := s.repo.GetByIdTx(txCtx, tx, budgetId, id)
+	err := s.dbTxn.Do(txCtx, func(txCtx context.Context) error {
+		foundTxn, err := s.repo.GetById(txCtx, budgetId, id)
 		if err != nil {
 			return errs.Wrap(errs.CodeTransactionLookupFailed, "error getting transaction", err)
 		}
@@ -1032,7 +1082,7 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 		}
 
 		// fetch updated txn account and payee
-		budget, account, payee, transferAccount, err := s.loadDependencies(txCtx, tx, budgetId, toUpdate)
+		budget, account, payee, transferAccount, err := s.loadDependencies(txCtx, budgetId, toUpdate)
 		if err != nil {
 			return err
 		}
@@ -1049,7 +1099,7 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 			return err
 		}
 
-		if err = s.applySideEffects(txCtx, tx, sideEffectInput{
+		if err = s.applySideEffects(txCtx, sideEffectInput{
 			budgetId: budgetId,
 			oldTxn:   foundTxn,
 			newTxn:   &toUpdate,
@@ -1063,7 +1113,7 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 			return err
 		}
 
-		if err = s.repo.Update(txCtx, tx, budgetId, id, toUpdate); err != nil {
+		if err = s.repo.Update(txCtx, budgetId, id, toUpdate); err != nil {
 			return errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating transaction", err)
 		}
 
@@ -1148,8 +1198,8 @@ func (s *transactionService) UpdateLocation(
 		}
 	}
 
-	err := withTx(txCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
-		return s.repo.UpdateLocation(txCtx, tx, budgetId, id, lat, lng, name, source)
+	err := s.dbTxn.Do(txCtx, func(txCtx context.Context) error {
+		return s.repo.UpdateLocation(txCtx, budgetId, id, lat, lng, name, source)
 	})
 	if err != nil {
 		return nil, errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating transaction location", err)
@@ -1169,8 +1219,8 @@ func (s *transactionService) UpdateStatus(ctx context.Context, id uuid.UUID, sta
 	logger.Logger(txCtx).Info("updating transaction status", "id", id, "status", status)
 
 	if status != model.TransactionStatusApproved {
-		return withTx(txCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
-			return s.repo.UpdateStatus(txCtx, tx, budgetId, id, status)
+		return s.dbTxn.Do(txCtx, func(txCtx context.Context) error {
+			return s.repo.UpdateStatus(txCtx, budgetId, id, status)
 		})
 	}
 
@@ -1188,16 +1238,16 @@ func (s *transactionService) UpdateStatus(ctx context.Context, id uuid.UUID, sta
 
 	cipherPrediction, err := s.cipherPredictionRepo.GetByTransactionID(txCtx, budgetId, foundTxn.ID)
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return withTx(txCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
-				return s.repo.UpdateStatus(txCtx, tx, budgetId, id, status)
+		if errors.Is(err, repository.ErrNotFound) {
+			return s.dbTxn.Do(txCtx, func(txCtx context.Context) error {
+				return s.repo.UpdateStatus(txCtx, budgetId, id, status)
 			})
 		}
 		return errs.Wrap(errs.CodeTransactionLookupFailed, "error getting cipher prediction", err)
 	}
 	if cipherPrediction == nil {
-		return withTx(txCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
-			return s.repo.UpdateStatus(txCtx, tx, budgetId, id, status)
+		return s.dbTxn.Do(txCtx, func(txCtx context.Context) error {
+			return s.repo.UpdateStatus(txCtx, budgetId, id, status)
 		})
 	}
 
@@ -1211,8 +1261,8 @@ func (s *transactionService) UpdateStatus(ctx context.Context, id uuid.UUID, sta
 		return errs.New(errs.CodeInvalidArgument, "raw bank text is required to approve transaction")
 	}
 
-	if err := withTx(txCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
-		return s.repo.UpdateStatus(txCtx, tx, budgetId, id, status)
+	if err := s.dbTxn.Do(txCtx, func(txCtx context.Context) error {
+		return s.repo.UpdateStatus(txCtx, budgetId, id, status)
 	}); err != nil {
 		return errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating transaction status", err)
 	}
@@ -1229,8 +1279,8 @@ func (s *transactionService) DeleteById(ctx context.Context, id uuid.UUID) error
 	budgetId := utils.MustBudgetID(ctx)
 	logger.Logger(ctx).Info("deleting transaction", "id", id)
 
-	return withTx(txCtx, s.repo.GetDB(), func(tx pgx.Tx) error {
-		foundTxn, err := s.repo.GetByIdTx(txCtx, tx, budgetId, id)
+	return s.dbTxn.Do(txCtx, func(txCtx context.Context) error {
+		foundTxn, err := s.repo.GetById(txCtx, budgetId, id)
 		if err != nil {
 			return errs.Wrap(errs.CodeTransactionLookupFailed, "error getting transaction", err)
 		}
@@ -1239,12 +1289,12 @@ func (s *transactionService) DeleteById(ctx context.Context, id uuid.UUID) error
 		}
 		logger.Logger(txCtx).Debug("found transaction for delete", "txn", foundTxn.String())
 
-		budget, err := s.budgetRepo.GetById(txCtx, tx, budgetId)
+		budget, err := s.budgetRepo.GetById(txCtx, budgetId)
 		if err != nil {
 			return errs.Wrap(errs.CodeBudgetLookupFailed, "error fetching budget", err)
 		}
 
-		if err = s.applySideEffects(txCtx, tx, sideEffectInput{
+		if err = s.applySideEffects(txCtx, sideEffectInput{
 			budgetId: budgetId,
 			oldTxn:   foundTxn,
 			newTxn:   nil,
@@ -1253,7 +1303,7 @@ func (s *transactionService) DeleteById(ctx context.Context, id uuid.UUID) error
 			return err
 		}
 
-		if err = s.repo.DeleteById(txCtx, tx, budgetId, id); err != nil {
+		if err = s.repo.DeleteById(txCtx, budgetId, id); err != nil {
 			return errs.Wrap(errs.CodeTransactionDeleteFailed, "error deleting transaction", err)
 		}
 

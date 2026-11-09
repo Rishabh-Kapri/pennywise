@@ -46,19 +46,14 @@ type AuthProvider struct {
 }
 
 type GoogleProviderUser struct {
-	ID                   string                `json:"id"` // AuthProvider.ProviderID
-	OAuthClientType      GoogleOAuthClientType `json:"oauthClientType"`
-	Name                 string                `json:"name"`
-	Picture              string                `json:"picture"`
-	Email                string                `json:"email"`
-	GmailHistoryID       *uint64               `json:"gmailHistoryId"`
-	RefreshToken         string                `json:"refreshToken"`
-	CreatedAt            time.Time             `json:"createdAt"`
-	UpdatedAt            time.Time             `json:"updatedAt"`
-	LastGmailSync        *time.Time            `json:"lastGmailSync"`
-	ExpiryAt             *int64                `json:"expiryAt"`
-	Deleted              bool                  `json:"deleted"`
-	GmailIngestionPaused bool                  `json:"gmailIngestionPaused"`
+	ID              string                `json:"id"` // AuthProvider.ProviderID
+	OAuthClientType GoogleOAuthClientType `json:"oauthClientType"`
+	Name            string                `json:"name"`
+	Picture         string                `json:"picture"`
+	Email           string                `json:"email"`
+	CreatedAt       time.Time             `json:"createdAt"`
+	UpdatedAt       time.Time             `json:"updatedAt"`
+	Deleted         bool                  `json:"deleted"`
 }
 
 type UserWithCredentials struct {
@@ -82,10 +77,6 @@ type AuthProviderUserResponse struct {
 	Email           string                `json:"email,omitempty"`
 	Name            string                `json:"name,omitempty"`
 	Picture         string                `json:"picture,omitempty"`
-
-	GmailHistoryID *uint64    `json:"gmailHistoryId,omitempty"`
-	LastGmailSync  *time.Time `json:"lastGmailSync,omitempty"`
-	ExpiryAt       *int64     `json:"expiryAt,omitempty"`
 
 	VerifiedAt time.Time `json:"verifiedAt"`
 }
@@ -135,7 +126,9 @@ type JWTClaims struct {
 }
 
 // GoogleUserInfo is returned for internal service lookups by email.
-// Contains google provider data plus the user's budget context.
+// Contains google provider data plus the user's budget context. The Gmail
+// fields are always empty: Gmail access moved to mail_connections, and they stay
+// only until the Temporal workflows that read them are removed.
 type GoogleUserInfo struct {
 	GoogleID             string                `json:"googleId"`
 	OAuthClientType      GoogleOAuthClientType `json:"oauthClientType"`
@@ -146,13 +139,6 @@ type GoogleUserInfo struct {
 	UserID               uuid.UUID             `json:"userId"`
 	BudgetID             uuid.UUID             `json:"budgetId"`
 	GmailIngestionPaused bool                  `json:"gmailIngestionPaused"`
-}
-
-// UpdateGmailHistoryRequest is the request body for updating gmail history ID
-type UpdateGmailHistoryRequest struct {
-	Email           string                `json:"email"          binding:"required"`
-	OAuthClientType GoogleOAuthClientType `json:"oauthClientType,omitempty"`
-	GmailHistoryID  uint64                `json:"gmailHistoryId" binding:"required"`
 }
 
 // GoogleTokenPayload represents the decoded Google ID token

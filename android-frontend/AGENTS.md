@@ -1,420 +1,90 @@
-# Agent Guidelines for Pennywise Android
+# AGENTS.md — android-frontend
 
-## Overview
+Expo (SDK 54, RN 0.81) Android client mirroring `react-frontend`. Android only; iOS is off (`supportsTablet: false`, no ios config).
 
-`android-frontend` is the Expo React Native Android client for Pennywise. It mirrors the active React web frontend at a feature level, but it has Android-specific OAuth, deep-link, and build requirements.
+## Identity
+- Package and scheme: `dev.pennywise.cloud` (`app.config.ts`). Google OAuth redirect is built by `expo-auth-session` (`LoginScreen.tsx`), not set in code; the Android OAuth client must register `dev.pennywise.cloud:/oauthredirect`.
+- Env (`src/config/env.ts`, `EXPO_PUBLIC_*`): `EXPO_PUBLIC_API_URL` (default `http://10.0.2.2:5151/api`), `EXPO_PUBLIC_GOOGLE_CLIENT_ID`, `EXPO_PUBLIC_ANDROID_GOOGLE_CLIENT_ID`. Template: `.env.example`.
 
-## App identity
+## Commands
+- `npm run typecheck` (`tsc --noEmit`)
+- `npm test` (node strip-types runner over `test/`)
+- `npm run android:dev` (Metro; needs a dev client already installed)
+- Dev client: `npm run android` (local SDK) or `npx eas build --profile preview --platform android`
+- Export check: `npx expo export --platform android --output-dir <dir outside repo>`
+- `npm run lint` is broken: `eslint` is not a dependency and there is no ESLint config.
 
-- Expo app name: `Pennywise`
-- Expo slug: `pennywise-android`
-- Android package: `dev.pennywise.cloud`
-- App URL scheme: `dev.pennywise.cloud`
-- Google AuthSession redirect in installed APKs: `dev.pennywise.cloud:/oauthredirect`
+## OTA updates (EAS Update)
+- Expo account `rishabhkapri`, EAS project id `285e8ad2-57bb-47e7-85f4-331d05616208` (`app.config.ts`). Check login with `npx eas-cli whoami`. Preview APKs listen on channel `preview` with runtime = `version`; builds made before 2026-10-23 have no `expo-updates` and never receive updates.
+- `expo-updates` with `runtimeVersion: { policy: 'appVersion' }`; build profiles map to channels (`preview` → `preview`, `production` → `production`). Don't switch to the fingerprint policy: the EAS-side `google-services.json` path differs from local, so the fingerprints never match and the EAS build fails in "Configure expo-updates".
+- Ship JS/asset changes: `npx eas-cli update --channel preview --environment preview --message "…"`. Pass `--environment` so the `EXPO_PUBLIC_*` values come from EAS; they're inlined at bundle time, and a local `.env` would otherwise leak into the update.
+- EAS resolves account-level (SHARED) variables *after* project ones, so a shared `EXPO_PUBLIC_*` silently overrides the project value. Before `eas update`, run `npx eas-cli env:list preview --format long` and check that each name appears once. A stray shared `EXPO_PUBLIC_ANDROID_GOOGLE_CLIENT_ID` (the web id) once broke sign-in ("Custom scheme URIs are not allowed for 'WEB' client type"). Undo a bad update with `npx eas-cli update:roll-back-to-embedded --channel preview --runtime-version <version> -p android`.
+- From `0.1.1`, `updates.checkAutomatically` is `'NEVER'`: the app only takes an update from Settings → App → Check for updates (`features/settings/components/AppUpdates.tsx`). The `0.1.0` APK still checks on every launch and applies on the next cold start. Changing this setting is native config and needs a new APK.
+- The app only accepts an update created *after* its embedded bundle. An update published while its APK is still building is treated as older and never offered ("Up to date"). Publish once the build has finished.
+- An update only reaches builds with the same `version` (`app.config.ts`). Adding or upgrading a native module or editing native config needs a new APK: bump `version` first, or an OTA update could reach an APK without the native code it needs.
 
-Keep the package and scheme aligned. If the scheme does not match the Google redirect URI, Google login can complete in the browser but fail to return to the app.
+## Architecture
+- Navigation: React Navigation (native-stack + bottom-tabs), not Expo Router. `src/App.tsx` owns the navigators. `src/app/` is the Redux store, not a route folder. `app.config.ts` `extra.router.root` is a leftover.
+- Bottom tabs (`AppTabParamList`): Dashboard, Budget, Transactions, Reports, Payees, Penny (AgentChat).
+- Root stack (`src/navigation/types.ts`, `RootStackParamList`): Main, Settings, Documents, Tags, Activity, Jobs, Pipelines, AI, Loans. Occasional screens are pushed here; there is no settings shell. Settings groups them under Library (Documents, Tags, Loans) and Automation (Activity, AI). Stack screens use `components/StackHeader`.
+- State: feature slices in `src/features/*/store/`, registered in `src/app/store.ts`. Typed hooks in `src/app/hooks.ts`.
+- Transport: `src/utils/api.ts` (`apiClient`) is the only REST client. It injects `Authorization` and `x-budget-id`, and refreshes on 401. It is wired to the store at boot, so it is unusable headlessly.
+- Headless code (widget task handler, location snap task) must use `src/utils/headlessApi.ts`. It reads tokens from AsyncStorage and does not clear the session on failure.
+- Realtime: `src/features/websocket/WebSocketProvider.tsx` (agent stream, `pennywise::pipeline::update`, transaction created).
+- Entry: `index.js` registers the app and the widget task handler. `setupLocationSnap()` runs at module scope in `App.tsx`.
 
-## Stack
+## UI conventions
+- Theme tokens in `src/theme.ts` mirror react-frontend's dark theme; `chartColors`/`chartSeries` are the web's `--rp-*` report colors. Don't hardcode colors in screens.
+- Bottom sheets: `components/Sheet.tsx`. Inside an existing Modal use `SheetOverlay` / `PickerOverlay` / `DatePickerOverlay` (nested Modals misbehave on Android); otherwise `Sheet` / `PickerModal`. Android runs edge-to-edge, so the window doesn't resize for the keyboard: sheets pad themselves with `useKeyboardHeight`, and a list sheet uses `size="tall"` so filtering can't collapse it under the keyboard.
+- Mount editors only while open (`{draft ? <TransactionEditor key=… /> : null}`) so pickers and the keypad never survive a close.
+- Amounts are typed on `AmountKeypad` (no system keyboard) and accept sums; evaluation is `utils/expression.ts`.
+- Charts: `components/charts.tsx` (bars are Views; lines and rings use `react-native-svg`, already in the native build via lucide).
 
-- Expo SDK 54
-- React 19
-- React Native 0.81.5
-- Redux Toolkit + React Redux
-- React Navigation bottom tabs + native stack
-- Expo AuthSession + WebBrowser for Google login
-- AsyncStorage for local auth persistence
-- Lucide React Native for icons
+## Data ported from react-frontend
+- Jobs (`features/jobs`): `jobTree.ts` is a copy of the web's; keep the two in step. AI keys and models are in `features/ai/llmSetup.ts` and `AIModelsPanel.tsx`.
+- Reports (`features/reports`): `cashFlow.ts` is a verbatim copy of the web's; keep the two in step. Group treatments persist per device in AsyncStorage.
+- Dashboard (`features/dashboard/store`): its own 6-month transaction window plus `reports/income-expense`, never the shared transactions slice (same rule as the web).
+- Loans: balances come from `GET /reports/loans` (amortized server-side); don't go back to original-minus-payments.
+- Payees: `payeeUtils.ts` and the slice mirror the web (`payees/stats`, `payees/rules`, `payees/merge`).
 
-## Project structure
+## Native modules
+- `react-native-pdf` (needs `react-native-blob-util`), `react-native-document-scanner-plugin`, `react-native-android-widget`, expo-notifications, expo-location, expo-task-manager.
+- Local module `modules/sms-receiver` (autolinked from `modules/`): a manifest `SMS_RECEIVED` receiver that starts headless task `SmsReceived` (registered in `index.js`), plus `getInboxMessages` (needs `READ_SMS`). Task key lives in `SmsHeadlessTaskService.TASK_KEY` and `SMS_TASK_KEY`; keep them equal.
+- None of these run in Expo Go. Rebuild the dev client after adding or updating one.
+- EAS uploads only files git doesn't ignore. Keep `.gitignore`'s `/android/` rooted: unrooted, it hid `modules/sms-receiver/android`, the build passed without the module, and the APK opened to a grey screen. Check with `git check-ignore -v modules/*/android/build.gradle`.
 
-`android-frontend` follows the same feature-first shape as `react-frontend`, adapted for Expo React Native. Keep new code inside the closest existing feature folder unless it is truly shared across screens.
+## Documents
+- View: `ensureDocumentCached` (`src/features/documents/documentFile.ts`) downloads into the app cache. `DocumentViewer` renders from there, so nothing reaches the gallery.
+- Save: `saveDocumentToDevice` copies the cached bytes into a folder chosen via Storage Access Framework.
+- Scan: `TransactionAttachments.tsx` posts pages to `transactions/:id/documents/scan`.
 
-```text
-android-frontend/
-├── App.tsx                 # thin root export to src/App.tsx
-├── index.js                # Expo registerRootComponent entrypoint
-├── app.config.ts           # Expo app identity, scheme, Android package, EAS metadata
-├── eas.json                # EAS build profiles
-├── google-services.json    # gitignored FCM credentials; supplied by EAS at build time
-├── babel.config.js         # Expo + Reanimated Babel config
-├── package.json            # scripts and pinned Expo-compatible native deps
-├── tsconfig.json           # strict TypeScript config and @/* alias
-├── android/                # generated native Android project; avoid hand edits unless needed
-└── src/
-    ├── App.tsx             # providers, auth gate, onboarding gate, tabs, API probe
-    ├── app/                # Redux store, typed hooks, cross-feature middleware
-    ├── components/         # shared native UI primitives
-    ├── config/             # environment/runtime config
-    ├── features/           # feature-owned screens, slices, types, utilities
-    ├── navigation/         # React Navigation param-list types
-    ├── theme.ts            # shared color/spacing/radius/type tokens
-    └── utils/              # API client, auth helpers, dates, storage, constants
-```
+## Location snap and push
+- Push: `registerDevicePushToken` (`src/features/notifications/push.ts`) posts the Expo token to `devices/push-token` on boot.
+- On `transaction.created`, a fix under 15 min old is PATCHed to `transactions/:id/location` with source `auto`. Otherwise (no permission or stale fix) the transaction is queued in AsyncStorage (1h TTL, max 10) for a "Tag location?" prompt.
+- The prompt is shown on notification tap and on AppState change. "Attach" saves a fresh fix as `manual`.
 
-Important: `src/app` is a Redux/application folder, not an Expo Router route folder. This app uses React Navigation, not Expo Router. `app.config.ts` sets `extra.router.root` to `app` and `package.json` uses `index.js` so Expo does not treat `src/app` as the router root.
+## SMS forwarding
+- `features/sms/smsForwarder.ts` POSTs `{sender, body, receivedAt, source}` to ingest's `ingest/sms` (`EXPO_PUBLIC_INGEST_URL`, budget-scoped, headlessApi), not the main API. `source` is `live` or `inbox`; ingest ignores it and dedupes on sender + body + `receivedAt`, so both paths must send the same time: `getInboxMessages` reads `DATE_SENT` to match the live timestamp. Only alphanumeric sender IDs are sent; phone-number senders never leave the device.
+- Failed sends wait in an AsyncStorage outbox (max 50), retried on the next SMS and on app start. Signed out drops them.
+- `RECEIVE_SMS` is requested on boot, after the push permission (concurrent permission dialogs get dropped). `READ_SMS` is requested by Settings → SMS → Import recent messages (`smsInbox.ts`, always the last 30 days, so re-imports resend).
+- Settings → SMS → Test mode swaps only the SMS base URL (`headlessApi` `baseUrl` option); same token, budget header and outbox. The test ingest must accept production tokens. Release APKs block cleartext http, so use an https URL (`tailscale serve`).
+- Any non-2xx from ingest keeps the message in the outbox and shows the error. SMS permissions are Play-restricted; fine for sideloaded APKs.
 
-## Source layout
-
-### Root shell
-
-- `index.js` registers the app with Expo.
-- `App.tsx` re-exports `src/App.tsx`.
-- `src/App.tsx` owns top-level providers, auth hydration, budget loading, onboarding fallback, navigation, and the WebSocket provider.
-- `src/navigation/types.ts` defines the stack/tab route names and params.
-- Navigation shape: a root native stack (`Main` = bottom tabs, `Settings`). The tabs are Dashboard, Budget, Transactions, Payees, Loans, and Penny (the agent chat, rendered inline by `AgentChat` — there is no floating launcher). Settings is opened from the avatar button in the Dashboard header, not from the tab bar.
-
-### App infrastructure
-
-- `src/app/store.ts` registers Redux reducers: `accounts`, `agent`, `auth`, `budgets`, `categories`, `loans`, `payees`, `tags`, and `transactions`.
-- `src/app/hooks.ts` provides typed Redux hooks.
-- `src/app/middlewares.ts` coordinates cross-feature data loading when budgets or months change.
-- `src/utils/api.ts` is the only shared API transport. Do not create feature-specific fetch wrappers that bypass it.
-- `src/utils/storage.ts` is the AsyncStorage auth persistence layer.
-
-### Shared UI
-
-- `src/components/AppText.tsx` centralizes text styling via `variant` (display/title/heading/body/caption/label), `tone` (muted/faint/primary/success/danger/onPrimary), and `tabular` (tabular-nums for money).
-- `src/components/Button.tsx` is the shared command button: pill-shaped, `primary`/`secondary`/`ghost`/`danger` (danger is tonal, not solid), `size="sm" | "md"`.
-- `src/components/Card.tsx` is for individual grouped content, not full page sections. Cards are borderless raised surfaces.
-- `src/components/Screen.tsx` is the scroll/safe-area page wrapper; scrollable content is padded with `tabBarClearance` so it never hides behind the floating tab bar.
-- `src/components/SectionHeader.tsx` and `LoadingStateView.tsx` are shared display helpers.
-- `src/components/IconTile.tsx` is a tonal rounded icon container; `InitialAvatar.tsx` renders deterministic colored initial avatars; `ProgressBar.tsx` and `EmptyState.tsx` are shared display helpers.
-- `src/theme.ts` is the single source for colors, spacing, radii, typography, and `tabBarClearance`.
-
-### Feature folders
-
-Each feature folder should own its domain types and Redux slice. Screen files should stay inside the feature that owns the workflow.
-
-| Feature | Structure | Responsibility |
-|---------|-----------|----------------|
-| `accounts` | `types.ts`, `store/accountSlice.ts` | account records, tracking/loan selectors, selected-account state |
-| `agent` | `types.ts`, `store/agentSlice.ts`, `components/AgentChat.tsx` | Penny agent chat, model selection, conversation history, streaming response state |
-| `auth` | `types.ts`, `store/authSlice.ts`, `screens/LoginScreen.tsx` | auth hydration, Google login, refresh/logout, token persistence |
-| `budget` | `types.ts`, `constants.ts`, `store/budgetSlice.ts`, `screens/*` | budget list/selection, selected month, onboarding, monthly budget UI |
-| `category` | `types.ts`, `store/categorySlice.ts` | categories, category groups, inflow category, budgeted amount updates |
-| `dashboard` | `screens/DashboardScreen.tsx` | month overview, account balances, summary cards |
-| `loans` | `types.ts`, `store/loanSlice.ts`, `screens/LoansScreen.tsx`, `utils/payoffCalculator.ts` | loan metadata, payoff projections, loan account display |
-| `payees` | `types.ts`, `store/payeeSlice.ts`, `screens/PayeesScreen.tsx` | payee list/search/create flows |
-| `settings` | `screens/SettingsScreen.tsx` | profile display, budget switching, logout |
-| `tags` | `types.ts`, `store/tagSlice.ts` | tag loading and normalized tag state |
-| `transactions` | `types.ts`, `store/transactionSlice.ts`, `screens/TransactionsScreen.tsx` | transaction list, search, create/edit, approval/status updates |
-| `websocket` | `WebSocketProvider.tsx` | authenticated budget-scoped WebSocket connection and transaction refresh events |
-
-### Data flow
-
-1. `hydrateAuth()` restores stored access/refresh tokens from AsyncStorage.
-2. Authenticated users trigger `fetchAllBudgets()`.
-3. A selected budget triggers the cross-feature middleware to fetch accounts, transactions, categories/category groups, inflow, payees, loan metadata, tags, and inflow category.
-4. Changing the selected month refreshes month-scoped category groups.
-5. Budget updates refresh inflow data.
-6. WebSocket transaction-created events refresh transactions for the current budget.
-
-When adding a new feature, prefer this pattern:
-
-```text
-src/features/<feature>/
-├── types.ts
-├── store/<feature>Slice.ts
-├── screens/<FeatureScreen>.tsx
-└── utils/                 # only if the feature has non-UI domain logic
-```
+## Parity gaps vs react-frontend
+- Not ported: Recurring, Prediction Review, report filters (account/category/tag) and custom report ranges, loan creation. Delete-account Danger Zone is also not ported.
+- Android does not show category goals.
 
 ## Key files
-
 | Purpose | Path |
-|---------|------|
-| Expo config | `app.config.ts` |
-| EAS build profiles | `eas.json` |
-| Push token registration | `src/features/notifications/push.ts` |
-| Babel config | `babel.config.js` |
-| App shell/routes/tabs | `src/App.tsx` |
-| Theme tokens | `src/theme.ts` |
-| Env config | `src/config/env.ts` |
-| API client | `src/utils/api.ts` |
-| Headless API client (background tasks) | `src/utils/headlessApi.ts` |
-| Home-screen widgets | `src/features/widgets/` |
-| Auth + budget storage keys | `src/utils/storage.ts` |
-| Store setup | `src/app/store.ts` |
-| Auth screen | `src/features/auth/screens/LoginScreen.tsx` |
-| Auth slice/storage flow | `src/features/auth/store/authSlice.ts` |
-| WebSocket provider | `src/features/websocket/WebSocketProvider.tsx` |
-
-## Build, test, run
-
-```bash
-cd android-frontend
-npm install
-npm run typecheck
-npx expo export --platform android --output-dir /tmp/pennywise-android-export
-```
-
-Expo Go/dev server:
-
-```bash
-cd android-frontend
-npm run android:dev
-```
-
-EAS preview APK:
-
-```bash
-cd android-frontend
-npx eas-cli build -p android --profile preview --clear-cache
-```
-
-Local native Android builds require a local Android SDK. If the user does not want Android Studio/SDK installed, use EAS cloud builds instead of `npx expo run:android`.
-
-## Environment variables
-
-Local `.env`:
-
-```env
-EXPO_PUBLIC_API_URL=http://<host>:5151/api
-EXPO_PUBLIC_GOOGLE_CLIENT_ID=<web-oauth-client-id>.apps.googleusercontent.com
-EXPO_PUBLIC_ANDROID_GOOGLE_CLIENT_ID=<android-oauth-client-id>.apps.googleusercontent.com
-```
-
-For EAS builds, define the same values in the EAS `preview` environment. `EXPO_PUBLIC_*` values are embedded into the JS bundle at build time; changing local `.env` after building does not affect an installed APK.
-
-```bash
-npx eas-cli env:create --environment preview --name EXPO_PUBLIC_API_URL --value "http://<host>:5151/api" --visibility plaintext
-npx eas-cli env:create --environment preview --name EXPO_PUBLIC_GOOGLE_CLIENT_ID --value "<web-client-id>.apps.googleusercontent.com" --visibility plaintext
-npx eas-cli env:create --environment preview --name EXPO_PUBLIC_ANDROID_GOOGLE_CLIENT_ID --value "<android-client-id>.apps.googleusercontent.com" --visibility plaintext
-```
-
-Backend API must also have:
-
-```env
-GOOGLE_ANDROID_CLIENT_ID=<same-android-client-id>.apps.googleusercontent.com
-```
-
-## Background tasks and headless auth
-
-Anything running outside the React tree -- notification task handlers, and
-widget task handlers when those land -- has no Redux store. `src/utils/api.ts`
-is unusable there: it reads tokens and the selected budget through
-`setGetState`, which only `app/store.ts` ever wires up. With no store it sends
-unauthenticated requests, fails to refresh, and calls `handleSessionExpired()`,
-which **clears the stored session and signs the user out**. A background refresh
-must never be able to do that.
-
-Use `src/utils/headlessApi.ts` instead. It reads `pennywise_auth` straight from
-AsyncStorage, refreshes proactively when `expiresAt` is within a minute (a
-15-minute access token is always stale by the time a background task wakes),
-persists the rotated token, retries once on a 401, and **never clears the
-session** -- callers render a signed-out state instead.
-
-Budget scoping: the selected budget is Redux state, mirrored to AsyncStorage by
-`budgetPersistenceMiddleware` so headless requests can send `x-budget-id`. Pass
-`{ budgetId }` explicitly when the caller already knows it, as the location snap
-does from its push payload -- that transaction belongs to whichever budget
-raised the notification, not necessarily the one last opened.
-
-The API does not rotate refresh tokens, so concurrent refreshes across contexts
-are harmless and no locking is needed.
-
-`npm test` covers this module. It runs on Node's type stripping with a small
-loader (`test/loader.mjs`) that stubs AsyncStorage and resolves the app's
-extensionless imports, so the tests exercise the real source with no bundler and
-no test-runner dependency.
-
-## Home-screen widgets
-
-Built with `react-native-android-widget`. Widgets are declared in
-`app.config.ts` under the plugin's `widgets` array (name, size, update period);
-`index.js` registers `widgetTaskHandler` at the entry point, because Android
-starts this bundle headlessly with no app UI mounted.
-
-`src/features/widgets/` holds four:
-
-| Widget | Shows | Reads |
-|--------|-------|-------|
-| `Pressure` | Categories overspent or running hot, ranked by urgency | `category-groups?month=` |
-| `Budget` | Ready to assign, plus assigned / spent / available | `categories/inflow`, `category-groups?month=` |
-| `Accounts` | Net worth split into cash and debt | `accounts` |
-| `Recent` | Last 5 transactions, scrollable | `transactions/normalized?limit=5` |
-| `Pipeline` | Parked ingestion runs, with one-tap retry | `pipeline/runs`, `pipeline/runs/:id/retry` |
-
-`Pipeline` is the only interactive one; the rest are render-only.
-
-`Pressure` is the one worth understanding. It ranks by **pace, not percentage**:
-90% spent on the 3rd of the month is a different problem from 90% on the 28th,
-so a category is only flagged as running hot when `used / monthElapsed` exceeds
-1.25 *and* at least half the budget is gone -- the second condition suppresses
-early-month lumpy spending, which would otherwise make the widget cry wolf every
-time rent cleared. Overspent always ranks first. This is arithmetic, not a
-model; keep it that way unless language or judgement is genuinely needed.
-
-Freshness comes from `refresh.ts`, not the update schedule.
-`widgetRefreshMiddleware` redraws the spend-sensitive widgets after a
-transaction or budget change, and `locationSnapTask` does the same when the
-ingestion pipeline pushes a new transaction. `renderers.tsx` is the single
-registry both entry points share, so a new widget is registered once. Shared card
-chrome (shell, header, status/error states) lives in `chrome.tsx`, and the
-read-only loaders share `widgetData.ts`.
-
-Things that are not obvious:
-
-- The render target is **RemoteViews, not React Native**. Only the library's
-  primitives work (`FlexWidget`, `TextWidget`, `ImageWidget`, `SvgWidget`,
-  `ListWidget`, `OverlapWidget`), and there is no state, no effects and no
-  touch handling beyond `clickAction`.
-- The rendered view crosses a Binder boundary with roughly a 1MB budget. Long
-  lists and complex SVGs (which rasterise to bitmaps) can exceed it and throw
-  `TransactionTooLargeException`, so keep layouts small.
-- Colours must be `#rrggbb` or `rgba(...)` **literal types**. `src/theme.ts`
-  exposes plain `string`, so widgets use `widgetTheme.ts`, which redeclares the
-  same palette `as const`. Keep the two in sync.
-- Every `clickAction` tap spins up a headless JS context, so the round trip is
-  visible. Render a pending state before awaiting, as the retry flow does.
-- `updatePeriodMillis` has a 30-minute floor in Android. Treat it as a fallback
-  and drive freshness with `requestWidgetUpdate` when something is known to
-  have changed.
-- Widgets do not run in Expo Go. Testing needs a dev client or standalone build.
-- `adjustsFontSizeToFit` is a **style** prop on `TextWidget`, not a component
-  prop, unlike React Native's `Text`.
-- Each widget's `name` in `app.config.ts` must match the switch in
-  `widgetTaskHandler.tsx`; a mismatch silently renders nothing.
-
-`npm test` covers the widget's data layer (`pipelineData.ts`) without a device:
-state machine, error and signed-out degradation, and the retry fan-out. The
-layout components themselves are only verifiable on a device.
-
-## Maps and geocoding
-
-The location picker runs Leaflet inside a WebView (`LocationPickerModal`), not a
-native map module, so the app needs no Google Maps key.
-
-Two things that are easy to get wrong:
-
-- A WebView given raw HTML has an `about:blank` origin and sends **no Referer**.
-  OSM's tile policy rejects that outright, and the failure looks like a dark
-  rectangle rather than an error. `source` must set `baseUrl`.
-- OSM's volunteer tile servers are explicitly not for app traffic. The tile URL
-  is read from `EXPO_PUBLIC_MAP_TILE_URL` (and `EXPO_PUBLIC_MAP_TILE_ATTRIBUTION`)
-  so moving to MapTiler, Mapbox or another keyed provider is an env change, not a
-  release. The web app has the matching `VITE_MAP_TILE_URL`.
-
-Place search goes through `GET /api/geocode/search`, never to Nominatim
-directly: the API enforces the 1 req/s policy in one place and sets the
-identifying User-Agent, which a browser cannot.
-
-## Push notifications (FCM)
-
-Android push needs Firebase credentials. `google-services.json` (Firebase console →
-project settings → your Android app) belongs at the root of `android-frontend/` and is
-**gitignored** — this repo is public, and while the file carries no private keys it does
-carry an Android API key worth keeping out of scrapers' reach.
-
-`app.config.ts` resolves it as:
-
-```ts
-process.env.GOOGLE_SERVICES_JSON ?? './google-services.json'
-```
-
-So local builds use the untracked copy on disk, and EAS builds use a file-type
-environment variable — EAS writes the file into the build workspace and sets the variable
-to its path. Upload it once per environment:
-
-```bash
-npx eas-cli env:create --environment preview --name GOOGLE_SERVICES_JSON --type file --value ./google-services.json --visibility secret
-npx eas-cli env:create --environment production --name GOOGLE_SERVICES_JSON --type file --value ./google-services.json --visibility secret
-```
-
-Notes:
-
-- The `package_name` inside `google-services.json` must equal `dev.pennywise.cloud`. A
-  mismatch fails the Gradle build with a `No matching client found` error.
-- Push tokens only resolve on a physical device (`push.ts` bails on simulators) and only
-  in a dev client or standalone build, not Expo Go.
-- `expo-notifications` reads `extra.eas.projectId` to mint the Expo push token; keep that
-  value in `app.config.ts` in sync with the EAS project.
-- The backend sends through Expo's push service (`internal/client/expopush.go`), so no FCM
-  server key is needed on the API side — only these client credentials.
-
-## API client behavior
-
-`src/utils/api.ts` uses `EXPO_PUBLIC_API_URL` as the base URL. It automatically:
-
-- adds `Authorization: Bearer <accessToken>` except on public auth endpoints
-- adds `x-budget-id` when a selected budget exists, except for budget endpoints
-- retries a 401 once via `POST /auth/refresh`
-- probes `GET /api` once at app startup through `probeRoot()` so Metro/backend logs show API connectivity
-
-For an Android emulator, the API URL can use `http://10.0.2.2:5151/api`. For a physical phone, use the host machine LAN IP or a reachable deployed API URL. `localhost` means the phone itself.
-
-## Google OAuth notes
-
-The Android app does not use the same OAuth exchange as the React web app.
-
-React web login uses Google Identity Services `auth-code` flow and the backend exchanges the code with `redirect_uri=postmessage`, web client ID, and web client secret.
-
-Installed Android APK login uses Expo AuthSession with PKCE:
-
-- `responseType: ResponseType.Code`
-- `shouldAutoExchangeCode: false`
-- Android client ID from `EXPO_PUBLIC_ANDROID_GOOGLE_CLIENT_ID`
-- redirect URI from AuthSession, usually `dev.pennywise.cloud:/oauthredirect`
-- `codeVerifier` sent to the API
-
-The app sends `{ code, redirectUri, codeVerifier }` to `POST /auth/google`. The Go API exchanges mobile codes with `GOOGLE_ANDROID_CLIENT_ID`, the same `redirectUri`, and the PKCE `codeVerifier`. Do not remove these fields or reuse the web `postmessage` exchange for Android; Google will reject it with `invalid_grant`.
-
-Google Cloud Android OAuth client must use:
-
-```text
-Application type: Android
-Package name: dev.pennywise.cloud
-SHA-1: the keystore fingerprint that signed the installed APK
-Custom URI scheme: enabled
-```
-
-For EAS preview APKs, use the EAS preview signing certificate SHA-1 from:
-
-```bash
-npx eas-cli credentials -p android
-```
-
-Local debug keystore SHA-1 and EAS preview SHA-1 are different. Use the SHA-1 for the APK actually installed on the phone.
-
-The app requests Gmail scope (`https://mail.google.com/`). If the Google OAuth consent screen is in testing, the account must be listed as a test user.
-
-## Signing credentials
-
-Never commit Android signing credentials.
-
-Ignored artifacts include:
-
-- `*.jks`
-- `*.keystore`
-- `credentials.json`
-- `android/credentials.json`
-- `google-services.json` / `GoogleService-Info.plist`
-
-The SHA-1 fingerprint is safe to put in Google Cloud. The keystore file itself is secret.
-
-## Theme
-
-`src/theme.ts` is a minimal dark design system: near-black canvas, borderless raised surfaces, one soft-indigo accent, and tonal (translucent) fills for states instead of solid chips.
-
-Current core tokens:
-
-- primary: `#8B93FF` (dark text `onPrimary` on top, never white)
-- primaryMuted / successMuted / dangerMuted / warningMuted: 14%-alpha tonal fills
-- background: `#0B0B0F`
-- surface: `#15151A` (cards/rows)
-- surfaceStrong: `#1E1E25` (inputs, nested chips)
-- text: `#F4F4F6`, muted: `#9C9CA6`, faint: `#5F5F6B`
-- border: `rgba(255,255,255,0.08)` — used only for hairline row dividers, not around cards
-
-Conventions: pill-shaped buttons/search/inputs, `radii.lg` (20) cards, type scale via `AppText` variants, tabular numerals for all currency values. Avoid reintroducing the old green/beige Android-only palette or the gray-bordered card look.
-
-## Dependency caveats
-
-- `babel-preset-expo` must be a top-level dev dependency because Babel resolves it from the app root.
-- `react-native-reanimated@4.1.1` requires `react-native-worklets@0.5.x`; this project pins `react-native-worklets` to `0.5.1`. Do not let it float to `0.8.x`, or EAS Android builds fail in `assertWorkletsVersionTask`.
-- `react-native-markdown-display` renders agent replies. It is pure JS (markdown-it + react-native-fit-image), so no native rebuild is needed for it.
-- `react-native-pdf` renders the in-app PDF viewer and needs `react-native-blob-util` as a peer. Both are native modules, so a JS-only reload will not pick them up — rebuild the dev client (or run an EAS build) after pulling them in, or `DocumentViewer` crashes on a missing native view manager.
-
-## Maintenance
-
-When changing app identity, OAuth flow, EAS profiles, environment variables, theme tokens, or API client behavior, update this file in the same PR.
+|---|---|
+| Root navigation and boot | `src/App.tsx`, `src/navigation/types.ts` |
+| Store | `src/app/store.ts` |
+| REST client | `src/utils/api.ts` |
+| Headless REST client | `src/utils/headlessApi.ts` |
+| Native config and plugins | `app.config.ts`, `eas.json` |
+| Documents | `src/features/documents/documentFile.ts` |
+| Location snap, prompts | `src/features/notifications/locationSnapTask.ts` |
+| Push registration | `src/features/notifications/push.ts` |
+| Widgets | `src/features/widgets/`, `index.js` |
+| SMS forwarding | `src/features/sms/`, `modules/sms-receiver/` |
+| Realtime | `src/features/websocket/WebSocketProvider.tsx` |

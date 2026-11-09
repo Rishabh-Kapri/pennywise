@@ -6,18 +6,16 @@ import (
 
 	utils "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/pkg"
 
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 type MonthlyBudgetService interface {
 	UpsertCarryover(
 		ctx context.Context,
-		tx pgx.Tx,
 		budgetId uuid.UUID,
 		categoryId uuid.UUID,
 		monthKey string,
@@ -25,14 +23,12 @@ type MonthlyBudgetService interface {
 	) error
 	ApplyCarryoverOps(
 		ctx context.Context,
-		tx pgx.Tx,
 		budgetId uuid.UUID,
 		txnDiff *txnDiff,
 		carryoverCase carryoverCase,
 	) error
 	UpdateCarryovers(
 		ctx context.Context,
-		tx pgx.Tx,
 		budgetId uuid.UUID,
 		oldTxn *model.Transaction,
 		newTxn *model.Transaction,
@@ -72,7 +68,6 @@ type carryoverOp struct {
 // returns a list of carryover operations to be performed
 func (s *monthlyBudgetService) getCarryoverOps(
 	ctx context.Context,
-	tx pgx.Tx,
 	budgetId uuid.UUID,
 	txnDiff *txnDiff,
 	carryoverCase carryoverCase,
@@ -127,15 +122,14 @@ func (s *monthlyBudgetService) getCarryoverOps(
 // upsertCarryover adjusts the carryover balance for a category/month, creating the monthly budget if it doesn't exist.
 func (s *monthlyBudgetService) UpsertCarryover(
 	ctx context.Context,
-	tx pgx.Tx,
 	budgetId uuid.UUID,
 	categoryId uuid.UUID,
 	monthKey string,
 	delta float64,
 ) error {
-	_, err := s.repo.GetByCatIdAndMonth(ctx, tx, budgetId, categoryId, monthKey)
+	_, err := s.repo.GetByCatIdAndMonth(ctx, budgetId, categoryId, monthKey)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, repository.ErrNotFound) {
 			monthlyBudget := model.MonthlyBudget{
 				Month:            monthKey,
 				BudgetID:         budgetId,
@@ -143,26 +137,25 @@ func (s *monthlyBudgetService) UpsertCarryover(
 				CarryoverBalance: delta,
 				CategoryID:       categoryId,
 			}
-			if err = s.repo.Create(ctx, tx, budgetId, monthlyBudget); err != nil {
+			if err = s.repo.Create(ctx, budgetId, monthlyBudget); err != nil {
 				return errs.Wrap(errs.CodeMonthlyBudgetCreateFailed, "error while creating monthly budget", err)
 			}
 			return nil
 		}
 		return errs.Wrap(errs.CodeMonthlyBudgetLookupFailed, "error while fetching monthly budget", err)
 	}
-	return s.repo.UpdateCarryoverByCatIdAndMonth(ctx, tx, budgetId, categoryId, monthKey, delta)
+	return s.repo.UpdateCarryoverByCatIdAndMonth(ctx, budgetId, categoryId, monthKey, delta)
 }
 
 func (s *monthlyBudgetService) ApplyCarryoverOps(
 	ctx context.Context,
-	tx pgx.Tx,
 	budgetId uuid.UUID,
 	txnDiff *txnDiff,
 	carryoverCase carryoverCase,
 ) error {
-	carryoverOps := s.getCarryoverOps(ctx, tx, budgetId, txnDiff, carryoverCase)
+	carryoverOps := s.getCarryoverOps(ctx, budgetId, txnDiff, carryoverCase)
 	for _, op := range carryoverOps {
-		if err := s.UpsertCarryover(ctx, tx, budgetId, op.categoryId, op.monthKey, op.amountDelta); err != nil {
+		if err := s.UpsertCarryover(ctx, budgetId, op.categoryId, op.monthKey, op.amountDelta); err != nil {
 			return err
 		}
 	}
@@ -172,7 +165,6 @@ func (s *monthlyBudgetService) ApplyCarryoverOps(
 // updateCarryovers computes and applies carryover adjustments when a transaction changes
 func (s *monthlyBudgetService) UpdateCarryovers(
 	ctx context.Context,
-	tx pgx.Tx,
 	budgetId uuid.UUID,
 	oldTxn *model.Transaction,
 	newTxn *model.Transaction,
@@ -197,5 +189,5 @@ func (s *monthlyBudgetService) UpdateCarryovers(
 		sameCategory: oldTxn.CategoryID != nil && newTxn.CategoryID != nil && *oldTxn.CategoryID == *newTxn.CategoryID,
 		sameMonth:    utils.GetMonthKey(oldTxn.Date.String()) == utils.GetMonthKey(newTxn.Date.String()),
 	}
-	return s.ApplyCarryoverOps(ctx, tx, budgetId, diff, cc)
+	return s.ApplyCarryoverOps(ctx, budgetId, diff, cc)
 }

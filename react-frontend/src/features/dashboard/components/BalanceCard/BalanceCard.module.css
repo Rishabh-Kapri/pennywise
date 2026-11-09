@@ -1,0 +1,272 @@
+.body {
+  display: grid;
+  grid-template-columns: minmax(15.5rem, 18rem) minmax(0, 1fr);
+  gap: 1.5rem;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── Account toggles ── */
+
+.accounts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.accountList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 19rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.accountRow {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid transparent;
+  border-radius: 0.7rem;
+  background: var(--raised-bg);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+
+.accountRow:hover {
+  border-color: var(--color-border-muted);
+}
+
+.accountRow:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* left out of the total: recede, keep the balance readable */
+.accountRow[aria-pressed='false'] {
+  background: transparent;
+  border-color: var(--color-border-muted);
+  opacity: 0.6;
+}
+
+.check {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  border: 1.5px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--on-accent);
+}
+
+.accountRow[aria-pressed='true'] .check {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.accountText {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.accountName {
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: 0.875rem;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accountType {
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+}
+
+.accountBalance {
+  flex: 0 0 auto;
+  color: var(--color-text);
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.negative {
+  color: var(--color-error);
+}
+
+.manageLink {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 0.3rem;
+  margin-top: auto;
+  padding: 0.25rem 0.1rem;
+  color: var(--color-text-secondary);
+  font-size: 0.825rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.manageLink:hover {
+  color: var(--accent);
+}
+
+/* ── Headline + chart ── */
+
+.overview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.heroLabel {
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.heroAmount {
+  color: var(--color-text);
+  font-size: 2.6rem;
+  font-weight: 650;
+}
+
+.change {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.changeUp,
+.changeDown {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.changeUp {
+  color: var(--color-success);
+}
+
+.changeDown {
+  color: var(--color-error);
+}
+
+.changeFlat,
+.changeContext {
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.chart {
+  min-width: 0;
+  margin: 0;
+}
+
+.chartEmpty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 210px;
+  border-radius: 0.75rem;
+  background: var(--raised-bg);
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.6rem;
+  background: var(--color-popover, var(--dash-surface));
+  box-shadow: var(--shadow-popover);
+}
+
+.tooltipDate {
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.tooltipValue {
+  color: var(--color-text);
+  font-size: 0.95rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.tooltipChange {
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 1.5rem 0;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* The card is the query container (see DashboardCard). */
+@container (max-width: 42rem) {
+  .body {
+    grid-template-columns: 1fr;
+  }
+
+  .accounts {
+    order: 2;
+  }
+
+  .accountList {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+    max-height: none;
+  }
+
+  .heroAmount {
+    font-size: 2.2rem;
+  }
+}

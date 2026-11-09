@@ -1,31 +1,43 @@
 import type { TransactionColumns } from '@/types/common.types';
 import styles from '../Transaction/Transaction.module.css';
-import { getCurrencyLocaleString, getLocaleDate } from '@/utils/date.utils';
-import { Minus, Plus } from '@phosphor-icons/react';
+import { getLocaleDate } from '@/utils/date.utils';
+import { formatBudgetAmount } from '@/features/category/components/budgetFormat';
+import type { Transaction } from '../../types/transaction.types';
+import { AccountLabel } from './AccountLabel';
+
+function renderAmount(txn: Transaction) {
+  if ((txn.inflow ?? 0) !== 0) {
+    return <span className={`${styles.amountCell} ${styles.amountInflow}`}>+{formatBudgetAmount(txn.inflow ?? 0)}</span>;
+  }
+  if ((txn.outflow ?? 0) !== 0) {
+    return <span className={`${styles.amountCell} ${styles.amountOutflow}`}>-{formatBudgetAmount(txn.outflow ?? 0)}</span>;
+  }
+  return '–';
+}
+
+function renderPayee(txn: Transaction) {
+  return txn.payeeName ? <span className={styles.payeeName}>{txn.payeeName}</span> : <span className={styles.note}>–</span>;
+}
 
 export const allAccountTxnCols: TransactionColumns[] = [
   {
     key: 'accountName',
     label: 'Account',
-    layout: { flex: '1 1 12%', textAlign: 'left', minWidth: 0, overflow: 'hidden' },
+    layout: { flex: '0 0 4.5rem', textAlign: 'left', minWidth: 0, overflow: 'hidden' },
+    render: (txn) => <AccountLabel txn={txn} />,
   },
   {
     key: 'date',
     label: 'Date',
     layout: { flex: '0 0 9rem', textAlign: 'left' },
+    className: ['dateCell'],
     render: (txn) => getLocaleDate(txn.date, { month: 'short', day: 'numeric', year: 'numeric' }, ['en-GB']),
   },
   {
     key: 'payeeName',
     label: 'Payee',
-    headerClassName: ['pl-5'],
-    layout: { flex: '1 1 20%', textAlign: 'left', minWidth: 0, overflow: 'hidden' },
-    render: (txn) =>
-      txn.payeeName ? (
-        <span className={styles.payeeName}>{txn.payeeName}</span>
-      ) : (
-        <span className={styles.note}>–</span>
-      ),
+    layout: { flex: '1 1 24%', textAlign: 'left', minWidth: 0, overflow: 'hidden' },
+    render: renderPayee,
   },
   {
     key: 'categoryName',
@@ -41,33 +53,14 @@ export const allAccountTxnCols: TransactionColumns[] = [
   {
     key: 'note',
     label: 'Note',
-    layout: { flex: '1 1 15%', textAlign: 'left', minWidth: 0, overflow: 'hidden' },
+    layout: { flex: '1 1 11%', textAlign: 'left', minWidth: 0, overflow: 'hidden' },
     className: ['note'],
   },
   {
     key: 'outflow',
     label: 'Amount',
-    headerClassName: ['pr-3'],
     layout: { flex: '0 0 8rem', textAlign: 'right' },
-    render: (txn) => {
-      if ((txn.inflow ?? 0) !== 0) {
-        return (
-          <span className={`${styles.amountCell} ${styles.amountInflow}`}>
-            <Plus color="var(--color-text-secondary)" size={14} />
-            {getCurrencyLocaleString(txn.inflow ?? 0)}
-          </span>
-        );
-      }
-      if ((txn.outflow ?? 0) !== 0) {
-        return (
-          <span className={`${styles.amountCell} ${styles.amountOutflow}`}>
-            <Minus color="var(--color-text-secondary)" size={14} />
-            <span>{getCurrencyLocaleString(txn.outflow ?? 0)}</span>
-          </span>
-        );
-      }
-      return '–';
-    },
+    render: renderAmount,
   },
 ];
 
@@ -76,12 +69,14 @@ export const specificAccountTxnCols: TransactionColumns[] = [
     key: 'date',
     label: 'Date',
     layout: { flex: '0 0 9rem', textAlign: 'left' },
+    className: ['dateCell'],
     render: (txn) => getLocaleDate(txn.date, { month: 'short', day: 'numeric', year: 'numeric' }, ['en-GB']),
   },
   {
     key: 'payeeName',
     label: 'Payee',
-    layout: { flex: '1 1 25%', textAlign: 'left', minWidth: 0, overflow: 'hidden' },
+    layout: { flex: '1 1 28%', textAlign: 'left', minWidth: 0, overflow: 'hidden' },
+    render: renderPayee,
   },
   {
     key: 'categoryName',
@@ -97,35 +92,20 @@ export const specificAccountTxnCols: TransactionColumns[] = [
   {
     key: 'note',
     label: 'Note',
-    layout: { flex: '1 1 18%', textAlign: 'left', minWidth: 0, overflow: 'hidden' },
+    layout: { flex: '1 1 13%', textAlign: 'left', minWidth: 0, overflow: 'hidden' },
     className: ['note'],
   },
   {
     key: 'outflow',
     label: 'Amount',
     layout: { flex: '0 0 8rem', textAlign: 'right' },
-    render: (txn) => {
-      if ((txn.inflow ?? 0) !== 0) {
-        return (
-          <span className={`${styles.amountCell} ${styles.amountInflow}`}>
-            +{getCurrencyLocaleString(txn.inflow ?? 0)}
-          </span>
-        );
-      }
-      if ((txn.outflow ?? 0) !== 0) {
-        return (
-          <span className={`${styles.amountCell} ${styles.amountOutflow}`}>
-            -{getCurrencyLocaleString(txn.outflow ?? 0)}
-          </span>
-        );
-      }
-      return '–';
-    },
+    render: renderAmount,
   },
   {
     key: 'balance',
     label: 'Balance',
     layout: { flex: '0 0 8rem', textAlign: 'right' },
-    render: (txn) => getCurrencyLocaleString(txn.balance ?? 0),
+    className: ['balanceCell'],
+    render: (txn) => formatBudgetAmount(txn.balance ?? 0),
   },
 ];

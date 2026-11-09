@@ -6,14 +6,12 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
 func TestReconcileTransfer(t *testing.T) {
 	ctx := context.Background()
-	var mockTx pgx.Tx
 
 	budgetId := uuid.New()
 	txnId := uuid.New()
@@ -36,7 +34,7 @@ func TestReconcileTransfer(t *testing.T) {
 			wasTransfer: true,
 			isTransfer:  false,
 			setupMocks: func(repo *mockTransactionRepo) {
-				repo.On("DeleteById", ctx, mockTx, budgetId, oldTransferTxnId).Return(nil).Once()
+				repo.On("DeleteById", ctx, budgetId, oldTransferTxnId).Return(nil).Once()
 			},
 			expectedError: false,
 		},
@@ -45,7 +43,7 @@ func TestReconcileTransfer(t *testing.T) {
 			wasTransfer: true,
 			isTransfer:  false,
 			setupMocks: func(repo *mockTransactionRepo) {
-				repo.On("DeleteById", ctx, mockTx, budgetId, oldTransferTxnId).Return(assert.AnError).Once()
+				repo.On("DeleteById", ctx, budgetId, oldTransferTxnId).Return(assert.AnError).Once()
 			},
 			expectedError: true,
 		},
@@ -55,7 +53,7 @@ func TestReconcileTransfer(t *testing.T) {
 			isTransfer:  true,
 			setupMocks: func(repo *mockTransactionRepo) {
 				// Mock Create for counterpart
-				repo.On("Create", ctx, mockTx, mock.Anything).
+				repo.On("Create", ctx, mock.Anything).
 					Return([]model.Transaction{{ID: newTransferTxnId}}, nil).
 					Once()
 			},
@@ -67,7 +65,7 @@ func TestReconcileTransfer(t *testing.T) {
 			isTransfer:  true,
 			setupMocks: func(repo *mockTransactionRepo) {
 				// Mock Create for counterpart
-				repo.On("Create", ctx, mockTx, mock.Anything).Return(nil, assert.AnError).Once()
+				repo.On("Create", ctx, mock.Anything).Return(nil, assert.AnError).Once()
 			},
 			expectedError: true,
 		},
@@ -77,8 +75,8 @@ func TestReconcileTransfer(t *testing.T) {
 			isTransfer:  true,
 			samePayee:   false,
 			setupMocks: func(repo *mockTransactionRepo) {
-				repo.On("DeleteById", ctx, mockTx, budgetId, oldTransferTxnId).Return(nil).Once()
-				repo.On("Create", ctx, mockTx, mock.Anything).
+				repo.On("DeleteById", ctx, budgetId, oldTransferTxnId).Return(nil).Once()
+				repo.On("Create", ctx, mock.Anything).
 					Return([]model.Transaction{{ID: newTransferTxnId}}, nil).
 					Once()
 			},
@@ -90,7 +88,7 @@ func TestReconcileTransfer(t *testing.T) {
 			isTransfer:  true,
 			samePayee:   false,
 			setupMocks: func(repo *mockTransactionRepo) {
-				repo.On("DeleteById", ctx, mockTx, budgetId, oldTransferTxnId).Return(assert.AnError).Once()
+				repo.On("DeleteById", ctx, budgetId, oldTransferTxnId).Return(assert.AnError).Once()
 			},
 			expectedError: true,
 		},
@@ -100,8 +98,8 @@ func TestReconcileTransfer(t *testing.T) {
 			isTransfer:  true,
 			samePayee:   false,
 			setupMocks: func(repo *mockTransactionRepo) {
-				repo.On("DeleteById", ctx, mockTx, budgetId, oldTransferTxnId).Return(nil).Once()
-				repo.On("Create", ctx, mockTx, mock.Anything).Return(nil, assert.AnError).Once()
+				repo.On("DeleteById", ctx, budgetId, oldTransferTxnId).Return(nil).Once()
+				repo.On("Create", ctx, mock.Anything).Return(nil, assert.AnError).Once()
 			},
 			expectedError: true,
 		},
@@ -111,7 +109,7 @@ func TestReconcileTransfer(t *testing.T) {
 			isTransfer:  true,
 			samePayee:   true,
 			setupMocks: func(repo *mockTransactionRepo) {
-				repo.On("Update", ctx, mockTx, budgetId, oldTransferTxnId, mock.Anything).Return(nil).Once()
+				repo.On("Update", ctx, budgetId, oldTransferTxnId, mock.Anything).Return(nil).Once()
 			},
 			expectedError: false,
 		},
@@ -121,7 +119,7 @@ func TestReconcileTransfer(t *testing.T) {
 			isTransfer:  true,
 			samePayee:   true,
 			setupMocks: func(repo *mockTransactionRepo) {
-				repo.On("Update", ctx, mockTx, budgetId, oldTransferTxnId, mock.Anything).Return(assert.AnError).Once()
+				repo.On("Update", ctx, budgetId, oldTransferTxnId, mock.Anything).Return(assert.AnError).Once()
 			},
 			expectedError: true,
 		},
@@ -159,7 +157,7 @@ func TestReconcileTransfer(t *testing.T) {
 			newTxn.Amount = 100 // for counterpart amount
 			newTxn.Date = "2023-11-11"
 
-			err := service.reconcileTransfer(ctx, mockTx, budgetId, oldTxn, &newTxn, account, payee)
+			err := service.reconcileTransfer(ctx, budgetId, oldTxn, &newTxn, account, payee)
 
 			if tt.expectedError {
 				assert.Error(t, err)

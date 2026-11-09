@@ -1,209 +1,70 @@
-.wrapper {
-  height: 100%;
+/* Mirrors the table geometry in features/category/components/CategoryGroup.module.css */
+.table {
+  --cols: minmax(0, 1fr) 7.5rem 7.5rem 8rem;
+  --hairline: color-mix(in srgb, var(--color-border) 32%, transparent);
   display: flex;
   flex-direction: column;
-  gap: 1rem;
   overflow: hidden;
 }
 
-.heading {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 1rem;
+.columns,
+.groupRow,
+.row {
+  display: grid;
+  grid-template-columns: var(--cols);
+  align-items: center;
+  column-gap: 1rem;
+  padding: 0 1rem;
 }
 
-.headingText {
+.columns > :not(:first-child),
+.groupRow > :not(:first-child),
+.row > :not(:first-child) {
+  justify-self: end;
+}
+
+.columns {
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.group + .group {
+  margin-top: 0.5rem;
+}
+
+.groupRow {
+  min-height: 2.75rem;
+}
+
+.row {
+  min-height: 3.25rem;
+  border-top: 1px solid var(--hairline);
+}
+
+.name {
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
-  min-width: 0;
-}
-
-.countBadge {
-  border-radius: 999px;
-  flex-shrink: 0;
-}
-
-.summaryGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.75rem;
-}
-
-.summaryCard {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
-  border: 1px solid var(--color-border-muted);
-  border-radius: 0.9rem;
-  background: color-mix(in srgb, var(--color-surface) 88%, transparent);
-  padding: 0.85rem 1rem;
-}
-
-.summaryIcon {
-  border-radius: 0.75rem;
-  flex-shrink: 0;
-}
-
-.summaryText {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-
-.budgetPanel {
-  min-height: 0;
-  flex: 1;
-  display: flex;
-  gap: 1rem;
-  overflow: hidden;
-}
-
-.categoryPanel {
-  min-width: 0;
-  flex: 2.5;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.tableHeader {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.4rem 1.5rem;
-  margin-bottom: 0.5rem;
-}
-
-.spacer {
-  flex: 3;
-}
-
-.scrollableContent {
-  flex: 1;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  padding-right: 0.35rem;
-}
-
-.groupContainer {
-  border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
-  background: var(--color-surface);
-  border-radius: 0.75rem;
-  padding: 0.85rem 0;
-  overflow: hidden;
-}
-
-.groupHeader {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-  padding: 0 1.5rem 0.85rem;
-}
-
-.groupHeader > :nth-child(2) {
-  flex: 3;
-}
-
-.groupAmounts {
-  flex: 3;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  justify-items: end;
-  gap: 0.5rem;
-}
-
-.categoryItem {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.5rem;
-  border-top: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
-  padding: 0.8rem 1.5rem;
-}
-
-.detailPanel {
-  min-width: 18rem;
-  flex: 0.75;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  border: 1px solid var(--color-border-muted);
-  border-radius: 1rem;
-  background: color-mix(in srgb, var(--color-surface) 88%, transparent);
-  padding: 1.5rem;
-}
-
-.detailCard {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  border: 1px solid var(--color-border-muted);
-  border-radius: 0.9rem;
-  background: var(--color-background);
-  padding: 1rem;
-}
-
-.headerContainer {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
+  padding-left: 1.6rem;
 }
 
 @media (max-width: 768px) {
-  .heading {
-    align-items: flex-start;
-    flex-direction: column;
+  .table {
+    --cols: minmax(0, 1fr) auto;
   }
 
-  .headingText > :nth-child(3) {
-    width: min(100%, 18rem) !important;
-  }
-
-  .summaryGrid {
-    grid-template-columns: 1fr;
-  }
-
-  .budgetPanel {
-    display: block;
-  }
-
-  .detailPanel {
+  .columns {
     display: none;
   }
 
-  .tableHeader {
+  .groupRow > :nth-child(2),
+  .groupRow > :nth-child(3),
+  .row > :nth-child(2),
+  .row > :nth-child(3) {
     display: none;
   }
 
-  .scrollableContent {
-    height: 100%;
-    padding-right: 0;
-  }
-
-  .groupHeader {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    padding: 0 1rem 0.85rem;
-  }
-
-  .groupAmounts {
-    grid-column: 1 / -1;
-    width: 100%;
-  }
-
-  .categoryItem {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    padding: 0.875rem 1rem;
-  }
-
-  .categoryItem > :first-child {
-    grid-column: 1 / -1;
+  .name {
+    padding-left: 0;
   }
 }

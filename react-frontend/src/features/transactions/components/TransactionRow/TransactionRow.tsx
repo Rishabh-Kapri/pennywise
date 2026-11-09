@@ -4,7 +4,7 @@ import { type Transaction, type ListItem } from '../../types/transaction.types';
 import styles from '../Transaction/Transaction.module.css';
 import { TransactionCell } from '../TransactionCell';
 import type { RowComponentProps } from 'react-window';
-import { getCurrencyLocaleString } from '@/utils/date.utils';
+import { formatBudgetAmount } from '@/features/category/components/budgetFormat';
 
 const INLINE_EDIT_TRANSACTION_KEYS = new Set<keyof Transaction>([
   'payeeName',
@@ -36,10 +36,10 @@ function MonthGroupHeader({ item, style }: { item: Extract<ListItem, { type: 'he
         <span className={styles.monthGroupStats}>
           {stats.count} transaction{stats.count !== 1 ? 's' : ''}
           {stats.totalOutflow > 0 && (
-            <span className={styles.statOutflow}>-{getCurrencyLocaleString(stats.totalOutflow)}</span>
+            <span className={styles.statOutflow}>-{formatBudgetAmount(stats.totalOutflow)}</span>
           )}
           {stats.totalInflow > 0 && (
-            <span className={styles.statInflow}>+{getCurrencyLocaleString(stats.totalInflow)}</span>
+            <span className={styles.statInflow}>+{formatBudgetAmount(stats.totalInflow)}</span>
           )}
         </span>
       </div>
@@ -203,7 +203,7 @@ export function TransactionRow({
                   <div
                     data-inline-edit-cell="true"
                     ref={isActiveInlineEditCell ? activeInlineEditRef : null}
-                    className={`${styles.inlineEditHitArea} ${col.key === 'date' ? styles.dateInlineEditHitArea : ''}`}
+                    className={`${styles.inlineEditHitArea} ${col.key === 'date' ? styles.dateInlineEditHitArea : ''} ${isActiveInlineEditCell ? styles.inlineEditActive : ''}`}
                     onClick={editInlineField(col.key, txn)}>
                     {cell}
                   </div>

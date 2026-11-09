@@ -70,3 +70,11 @@ func (g *realGmailAPI) ListHistory(ctx context.Context, email string, startHisto
 func (g *realGmailAPI) GetMessage(ctx context.Context, email string, id string) (*gmailv1.Message, error) {
 	return g.svc.Users.Messages.Get(email, id).Do()
 }
+
+func (g *realGmailAPI) ListMessages(ctx context.Context, email string, query string, maxResults int64) ([]*gmailv1.Message, error) {
+	res, err := g.svc.Users.Messages.List(email).Q(query).MaxResults(maxResults).Do()
+	if err != nil {
+		return nil, err
+	}
+	return res.Messages, nil
+}

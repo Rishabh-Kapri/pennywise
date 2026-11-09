@@ -8,12 +8,14 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type AccountHandler interface {
 	List(c *gin.Context)
 	Search(c *gin.Context)
 	Create(c *gin.Context)
+	Update(c *gin.Context)
 }
 
 type accountHandler struct {
@@ -60,4 +62,25 @@ func (h *accountHandler) Create(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, createdAcc)
+}
+
+func (h *accountHandler) Update(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid account id"})
+		return
+	}
+	var body model.Account
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	updated, err := h.service.Update(ctx, id, body)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, updated)
 }

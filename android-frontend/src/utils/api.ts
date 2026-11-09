@@ -3,6 +3,25 @@ import { config } from '../config/env';
 
 type AppDispatch = (action: unknown) => unknown;
 
+/** A response from the server, as opposed to not reaching it at all. */
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
+/**
+ * Only a 401 means the session is over. A server that's down or failing says
+ * nothing about it, so the user stays signed in.
+ */
+export function isSessionExpired(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 401;
+}
+
 class ApiClient {
   private readonly baseUrl = config.apiBaseUrl;
   private getState: (() => RootState) | null = null;
@@ -49,7 +68,7 @@ class ApiClient {
 
     this.refreshPromise = (async () => {
       const refreshToken = this.getState?.().auth.tokens?.refreshToken;
-      if (!refreshToken) throw new Error('No refresh token');
+      if (!refreshToken) throw new ApiError('No refresh token', 401);
 
       const res = await fetch(`${this.baseUrl}/auth/refresh`, {
         method: 'POST',
@@ -57,7 +76,7 @@ class ApiClient {
         body: JSON.stringify({ refreshToken })
       });
 
-      if (!res.ok) throw new Error('Refresh failed');
+      if (!res.ok) throw new ApiError('Refresh failed', res.status);
       const data = (await res.json()) as { accessToken: string; expiresIn: number };
       if (this.dispatch) {
         const { refreshAccessToken } = await import('../features/auth/store/authSlice');
@@ -75,7 +94,7 @@ class ApiClient {
     const text = await res.text();
     const data = text ? JSON.parse(text) : {};
     if (!res.ok) {
-      throw new Error(String(data?.error ?? res.statusText));
+      throw new ApiError(String(data?.error ?? res.statusText), res.status);
     }
     return data as T;
   }
@@ -105,7 +124,7 @@ class ApiClient {
       try {
         newAccessToken = await this.tryRefreshToken();
       } catch (error) {
-        await this.handleSessionExpired();
+        if (isSessionExpired(error)) await this.handleSessionExpired();
         throw error;
       }
       const headers = this.getHeaders(endpoint) as Record<string, string>;
@@ -135,6 +154,15 @@ class ApiClient {
       body: JSON.stringify(data)
     });
     return this.handleResponse<T>(res, 'POST', endpoint, data);
+  }
+
+  async put<T>(endpoint: string, data: unknown): Promise<T> {
+    const res = await fetch(`${this.baseUrl}/${endpoint}`, {
+      method: 'PUT',
+      headers: this.getHeaders(endpoint),
+      body: JSON.stringify(data)
+    });
+    return this.handleResponse<T>(res, 'PUT', endpoint, data);
   }
 
   async patch<T>(endpoint: string, data: unknown): Promise<T> {

@@ -9,7 +9,7 @@ import (
 )
 
 func TestValidateTransactionPayload(t *testing.T) {
-	service := &transactionService{}
+	service := &transactionService{dbTxn: fakeDBTxn{}}
 	validAccountID := uuid.New()
 	validPayeeID := uuid.New()
 
@@ -89,7 +89,7 @@ func TestValidateTransactionPayload(t *testing.T) {
 }
 
 func TestValidateCategory(t *testing.T) {
-	service := &transactionService{}
+	service := &transactionService{dbTxn: fakeDBTxn{}}
 	transferAccountID := uuid.New()
 	categoryID := uuid.New()
 	inflowCategoryID := uuid.New()

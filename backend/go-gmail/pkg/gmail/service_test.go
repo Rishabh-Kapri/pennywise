@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/config"
@@ -44,6 +45,9 @@ type mockGmailAPI struct {
 	listHistoryErr error
 	getMessageRes  *gmailv1.Message
 	getMessageErr  error
+	listMessages   []*gmailv1.Message
+	listMessageErr error
+	listQuery      string
 }
 
 func (m *mockGmailAPI) StopWatch(_ context.Context, _ string) error {
@@ -60,6 +64,11 @@ func (m *mockGmailAPI) ListHistory(_ context.Context, _ string, _ uint64) (*gmai
 
 func (m *mockGmailAPI) GetMessage(_ context.Context, _ string, _ string) (*gmailv1.Message, error) {
 	return m.getMessageRes, m.getMessageErr
+}
+
+func (m *mockGmailAPI) ListMessages(_ context.Context, _ string, query string, _ int64) ([]*gmailv1.Message, error) {
+	m.listQuery = query
+	return m.listMessages, m.listMessageErr
 }
 
 // ---------------------------------------------------------------------------
@@ -342,6 +351,55 @@ func TestGetMessageHistory(t *testing.T) {
 		// Body will be empty (decode failed) but message is still returned
 		if len(data) != 1 {
 			t.Errorf("expected 1 message, got %d", len(data))
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// TestGetRecentMessages
+// ---------------------------------------------------------------------------
+
+func TestGetRecentMessages(t *testing.T) {
+	ctx := context.Background()
+	req := GmailBackfillRequest{Email: "a@b.com", RefreshToken: "rt", Days: 14, MaxResults: 25}
+
+	t.Run("Token fetch error", func(t *testing.T) {
+		svc := newTestService(&mockGmailAPI{}, errors.New("token error"))
+		if _, err := svc.GetRecentMessages(ctx, req); err == nil {
+			t.Error("expected error from token fetch failure")
+		}
+	})
+
+	t.Run("List error", func(t *testing.T) {
+		svc := newTestService(&mockGmailAPI{listMessageErr: errors.New("list error")}, nil)
+		if _, err := svc.GetRecentMessages(ctx, req); err == nil {
+			t.Error("expected error from list failure")
+		}
+	})
+
+	t.Run("Fetches each listed message", func(t *testing.T) {
+		api := &mockGmailAPI{
+			listMessages: []*gmailv1.Message{{Id: "m1"}, {Id: "m2"}},
+			getMessageRes: &gmailv1.Message{
+				Snippet: "Rs 100 debited",
+				Payload: &gmailv1.MessagePart{
+					Parts: []*gmailv1.MessagePart{{
+						MimeType: "text/html",
+						Body:     &gmailv1.MessagePartBody{Data: base64.URLEncoding.EncodeToString([]byte("<p>hi</p>"))},
+					}},
+				},
+			},
+		}
+		svc := newTestService(api, nil)
+		got, err := svc.GetRecentMessages(ctx, req)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(got) != 2 || got[0].MessageId != "m1" || got[1].Body != "<p>hi</p>" {
+			t.Errorf("unexpected messages: %+v", got)
+		}
+		if !strings.HasPrefix(api.listQuery, "newer_than:14d ") {
+			t.Errorf("unexpected query %q", api.listQuery)
 		}
 	})
 }
