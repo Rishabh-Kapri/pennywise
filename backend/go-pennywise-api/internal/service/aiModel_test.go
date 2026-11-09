@@ -49,6 +49,22 @@ func TestAIModelCreate(t *testing.T) {
 		return &model.TestUserLLMModelResponse{OK: false, Error: "model not found"}, nil
 	}
 
+	t.Run("a typesafe key only runs decision models", func(t *testing.T) {
+		svc := NewAIModelService(&fakeLLMModelRepo{}, pass, notDemo)
+		_, err := svc.Create(ctx, userID, model.CreateUserLLMModelRequest{
+			Provider: model.LLMProviderTypeSafe, Kind: model.LLMModelChat, Slug: "jev-latest",
+		})
+		if !errors.Is(err, ErrInvalidAIModel) {
+			t.Fatalf("want ErrInvalidAIModel, got %v", err)
+		}
+		if _, err := svc.Create(ctx, userID, model.CreateUserLLMModelRequest{
+			Provider: model.LLMProviderTypeSafe, Kind: model.LLMModelDecision, Slug: "jev-latest",
+			Endpoint: "https://api.typesafe.ai/v1/systemone",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	})
+
 	t.Run("decision model is tested at its endpoint, then saved verified", func(t *testing.T) {
 		repo := &fakeLLMModelRepo{}
 		svc := NewAIModelService(repo, pass, notDemo)

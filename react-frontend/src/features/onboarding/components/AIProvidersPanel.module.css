@@ -149,6 +149,10 @@
   --mark: #6467f2;
 }
 
+.mark[data-provider='typesafe'] {
+  --mark: #2f80ed;
+}
+
 .mark[data-provider='ollama'] {
   --mark: var(--color-text-secondary);
 }

@@ -52,6 +52,8 @@ type openRouterDecisionUsage struct {
 
 // NewOpenRouterClient calls the decisions endpoint the user entered (the full
 // URL, e.g. https://openrouter.ai/api/alpha/decisions) with their key.
+// TypeSafe's https://api.typesafe.ai/v1/systemone (Jev) takes the same request
+// and answers without id, provider or cost.
 // httpClient must be the SSRF-safe client for user URLs (transport.NewUserURLClient):
 // the endpoint is user input, so there is deliberately no default.
 func NewOpenRouterClient(endpoint, apiKey string, httpClient *http.Client) (decisions.Decisions, error) {

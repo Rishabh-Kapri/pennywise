@@ -26,6 +26,7 @@ top to bottom with no ALTER history to replay.
 | `00017_user_llm_models` | AI models split from keys: `user_llm_models` (chat, decision or embedding; one default per kind; enable and order); drops `model` and `priority` from `user_llm_providers` |
 | `00018_budget_pipeline_steps` | a budget's changes to the steps of the system pipelines (`shared/pipeline`), including fallback |
 | `00019_transaction_sources` | `transaction_sources` (the emails/statement lines behind a transaction, and who wrote them) and `counterparty_aliases` (`CHANNEL \| MERCHANT` → payee); not granted to the agent role |
+| `00020_llm_provider_typesafe` | adds `typesafe` to `llm_provider` (decision models only) |
 
 ## Commands (from `backend/go-pennywise-api`)
 

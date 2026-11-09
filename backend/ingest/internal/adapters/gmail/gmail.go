@@ -38,7 +38,7 @@ const (
 // account's whole history, which would be read one message at a time.
 const (
 	maxSearchDays    = 30
-	maxSearchResults = 500
+	maxSearchResults = 2000
 	// fetchConcurrency stays well inside Gmail's per-user rate limit.
 	fetchConcurrency = 10
 )

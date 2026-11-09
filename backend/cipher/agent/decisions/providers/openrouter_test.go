@@ -84,6 +84,42 @@ func TestOpenRouterAsk(t *testing.T) {
 	}
 }
 
+func TestAskReadsJevResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"model": "jev-1.14.0",
+			"answers": {
+				"isTransaction": {"type": "noul", "noul": 0.91},
+				"kind": {"type": "choice", "choice": "debit", "confidence": 0.8,
+					"probabilities": {"debit": 0.8, "credit": 0.2}}
+			},
+			"usage": {"input_tokens": 120, "output_tokens": 4}
+		}`))
+	}))
+	defer srv.Close()
+
+	c, err := NewOpenRouterClient(srv.URL, "ts-test", srv.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := c.Ask(context.Background(), testRequest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Model != "jev-1.14.0" || res.ID != nil || res.Provider != nil {
+		t.Errorf("response metadata = %+v", res)
+	}
+	if a := res.Answers["isTransaction"]; a.Noul == nil || *a.Noul != 0.91 {
+		t.Errorf("noul answer = %+v", a)
+	}
+	if a := res.Answers["kind"]; a.Choice == nil || *a.Choice != "debit" || a.Confidence == nil {
+		t.Errorf("choice answer = %+v", a)
+	}
+	if u := res.Usage; !u.Available || u.TotalTokens != 124 || u.Cost != nil {
+		t.Errorf("usage = %+v", u)
+	}
+}
+
 func TestOpenRouterAskKeepsHTTPStatus(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusPaymentRequired)

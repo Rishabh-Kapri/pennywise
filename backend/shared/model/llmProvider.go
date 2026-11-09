@@ -14,12 +14,14 @@ const (
 	LLMProviderAnthropic  LLMProviderName = "anthropic"
 	LLMProviderOpenRouter LLMProviderName = "openrouter"
 	LLMProviderOllama     LLMProviderName = "ollama"
+	// LLMProviderTypeSafe runs Jev. It has no chat API, only decisions.
+	LLMProviderTypeSafe LLMProviderName = "typesafe"
 )
 
 // Valid reports whether p is a provider users may configure.
 func (p LLMProviderName) Valid() bool {
 	switch p {
-	case LLMProviderOpenAI, LLMProviderAnthropic, LLMProviderOpenRouter, LLMProviderOllama:
+	case LLMProviderOpenAI, LLMProviderAnthropic, LLMProviderOpenRouter, LLMProviderOllama, LLMProviderTypeSafe:
 		return true
 	}
 	return false
@@ -66,6 +68,11 @@ const (
 
 func (k LLMModelKind) Valid() bool {
 	return k == LLMModelChat || k == LLMModelDecision || k == LLMModelEmbedding
+}
+
+// ServesChat reports whether Pennywise can run chat models with this provider's keys.
+func (p LLMProviderName) ServesChat() bool {
+	return p != LLMProviderTypeSafe
 }
 
 // ServesEmbeddings reports whether Pennywise can embed with this provider's keys.

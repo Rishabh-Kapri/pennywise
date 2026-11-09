@@ -3,7 +3,7 @@ import { CircleNotch } from '@phosphor-icons/react';
 import { useEffect, useState } from 'react';
 import styles from './EmailBackfill.module.css';
 
-const BACKFILL_DAYS = 14;
+const BACKFILL_DAYS = 30;
 
 interface BackfillCandidate {
   externalId: string;

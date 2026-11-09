@@ -86,6 +86,9 @@ func (s *aiModelService) Create(
 	if !req.Kind.Valid() {
 		return nil, fmt.Errorf("%w: kind must be chat, decision or embedding", ErrInvalidAIModel)
 	}
+	if req.Kind == model.LLMModelChat && !req.Provider.ServesChat() {
+		return nil, fmt.Errorf("%w: this key can only run decision models", ErrInvalidAIModel)
+	}
 	if req.Kind == model.LLMModelEmbedding && !req.Provider.ServesEmbeddings() {
 		return nil, fmt.Errorf("%w: embedding models need an OpenRouter or Ollama key", ErrInvalidAIModel)
 	}

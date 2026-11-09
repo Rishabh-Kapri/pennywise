@@ -6,6 +6,8 @@ export interface ProviderInfo {
   defaultChatModel: string;
   /** Set only for providers Pennywise can embed with. Must return 1024 dimensions. */
   defaultEmbeddingModel?: string;
+  /** Set only for decision-only providers, which fill in the model form. */
+  decisionModel?: { slug: string; endpoint: string };
   keyPlaceholder: string;
   keyUrl?: string;
   /** Ollama: the user's own server, key optional. */
@@ -38,5 +40,12 @@ export const AI_PROVIDERS: Record<AIProviderName, ProviderInfo> = {
     defaultEmbeddingModel: 'bge-m3',
     keyPlaceholder: 'Optional',
     selfHosted: true,
+  },
+  typesafe: {
+    label: 'TypeSafe (Jev)',
+    defaultChatModel: '',
+    decisionModel: { slug: 'jev-latest', endpoint: 'https://api.typesafe.ai/v1/systemone' },
+    keyPlaceholder: 'Your TypeSafe API key',
+    keyUrl: 'https://console.typesafe.ai/keys',
   },
 };

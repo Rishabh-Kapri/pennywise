@@ -1,6 +1,6 @@
 import { apiClient } from '../../utils/api';
 
-export type AIProviderName = 'openai' | 'anthropic' | 'openrouter' | 'ollama';
+export type AIProviderName = 'openai' | 'anthropic' | 'openrouter' | 'ollama' | 'typesafe';
 export type AIModelKind = 'chat' | 'decision' | 'embedding';
 
 /** A saved key. The key itself never comes back. */
@@ -36,7 +36,15 @@ export interface AIModelTestResult {
 
 export const AI_PROVIDERS: Record<
   AIProviderName,
-  { label: string; mark: string; defaultChatModel: string; defaultEmbeddingModel?: string; selfHosted?: boolean }
+  {
+    label: string;
+    mark: string;
+    defaultChatModel: string;
+    defaultEmbeddingModel?: string;
+    selfHosted?: boolean;
+    /** Set only for decision-only providers, which fill in the model form. */
+    decisionModel?: { slug: string; endpoint: string };
+  }
 > = {
   openai: { label: 'OpenAI', mark: 'OA', defaultChatModel: 'gpt-4o-mini' },
   anthropic: { label: 'Anthropic', mark: 'An', defaultChatModel: 'claude-haiku-4-5' },
@@ -52,6 +60,12 @@ export const AI_PROVIDERS: Record<
     defaultChatModel: 'gemma4:12b',
     defaultEmbeddingModel: 'bge-m3',
     selfHosted: true
+  },
+  typesafe: {
+    label: 'TypeSafe (Jev)',
+    mark: 'TS',
+    defaultChatModel: '',
+    decisionModel: { slug: 'jev-latest', endpoint: 'https://api.typesafe.ai/v1/systemone' }
   }
 };
 
@@ -87,10 +101,15 @@ export const EMBEDDING_SWITCH_WARNING =
 export function defaultSlug(kind: AIModelKind, provider: AIProviderName): string {
   if (kind === 'chat') return AI_PROVIDERS[provider].defaultChatModel;
   if (kind === 'embedding') return AI_PROVIDERS[provider].defaultEmbeddingModel ?? '';
-  return '';
+  return AI_PROVIDERS[provider].decisionModel?.slug ?? '';
+}
+
+export function defaultEndpoint(kind: AIModelKind, provider: AIProviderName): string {
+  return kind === 'decision' ? (AI_PROVIDERS[provider].decisionModel?.endpoint ?? '') : '';
 }
 
 export function servesKind(kind: AIModelKind, provider: AIProviderName): boolean {
+  if (AI_PROVIDERS[provider].decisionModel) return kind === 'decision';
   return kind !== 'embedding' || !!AI_PROVIDERS[provider].defaultEmbeddingModel;
 }
 

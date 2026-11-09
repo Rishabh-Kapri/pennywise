@@ -61,9 +61,9 @@ type SyncResult struct {
 
 const (
 	// backfillDays is how far back a backfill looks.
-	backfillDays = 14
+	backfillDays = 30
 	// backfillMaxEmails bounds one backfill, which is every email in the window.
-	backfillMaxEmails = 500
+	backfillMaxEmails = 2000
 )
 
 // BackfillResult is what one Backfill did.

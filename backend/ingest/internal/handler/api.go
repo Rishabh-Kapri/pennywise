@@ -99,7 +99,7 @@ type BackfillCandidate struct {
 
 // BackfillReq names the candidates to import.
 type BackfillReq struct {
-	ExternalIDs []string `json:"externalIds" binding:"required,min=1,max=500,dive,required,max=200"`
+	ExternalIDs []string `json:"externalIds" binding:"required,min=1,max=2000,dive,required,max=200"`
 }
 
 // TestMailboxReq names the mailbox to sync, as a provider push would.

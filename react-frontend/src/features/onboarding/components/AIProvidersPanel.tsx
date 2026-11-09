@@ -38,6 +38,7 @@ const PROVIDER_MARK: Record<AIProviderName, string> = {
   anthropic: 'An',
   openrouter: 'OR',
   ollama: 'Ol',
+  typesafe: 'TS',
 };
 
 const KINDS: { kind: AIModelKind; title: string; description: string; noun: string; empty: string }[] = [
@@ -72,11 +73,16 @@ const EMBEDDING_SWITCH_WARNING =
 function defaultSlug(kind: AIModelKind, provider: AIProviderName): string {
   if (kind === 'chat') return AI_PROVIDERS[provider].defaultChatModel;
   if (kind === 'embedding') return AI_PROVIDERS[provider].defaultEmbeddingModel ?? '';
-  return '';
+  return AI_PROVIDERS[provider].decisionModel?.slug ?? '';
+}
+
+function defaultEndpoint(kind: AIModelKind, provider: AIProviderName): string {
+  return kind === 'decision' ? (AI_PROVIDERS[provider].decisionModel?.endpoint ?? '') : '';
 }
 
 /** Keys that can run a model of this kind. */
 function servesKind(kind: AIModelKind, provider: AIProviderName): boolean {
+  if (AI_PROVIDERS[provider].decisionModel) return kind === 'decision';
   return kind !== 'embedding' || !!AI_PROVIDERS[provider].defaultEmbeddingModel;
 }
 
@@ -208,7 +214,14 @@ export function AIProvidersPanel({ onChange, readOnly }: AIProvidersPanelProps) 
       // A new key does nothing without a model: offer the first one straight away.
       if (added) {
         setModelError(null);
-        setModelForm({ kind: 'chat', provider, slug: info.defaultChatModel, endpoint: '', makeDefault: false });
+        const kind: AIModelKind = info.decisionModel ? 'decision' : 'chat';
+        setModelForm({
+          kind,
+          provider,
+          slug: defaultSlug(kind, provider),
+          endpoint: defaultEndpoint(kind, provider),
+          makeDefault: false,
+        });
       }
     } catch (err) {
       toast.error(`Could not save the ${info.label} key`, { description: errorMessage(err, 'Try again.') });
@@ -250,7 +263,7 @@ export function AIProvidersPanel({ onChange, readOnly }: AIProvidersPanelProps) 
       kind,
       provider: first?.provider ?? '',
       slug: first ? defaultSlug(kind, first.provider) : '',
-      endpoint: '',
+      endpoint: first ? defaultEndpoint(kind, first.provider) : '',
       makeDefault: false,
     });
   };
@@ -733,6 +746,7 @@ export function AIProvidersPanel({ onChange, readOnly }: AIProvidersPanelProps) 
                             ...modelForm,
                             provider,
                             slug: defaultSlug(kind, provider) || modelForm.slug,
+                            endpoint: defaultEndpoint(kind, provider) || modelForm.endpoint,
                           });
                         }}
                       />

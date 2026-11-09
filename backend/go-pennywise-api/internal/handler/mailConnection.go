@@ -92,7 +92,7 @@ func (h *mailConnectionHandler) Disconnect(c *gin.Context) {
 }
 
 type backfillRequest struct {
-	ExternalIDs []string `json:"externalIds" binding:"required,min=1,max=500"`
+	ExternalIDs []string `json:"externalIds" binding:"required,min=1,max=2000"`
 }
 
 func (h *mailConnectionHandler) BackfillCandidates(c *gin.Context) {

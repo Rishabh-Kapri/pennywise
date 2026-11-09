@@ -20,7 +20,7 @@ export interface UpdateOnboardingPayload {
   emailsImported?: boolean;
 }
 
-export type AIProviderName = 'openai' | 'anthropic' | 'openrouter' | 'ollama';
+export type AIProviderName = 'openai' | 'anthropic' | 'openrouter' | 'ollama' | 'typesafe';
 
 /** A saved key (user_llm_providers row). The key never comes back, only whether one is saved. */
 export interface AIProvider {

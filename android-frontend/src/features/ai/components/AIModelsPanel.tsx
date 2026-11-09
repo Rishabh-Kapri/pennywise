@@ -11,6 +11,7 @@ import {
   EMBEDDING_SWITCH_WARNING,
   MODEL_KINDS,
   PROVIDER_NAMES,
+  defaultEndpoint,
   defaultSlug,
   errorText,
   llmApi,
@@ -142,7 +143,7 @@ export function AIModelsPanel() {
       kind,
       provider: first?.provider ?? '',
       slug: first ? defaultSlug(kind, first.provider) : '',
-      endpoint: '',
+      endpoint: first ? defaultEndpoint(kind, first.provider) : '',
       makeDefault: false
     });
   };
@@ -167,7 +168,14 @@ export function AIModelsPanel() {
       // A new key does nothing without a model: offer the first one straight away.
       if (added) {
         setFormError(null);
-        setModelForm({ kind: 'chat', provider, slug: info.defaultChatModel, endpoint: '', makeDefault: false });
+        const kind: AIModelKind = info.decisionModel ? 'decision' : 'chat';
+        setModelForm({
+          kind,
+          provider,
+          slug: defaultSlug(kind, provider),
+          endpoint: defaultEndpoint(kind, provider),
+          makeDefault: false
+        });
       }
     } catch (err) {
       Alert.alert(`Could not save the ${info.label} key`, errorText(err, 'Try again.'));
@@ -580,7 +588,12 @@ export function AIModelsPanel() {
                 setPickingKey(false);
                 if (!id) return;
                 const provider = id as AIProviderName;
-                setModelForm({ ...modelForm, provider, slug: defaultSlug(modelForm.kind, provider) || modelForm.slug });
+                setModelForm({
+                  ...modelForm,
+                  provider,
+                  slug: defaultSlug(modelForm.kind, provider) || modelForm.slug,
+                  endpoint: defaultEndpoint(modelForm.kind, provider) || modelForm.endpoint
+                });
               }}
             />
           ) : null}

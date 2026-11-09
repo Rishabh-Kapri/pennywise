@@ -1,5 +1,6 @@
 import { useAppSelector } from '@/app/hooks';
 import { selectIsDemoUser } from '@/features/auth/store/authSlice';
+import { EmailBackfill } from '@/features/mail/EmailBackfill';
 import { useMailConnections, type MailConnection } from '@/features/mail/useMailConnections';
 import { CheckCircle, CircleNotch, EnvelopeSimple, PauseCircle, Warning } from '@phosphor-icons/react';
 import { useState } from 'react';
@@ -37,6 +38,7 @@ interface MailRowProps {
 function MailRow({ connection, connecting, readOnly, onReconnect, onSetPaused, onDisconnect }: MailRowProps) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   const run = async (action: () => Promise<void>) => {
     setBusy(true);
@@ -52,57 +54,72 @@ function MailRow({ connection, connecting, readOnly, onReconnect, onSetPaused, o
   const canPause = connection.status !== 'needs_reconnect';
 
   return (
-    <li className={styles.row}>
-      <StatusIcon connection={connection} />
-      <span className={styles.rowText}>
-        <span className={styles.account}>{connection.account}</span>
-        <span className={styles.muted}>
-          {confirming ? 'Disconnect from this budget? Imported transactions stay.' : statusText(connection)}
+    <>
+      <li className={styles.row}>
+        <StatusIcon connection={connection} />
+        <span className={styles.rowText}>
+          <span className={styles.account}>{connection.account}</span>
+          <span className={styles.muted}>
+            {confirming ? 'Disconnect from this budget? Imported transactions stay.' : statusText(connection)}
+          </span>
         </span>
-      </span>
-      {!readOnly && (
-        <div className={styles.actions}>
-          {confirming ? (
-            <>
-              <button type="button" className={styles.action} disabled={busy} onClick={() => setConfirming(false)}>
-                Keep
-              </button>
-              <button
-                type="button"
-                className={`${styles.action} ${styles.danger}`}
-                disabled={busy}
-                onClick={() => void run(onDisconnect)}>
-                Disconnect
-              </button>
-            </>
-          ) : (
-            <>
-              {canReconnect && (
-                <button
-                  type="button"
-                  className={`${styles.action} ${styles.emphasis}`}
-                  disabled={connecting}
-                  onClick={onReconnect}>
-                  Reconnect
+        {!readOnly && (
+          <div className={styles.actions}>
+            {confirming ? (
+              <>
+                <button type="button" className={styles.action} disabled={busy} onClick={() => setConfirming(false)}>
+                  Keep
                 </button>
-              )}
-              {canPause && (
                 <button
                   type="button"
-                  className={styles.action}
+                  className={`${styles.action} ${styles.danger}`}
                   disabled={busy}
-                  onClick={() => void run(() => onSetPaused(!paused))}>
-                  {paused ? 'Resume' : 'Pause'}
+                  onClick={() => void run(onDisconnect)}
+                >
+                  Disconnect
                 </button>
-              )}
-              <button type="button" className={styles.action} disabled={busy} onClick={() => setConfirming(true)}>
-                Disconnect
-              </button>
-            </>
-          )}
-        </div>
+              </>
+            ) : (
+              <>
+                {canReconnect && (
+                  <button
+                    type="button"
+                    className={`${styles.action} ${styles.emphasis}`}
+                    disabled={connecting}
+                    onClick={onReconnect}
+                  >
+                    Reconnect
+                  </button>
+                )}
+                {canPause && (
+                  <button type="button" className={styles.action} onClick={() => setImporting(!importing)}>
+                    {importing ? 'Close import' : 'Import past emails'}
+                  </button>
+                )}
+                {canPause && (
+                  <button
+                    type="button"
+                    className={styles.action}
+                    disabled={busy}
+                    onClick={() => void run(() => onSetPaused(!paused))}
+                  >
+                    {paused ? 'Resume' : 'Pause'}
+                  </button>
+                )}
+                <button type="button" className={styles.action} disabled={busy} onClick={() => setConfirming(true)}>
+                  Disconnect
+                </button>
+              </>
+            )}
+          </div>
+        )}
+      </li>
+      {importing && canPause && !readOnly && (
+        <li className={styles.backfill}>
+          <EmailBackfill connectionId={connection.id} onImported={() => Promise.resolve()} />
+        </li>
       )}
-    </li>
+    </>
   );
 }
 
