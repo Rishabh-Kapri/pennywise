@@ -244,6 +244,12 @@ type JobStore interface {
 	ListEvents(ctx context.Context, jobID uuid.UUID) ([]JobEvent, error)
 	CancelJob(ctx context.Context, jobID uuid.UUID, actor string) (*Job, error)
 	RetryDead(ctx context.Context, jobID uuid.UUID, actor string) (*Job, error)
+	// RetryDeadByCode queues the scope's dead jobs whose last error starts with
+	// code again, at most limit of them, and returns how many it queued.
+	RetryDeadByCode(ctx context.Context, scope JobScope, code, actor string, limit int) (int, error)
+	// Dismiss soft-deletes the jobs that have finished. Their idempotency keys
+	// stay, so a dismissed message isn't imported again.
+	Dismiss(ctx context.Context, jobIDs []uuid.UUID) error
 }
 
 // ScheduleStore keeps recurring job definitions (job_schedules).

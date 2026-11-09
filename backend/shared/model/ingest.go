@@ -42,4 +42,7 @@ type ReceivedMessage struct {
 	Subject    string    `json:"subject,omitempty"`
 	Body       string    `json:"body"`
 	ReceivedAt time.Time `json:"receivedAt"`
+	// RunID is set when a person sends a finished message through the pipeline
+	// again. It makes that run's jobs new ones instead of duplicates.
+	RunID string `json:"runId,omitempty"`
 }

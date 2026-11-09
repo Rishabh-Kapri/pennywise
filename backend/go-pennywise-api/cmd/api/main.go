@@ -328,7 +328,7 @@ func main() {
 	pipelineStepHandler := handler.NewPipelineStepHandler(
 		service.NewPipelineStepService(pipelines, database.PipelineStep, database.UserLLMModel),
 	)
-	jobHandler := handler.NewJobHandler(service.NewJobService(jobStore, database.MailConnection))
+	jobHandler := handler.NewJobHandler(service.NewJobService(jobStore, broker, database.MailConnection))
 
 	var ingestClient *transport.Client
 	if config.IngestServiceURL != "" {
@@ -669,6 +669,11 @@ func main() {
 				transactionHandler.DeleteById,
 			)
 			transactionGroup.POST(
+				"bulk-delete",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeDelete),
+				transactionHandler.BulkDelete,
+			)
+			transactionGroup.POST(
 				":id/documents",
 				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
 				documentHandler.Upload,
@@ -978,6 +983,9 @@ func main() {
 			jobGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
 			jobGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), jobHandler.List)
 			jobGroup.GET("/:id", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), jobHandler.Get)
+			jobGroup.POST("/retry-failed", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), jobHandler.RetryFailed)
+			jobGroup.POST("/:id/run-again", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), jobHandler.RunAgain)
+			jobGroup.POST("/:id/dismiss", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), jobHandler.Dismiss)
 			jobGroup.POST("/:id/retry", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), jobHandler.Retry)
 			jobGroup.POST("/:id/cancel", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), jobHandler.Cancel)
 		}

@@ -97,6 +97,11 @@ export function rowOutcome(row: JobRow): string | null {
 /** Outcomes where the message ended without a transaction it should have had. */
 const STOPPED_OUTCOMES = ['unverified', 'no_prediction'];
 
+/** The pipeline ended this message on purpose, so there's no failed job to retry. */
+export function isStopped(row: JobRow): boolean {
+  return rowState(row) === 'done' && STOPPED_OUTCOMES.includes(rowOutcome(row) ?? '');
+}
+
 export type StepState = 'done' | 'running' | 'queued' | 'retrying' | 'failed' | 'stopped' | 'skipped' | 'pending';
 
 export interface MessageStep {

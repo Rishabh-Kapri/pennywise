@@ -22,6 +22,10 @@ function isInsideDialog(target: Node) {
   return target instanceof Element && Boolean(target.closest('[role="dialog"]'));
 }
 
+function isBulkSelect(target: Node) {
+  return target instanceof Element && Boolean(target.closest('[data-bulk-select="true"]'));
+}
+
 function isInlineEditCell(target: Node) {
   return target instanceof Element && Boolean(target.closest('[data-inline-edit-cell="true"]'));
 }
@@ -59,6 +63,9 @@ export interface Props {
   handleSelectedTxnChange: (key: keyof Transaction, value: Transaction[keyof Transaction]) => void;
   handleInputBlur: (key: keyof Transaction, value: string | number) => void;
   onAutoSave?: (overrides: Partial<Transaction>) => void;
+  /** Ticked rows. Separate from selectedTxn, which is the row open in the panel. */
+  bulkSelectedIds: Set<string>;
+  onBulkToggle: (id: string) => void;
 }
 
 export function TransactionRow({
@@ -74,6 +81,8 @@ export function TransactionRow({
   handleSelectedTxnChange,
   handleInputBlur,
   onAutoSave,
+  bulkSelectedIds,
+  onBulkToggle,
 }: RowComponentProps<Props>) {
   const item = listItems[index];
   const [activeInlineEditKey, setActiveInlineEditKey] = useState<keyof Transaction | null>(null);
@@ -93,7 +102,7 @@ export function TransactionRow({
       const target = event.target as Node;
       const isInsideActiveEditor = activeInlineEditRef.current?.contains(target);
 
-      if (!isInsideActiveEditor && !isInsideDialog(target) && !isInlineEditCell(target)) {
+      if (!isInsideActiveEditor && !isInsideDialog(target) && !isInlineEditCell(target) && !isBulkSelect(target)) {
         resetInlineEdit();
       }
     };
@@ -177,6 +186,17 @@ export function TransactionRow({
     <div style={style}>
       <div className={`${styles.txnWrapper} ${cardClass} ${!isLast ? styles.txnDivider : ''}`}>
         <div data-testid={`transaction-${txn.id}`} className={`${styles.txnRow} ${isSelected ? styles.txnRowSelected : ''}`} onClick={() => onSelect(txn)}>
+          <label className={styles.bulkCell} data-bulk-select="true" onClick={(event) => event.stopPropagation()}>
+            {txn.id && (
+              <input
+                type="checkbox"
+                className={styles.bulkCheckbox}
+                aria-label={`Select ${txn.payeeName || 'transaction'}`}
+                checked={bulkSelectedIds.has(txn.id)}
+                onChange={() => onBulkToggle(txn.id as string)}
+              />
+            )}
+          </label>
           {cols.map((col) => {
             const isActiveInlineEditCell = isInlineEditing && activeInlineEditKey === col.key;
             const cell = (

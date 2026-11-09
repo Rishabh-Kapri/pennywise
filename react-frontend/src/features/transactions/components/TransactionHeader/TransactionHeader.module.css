@@ -260,6 +260,12 @@
   }
 
   .trailingActions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .pendingToggle {
+    justify-content: center;
     width: 100%;
   }
 

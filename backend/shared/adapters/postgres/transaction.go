@@ -465,6 +465,10 @@ func applyTransactionFilters(query sq.SelectBuilder, filter *model.TransactionFi
 		query = query.Where(sq.Expr("transactions.note ILIKE ?", "%"+*filter.Note+"%"))
 	}
 
+	if filter.Status != nil {
+		query = query.Where(sq.Eq{"transactions.status": string(*filter.Status)})
+	}
+
 	return query
 }
 

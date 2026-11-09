@@ -23,6 +23,9 @@ type JobHandler interface {
 	Get(c *gin.Context)
 	Retry(c *gin.Context)
 	Cancel(c *gin.Context)
+	RetryFailed(c *gin.Context)
+	RunAgain(c *gin.Context)
+	Dismiss(c *gin.Context)
 }
 
 type jobHandler struct {
@@ -108,6 +111,48 @@ func (h *jobHandler) Cancel(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "cancelled"})
+}
+
+type retryFailedRequest struct {
+	ErrorCode string `json:"errorCode" binding:"required,max=100"`
+}
+
+func (h *jobHandler) RetryFailed(c *gin.Context) {
+	var body retryFailedRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid error code"})
+		return
+	}
+	retried, err := h.service.RetryFailed(c.Request.Context(), body.ErrorCode)
+	if err != nil {
+		writeJobError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"retried": retried})
+}
+
+func (h *jobHandler) RunAgain(c *gin.Context) {
+	id, ok := parseJobID(c)
+	if !ok {
+		return
+	}
+	if err := h.service.RunAgain(c.Request.Context(), id); err != nil {
+		writeJobError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "queued"})
+}
+
+func (h *jobHandler) Dismiss(c *gin.Context) {
+	id, ok := parseJobID(c)
+	if !ok {
+		return
+	}
+	if err := h.service.Dismiss(c.Request.Context(), id); err != nil {
+		writeJobError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "dismissed"})
 }
 
 func parseJobID(c *gin.Context) (uuid.UUID, bool) {

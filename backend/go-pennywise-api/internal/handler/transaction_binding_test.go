@@ -62,7 +62,22 @@ func TestTransactionHandler_ListNormalizedQuery(t *testing.T) {
 		assert.Equal(t, "coffee", *got.Note)
 	})
 
+	t.Run("status filter", func(t *testing.T) {
+		svc := &mockTransactionService{}
+		var got *model.TransactionFilter
+		svc.On("GetAllNormalized", mock.Anything, mock.Anything).
+			Run(func(args mock.Arguments) { got = args.Get(1).(*model.TransactionFilter) }).
+			Return(model.PaginatedResponse[model.Transaction]{}, nil)
+
+		w, c := makeReq("GET", "/transactions?status=UNAPPROVED", nil)
+		NewTransactionHandler(svc).ListNormalized(c)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, model.TransactionStatusUnapproved, *got.Status)
+	})
+
 	bad := map[string]string{
+		"unknown status":      "/transactions?status=PENDING",
 		"date not YYYY-MM-DD": "/transactions?startDate=01-11-2026",
 		"unknown sort order":  "/transactions?sortOrder=sideways",
 		"negative limit":      "/transactions?limit=-1",
@@ -82,4 +97,36 @@ func TestTransactionHandler_ListNormalizedQuery(t *testing.T) {
 		NewTransactionHandler(&mockTransactionService{}).ListNormalized(c)
 		assert.JSONEq(t, `{"error":"invalid startDate"}`, w.Body.String())
 	})
+}
+
+func TestTransactionHandler_BulkDelete(t *testing.T) {
+	id := uuid.New()
+
+	t.Run("deletes the ids", func(t *testing.T) {
+		svc := &mockTransactionService{}
+		svc.On("BulkDelete", mock.Anything, []uuid.UUID{id}).Return(1, nil)
+		w, c := makeReq("POST", "/transactions/bulk-delete", map[string]any{"ids": []uuid.UUID{id}})
+		NewTransactionHandler(svc).BulkDelete(c)
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.JSONEq(t, `{"deleted":1}`, w.Body.String())
+	})
+
+	tooMany := make([]uuid.UUID, maxBulkDelete+1)
+	for i := range tooMany {
+		tooMany[i] = uuid.New()
+	}
+	bad := map[string]any{
+		"no ids":   map[string]any{"ids": []uuid.UUID{}},
+		"not ids":  map[string]any{"ids": []string{"nope"}},
+		"too many": map[string]any{"ids": tooMany},
+	}
+	for name, body := range bad {
+		t.Run(name, func(t *testing.T) {
+			svc := &mockTransactionService{}
+			w, c := makeReq("POST", "/transactions/bulk-delete", body)
+			NewTransactionHandler(svc).BulkDelete(c)
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+			svc.AssertNotCalled(t, "BulkDelete", mock.Anything, mock.Anything)
+		})
+	}
 }

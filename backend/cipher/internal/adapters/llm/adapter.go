@@ -65,8 +65,9 @@ func (a *adapter) ask(
 	if err != nil {
 		return "", nil, err
 	}
-	if len(res.Message.Content) == 0 {
-		return "", nil, errs.New(failCode, "empty response from %s", a.cfg.Model)
+	text, err := replyText(res, a.cfg.Model, failCode)
+	if err != nil {
+		return "", nil, err
 	}
 
 	var usage *ports.Usage
@@ -81,7 +82,21 @@ func (a *adapter) ask(
 			Cost:             res.Usage.Cost,
 		}
 	}
-	return res.Message.Content[0].Text, usage, nil
+	return text, usage, nil
+}
+
+// replyText returns the reply's text. A cut-off reply is reported as that, not
+// as broken JSON: reasoning models spend the same token budget before answering.
+func replyText(res *sharedModel.ChatResponse, model string, failCode errs.Code) (string, error) {
+	if res.StopReason == sharedModel.StopReasonMaxTokens {
+		return "", errs.New(failCode, "%s reached its token limit before finishing", model)
+	}
+	for _, block := range res.Message.Content {
+		if strings.TrimSpace(block.Text) != "" {
+			return block.Text, nil
+		}
+	}
+	return "", errs.New(failCode, "empty response from %s", model)
 }
 
 // Check implements [ports.CheckTransaction]
@@ -126,7 +141,7 @@ func (f *flexible) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-var extractionDateLayouts = []string{"2006-01-02", "02-01-2006", "02-01-06", "02/01/2006", "2 Jan, 2006", "2 Jan 2006"}
+var extractionDateLayouts = []string{"2006-01-02", "02-01-2006", "02-01-06", "02/01/2006", "2 Jan, 2006", "2 Jan 2006", "2-Jan-2006"}
 
 // parseTimestamp reads the date and time the model extracted. A blank date is
 // a zero time. The bank's timezone isn't known, so the clock reading is stored

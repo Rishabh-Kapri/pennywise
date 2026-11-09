@@ -41,11 +41,26 @@ export const fetchJobDetail = createAsyncThunk<JobDetail, string>('jobs/fetchJob
   return await apiClient.get<JobDetail>(`jobs/${id}`);
 });
 
-export const runJobAction = createAsyncThunk<void, { id: string; action: 'retry' | 'cancel' }, { state: RootState }>(
-  'jobs/runJobAction',
-  async ({ id, action }, { dispatch }) => {
-    await apiClient.post<{ status: string }, Record<string, never>>(`jobs/${id}/${action}`, {});
-    await Promise.all([dispatch(fetchJobs()), dispatch(fetchJobDetail(id))]);
+export const runJobAction = createAsyncThunk<
+  void,
+  { id: string; action: 'retry' | 'cancel' | 'run-again' | 'dismiss' },
+  { state: RootState }
+>('jobs/runJobAction', async ({ id, action }, { dispatch }) => {
+  await apiClient.post<{ status: string }, Record<string, never>>(`jobs/${id}/${action}`, {});
+  // Running again and dismissing remove the job, so there's no detail to reload.
+  const removed = action === 'run-again' || action === 'dismiss';
+  await Promise.all([dispatch(fetchJobs()), ...(removed ? [] : [dispatch(fetchJobDetail(id))])]);
+});
+
+/** Queues every failed job with this error code again. Resolves to how many. */
+export const retryFailedJobs = createAsyncThunk<number, string, { state: RootState }>(
+  'jobs/retryFailedJobs',
+  async (errorCode, { dispatch }) => {
+    const { retried } = await apiClient.post<{ retried: number }, { errorCode: string }>('jobs/retry-failed', {
+      errorCode,
+    });
+    await dispatch(fetchJobs());
+    return retried;
   },
 );
 

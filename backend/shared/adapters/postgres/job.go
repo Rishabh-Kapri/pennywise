@@ -690,6 +690,71 @@ func (s *jobStore) transition(ctx context.Context, jobID uuid.UUID, actor string
 	return updated, nil
 }
 
+// RetryDeadByCode implements [job.JobStore].
+func (s *jobStore) RetryDeadByCode(
+	ctx context.Context,
+	scope job.JobScope,
+	code, actor string,
+	limit int,
+) (int, error) {
+	if scope.Accounts == nil {
+		scope.Accounts = []string{}
+	}
+	retried := 0
+	err := s.InTx(ctx, func(ctx context.Context) error {
+		rows, err := s.Executor(ctx).Query(ctx, `
+			WITH target AS (
+				SELECT j.id FROM jobs j
+				WHERE j.deleted_at IS NULL
+					AND j.status = 'dead'
+					AND split_part(j.last_error, ': ', 1) = $1
+					AND (j.budget_id = $2 OR (j.budget_id IS NULL AND j.type = $3 AND lower(j.payload->>'account') = ANY($4)))
+				ORDER BY j.updated_at
+				LIMIT $5
+				FOR UPDATE SKIP LOCKED
+			)
+			UPDATE jobs SET status = 'queued', attempt = 0, run_at = now(), completed_at = NULL, updated_at = now()
+			FROM target WHERE jobs.id = target.id
+			RETURNING jobs.id`,
+			code, scope.BudgetID, model.JobTypeMailboxChanged, scope.Accounts, limit,
+		)
+		if err != nil {
+			return errs.Wrap(errs.CodeJobUpdateFailed, "retry dead jobs", err)
+		}
+		ids, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+		if err != nil {
+			return errs.Wrap(errs.CodeJobUpdateFailed, "retry dead jobs", err)
+		}
+		for _, id := range ids {
+			if err := appendJobEvent(ctx, s.Executor(ctx), job.JobEvent{
+				JobID:  id,
+				Type:   job.EventManualRetry,
+				Status: job.QueuedJobStatus,
+				Actor:  actor,
+			}); err != nil {
+				return err
+			}
+		}
+		retried = len(ids)
+		return nil
+	})
+	if err != nil {
+		return 0, wrapUncoded(err, errs.CodeJobUpdateFailed, "retry dead jobs")
+	}
+	return retried, nil
+}
+
+// Dismiss implements [job.JobStore].
+func (s *jobStore) Dismiss(ctx context.Context, jobIDs []uuid.UUID) error {
+	_, err := s.Executor(ctx).Exec(ctx, `
+		UPDATE jobs SET deleted_at = now(), updated_at = now()
+		WHERE id = ANY($1) AND deleted_at IS NULL AND status NOT IN ('queued', 'running')`, jobIDs)
+	if err != nil {
+		return errs.Wrap(errs.CodeJobUpdateFailed, "dismiss jobs", err)
+	}
+	return nil
+}
+
 // whyNotTransitioned tells "no such job" apart from "wrong status".
 func (s *jobStore) whyNotTransitioned(ctx context.Context, jobID uuid.UUID, t transition) error {
 	current, err := s.GetJobByID(ctx, jobID)

@@ -34,9 +34,12 @@ type TransactionService interface {
 	CreateInTx(ctx context.Context, txn model.Transaction) ([]model.Transaction, error)
 	CreateDeduped(ctx context.Context, txn model.Transaction) (*model.Transaction, bool, error)
 	DeleteById(ctx context.Context, id uuid.UUID) error
-	// LearnFromTransaction queues best-effort learning for a confirmed
-	// transaction. Fire and forget: failures are recorded on the prediction,
-	// never returned to the caller.
+	// BulkDelete soft-deletes ids together, or none of them, and returns how
+	// many it deleted. An id that's already gone is skipped: picking both legs
+	// of a transfer is normal, and deleting one removes the other.
+	BulkDelete(ctx context.Context, ids []uuid.UUID) (int, error)
+	// LearnFromTransaction queues the alias confirmation for a confirmed
+	// transaction. A failure to queue is only logged.
 	LearnFromTransaction(ctx context.Context, txn model.Transaction)
 	BackfillLearning(ctx context.Context, req model.LearningBackfillRequest) (*model.LearningBackfillResult, error)
 	LearningStatus(ctx context.Context) (model.LearningStats, error)
@@ -309,29 +312,6 @@ func transactionMappingChanged(oldTxn, newTxn *model.Transaction) bool {
 	return payeeChanged || categoryChanged
 }
 
-func (s *transactionService) learnTransactionMappingAsync(
-	ctx context.Context,
-	budgetId uuid.UUID,
-	txn model.Transaction,
-) {
-	s.queueAliasConfirm(ctx, budgetId, txn)
-
-	if !s.canLearnFrom(ctx, txn) {
-		return
-	}
-
-	go func() {
-		bgCtx := utils.WithRequestMetadata(context.Background(), utils.RequestMetadataFromContext(ctx))
-		bgCtx = utils.WithInternalAuthToken(bgCtx, utils.InternalAuthTokenFromContext(ctx))
-		bgCtx, cancel := context.WithTimeout(bgCtx, 2*time.Minute)
-		defer cancel()
-
-		if err := s.learnTransactionMapping(bgCtx, budgetId, txn); err != nil {
-			logger.Logger(bgCtx).Error("transaction learning failed", "txnId", txn.ID, "error", err)
-		}
-	}()
-}
-
 // queueAliasConfirm queues a job to tell the lookup step what the user decided
 // about this transaction's merchant. It runs after the user's change is saved,
 // and a failure is only logged: the change stands either way.
@@ -360,33 +340,14 @@ func (s *transactionService) queueAliasConfirm(ctx context.Context, budgetId uui
 // confirmed. Exported so the review queue's accept path can teach the pipeline
 // without going through a full transaction update.
 func (s *transactionService) LearnFromTransaction(ctx context.Context, txn model.Transaction) {
-	s.learnTransactionMappingAsync(ctx, utils.MustBudgetID(ctx), txn)
-}
-
-// canLearnFrom reports whether a transaction carries what the learning step
-// needs. A manually entered row has no raw bank text, so there is nothing for a
-// future email to match against.
-func (s *transactionService) canLearnFrom(ctx context.Context, txn model.Transaction) bool {
-	if s.cipherClient == nil || s.payeeRuleRepo == nil || s.txnEmbeddingRepo == nil {
-		logger.Logger(ctx).
-			Warn("skipping transaction learning because dependencies are not configured", "txnId", txn.ID)
-		return false
-	}
-	if txn.PayeeID == nil || txn.CategoryID == nil {
-		logger.Logger(ctx).Warn("skipping transaction learning because payee or category is missing", "txnId", txn.ID)
-		return false
-	}
-	if txn.RawBankText == nil || strings.TrimSpace(*txn.RawBankText) == "" {
-		logger.Logger(ctx).Warn("skipping transaction learning because raw bank text is missing", "txnId", txn.ID)
-		return false
-	}
-	return true
+	s.queueAliasConfirm(ctx, utils.MustBudgetID(ctx), txn)
 }
 
 // learnTransactionMapping turns one confirmed transaction into a payee rule and
 // an AUTO_LEARNED embedding, then stamps the prediction so a backfill can tell
-// what has already been learned from. Runs synchronously; the async wrapper and
-// the backfill share it.
+// what has already been learned from. Only the backfill runs it now: nothing in
+// the job pipeline reads payee rules or embeddings, so approving a transaction
+// just confirms its alias (queueAliasConfirm).
 //
 // The outcome is recorded on the cipher prediction either way -- learning is
 // best-effort and nothing upstream surfaces its failures, so learn_error is the
@@ -1123,7 +1084,7 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 		return err
 	}
 	if learningTxn != nil {
-		s.learnTransactionMappingAsync(ctx, budgetId, *learningTxn)
+		s.queueAliasConfirm(ctx, budgetId, *learningTxn)
 	}
 
 	return nil
@@ -1267,7 +1228,7 @@ func (s *transactionService) UpdateStatus(ctx context.Context, id uuid.UUID, sta
 		return errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating transaction status", err)
 	}
 
-	s.learnTransactionMappingAsync(ctx, budgetId, *foundTxn)
+	s.queueAliasConfirm(ctx, budgetId, *foundTxn)
 
 	return nil
 }
@@ -1294,19 +1255,62 @@ func (s *transactionService) DeleteById(ctx context.Context, id uuid.UUID) error
 			return errs.Wrap(errs.CodeBudgetLookupFailed, "error fetching budget", err)
 		}
 
-		if err = s.applySideEffects(txCtx, sideEffectInput{
-			budgetId: budgetId,
-			oldTxn:   foundTxn,
-			newTxn:   nil,
-			budget:   budget,
-		}); err != nil {
-			return err
-		}
+		return s.deleteFound(txCtx, budgetId, budget, foundTxn)
+	})
+}
 
-		if err = s.repo.DeleteById(txCtx, budgetId, id); err != nil {
-			return errs.Wrap(errs.CodeTransactionDeleteFailed, "error deleting transaction", err)
-		}
+// deleteFound reverses the transaction's side effects and soft-deletes it.
+func (s *transactionService) deleteFound(
+	ctx context.Context,
+	budgetId uuid.UUID,
+	budget *model.Budget,
+	txn *model.Transaction,
+) error {
+	if err := s.applySideEffects(ctx, sideEffectInput{
+		budgetId: budgetId,
+		oldTxn:   txn,
+		newTxn:   nil,
+		budget:   budget,
+	}); err != nil {
+		return err
+	}
+	if err := s.repo.DeleteById(ctx, budgetId, txn.ID); err != nil {
+		return errs.Wrap(errs.CodeTransactionDeleteFailed, "error deleting transaction", err)
+	}
+	return nil
+}
 
+func (s *transactionService) BulkDelete(ctx context.Context, ids []uuid.UUID) (int, error) {
+	txCtx, txCancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer txCancel()
+
+	budgetId := utils.MustBudgetID(ctx)
+	logger.Logger(ctx).Info("bulk deleting transactions", "count", len(ids))
+
+	deleted := 0
+	err := s.dbTxn.Do(txCtx, func(txCtx context.Context) error {
+		deleted = 0 // the transaction may run again
+		budget, err := s.budgetRepo.GetById(txCtx, budgetId)
+		if err != nil {
+			return errs.Wrap(errs.CodeBudgetLookupFailed, "error fetching budget", err)
+		}
+		for _, id := range ids {
+			found, err := s.repo.GetById(txCtx, budgetId, id)
+			if err != nil {
+				return errs.Wrap(errs.CodeTransactionLookupFailed, "error getting transaction", err)
+			}
+			if found == nil {
+				continue
+			}
+			if err := s.deleteFound(txCtx, budgetId, budget, found); err != nil {
+				return err
+			}
+			deleted++
+		}
 		return nil
 	})
+	if err != nil {
+		return 0, err
+	}
+	return deleted, nil
 }

@@ -547,3 +547,37 @@ func TestDeleteById(t *testing.T) {
 		assert.Error(t, err)
 	})
 }
+
+func TestBulkDelete(t *testing.T) {
+	budgetId := uuid.New()
+	ctx := utils.WithBudgetID(context.Background(), budgetId)
+	a, b := uuid.New(), uuid.New()
+
+	t.Run("the other leg of a transfer is skipped once it's gone", func(t *testing.T) {
+		mockRepo := &mockTransactionRepo{}
+		mockBudget := &mockBudgetRepo{}
+		service := newTestTransactionService(mockRepo, mockBudget, nil, nil, nil, nil, nil)
+		mockBudget.On("GetById", mock.Anything, budgetId).Return(&model.Budget{}, nil).Once()
+		mockRepo.On("GetById", mock.Anything, budgetId, a).Return(&model.Transaction{ID: a, TransferTransactionID: &b}, nil).Once()
+		mockRepo.On("DeleteById", mock.Anything, budgetId, b).Return(nil).Once()
+		mockRepo.On("DeleteById", mock.Anything, budgetId, a).Return(nil).Once()
+		mockRepo.On("GetById", mock.Anything, budgetId, b).Return(nil, nil).Once()
+
+		deleted, err := service.BulkDelete(ctx, []uuid.UUID{a, b})
+		assert.NoError(t, err)
+		assert.Equal(t, 1, deleted)
+		mockRepo.AssertExpectations(t)
+	})
+
+	t.Run("a failure fails the batch", func(t *testing.T) {
+		mockRepo := &mockTransactionRepo{}
+		mockBudget := &mockBudgetRepo{}
+		service := newTestTransactionService(mockRepo, mockBudget, nil, nil, nil, nil, nil)
+		mockBudget.On("GetById", mock.Anything, budgetId).Return(&model.Budget{}, nil).Once()
+		mockRepo.On("GetById", mock.Anything, budgetId, a).Return(nil, assert.AnError).Once()
+
+		deleted, err := service.BulkDelete(ctx, []uuid.UUID{a, b})
+		assert.Error(t, err)
+		assert.Zero(t, deleted)
+	})
+}

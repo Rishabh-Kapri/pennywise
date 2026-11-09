@@ -852,11 +852,10 @@ func TestUpdateStatusApprovedWithoutCipherPredictionOnlyUpdatesStatus(t *testing
 	cipherPredictionRepo.AssertExpectations(t)
 }
 
-func TestUpdateStatusApprovedWithNonLLMCipherPredictionLearnsRuleAndEmbedding(t *testing.T) {
+func TestUpdateStatusApprovedWithNonLLMCipherPredictionDoesNotEmbed(t *testing.T) {
 	budgetId, txnId, _, payeeId, categoryId, _, _ := createTestUUIDs()
 	ctx := utils.WithBudgetID(context.Background(), budgetId)
 	rawBankText := "paid to coffee shop"
-	matchString := "coffee shop"
 	txn := &model.Transaction{
 		ID:          txnId,
 		BudgetID:    budgetId,
@@ -877,7 +876,6 @@ func TestUpdateStatusApprovedWithNonLLMCipherPredictionLearnsRuleAndEmbedding(t 
 		payeeRuleRepo:        payeeRuleRepo,
 		txnEmbeddingRepo:     txnEmbeddingRepo,
 	}
-	done := make(chan struct{})
 
 	txnRepo.On("GetById", mock.Anything, budgetId, txnId).Return(txn, nil).Once()
 	cipherPredictionRepo.On("GetByTransactionID", mock.Anything, budgetId, txnId).Return(&model.CipherPredictionRecord{
@@ -885,49 +883,17 @@ func TestUpdateStatusApprovedWithNonLLMCipherPredictionLearnsRuleAndEmbedding(t 
 		TransactionID: txnId,
 		Source:        model.PredictionSourceVector,
 	}, nil).Once()
-	cipherClient.On("GenerateTransactionEmbedding", mock.Anything, TransactionEmbeddingRequest{
-		RawBankText: rawBankText,
-		Amount:      txn.Amount,
-	}).Return(&TransactionEmbeddingResponse{
-		MatchString:   matchString,
-		EmbeddingText: "debit coffee shop",
-		Embedding:     "[0.3,0.4]",
-	}, nil).Once()
 	txnRepo.On("UpdateStatus", mock.Anything, budgetId, txnId, model.TransactionStatusApproved).Return(nil).Once()
-	cipherPredictionRepo.On("MarkLearned", mock.Anything, budgetId, txnId).Return(nil).Once()
-	payeeRuleRepo.On("CreatePayeeRule", mock.Anything, mock.MatchedBy(func(rule model.PayeeRule) bool {
-		return rule.BudgetID == budgetId &&
-			rule.PayeeID == payeeId &&
-			rule.CategoryID != nil && *rule.CategoryID == categoryId &&
-			rule.MatchString == matchString
-	})).Return(nil).Once()
-	txnEmbeddingRepo.On("Upsert", mock.Anything, mock.MatchedBy(func(embedding model.TransactionEmbedding) bool {
-		return embedding.BudgetID == budgetId &&
-			embedding.PayeeID == payeeId &&
-			embedding.CategoryID == categoryId &&
-			embedding.Amount == txn.Amount &&
-			embedding.Source == "AUTO_LEARNED" &&
-			embedding.EmbeddingText == "debit coffee shop"
-	}), []float64{0.3, 0.4}).Return(nil).Run(func(args mock.Arguments) {
-		close(done)
-	}).Once()
 
 	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved)
 
 	require.NoError(t, err)
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for transaction learning")
-	}
 	txnRepo.AssertExpectations(t)
 	cipherPredictionRepo.AssertExpectations(t)
-	cipherClient.AssertExpectations(t)
-	payeeRuleRepo.AssertExpectations(t)
-	txnEmbeddingRepo.AssertExpectations(t)
+	cipherClient.AssertNotCalled(t, "GenerateTransactionEmbedding", mock.Anything, mock.Anything)
 }
 
-func TestUpdateStatusApprovedWithLLMCipherPredictionLearnsRuleAndEmbedding(t *testing.T) {
+func TestUpdateStatusApprovedWithLLMCipherPredictionDoesNotEmbed(t *testing.T) {
 	budgetId, txnId, _, payeeId, categoryId, _, _ := createTestUUIDs()
 	ctx := utils.WithBudgetID(context.Background(), budgetId)
 	rawBankText := "paid to amazon marketplace"
@@ -952,7 +918,6 @@ func TestUpdateStatusApprovedWithLLMCipherPredictionLearnsRuleAndEmbedding(t *te
 		payeeRuleRepo:        payeeRuleRepo,
 		txnEmbeddingRepo:     txnEmbeddingRepo,
 	}
-	done := make(chan struct{})
 
 	txnRepo.On("GetById", mock.Anything, budgetId, txnId).Return(txn, nil).Once()
 	cipherPredictionRepo.On("GetByTransactionID", mock.Anything, budgetId, txnId).Return(&model.CipherPredictionRecord{
@@ -961,54 +926,21 @@ func TestUpdateStatusApprovedWithLLMCipherPredictionLearnsRuleAndEmbedding(t *te
 		Source:         model.PredictionSourceLLM,
 		ExtractedPayee: &extractedMerchant,
 	}, nil).Once()
-	cipherClient.On("GenerateTransactionEmbedding", mock.Anything, TransactionEmbeddingRequest{
-		RawBankText: rawBankText,
-		Amount:      txn.Amount,
-	}).Return(&TransactionEmbeddingResponse{
-		MatchString:   extractedMerchant,
-		EmbeddingText: "debit amazon marketplace",
-		Embedding:     "[0.1,0.2]",
-	}, nil).Once()
 	txnRepo.On("UpdateStatus", mock.Anything, budgetId, txnId, model.TransactionStatusApproved).Return(nil).Once()
-	cipherPredictionRepo.On("MarkLearned", mock.Anything, budgetId, txnId).Return(nil).Once()
-	payeeRuleRepo.On("CreatePayeeRule", mock.Anything, mock.MatchedBy(func(rule model.PayeeRule) bool {
-		return rule.BudgetID == budgetId &&
-			rule.PayeeID == payeeId &&
-			rule.CategoryID != nil && *rule.CategoryID == categoryId &&
-			rule.MatchString == extractedMerchant
-	})).Return(nil).Once()
-	txnEmbeddingRepo.On("Upsert", mock.Anything, mock.MatchedBy(func(embedding model.TransactionEmbedding) bool {
-		return embedding.BudgetID == budgetId &&
-			embedding.PayeeID == payeeId &&
-			embedding.CategoryID == categoryId &&
-			embedding.Amount == txn.Amount &&
-			embedding.Source == "AUTO_LEARNED" &&
-			embedding.EmbeddingText == "debit amazon marketplace"
-	}), []float64{0.1, 0.2}).Return(nil).Run(func(args mock.Arguments) {
-		close(done)
-	}).Once()
 
 	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved)
 
 	require.NoError(t, err)
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for transaction learning")
-	}
 	txnRepo.AssertExpectations(t)
 	cipherPredictionRepo.AssertExpectations(t)
-	cipherClient.AssertExpectations(t)
-	payeeRuleRepo.AssertExpectations(t)
-	txnEmbeddingRepo.AssertExpectations(t)
+	cipherClient.AssertNotCalled(t, "GenerateTransactionEmbedding", mock.Anything, mock.Anything)
 }
 
-func TestUpdateWithCipherPredictionMappingChangeMarksCorrectionAndLearns(t *testing.T) {
+func TestUpdateWithCipherPredictionMappingChangeMarksCorrection(t *testing.T) {
 	budgetId, txnId, accountId, oldPayeeId, categoryId, _, inflowCategoryID := createTestUUIDs()
 	newPayeeId := uuid.New()
 	ctx := utils.WithBudgetID(context.Background(), budgetId)
 	rawBankText := "paid to grocery store"
-	matchString := "grocery store"
 
 	foundTxn := model.Transaction{
 		ID:          txnId,
@@ -1050,7 +982,6 @@ func TestUpdateWithCipherPredictionMappingChangeMarksCorrectionAndLearns(t *test
 		payeeRepo:            payeeRepo,
 		mbService:            NewMonthlyBudgetService(monthlyBudgetRepo),
 	}
-	done := make(chan struct{})
 
 	txnRepo.On("GetById", mock.Anything, budgetId, txnId).Return(&foundTxn, nil).Once()
 	budgetRepo.On("GetById", mock.Anything, budgetId).Return(&model.Budget{
@@ -1083,48 +1014,16 @@ func TestUpdateWithCipherPredictionMappingChangeMarksCorrectionAndLearns(t *test
 			txn.PayeeID != nil && *txn.PayeeID == newPayeeId &&
 			txn.Status == model.TransactionStatusRejected
 	})).Return(nil).Once()
-	cipherClient.On("GenerateTransactionEmbedding", mock.Anything, TransactionEmbeddingRequest{
-		RawBankText: rawBankText,
-		Amount:      foundTxn.Amount,
-	}).Return(&TransactionEmbeddingResponse{
-		MatchString:   matchString,
-		EmbeddingText: "debit grocery store",
-		Embedding:     "[0.5,0.6]",
-	}, nil).Once()
-	cipherPredictionRepo.On("MarkLearned", mock.Anything, budgetId, txnId).Return(nil).Once()
-	payeeRuleRepo.On("CreatePayeeRule", mock.Anything, mock.MatchedBy(func(rule model.PayeeRule) bool {
-		return rule.BudgetID == budgetId &&
-			rule.PayeeID == newPayeeId &&
-			rule.CategoryID != nil && *rule.CategoryID == categoryId &&
-			rule.MatchString == matchString
-	})).Return(nil).Once()
-	txnEmbeddingRepo.On("Upsert", mock.Anything, mock.MatchedBy(func(embedding model.TransactionEmbedding) bool {
-		return embedding.BudgetID == budgetId &&
-			embedding.PayeeID == newPayeeId &&
-			embedding.CategoryID == categoryId &&
-			embedding.Amount == foundTxn.Amount &&
-			embedding.Source == "AUTO_LEARNED" &&
-			embedding.EmbeddingText == "debit grocery store"
-	}), []float64{0.5, 0.6}).Return(nil).Run(func(args mock.Arguments) {
-		close(done)
-	}).Once()
 
 	err := svc.Update(ctx, txnId, toUpdate)
 
 	require.NoError(t, err)
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for transaction learning")
-	}
 	txnRepo.AssertExpectations(t)
 	budgetRepo.AssertExpectations(t)
 	accountRepo.AssertExpectations(t)
 	payeeRepo.AssertExpectations(t)
 	cipherPredictionRepo.AssertExpectations(t)
-	cipherClient.AssertExpectations(t)
-	payeeRuleRepo.AssertExpectations(t)
-	txnEmbeddingRepo.AssertExpectations(t)
+	cipherClient.AssertNotCalled(t, "GenerateTransactionEmbedding", mock.Anything, mock.Anything)
 }
 
 func TestUpdatePrediction(t *testing.T) {
@@ -1534,163 +1433,6 @@ func TestHandleCarryoversSkipsForNonCarryoverTransactions(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tests: learnTransactionMappingAsync early-return guards
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestLearnTransactionMappingAsync_NilDeps_Skips(t *testing.T) {
-	ctx := context.Background()
-	budgetId := uuid.New()
-	payeeId := uuid.New()
-	categoryId := uuid.New()
-	rawText := "some bank text"
-	txn := model.Transaction{
-		ID:          uuid.New(),
-		PayeeID:     &payeeId,
-		CategoryID:  &categoryId,
-		RawBankText: &rawText,
-	}
-
-	// cipherClient, payeeRuleRepo, txnEmbeddingRepo all nil → should return immediately without panic
-	svc := &transactionService{dbTxn: fakeDBTxn{}}
-	// must not panic
-	svc.learnTransactionMappingAsync(ctx, budgetId, txn)
-}
-
-func TestLearnTransactionMappingAsync_NilPayeeID_Skips(t *testing.T) {
-	ctx := context.Background()
-	budgetId := uuid.New()
-	rawText := "some bank text"
-	categoryId := uuid.New()
-	txn := model.Transaction{
-		ID:          uuid.New(),
-		PayeeID:     nil, // nil payee
-		CategoryID:  &categoryId,
-		RawBankText: &rawText,
-	}
-
-	// provide non-nil cipher/payeeRule/txnEmbedding so we don't hit the first guard
-	// but payeeID is nil → hits second guard
-	mockCipher := &mockCipherClientTxn{}
-	svc := &transactionService{dbTxn: fakeDBTxn{},
-		cipherClient:     mockCipher,
-		payeeRuleRepo:    &mockPayeeRuleRepo{},
-		txnEmbeddingRepo: &mockTxnEmbeddingRepo{},
-	}
-	svc.learnTransactionMappingAsync(ctx, budgetId, txn)
-	// no mock calls expected
-	mockCipher.AssertExpectations(t)
-}
-
-func TestLearnTransactionMappingAsync_NilCategoryID_Skips(t *testing.T) {
-	ctx := context.Background()
-	budgetId := uuid.New()
-	payeeId := uuid.New()
-	rawText := "some bank text"
-	txn := model.Transaction{
-		ID:          uuid.New(),
-		PayeeID:     &payeeId,
-		CategoryID:  nil, // nil category
-		RawBankText: &rawText,
-	}
-
-	mockCipher := &mockCipherClientTxn{}
-	svc := &transactionService{dbTxn: fakeDBTxn{},
-		cipherClient:     mockCipher,
-		payeeRuleRepo:    &mockPayeeRuleRepo{},
-		txnEmbeddingRepo: &mockTxnEmbeddingRepo{},
-	}
-	svc.learnTransactionMappingAsync(ctx, budgetId, txn)
-	mockCipher.AssertExpectations(t)
-}
-
-func TestLearnTransactionMappingAsync_NilRawBankText_Skips(t *testing.T) {
-	ctx := context.Background()
-	budgetId := uuid.New()
-	payeeId := uuid.New()
-	categoryId := uuid.New()
-	txn := model.Transaction{
-		ID:          uuid.New(),
-		PayeeID:     &payeeId,
-		CategoryID:  &categoryId,
-		RawBankText: nil,
-	}
-
-	mockCipher := &mockCipherClientTxn{}
-	svc := &transactionService{dbTxn: fakeDBTxn{},
-		cipherClient:     mockCipher,
-		payeeRuleRepo:    &mockPayeeRuleRepo{},
-		txnEmbeddingRepo: &mockTxnEmbeddingRepo{},
-	}
-	svc.learnTransactionMappingAsync(ctx, budgetId, txn)
-	mockCipher.AssertExpectations(t)
-}
-
-func TestLearnTransactionMappingAsync_BlankRawBankText_Skips(t *testing.T) {
-	ctx := context.Background()
-	budgetId := uuid.New()
-	payeeId := uuid.New()
-	categoryId := uuid.New()
-	blank := "   "
-	txn := model.Transaction{
-		ID:          uuid.New(),
-		PayeeID:     &payeeId,
-		CategoryID:  &categoryId,
-		RawBankText: &blank,
-	}
-
-	mockCipher := &mockCipherClientTxn{}
-	svc := &transactionService{dbTxn: fakeDBTxn{},
-		cipherClient:     mockCipher,
-		payeeRuleRepo:    &mockPayeeRuleRepo{},
-		txnEmbeddingRepo: &mockTxnEmbeddingRepo{},
-	}
-	svc.learnTransactionMappingAsync(ctx, budgetId, txn)
-	mockCipher.AssertExpectations(t)
-}
-
-// Minimal mocks needed for learnTransactionMappingAsync guard tests
-
-type mockCipherClientTxn struct {
-	mock.Mock
-}
-
-func (m *mockCipherClientTxn) SuggestCategoryDescription(
-	ctx context.Context,
-	req model.CategoryDescriptionContext,
-) (*CategoryDescriptionResponse, error) {
-	return nil, nil
-}
-
-func (m *mockCipherClientTxn) ExtractStatement(
-	ctx context.Context,
-	req model.StatementExtractRequest,
-) (*model.StatementExtractResponse, error) {
-	return nil, nil
-}
-
-func (m *mockCipherClientTxn) GenerateTransactionEmbedding(ctx context.Context, req TransactionEmbeddingRequest) (*TransactionEmbeddingResponse, error) {
-	args := m.Called(ctx, req)
-	if args.Get(0) == nil {
-		return nil, args.Error(1)
-	}
-	return args.Get(0).(*TransactionEmbeddingResponse), args.Error(1)
-}
-
-type mockTxnEmbeddingRepo struct {
-	mock.Mock
-}
-
-func (m *mockTxnEmbeddingRepo) Upsert(ctx context.Context, embedding model.TransactionEmbedding, vector []float64) error {
-	args := m.Called(ctx, embedding, vector)
-	return args.Error(0)
-}
-
-func (m *mockTxnEmbeddingRepo) SearchSimilar(ctx context.Context, budgetID uuid.UUID, amount float64, embedding []float64, limit int) ([]model.TransactionEmbedding, error) {
-	args := m.Called(ctx, budgetID, amount, embedding, limit)
-	return args.Get(0).([]model.TransactionEmbedding), args.Error(1)
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Tests: UpdateStatus — missing branches
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1948,11 +1690,10 @@ func TestApplySideEffects_Delete_InflowCategory_Skips(t *testing.T) {
 // Approving a prediction that was already right is a confirmation, not a
 // correction: it must still teach the pipeline (payee rule + embedding) but
 // must not mark the prediction user-corrected.
-func TestUpdateApprovingUnchangedPredictionLearnsWithoutMarkingCorrected(t *testing.T) {
+func TestUpdateApprovingUnchangedPredictionDoesNotMarkCorrected(t *testing.T) {
 	budgetId, txnId, accountId, payeeId, categoryId, _, inflowCategoryID := createTestUUIDs()
 	ctx := utils.WithBudgetID(context.Background(), budgetId)
 	rawBankText := "paid to less n more the pasta shop"
-	matchString := "less n more"
 	note := "dinner"
 
 	foundTxn := model.Transaction{
@@ -1998,7 +1739,6 @@ func TestUpdateApprovingUnchangedPredictionLearnsWithoutMarkingCorrected(t *test
 		payeeRepo:            payeeRepo,
 		mbService:            NewMonthlyBudgetService(monthlyBudgetRepo),
 	}
-	done := make(chan struct{})
 
 	txnRepo.On("GetById", mock.Anything, budgetId, txnId).Return(&foundTxn, nil).Once()
 	budgetRepo.On("GetById", mock.Anything, budgetId).Return(&model.Budget{
@@ -2019,45 +1759,15 @@ func TestUpdateApprovingUnchangedPredictionLearnsWithoutMarkingCorrected(t *test
 	txnRepo.On("Update", mock.Anything, budgetId, txnId, mock.MatchedBy(func(txn model.Transaction) bool {
 		return txn.ID == txnId && txn.Status == model.TransactionStatusApproved
 	})).Return(nil).Once()
-	cipherClient.On("GenerateTransactionEmbedding", mock.Anything, TransactionEmbeddingRequest{
-		RawBankText: rawBankText,
-		Amount:      foundTxn.Amount,
-	}).Return(&TransactionEmbeddingResponse{
-		MatchString:   matchString,
-		EmbeddingText: "debit less n more",
-		Embedding:     "[0.3,0.4]",
-	}, nil).Once()
-	cipherPredictionRepo.On("MarkLearned", mock.Anything, budgetId, txnId).Return(nil).Once()
-	payeeRuleRepo.On("CreatePayeeRule", mock.Anything, mock.MatchedBy(func(rule model.PayeeRule) bool {
-		return rule.BudgetID == budgetId &&
-			rule.PayeeID == payeeId &&
-			rule.CategoryID != nil && *rule.CategoryID == categoryId &&
-			rule.MatchString == matchString
-	})).Return(nil).Once()
-	txnEmbeddingRepo.On("Upsert", mock.Anything, mock.MatchedBy(func(embedding model.TransactionEmbedding) bool {
-		return embedding.BudgetID == budgetId &&
-			embedding.PayeeID == payeeId &&
-			embedding.CategoryID == categoryId &&
-			embedding.Source == "AUTO_LEARNED"
-	}), []float64{0.3, 0.4}).Return(nil).Run(func(args mock.Arguments) {
-		close(done)
-	}).Once()
 
 	err := svc.Update(ctx, txnId, toUpdate)
 
 	require.NoError(t, err)
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for transaction learning")
-	}
 	cipherPredictionRepo.AssertNotCalled(t, "MarkUserCorrected",
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	txnRepo.AssertExpectations(t)
 	cipherPredictionRepo.AssertExpectations(t)
-	cipherClient.AssertExpectations(t)
-	payeeRuleRepo.AssertExpectations(t)
-	txnEmbeddingRepo.AssertExpectations(t)
+	cipherClient.AssertNotCalled(t, "GenerateTransactionEmbedding", mock.Anything, mock.Anything)
 }
 
 func TestBackfillLearningRunsInBackgroundAndRecordsFailures(t *testing.T) {

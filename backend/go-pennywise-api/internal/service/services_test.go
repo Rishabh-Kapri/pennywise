@@ -2147,60 +2147,6 @@ func TestTransactionMappingChanged(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// learnTransactionMappingAsync — early-return guard branches
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestLearnTransactionMappingAsync_NilCipherClient(t *testing.T) {
-	svc := &transactionService{dbTxn: fakeDBTxn{},
-		cipherClient:     nil,
-		payeeRuleRepo:    nil,
-		txnEmbeddingRepo: nil,
-	}
-	// Should return immediately without panic (cipherClient == nil)
-	svc.learnTransactionMappingAsync(context.Background(), uuid.New(), model.Transaction{ID: uuid.New()})
-}
-
-func TestLearnTransactionMappingAsync_NilPayeeID(t *testing.T) {
-	// Use a non-nil cipherClient to pass the first guard, but payeeID is nil
-	mockCC := &mockCipherClient{}
-	svc := &transactionService{dbTxn: fakeDBTxn{},
-		cipherClient:     mockCC,
-		payeeRuleRepo:    &mockPayeeRuleRepo{},
-		txnEmbeddingRepo: &mockTransactionEmbeddingRepo{},
-	}
-	txn := model.Transaction{ID: uuid.New(), PayeeID: nil}
-	svc.learnTransactionMappingAsync(context.Background(), uuid.New(), txn)
-	// Should return before goroutine launch (no panic, no calls)
-}
-
-func TestLearnTransactionMappingAsync_NilRawBankText(t *testing.T) {
-	mockCC2 := &mockCipherClient{}
-	pid := uuid.New()
-	cid := uuid.New()
-	svc := &transactionService{dbTxn: fakeDBTxn{},
-		cipherClient:     mockCC2,
-		payeeRuleRepo:    &mockPayeeRuleRepo{},
-		txnEmbeddingRepo: &mockTransactionEmbeddingRepo{},
-	}
-	txn := model.Transaction{ID: uuid.New(), PayeeID: &pid, CategoryID: &cid, RawBankText: nil}
-	svc.learnTransactionMappingAsync(context.Background(), uuid.New(), txn)
-}
-
-func TestLearnTransactionMappingAsync_BlankRawBankText(t *testing.T) {
-	mockCC3 := &mockCipherClient{}
-	pid := uuid.New()
-	cid := uuid.New()
-	blank := "   "
-	svc := &transactionService{dbTxn: fakeDBTxn{},
-		cipherClient:     mockCC3,
-		payeeRuleRepo:    &mockPayeeRuleRepo{},
-		txnEmbeddingRepo: &mockTransactionEmbeddingRepo{},
-	}
-	txn := model.Transaction{ID: uuid.New(), PayeeID: &pid, CategoryID: &cid, RawBankText: &blank}
-	svc.learnTransactionMappingAsync(context.Background(), uuid.New(), txn)
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // ApplyCarryoverOps — sameCategory && sameMonth but newCatId == nil
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -2498,19 +2444,6 @@ func TestLoadDependencies_TransferAccountError(t *testing.T) {
 	}
 	_, _, _, _, err := svc.loadDependencies(ctx, budgetID, txn)
 	assert.Error(t, err)
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// transactionService — learnTransactionMappingAsync: payeeRuleRepo nil guard
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestLearnTransactionMappingAsync_PayeeRuleRepoNil(t *testing.T) {
-	svc := &transactionService{dbTxn: fakeDBTxn{},
-		cipherClient:     &mockCipherClient{},
-		payeeRuleRepo:    nil,
-		txnEmbeddingRepo: &mockTransactionEmbeddingRepo{},
-	}
-	svc.learnTransactionMappingAsync(context.Background(), uuid.New(), model.Transaction{})
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

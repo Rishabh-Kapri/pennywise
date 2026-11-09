@@ -24,6 +24,8 @@ export interface TransactionHeaderProps {
   showSummary?: boolean;
   /** Renders a button that shows/hides a filter panel the host owns. */
   filterToggle?: { open: boolean; active: boolean; onToggle: () => void };
+  /** Shows only transactions waiting for approval. Hidden when there are none. */
+  pendingApproval?: { count: number; active: boolean; onToggle: () => void };
 }
 
 export function TransactionHeader({
@@ -36,6 +38,7 @@ export function TransactionHeader({
   onMobileFilterChange,
   showSummary = true,
   filterToggle,
+  pendingApproval,
 }: TransactionHeaderProps) {
   return (
     <div className={styles.container}>
@@ -56,6 +59,15 @@ export function TransactionHeader({
           <span>Add Expense</span>
         </button>
         <div className={styles.trailingActions}>
+          {pendingApproval && (pendingApproval.count > 0 || pendingApproval.active) && (
+            <button
+              type="button"
+              className={`${styles.filterToggle} ${styles.pendingToggle} ${pendingApproval.active ? styles.filterToggleOpen : ''}`}
+              aria-pressed={pendingApproval.active}
+              onClick={pendingApproval.onToggle}>
+              {pendingApproval.count} Pending Approval
+            </button>
+          )}
           {filterToggle && (
             <button
               type="button"

@@ -146,6 +146,8 @@ export interface TransactionState {
   loadingMore: LoadingState;
   nextCursor: string | null;
   total: number;
+  /** Waiting for approval across the whole list, not just the loaded page. */
+  pendingApprovalCount: number;
   error: string | null;
 }
 

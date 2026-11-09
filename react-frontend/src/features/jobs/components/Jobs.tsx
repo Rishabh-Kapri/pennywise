@@ -18,13 +18,14 @@ import {
 } from '@phosphor-icons/react';
 import { AnimatePresence, MotionConfig, motion } from 'framer-motion';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   JOBS_PAGE_SIZE,
   fetchJobDetail,
   fetchJobs,
   jobDetailsCleared,
   jobFiltersChanged,
+  retryFailedJobs,
   runJobAction,
 } from '../store';
 import {
@@ -32,6 +33,8 @@ import {
   buildRun,
   emailGroup,
   focusJob,
+  isMailboxJob,
+  isStopped,
   jobLabel,
   jobState,
   lastStepLabel,
@@ -48,6 +51,7 @@ import {
 import type { JobDetail, JobSummary, MessageStepResult } from '../types/job.types';
 import styles from './Jobs.module.css';
 import { PipelineView } from './PipelineView';
+import { messagePrefill } from '../messagePrefill';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -369,10 +373,8 @@ function JobTechnical({ detail }: { detail: JobDetail }) {
 /** What opening a row shows. It loads the jobs it needs, again after each refresh. */
 function RowDetails({ row }: { row: JobRow }) {
   const dispatch = useAppDispatch();
-  const isDemoUser = useAppSelector(selectIsDemoUser);
   const details = useAppSelector((state) => state.jobs.details);
   const detailLoading = useAppSelector((state) => state.jobs.detailLoading);
-  const actingJobId = useAppSelector((state) => state.jobs.actingJobId);
   const updatedAt = useAppSelector((state) => state.jobs.updatedAt);
   const [technicalOpen, setTechnicalOpen] = useState(false);
   const [pickedId, setPickedId] = useState<string | null>(null);
@@ -383,23 +385,12 @@ function RowDetails({ row }: { row: JobRow }) {
   const summary = details[focus.id];
   const shown = details[shownId];
   const isMessage = row.jobs[0].type === 'message.received';
-  const dead = jobs.find((job: JobSummary) => job.status === 'dead');
   const { sender, receivedAt, reason } = jobMessage(summary);
 
   useEffect(() => {
     dispatch(fetchJobDetail(focus.id));
     if (shownId !== focus.id) dispatch(fetchJobDetail(shownId));
   }, [dispatch, focus.id, shownId, updatedAt]);
-
-  const retry = async () => {
-    if (!dead) return;
-    try {
-      await dispatch(runJobAction({ id: dead.id, action: 'retry' })).unwrap();
-      toast.success('Queued again');
-    } catch (err) {
-      toast.error("Couldn't retry job", { description: errorMessage(err, 'Please try again.') });
-    }
-  };
 
   return (
     <div className={styles.rowDetails}>
@@ -425,12 +416,6 @@ function RowDetails({ row }: { row: JobRow }) {
       )}
 
       <div className={styles.actions}>
-        {!isDemoUser && dead && (
-          <button type="button" className={styles.primaryButton} disabled={actingJobId === dead.id} onClick={retry}>
-            <ArrowsClockwise size={16} className={actingJobId === dead.id ? styles.spin : undefined} />
-            Retry
-          </button>
-        )}
         <button
           type="button"
           className={styles.textToggle}
@@ -466,6 +451,93 @@ function RowDetails({ row }: { row: JobRow }) {
   );
 }
 
+/** What a person can do about a row that needs attention, without opening it. */
+function RowActions({ row }: { row: JobRow }) {
+  const dispatch = useAppDispatch();
+  const navigate = useNavigate();
+  const isDemoUser = useAppSelector(selectIsDemoUser);
+  const actingJobId = useAppSelector((state) => state.jobs.actingJobId);
+  const accounts = useAppSelector((state) => state.accounts.allAccounts);
+  const payees = useAppSelector((state) => state.payees.allPayees);
+  const [preparing, setPreparing] = useState(false);
+
+  const first = row.jobs[0];
+  const dead = rowJobs(row).find((job: JobSummary) => job.status === 'dead');
+  const stopped = isStopped(row);
+  // Still retrying on its own, so there's nothing to decide yet.
+  if (isDemoUser || (!dead && !stopped)) return null;
+
+  const isMessage = first.type === 'message.received';
+  const busy = preparing || actingJobId !== null;
+
+  const act = async (id: string, action: 'retry' | 'run-again' | 'dismiss', done: string, failed: string) => {
+    try {
+      await dispatch(runJobAction({ id, action })).unwrap();
+      toast.success(done);
+    } catch (err) {
+      toast.error(failed, { description: errorMessage(err, 'Please try again.') });
+    }
+  };
+
+  const dismiss = () => {
+    if (!window.confirm("Dismiss this email? It won't come back here, and importing it again won't bring it back."))
+      return;
+    void act(first.id, 'dismiss', 'Dismissed', "Couldn't dismiss it");
+  };
+
+  const createByHand = async () => {
+    // The latest step of the message carries everything extracted so far.
+    const source = [...row.jobs].reverse().find((job) => job.type !== 'pipeline.report') ?? first;
+    setPreparing(true);
+    try {
+      const detail = await dispatch(fetchJobDetail(source.id)).unwrap();
+      navigate('/transactions', {
+        state: { prefill: messagePrefill(detail, accounts, payees), dismissJobId: first.id },
+      });
+    } catch (err) {
+      toast.error("Couldn't read this email's details", { description: errorMessage(err, 'Please try again.') });
+      setPreparing(false);
+    }
+  };
+
+  return (
+    <div className={styles.rowActions}>
+      {dead && (
+        <button
+          type="button"
+          className={styles.primaryButton}
+          disabled={busy}
+          onClick={() => void act(dead.id, 'retry', 'Queued again', "Couldn't retry it")}
+        >
+          <ArrowsClockwise size={16} className={actingJobId === dead.id ? styles.spin : undefined} />
+          Retry
+        </button>
+      )}
+      {stopped && (
+        <button
+          type="button"
+          className={styles.primaryButton}
+          disabled={busy}
+          onClick={() => void act(first.id, 'run-again', 'Running it again', "Couldn't run it again")}
+        >
+          <ArrowsClockwise size={16} className={actingJobId === first.id ? styles.spin : undefined} />
+          Run again
+        </button>
+      )}
+      {isMessage && (
+        <button type="button" className={styles.button} disabled={busy} onClick={() => void createByHand()}>
+          Create by hand
+        </button>
+      )}
+      {!isMailboxJob(first.type) && (
+        <button type="button" className={styles.textToggle} disabled={busy} onClick={dismiss}>
+          Dismiss
+        </button>
+      )}
+    </div>
+  );
+}
+
 function EmailRow({ row, open, onToggle }: { row: JobRow; open: boolean; onToggle: () => void }) {
   const group = emailGroup(row);
   const full = group === 'attention';
@@ -489,6 +561,7 @@ function EmailRow({ row, open, onToggle }: { row: JobRow; open: boolean; onToggl
         )}
         <CaretRight size={16} className={`${styles.caret} ${open ? styles.caretOpen : ''}`} />
       </button>
+      {full && <RowActions row={row} />}
       {open && <RowDetails row={row} />}
     </motion.div>
   );
@@ -763,6 +836,8 @@ function RunView({
 }
 
 export default function Jobs() {
+  const isDemoUser = useAppSelector(selectIsDemoUser);
+  const [retryingCode, setRetryingCode] = useState<string | null>(null);
   const dispatch = useAppDispatch();
   const { setHeaderContent } = useHeader();
   const { list, listLoading, error, filters, updatedAt } = useAppSelector((state) => state.jobs);
@@ -822,6 +897,18 @@ export default function Jobs() {
     if (jobId !== filters.jobId) dispatch(jobFiltersChanged({ jobId }));
   };
   const toggleRow = (id: string) => setOpenRowId((current) => (current === id ? null : id));
+
+  const retryAll = async (code: string) => {
+    setRetryingCode(code);
+    try {
+      const retried = await dispatch(retryFailedJobs(code)).unwrap();
+      toast.success(retried > 0 ? `${plural(retried, 'job', 'jobs')} queued again` : 'Nothing has failed for good yet');
+    } catch (err) {
+      toast.error("Couldn't retry those jobs", { description: errorMessage(err, 'Please try again.') });
+    } finally {
+      setRetryingCode(null);
+    }
+  };
 
   const total = list?.total ?? 0;
   const failures = list?.failures ?? [];
@@ -910,29 +997,44 @@ export default function Jobs() {
               <div className={styles.failures}>
                 <h4 className={styles.groupTitle}>Failing now</h4>
                 {failures.map((failure) => (
-                  <button
-                    key={failure.code}
-                    type="button"
-                    className={`${styles.failure} ${filters.errorCode === failure.code ? styles.failureOn : ''}`}
-                    aria-pressed={filters.errorCode === failure.code}
-                    onClick={() =>
-                      dispatch(
-                        jobFiltersChanged({
-                          errorCode: filters.errorCode === failure.code ? '' : failure.code,
-                        }),
-                      )
-                    }
-                  >
-                    <span className={styles.failureText} title={failure.message}>
-                      {failure.code}
-                    </span>
-                    <span className={styles.failureMeta}>
-                      <span className={styles.muted}>
-                        {plural(failure.count, 'job', 'jobs')} · {formatAgo(failure.lastSeen)}
+                  <div key={failure.code} className={styles.failureLine}>
+                    <button
+                      type="button"
+                      className={`${styles.failure} ${filters.errorCode === failure.code ? styles.failureOn : ''}`}
+                      aria-pressed={filters.errorCode === failure.code}
+                      onClick={() =>
+                        dispatch(
+                          jobFiltersChanged({
+                            errorCode: filters.errorCode === failure.code ? '' : failure.code,
+                          }),
+                        )
+                      }
+                    >
+                      <span className={styles.failureText} title={failure.message}>
+                        {failure.code}
                       </span>
-                      {filters.errorCode === failure.code && <X size={14} weight="bold" aria-hidden="true" />}
-                    </span>
-                  </button>
+                      <span className={styles.failureMeta}>
+                        <span className={styles.muted}>
+                          {plural(failure.count, 'job', 'jobs')} · {formatAgo(failure.lastSeen)}
+                        </span>
+                        {filters.errorCode === failure.code && <X size={14} weight="bold" aria-hidden="true" />}
+                      </span>
+                    </button>
+                    {!isDemoUser && (
+                      <button
+                        type="button"
+                        className={styles.button}
+                        disabled={retryingCode !== null}
+                        onClick={() => void retryAll(failure.code)}
+                      >
+                        <ArrowsClockwise
+                          size={16}
+                          className={retryingCode === failure.code ? styles.spin : undefined}
+                        />
+                        Retry all
+                      </button>
+                    )}
+                  </div>
                 ))}
               </div>
             )}

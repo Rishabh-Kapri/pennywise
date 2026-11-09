@@ -206,6 +206,7 @@
 }
 
 .listArea {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -1099,4 +1100,72 @@ input[type='date']::-webkit-calendar-picker-indicator {
 .mobileDetailMetaGrid .mobileAccountLabel span {
   color: inherit;
   font-size: inherit;
+}
+
+/* ── Bulk selection ─────────────────────────────────────────── */
+
+.txnRow > .bulkCell,
+.headerContainer > .bulkCell {
+  display: flex;
+  flex: 0 0 1.25rem;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  cursor: pointer;
+}
+
+.bulkCheckbox {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+.bulkBar {
+  position: absolute;
+  bottom: 1rem;
+  left: 50%;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem 0.4rem 0.9rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.75rem;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-lg);
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.bulkCount {
+  margin-right: 0.35rem;
+  font-size: 0.9rem;
+}
+
+.bulkButton {
+  height: 2rem;
+  padding: 0 0.75rem;
+  border-radius: 0.5rem;
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.bulkButton:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+}
+
+.bulkButton:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.bulkDelete {
+  background: var(--color-error);
+  color: #fff;
+}
+
+.bulkDelete:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-error) 85%, black);
 }

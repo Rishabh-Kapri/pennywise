@@ -1,6 +1,6 @@
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useLocation, useParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowsLeftRightIcon } from '@phosphor-icons/react';
 import {
   createTransaction,
@@ -8,6 +8,8 @@ import {
   fetchAllTransaction,
   updateTransaction,
   updateTransactionStatus,
+  bulkDeleteTransactions,
+  fetchPendingApprovalCount,
 } from '../../store';
 import { LoadingState } from '@/utils';
 import { errorMessage, toast } from '@/utils';
@@ -38,6 +40,8 @@ import { TransactionSkeleton } from '../TransactionSkeleton';
 import { List } from 'react-window';
 import { TransactionRow } from '../TransactionRow';
 import { TransactionDetailPanel } from '../TransactionDetailPanel';
+import { fetchAllAccounts } from '@/features/accounts/store/accountSlice';
+import { runJobAction } from '@/features/jobs/store';
 import { TransactionFilterPanel } from '../TransactionFilterPanel';
 import { selectSelectedBudget } from '@/features/budget';
 import { TransactionMobile } from '../TransactionMobile';
@@ -110,7 +114,9 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
   const { id } = useParams();
   const paramId = accountId ?? id ?? '';
   const dispatch = useAppDispatch();
-  const { loading, transactions, loadingMore, nextCursor, error } = useAppSelector((state) => state.transactions);
+  const { loading, transactions, loadingMore, nextCursor, error, pendingApprovalCount } = useAppSelector(
+    (state) => state.transactions,
+  );
   const { name: accountName, balance: accountBal, type: accountType, bank: accountBank } = useAppSelector((state) =>
     selectAccountInfoFromId(state, paramId ?? ''),
   );
@@ -122,9 +128,14 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
   const [isAddingNew, setIsAddingNew] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [mobileFilter, setMobileFilter] = useState<MobileFilter>('all');
+  const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(() => new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   // Other screens can open this one pre-filtered (Payees → "View transactions").
   // Built once: useDebounce re-applies its seed whenever the seed's identity changes.
   const location = useLocation();
+  const navigate = useNavigate();
+  // Set while the add form holds an email from Jobs, cleared if it's abandoned.
+  const dismissJobIdRef = useRef<string | null>(null);
   const [initialFilters] = useState<TransactionFilters>(() => {
     const payee = (location.state as TransactionsLocationState | null)?.payeeFilter;
     return payee ? { ...EMPTY_FILTERS, payeeIds: [payee.id], payeeNames: [payee.name] } : EMPTY_FILTERS;
@@ -139,6 +150,7 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        dismissJobIdRef.current = null;
         setSelectedTxn(null);
         setInlineEditingTxnId(null);
         setIsDetailPanelOpen(false);
@@ -158,6 +170,21 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
       setSidePanelContent(null);
     };
   }, [paramId, selectedBudgetId, dispatch, setSidePanelContent]);
+
+  // Runs after the reset above, so the form it opens stays open.
+  useEffect(() => {
+    const state = location.state as TransactionsLocationState | null;
+    if (!state?.prefill) return;
+    setSelectedTxn({
+      ...createEmptyTransaction({ budgetId: selectedBudgetId, accountId: paramId, balance: 0 }),
+      ...state.prefill,
+    });
+    setIsDetailPanelOpen(true);
+    setIsAddingNew(true);
+    dismissJobIdRef.current = state.dismissJobId ?? null;
+    // Otherwise a reload or the back button would open the form again.
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate, paramId, selectedBudgetId]);
 
   const handleTxnSelect = useCallback(
     (index: number, txn: Transaction | null) => {
@@ -183,6 +210,7 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
   );
 
   const resetSelectedTxn = useCallback(() => {
+    dismissJobIdRef.current = null;
     setSelectedTxn(null);
     setInlineEditingTxnId(null);
     setIsDetailPanelOpen(false);
@@ -251,6 +279,7 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
   );
 
   const addTransaction = useCallback(() => {
+    dismissJobIdRef.current = null;
     setSelectedTxn(
       createEmptyTransaction({
         budgetId: selectedBudgetId,
@@ -273,6 +302,10 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
         const payload = buildTransactionPayload(selectedTxn);
         await dispatch(createTransaction(payload)).unwrap();
         toast.success('Transaction added', { description: describeTxn(selectedTxn) });
+        if (dismissJobIdRef.current) {
+          // The transaction is saved either way; the email just stays in Jobs.
+          dispatch(runJobAction({ id: dismissJobIdRef.current, action: 'dismiss' }));
+        }
         const accountIds = paramId ? [paramId] : [];
         const params = {
           ...(accountIds.length && { accountIds: accountIds }),
@@ -349,13 +382,35 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
     const search = searchTerm.trim().toLowerCase();
     const scopedTransactions = transactions.filter((transaction) =>
       (!paramId || transaction.accountId === paramId) &&
+      // Drops a row as soon as it's approved, without reloading the list.
+      (!filters.pendingOnly || transaction.status === TransactionStatus.UNAPPROVED) &&
       (!search || [transaction.payeeName, transaction.categoryName, transaction.note, transaction.accountName]
         .some((value) => value?.toLowerCase().includes(search))),
     );
     return filterTransactions(scopedTransactions, mobileFilter);
-  }, [transactions, mobileFilter, paramId, searchTerm]);
+  }, [transactions, mobileFilter, paramId, searchTerm, filters.pendingOnly]);
 
   const listItems = useMemo(() => groupTransactions(filteredTransactions), [filteredTransactions]);
+
+  // Only rows on screen count, so a delete can't reach one a search has hidden.
+  const visibleIds = useMemo(
+    () => filteredTransactions.flatMap((transaction) => (transaction.id ? [transaction.id] : [])),
+    [filteredTransactions],
+  );
+  const bulkIds = useMemo(() => visibleIds.filter((id) => bulkSelectedIds.has(id)), [visibleIds, bulkSelectedIds]);
+  const allBulkSelected = visibleIds.length > 0 && bulkIds.length === visibleIds.length;
+
+  const handleBulkToggle = useCallback((id: string) => {
+    setBulkSelectedIds((current) => {
+      const next = new Set(current);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    setBulkSelectedIds(new Set());
+  }, [filters, paramId, selectedBudgetId]);
   const isLoadingMore = loadingMore === LoadingState.PENDING;
 
   const rowProps = useMemo(
@@ -371,6 +426,8 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
       handleSelectedTxnChange,
       handleInputBlur,
       onAutoSave: handleAutoSave,
+      bulkSelectedIds,
+      onBulkToggle: handleBulkToggle,
     }),
     [
       paramId,
@@ -384,6 +441,8 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
       handleSelectedTxnChange,
       handleInputBlur,
       handleAutoSave,
+      bulkSelectedIds,
+      handleBulkToggle,
     ],
   );
 
@@ -392,13 +451,9 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
     [isMobile, listItems],
   );
 
-  const loadMoreTransactions = useCallback(() => {
-    if (!nextCursor || loadingMore === LoadingState.PENDING || loading === LoadingState.PENDING) {
-      return;
-    }
-    const { accountIds, categoryIds, payeeIds, tagIds, note, dateFrom, dateTo } = filters;
-
-    const args = {
+  const listArgs = useMemo(() => {
+    const { accountIds, categoryIds, payeeIds, tagIds, note, dateFrom, dateTo, pendingOnly } = filters;
+    return {
       accountIds: paramId ? [paramId] : accountIds,
       categoryIds,
       payeeIds,
@@ -406,14 +461,35 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
       note,
       startDate: dateFrom,
       endDate: dateTo,
+      status: pendingOnly ? TransactionStatus.UNAPPROVED : undefined,
     };
+  }, [filters, paramId]);
 
-    const params = {
-      ...args,
-      cursor: nextCursor,
-    };
-    dispatch(fetchAllTransaction(params));
-  }, [dispatch, filters, loading, loadingMore, nextCursor, paramId]);
+  const loadMoreTransactions = useCallback(() => {
+    if (!nextCursor || loadingMore === LoadingState.PENDING || loading === LoadingState.PENDING) {
+      return;
+    }
+    dispatch(fetchAllTransaction({ ...listArgs, cursor: nextCursor }));
+  }, [dispatch, listArgs, loading, loadingMore, nextCursor]);
+
+  const handleBulkDelete = useCallback(async () => {
+    const count = bulkIds.length;
+    const label = `${count} transaction${count === 1 ? '' : 's'}`;
+    if (!window.confirm(`Delete ${label}? A transfer's other side is deleted with it.`)) return;
+    setBulkDeleting(true);
+    try {
+      await dispatch(bulkDeleteTransactions(bulkIds)).unwrap();
+      toast.success(`${label} deleted`);
+      if (selectedTxn?.id && bulkIds.includes(selectedTxn.id)) resetSelectedTxn();
+      setBulkSelectedIds(new Set());
+      dispatch(fetchAllTransaction(listArgs));
+      dispatch(fetchAllAccounts());
+    } catch (err) {
+      toast.error(`Couldn't delete ${label}`, { description: errorMessage(err, 'Nothing was deleted. Please try again.') });
+    } finally {
+      setBulkDeleting(false);
+    }
+  }, [bulkIds, dispatch, listArgs, resetSelectedTxn, selectedTxn?.id]);
 
   const handleRowsRendered = useCallback(
     ({ startIndex, stopIndex }: { startIndex: number; stopIndex: number }) => {
@@ -426,22 +502,17 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
   );
 
   useEffect(() => {
-    const { accountIds, categoryIds, payeeIds, tagIds, note, dateFrom, dateTo } = filters;
-    const args = {
-      accountIds: paramId ? [paramId] : accountIds,
-      categoryIds,
-      payeeIds,
-      tagIds,
-      note,
-      startDate: dateFrom,
-      endDate: dateTo,
-    };
-    const timer = setTimeout(() => dispatch(fetchAllTransaction(args)), 500);
+    const timer = setTimeout(() => dispatch(fetchAllTransaction(listArgs)), 500);
 
     return () => {
       clearTimeout(timer);
     };
-  }, [filters, dispatch, paramId, selectedBudgetId]);
+  }, [listArgs, dispatch, selectedBudgetId]);
+
+  // Every reload and edit, including websocket updates, ends by setting loading to SUCCESS.
+  useEffect(() => {
+    if (loading === LoadingState.SUCCESS) dispatch(fetchPendingApprovalCount(paramId));
+  }, [dispatch, loading, paramId, selectedBudgetId]);
 
   // The page draws its own title and toolbar (as Budget does), so the shared header slot stays empty.
   useEffect(() => {
@@ -517,6 +588,11 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
           mobileFilter={mobileFilter}
           onMobileFilterChange={setMobileFilter}
           showSummary={false}
+          pendingApproval={{
+            count: pendingApprovalCount,
+            active: filters.pendingOnly,
+            onToggle: () => setFilters((current) => ({ ...current, pendingOnly: !current.pendingOnly })),
+          }}
           filterToggle={{
             open: filtersOpen,
             active: hasActiveFilters(filters),
@@ -553,6 +629,19 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
           ) : (
             <div className={styles.listArea}>
               <div className={styles.headerContainer}>
+                <label className={styles.bulkCell}>
+                  <input
+                    type="checkbox"
+                    className={styles.bulkCheckbox}
+                    aria-label="Select all loaded transactions"
+                    checked={allBulkSelected}
+                    disabled={visibleIds.length === 0}
+                    ref={(input) => {
+                      if (input) input.indeterminate = bulkIds.length > 0 && !allBulkSelected;
+                    }}
+                    onChange={() => setBulkSelectedIds(new Set(allBulkSelected ? [] : visibleIds))}
+                  />
+                </label>
                 {cols.map((col) => (
                   <div key={col.key} style={{ ...col.layout }} className={col.headerClassName?.join(' ')}>
                     {col.label}
@@ -580,6 +669,25 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
                   </div>
                 )}
               </div>
+              {bulkIds.length > 0 && (
+                <div className={styles.bulkBar} role="toolbar" aria-label="Selected transactions">
+                  <span className={styles.bulkCount}>{bulkIds.length} selected</span>
+                  <button
+                    type="button"
+                    className={styles.bulkButton}
+                    disabled={bulkDeleting}
+                    onClick={() => setBulkSelectedIds(new Set())}>
+                    Clear
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.bulkButton} ${styles.bulkDelete}`}
+                    disabled={bulkDeleting}
+                    onClick={() => void handleBulkDelete()}>
+                    {bulkDeleting ? 'Deleting…' : 'Delete'}
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -114,10 +114,21 @@ type JobService interface {
 	Get(ctx context.Context, id uuid.UUID) (JobDetail, error)
 	Retry(ctx context.Context, id uuid.UUID) error
 	Cancel(ctx context.Context, id uuid.UUID) error
+	// RetryFailed queues every dead job with this error code again and returns
+	// how many it queued.
+	RetryFailed(ctx context.Context, errorCode string) (int, error)
+	// RunAgain sends a message the pipeline stopped through it again, replacing
+	// the stopped run. CodeJobInvalidState unless it's such a message.
+	RunAgain(ctx context.Context, id uuid.UUID) error
+	// Dismiss hides a finished job and what followed it. CodeJobInvalidState
+	// while any of them is still running, or for a job that fanned out into
+	// several messages.
+	Dismiss(ctx context.Context, id uuid.UUID) error
 }
 
 type jobService struct {
 	store       job.JobStore // nil when JOB_DRIVER is unset or memory
+	broker      job.Broker
 	connections repository.MailConnectionRepository
 }
 
@@ -125,8 +136,8 @@ type jobService struct {
 // list. Inside a message's pipeline they're still shown.
 var hiddenRootJobTypes = []string{model.JobTypeTransactionLearn}
 
-func NewJobService(store job.JobStore, connections repository.MailConnectionRepository) JobService {
-	return &jobService{store: store, connections: connections}
+func NewJobService(store job.JobStore, broker job.Broker, connections repository.MailConnectionRepository) JobService {
+	return &jobService{store: store, broker: broker, connections: connections}
 }
 
 // scope reads the budget from ctx and finds the mailboxes feeding it.
@@ -257,6 +268,128 @@ func (s *jobService) Cancel(ctx context.Context, id uuid.UUID) error {
 	}
 	_, err := s.store.CancelJob(ctx, id, jobActor(ctx))
 	return err
+}
+
+// maxRetryFailed bounds one "retry all", which runs in a single transaction.
+const maxRetryFailed = 500
+
+func (s *jobService) RetryFailed(ctx context.Context, errorCode string) (int, error) {
+	if s.store == nil {
+		return 0, errs.New(errs.CodeJobNotFound, "job not found")
+	}
+	scope, err := s.scope(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return s.store.RetryDeadByCode(ctx, scope, errorCode, jobActor(ctx), maxRetryFailed)
+}
+
+func (s *jobService) RunAgain(ctx context.Context, id uuid.UUID) error {
+	j, err := s.visibleJob(ctx, id)
+	if err != nil {
+		return err
+	}
+	if s.broker == nil || j.BudgetID == nil || j.Type != model.JobTypeMessageReceived {
+		return errs.New(errs.CodeJobInvalidState, "only a message can run again")
+	}
+	chain, err := s.chain(ctx, j)
+	if err != nil {
+		return err
+	}
+	if !stoppedMessage(chain) {
+		return errs.New(errs.CodeJobInvalidState, "the message didn't stop in the pipeline")
+	}
+
+	var msg model.ReceivedMessage
+	if err := json.Unmarshal(j.Payload, &msg); err != nil {
+		return errs.Wrap(errs.CodeJobInvalidPayload, "decode message", err)
+	}
+	// The stopped job's ID: a double click queues one run, not two.
+	msg.RunID = j.ID.String()
+	payload, err := json.Marshal(msg)
+	if err != nil {
+		return errs.Wrap(errs.CodeInternalError, "encode message", err)
+	}
+	if _, err := s.broker.Enqueue(ctx, j.Type, payload,
+		job.WithQueue(j.Queue),
+		job.WithBudgetID(j.BudgetID),
+		job.WithIdempotencyKey(msg.IdempotencyKey(*j.BudgetID)),
+		job.WithRootJobID(j.RootJobID),
+		job.WithParentID(j.ParentID),
+	); err != nil {
+		return err
+	}
+	return s.store.Dismiss(ctx, jobIDs(chain))
+}
+
+func (s *jobService) Dismiss(ctx context.Context, id uuid.UUID) error {
+	j, err := s.visibleJob(ctx, id)
+	if err != nil {
+		return err
+	}
+	chain, err := s.chain(ctx, j)
+	if err != nil {
+		return err
+	}
+	for i := range chain {
+		fannedOut := chain[i].ID != j.ID && chain[i].Type == model.JobTypeMessageReceived
+		active := chain[i].Status == job.QueuedJobStatus || chain[i].Status == job.RunningJobStatus
+		if fannedOut || active {
+			return errs.New(errs.CodeJobInvalidState, "this job can't be dismissed")
+		}
+	}
+	return s.store.Dismiss(ctx, jobIDs(chain))
+}
+
+// chain returns j and every job that followed from it.
+func (s *jobService) chain(ctx context.Context, j *job.Job) ([]job.Job, error) {
+	rootID := j.ID
+	if j.RootJobID != nil {
+		rootID = *j.RootJobID
+	}
+	family, err := s.store.ListByRoot(ctx, rootID)
+	if err != nil {
+		return nil, err
+	}
+	children := make(map[uuid.UUID][]job.Job, len(family))
+	for i := range family {
+		if family[i].ParentID != nil {
+			children[*family[i].ParentID] = append(children[*family[i].ParentID], family[i])
+		}
+	}
+	chain := []job.Job{*j}
+	for i := 0; i < len(chain); i++ {
+		chain = append(chain, children[chain[i].ID]...)
+	}
+	return chain, nil
+}
+
+func jobIDs(jobs []job.Job) []uuid.UUID {
+	ids := make([]uuid.UUID, 0, len(jobs))
+	for i := range jobs {
+		ids = append(ids, jobs[i].ID)
+	}
+	return ids
+}
+
+// stoppedMessage reports whether a message's jobs all finished and the pipeline
+// ended it without the transaction it should have had.
+func stoppedMessage(chain []job.Job) bool {
+	stopped := false
+	for i := range chain {
+		if chain[i].Status != job.SucceededJobStatus {
+			return false
+		}
+		if chain[i].Type != model.JobTypePipelineReport {
+			continue
+		}
+		var report model.PipelineReportPayload
+		if err := json.Unmarshal(chain[i].Payload, &report); err != nil {
+			return false
+		}
+		stopped = report.Outcome == model.MessageOutcomeUnverified || report.Outcome == model.MessageOutcomeNoPrediction
+	}
+	return stopped
 }
 
 // visibleJob loads a job the budget may see, applying the same rule as

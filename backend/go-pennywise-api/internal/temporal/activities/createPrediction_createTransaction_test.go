@@ -133,6 +133,10 @@ func (f *fakeTransactionService) DeleteById(context.Context, uuid.UUID) error {
 	return nil
 }
 
+func (f *fakeTransactionService) BulkDelete(context.Context, []uuid.UUID) (int, error) {
+	return 0, nil
+}
+
 func (f *fakeTransactionService) LearnFromTransaction(context.Context, model.Transaction) {}
 
 func (f *fakeTransactionService) BackfillLearning(

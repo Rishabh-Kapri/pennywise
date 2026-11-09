@@ -1066,7 +1066,7 @@ func TestTxnApplySideEffects_UpdatePredictionFeedback(t *testing.T) {
 
 // ─── LearnFromTransaction ────────────────────────────────────────────────────
 
-func TestTxnLearnFromTransaction_WritesRuleAndEmbeddingInOneTransaction(t *testing.T) {
+func TestTxnLearnMapping_WritesRuleAndEmbeddingInOneTransaction(t *testing.T) {
 	svc, d := newTxnSvc()
 	f := newTxnFixture()
 	raw := "Rs 250 debited at BLUE TOKAI"
@@ -1083,7 +1083,7 @@ func TestTxnLearnFromTransaction_WritesRuleAndEmbeddingInOneTransaction(t *testi
 	done := make(chan struct{})
 	d.cipher.On("MarkLearned", txCtx, f.budgetID, f.txnID).Return(nil).Once().Run(func(mock.Arguments) { close(done) })
 
-	svc.LearnFromTransaction(f.ctx, txn)
+	_ = svc.learnTransactionMapping(f.ctx, f.budgetID, txn)
 
 	select {
 	case <-done:
@@ -1094,7 +1094,7 @@ func TestTxnLearnFromTransaction_WritesRuleAndEmbeddingInOneTransaction(t *testi
 	d.assertExpectations(t)
 }
 
-func TestTxnLearnFromTransaction_EmbeddingFailureRollsBackTheRule(t *testing.T) {
+func TestTxnLearnMapping_EmbeddingFailureRollsBackTheRule(t *testing.T) {
 	svc, d := newTxnSvc()
 	f := newTxnFixture()
 	raw := "Rs 250 debited at BLUE TOKAI"
@@ -1111,7 +1111,7 @@ func TestTxnLearnFromTransaction_EmbeddingFailureRollsBackTheRule(t *testing.T) 
 		return reason != ""
 	})).Return(nil).Once().Run(func(mock.Arguments) { close(done) })
 
-	svc.LearnFromTransaction(f.ctx, txn)
+	_ = svc.learnTransactionMapping(f.ctx, f.budgetID, txn)
 
 	select {
 	case <-done:
@@ -1124,7 +1124,7 @@ func TestTxnLearnFromTransaction_EmbeddingFailureRollsBackTheRule(t *testing.T) 
 	d.cipher.AssertNotCalled(t, "MarkLearned", mock.Anything, mock.Anything, mock.Anything)
 }
 
-func TestTxnLearnFromTransaction_UnreadableEmbeddingIsRecordedNotWritten(t *testing.T) {
+func TestTxnLearnMapping_UnreadableEmbeddingIsRecordedNotWritten(t *testing.T) {
 	svc, d := newTxnSvc()
 	f := newTxnFixture()
 	raw := "Rs 250 debited at BLUE TOKAI"
@@ -1138,7 +1138,7 @@ func TestTxnLearnFromTransaction_UnreadableEmbeddingIsRecordedNotWritten(t *test
 	d.cipher.On("MarkLearnFailed", mock.Anything, f.budgetID, f.txnID, mock.Anything).
 		Return(nil).Once().Run(func(mock.Arguments) { close(done) })
 
-	svc.LearnFromTransaction(f.ctx, txn)
+	_ = svc.learnTransactionMapping(f.ctx, f.budgetID, txn)
 
 	select {
 	case <-done:
@@ -1150,14 +1150,15 @@ func TestTxnLearnFromTransaction_UnreadableEmbeddingIsRecordedNotWritten(t *test
 	d.payeeRule.AssertNotCalled(t, "CreatePayeeRule", mock.Anything, mock.Anything)
 }
 
-func TestTxnLearnFromTransaction_SkipsRowsWithoutBankText(t *testing.T) {
+func TestTxnLearnFromTransaction_DoesNotEmbed(t *testing.T) {
 	svc, d := newTxnSvc()
 	f := newTxnFixture()
+	raw := "Rs 250 debited at BLUE TOKAI"
 	txn := f.txn()
 	txn.ID = f.txnID
+	txn.RawBankText = &raw
 
 	svc.LearnFromTransaction(f.ctx, txn)
 
-	time.Sleep(50 * time.Millisecond) // nothing is started, so nothing can be late
 	d.client.AssertNotCalled(t, "GenerateTransactionEmbedding", mock.Anything, mock.Anything)
 }

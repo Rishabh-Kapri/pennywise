@@ -99,6 +99,7 @@ type TransactionFilter struct {
 	StartDate    *string
 	EndDate      *string
 	Note         *string
+	Status       *TransactionStatus
 	SortOrder    string
 	Limit        uint64
 	GroupBy      *string

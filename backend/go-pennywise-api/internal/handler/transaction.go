@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -27,6 +28,8 @@ type TransactionHandler interface {
 	// parses the ID, and then calls the service to perform the deletion.
 	// Returns appropriate HTTP status and message based on the outcome.
 	DeleteById(c *gin.Context)
+	// BulkDelete is POST /transactions/bulk-delete.
+	BulkDelete(c *gin.Context)
 }
 
 type transactionHandler struct {
@@ -69,6 +72,7 @@ type listTransactionsQuery struct {
 	StartDate string `form:"startDate" binding:"omitempty,datetime=2006-01-02"`
 	EndDate   string `form:"endDate"   binding:"omitempty,datetime=2006-01-02"`
 	Note      string `form:"note"`
+	Status    string `form:"status" binding:"omitempty,oneof=UNAPPROVED APPROVED REJECTED MANUAL"`
 
 	Limit     uint64 `form:"limit,default=30"`
 	GroupBy   string `form:"groupBy,default=month"`
@@ -193,6 +197,10 @@ func (h *transactionHandler) ListNormalized(c *gin.Context) {
 	}
 	if q.EndDate != "" {
 		txnFilter.EndDate = &q.EndDate
+	}
+	if q.Status != "" {
+		status := model.TransactionStatus(q.Status)
+		txnFilter.Status = &status
 	}
 
 	transactions, err := h.service.GetAllNormalized(ctx, &txnFilter)
@@ -322,6 +330,32 @@ func (h *transactionHandler) BackfillLearning(c *gin.Context) {
 	// Nothing queued: either a run is already in flight or there is nothing
 	// left to learn. Both are fine, neither started work.
 	c.JSON(http.StatusOK, result)
+}
+
+// maxBulkDelete bounds one request, which runs in a single database transaction.
+const maxBulkDelete = 500
+
+type bulkDeleteRequest struct {
+	IDs []uuid.UUID `json:"ids" binding:"required,min=1,dive,required"`
+}
+
+func (h *transactionHandler) BulkDelete(c *gin.Context) {
+	var body bulkDeleteRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": bindingError(err)})
+		return
+	}
+	if len(body.IDs) > maxBulkDelete {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("at most %d transactions at a time", maxBulkDelete)})
+		return
+	}
+
+	deleted, err := h.service.BulkDelete(c.Request.Context(), body.IDs)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"deleted": deleted})
 }
 
 func (h *transactionHandler) DeleteById(c *gin.Context) {

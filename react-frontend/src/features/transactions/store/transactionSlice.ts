@@ -6,6 +6,7 @@ import type {
   TransactionState,
   TransactionStatusDTO,
 } from '../types/transaction.types';
+import { TransactionStatus } from '../types/transaction.types';
 import { apiClient, LoadingState } from '@/utils';
 import { type PaginationResponse } from '@/utils/common.constants';
 
@@ -16,6 +17,7 @@ const initialState: TransactionState = {
   loadingMore: LoadingState.IDLE,
   nextCursor: null,
   total: 0,
+  pendingApprovalCount: 0,
   error: null,
 };
 
@@ -27,6 +29,7 @@ type FetchTransactionArgs = {
   note?: string;
   startDate?: string;
   endDate?: string;
+  status?: TransactionStatus;
   cursor?: string;
   limit?: number;
 };
@@ -72,6 +75,9 @@ export const fetchAllTransaction = createAsyncThunk<
   if (args?.endDate && args.endDate.trim()) {
     params.set('endDate', args.endDate);
   }
+  if (args?.status) {
+    params.set('status', args.status);
+  }
   if (args?.cursor) {
     params.set('cursor', args.cursor);
   }
@@ -83,12 +89,28 @@ export const fetchAllTransaction = createAsyncThunk<
   return await apiClient.get<PaginationResponse<Transaction[]>>(url);
 });
 
+/** The server's count: the list is paginated, so the loaded rows can't give it. */
+export const fetchPendingApprovalCount = createAsyncThunk<number, string | undefined>(
+  'transactions/fetchPendingApprovalCount',
+  async (accountId) => {
+    const params = new URLSearchParams({ status: TransactionStatus.UNAPPROVED, limit: '1' });
+    if (accountId) params.set('accountId[]', accountId);
+    const res = await apiClient.get<PaginationResponse<Transaction[]>>(`transactions/normalized?${params}`);
+    return res.total;
+  },
+);
+
 export const deleteTransactionById = createAsyncThunk<Transaction[], string>(
   'transactions/deleteTransaction',
   async (transactionId: string) => {
     const url = `transactions/${transactionId}`;
     return await apiClient.delete(url);
   },
+);
+
+export const bulkDeleteTransactions = createAsyncThunk<{ deleted: number }, string[]>(
+  'transactions/bulkDeleteTransactions',
+  async (ids) => apiClient.post<{ deleted: number }, { ids: string[] }>('transactions/bulk-delete', { ids }),
 );
 
 export const createTransaction = createAsyncThunk<TransactionDTO, TransactionDTO>(
@@ -174,6 +196,9 @@ const transactionSlice = createSlice({
           state.loading = LoadingState.ERROR;
         }
         state.error = action.error.message ?? 'Failed to load transactions';
+      })
+      .addCase(fetchPendingApprovalCount.fulfilled, (state, action) => {
+        state.pendingApprovalCount = action.payload;
       })
       .addCase(deleteTransactionById.pending, (state) => {
         state.loading = LoadingState.PENDING;

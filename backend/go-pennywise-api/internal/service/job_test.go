@@ -23,6 +23,10 @@ type fakeJobStore struct {
 	retried  []uuid.UUID
 	canceled []uuid.UUID
 	actor    string
+
+	retriedCode  string
+	retriedLimit int
+	dismissed    []uuid.UUID
 }
 
 func (f *fakeJobStore) GetJobByID(_ context.Context, id uuid.UUID) (*job.Job, error) {
@@ -59,6 +63,16 @@ func (f *fakeJobStore) RetryDead(_ context.Context, id uuid.UUID, actor string) 
 	return nil, nil
 }
 
+func (f *fakeJobStore) RetryDeadByCode(_ context.Context, _ job.JobScope, code, actor string, limit int) (int, error) {
+	f.retriedCode, f.actor, f.retriedLimit = code, actor, limit
+	return 3, nil
+}
+
+func (f *fakeJobStore) Dismiss(_ context.Context, ids []uuid.UUID) error {
+	f.dismissed = append(f.dismissed, ids...)
+	return nil
+}
+
 func (f *fakeJobStore) CancelJob(_ context.Context, id uuid.UUID, actor string) (*job.Job, error) {
 	f.canceled, f.actor = append(f.canceled, id), actor
 	return nil, nil
@@ -83,7 +97,7 @@ func mailboxJob(account string) *job.Job {
 }
 
 func TestJobListWithoutStore(t *testing.T) {
-	list, err := NewJobService(nil, nil).List(context.Background(), JobListInput{})
+	list, err := NewJobService(nil, nil, nil).List(context.Background(), JobListInput{})
 	if err != nil || list.Enabled || list.Trees == nil || list.Failures == nil {
 		t.Fatalf("%+v, %v", list, err)
 	}
@@ -97,7 +111,7 @@ func TestJobListScopeAndFilters(t *testing.T) {
 	store := &fakeJobStore{jobs: map[uuid.UUID]*job.Job{
 		id: {ID: id, Type: model.JobTypeMessageReceived, BudgetID: &budget, Payload: message},
 	}}
-	svc := NewJobService(store, fakeConnections{accounts: []string{"Me@Gmail.com"}})
+	svc := NewJobService(store, nil, fakeConnections{accounts: []string{"Me@Gmail.com"}})
 
 	list, err := svc.List(ctx, JobListInput{Status: "retrying", Limit: 1000})
 	if err != nil {
@@ -127,7 +141,7 @@ func TestJobListScopeAndFilters(t *testing.T) {
 func TestJobListHidesLearnJobsUnlessLookingForOne(t *testing.T) {
 	ctx := utils.WithBudgetID(context.Background(), uuid.New())
 	store := &fakeJobStore{}
-	svc := NewJobService(store, fakeConnections{})
+	svc := NewJobService(store, nil, fakeConnections{})
 
 	if _, err := svc.List(ctx, JobListInput{}); err != nil {
 		t.Fatal(err)
@@ -178,7 +192,7 @@ func TestJobVisibility(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			store := &fakeJobStore{jobs: map[uuid.UUID]*job.Job{tt.target.ID: tt.target}, family: tt.family}
-			svc := NewJobService(store, fakeConnections{accounts: []string{"me@gmail.com"}})
+			svc := NewJobService(store, nil, fakeConnections{accounts: []string{"me@gmail.com"}})
 
 			_, getErr := svc.Get(ctx, tt.target.ID)
 			retryErr := svc.Retry(ctx, tt.target.ID)
@@ -214,7 +228,7 @@ func TestJobDetail(t *testing.T) {
 		Metadata: job.Metadata{CorrelationID: "corr-1", OriginService: "ingest"},
 	}
 	store := &fakeJobStore{jobs: map[uuid.UUID]*job.Job{j.ID: j}}
-	svc := NewJobService(store, fakeConnections{})
+	svc := NewJobService(store, nil, fakeConnections{})
 
 	detail, err := svc.Get(utils.WithBudgetID(context.Background(), budget), j.ID)
 	if err != nil {
@@ -223,5 +237,121 @@ func TestJobDetail(t *testing.T) {
 	if detail.CorrelationID != "corr-1" || detail.LockedBy != worker || string(detail.Payload) != `{"a":1}` ||
 		string(detail.Result) != `{"b":2}` || len(detail.Events) != 1 || detail.Events[0].Error != "boom" {
 		t.Fatalf("%+v", detail)
+	}
+}
+
+type runAgainBroker struct {
+	job.Broker
+	jobType string
+	payload []byte
+	opts    job.EnqueueOptions
+}
+
+func (b *runAgainBroker) Enqueue(
+	_ context.Context, jobType string, payload []byte, opts ...job.EnqueueOption,
+) (job.EnqueueResult, error) {
+	resolved, err := job.ResolveEnqueueOptions(jobType, payload, opts...)
+	if err != nil {
+		return job.EnqueueResult{}, err
+	}
+	b.jobType, b.payload, b.opts = jobType, payload, resolved
+	return job.EnqueueResult{JobID: uuid.New()}, nil
+}
+
+// messageFamily is a mailbox job with one message under it, ended by outcome.
+func messageFamily(budget uuid.UUID, outcome model.MessageOutcome) (root, msg job.Job, family []job.Job) {
+	rootID := uuid.New()
+	root = job.Job{ID: rootID, Type: model.JobTypeMailboxBackfill, BudgetID: &budget, Status: job.SucceededJobStatus}
+	body, _ := json.Marshal(model.ReceivedMessage{Source: "email", Provider: "gmail", ExternalID: "m1"})
+	msg = job.Job{
+		ID: uuid.New(), Type: model.JobTypeMessageReceived, Queue: model.QueueCipher, BudgetID: &budget,
+		RootJobID: &rootID, ParentID: &rootID, Status: job.SucceededJobStatus, Payload: body,
+	}
+	report, _ := json.Marshal(model.PipelineReportPayload{Outcome: outcome})
+	end := job.Job{
+		ID: uuid.New(), Type: model.JobTypePipelineReport, BudgetID: &budget, RootJobID: &rootID, ParentID: &msg.ID,
+		Status: job.SucceededJobStatus, Payload: report,
+	}
+	return root, msg, []job.Job{root, msg, end}
+}
+
+func TestJobServiceRunAgain(t *testing.T) {
+	budget := uuid.New()
+	ctx := utils.WithBudgetID(context.Background(), budget)
+
+	t.Run("replaces a stopped message with a new run", func(t *testing.T) {
+		root, msg, family := messageFamily(budget, model.MessageOutcomeUnverified)
+		store := &fakeJobStore{jobs: map[uuid.UUID]*job.Job{msg.ID: &msg}, family: family}
+		broker := &runAgainBroker{}
+		svc := NewJobService(store, broker, fakeConnections{})
+
+		if err := svc.RunAgain(ctx, msg.ID); err != nil {
+			t.Fatal(err)
+		}
+		var sent model.ReceivedMessage
+		if err := json.Unmarshal(broker.payload, &sent); err != nil {
+			t.Fatal(err)
+		}
+		if sent.RunID != msg.ID.String() || broker.jobType != model.JobTypeMessageReceived {
+			t.Fatalf("queued %s %+v", broker.jobType, sent)
+		}
+		first := model.ReceivedMessage{Source: "email", Provider: "gmail", ExternalID: "m1"}.IdempotencyKey(budget)
+		if broker.opts.IdempotencyKey != first+":run:"+msg.ID.String() || *broker.opts.RootJobID != root.ID {
+			t.Fatalf("options = %+v", broker.opts)
+		}
+		if len(store.dismissed) != 2 {
+			t.Fatalf("dismissed %v, want the message and its report", store.dismissed)
+		}
+	})
+
+	t.Run("refuses a message that made its transaction", func(t *testing.T) {
+		_, msg, family := messageFamily(budget, model.MessageOutcomeTransactionCreated)
+		store := &fakeJobStore{jobs: map[uuid.UUID]*job.Job{msg.ID: &msg}, family: family}
+		broker := &runAgainBroker{}
+		err := NewJobService(store, broker, fakeConnections{}).RunAgain(ctx, msg.ID)
+		if !errs.HasCode(err, errs.CodeJobInvalidState) || broker.jobType != "" {
+			t.Fatalf("err = %v, queued %q", err, broker.jobType)
+		}
+	})
+}
+
+func TestJobServiceDismiss(t *testing.T) {
+	budget := uuid.New()
+	ctx := utils.WithBudgetID(context.Background(), budget)
+
+	t.Run("hides a finished message", func(t *testing.T) {
+		_, msg, family := messageFamily(budget, model.MessageOutcomeUnverified)
+		store := &fakeJobStore{jobs: map[uuid.UUID]*job.Job{msg.ID: &msg}, family: family}
+		if err := NewJobService(store, nil, fakeConnections{}).Dismiss(ctx, msg.ID); err != nil {
+			t.Fatal(err)
+		}
+		if len(store.dismissed) != 2 {
+			t.Fatalf("dismissed %v", store.dismissed)
+		}
+	})
+
+	t.Run("refuses a job that fanned out, or one still running", func(t *testing.T) {
+		root, msg, family := messageFamily(budget, model.MessageOutcomeUnverified)
+		store := &fakeJobStore{jobs: map[uuid.UUID]*job.Job{root.ID: &root}, family: family}
+		if err := NewJobService(store, nil, fakeConnections{}).Dismiss(ctx, root.ID); !errs.HasCode(err, errs.CodeJobInvalidState) {
+			t.Fatalf("fan out: %v", err)
+		}
+		family[2].Status = job.RunningJobStatus
+		store = &fakeJobStore{jobs: map[uuid.UUID]*job.Job{msg.ID: &msg}, family: family}
+		if err := NewJobService(store, nil, fakeConnections{}).Dismiss(ctx, msg.ID); !errs.HasCode(err, errs.CodeJobInvalidState) {
+			t.Fatalf("running: %v", err)
+		}
+		if len(store.dismissed) != 0 {
+			t.Fatalf("dismissed %v", store.dismissed)
+		}
+	})
+}
+
+func TestJobServiceRetryFailed(t *testing.T) {
+	ctx := utils.WithBudgetID(context.Background(), uuid.New())
+	store := &fakeJobStore{jobs: map[uuid.UUID]*job.Job{}}
+	got, err := NewJobService(store, nil, fakeConnections{}).RetryFailed(ctx, "MESSAGE_EXTRACT_FAILED")
+	if err != nil || got != 3 || store.retriedCode != "MESSAGE_EXTRACT_FAILED" || store.retriedLimit != maxRetryFailed {
+		t.Fatalf("got %d, %v, store %+v", got, err, store)
 	}
 }

@@ -28,8 +28,11 @@ func (f *fakeJobService) Get(context.Context, uuid.UUID) (service.JobDetail, err
 	return service.JobDetail{}, f.err
 }
 
-func (f *fakeJobService) Retry(context.Context, uuid.UUID) error  { return f.err }
-func (f *fakeJobService) Cancel(context.Context, uuid.UUID) error { return f.err }
+func (f *fakeJobService) Retry(context.Context, uuid.UUID) error           { return f.err }
+func (f *fakeJobService) Cancel(context.Context, uuid.UUID) error          { return f.err }
+func (f *fakeJobService) RunAgain(context.Context, uuid.UUID) error        { return f.err }
+func (f *fakeJobService) Dismiss(context.Context, uuid.UUID) error         { return f.err }
+func (f *fakeJobService) RetryFailed(context.Context, string) (int, error) { return 2, f.err }
 
 func jobRouter(svc service.JobService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
@@ -39,6 +42,9 @@ func jobRouter(svc service.JobService) *gin.Engine {
 	r.GET("/jobs/:id", h.Get)
 	r.POST("/jobs/:id/retry", h.Retry)
 	r.POST("/jobs/:id/cancel", h.Cancel)
+	r.POST("/jobs/retry-failed", h.RetryFailed)
+	r.POST("/jobs/:id/run-again", h.RunAgain)
+	r.POST("/jobs/:id/dismiss", h.Dismiss)
 	return r
 }
 

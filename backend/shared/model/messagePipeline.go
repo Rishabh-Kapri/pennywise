@@ -198,5 +198,9 @@ type TransactionLearnPayload struct {
 // message uses it: the dedupe index includes the job type, so a retried step
 // re-queues nothing and one key can't collide across steps.
 func (m ReceivedMessage) IdempotencyKey(budgetID uuid.UUID) string {
-	return fmt.Sprintf("%s:%s:%s:%s", budgetID, m.Source, m.Provider, m.ExternalID)
+	key := fmt.Sprintf("%s:%s:%s:%s", budgetID, m.Source, m.Provider, m.ExternalID)
+	if m.RunID != "" {
+		key += ":run:" + m.RunID
+	}
+	return key
 }

@@ -1345,6 +1345,11 @@ func (m *mockTransactionService) CreateInTx(ctx context.Context, txn model.Trans
 	}
 	return nil, args.Error(1)
 }
+func (m *mockTransactionService) BulkDelete(ctx context.Context, ids []uuid.UUID) (int, error) {
+	args := m.Called(ctx, ids)
+	return args.Int(0), args.Error(1)
+}
+
 func (m *mockTransactionService) DeleteById(ctx context.Context, id uuid.UUID) error {
 	return m.Called(ctx, id).Error(0)
 }

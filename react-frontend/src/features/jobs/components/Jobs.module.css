@@ -902,3 +902,22 @@
   font-size: 0.875rem;
   color: var(--color-text-secondary);
 }
+
+.failureLine {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.failureLine > .failure {
+  flex: 1;
+  min-width: 0;
+}
+
+.page .rowActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 1rem 0.75rem;
+}

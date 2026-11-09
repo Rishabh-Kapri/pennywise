@@ -22,7 +22,7 @@
           "id": "llm",
           "label": "LLM",
           "description": "Uses a large language model",
-          "maxTokens": 512,
+          "maxTokens": 2048,
           "usesModel": true,
           "modelKind": "chat"
         },
@@ -43,7 +43,7 @@
           "id": "llm",
           "label": "LLM",
           "description": "Uses a large language model",
-          "maxTokens": 512,
+          "maxTokens": 2048,
           "usesModel": true,
           "modelKind": "chat"
         }
@@ -88,7 +88,7 @@
           "label": "Your AI",
           "description": "Asks your own AI provider.",
           "usesModel": true,
-          "maxTokens": 512,
+          "maxTokens": 2048,
           "modelKind": "chat"
         }
       ]
