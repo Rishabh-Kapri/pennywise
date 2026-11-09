@@ -1,0 +1,202 @@
+/* Fills whatever height the dashboard grid gives it; the list scrolls. */
+.card {
+  height: 100%;
+  min-height: 0;
+  gap: 0.9rem;
+  padding-bottom: 0.5rem;
+}
+
+.seeAll {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--color-text-secondary);
+  font-size: 0.825rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.seeAll:hover {
+  color: var(--accent);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.reviewLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.reviewLink:hover {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.scroller {
+  flex: 1;
+  min-height: 0;
+  margin: 0 -1.25rem;
+  padding: 0 0.6rem 0.75rem;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-text-secondary) 40%, transparent) transparent;
+}
+
+.day + .day {
+  margin-top: 0.5rem;
+}
+
+.dayLabel {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  padding: 0.35rem 0.65rem;
+  background: var(--dash-surface);
+  color: var(--color-text-secondary);
+  font-size: 0.775rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.65rem;
+  color: inherit;
+  text-decoration: none;
+  transition: background 0.15s ease;
+}
+
+.row:hover,
+.row:focus-visible {
+  background: var(--raised-bg);
+  color: inherit;
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.rowIcon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 0.6rem;
+  background: var(--raised-bg);
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+
+.row:hover .rowIcon {
+  background: var(--dash-surface);
+}
+
+.rowIcon[data-kind='income'] {
+  background: color-mix(in srgb, var(--color-success) 14%, transparent);
+  color: var(--color-success);
+}
+
+.rowIcon[data-kind='uncategorized'] {
+  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+  color: var(--color-warning);
+}
+
+.rowBody {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+
+.payee {
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: 0.9rem;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: 0.775rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metaWarn {
+  color: var(--color-warning);
+  font-weight: 600;
+}
+
+.rowEnd {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.15rem;
+}
+
+.amount {
+  color: var(--color-text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.amount[data-kind='income'] {
+  color: var(--color-success);
+}
+
+.amount[data-kind='transfer'] {
+  color: var(--color-text-secondary);
+}
+
+.reviewBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.empty {
+  margin: 0;
+  padding: 2rem 0;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  text-align: center;
+}

@@ -25,10 +25,10 @@
   align-items: center;
   gap: 0.35rem;
   background: none;
-  border: 1px solid rgba(239, 68, 68, 0.4);
+  border: 1px solid color-mix(in srgb, var(--color-error) 40%, transparent);
   border-radius: 8px;
   padding: 0.4rem 0.7rem;
-  color: #ef4444;
+  color: var(--color-error);
   font-size: 0.82rem;
   font-weight: 500;
   cursor: pointer;
@@ -36,5 +36,5 @@
 }
 
 .clearBtn:hover {
-  background: rgba(239, 68, 68, 0.08);
+  background: color-mix(in srgb, var(--color-error) 8%, transparent);
 }

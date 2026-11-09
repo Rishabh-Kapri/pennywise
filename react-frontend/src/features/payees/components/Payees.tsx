@@ -1,429 +1,459 @@
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { useHeader } from '@/context/HeaderContext';
-import { fetchAllPayees } from '@/features/payees/store';
-import type { Payee, PayeeRule } from '@/features/payees/types/payee.types';
-import { apiClient, LoadingState, toast } from '@/utils';
-import { getLocaleDate } from '@/utils/date.utils';
-import { PencilSimpleLine as Edit2, Plus, FloppyDisk as Save, MagnifyingGlass as Search, Tag as Tags, Trash as Trash2, Users as UsersRound, X } from '@phosphor-icons/react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { selectInflowCategory } from '@/features/category/store/categorySlice';
+import {
+  createPayee,
+  deletePayeeRule,
+  deletePayees,
+  mergePayees,
+  type PayeeRuleInput,
+  refreshPayeeData,
+  renamePayee,
+  savePayeeRule,
+} from '@/features/payees/store';
+import type { PayeeRule } from '@/features/payees/types/payee.types';
+import type { TransactionsLocationState } from '@/features/transactions/types/filter.types';
+import { LoadingState, errorMessage, toast } from '@/utils';
+import { ListChecks, MagnifyingGlass, Plus, Users, X } from '@phosphor-icons/react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { findDuplicateGroups } from '../payeeUtils';
+import { MergePayeesModal } from './MergePayeesModal';
+import { ConfirmDeleteDialog, NewPayeeDialog } from './PayeeDialogs';
+import { PayeeDetail } from './PayeeDetail';
+import { type PayeeFilter, PayeeList, type PayeeSort } from './PayeeList';
+import { RulesView } from './RulesView';
 import styles from './Payees.module.css';
 
-// Oldest rule first. The API orders rules by match string, so the created
-// dates shown on each row would otherwise read out of sequence.
-function sortRulesByCreatedAt(rules: PayeeRule[]): PayeeRule[] {
-  return [...rules].sort((a, b) => {
-    const aTime = a.createdAt ? new Date(a.createdAt).getTime() : NaN;
-    const bTime = b.createdAt ? new Date(b.createdAt).getTime() : NaN;
-    const aValid = !Number.isNaN(aTime);
-    const bValid = !Number.isNaN(bTime);
-    // rules without a usable date sink to the bottom, ordered by match string
-    if (!aValid || !bValid) {
-      if (aValid !== bValid) return aValid ? -1 : 1;
-      return a.matchString.localeCompare(b.matchString);
-    }
-    if (aTime !== bTime) return aTime - bTime;
-    return a.matchString.localeCompare(b.matchString);
-  });
-}
+type View = 'payees' | 'rules';
 
-function formatRuleCreatedAt(createdAt?: string): string | null {
-  if (!createdAt) return null;
-  const date = new Date(createdAt);
-  if (Number.isNaN(date.getTime())) return null;
-  return getLocaleDate(createdAt, { day: 'numeric', month: 'short', year: 'numeric' });
-}
-
-type RuleForm = {
-  id?: string;
-  matchString: string;
-  matchType: string;
-  categoryId: string;
-};
-
-const emptyRuleForm: RuleForm = {
-  matchString: '',
-  matchType: 'EXACT',
-  categoryId: '',
-};
-
-function getPayeeId(payee: Payee) {
-  return payee.id ?? '';
-}
+type PendingDelete = { kind: 'payees'; ids: string[] } | { kind: 'rule'; rule: PayeeRule };
 
 export default function Payees() {
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const { setHeaderContent } = useHeader();
-  const { allPayees, loading, error } = useAppSelector((state) => state.payees);
+  const { allPayees, loading, error, statsById, rules, rulesLoading } = useAppSelector((state) => state.payees);
   const categoryGroups = useAppSelector((state) => state.categories.allCategoryGroups);
-  const [selectedPayeeId, setSelectedPayeeId] = useState<string>('');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [rules, setRules] = useState<PayeeRule[]>([]);
-  const [rulesLoading, setRulesLoading] = useState<LoadingState>(LoadingState.IDLE);
-  const [rulesError, setRulesError] = useState<string | null>(null);
-  const [newPayeeName, setNewPayeeName] = useState('');
-  const [editingPayeeId, setEditingPayeeId] = useState<string | null>(null);
-  const [payeeNameDraft, setPayeeNameDraft] = useState('');
-  const [ruleForm, setRuleForm] = useState<RuleForm>(emptyRuleForm);
-  const [isSaving, setIsSaving] = useState(false);
+  const inflowCategory = useAppSelector(selectInflowCategory);
 
-  const categoryOptions = useMemo(
-    () => categoryGroups.flatMap((group) => group.categories ?? []),
-    [categoryGroups],
-  );
+  // view and selection live in the URL so back/forward and links work
+  const [searchParams, setSearchParams] = useSearchParams();
+  const view: View = searchParams.get('view') === 'rules' ? 'rules' : 'payees';
+  const selectedId = searchParams.get('payee') ?? '';
 
-  const fetchRules = useCallback((payeeId: string) => {
-    if (!payeeId) {
-      setRules([]);
-      return;
-    }
-
-    setRulesLoading(LoadingState.PENDING);
-    setRulesError(null);
-    apiClient
-      .get<PayeeRule[]>(`payees/${payeeId}/rules`)
-      .then((res) => {
-        setRules(sortRulesByCreatedAt(res ?? []));
-        setRulesLoading(LoadingState.SUCCESS);
-      })
-      .catch((err: Error) => {
-        setRules([]);
-        setRulesError(err.message || 'Failed to load payee rules');
-        setRulesLoading(LoadingState.ERROR);
-      });
-  }, []);
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<PayeeFilter>('all');
+  const [sort, setSort] = useState<PayeeSort>('name');
+  const [checkedIds, setCheckedIds] = useState<string[]>([]);
+  const [merge, setMerge] = useState<{ ids: string[]; suggestedTargetId?: string } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const searchRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setHeaderContent(null);
-    dispatch(fetchAllPayees());
+    dispatch(refreshPayeeData());
   }, [dispatch, setHeaderContent]);
 
-  const filteredPayees = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase();
-    return allPayees
-      .filter((payee) => !query || payee.name.toLowerCase().includes(query))
-      .sort((a, b) => a.name.localeCompare(b.name))
+  // "/" jumps to search from anywhere on the page
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== '/' || event.metaKey || event.ctrlKey) return;
+      const target = event.target as HTMLElement;
+      if (target.closest('input, textarea, select, [contenteditable="true"]')) return;
+      event.preventDefault();
+      searchRef.current?.focus();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
 
-  }, [allPayees, searchTerm]);
-
-  const selectedPayee = useMemo(
-    () => allPayees.find((payee) => getPayeeId(payee) === selectedPayeeId) ?? null,
-    [allPayees, selectedPayeeId],
+  const setParams = useCallback(
+    (next: { view?: View; payee?: string | null }) => {
+      setSearchParams(
+        (prev) => {
+          const params = new URLSearchParams(prev);
+          if (next.view) {
+            if (next.view === 'rules') params.set('view', 'rules');
+            else params.delete('view');
+          }
+          if (next.payee !== undefined) {
+            if (next.payee) params.set('payee', next.payee);
+            else params.delete('payee');
+          }
+          return params;
+        },
+        { replace: next.view === undefined },
+      );
+    },
+    [setSearchParams],
   );
 
+  const categoryNameById = useMemo(() => {
+    const names: Record<string, string> = {};
+    for (const group of categoryGroups) {
+      for (const category of group.categories ?? []) if (category.id) names[category.id] = category.name;
+    }
+    if (inflowCategory?.id) names[inflowCategory.id] = inflowCategory.name;
+    return names;
+  }, [categoryGroups, inflowCategory]);
+
+  const rulesByPayee = useMemo(() => {
+    const grouped: Record<string, PayeeRule[]> = {};
+    for (const rule of rules) (grouped[rule.payeeId] ??= []).push(rule);
+    for (const list of Object.values(grouped)) list.sort((a, b) => a.matchString.localeCompare(b.matchString));
+    return grouped;
+  }, [rules]);
+
+  const duplicateGroups = useMemo(() => findDuplicateGroups(allPayees, statsById), [allPayees, statsById]);
+  const selectedPayee = allPayees.find((payee) => payee.id === selectedId) ?? null;
+  const regularCount = allPayees.filter((payee) => !payee.transferAccountId).length;
+  const unusedCount = allPayees.filter(
+    (payee) => !payee.transferAccountId && payee.id && !(statsById[payee.id]?.transactionCount ?? 0),
+  ).length;
+
+  // drop checks for payees that no longer exist (merged or deleted)
   useEffect(() => {
-    fetchRules(selectedPayeeId);
-    setRuleForm(emptyRuleForm);
-  }, [fetchRules, selectedPayeeId]);
+    setCheckedIds((prev) => {
+      const next = prev.filter((id) => allPayees.some((payee) => payee.id === id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [allPayees]);
 
-  const refreshPayees = async () => {
-    await dispatch(fetchAllPayees()).unwrap();
-  };
+  // ── Actions ────────────────────────────────────────────────────────────────
 
-  const handleCreatePayee = async () => {
-    const name = newPayeeName.trim();
-    if (!name) return;
-    setIsSaving(true);
+  const run = async <T,>(task: () => Promise<T>, failTitle: string): Promise<T | undefined> => {
+    setSaving(true);
     try {
-      const created = await apiClient.post<Payee>('payees', { name } as Partial<Payee>);
-      await refreshPayees();
-      setSelectedPayeeId(created.id ?? selectedPayeeId);
-      setNewPayeeName('');
-      toast.success('Payee added');
+      return await task();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to add payee');
+      toast.error(failTitle, { description: errorMessage(err, 'Please try again.') });
+      return undefined;
     } finally {
-      setIsSaving(false);
+      setSaving(false);
     }
   };
 
-  const startEditingPayee = (payee: Payee) => {
-    setEditingPayeeId(getPayeeId(payee));
-    setPayeeNameDraft(payee.name);
+  const handleCreate = async (name: string) => {
+    const created = await run(() => dispatch(createPayee(name)).unwrap(), "Couldn't add payee");
+    if (!created) return;
+    setIsCreating(false);
+    setFilter('all');
+    setParams({ view: 'payees', payee: created.id ?? null });
+    toast.success('Payee added', { description: 'Add a rule so bank emails find it.' });
   };
 
-  const handleUpdatePayee = async (payeeId: string) => {
-    const name = payeeNameDraft.trim();
-    if (!name) return;
-    setIsSaving(true);
-    try {
-      await apiClient.patch<Payee>(`payees/${payeeId}`, { name } as Partial<Payee>);
-      await refreshPayees();
-      setEditingPayeeId(null);
-      setPayeeNameDraft('');
-      toast.success('Payee updated');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to update payee');
-    } finally {
-      setIsSaving(false);
+  const handleRename = async (name: string) => {
+    if (!selectedId) return false;
+    const done = await run(async () => {
+      await dispatch(renamePayee({ id: selectedId, name })).unwrap();
+      return true;
+    }, "Couldn't rename payee");
+    if (done) toast.success('Payee renamed');
+    return Boolean(done);
+  };
+
+  const handleSaveRule = async (input: PayeeRuleInput) => {
+    const done = await run(async () => {
+      await dispatch(savePayeeRule(input)).unwrap();
+      return true;
+    }, "Couldn't save rule");
+    if (done) {
+      const moved = input.originalPayeeId && input.originalPayeeId !== input.payeeId;
+      toast.success(input.ruleId ? (moved ? 'Rule moved' : 'Rule updated') : 'Rule added');
     }
+    return Boolean(done);
   };
 
-  const handleDeletePayee = async (payeeId: string) => {
-    if (!window.confirm('Delete this payee? Existing transactions may still reference it.')) return;
-    setIsSaving(true);
-    try {
-      await apiClient.delete(`payees/${payeeId}`);
-      await refreshPayees();
-      if (selectedPayeeId === payeeId) {
-        setSelectedPayeeId('');
-      }
-      toast.success('Payee deleted');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to delete payee');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleSaveRule = async () => {
-    if (!selectedPayeeId || !ruleForm.matchString.trim()) return;
-    setIsSaving(true);
-    const payload = {
-      matchString: ruleForm.matchString.trim(),
-      matchType: ruleForm.matchType,
-      categoryId: ruleForm.categoryId || undefined,
-    } as Partial<PayeeRule>;
-    try {
-      if (ruleForm.id) {
-        await apiClient.patch<PayeeRule>(`payees/${selectedPayeeId}/rules/${ruleForm.id}`, payload);
-        toast.success('Rule updated');
-      } else {
-        await apiClient.post<PayeeRule>(`payees/${selectedPayeeId}/rules`, payload);
-        toast.success('Rule added');
-      }
-      setRuleForm(emptyRuleForm);
-      fetchRules(selectedPayeeId);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to save rule');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleEditRule = (rule: PayeeRule) => {
-    setRuleForm({
-      id: rule.id,
-      matchString: rule.matchString,
-      matchType: rule.matchType || 'EXACT',
-      categoryId: rule.categoryId ?? '',
+  const handleMerge = async (targetId: string, sourceIds: string[], name: string) => {
+    const target = allPayees.find((payee) => payee.id === targetId);
+    const result = await run(async () => {
+      const merged = await dispatch(mergePayees({ targetId, sourceIds })).unwrap();
+      if (target && name && name !== target.name) await dispatch(renamePayee({ id: targetId, name })).unwrap();
+      return merged;
+    }, "Couldn't merge payees");
+    if (!result) return;
+    setMerge(null);
+    setCheckedIds([]);
+    setParams({ view: 'payees', payee: targetId });
+    if (filter === 'duplicates' && duplicateGroups.length <= 1) setFilter('all');
+    toast.success(`Merged ${result.mergedPayees + 1} payees`, {
+      description: `${result.transactions} ${result.transactions === 1 ? 'transaction' : 'transactions'} and ${result.rules} ${result.rules === 1 ? 'rule' : 'rules'} moved to ${name || target?.name}.`,
     });
   };
 
-  const handleDeleteRule = async (ruleId: string) => {
-    if (!selectedPayeeId || !window.confirm('Delete this payee rule?')) return;
-    setIsSaving(true);
-    try {
-      await apiClient.delete(`payees/${selectedPayeeId}/rules/${ruleId}`);
-      fetchRules(selectedPayeeId);
-      if (ruleForm.id === ruleId) setRuleForm(emptyRuleForm);
-      toast.success('Rule deleted');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to delete rule');
-    } finally {
-      setIsSaving(false);
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    if (pendingDelete.kind === 'rule') {
+      const { rule } = pendingDelete;
+      const done = await run(async () => {
+        await dispatch(deletePayeeRule({ payeeId: rule.payeeId, ruleId: rule.id })).unwrap();
+        return true;
+      }, "Couldn't delete rule");
+      if (done) {
+        setPendingDelete(null);
+        toast.success('Rule deleted');
+      }
+      return;
     }
+    const { ids } = pendingDelete;
+    const failed = await run(() => dispatch(deletePayees(ids)).unwrap(), "Couldn't delete payees");
+    if (!failed) return;
+    setPendingDelete(null);
+    setCheckedIds((prev) => prev.filter((id) => failed.includes(id)));
+    if (ids.includes(selectedId) && !failed.includes(selectedId)) setParams({ payee: null });
+    const deleted = ids.length - failed.length;
+    if (failed.length === 0) toast.success(deleted === 1 ? 'Payee deleted' : `${deleted} payees deleted`);
+    else toast.error(`Deleted ${deleted} of ${ids.length} payees`, { description: 'The rest are still selected; try again.' });
   };
 
+  const viewTransactions = () => {
+    if (!selectedPayee?.id) return;
+    const state: TransactionsLocationState = { payeeFilter: { id: selectedPayee.id, name: selectedPayee.name } };
+    navigate('/transactions', { state });
+  };
+
+  // ── Delete dialog copy ────────────────────────────────────────────────────
+
+  const deleteDialog = (() => {
+    if (!pendingDelete) return null;
+    if (pendingDelete.kind === 'rule') {
+      return {
+        title: 'Delete this rule?',
+        body: (
+          <p>
+            Bank strings matching <code>{pendingDelete.rule.matchString}</code> will no longer go straight to{' '}
+            {pendingDelete.rule.payeeName ?? 'this payee'}. Existing transactions don’t change.
+          </p>
+        ),
+        confirmLabel: 'Delete rule',
+      };
+    }
+    const targets = pendingDelete.ids
+      .map((id) => allPayees.find((payee) => payee.id === id))
+      .filter((payee) => payee !== undefined);
+    const txns = targets.reduce((sum, payee) => sum + (statsById[payee.id!]?.transactionCount ?? 0), 0);
+    const ruleCount = targets.reduce((sum, payee) => sum + (statsById[payee.id!]?.ruleCount ?? 0), 0);
+    const single = targets.length === 1 ? targets[0] : undefined;
+    return {
+      title: single ? `Delete ${single.name}?` : `Delete ${targets.length} payees?`,
+      body: (
+        <>
+          {txns > 0 ? (
+            <p>
+              {txns} {txns === 1 ? 'transaction keeps' : 'transactions keep'} the name, but it can’t be picked again.
+              Merging moves them to another payee instead.
+            </p>
+          ) : (
+            <p>{single ? 'It has' : 'They have'} no transactions.</p>
+          )}
+          {ruleCount > 0 && (
+            <p>
+              {ruleCount} {ruleCount === 1 ? 'rule stops' : 'rules stop'} matching bank emails.
+            </p>
+          )}
+        </>
+      ),
+      confirmLabel: single ? 'Delete payee' : `Delete ${targets.length} payees`,
+      alternative:
+        txns > 0
+          ? {
+              label: 'Merge instead',
+              onClick: () => {
+                setPendingDelete(null);
+                setMerge({ ids: pendingDelete.ids });
+              },
+            }
+          : undefined,
+    };
+  })();
+
   return (
-    <section className={styles.page}>
-      <div className={styles.heading}>
-        <div>
-          <span className={styles.kicker}>Payee rules</span>
+    <section className={`${styles.page} ${selectedPayee && view === 'payees' ? styles.hasSelection : ''}`}>
+      <header className={styles.top}>
+        <div className={styles.titleBlock}>
           <h1>Payees</h1>
-          <p>Review saved payees, their bank match strings, and default categories.</p>
+          <p>Who you pay, and the rules that recognise them in bank emails.</p>
         </div>
-        <div className={styles.countBadge}>{allPayees.length} payees</div>
+        <div className={styles.topActions}>
+          <dl className={styles.stats}>
+            <div>
+              <dt>Payees</dt>
+              <dd>{regularCount}</dd>
+            </div>
+            <div>
+              <dt>Rules</dt>
+              <dd>{rules.length}</dd>
+            </div>
+            <div>
+              <dt>Unused</dt>
+              <dd>{unusedCount}</dd>
+            </div>
+          </dl>
+          <button type="button" className={styles.addButton} onClick={() => setIsCreating(true)}>
+            <Plus size={16} weight="bold" /> New payee
+          </button>
+        </div>
+      </header>
+
+      <div className={styles.toolbar}>
+        <div className={styles.tabs} role="tablist" aria-label="Payees view">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'payees'}
+            className={view === 'payees' ? styles.tabActive : ''}
+            onClick={() => setParams({ view: 'payees' })}>
+            <Users size={16} /> Payees
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === 'rules'}
+            className={view === 'rules' ? styles.tabActive : ''}
+            onClick={() => setParams({ view: 'rules' })}>
+            <ListChecks size={16} /> Rules
+          </button>
+        </div>
+        <label className={styles.search}>
+          <MagnifyingGlass size={16} />
+          <input
+            ref={searchRef}
+            value={search}
+            placeholder={view === 'rules' ? 'Search bank strings, payees, categories' : 'Search payees and their bank strings'}
+            onChange={(event) => setSearch(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                setSearch('');
+                event.currentTarget.blur();
+              }
+            }}
+          />
+          {search ? (
+            <button type="button" className={styles.searchClear} aria-label="Clear search" onClick={() => setSearch('')}>
+              <X size={14} />
+            </button>
+          ) : (
+            <kbd>/</kbd>
+          )}
+        </label>
       </div>
 
-      <div className={styles.contentGrid}>
-        <div className={styles.listPanel}>
-          <div className={styles.addPayeeForm}>
-            <input
-              type="text"
-              value={newPayeeName}
-              placeholder="New payee name"
-              onChange={(event) => setNewPayeeName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') handleCreatePayee();
-              }}
-            />
-            <button type="button" className={styles.primaryButton} onClick={handleCreatePayee} disabled={isSaving}>
-              <Plus size={16} />
-              Add
-            </button>
-          </div>
+      {error && allPayees.length === 0 && <div className={styles.errorState}>{error}</div>}
 
-          <label className={styles.searchBox}>
-            <Search size={16} />
-            <input
-              type="text"
-              value={searchTerm}
-              placeholder="Search payees"
-              onChange={(event) => setSearchTerm(event.target.value)}
-            />
-          </label>
-
-          {loading === LoadingState.PENDING && <div className={styles.emptyState}>Loading payees...</div>}
-          {loading === LoadingState.ERROR && <div className={styles.errorState}>{error}</div>}
-          {loading !== LoadingState.PENDING && filteredPayees.length === 0 && (
-            <div className={styles.emptyState}>No payees found.</div>
-          )}
-
-          <div className={styles.payeeList}>
-            {filteredPayees.map((payee) => {
-              const payeeId = getPayeeId(payee);
-              const isSelected = payeeId === selectedPayeeId;
-              const isEditing = payeeId === editingPayeeId;
-              return (
-                <div key={payeeId} className={`${styles.payeeItem} ${isSelected ? styles.payeeItemSelected : ''}`}>
-                  <button type="button" className={styles.payeeSelectButton} onClick={() => setSelectedPayeeId(payeeId)}>
-                    <span className={styles.payeeIcon}>
-                      <UsersRound size={16} weight={isSelected ? 'fill' : 'regular'} />
-                    </span>
-                    {isEditing ? (
-                      <input
-                        type="text"
-                        value={payeeNameDraft}
-                        onClick={(event) => event.stopPropagation()}
-                        onChange={(event) => setPayeeNameDraft(event.target.value)}
-                      />
-                    ) : (
-                      <span>{payee.name}</span>
-                    )}
-                  </button>
-                  <div className={styles.rowActions}>
-                    {isEditing ? (
-                      <>
-                        <button type="button" aria-label="Save payee" onClick={() => handleUpdatePayee(payeeId)}>
-                          <Save size={15} />
-                        </button>
-                        <button type="button" aria-label="Cancel payee edit" onClick={() => setEditingPayeeId(null)}>
-                          <X size={15} />
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          className={styles.editButton}
-                          aria-label="Edit payee"
-                          onClick={() => startEditingPayee(payee)}>
-                          <Edit2 size={15} />
-                        </button>
-                        <button
-                          type="button"
-                          className={styles.deleteButton}
-                          aria-label="Delete payee"
-                          onClick={() => handleDeletePayee(payeeId)}>
-                          <Trash2 size={15} />
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <aside className={styles.detailPanel}>
-          {selectedPayee ? (
-            <>
-              <div className={styles.detailHeader}>
-                <div className={styles.detailIcon}>
-                  <Tags size={20} />
-                </div>
-                <div>
-                  <span className={styles.kicker}>Selected payee</span>
-                  <h2>{selectedPayee.name}</h2>
-                </div>
-              </div>
-
-              <div className={styles.ruleForm}>
-                <input
-                  type="text"
-                  value={ruleForm.matchString}
-                  placeholder="Match string"
-                  onChange={(event) => setRuleForm((prev) => ({ ...prev, matchString: event.target.value }))}
-                />
-                <select
-                  value={ruleForm.matchType}
-                  onChange={(event) => setRuleForm((prev) => ({ ...prev, matchType: event.target.value }))}>
-                  <option value="EXACT">Exact</option>
-                  <option value="PATTERN">Pattern</option>
-                </select>
-                <select
-                  value={ruleForm.categoryId}
-                  onChange={(event) => setRuleForm((prev) => ({ ...prev, categoryId: event.target.value }))}>
-                  <option value="">No default category</option>
-                  {categoryOptions.map((category) => (
-                    <option key={category.id} value={category.id ?? ''}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
-                <button type="button" className={styles.primaryButton} onClick={handleSaveRule} disabled={isSaving}>
-                  {ruleForm.id ? <Save size={16} /> : <Plus size={16} />}
-                  {ruleForm.id ? 'Save rule' : 'Add rule'}
-                </button>
-                {ruleForm.id && (
-                  <button type="button" className={styles.secondaryButton} onClick={() => setRuleForm(emptyRuleForm)}>
-                    Cancel
+      {view === 'payees' ? (
+        <div className={styles.contentGrid}>
+          <PayeeList
+            payees={allPayees}
+            statsById={statsById}
+            rulesByPayee={rulesByPayee}
+            duplicateGroups={duplicateGroups}
+            search={search}
+            filter={filter}
+            sort={sort}
+            selectedId={selectedId}
+            checkedIds={checkedIds}
+            loading={loading === LoadingState.PENDING}
+            onFilterChange={(next) => {
+              setFilter(next);
+              setCheckedIds([]);
+            }}
+            onSortChange={setSort}
+            onSelect={(id) => setParams({ payee: id })}
+            onCheckedChange={setCheckedIds}
+            onMerge={(ids, suggestedTargetId) => setMerge({ ids, suggestedTargetId })}
+            onDelete={(ids) => setPendingDelete({ kind: 'payees', ids })}
+          />
+          <aside className={styles.detailPanel}>
+            {selectedPayee ? (
+              <PayeeDetail
+                payee={selectedPayee}
+                stats={statsById[selectedPayee.id!]}
+                rules={rulesByPayee[selectedPayee.id!] ?? []}
+                allRules={rules}
+                payees={allPayees}
+                categoryNameById={categoryNameById}
+                saving={saving}
+                onBack={() => setParams({ payee: null })}
+                onRename={handleRename}
+                onDelete={() => setPendingDelete({ kind: 'payees', ids: [selectedPayee.id!] })}
+                onMerge={() => setMerge({ ids: [selectedPayee.id!], suggestedTargetId: selectedPayee.id })}
+                onViewTransactions={viewTransactions}
+                onSaveRule={handleSaveRule}
+                onDeleteRule={(rule) => setPendingDelete({ kind: 'rule', rule })}
+              />
+            ) : (
+              <div className={styles.emptyDetail}>
+                <Users size={28} />
+                <h3>Pick a payee</h3>
+                <p>See how much goes to them, which category they usually land in, and the rules that match them.</p>
+                {duplicateGroups.length > 0 && (
+                  <button type="button" className={styles.secondaryButton} onClick={() => setFilter('duplicates')}>
+                    Review {duplicateGroups.length} possible {duplicateGroups.length === 1 ? 'duplicate' : 'duplicates'}
                   </button>
                 )}
+                <p className={styles.kbdHint}>
+                  <kbd>/</kbd> search · <kbd>↑</kbd>
+                  <kbd>↓</kbd> move through the list
+                </p>
               </div>
+            )}
+          </aside>
+        </div>
+      ) : (
+        <RulesView
+          rules={rules}
+          payees={allPayees}
+          categoryNameById={categoryNameById}
+          search={search}
+          loading={rulesLoading === LoadingState.PENDING}
+          saving={saving}
+          onOpenPayee={(id) => {
+            setFilter('all');
+            setSearch('');
+            setParams({ view: 'payees', payee: id });
+          }}
+          onSaveRule={handleSaveRule}
+          onDeleteRule={(rule) => setPendingDelete({ kind: 'rule', rule })}
+        />
+      )}
 
-              <div className={styles.summaryCard}>
-                <span>Match strings</span>
-                <strong>{rules.length}</strong>
-              </div>
+      <MergePayeesModal
+        isOpen={merge !== null}
+        initialIds={merge?.ids ?? []}
+        suggestedTargetId={merge?.suggestedTargetId}
+        payees={allPayees}
+        statsById={statsById}
+        saving={saving}
+        onClose={() => setMerge(null)}
+        onConfirm={handleMerge}
+      />
 
-              {rulesLoading === LoadingState.PENDING && <div className={styles.emptyState}>Loading rules...</div>}
-              {rulesLoading === LoadingState.ERROR && <div className={styles.errorState}>{rulesError}</div>}
-              {rulesLoading !== LoadingState.PENDING && rules.length === 0 && (
-                <div className={styles.emptyState}>No payee rules saved for this payee.</div>
-              )}
+      <ConfirmDeleteDialog
+        isOpen={deleteDialog !== null}
+        title={deleteDialog?.title ?? ''}
+        body={deleteDialog?.body}
+        confirmLabel={deleteDialog?.confirmLabel ?? 'Delete'}
+        alternative={deleteDialog && 'alternative' in deleteDialog ? deleteDialog.alternative : undefined}
+        saving={saving}
+        onClose={() => setPendingDelete(null)}
+        onConfirm={confirmDelete}
+      />
 
-              <div className={styles.rulesList}>
-                {rules.map((rule) => {
-                  const createdAt = formatRuleCreatedAt(rule.createdAt);
-                  return (
-                    <div key={rule.id} className={styles.ruleRow}>
-                      <div className={styles.ruleMatch}>
-                        <span className={styles.ruleType}>{rule.matchType}</span>
-                        <strong>{rule.matchString}</strong>
-                        {createdAt && <span className={styles.ruleCreatedAt}>Created {createdAt}</span>}
-                      </div>
-                      <div className={styles.ruleCategory}>
-                        <span>Default category</span>
-                        <strong>{rule.categoryName ?? 'Uncategorized'}</strong>
-                      </div>
-                      <div className={styles.rowActions}>
-                        <button
-                          type="button"
-                          className={styles.editButton}
-                          aria-label="Edit rule"
-                          onClick={() => handleEditRule(rule)}>
-                          <Edit2 size={15} />
-                        </button>
-                        <button
-                          type="button"
-                          className={styles.deleteButton}
-                          aria-label="Delete rule"
-                          onClick={() => handleDeleteRule(rule.id)}>
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          ) : (
-            <div className={styles.emptyDetail}>Select a payee to view match strings.</div>
-          )}
-        </aside>
-      </div>
+      <NewPayeeDialog
+        isOpen={isCreating}
+        payees={allPayees}
+        saving={saving}
+        onClose={() => setIsCreating(false)}
+        onCreate={handleCreate}
+        onOpenExisting={(id) => {
+          setIsCreating(false);
+          setFilter('all');
+          setParams({ view: 'payees', payee: id });
+        }}
+      />
     </section>
   );
 }

@@ -5,13 +5,11 @@ import (
 	"fmt"
 	"strings"
 
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
-	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 type BudgetService interface {
@@ -25,6 +23,7 @@ type budgetService struct {
 	payeeRepo    repository.PayeesRepository
 	catRepo      repository.CategoryRepository
 	catGroupRepo repository.CategoryGroupRepository
+	dbTxn        repository.DBTxn
 }
 
 func NewBudgetService(
@@ -32,8 +31,9 @@ func NewBudgetService(
 	payeeRepo repository.PayeesRepository,
 	catRepo repository.CategoryRepository,
 	catGroupRepo repository.CategoryGroupRepository,
+	dbTxn repository.DBTxn,
 ) BudgetService {
-	return &budgetService{repo, payeeRepo, catRepo, catGroupRepo}
+	return &budgetService{repo, payeeRepo, catRepo, catGroupRepo, dbTxn}
 }
 
 func (s *budgetService) GetAll(ctx context.Context, userID uuid.UUID) ([]model.Budget, error) {
@@ -52,9 +52,9 @@ func (s *budgetService) Create(ctx context.Context, input model.CreateBudgetRequ
 	}
 	isFirstBudget := len(existingBudgets) == 0
 
-	err = utils.WithTx(ctx, s.repo.GetDB(), func(tx pgx.Tx) error {
+	err = s.dbTxn.Do(ctx, func(ctx context.Context) error {
 		// 1. create budget
-		budget, err := s.repo.Create(ctx, tx, name, userID)
+		budget, err := s.repo.Create(ctx, name, userID)
 		if err != nil {
 			return fmt.Errorf("budgetService.Create; error creating budget: %v", err)
 		}
@@ -66,7 +66,7 @@ func (s *budgetService) Create(ctx context.Context, input model.CreateBudgetRequ
 			Hidden:   false,
 			IsSystem: true,
 		}
-		createdGroup, err := s.catGroupRepo.Create(ctx, tx, catGroup)
+		createdGroup, err := s.catGroupRepo.Create(ctx, catGroup)
 		logger.Logger(ctx).Debug("created internal master category group", "group", createdGroup)
 		if err != nil {
 			return fmt.Errorf("budgetService.Create; error creating internal master category group: %v", err)
@@ -77,7 +77,7 @@ func (s *budgetService) Create(ctx context.Context, input model.CreateBudgetRequ
 			Hidden:   false,
 			IsSystem: true,
 		}
-		createdCCGroup, err := s.catGroupRepo.Create(ctx, tx, ccGroup)
+		createdCCGroup, err := s.catGroupRepo.Create(ctx, ccGroup)
 		if err != nil {
 			return fmt.Errorf("budgetService.Create; error creating internal cc category group: %v", err)
 		}
@@ -86,7 +86,7 @@ func (s *budgetService) Create(ctx context.Context, input model.CreateBudgetRequ
 			Name:     "Starting Balance",
 			BudgetID: budget.ID,
 		}
-		createdPayee, err := s.payeeRepo.Create(ctx, tx, startingBalPayee)
+		createdPayee, err := s.payeeRepo.Create(ctx, startingBalPayee)
 		if err != nil {
 			return fmt.Errorf("budgetService.Create; error creating internal starting balance payee: %v", err)
 		}
@@ -99,7 +99,7 @@ func (s *budgetService) Create(ctx context.Context, input model.CreateBudgetRequ
 			IsSystem:        true,
 		}
 		logger.Logger(ctx).Debug("created inflow category", "category", cat)
-		createdCat, err := s.catRepo.Create(ctx, tx, cat)
+		createdCat, err := s.catRepo.Create(ctx, cat)
 		if err != nil {
 			return fmt.Errorf("budgetService.Create; error creating internal master category: %v", err)
 		}
@@ -110,7 +110,7 @@ func (s *budgetService) Create(ctx context.Context, input model.CreateBudgetRequ
 				continue
 			}
 
-			createdTemplateGroup, err := s.catGroupRepo.Create(ctx, tx, model.CategoryGroup{
+			createdTemplateGroup, err := s.catGroupRepo.Create(ctx, model.CategoryGroup{
 				Name:     groupName,
 				BudgetID: budget.ID,
 				Hidden:   false,
@@ -126,7 +126,7 @@ func (s *budgetService) Create(ctx context.Context, input model.CreateBudgetRequ
 					continue
 				}
 
-				_, err = s.catRepo.Create(ctx, tx, model.Category{
+				_, err = s.catRepo.Create(ctx, model.Category{
 					Name:            categoryName,
 					BudgetID:        budget.ID,
 					CategoryGroupID: createdTemplateGroup.ID,
@@ -149,7 +149,7 @@ func (s *budgetService) Create(ctx context.Context, input model.CreateBudgetRequ
 				StartingBalPayeeID: createdPayee.ID,
 			},
 		}
-		err = s.repo.UpdateById(ctx, tx, budget.ID, updatedBudget)
+		err = s.repo.UpdateById(ctx, budget.ID, updatedBudget)
 		if err != nil {
 			return fmt.Errorf("budgetService.Create; error updating budget metadata: %v", err)
 		}
@@ -164,5 +164,5 @@ func (s *budgetService) Create(ctx context.Context, input model.CreateBudgetRequ
 }
 
 func (s *budgetService) UpdateById(ctx context.Context, id uuid.UUID, budget model.Budget) error {
-	return s.repo.UpdateById(ctx, nil, id, budget)
+	return s.repo.UpdateById(ctx, id, budget)
 }

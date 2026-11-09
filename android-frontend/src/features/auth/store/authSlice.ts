@@ -1,5 +1,5 @@
 import { createAsyncThunk, createSlice, type PayloadAction } from '@reduxjs/toolkit';
-import { apiClient } from '../../../utils/api';
+import { apiClient, isSessionExpired } from '../../../utils/api';
 import { LoadingState } from '../../../utils/constants';
 import { clearAuthFromStorage, loadAuthFromStorage, saveAuthToStorage } from '../../../utils/storage';
 import type { RootState } from '../../../app/store';
@@ -37,12 +37,21 @@ export const loginWithGoogle = createAsyncThunk<LoginResponse, GoogleLoginReques
   }
 );
 
-export const refreshAccessToken = createAsyncThunk<RefreshTokenResponse, void, { state: RootState; rejectValue: string }>(
+interface RefreshFailure {
+  message: string;
+  sessionExpired: boolean; // false when the server just couldn't be reached
+}
+
+export const refreshAccessToken = createAsyncThunk<
+  RefreshTokenResponse,
+  void,
+  { state: RootState; rejectValue: RefreshFailure }
+>(
   'auth/refreshAccessToken',
   async (_, { getState, rejectWithValue }) => {
     try {
       const refreshToken = getState().auth.tokens?.refreshToken;
-      if (!refreshToken) return rejectWithValue('No refresh token available');
+      if (!refreshToken) return rejectWithValue({ message: 'No refresh token available', sessionExpired: true });
       const response = await apiClient.post<RefreshTokenResponse>('auth/refresh', { refreshToken });
       const user = getState().auth.user;
       const currentRefreshToken = getState().auth.tokens?.refreshToken;
@@ -55,7 +64,10 @@ export const refreshAccessToken = createAsyncThunk<RefreshTokenResponse, void, {
       }
       return response;
     } catch (error) {
-      return rejectWithValue(error instanceof Error ? error.message : 'Token refresh failed');
+      return rejectWithValue({
+        message: error instanceof Error ? error.message : 'Token refresh failed',
+        sessionExpired: isSessionExpired(error)
+      });
     }
   }
 );
@@ -124,7 +136,8 @@ const authSlice = createSlice({
         state.tokens.accessToken = action.payload.accessToken;
         state.tokens.expiresAt = Date.now() + action.payload.expiresIn * 1000;
       })
-      .addCase(refreshAccessToken.rejected, (state) => {
+      .addCase(refreshAccessToken.rejected, (state, action) => {
+        if (!action.payload?.sessionExpired) return;
         state.user = null;
         state.tokens = null;
         state.isAuthenticated = false;

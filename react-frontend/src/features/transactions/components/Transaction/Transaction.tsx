@@ -1,6 +1,7 @@
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
+import { ArrowsLeftRightIcon } from '@phosphor-icons/react';
 import {
   createTransaction,
   deleteTransactionById,
@@ -9,20 +10,30 @@ import {
   updateTransactionStatus,
 } from '../../store';
 import { LoadingState } from '@/utils';
-import { toast } from '@/utils';
+import { errorMessage, toast } from '@/utils';
 import styles from './Transaction.module.css';
 import { useHeader } from '@/context/HeaderContext';
 import { useSidePanel } from '@/context/SidePanelContext';
-import { MinusIcon as Minus, PlusIcon as Plus } from '@phosphor-icons/react';
-import { getCurrencyLocaleString } from '@/utils/date.utils';
+import { formatBudgetAmount } from '@/features/category/components/budgetFormat';
 import { selectAccountInfoFromId } from '@/features/accounts/store/accountSlice';
+import { BankLogo } from '@/features/accounts/components/BankLogo/BankLogo';
+import {
+  BudgetAccountNames,
+  LoanAccountNames,
+  TrackingAccountNames,
+} from '@/features/accounts/types/account.types';
 import {
   TransactionStatus,
   type Transaction,
   type MonthGroupStats,
   type TransactionStatus as TransactionStatusType,
 } from '../../types/transaction.types';
-import { EMPTY_FILTERS, type TransactionFilters } from '../../types/filter.types';
+import {
+  EMPTY_FILTERS,
+  hasActiveFilters,
+  type TransactionFilters,
+  type TransactionsLocationState,
+} from '../../types/filter.types';
 import { TransactionSkeleton } from '../TransactionSkeleton';
 import { List } from 'react-window';
 import { TransactionRow } from '../TransactionRow';
@@ -42,6 +53,19 @@ import {
   groupTransactions,
 } from './transaction.helpers';
 import { useDebounce } from '@/hooks/useDebounce';
+
+const accountTypeNames = new Map<string, string>(
+  [...BudgetAccountNames, ...TrackingAccountNames, ...LoanAccountNames].map(({ value, name }) => [value, name]),
+);
+const accountTypeName = (type?: string) => (type && accountTypeNames.get(type)) || 'Account';
+
+/** "Swiggy · −₹450", the line under a transaction toast. */
+function describeTxn(txn: Transaction) {
+  const inflow = Number(txn.inflow) || 0;
+  const outflow = Number(txn.outflow) || 0;
+  const amount = outflow ? `−${formatBudgetAmount(outflow)}` : `+${formatBudgetAmount(inflow)}`;
+  return `${txn.payeeName || 'No payee'} · ${amount}`;
+}
 
 type StickyHeaderState = { label: string; stats: MonthGroupStats } | null;
 
@@ -68,16 +92,10 @@ function StickyMonthHeader({ stickyHeader }: { stickyHeader: NonNullable<StickyH
           {stickyHeader.stats.count} transaction{stickyHeader.stats.count !== 1 ? 's' : ''}
         </span>
         {stickyHeader.stats.totalOutflow > 0 && (
-          <span className={styles.statOutflow}>
-            <Minus color="var(--color-text-secondary)" size={14} />
-            {getCurrencyLocaleString(stickyHeader.stats.totalOutflow)}
-          </span>
+          <span className={styles.statOutflow}>-{formatBudgetAmount(stickyHeader.stats.totalOutflow)}</span>
         )}
         {stickyHeader.stats.totalInflow > 0 && (
-          <span className={styles.statInflow}>
-            <Plus color="var(--color-text-secondary)" size={14} />
-            {getCurrencyLocaleString(stickyHeader.stats.totalInflow)}
-          </span>
+          <span className={styles.statInflow}>+{formatBudgetAmount(stickyHeader.stats.totalInflow)}</span>
         )}
       </span>
     </div>
@@ -86,14 +104,14 @@ function StickyMonthHeader({ stickyHeader }: { stickyHeader: NonNullable<StickyH
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function Transaction() {
+export function Transaction({ accountId, embedded = false }: { accountId?: string; embedded?: boolean } = {}) {
   const { setHeaderContent } = useHeader();
   const { setSidePanelContent } = useSidePanel();
   const { id } = useParams();
-  const paramId = id ?? '';
+  const paramId = accountId ?? id ?? '';
   const dispatch = useAppDispatch();
   const { loading, transactions, loadingMore, nextCursor, error } = useAppSelector((state) => state.transactions);
-  const { name: accountName, balance: accountBal } = useAppSelector((state) =>
+  const { name: accountName, balance: accountBal, type: accountType, bank: accountBank } = useAppSelector((state) =>
     selectAccountInfoFromId(state, paramId ?? ''),
   );
   const selectedBudget = useAppSelector(selectSelectedBudget);
@@ -104,7 +122,16 @@ export function Transaction() {
   const [isAddingNew, setIsAddingNew] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [mobileFilter, setMobileFilter] = useState<MobileFilter>('all');
-  const [filters, setFilters] = useDebounce<TransactionFilters>(EMPTY_FILTERS, 250);
+  // Other screens can open this one pre-filtered (Payees → "View transactions").
+  // Built once: useDebounce re-applies its seed whenever the seed's identity changes.
+  const location = useLocation();
+  const [initialFilters] = useState<TransactionFilters>(() => {
+    const payee = (location.state as TransactionsLocationState | null)?.payeeFilter;
+    return payee ? { ...EMPTY_FILTERS, payeeIds: [payee.id], payeeNames: [payee.name] } : EMPTY_FILTERS;
+  });
+  const [filters, setFilters] = useDebounce<TransactionFilters>(initialFilters, 250);
+  // The filter fields stay folded behind the toolbar's Filters button until asked for.
+  const [filtersOpen, setFiltersOpen] = useState(() => hasActiveFilters(initialFilters));
   const [stickyHeader, setStickyHeader] = useState<StickyHeaderState>(null);
   const cols = useMemo(() => getTransactionColumns(paramId), [paramId]);
   const isMobile = useIsMobile();
@@ -124,10 +151,13 @@ export function Transaction() {
     setIsDetailPanelOpen(false);
     setIsAddingNew(false);
     setSidePanelContent(null);
-    dispatch(fetchAllTransaction({ accountIds: [paramId] }));
+    dispatch(fetchAllTransaction({ accountIds: paramId ? [paramId] : [] }));
     document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [paramId, dispatch, setSidePanelContent]);
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+      setSidePanelContent(null);
+    };
+  }, [paramId, selectedBudgetId, dispatch, setSidePanelContent]);
 
   const handleTxnSelect = useCallback(
     (index: number, txn: Transaction | null) => {
@@ -185,8 +215,10 @@ export function Transaction() {
             }),
           )
             .unwrap()
-            .then(() => toast.success('Saved'))
-            .catch(() => toast.error('Failed to save'));
+            .then(() => toast.success('Changes saved', { description: describeTxn(optimisticTxn) }))
+            .catch((err) =>
+              toast.error("Couldn't save your change", { description: errorMessage(err, 'Please try again.') }),
+            );
         }
       } catch (err) {
         console.log('handleInputBlur:', err);
@@ -210,8 +242,10 @@ export function Transaction() {
         }),
       )
         .unwrap()
-        .then(() => toast.success('Saved'))
-        .catch(() => toast.error('Failed to save'));
+        .then(() => toast.success('Changes saved', { description: describeTxn(optimisticTxn) }))
+        .catch((err) =>
+          toast.error("Couldn't save your change", { description: errorMessage(err, 'Please try again.') }),
+        );
     },
     [selectedTxn, isAddingNew, dispatch],
   );
@@ -230,11 +264,15 @@ export function Transaction() {
 
   const handleSave = useCallback(async () => {
     if (!selectedTxn) return;
+    if (!selectedTxn.accountId) {
+      toast.warning('Pick an account', { description: 'Every transaction belongs to an account.' });
+      return;
+    }
     try {
       if (isAddingNew) {
         const payload = buildTransactionPayload(selectedTxn);
         await dispatch(createTransaction(payload)).unwrap();
-        toast.success('Transaction created');
+        toast.success('Transaction added', { description: describeTxn(selectedTxn) });
         const accountIds = paramId ? [paramId] : [];
         const params = {
           ...(accountIds.length && { accountIds: accountIds }),
@@ -251,11 +289,13 @@ export function Transaction() {
             optimisticTransaction: optimisticTxn,
           }),
         ).unwrap();
-        toast.success('Transaction updated');
+        toast.success('Transaction updated', { description: describeTxn(selectedTxn) });
       }
       resetSelectedTxn();
-    } catch {
-      toast.error('Failed to save transaction');
+    } catch (err) {
+      toast.error(isAddingNew ? "Couldn't add the transaction" : "Couldn't update the transaction", {
+        description: errorMessage(err, 'Please try again.'),
+      });
     }
   }, [selectedTxn, isAddingNew, dispatch, paramId, resetSelectedTxn]);
 
@@ -268,10 +308,10 @@ export function Transaction() {
         ...(accountIds.length && { accountIds: accountIds }),
       };
       dispatch(fetchAllTransaction(params));
-      toast.success('Transaction deleted');
+      toast.success('Transaction deleted', { description: describeTxn(selectedTxn) });
       resetSelectedTxn();
-    } catch {
-      toast.error('Failed to delete transaction');
+    } catch (err) {
+      toast.error("Couldn't delete the transaction", { description: errorMessage(err, 'Please try again.') });
     }
   }, [selectedTxn, dispatch, paramId, resetSelectedTxn]);
 
@@ -282,10 +322,15 @@ export function Transaction() {
       if (!selectedTxn?.id) return;
       try {
         await dispatch(updateTransactionStatus({ id: selectedTxn.id, status })).unwrap();
-        toast.success(`Transaction ${status.toLowerCase()}`);
+        toast.success(status === TransactionStatus.APPROVED ? 'Transaction approved' : 'Transaction rejected', {
+          description: describeTxn(selectedTxn),
+        });
         resetSelectedTxn();
-      } catch {
-        toast.error('Failed to update status');
+      } catch (err) {
+        toast.error(
+          status === TransactionStatus.APPROVED ? "Couldn't approve the transaction" : "Couldn't reject the transaction",
+          { description: errorMessage(err, 'Please try again.') },
+        );
       }
     },
     [selectedTxn, dispatch, resetSelectedTxn],
@@ -301,8 +346,14 @@ export function Transaction() {
   );
 
   const filteredTransactions = useMemo(() => {
-    return filterTransactions(transactions, mobileFilter);
-  }, [transactions, mobileFilter]);
+    const search = searchTerm.trim().toLowerCase();
+    const scopedTransactions = transactions.filter((transaction) =>
+      (!paramId || transaction.accountId === paramId) &&
+      (!search || [transaction.payeeName, transaction.categoryName, transaction.note, transaction.accountName]
+        .some((value) => value?.toLowerCase().includes(search))),
+    );
+    return filterTransactions(scopedTransactions, mobileFilter);
+  }, [transactions, mobileFilter, paramId, searchTerm]);
 
   const listItems = useMemo(() => groupTransactions(filteredTransactions), [filteredTransactions]);
   const isLoadingMore = loadingMore === LoadingState.PENDING;
@@ -346,10 +397,9 @@ export function Transaction() {
       return;
     }
     const { accountIds, categoryIds, payeeIds, tagIds, note, dateFrom, dateTo } = filters;
-    const paramAccountIds = paramId ? [paramId] : [];
 
     const args = {
-      accountIds,
+      accountIds: paramId ? [paramId] : accountIds,
       categoryIds,
       payeeIds,
       tagIds,
@@ -362,8 +412,6 @@ export function Transaction() {
       ...args,
       cursor: nextCursor,
     };
-    params.accountIds = [...(paramAccountIds ?? []), ...(accountIds ?? [])];
-
     dispatch(fetchAllTransaction(params));
   }, [dispatch, filters, loading, loadingMore, nextCursor, paramId]);
 
@@ -380,7 +428,7 @@ export function Transaction() {
   useEffect(() => {
     const { accountIds, categoryIds, payeeIds, tagIds, note, dateFrom, dateTo } = filters;
     const args = {
-      accountIds,
+      accountIds: paramId ? [paramId] : accountIds,
       categoryIds,
       payeeIds,
       tagIds,
@@ -393,25 +441,13 @@ export function Transaction() {
     return () => {
       clearTimeout(timer);
     };
-  }, [filters, dispatch]);
+  }, [filters, dispatch, paramId, selectedBudgetId]);
 
+  // The page draws its own title and toolbar (as Budget does), so the shared header slot stays empty.
   useEffect(() => {
-    setHeaderContent(
-      <>
-        <TransactionHeader
-          name={accountName}
-          balance={accountBal}
-          onTxnAdd={addTransaction}
-          searchTerm={searchTerm}
-          onSearchChange={setSearchTerm}
-          mobileFilter={mobileFilter}
-          onMobileFilterChange={setMobileFilter}
-        />
-        <TransactionFilterPanel filters={filters} onChange={setFilters} />
-      </>,
-    );
-    return () => setHeaderContent(null);
-  }, [setHeaderContent, accountName, accountBal, searchTerm, mobileFilter, filters, addTransaction, setFilters]);
+    if (embedded) return;
+    setHeaderContent(null);
+  }, [setHeaderContent, embedded]);
 
   // Sync detail panel into the side panel slot whenever selected txn changes
   useEffect(() => {
@@ -447,11 +483,66 @@ export function Transaction() {
   ]);
 
   return (
-    <>
+    <div className={`${styles.page} ${embedded ? '' : styles.standalonePage}`}>
+      {!embedded && (
+        <header className={styles.pageTop}>
+          <div className={styles.titleBlock}>
+            {paramId ? (
+              <BankLogo name={accountName} bank={accountBank} type={accountType} size="lg" />
+            ) : (
+              <span className={styles.titleIcon}>
+                <ArrowsLeftRightIcon size={22} weight="bold" />
+              </span>
+            )}
+            <div className={styles.titleText}>
+              <span className={styles.titleEyebrow}>{paramId ? accountTypeName(accountType) : selectedBudget?.name || 'All accounts'}</span>
+              <h1>{paramId ? accountName : 'Transactions'}</h1>
+            </div>
+          </div>
+          <dl className={styles.pageStats}>
+            <div>
+              <dt>{paramId ? 'Balance' : 'Net balance'}</dt>
+              <dd className={accountBal < 0 ? styles.negative : undefined}>{formatBudgetAmount(accountBal)}</dd>
+            </div>
+          </dl>
+        </header>
+      )}
+      <div className={styles.toolbar}>
+        <TransactionHeader
+          name={accountName}
+          balance={accountBal}
+          onTxnAdd={addTransaction}
+          searchTerm={searchTerm}
+          onSearchChange={setSearchTerm}
+          mobileFilter={mobileFilter}
+          onMobileFilterChange={setMobileFilter}
+          showSummary={false}
+          filterToggle={{
+            open: filtersOpen,
+            active: hasActiveFilters(filters),
+            onToggle: () => setFiltersOpen((open) => !open),
+          }}
+        />
+        {filtersOpen && (
+          <div className={styles.filterCard}>
+            <TransactionFilterPanel filters={filters} onChange={setFilters} hideAccountFilter={Boolean(paramId)} />
+          </div>
+        )}
+      </div>
       {loading === LoadingState.PENDING && transactions.length === 0 && <TransactionSkeleton />}
       {error && <div className={styles.errorBanner}>{error}</div>}
+      {loading === LoadingState.SUCCESS && filteredTransactions.length === 0 && (
+        transactions.length === 0 && !hasActiveFilters(filters) ? (
+          <p className={styles.emptyMessage}>
+            No transactions yet. Bank alert emails show up here on their own once an AI provider is connected in{' '}
+            <Link to="/settings?section=ai">Settings → AI</Link>; you can also add one by hand.
+          </p>
+        ) : (
+          <p className={styles.emptyMessage}>No transactions match this view.</p>
+        )
+      )}
       {(loading !== LoadingState.PENDING || transactions.length > 0) && (
-        <div className={`${styles.wrapper} ${paramId ? styles.specificAccount : styles.allAccounts}`}>
+        <div className={`${styles.wrapper} ${paramId ? styles.specificAccount : styles.allAccounts} ${styles.listWrapper}`}>
           {isMobile ? (
             <TransactionMobile
               transactions={filteredTransactions}
@@ -493,6 +584,11 @@ export function Transaction() {
           )}
         </div>
       )}
-    </>
+      {isMobile && nextCursor && (
+        <button type="button" onClick={loadMoreTransactions} disabled={isLoadingMore || loading === LoadingState.PENDING}>
+          {isLoadingMore ? 'Loading…' : 'Load more transactions'}
+        </button>
+      )}
+    </div>
   );
 }

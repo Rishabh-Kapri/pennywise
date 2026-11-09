@@ -6,14 +6,12 @@ import (
 	"fmt"
 	"time"
 
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
-	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 // DemoService logs users into a shared, pre-seeded demo account so the app
@@ -32,6 +30,8 @@ type demoService struct {
 	payeeRepo      repository.PayeesRepository
 	accountRepo    repository.AccountRepository
 	payeeRuleRepo  repository.PayeeRuleRepository
+	dbTxn          repository.DBTxn
+	bulk           repository.BulkInserter
 }
 
 func NewDemoService(
@@ -44,8 +44,12 @@ func NewDemoService(
 	payeeRepo repository.PayeesRepository,
 	accountRepo repository.AccountRepository,
 	payeeRuleRepo repository.PayeeRuleRepository,
+	dbTxn repository.DBTxn,
+	bulk repository.BulkInserter,
 ) DemoService {
 	return &demoService{
+		dbTxn:          dbTxn,
+		bulk:           bulk,
 		authService:    authService,
 		authRepo:       authRepo,
 		googleProvider: googleProvider,
@@ -111,31 +115,31 @@ func (s *demoService) seedDemoUser(ctx context.Context) (*model.UserWithCredenti
 
 	var userWithCreds *model.UserWithCredentials
 	var authUser *model.AuthUser
-	err := utils.WithTx(ctx, s.authRepo.GetDB(), func(tx pgx.Tx) error {
+	err := s.dbTxn.Do(ctx, func(ctx context.Context) error {
 		var err error
-		authUser, err = s.authRepo.CreateUser(ctx, tx)
+		authUser, err = s.authRepo.CreateUser(ctx)
 		if err != nil {
 			return fmt.Errorf("error creating auth user: %w", err)
 		}
 
-		budget, err := s.budgetRepo.Create(ctx, tx, demoBudgetName, authUser.ID)
+		budget, err := s.budgetRepo.Create(ctx, demoBudgetName, authUser.ID)
 		if err != nil {
 			return fmt.Errorf("error creating demo budget: %w", err)
 		}
 
-		categoryIDs, metadata, err := s.seedCategories(ctx, tx, budget.ID)
+		categoryIDs, metadata, err := s.seedCategories(ctx, budget.ID)
 		if err != nil {
 			return err
 		}
-		payeeIDs, accountIDs, err := s.seedAccountsAndPayees(ctx, tx, budget.ID, metadata)
+		payeeIDs, accountIDs, err := s.seedAccountsAndPayees(ctx, budget.ID, metadata)
 		if err != nil {
 			return err
 		}
-		if err := s.seedPayeeRules(ctx, tx, budget.ID, payeeIDs, categoryIDs); err != nil {
+		if err := s.seedPayeeRules(ctx, budget.ID, payeeIDs, categoryIDs); err != nil {
 			return err
 		}
 
-		err = s.budgetRepo.UpdateById(ctx, tx, budget.ID, model.Budget{
+		err = s.budgetRepo.UpdateById(ctx, budget.ID, model.Budget{
 			Name:       demoBudgetName,
 			IsSelected: true, // first budget for this user
 			Metadata:   *metadata,
@@ -149,19 +153,19 @@ func (s *demoService) seedDemoUser(ctx context.Context) (*model.UserWithCredenti
 		if err != nil {
 			return err
 		}
-		_, err = tx.CopyFrom(ctx,
-			pgx.Identifier{"transactions"},
+		txnCopy := make([][]any, len(txnRows))
+		for i, r := range txnRows {
+			txnCopy[i] = []any{
+				r.id, budget.ID, r.date, r.payeeID, r.categoryID,
+				r.accountID, r.amount, "", r.transferAccountID, r.transferTransactionID,
+			}
+		}
+		_, err = s.bulk.BulkInsert(ctx, "transactions",
 			[]string{
 				"id", "budget_id", "date", "payee_id", "category_id",
 				"account_id", "amount", "note", "transfer_account_id", "transfer_transaction_id",
 			},
-			pgx.CopyFromSlice(len(txnRows), func(i int) ([]any, error) {
-				r := txnRows[i]
-				return []any{
-					r.id, budget.ID, r.date, r.payeeID, r.categoryID,
-					r.accountID, r.amount, "", r.transferAccountID, r.transferTransactionID,
-				}, nil
-			}),
+			txnCopy,
 		)
 		if err != nil {
 			return fmt.Errorf("error bulk inserting transactions: %w", err)
@@ -171,13 +175,13 @@ func (s *demoService) seedDemoUser(ctx context.Context) (*model.UserWithCredenti
 		if err != nil {
 			return err
 		}
-		_, err = tx.CopyFrom(ctx,
-			pgx.Identifier{"monthly_budgets"},
+		monthlyCopy := make([][]any, len(monthlyRows))
+		for i, r := range monthlyRows {
+			monthlyCopy[i] = []any{r.month, budget.ID, r.categoryID, r.budgeted, r.carryover}
+		}
+		_, err = s.bulk.BulkInsert(ctx, "monthly_budgets",
 			[]string{"month", "budget_id", "category_id", "budgeted", "carryover_balance"},
-			pgx.CopyFromSlice(len(monthlyRows), func(i int) ([]any, error) {
-				r := monthlyRows[i]
-				return []any{r.month, budget.ID, r.categoryID, r.budgeted, r.carryover}, nil
-			}),
+			monthlyCopy,
 		)
 		if err != nil {
 			return fmt.Errorf("error bulk inserting monthly budgets: %w", err)
@@ -187,8 +191,17 @@ func (s *demoService) seedDemoUser(ctx context.Context) (*model.UserWithCredenti
 		if err != nil {
 			return err
 		}
-		_, err = tx.CopyFrom(ctx,
-			pgx.Identifier{"cipher_predictions"},
+		predictionCopy := make([][]any, len(predictionRows))
+		for i, r := range predictionRows {
+			predictionCopy[i] = []any{
+				budget.ID, r.txnID, r.emailText, r.reasoning, r.metadata,
+				r.amount, r.extractedAccount, r.extractedMerchant,
+				r.predictedPayeeID, r.predictedCategoryID,
+				r.payeeConf, r.catConf, string(r.source),
+				r.hasUserCorrected, r.actualPayeeID, r.actualCategoryID, r.createdAt,
+			}
+		}
+		_, err = s.bulk.BulkInsert(ctx, "cipher_predictions",
 			[]string{
 				"budget_id", "transaction_id", "email_text", "llm_reasoning", "metadata",
 				"amount", "extracted_account", "extracted_payee",
@@ -196,26 +209,15 @@ func (s *demoService) seedDemoUser(ctx context.Context) (*model.UserWithCredenti
 				"payee_confidence", "category_confidence", "source",
 				"has_user_corrected", "actual_payee_id", "actual_category_id", "created_at",
 			},
-			pgx.CopyFromSlice(len(predictionRows), func(i int) ([]any, error) {
-				r := predictionRows[i]
-				return []any{
-					budget.ID, r.txnID, r.emailText, r.reasoning, r.metadata,
-					r.amount, r.extractedAccount, r.extractedMerchant,
-					r.predictedPayeeID, r.predictedCategoryID,
-					r.payeeConf, r.catConf, string(r.source),
-					r.hasUserCorrected, r.actualPayeeID, r.actualCategoryID, r.createdAt,
-				}, nil
-			}),
+			predictionCopy,
 		)
 		if err != nil {
 			return fmt.Errorf("error bulk inserting cipher predictions: %w", err)
 		}
 
 		userWithCreds, err = s.googleProvider.Create(
-			ctx, tx, authUser.ID,
+			ctx, authUser.ID,
 			demoGoogleID, model.GoogleOAuthClientTypeWeb, demoUserName, "", demoUserEmail,
-			"", // no google refresh token; also keeps gmail watch flows away from this user
-			nil,
 		)
 		if err != nil {
 			return fmt.Errorf("error creating demo provider: %w", err)
@@ -248,22 +250,21 @@ func (s *demoService) seedDemoUser(ctx context.Context) (*model.UserWithCredenti
 // card payments) and the demo template groups, mirroring budgetService.Create.
 func (s *demoService) seedCategories(
 	ctx context.Context,
-	tx pgx.Tx,
 	budgetID uuid.UUID,
 ) (map[string]uuid.UUID, *model.BudgetMetadata, error) {
-	masterGroup, err := s.catGroupRepo.Create(ctx, tx, model.CategoryGroup{
+	masterGroup, err := s.catGroupRepo.Create(ctx, model.CategoryGroup{
 		Name: "Internal Master Category", BudgetID: budgetID, IsSystem: true,
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("error creating internal master category group: %w", err)
 	}
-	ccGroup, err := s.catGroupRepo.Create(ctx, tx, model.CategoryGroup{
+	ccGroup, err := s.catGroupRepo.Create(ctx, model.CategoryGroup{
 		Name: "Credit Card Payments", BudgetID: budgetID, IsSystem: true,
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("error creating credit card category group: %w", err)
 	}
-	inflowCat, err := s.categoryRepo.Create(ctx, tx, model.Category{
+	inflowCat, err := s.categoryRepo.Create(ctx, model.Category{
 		Name: demoInflowCategory, BudgetID: budgetID, CategoryGroupID: masterGroup.ID, IsSystem: true,
 	})
 	if err != nil {
@@ -272,14 +273,14 @@ func (s *demoService) seedCategories(
 
 	categoryIDs := map[string]uuid.UUID{demoInflowCategory: inflowCat.ID}
 	for _, templateGroup := range demoTemplateGroups() {
-		group, err := s.catGroupRepo.Create(ctx, tx, model.CategoryGroup{
+		group, err := s.catGroupRepo.Create(ctx, model.CategoryGroup{
 			Name: templateGroup.Name, BudgetID: budgetID,
 		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("error creating category group %q: %w", templateGroup.Name, err)
 		}
 		for _, templateCategory := range templateGroup.Categories {
-			category, err := s.categoryRepo.Create(ctx, tx, model.Category{
+			category, err := s.categoryRepo.Create(ctx, model.Category{
 				Name: templateCategory.Name, BudgetID: budgetID, CategoryGroupID: group.ID,
 			})
 			if err != nil {
@@ -301,7 +302,6 @@ func (s *demoService) seedCategories(
 // and categories so the demo shows rule-based classification in action.
 func (s *demoService) seedPayeeRules(
 	ctx context.Context,
-	tx pgx.Tx,
 	budgetID uuid.UUID,
 	payeeIDs, categoryIDs map[string]uuid.UUID,
 ) error {
@@ -314,7 +314,7 @@ func (s *demoService) seedPayeeRules(
 		if !ok {
 			return fmt.Errorf("demo seed; rule category %q not found", rule.category)
 		}
-		err := s.payeeRuleRepo.CreatePayeeRule(ctx, tx, model.PayeeRule{
+		err := s.payeeRuleRepo.CreatePayeeRule(ctx, model.PayeeRule{
 			BudgetID:    budgetID,
 			PayeeID:     payeeID,
 			CategoryID:  &categoryID,
@@ -333,11 +333,10 @@ func (s *demoService) seedPayeeRules(
 // regular demo payees.
 func (s *demoService) seedAccountsAndPayees(
 	ctx context.Context,
-	tx pgx.Tx,
 	budgetID uuid.UUID,
 	metadata *model.BudgetMetadata,
 ) (payeeIDs, accountIDs map[string]uuid.UUID, err error) {
-	startingPayee, err := s.payeeRepo.Create(ctx, tx, model.Payee{
+	startingPayee, err := s.payeeRepo.Create(ctx, model.Payee{
 		Name: demoStartingBal, BudgetID: budgetID,
 	})
 	if err != nil {
@@ -349,11 +348,11 @@ func (s *demoService) seedAccountsAndPayees(
 	accountIDs = make(map[string]uuid.UUID)
 	for _, account := range demoAccounts() {
 		account.BudgetID = budgetID
-		created, err := s.accountRepo.Create(ctx, tx, account)
+		created, err := s.accountRepo.Create(ctx, account)
 		if err != nil {
 			return nil, nil, fmt.Errorf("error creating account %q: %w", account.Name, err)
 		}
-		transferPayee, err := s.payeeRepo.Create(ctx, tx, model.Payee{
+		transferPayee, err := s.payeeRepo.Create(ctx, model.Payee{
 			Name:              "Transfer : " + account.Name,
 			BudgetID:          budgetID,
 			TransferAccountID: &created.ID,
@@ -361,7 +360,7 @@ func (s *demoService) seedAccountsAndPayees(
 		if err != nil {
 			return nil, nil, fmt.Errorf("error creating transfer payee for %q: %w", account.Name, err)
 		}
-		if err := s.accountRepo.UpdateTransferPayee(ctx, tx, created.ID, transferPayee.ID); err != nil {
+		if err := s.accountRepo.UpdateTransferPayee(ctx, created.ID, transferPayee.ID); err != nil {
 			return nil, nil, fmt.Errorf("error linking transfer payee for %q: %w", account.Name, err)
 		}
 		accountIDs[account.Name] = created.ID
@@ -369,7 +368,7 @@ func (s *demoService) seedAccountsAndPayees(
 	}
 
 	for _, name := range demoPayeeNames() {
-		payee, err := s.payeeRepo.Create(ctx, tx, model.Payee{Name: name, BudgetID: budgetID})
+		payee, err := s.payeeRepo.Create(ctx, model.Payee{Name: name, BudgetID: budgetID})
 		if err != nil {
 			return nil, nil, fmt.Errorf("error creating payee %q: %w", name, err)
 		}

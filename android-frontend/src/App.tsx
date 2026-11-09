@@ -7,7 +7,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { BarChart3, Landmark, LayoutDashboard, ReceiptText, Sparkles, Tags } from 'lucide-react-native';
+import { ChartPie, LayoutDashboard, ReceiptText, Sparkles, Store, Wallet } from 'lucide-react-native';
 import { useAppDispatch, useAppSelector } from './app/hooks';
 import { store } from './app/store';
 import { LoadingStateView } from './components/LoadingStateView';
@@ -23,15 +23,20 @@ import { BudgetScreen } from './features/budget/screens/BudgetScreen';
 import { TransactionsScreen } from './features/transactions/screens/TransactionsScreen';
 import { PayeesScreen } from './features/payees/screens/PayeesScreen';
 import { LoansScreen } from './features/loans/screens/LoansScreen';
+import { ReportsScreen } from './features/reports/screens/ReportsScreen';
 import { SettingsScreen } from './features/settings/screens/SettingsScreen';
 import { DocumentsScreen } from './features/documents/screens/DocumentsScreen';
 import { TagsScreen } from './features/tags/screens/TagsScreen';
 import { ActivityScreen } from './features/pipeline/screens/ActivityScreen';
+import { JobsScreen } from './features/jobs/screens/JobsScreen';
+import { PipelinesScreen } from './features/jobs/screens/PipelinesScreen';
 import { AIScreen } from './features/ai/screens/AIScreen';
 import { WebSocketProvider } from './features/websocket/WebSocketProvider';
 import { AgentChat } from './features/agent/components/AgentChat';
 import { registerDevicePushToken } from './features/notifications/push';
 import { setupLocationSnap } from './features/notifications/locationSnapTask';
+import { flushSmsOutbox } from './features/sms/smsForwarder';
+import { ensureSmsPermission } from './features/sms/smsPermission';
 
 // defines the background notification task; must happen at module scope so the
 // task exists when Android wakes the app headlessly
@@ -67,13 +72,13 @@ function iconForRoute(routeName: keyof AppTabParamList, color: string, size: num
     case 'Dashboard':
       return <LayoutDashboard color={color} size={size} />;
     case 'Budget':
-      return <BarChart3 color={color} size={size} />;
+      return <Wallet color={color} size={size} />;
     case 'Transactions':
       return <ReceiptText color={color} size={size} />;
+    case 'Reports':
+      return <ChartPie color={color} size={size} />;
     case 'Payees':
-      return <Tags color={color} size={size} />;
-    case 'Loans':
-      return <Landmark color={color} size={size} />;
+      return <Store color={color} size={size} />;
     case 'Penny':
       return <Sparkles color={color} size={size} />;
     default:
@@ -124,14 +129,15 @@ function AppTabs() {
         tabBarInactiveTintColor: colors.muted,
         tabBarStyle: [styles.tabBar, { bottom: Math.max(insets.bottom, spacing.md) }],
         tabBarItemStyle: styles.tabBarItem,
+        tabBarIconStyle: styles.tabBarIconSlot,
         tabBarIcon: ({ focused }) => <TabIcon routeName={route.name as keyof AppTabParamList} focused={focused} />
       })}
     >
       <Tab.Screen name="Dashboard" component={DashboardScreen} />
       <Tab.Screen name="Budget" component={BudgetScreen} />
       <Tab.Screen name="Transactions" component={TransactionsScreen} />
+      <Tab.Screen name="Reports" component={ReportsScreen} />
       <Tab.Screen name="Payees" component={PayeesScreen} />
-      <Tab.Screen name="Loans" component={LoansScreen} />
       <Tab.Screen name="Penny" component={AgentChat} />
     </Tab.Navigator>
   );
@@ -147,7 +153,10 @@ function AppNavigator() {
         <RootStack.Screen name="Documents" component={DocumentsScreen} />
         <RootStack.Screen name="Tags" component={TagsScreen} />
         <RootStack.Screen name="Activity" component={ActivityScreen} />
+        <RootStack.Screen name="Jobs" component={JobsScreen} />
+        <RootStack.Screen name="Pipelines" component={PipelinesScreen} />
         <RootStack.Screen name="AI" component={AIScreen} />
+        <RootStack.Screen name="Loans" component={LoansScreen} />
       </RootStack.Navigator>
     </>
   );
@@ -179,11 +188,17 @@ const styles = StyleSheet.create({
   tabBarItem: {
     height: 48,
     borderRadius: 24,
-    // The library's own item style is `justifyContent: 'flex-start'` with
-    // padding, which pins the icon to the top once labels are hidden.
     justifyContent: 'center',
     alignItems: 'center',
     padding: 0
+  },
+  // tabBarItemStyle only reaches the item's outer View. The pressable inside
+  // keeps the library's `justifyContent: 'flex-start'` and 5dp padding, so
+  // its fixed 28dp icon slot sat 5dp above centre. Filling the button
+  // (between the equal top and bottom padding) centres the icon.
+  tabBarIconSlot: {
+    width: '100%',
+    height: '100%'
   },
   tabIcon: {
     width: 44,
@@ -210,7 +225,12 @@ function RootContent() {
   useEffect(() => {
     if (auth.hydrated && auth.isAuthenticated) {
       dispatch(fetchAllBudgets());
-      void registerDevicePushToken();
+      // Sequential: Android drops a permission request made while another
+      // permission dialog is still showing.
+      void registerDevicePushToken()
+        .then(ensureSmsPermission)
+        .catch((error) => console.log('[sms] permission request failed', error))
+        .then(flushSmsOutbox);
     }
   }, [auth.hydrated, auth.isAuthenticated, dispatch]);
 

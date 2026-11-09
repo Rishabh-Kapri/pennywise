@@ -85,7 +85,15 @@ func (h *loanMetadataHandler) Update(c *gin.Context) {
 		return
 	}
 
-	var body model.LoanMetadata
+	// PATCH: decode onto the stored row so fields the client leaves out keep
+	// their values. The repo writes every column, and clients send only the
+	// terms they edit; a blank loan_start_date empties the amortized history.
+	existing, err := h.service.GetByAccountId(ctx, accountId)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "loan metadata not found"})
+		return
+	}
+	body := *existing
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

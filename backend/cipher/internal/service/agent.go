@@ -12,10 +12,10 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/memory"
 	agent "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/runtime"
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
@@ -41,7 +41,7 @@ func (e *ClarifyError) StatusCode() int { return http.StatusUnprocessableEntity 
 type agentService struct {
 	redis           *redis.Client
 	agent           *agent.Agent
-	agentMemoryRepo db.AgentMemoryRepository
+	agentMemoryRepo repository.AgentMemoryRepository
 	pennywiseAPI    *transport.Client
 	memoryService   memory.Memory
 	llmResolver     llm.LLMResolver
@@ -125,7 +125,7 @@ func titleChatRequest(model string, message string, metadata map[string]string) 
 func (s *agentService) generateTitle(ctx context.Context, message string) (string, error) {
 	titleReq := titleChatRequest(s.agent.TitleModel, message, nil)
 
-	client, model, err := s.llmResolver.Resolve(titleReq.Provider, titleReq.Model)
+	client, model, err := s.llmResolver.Resolve(ctx, titleReq.Provider, titleReq.Model)
 	if err != nil {
 		return "", fmt.Errorf("resolving title model %q: %w", s.agent.TitleModel, err)
 	}

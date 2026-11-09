@@ -1,105 +1,59 @@
 import { useEffect, useRef, useState } from 'react';
-import { Calendar } from '@heroui/calendar';
-import { parseDate, type DateValue } from '@internationalized/date';
-import { Popover, PopoverTrigger, PopoverContent } from '@heroui/popover';
+import { Popover } from '@/components/common/Popover/Popover';
+import { MiniCalendar } from './MiniCalendar';
 import styles from './Popover.module.css';
 import { getLocaleDate } from '@/utils/date.utils';
-import type { TransactionDropdownProps } from './types';
+import type { DropdownVariant, TransactionDropdownProps } from './types';
 
-export function DateDropdown({ value, onClick, autoFocus, variant = 'inline' }: TransactionDropdownProps) {
+const triggerClass: Record<DropdownVariant, string> = {
+  inline: styles.dateTrigger,
+  form: styles.formTrigger,
+  ghost: styles.ghostTrigger,
+};
+
+export function DateDropdown({ value, onClick, autoFocus, variant = 'inline', placeholder }: TransactionDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [pendingDate, setPendingDate] = useState<DateValue | undefined>();
   const triggerRef = useRef<HTMLButtonElement | null>(null);
 
-  const getDateValue = (date: string) => {
-    try {
-      return date ? parseDate(date) : undefined;
-    } catch {
-      return undefined;
-    }
-  };
-
   useEffect(() => {
-    setPendingDate(getDateValue(value));
-  }, [value]);
-
-  useEffect(() => {
-    if (autoFocus) {
-      setIsOpen(true);
-    }
+    if (autoFocus) setIsOpen(true);
   }, [autoFocus]);
 
-  const handleOpenChange = (open: boolean) => {
-    setIsOpen(open);
-    if (!open) {
-      triggerRef.current?.blur();
-    }
+  const close = () => {
+    setIsOpen(false);
+    triggerRef.current?.focus();
   };
 
-  const handleConfirm = () => {
-    if (!pendingDate) return;
-    const dateString = pendingDate.toString();
-    onClick(dateString, dateString);
-    handleOpenChange(false);
-  };
-
-  // Format the date for display
   const displayValue = value
     ? getLocaleDate(value, { month: 'short', day: 'numeric', year: 'numeric' }, ['en-GB'])
     : '';
-  const triggerClassName = variant === 'form' ? styles.formTrigger : styles.dateTrigger;
 
   return (
-    <div className={styles.popoverContainer}>
-      <Popover isOpen={isOpen} onOpenChange={handleOpenChange} placement="bottom-start" showArrow>
-        <PopoverTrigger>
-          <button
-            type="button"
-            ref={triggerRef}
-            className={triggerClassName}
-            autoFocus={autoFocus}
-            aria-haspopup="true"
-            aria-expanded={isOpen}>
-            {displayValue || 'Select Date'}
-          </button>
-        </PopoverTrigger>
-        <PopoverContent className={styles.datePopoverContent}>
-          <Calendar
-            aria-label="Date Picker"
-            value={pendingDate}
-            onChange={setPendingDate}
-            showMonthAndYearPickers
-            classNames={{
-              base: styles.calendarBase,
-              content: styles.calendarContent,
-              header: styles.calendarHeader,
-              headerWrapper: styles.calendarHeaderWrapper,
-              title: styles.calendarTitle,
-              prevButton: styles.calendarNavButton,
-              nextButton: styles.calendarNavButton,
-              gridWrapper: styles.calendarGridWrapper,
-              grid: styles.calendarGrid,
-              gridHeader: styles.calendarGridHeader,
-              gridHeaderCell: styles.calendarWeekday,
-              gridBody: styles.calendarGridBody,
-              cellButton: styles.calendarDayButton,
-              pickerWrapper: styles.calendarPickerWrapper,
-              pickerMonthList: styles.calendarPickerList,
-              pickerYearList: styles.calendarPickerList,
-              pickerHighlight: styles.calendarPickerHighlight,
-              pickerItem: styles.calendarPickerItem,
-            }}
-          />
-          <div className={styles.dateActions}>
-            <button
-              type="button"
-              className={styles.dateOkButton}
-              disabled={!pendingDate}
-              onClick={handleConfirm}>
-              Ok
-            </button>
-          </div>
-        </PopoverContent>
+    <div className={`${styles.popoverContainer} ${variant === 'ghost' ? styles.ghostField : ''}`}>
+      <button
+        type="button"
+        ref={triggerRef}
+        className={`${triggerClass[variant]} ${isOpen ? styles.open : ''} ${value ? '' : styles.placeholderText}`}
+        autoFocus={autoFocus}
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
+        onClick={() => setIsOpen((open) => !open)}>
+        {displayValue || placeholder || 'Select date'}
+      </button>
+      <Popover
+        id="date-picker"
+        isOpen={isOpen}
+        triggerRef={triggerRef}
+        width={282}
+        onClose={close}
+        className={styles.datePopoverContent}>
+        <MiniCalendar
+          value={value}
+          onSelect={(iso) => {
+            onClick(iso, iso);
+            close();
+          }}
+        />
       </Popover>
     </div>
   );

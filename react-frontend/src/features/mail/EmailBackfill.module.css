@@ -1,0 +1,192 @@
+/* index.css resets margin and padding at one class's specificity and loads
+   later, so any rule that sets either needs the `.root` prefix */
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.status,
+.error {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  color: var(--color-text-secondary);
+  font-size: 0.9375rem;
+}
+
+.error {
+  color: var(--color-error);
+}
+
+.spin {
+  flex: none;
+  animation: spin 1.2s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.automatic {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  cursor: pointer;
+}
+
+.automaticText,
+.emailText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.automaticText small,
+.emailText small {
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+}
+
+.switch {
+  position: relative;
+  flex: none;
+  width: 2.5rem;
+  height: 1.5rem;
+  border-radius: 1rem;
+  background: var(--color-surface-tertiary);
+  cursor: pointer;
+  appearance: none;
+  transition: background-color 0.2s ease;
+}
+
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 0.1875rem;
+  left: 0.1875rem;
+  width: 1.125rem;
+  height: 1.125rem;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.2s ease;
+}
+
+.switch:checked {
+  background: var(--color-primary);
+}
+
+.switch:checked::after {
+  transform: translateX(1rem);
+}
+
+.switch:focus-visible {
+  outline: 2px solid var(--color-primary-light);
+  outline-offset: 2px;
+}
+
+.root .selectAll {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-primary-light);
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.selectAll:hover {
+  text-decoration: underline;
+}
+
+.root .list {
+  overflow-y: auto;
+  max-height: 16rem;
+  border-radius: 0.75rem;
+  background: rgb(255 255 255 / 0.035);
+  list-style: none;
+}
+
+.list li + li {
+  border-top: 1px solid rgb(255 255 255 / 0.06);
+}
+
+.root .email {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 0.875rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.email:hover {
+  background: rgb(255 255 255 / 0.04);
+}
+
+.email input {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--color-primary);
+}
+
+.subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.root .import {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  align-self: flex-start;
+  min-height: 2.5rem;
+  padding: 0 1rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 10px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    transform 0.1s ease;
+}
+
+.root .import:hover:not(:disabled) {
+  background: var(--color-surface-secondary);
+}
+
+.root .import:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.root .import:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation: none;
+  }
+
+  .switch,
+  .switch::after {
+    transition: none;
+  }
+
+  .root .import:active:not(:disabled) {
+    transform: none;
+  }
+}

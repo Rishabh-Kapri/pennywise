@@ -2,11 +2,16 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/factory"
+
+	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/internal/handler"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/auth"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/client"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/config"
@@ -15,7 +20,6 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/pubsub"
 	temporalActivities "github.com/Rishabh-Kapri/pennywise/backend/go-gmail/pkg/temporal"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
@@ -76,6 +80,70 @@ func temporalHandler(c *gin.Context) {
 
 	log.Info("workflow started", "workflowId", we.GetID(), "runId", we.GetRunID())
 	c.JSON(http.StatusOK, gin.H{"workflowId": we.GetID(), "runId": we.GetRunID()})
+}
+
+// backfillHandler runs the pipeline over recent bank alerts for the budget in
+// X-Budget-ID. It starts the per-email child workflow directly with the
+// fetched emails, so no Gmail history id is involved.
+func backfillHandler(c *gin.Context) {
+	ctx := c.Request.Context()
+	log := logger.Logger(ctx)
+
+	if temporalClient == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "temporal is not configured"})
+		return
+	}
+
+	var reqData gmail.GmailBackfillRequest
+	if err := c.ShouldBindJSON(&reqData); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	reqData.Days = min(max(reqData.Days, 1), 30)
+	reqData.MaxResults = min(max(reqData.MaxResults, 1), 50)
+
+	emails, err := gmail.NewService().GetRecentMessages(ctx, reqData)
+	if err != nil {
+		log.Error("error fetching recent emails", "error", err)
+		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+		return
+	}
+	if len(emails) == 0 {
+		c.JSON(http.StatusOK, gin.H{"emailCount": 0})
+		return
+	}
+
+	budgetID := utils.MustBudgetID(ctx)
+	input := sharedModel.EmailDataInput{
+		EmailData: make([]sharedModel.EmailData, 0, len(emails)),
+		BudgetID:  budgetID,
+	}
+	for _, data := range emails {
+		input.EmailData = append(input.EmailData, sharedModel.EmailData{
+			MessageId: data.MessageId,
+			Body:      data.Body,
+			From:      temporalActivities.HeaderValue(data.Headers, "From"),
+			Subject:   temporalActivities.HeaderValue(data.Headers, "Subject"),
+			Snippet:   data.Snippet,
+		})
+	}
+
+	we, err := temporalClient.ExecuteWorkflow(
+		ctx,
+		tc.StartWorkflowOptions{
+			ID:        fmt.Sprintf("backfill-%s-%d", budgetID, time.Now().Unix()),
+			TaskQueue: sharedModel.PennywiseTaskQueue,
+		},
+		sharedModel.ParsedEmailToTransactionWorkflowName,
+		input,
+	)
+	if err != nil {
+		log.Error("error starting backfill workflow", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	log.Info("backfill started", "workflowId", we.GetID(), "emails", len(emails))
+	c.JSON(http.StatusOK, gin.H{"emailCount": len(emails), "workflowId": we.GetID()})
 }
 
 func watchHandler(c *gin.Context) {
@@ -157,11 +225,13 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
-	dbConn, err := db.ConnectWithURL(cfg.DatabaseURL)
+	// The repository ports; DATABASE_DRIVER picks the adapter behind them.
+	database, err := factory.ConnectDB(ctx, factory.Config{Driver: cfg.DatabaseDriver, URL: cfg.DatabaseURL})
 	if err != nil {
 		logger.Fatal(err.Error())
 	}
-	log.Info("db connected", "url", cfg.DatabaseURL)
+	defer database.Close()
+	log.Info("db connected")
 
 	if cfg.Environment != "local" && cfg.TemporalServerHost != "" {
 		temporalClient, err = connectToTemporal(ctx, *cfg)
@@ -201,19 +271,38 @@ func main() {
 		}()
 	}
 
+	smsHandler := handler.NewSmsHandler()
+
+	authMiddleware := sharedMiddleware.Authenticate(
+		factory.NewAuthenticators(
+			ctx,
+			factory.AuthConfig{JWTSecret: config.JWTSecret},
+			database.APIKey,
+			database.Auth,
+		),
+	)
+	budgetMiddleware := sharedMiddleware.BudgetIdMiddleware(database.Budget)
+
 	router := gin.New()
 	router.Use(gin.Recovery())
 	router.Use(sharedMiddleware.StripInternalHeaders())
 	router.Use(sharedMiddleware.RequestMetadata("gmail-pubsub"))
-	router.Use(sharedMiddleware.InternalRequestAuth(cfg.InternalAuthToken))
+	router.Use(sharedMiddleware.Authenticate())
+	serviceAuth, err := factory.NewServiceAuthenticator(ctx, factory.ServiceAuthConfig{
+		Tokens:   cfg.ServiceTokens,
+		OwnToken: cfg.InternalAuthToken,
+	})
+	if err != nil {
+		logger.Fatal("invalid SERVICE_TOKENS", "error", err)
+	}
+	router.Use(sharedMiddleware.InternalRequestAuth(cfg.InternalAuthToken, serviceAuth))
 	router.Use(sharedMiddleware.RequestLogger())
 
 	api := router.Group("/api")
 	api.GET("", healthPage)
 
-	budgetRepo := db.NewBudgetRepository(dbConn)
 	budgetApiGroup := api.Group("")
-	budgetApiGroup.Use(sharedMiddleware.BudgetIdMiddleware(budgetRepo))
+	budgetApiGroup.Use(budgetMiddleware)
 
 	// Watch controls are mailbox-scoped and accept only verified internal calls.
 	watchGroup := api.Group("")
@@ -227,6 +316,11 @@ func main() {
 	watchGroup.POST("/watch", watchHandler)
 	watchGroup.POST("/test/setup-watch", setupWatchTestHandler)
 	budgetApiGroup.POST("/temporal", temporalHandler)
+	budgetApiGroup.POST("/backfill", backfillHandler)
+	{
+		ingestGroup := api.Group("/ingest")
+		ingestGroup.POST("/sms", smsHandler.Ingest)
+	}
 
 	server := &http.Server{
 		Addr:    ":" + cfg.Port,

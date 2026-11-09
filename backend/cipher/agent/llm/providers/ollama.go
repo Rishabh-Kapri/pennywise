@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
-	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
@@ -65,18 +65,24 @@ type ollamaChatRes struct {
 	EvalCount       int           `json:"eval_count"`
 }
 
-func NewOllamaClient() (llm.LLM, error) {
-	cfg := config.Load()
-	if cfg.OllamaURL == "" {
+// NewUserOllamaClient talks to a user's own Ollama server. httpClient must be
+// one that refuses private addresses (internal/userllm), since the URL is
+// user input. apiKey is optional, for servers behind an auth proxy.
+func NewUserOllamaClient(baseURL, apiKey string, httpClient *http.Client) (llm.LLM, error) {
+	if baseURL == "" {
 		return nil, errs.New(errs.CodeInternalError, "no ollama url found")
 	}
-
-	httpTransport := httpclient.NewHttpTransport(cfg.OllamaURL)
+	opts := []transport.Option{transport.WithPropagateInternalHeaders(false)}
+	if apiKey != "" {
+		opts = append(opts, transport.WithDefaultHeaders(map[string][]string{
+			"Authorization": {"Bearer " + apiKey},
+		}))
+	}
 	return &ollamaClient{
 		httpClient: transport.NewClient(
 			"ollama",
-			httpTransport,
-			transport.WithPropagateInternalHeaders(false),
+			httpclient.NewHttpTransportWithClient(baseURL, httpClient),
+			opts...,
 		),
 	}, nil
 }

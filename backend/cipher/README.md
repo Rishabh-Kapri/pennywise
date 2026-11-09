@@ -16,7 +16,6 @@ Every prediction is recorded in `cipher_predictions` with its source (`RULE`/`VE
 - `POST /api/predict`, `POST /api/corrections`
 - `POST /api/email/normalize`, `POST /api/email/extract`
 - `POST /api/embeddings/transaction`
-- `POST /api/workflows/parsed-to-transaction`, `POST /api/workflows/:workflowId/retry-predict`, `POST /api/workflows/:workflowId/retry-parse` (nudge a Temporal workflow parked at the predict/parse step)
 - `/api/agent/runs` — agent run execution (dispatched from `go-pennywise-api`, which owns persistence)
 
 Agent streaming deltas are published to the Redis stream `pubsub`; the Go API rebroadcasts them to budget-scoped websocket clients.
@@ -43,10 +42,16 @@ Requires a reachable Ollama endpoint (`OLLAMA_URL`); it is intentionally not par
 
 ## Environment
 
-`DATABASE_URL` (shares the main Postgres), `OLLAMA_URL`, `PENNYWISE_SERVICE_URL`, `REDIS_URL`, `INTERNAL_AUTH_TOKEN`, `AGENT_PROVIDER`, `OPENAI_API_KEY`/`ANTHROPIC_API_KEY`/`OPENROUTER_API_KEY`, `TEMPORAL_SERVER_HOST`/`PORT`, `PORT`.
+`DATABASE_URL` (shares the main Postgres), `OLLAMA_URL`, `PENNYWISE_SERVICE_URL`, `REDIS_URL`, `INTERNAL_AUTH_TOKEN`, `LLM_CREDENTIALS_KEY` (same as the API's), `ALLOW_PRIVATE_LLM_URLS`, `OPENROUTER_API_KEY` (embeddings only), `PORT`.
+
+Chat models (email parsing, statements, the agent) run on each user's own AI provider keys, which they add in Settings → AI. The server's keys are never used for them.
 
 ### Lumo provider
+
+> Not reachable at the moment: Lumo isn't one of the providers users can configure (`user_llm_providers`), and there is no server-key fallback.
 
 Set `LUMO_BASE_URL=http://localhost:3003` (a trailing `/v1` is also accepted) to register `lumo`, then set `AGENT_PROVIDER=lumo` to select it. Use a host reachable from Cipher when running in Docker. `LUMO_API_KEY` is optional; set it to the server API key if authentication is enabled. The default model is `lumo-max`.
 
 The provider uses the Responses API with `reasoning.effort: high` and forwards `response.reasoning_text.delta` to the agent chat. To display thinking text, set `server.reasoning.surfaceThinking: true` in [lumo-tamer](https://github.com/ZeroTricks/lumo-tamer) (under `server`, not at the YAML root). Enable `server.customTools.enabled: true` for agent tools; upstream describes custom tool support as experimental. Lumo can also be selected in `EMAIL_PIPELINE_PROVIDERS` (e.g. `lumo=lumo-max`) and `AGENT_TITLE_MODEL` (`lumo/lumo-max`).
+
+If lumo-tamer reports that the daily premium-model quota is exhausted, Cipher retries once with `lumo-lite`. For streamed requests, this happens only before any answer, reasoning, or tool output has been emitted. Agent runs keep using `lumo-lite` for subsequent tool turns after a successful fallback.

@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
-	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
@@ -30,6 +29,11 @@ type openRouterReq struct {
 	MaxOutputTokens int                   `json:"max_output_tokens,omitempty"`
 	Metadata        map[string]string     `json:"metadata,omitempty"`
 	Stream          bool                  `json:"stream,omitempty"`
+	Reasoning       *openRouterReasoning  `json:"reasoning,omitempty"`
+}
+
+type openRouterReasoning struct {
+	Effort string `json:"effort,omitempty"`
 }
 
 type openRouterInputItem struct {
@@ -110,15 +114,15 @@ type openRouterStreamEvent struct {
 	Error       *openRouterError     `json:"error,omitempty"`
 }
 
-func NewOpenRouterClient() (llm.LLM, error) {
-	cfg := config.Load()
-	if cfg.OpenRouterAPIKey == "" {
+// NewOpenRouterClientWithKey builds a client on a user's own key.
+func NewOpenRouterClientWithKey(apiKey string) (llm.LLM, error) {
+	if apiKey == "" {
 		return nil, errs.New(errs.CodeInternalError, "no openrouter api key found")
 	}
 
 	headers := map[string][]string{
 		"content-type":  {"application/json"},
-		"Authorization": {fmt.Sprintf("Bearer %s", cfg.OpenRouterAPIKey)},
+		"Authorization": {fmt.Sprintf("Bearer %s", apiKey)},
 	}
 
 	httpTransport := httpclient.NewHttpTransport("https://openrouter.ai")
@@ -135,7 +139,7 @@ func NewOpenRouterClient() (llm.LLM, error) {
 
 func (c *openRouterClient) toOpenRouterReq(req sharedModel.ChatRequest) openRouterReq {
 	input := toOpenRouterInput(req.Messages)
-	return openRouterReq{
+	out := openRouterReq{
 		Model:           req.Model,
 		Input:           input,
 		Tools:           toOpenAITools(req.Tools),
@@ -145,6 +149,10 @@ func (c *openRouterClient) toOpenRouterReq(req sharedModel.ChatRequest) openRout
 		Metadata:        req.Metadata,
 		Stream:          req.Stream,
 	}
+	if req.ReasoningEffort != "" {
+		out.Reasoning = &openRouterReasoning{Effort: req.ReasoningEffort}
+	}
+	return out
 }
 
 // toOpenRouterInput builds the input list. System content is emitted as

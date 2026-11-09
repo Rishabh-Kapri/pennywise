@@ -8,11 +8,11 @@ import (
 
 func TestFormatDocumentName(t *testing.T) {
 	cases := []struct {
-		name    string
-		payee   string
-		date    string
-		index   int
-		want    string
+		name  string
+		payee string
+		date  string
+		index int
+		want  string
 	}{
 		{"plain", "McDonalds", "2026-08-19", 1, "McDonalds_20260819-1"},
 		{"punctuation stripped", "McDonald's", "2026-08-19", 1, "McDonalds_20260819-1"},

@@ -27,6 +27,8 @@ type GmailAPI interface {
 	SetupWatch(ctx context.Context, email string, req *gmailv1.WatchRequest) (*gmailv1.WatchResponse, error)
 	ListHistory(ctx context.Context, email string, startHistoryID uint64) (*gmailv1.ListHistoryResponse, error)
 	GetMessage(ctx context.Context, email string, id string) (*gmailv1.Message, error)
+	// ListMessages returns up to maxResults message ids matching a Gmail search query.
+	ListMessages(ctx context.Context, email string, query string, maxResults int64) ([]*gmailv1.Message, error)
 }
 
 // GmailAPIFactory creates a GmailAPI from an access token.

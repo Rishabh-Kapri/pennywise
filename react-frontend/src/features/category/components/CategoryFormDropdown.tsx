@@ -3,9 +3,9 @@ import type { Category } from '../types/category.types';
 import { useEffect, useRef, useState } from 'react';
 import { useAppSelector } from '@/app/hooks';
 import { selectSelectedBudget } from '@/features/budget';
-import { PencilSimple as Edit, Plus } from '@phosphor-icons/react';
+import { ArrowRight, PencilSimple as Edit, Plus } from '@phosphor-icons/react';
 import styles from './CategoryFormDropdown.module.css';
-import { Dropdown } from '@/components/common/Dropdown/Dropdown';
+import { Popover } from '@/components/common/Popover/Popover';
 
 interface CategoryFormDropdownProps {
   category?: Category;
@@ -106,41 +106,41 @@ export function CategoryFormDropdown({
           </div>
         )}
       </div>
-      <Dropdown
+      <Popover
+        id={`category-form-${category?.id ?? groupId ?? 'new'}`}
         isOpen={isOpen}
         onClose={() => setIsOpen(false)}
         triggerRef={triggerRef}
-        position="bottom"
-        width={340}>
+        placement="bottom"
+        width={300}>
         <form onSubmit={handleSubmit} className={styles.form}>
-          <h3 className={styles.title}>
-            {category ? 'Edit Category' : 'Add Category'}
-          </h3>
-
-          <div className={styles.field}>
-            <label htmlFor="name" className={styles.label}>
-              Category Name
-            </label>
+          <label htmlFor="category-form-name" className={styles.label}>
+            {category ? 'Rename category' : 'New category'}
+          </label>
+          <div className={styles.inputRow}>
             <input
-              id="name"
+              id="category-form-name"
               name="name"
               type="text"
               value={formData.name}
               onChange={handleChange}
               placeholder="e.g. Groceries"
               className={styles.input}
+              autoComplete="off"
               required
               autoFocus
             />
-          </div>
-
-          <div className={styles.actions}>
-            <button type="submit" className={styles.saveButton}>
-              {category ? 'Update' : 'Create'}
+            <button
+              type="submit"
+              className={styles.saveButton}
+              disabled={!formData.name.trim()}
+              aria-label={category ? 'Save category' : 'Create category'}>
+              <ArrowRight size={16} weight="bold" />
             </button>
           </div>
+          <span className={styles.hint}>Press Enter to {category ? 'save' : 'add'} · Esc to cancel</span>
         </form>
-      </Dropdown>
+      </Popover>
     </>
   );
 }

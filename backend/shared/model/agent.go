@@ -39,6 +39,7 @@ type Usage struct {
 	// turns means something volatile has crept into the prompt prefix.
 	CacheReadTokens  int
 	CacheWriteTokens int
+	Cost             *float64
 }
 
 type ContentBlock struct {
@@ -78,12 +79,19 @@ type ChatRequest struct {
 	Stream      bool
 	Format      any // "json" forces JSON output; a JSON-schema map constrains the output shape via structured outputs (Ollama only for now)
 	ChatType    ChatType
+	// ReasoningEffort ("low", "medium", "high") caps how long a reasoning
+	// model thinks before answering. Empty keeps the provider's default.
+	// Honoured by the Responses-API providers (OpenRouter, OpenAI, Lumo);
+	// mechanical steps such as transcribing a statement set it low, since
+	// the thinking otherwise eats the output budget the answer needs.
+	ReasoningEffort string
 }
 
 type ChatResponse struct {
 	ID          string
 	Model       string
 	Message     AgentMessage
+	Reasoning   string
 	Usage       Usage
 	StopReason  StopReason
 	RawProvider any // this is the raw message from the llm provider
@@ -164,6 +172,7 @@ type StreamChunk struct {
 
 	Usage      Usage
 	StopReason StopReason
+	Model      string
 }
 
 // Accumulated result of a single llm call
@@ -173,6 +182,7 @@ type StepResult struct {
 	ToolCalls  []ToolCall
 	Usage      Usage
 	MaxTokens  int
+	Model      string
 	Err        error
 	StopReason StopReason
 }

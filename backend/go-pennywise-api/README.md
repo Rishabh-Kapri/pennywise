@@ -1,6 +1,6 @@
 # go-pennywise-api
 
-Core REST API for Pennywise: auth, budgets, accounts, transactions, categories, payees, tags, loan metadata, predictions, agent runs, and websocket fanout. Built with Gin and PostgreSQL (pgx), layered as handler → service → repository (repositories live in [`backend/shared/db`](../shared)).
+Core REST API for Pennywise: auth, budgets, accounts, transactions, categories, payees, tags, loan metadata, predictions, agent runs, and websocket fanout. Built with Gin and PostgreSQL (pgx), layered as handler → service → repository (repository ports in [`backend/shared/ports/repository`](../shared), Postgres adapter in `shared/adapters/postgres`).
 
 ## Run
 
@@ -19,10 +19,11 @@ make test           # go test ./...
 make check          # fmt + vet + test
 make migrate-up     # apply pending migrations
 make migrate-status # show migration state
-make migrate-baseline # mark legacy seed migrations (1-6) as applied
+make migrate-create name=add_x # new migration in backend/shared/migrations/sql
+make migrate-baseline # one-off, for a DB built by the old 29 migrations
 ```
 
-On a **fresh database** the legacy Go seed migrations (00002/00003) fail; the workaround is `make migrate-up` (applies 00001, fails at 00002) → `make migrate-baseline` → `make migrate-up`. `CREATE EXTENSION vector` must exist before 00009.
+A **fresh database** just needs `make migrate-up`. The migrations and how to write them: `../shared/migrations/sql/README.md`.
 
 ## Routes
 
@@ -54,4 +55,4 @@ Migration `00027` repairs legacy `last_gmail_sync` columns from `TIMESTAMP` to `
 
 ## Environment
 
-See `.env.example`. Key variables: `DATABASE_URL`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, `DOMAIN`, `INTERNAL_AUTH_TOKEN`, `REDIS_URL`, `CIPHER_SERVICE_URL`, `GMAIL_SERVICE_URL`, `TEMPORAL_SERVER_HOST`/`PORT`, `DEMO_MODE`, `PORT`.
+See `.env.example`. Key variables: `DATABASE_URL`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, `DOMAIN`, `INTERNAL_AUTH_TOKEN`, `REDIS_URL`, `CIPHER_SERVICE_URL`, `GMAIL_SERVICE_URL`, `DEMO_MODE`, `PORT`.

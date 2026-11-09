@@ -5,6 +5,10 @@ export interface Account {
   budgetId: string;
   name: string;
   type: BudgetAccountType | TrackingAccountType | LoanAccountType;
+  /** Logo id of the account's bank (see bankLogos.ts); empty when unknown. */
+  bank?: string;
+  /** Last digits of the account / card number; empty when not set. */
+  suffix?: string;
   closed: boolean;
   balance?: number;
   transferPayeeId?: string; // id of this account's payee

@@ -3,12 +3,10 @@ package service
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"regexp"
 	"strings"
 	"time"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
@@ -21,8 +19,10 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/llmusage"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/progress"
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/userllm"
+
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 
 	"go.opentelemetry.io/otel/attribute"
 	oteltrace "go.opentelemetry.io/otel/trace"
@@ -114,6 +114,15 @@ type PredictionService interface {
 		req TransactionEmbeddingRequest,
 	) (*TransactionEmbeddingResponse, error)
 	HandleCorrection(ctx context.Context, req CorrectionRequest) error
+	// SuggestCategoryDescription drafts a one- or two-sentence description of
+	// what belongs in a budget category.
+	SuggestCategoryDescription(ctx context.Context, req sharedModel.CategoryDescriptionContext) (string, error)
+	// ExtractStatement pulls transaction rows out of one chunk of statement
+	// text for reconciliation.
+	ExtractStatement(
+		ctx context.Context,
+		req sharedModel.StatementExtractRequest,
+	) (*sharedModel.StatementExtractResponse, error)
 }
 
 type predictionService struct {
@@ -130,20 +139,17 @@ type predictionService struct {
 	// llmCallTimeout bounds each chat-endpoint LLM call made through the
 	// llmResolver (the OllamaClient bounds its own calls).
 	llmCallTimeout time.Duration
-	// pipelineTargets is the ordered provider chain for the email pipeline's
-	// LLM steps (extract, summarize, llm fallback).
-	pipelineTargets []config.LLMTarget
-	// embedders maps a provider name to its embedding backend, and
-	// embeddingTargets is the ordered chain drawn from it.
-	embedders        map[string]client.Embedder
-	embeddingTargets []config.LLMTarget
+	// llmModels and embedders find and call the budget owner's embedding model.
+	llmModels repository.UserLLMModelRepository
+	embedders EmbedderResolver
 }
 
-// NewPredictionService wires the prediction pipeline. embedders maps provider
-// names to embedding backends for the EMAIL_EMBEDDING_PROVIDERS chain; the
-// ollama client is always registered under "ollama", and callers add optional
-// remote backends (a nil entry is ignored so callers can pass one
-// unconditionally).
+// EmbedderResolver gets a client for one of the user's embedding models.
+type EmbedderResolver interface {
+	ResolveEmbedder(m sharedModel.UserLLMModel) (client.Embedder, error)
+}
+
+// NewPredictionService wires the prediction pipeline.
 func NewPredictionService(
 	agent *agent.Agent,
 	llmResolver llm.LLMResolver,
@@ -155,102 +161,66 @@ func NewPredictionService(
 	payeeRuleRepo repository.PayeeRuleRepository,
 	categoryRepo repository.CategoryRepository,
 	tracer oteltrace.Tracer,
-	embedders map[string]client.Embedder,
+	llmModels repository.UserLLMModelRepository,
+	embedders EmbedderResolver,
 ) PredictionService {
-	allEmbedders := map[string]client.Embedder{"ollama": ollama}
-	for provider, embedder := range embedders {
-		if embedder == nil {
-			continue
-		}
-		// Constructors return a typed nil pointer when unconfigured, which is a
-		// non-nil interface — unwrap it so the chain skips the provider instead
-		// of panicking on the call.
-		if value := reflect.ValueOf(embedder); value.Kind() == reflect.Ptr && value.IsNil() {
-			continue
-		}
-		allEmbedders[provider] = embedder
-	}
-
 	return &predictionService{
-		agent:            agent,
-		llmResolver:      llmResolver,
-		ollama:           ollama,
-		mlp:              mlp,
-		embeddingRepo:    embeddingRepo,
-		accountRepo:      accountRepo,
-		payeeRepo:        payeeRepo,
-		payeeRuleRepo:    payeeRuleRepo,
-		categoryRepo:     categoryRepo,
-		tracer:           tracer,
-		llmCallTimeout:   config.Load().LLMCallTimeout,
-		pipelineTargets:  config.Load().EmailPipelineTargets,
-		embedders:        allEmbedders,
-		embeddingTargets: config.Load().EmailEmbeddingTargets,
+		agent:          agent,
+		llmResolver:    llmResolver,
+		ollama:         ollama,
+		mlp:            mlp,
+		embeddingRepo:  embeddingRepo,
+		accountRepo:    accountRepo,
+		payeeRepo:      payeeRepo,
+		payeeRuleRepo:  payeeRuleRepo,
+		categoryRepo:   categoryRepo,
+		tracer:         tracer,
+		llmCallTimeout: config.Load().LLMCallTimeout,
+		llmModels:      llmModels,
+		embedders:      embedders,
 	}
 }
 
-// embedWithFallback generates an embedding for text, trying each configured
-// embedding target in order and moving on when one fails. It returns the target
-// that produced the vector so callers can record which backend was used.
-//
-// Every target is expected to serve the same model, so the resulting vectors
-// stay comparable to the ones already stored in pgvector; the chain exists for
-// availability, not for model choice.
-func (s *predictionService) embedWithFallback(
-	ctx context.Context,
-	text string,
-) ([]float64, config.LLMTarget, error) {
-	log := logger.Logger(ctx)
+// embed generates an embedding with the budget owner's default embedding model.
+// There is no fallback to their other models: stored vectors are only comparable
+// to ones from the same model. It returns the model so callers can record it.
+func (s *predictionService) embed(ctx context.Context, text string) ([]float64, sharedModel.UserLLMModel, error) {
+	var none sharedModel.UserLLMModel
+	budgetID, err := utils.BudgetIDFromContext(ctx)
+	if err != nil {
+		return nil, none, err
+	}
+	models, err := s.llmModels.ListUsableForBudget(ctx, budgetID, sharedModel.LLMModelEmbedding)
+	if err != nil {
+		return nil, none, errs.Wrap(errs.CodeInternalError, "loading embedding models", err)
+	}
+	if len(models) == 0 || !models[0].IsDefault {
+		return nil, none, errs.New(errs.CodeAIProviderNotConfigured, "no embedding model set up; add one in Settings → AI")
+	}
+	m := models[0]
 
-	if len(s.embeddingTargets) == 0 {
-		return nil, config.LLMTarget{}, errs.New(errs.CodeInternalError, "no embedding providers configured")
+	embedder, err := s.embedders.ResolveEmbedder(m)
+	if err != nil {
+		return nil, none, err
 	}
 
-	var lastErr error
-	for _, target := range s.embeddingTargets {
-		embedder, ok := s.embedders[target.Provider]
-		if !ok {
-			log.Warn("embedding provider unavailable, trying next", "provider", target.Provider)
-			lastErr = errs.New(errs.CodeInternalError, "embedding provider %q not configured", target.Provider)
-			continue
-		}
-
-		embedModel := target.Model
-		if embedModel == "" {
-			embedModel = EmbeddingModel
-		}
-
-		startedAt := time.Now()
-		embedding, err := embedder.Embed(ctx, embedModel, text)
-		elapsed := time.Since(startedAt)
-		if err != nil {
-			log.Warn("embedding provider call failed, trying next",
-				"provider", target.Provider, "model", embedModel, "error", err)
-			llmusage.Record(ctx, sharedModel.LLMCall{
-				Step:       "predict:embed",
-				Provider:   target.Provider,
-				Model:      embedModel,
-				DurationMs: elapsed.Milliseconds(),
-				Failed:     true,
-				Error:      err.Error(),
-			})
-			lastErr = err
-			continue
-		}
-
-		// Embedding backends do not report token counts, so this records the
-		// call and its cost in time only.
-		llmusage.Record(ctx, sharedModel.LLMCall{
-			Step:       "predict:embed",
-			Provider:   target.Provider,
-			Model:      embedModel,
-			DurationMs: elapsed.Milliseconds(),
-		})
-
-		return embedding, config.LLMTarget{Provider: target.Provider, Model: embedModel}, nil
+	startedAt := time.Now()
+	embedding, err := embedder.Embed(ctx, m.Slug, text)
+	call := sharedModel.LLMCall{
+		Step:       "predict:embed",
+		Provider:   string(m.Provider),
+		Model:      m.Slug,
+		DurationMs: time.Since(startedAt).Milliseconds(),
 	}
-
-	return nil, config.LLMTarget{}, errs.Wrap(errs.CodeInternalError, "all embedding providers failed", lastErr)
+	if err != nil {
+		call.Failed, call.Error = true, err.Error()
+		llmusage.Record(ctx, call)
+		return nil, none, err
+	}
+	// Embedding backends do not report token counts, so this records the call
+	// and its cost in time only.
+	llmusage.Record(ctx, call)
+	return embedding, m, nil
 }
 
 // cloudMaxOutputTokens bounds the output budget requested from hosted providers.
@@ -284,14 +254,18 @@ func (s *predictionService) chatWithFallback(
 ) (*sharedModel.ChatResponse, error) {
 	log := logger.Logger(ctx)
 
-	targets := s.pipelineTargets
+	// The chain is the budget owner's own providers, in their order.
+	targets, err := s.llmResolver.Targets(ctx)
+	if err != nil {
+		return nil, err
+	}
 	if len(targets) == 0 {
-		return nil, errs.New(errs.CodeLLMNotConfigured, "no email pipeline providers configured")
+		return nil, userllm.ErrNotConfigured
 	}
 
 	var lastErr error
 	for _, target := range targets {
-		lc, model, err := s.llmResolver.Resolve(target.Provider, target.Model)
+		lc, model, err := s.llmResolver.Resolve(ctx, target.Provider, target.Model)
 		if err != nil {
 			// Provider has no API key / isn't registered — skip to the next.
 			log.Warn("pipeline provider unavailable, trying next",
@@ -434,7 +408,7 @@ func (s *predictionService) handleSemanticSearch(
 	log := logger.Logger(ctx)
 
 	progress.Report(ctx, "predict:semantic_search")
-	embedding, embedTarget, err := s.embedWithFallback(ctx, embeddingText)
+	embedding, embedModel, err := s.embed(ctx, embeddingText)
 	if err != nil {
 		// Semantic search is optional: without a vector we simply fall through
 		// to the payee rules / LLM fallback rather than failing the prediction.
@@ -442,10 +416,8 @@ func (s *predictionService) handleSemanticSearch(
 		return nil, nil
 	}
 
-	embeddingStr := db.VectorToString(embedding)
-
 	// Step 2: pgvector similarity search
-	matches, err := s.embeddingRepo.SearchSimilar(ctx, budgetId, req.Amount, embeddingStr, 3)
+	matches, err := s.embeddingRepo.SearchSimilar(ctx, budgetId, req.Amount, embedding, 3)
 	log.Info("pgvector search", "matches", matches)
 	if err != nil {
 		log.Warn("pgvector search failed", "error", err)
@@ -463,8 +435,8 @@ func (s *predictionService) handleSemanticSearch(
 		// Record which backend produced the query vector — with a fallback chain
 		// the corpus can mix backends, and that is worth being able to see.
 		if result.Metadata != nil {
-			result.Metadata["embedding_model"] = embedTarget.Model
-			result.Metadata["embedding_provider"] = embedTarget.Provider
+			result.Metadata["embedding_model"] = embedModel.Slug
+			result.Metadata["embedding_provider"] = string(embedModel.Provider)
 		}
 		return result, nil
 	}
@@ -853,7 +825,7 @@ func (s *predictionService) GenerateTransactionEmbedding(
 	}
 
 	embeddingText := transactionType + " " + merchantName
-	embedding, _, err := s.embedWithFallback(ctx, embeddingText)
+	embedding, _, err := s.embed(ctx, embeddingText)
 	if err != nil {
 		return nil, errs.Wrap(errs.CodeInternalError, "generate transaction embedding", err)
 	}
@@ -861,7 +833,7 @@ func (s *predictionService) GenerateTransactionEmbedding(
 	return &TransactionEmbeddingResponse{
 		MatchString:   matchString,
 		EmbeddingText: embeddingText,
-		Embedding:     db.VectorToString(embedding),
+		Embedding:     sharedModel.FormatVector(embedding),
 	}, nil
 }
 
@@ -870,12 +842,10 @@ func (s *predictionService) HandleCorrection(ctx context.Context, req Correction
 	logger := logger.Logger(ctx)
 
 	// Generate embedding for the corrected transaction
-	embedding, _, err := s.embedWithFallback(ctx, req.EmailText)
+	embedding, _, err := s.embed(ctx, req.EmailText)
 	if err != nil {
 		return errs.Wrap(errs.CodeInternalError, "embed correction", err)
 	}
-
-	embeddingStr := db.VectorToString(embedding)
 
 	data := sharedModel.TransactionEmbedding{
 		BudgetID:      budgetID,
@@ -886,7 +856,7 @@ func (s *predictionService) HandleCorrection(ctx context.Context, req Correction
 		Source: SourceUserCorrected,
 	}
 
-	if err := s.embeddingRepo.Upsert(ctx, nil, data, embeddingStr); err != nil {
+	if err := s.embeddingRepo.Upsert(ctx, data, embedding); err != nil {
 		return fmt.Errorf("upsert correction embedding: %w", err)
 	}
 
@@ -1149,7 +1119,7 @@ func (s *predictionService) storeEmbedding(
 	embeddingText string,
 	result *PredictResponse,
 	source string,
-	embeddingStr string,
+	embedding []float64,
 ) {
 	data := sharedModel.TransactionEmbedding{
 		BudgetID:      budgetID,
@@ -1160,7 +1130,7 @@ func (s *predictionService) storeEmbedding(
 		Source:        source,
 	}
 
-	if err := s.embeddingRepo.Upsert(ctx, nil, data, embeddingStr); err != nil {
+	if err := s.embeddingRepo.Upsert(ctx, data, embedding); err != nil {
 		logger.Logger(ctx).Error("failed to store prediction embedding", "error", err)
 	}
 }

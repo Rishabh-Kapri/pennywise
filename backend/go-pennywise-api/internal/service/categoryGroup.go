@@ -3,9 +3,9 @@ package service
 import (
 	"context"
 
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
@@ -50,7 +50,7 @@ func (s *categoryGroupService) Create(
 ) (*model.CategoryGroup, error) {
 	budgetId := utils.MustBudgetID(ctx)
 	categoryGroup.BudgetID = budgetId
-	return s.repo.Create(ctx, nil, categoryGroup)
+	return s.repo.Create(ctx, categoryGroup)
 }
 
 func (s *categoryGroupService) Update(ctx context.Context, id uuid.UUID, categoryGroup model.CategoryGroup) error {

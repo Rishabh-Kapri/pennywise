@@ -1,0 +1,85 @@
+/* Same floating card as the budget inspector and the account groups. */
+.card {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  min-width: 0;
+  padding: 1.25rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 1rem;
+  background: var(--dash-surface);
+  box-shadow: var(--shadow-sm);
+  transition: opacity 0.2s ease;
+}
+
+.card[aria-busy='true'] {
+  opacity: 0.7;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 2rem;
+}
+
+.title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.title svg {
+  flex: 0 0 auto;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+/* ── Segmented toggle ── */
+
+.segmented {
+  display: inline-flex;
+  padding: 0.2rem;
+  border-radius: 0.6rem;
+  background: var(--raised-bg);
+}
+
+.segment {
+  padding: 0.25rem 0.65rem;
+  border: 0;
+  border-radius: 0.45rem;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.segment:hover {
+  color: var(--color-text);
+}
+
+.segment[aria-pressed='true'] {
+  background: var(--dash-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-sm);
+}
+
+.segment:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

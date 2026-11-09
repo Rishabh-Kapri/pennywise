@@ -5,12 +5,11 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 
-	repository "github.com/Rishabh-Kapri/pennywise/backend/shared/db"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 	"go.temporal.io/sdk/activity"
 )
@@ -22,6 +21,7 @@ import (
 type PipelineStatusActivity struct {
 	PipelineRunRepo  repository.PipelineRunRepository
 	WebsocketService service.WebsocketService
+	DBTxn            repository.DBTxn
 }
 
 func (a *PipelineStatusActivity) StartPipelineRun(
@@ -61,13 +61,13 @@ func (a *PipelineStatusActivity) ReportPipelineStatus(
 	}
 
 	var run *sharedModel.PipelineRun
-	err := utils.WithTx(ctx, a.PipelineRunRepo.GetDB(), func(tx pgx.Tx) error {
+	err := a.DBTxn.Do(ctx, func(ctx context.Context) error {
 		var err error
-		run, err = a.PipelineRunRepo.UpdateRun(ctx, tx, input)
+		run, err = a.PipelineRunRepo.UpdateRun(ctx, input)
 		if err != nil {
 			return err
 		}
-		return a.PipelineRunRepo.AppendEvents(ctx, tx, input.RunID, input.Events)
+		return a.PipelineRunRepo.AppendEvents(ctx, input.RunID, input.Events)
 	})
 	if err != nil {
 		log.Error("failed to report pipeline status", "pipelineRunId", input.RunID, "error", err)

@@ -1,187 +1,204 @@
-.card {
+.stack {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  padding: 1.25rem;
-  background: var(--color-surface-secondary);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 14px;
 }
 
-.breadcrumb {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.backBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  background: none;
-  border: none;
-  padding: 0;
-  color: var(--color-primary);
-  font-size: 0.9rem;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.breadcrumbSeparator {
+.help {
+  margin: -0.35rem 0 0;
   color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.5;
 }
 
-.breadcrumbCurrent {
-  color: var(--color-text-secondary);
-  font-size: 0.95rem;
+.help strong {
+  color: var(--color-text);
   font-weight: 600;
 }
 
-.rangeLabel {
-  margin-left: auto;
-  color: var(--color-text-secondary);
-  font-size: 0.85rem;
-}
-
-.chartLayout {
-  display: grid;
-  grid-template-columns: minmax(240px, 320px) 1fr;
-  gap: 1.5rem;
-  align-items: center;
-}
-
-@media (max-width: 720px) {
-  .chartLayout {
-    grid-template-columns: 1fr;
-  }
-}
-
-.donutWrap {
-  position: relative;
-}
-
-.donutCenter {
-  position: absolute;
-  inset: 0;
+.list {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.15rem;
-  pointer-events: none;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.donutTotal {
-  color: var(--color-text);
-  font-size: 1.2rem;
-  font-weight: 700;
+.headRow,
+.row,
+.subRow {
+  display: grid;
+  grid-template-columns: minmax(10rem, 1.6fr) 6.5rem minmax(4rem, 1fr) 7rem 4.5rem 6rem;
+  align-items: center;
+  gap: 0.75rem;
   font-variant-numeric: tabular-nums;
 }
 
-.donutCaption {
+.headRow {
+  padding: 0 0 0.4rem;
+  border-bottom: 1px solid var(--line);
   color: var(--color-text-secondary);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.row {
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.875rem;
+}
+
+.row[data-treatment='saving'] {
+  color: var(--color-text-secondary);
+}
+
+.subRow {
+  padding: 0.3rem 0;
   font-size: 0.8rem;
-  max-width: 45%;
-  text-align: center;
+  color: var(--color-text-secondary);
 }
 
-.legendList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
+.sectionRow {
+  padding: 1rem 0 0.4rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--color-text-secondary);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
-.legendRow {
+.name {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  width: 100%;
+  gap: 0.45rem;
+  min-width: 0;
+  padding: 0;
+  border: 0;
   background: none;
-  border: none;
-  border-radius: 8px;
-  padding: 0.45rem 0.6rem;
+  color: inherit;
+  font: inherit;
+  font-weight: 550;
   text-align: left;
-}
-
-.legendRowDrillable {
-  composes: legendRow;
   cursor: pointer;
-  transition: background 0.15s;
 }
 
-.legendRowDrillable:hover {
-  background: rgba(255, 255, 255, 0.05);
+.name:disabled {
+  cursor: default;
 }
 
-.legendDot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
+.name:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 0.3rem;
+}
+
+.name svg {
   flex: 0 0 auto;
+  color: var(--color-text-secondary);
 }
 
-.legendName {
-  color: var(--color-text);
-  font-size: 0.9rem;
+.nameText {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.legendPercent {
-  margin-left: auto;
-  color: var(--color-text-secondary);
-  font-size: 0.85rem;
-  font-variant-numeric: tabular-nums;
+.subName {
+  overflow: hidden;
+  padding-left: 2.1rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.legendValue {
-  min-width: 6.5rem;
-  text-align: right;
-  color: var(--color-text);
-  font-size: 0.9rem;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.tooltip {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.6rem 0.75rem;
-  background: var(--color-surface);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  box-shadow: var(--shadow-md);
-}
-
-.tooltipSwatch {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
+.dot {
   flex: 0 0 auto;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 0.2rem;
 }
 
-.tooltipName {
-  color: var(--color-text-secondary);
-  font-size: 0.875rem;
-}
-
-.tooltipValue {
+.tag {
+  flex: 0 0 auto;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--rp-one-off) 16%, transparent);
   color: var(--color-text);
-  font-size: 0.875rem;
+  font-size: 0.7rem;
   font-weight: 600;
-  font-variant-numeric: tabular-nums;
 }
 
-.emptyState {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 280px;
+.treatment {
+  width: 100%;
+  padding: 0.2rem 0.35rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.45rem;
+  background: var(--dash-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.treatment:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.amount,
+.share,
+.average {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.amount {
+  font-weight: 600;
+}
+
+.row[data-treatment='saving'] .amount {
+  font-weight: 500;
+}
+
+.share,
+.average {
   color: var(--color-text-secondary);
-  font-size: 0.95rem;
+  font-size: 0.8rem;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+@container (max-width: 44rem) {
+  .headRow,
+  .row,
+  .subRow {
+    grid-template-columns: minmax(0, 1fr) 6rem 6.5rem;
+  }
+
+  .headRow > :nth-child(3),
+  .headRow > :nth-child(5),
+  .headRow > :nth-child(6),
+  .row > :nth-child(3),
+  .row > :nth-child(5),
+  .row > :nth-child(6),
+  .subRow > :nth-child(3),
+  .subRow > :nth-child(5),
+  .subRow > :nth-child(6) {
+    display: none;
+  }
 }

@@ -131,6 +131,8 @@ func RequestMetadataFromContext(ctx context.Context) RequestMetadata {
 	return metadata.normalized()
 }
 
+// Extracts the relevant headers from the incoming http request
+// Converts those headers to an internally consistent struct: [RequestMetadata]
 func RequestMetadataFromHeaders(headers http.Header) RequestMetadata {
 	metadata := RequestMetadata{
 		CorrelationID: headers.Get(HeaderCorrelationID),

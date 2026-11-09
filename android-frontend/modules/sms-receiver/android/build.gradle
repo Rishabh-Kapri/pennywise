@@ -1,0 +1,20 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'dev.pennywise'
+version = '0.1.0'
+
+android {
+  namespace "dev.pennywise.smsreceiver"
+  defaultConfig {
+    versionCode 1
+    versionName '0.1.0'
+  }
+}
+
+dependencies {
+  // HeadlessJsTaskService
+  implementation 'com.facebook.react:react-android'
+}

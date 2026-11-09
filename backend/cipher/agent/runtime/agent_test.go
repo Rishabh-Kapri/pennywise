@@ -43,11 +43,15 @@ func (s *scriptedLLM) Stream(context.Context, sharedModel.ChatRequest) <-chan sh
 // rather than substituted for it.
 type scriptedResolver struct{ client *llm.ObservedLLM }
 
-func (r scriptedResolver) Resolve(_ string, model string) (*llm.ObservedLLM, string, error) {
+func (r scriptedResolver) Resolve(_ context.Context, _ string, model string) (*llm.ObservedLLM, string, error) {
 	if model == "" {
 		model = "test-model"
 	}
 	return r.client, model, nil
+}
+
+func (r scriptedResolver) Targets(context.Context) ([]llm.Target, error) {
+	return []llm.Target{{Provider: "test", Model: "test-model"}}, nil
 }
 
 // failingTool always errors, standing in for a bad SQL query.
@@ -159,6 +163,35 @@ func TestRunReturnsToolFailureToModel(t *testing.T) {
 	}
 	if len(found.Content) == 0 || found.Content[0].Text == "" {
 		t.Error("tool result should carry the error text so the model can correct itself")
+	}
+}
+
+func TestRunKeepsLumoLiteAfterQuotaFallback(t *testing.T) {
+	registry := tools.NewToolRegistry()
+	registry.RegisterTool(failingTool{name: "execute_sql"})
+	first := toolUseResponse("call_1", "execute_sql")
+	first.Model = "lumo-lite"
+	second := endTurnResponse("Done")
+	second.Model = "lumo-lite"
+	client := &scriptedLLM{responses: []sharedModel.ChatResponse{first, second}}
+	agent := newTestAgent(t, client, registry)
+
+	response, err := agent.Run(testContext(t), sharedModel.ChatRequest{
+		Provider: "lumo",
+		Model:    "lumo-max",
+		Messages: []sharedModel.AgentMessage{{
+			Role:    sharedModel.RoleUser,
+			Content: []sharedModel.ContentBlock{{Type: "text", Text: "check my data"}},
+		}},
+	}, WithUpdateMetadata(false), WithRunMemoryEnabled(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(client.requests) != 2 || client.requests[0].Model != "lumo-max" || client.requests[1].Model != "lumo-lite" {
+		t.Fatalf("requested models = %v", client.requests)
+	}
+	if response.Model != "lumo-lite" {
+		t.Fatalf("response model = %q", response.Model)
 	}
 }
 

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
-	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
@@ -134,14 +133,14 @@ type anthropicStreamErrorEvent struct {
 	Message string `json:"message"`
 }
 
-func NewAnthropicClient(name string) (llm.LLM, error) {
-	config := config.Load()
-	if config.AnthropicAPIKey == "" {
+// NewAnthropicClientWithKey builds a client on a user's own key.
+func NewAnthropicClientWithKey(name, apiKey string) (llm.LLM, error) {
+	if apiKey == "" {
 		return nil, errs.New(errs.CodeInternalError, "no api key found")
 	}
 	headers := map[string][]string{
 		"content-type":      {"application/json"},
-		"x-api-key":         {config.AnthropicAPIKey},
+		"x-api-key":         {apiKey},
 		"anthropic-version": {"2023-06-01"},
 	}
 
