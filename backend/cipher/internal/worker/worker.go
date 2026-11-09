@@ -37,7 +37,7 @@ func Setup(ctx context.Context, deps WorkerDeps) error {
 
 	w, err := jobrunner.NewWorker(
 		deps.Broker,
-		jobrunner.WithConcurrency(1),
+		jobrunner.WithConcurrency(3),
 		jobrunner.WithQueues(deps.Queues),
 		jobrunner.WithPrefix("cipher"),
 	)

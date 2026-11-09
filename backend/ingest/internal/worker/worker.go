@@ -34,7 +34,7 @@ func Setup(ctx context.Context, deps Deps) error {
 
 	w, err := jobrunner.NewWorker(
 		deps.Broker,
-		jobrunner.WithConcurrency(1),
+		jobrunner.WithConcurrency(2),
 		jobrunner.WithQueues(deps.Queues),
 		jobrunner.WithPrefix("ingest"),
 	)
