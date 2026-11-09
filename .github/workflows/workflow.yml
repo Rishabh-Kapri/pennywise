@@ -154,6 +154,7 @@ jobs:
             exit 0
           fi
           count=0
+          skipped_empty=0
           line_number=0
           while IFS= read -r line || [ -n "$line" ]; do
             line_number=$((line_number + 1))
@@ -172,6 +173,10 @@ jobs:
               \"*\") value="${value:1:${#value}-2}" ;;
               \'*\') value="${value:1:${#value}-2}" ;;
             esac
+            if [ -z "$value" ]; then
+              skipped_empty=$((skipped_empty + 1))
+              continue
+            fi
             # From stdin, so values stay out of the process list.
             printf '%s' "$value" | railway variable set "$key" --stdin --skip-deploys \
               --project "$RAILWAY_PROJECT_ID" \
@@ -179,7 +184,7 @@ jobs:
               --service "$RAILWAY_SERVICE_ID" > /dev/null
             count=$((count + 1))
           done <<< "$SERVICE_ENV"
-          echo "Set $count variables from $ENV_SECRET."
+          echo "Set $count variables from $ENV_SECRET; skipped $skipped_empty empty values."
       - name: Deploy prepared source
         if: github.ref == 'refs/heads/dev' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: |
@@ -193,7 +198,7 @@ jobs:
           commit_message=$(git log -1 --format=%s)
           upload_log="$RUNNER_TEMP/railway-upload.log"
           for attempt in 1 2 3; do
-            if railway up "$RUNNER_TEMP/railway-source" \
+            if railway up "$RUNNER_TEMP/railway-source/backend/${{ matrix.module }}" \
               --path-as-root --no-gitignore --ci \
               --project "$RAILWAY_PROJECT_ID" \
               --environment "$RAILWAY_DEV_ENVIRONMENT_ID" \
