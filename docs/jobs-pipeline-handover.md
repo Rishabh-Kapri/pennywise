@@ -33,11 +33,11 @@ Each step is its own job, chained by `root_job_id` and `parent_id`. Check throug
 1. **Ingest** accepts an email or SMS and queues `message.received`.
 2. **Check** (default: decisions model) asks whether it's a transaction. No ends the message.
 3. **Extract** (chat model) reads account, merchant, amount and date.
-4. **Verify** (decision model) checks those details against the text. A blank amount or date fails here without a paid call.
+4. **Verify** (decision model) checks those details against the text and adds channel, VPA, ref and a missing account. A blank amount or date fails here without a paid call. A failed or unsure message parks as `needs_review`.
 5. **Lookup** finds the merchant's alias. A hit skips Predict.
 6. **Predict** (chat model) picks a payee and category from the budget's list.
 7. **Create** saves the unapproved transaction and its cipher prediction, deduped by hash.
-8. **Report** records the outcome for the Activity page.
+8. **Report** carries the outcome the Jobs screen shows.
 9. **Learn** saves the source row and alias. It runs after Report, so a learning failure can't lose the outcome.
 
 For a step that uses a model, cipher builds its attempts with `pipeline.Attempts`: the step's model first, then, with fallback on, the owner's other models of that kind in priority order. `buildStep` turns those into one adapter or a chain, and clients are cached by key row, endpoint, base URL and `KeyUpdatedAt`.
@@ -58,7 +58,7 @@ Paths are under `backend/` unless they start with a frontend folder.
 | Step adapters | `cipher/internal/adapters/{decisions,llm,alias,regex}` |
 | Decisions provider | `cipher/agent/decisions/providers/openrouter.go` |
 | Message job handlers | `cipher/internal/worker/handlers.go` |
-| Rule-based key parsing | `cipher/internal/narration/` |
+| Statement line parsing | `shared/utils/narration/` |
 | Create and learn | `go-pennywise-api/internal/service/messageJob.go` |
 | Create, report and learn handlers | `go-pennywise-api/internal/worker/worker.go` |
 | Model and pipeline APIs | `go-pennywise-api/internal/service/{aiModel,pipelineStep}.go` |
@@ -84,7 +84,7 @@ Paths are under `backend/` unless they start with a frontend folder.
 | A disabled default stays the default | Switching it off briefly doesn't lose the choice. |
 | Cache clients per key, not per model | A client is bound to a key and endpoint; the model is a request field. |
 | Exact lookup, no fuzzy matching | Fuzzy matching only saves one Predict call per new spelling, and a wrong match becomes a saved alias. |
-| Lookup uses the rule-parsed key, not the LLM's merchant | Aliases are stored under that key, and it stays local. |
+| Lookup uses extract's merchant and verify's channel and VPA | Email rules broke with every bank template. UPI aliases use the VPA, which doesn't vary. |
 | Learn is a job, after Report | Failures are retryable and visible, and can't block the outcome. |
 | Duplicate means the row existed before this job started | A retry finding its own earlier save still counts as created. |
 | Embeddings use only the default model, with no fallback | Vectors from different models can't be compared. |

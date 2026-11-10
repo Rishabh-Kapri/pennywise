@@ -136,17 +136,6 @@ const config: ExpoConfig = {
             targetCellHeight: 3,
             resizeMode: 'horizontal|vertical',
             updatePeriodMillis: 1800000
-          },
-          {
-            name: 'Pipeline',
-            label: 'Pennywise ingestion',
-            description: 'Email-to-transaction pipeline health, with one-tap retry for parked runs.',
-            minWidth: '180dp',
-            minHeight: '110dp',
-            targetCellWidth: 3,
-            targetCellHeight: 2,
-            resizeMode: 'horizontal|vertical',
-            updatePeriodMillis: 1800000
           }
         ]
       }

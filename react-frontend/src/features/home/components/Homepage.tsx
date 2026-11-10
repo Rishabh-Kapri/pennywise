@@ -48,7 +48,7 @@ function BudgetPreview() {
     <figure className={styles.preview} aria-label="Example monthly budget with ₹56,480 available">
       <div className={styles.previewBar}>
         <span className={styles.previewBrand}>
-          <span className={styles.smallLogo}>P</span> My workspace
+          <img className={styles.smallLogo} src="/logo-mark.svg" alt="" /> My workspace
         </span>
         <span className={styles.sampleBadge}>Sample budget</span>
       </div>
@@ -133,7 +133,7 @@ export default function Homepage() {
       </a>
       <header className={styles.header}>
         <Link to="/" className={styles.brand} aria-label="Pennywise home">
-          <span className={styles.logo}>P</span>Pennywise<span className={styles.brandDot}>.</span>
+          <img className={styles.logo} src="/favicon.svg" alt="" />Pennywise<span className={styles.brandDot}>.</span>
         </Link>
         <nav className={styles.navigation} aria-label="Main navigation">
           <a href="#features">Features</a>
@@ -325,7 +325,7 @@ export default function Homepage() {
       </section>
       <footer className={styles.footer}>
         <Link to="/" className={styles.brand}>
-          <span className={styles.logo}>P</span>Pennywise<span className={styles.brandDot}>.</span>
+          <img className={styles.logo} src="/favicon.svg" alt="" />Pennywise<span className={styles.brandDot}>.</span>
         </Link>
         <p>A little more intention. Every day.</p>
         <nav aria-label="Footer navigation">

@@ -423,6 +423,22 @@ func TestTransactionRepo_CreateDeduped(t *testing.T) {
 		assert.NotEqual(t, uuid.Nil, got.ID)
 	})
 
+	t.Run("find by hash", func(t *testing.T) {
+		in := newTxn(s, "2026-10-12", -99)
+		in.DedupeHash = strPtr("hash-find")
+		first, _, err := repo.CreateDeduped(ctx, in)
+		require.NoError(t, err)
+
+		found, err := repo.FindByDedupeHash(ctx, s.budgetID, "hash-find")
+		require.NoError(t, err)
+		require.NotNil(t, found)
+		assert.Equal(t, first.ID, found.ID)
+
+		missing, err := repo.FindByDedupeHash(ctx, s.budgetID, "hash-missing")
+		require.NoError(t, err)
+		assert.Nil(t, missing)
+	})
+
 	t.Run("same hash returns the existing row", func(t *testing.T) {
 		in := newTxn(s, "2026-10-12", -99)
 		in.DedupeHash = strPtr("hash-b")

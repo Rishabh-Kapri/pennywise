@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -17,15 +18,20 @@ import (
 //	                                                              ▼       │
 //	                              pipeline.report ◄── transaction.create ◄┘
 //
-// Any step that ends the message early goes straight to pipeline.report.
+// Any step that ends the message early goes straight to pipeline.report. Check
+// and verify can also park it there for a person (needs_review); continuing
+// queues the step after the one that parked.
 
 // MessageOutcome is how a message's trip through the pipeline ended.
 type MessageOutcome string
 
 const (
-	MessageOutcomeNotTransaction     MessageOutcome = "not_transaction"
-	MessageOutcomeUnverified         MessageOutcome = "unverified"
-	MessageOutcomeNoPrediction       MessageOutcome = "no_prediction"
+	MessageOutcomeNotTransaction MessageOutcome = "not_transaction"
+	MessageOutcomeUnverified     MessageOutcome = "unverified"
+	MessageOutcomeNoPrediction   MessageOutcome = "no_prediction"
+	// MessageOutcomeNeedsReview: a step wasn't sure, so the message waits for a
+	// person. Its report carries a MessageReview.
+	MessageOutcomeNeedsReview        MessageOutcome = "needs_review"
 	MessageOutcomeTransactionCreated MessageOutcome = "transaction_created"
 	// MessageOutcomeTransactionDuplicate: the message matched a transaction that
 	// already existed, so nothing new was added.
@@ -61,6 +67,11 @@ type MessageEntities struct {
 	Merchant string    `json:"merchant"`
 	Amount   float64   `json:"amount"`
 	Date     time.Time `json:"date"`
+	Currency string    `json:"currency,omitempty"`
+	// The verify step adds these. Blank means it couldn't tell.
+	Channel string `json:"channel,omitempty"` // UPI, CARD, NEFT, IMPS or NACH
+	VPA     string `json:"vpa,omitempty"`
+	Ref     string `json:"ref,omitempty"` // UPI RRN, IMPS ref, NEFT UTR: unique per payment
 }
 
 // MessagePrediction is the payee and category chosen for a message.
@@ -95,8 +106,9 @@ type TransactionCreatePayload struct {
 	Source *MessageSource `json:"source,omitempty"`
 }
 
-// MessageSource is the bank text behind a transaction and what rules could read
-// from it. Blank fields mean the text didn't say.
+// MessageSource is the bank text behind a transaction and what the pipeline
+// read from it. Blank fields mean it couldn't tell. Merchant is the lookup key's
+// merchant (narration.LookupMerchant), so a UPI source holds its VPA there.
 type MessageSource struct {
 	// Kind is transaction_sources.kind. Blank for messages that aren't bank
 	// text from a mailbox or phone (the API), which get no source row.
@@ -153,8 +165,35 @@ type PipelineReportPayload struct {
 	// TransactionIDs is set when the outcome is MessageOutcomeTransactionCreated
 	// or MessageOutcomeTransactionDuplicate.
 	TransactionIDs []uuid.UUID `json:"transactionIds,omitempty"`
+	// Review is set when the outcome is MessageOutcomeNeedsReview.
+	Review *MessageReview `json:"review,omitempty"`
 	// Learn queues transaction.learn once the outcome is recorded.
 	Learn *TransactionLearnPayload `json:"learn,omitempty"`
+}
+
+// MessageReview is what a person needs to decide about a parked message.
+type MessageReview struct {
+	Step       string   `json:"step"` // the step that wasn't sure: check or verify
+	Confidence *float64 `json:"confidence,omitempty"`
+	// Text is the message as a person reads it, keeping its line breaks.
+	Text     string           `json:"text"`
+	Entities *MessageEntities `json:"entities,omitempty"`
+	// Unsure names the entities to double-check: amount, account, date, merchant.
+	Unsure []string `json:"unsure,omitempty"`
+	// Resume is the job that carries on if the person says continue. Nil when
+	// the message lacks what a transaction needs, so it can only be entered by
+	// hand or dismissed.
+	Resume *MessageResume `json:"resume,omitempty"`
+}
+
+// MessageResume is the next job of a parked message, ready to queue. Its payload
+// has its own RunID, because the rest of the run would otherwise share keys with
+// the jobs of the run that parked.
+type MessageResume struct {
+	JobType        string          `json:"jobType"`
+	Queue          string          `json:"queue"`
+	IdempotencyKey string          `json:"idempotencyKey"`
+	Payload        json.RawMessage `json:"payload"`
 }
 
 // MessageStepResult is the result stored on a pipeline job: what it decided

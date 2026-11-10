@@ -12,6 +12,17 @@ import (
 	"github.com/google/uuid"
 )
 
+type fakeRunNotifier struct {
+	WebsocketService
+	events []string
+	err    error
+}
+
+func (n *fakeRunNotifier) SendNotification(_ context.Context, _ uuid.UUID, name string, _ any) error {
+	n.events = append(n.events, name)
+	return n.err
+}
+
 type createAccounts struct {
 	repository.AccountRepository
 	account *model.Account
@@ -55,6 +66,17 @@ func (f *createTransactions) CreateDeduped(_ context.Context, txn model.Transact
 	f.got = txn
 	txn.ID = uuid.New()
 	return &txn, f.created, nil
+}
+
+type createTransactionRepo struct {
+	repository.TransactionRepository
+	existing *model.Transaction
+	hashes   []string
+}
+
+func (f *createTransactionRepo) FindByDedupeHash(_ context.Context, _ uuid.UUID, hash string) (*model.Transaction, error) {
+	f.hashes = append(f.hashes, hash)
+	return f.existing, nil
 }
 
 type createPredictions struct {
@@ -104,6 +126,7 @@ func (f *createSources) LookupKey(context.Context, uuid.UUID, uuid.UUID) (*model
 type createFixture struct {
 	svc          MessageJobService
 	transactions *createTransactions
+	repo         *createTransactionRepo
 	payees       *createPayees
 	predictions  *createPredictions
 	aliases      *createAliases
@@ -114,6 +137,7 @@ type createFixture struct {
 func newCreateFixture(account *model.Account, created bool) createFixture {
 	f := createFixture{
 		transactions: &createTransactions{created: created},
+		repo:         &createTransactionRepo{},
 		payees:       &createPayees{id: uuid.New()},
 		predictions:  &createPredictions{},
 		aliases:      &createAliases{},
@@ -122,6 +146,7 @@ func newCreateFixture(account *model.Account, created bool) createFixture {
 	}
 	f.svc = NewMessageJobService(MessageJobDeps{
 		Transactions:        f.transactions,
+		TransactionRepo:     f.repo,
 		Payees:              f.payees,
 		Predictions:         f.predictions,
 		Websocket:           f.notifier,
@@ -250,5 +275,63 @@ func TestLearnTransactionConfirmed(t *testing.T) {
 	f = newCreateFixture(nil, true)
 	if err := f.svc.LearnTransaction(createContext(), p); err != nil || len(f.aliases.confirmed) != 0 {
 		t.Fatalf("no key: %v, %+v", err, f.aliases.confirmed)
+	}
+}
+
+func TestCreateTransactionDedupesOnRefAcrossSources(t *testing.T) {
+	account := &model.Account{ID: uuid.New()}
+	create := func(text string, amount float64, ref string) string {
+		t.Helper()
+		f := newCreateFixture(account, true)
+		p := createPayload()
+		p.Source.Text, p.Entities.Amount, p.Entities.Ref = text, amount, ref
+		if _, err := f.svc.CreateTransaction(createContext(), p); err != nil {
+			t.Fatal(err)
+		}
+		return *f.transactions.got.DedupeHash
+	}
+
+	email := create("Rs.450 debited, reference no.: 900000000001", 450, "900000000001")
+	sms := create("Sent Rs.450 Ref 900000000001", 450, " 900000000001 ")
+	if email != sms {
+		t.Fatal("the same payment's email and SMS got different hashes")
+	}
+	if other := create("Rs.450 debited, reference no.: 900000000002", 450, "900000000002"); other == email {
+		t.Fatal("two payments share a hash")
+	}
+	if a, b := create("email text", 450, ""), create("sms text", 450, ""); a == b {
+		t.Fatal("without a ref, different text must stay different")
+	}
+}
+
+func TestCreateTransactionWithoutARefSkipsTheOlderHashCheck(t *testing.T) {
+	f := newCreateFixture(&model.Account{ID: uuid.New()}, true)
+	if _, err := f.svc.CreateTransaction(createContext(), createPayload()); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.repo.hashes) != 0 {
+		t.Fatalf("looked up %v", f.repo.hashes)
+	}
+}
+
+func TestCreateTransactionFindsARowSavedBeforeRefs(t *testing.T) {
+	f := newCreateFixture(&model.Account{ID: uuid.New()}, true)
+	payee := uuid.New()
+	f.repo.existing = &model.Transaction{ID: uuid.New(), PayeeID: &payee, CreatedAt: time.Now().Add(-time.Hour)}
+	p := createPayload()
+	p.Entities.Ref = "900000000001"
+
+	res, err := f.svc.CreateTransaction(createContext(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Created || len(res.TransactionIDs) != 1 || res.TransactionIDs[0] != f.repo.existing.ID {
+		t.Fatalf("result %+v", res)
+	}
+	if f.transactions.got.DedupeHash != nil {
+		t.Fatal("created a second transaction")
+	}
+	if !res.ExistingSince.Equal(f.repo.existing.CreatedAt) {
+		t.Fatalf("existing since %v", res.ExistingSince)
 	}
 }

@@ -1,14 +1,16 @@
 import { apiClient, LoadingState } from '@/utils';
 import type { RootState } from '@/app';
 import { createAsyncThunk, createSlice, type PayloadAction } from '@reduxjs/toolkit';
-import type { JobDetail, JobFilters, JobList, JobsState } from '../types/job.types';
+import type { JobDetail, JobFilters, JobList, JobsState, JobUpdate } from '../types/job.types';
 
-export const JOBS_PAGE_SIZE = 30;
+export const JOBS_PAGE_SIZE = 60;
+/** The most the API returns in one list (maxJobTreeLimit). */
+export const JOBS_MAX_LIMIT = 1000;
 
 const initialFilters: JobFilters = {
   errorCode: '',
   jobId: '',
-  offset: 0,
+  limit: JOBS_PAGE_SIZE,
 };
 
 const initialState: JobsState = {
@@ -17,16 +19,16 @@ const initialState: JobsState = {
   error: null,
   filters: initialFilters,
   updatedAt: null,
+  liveVersion: 0,
   details: {},
   detailLoading: LoadingState.IDLE,
   actingJobId: null,
 };
 
 function jobsQuery(filters: JobFilters): string {
-  const params = new URLSearchParams({ limit: String(JOBS_PAGE_SIZE) });
+  const params = new URLSearchParams({ limit: String(filters.limit) });
   if (filters.errorCode) params.set('errorCode', filters.errorCode);
   if (filters.jobId) params.set('jobId', filters.jobId);
-  if (filters.offset) params.set('offset', String(filters.offset));
   return params.toString();
 }
 
@@ -43,12 +45,12 @@ export const fetchJobDetail = createAsyncThunk<JobDetail, string>('jobs/fetchJob
 
 export const runJobAction = createAsyncThunk<
   void,
-  { id: string; action: 'retry' | 'cancel' | 'run-again' | 'dismiss' },
+  { id: string; action: 'retry' | 'cancel' | 'run-again' | 'continue' | 'dismiss' },
   { state: RootState }
 >('jobs/runJobAction', async ({ id, action }, { dispatch }) => {
   await apiClient.post<{ status: string }, Record<string, never>>(`jobs/${id}/${action}`, {});
-  // Running again and dismissing remove the job, so there's no detail to reload.
-  const removed = action === 'run-again' || action === 'dismiss';
+  // These remove the job or move the message on, so there's no detail to reload.
+  const removed = action === 'run-again' || action === 'continue' || action === 'dismiss';
   await Promise.all([dispatch(fetchJobs()), ...(removed ? [] : [dispatch(fetchJobDetail(id))])]);
 });
 
@@ -68,9 +70,29 @@ const jobSlice = createSlice({
   name: 'jobs',
   initialState,
   reducers: {
-    /** Changing a filter goes back to the first page. */
+    /** Changing a filter goes back to the newest jobs. */
     jobFiltersChanged: (state, action: PayloadAction<Partial<JobFilters>>) => {
-      state.filters = { ...state.filters, offset: 0, ...action.payload };
+      state.filters = { ...state.filters, limit: JOBS_PAGE_SIZE, ...action.payload };
+    },
+    /** Shows the change right away; the reload it prompts brings the rest. */
+    jobUpdated: (state, action: PayloadAction<JobUpdate>) => {
+      state.liveVersion += 1;
+      const { jobId, status, progress } = action.payload;
+      for (const tree of state.list?.trees ?? []) {
+        const job = tree.jobs.find((candidate) => candidate.id === jobId);
+        if (!job) continue;
+        job.status = status;
+        if (progress) job.progress = progress;
+        break;
+      }
+      const detail = state.details[jobId];
+      if (detail) {
+        detail.status = status;
+        if (progress) detail.progress = progress;
+      }
+    },
+    jobsMayHaveChanged: (state) => {
+      state.liveVersion += 1;
     },
     jobDetailsCleared: (state) => {
       state.details = {};
@@ -113,6 +135,6 @@ const jobSlice = createSlice({
   },
 });
 
-export const { jobFiltersChanged, jobDetailsCleared } = jobSlice.actions;
+export const { jobFiltersChanged, jobDetailsCleared, jobUpdated, jobsMayHaveChanged } = jobSlice.actions;
 
 export default jobSlice.reducer;

@@ -458,6 +458,17 @@ func (s *jobStore) ListTrees(ctx context.Context, f job.JobTreeFilter) ([]job.Jo
 	if len(f.HiddenRootTypes) > 0 {
 		where = append(where, sq.NotEq{"jobs.type": f.HiddenRootTypes})
 	}
+	if f.HideEmptySyncs {
+		// A sync that broke or is still running stays. Children are matched the
+		// way the tree's members are, so a sync that only found another budget's
+		// email counts as empty here.
+		where = append(where, sq.Expr(`NOT (
+			jobs.type IN (?, ?) AND jobs.status IN ('succeeded', 'cancelled') AND NOT EXISTS (
+				SELECT 1 FROM jobs c
+				WHERE c.root_job_id = jobs.id AND c.deleted_at IS NULL
+					AND (c.budget_id = ? OR c.budget_id IS NULL)))`,
+			model.JobTypeMailboxChanged, model.JobTypeMailboxBackfill, f.Scope.BudgetID))
+	}
 
 	query := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
 		Select(jobColumns, "count(*) OVER () AS total").

@@ -3,7 +3,6 @@ package worker
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"testing"
 	"time"
 
@@ -36,7 +35,6 @@ func (b *fakeBroker) Enqueue(
 type fakeMessages struct {
 	result    model.TransactionCreateResult
 	err       error
-	reported  *model.PipelineReportPayload
 	learned   *model.TransactionLearnPayload
 	gotBudget uuid.UUID
 }
@@ -51,12 +49,6 @@ func (f *fakeMessages) CreateTransaction(
 func (f *fakeMessages) LearnTransaction(ctx context.Context, p model.TransactionLearnPayload) error {
 	f.gotBudget, _ = utils.BudgetIDFromContext(ctx)
 	f.learned = &p
-	return f.err
-}
-
-func (f *fakeMessages) ReportPipeline(ctx context.Context, p model.PipelineReportPayload) error {
-	f.gotBudget, _ = utils.BudgetIDFromContext(ctx)
-	f.reported = &p
 	return f.err
 }
 
@@ -106,23 +98,6 @@ func TestTransactionCreateFailureQueuesNothing(t *testing.T) {
 	}
 	if b.jobType != "" {
 		t.Fatalf("queued %s", b.jobType)
-	}
-}
-
-func TestPipelineReport(t *testing.T) {
-	m := &fakeMessages{}
-	j, budget := newJob(t, model.PipelineReportPayload{Outcome: model.MessageOutcomeUnverified})
-
-	if _, err := pipelineReport(Deps{Messages: m})(context.Background(), j); err != nil {
-		t.Fatal(err)
-	}
-	if m.reported == nil || m.reported.Outcome != model.MessageOutcomeUnverified || m.gotBudget != budget {
-		t.Fatalf("%+v budget %s", m.reported, m.gotBudget)
-	}
-
-	m.err = errors.New("boom")
-	if _, err := pipelineReport(Deps{Messages: m})(context.Background(), j); !errors.Is(err, m.err) {
-		t.Fatalf("got %v", err)
 	}
 }
 

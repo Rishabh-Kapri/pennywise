@@ -491,6 +491,27 @@
   min-height: 1.75rem;
 }
 
+/* payee and note: on hover, the same box as the editor that opens on click, so
+   neither the box nor its text moves. It bleeds left so the text lines up with
+   the column header. */
+.inlineEditHitArea.inlineEditBox {
+  width: calc(100% + 0.5rem + 2px);
+  max-width: calc(100% + 0.5rem + 2px);
+  height: 2.65rem;
+  margin-left: calc(-0.5rem - 2px);
+  padding: 0 0.5rem;
+  border: 2px solid transparent;
+  border-radius: 0.5rem;
+  line-height: calc(2.65rem - 4px);
+  cursor: text;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.inlineEditBox:not(.inlineEditActive):hover {
+  border-color: var(--color-border-muted);
+  background: var(--color-surface-secondary);
+}
+
 /* an open editor takes the whole cell and must not clip its focus border */
 .inlineEditHitArea.inlineEditActive {
   width: 100%;
@@ -499,16 +520,31 @@
   overflow: visible;
 }
 
-/* the payee's hover pill bleeds left so its text lines up with the column; the
-   cell's own overflow (set inline by the column layout) would clip that bleed,
-   so it stays open here and the hit area / name do the ellipsis */
-.txnRow > div:has(> .inlineEditHitArea > .payeeName) {
-  overflow: visible !important;
+/* the box hands its border and padding to the input inside */
+.inlineEditHitArea.inlineEditBox.inlineEditActive {
+  width: calc(100% + 0.5rem + 2px);
+  max-width: calc(100% + 0.5rem + 2px);
+  margin-left: calc(-0.5rem - 2px);
+  padding: 0;
+  border: 0;
+  line-height: normal;
 }
 
-.inlineEditHitArea:has(> .payeeName) {
-  max-width: calc(100% + 0.5rem);
-  margin-left: -0.5rem;
+.inlineEditBox input {
+  height: 2.65rem;
+  padding: 0 0.5rem;
+  box-shadow: none;
+}
+
+/* the payee's editor reads at the same weight as its name */
+.payeeInlineEdit {
+  font-weight: 500;
+}
+
+/* the cell's own overflow (set inline by the column layout) would clip the
+   box's bleed, so it stays open here and the box does the ellipsis */
+.txnRow > div:has(> .inlineEditBox) {
+  overflow: visible !important;
 }
 
 .dateInlineEditHitArea {
@@ -519,19 +555,11 @@
 .payeeName {
   display: block;
   max-width: 100%;
-  padding: 0.3rem 0.5rem;
-  border-radius: 0.45rem;
   color: var(--color-text);
   font-size: 1rem;
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
-  transition: background 0.12s ease;
-}
-
-.payeeName:hover {
-  cursor: text;
-  background: color-mix(in srgb, var(--color-text) 7%, transparent);
 }
 
 .categoryPill {

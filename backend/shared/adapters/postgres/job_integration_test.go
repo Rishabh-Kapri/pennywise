@@ -250,6 +250,68 @@ func TestJobEventsReadBack(t *testing.T) {
 	}
 }
 
+func TestJobStore_ListTreesHidesEmptySyncs(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+	broker := NewPgJobBrokerAdapter(pool)
+	store := NewPgJobStoreAdapter(pool)
+	mine, other := newSeed(t, pool).budgetID, newSeed(t, pool).budgetID
+	// Its own address: the tests share a database, and another test's mailbox
+	// jobs would be in this scope too.
+	scope := job.JobScope{BudgetID: mine, Accounts: []string{"empty-syncs@gmail.com"}}
+	queue := "test-" + time.Now().Format("150405.000000")
+
+	sync := func(status job.JobStatus) uuid.UUID {
+		t.Helper()
+		res, err := broker.Enqueue(ctx, model.JobTypeMailboxChanged,
+			[]byte(`{"provider":"gmail","account":"empty-syncs@gmail.com"}`), job.WithQueue(queue))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := pool.Exec(ctx, `UPDATE jobs SET status = $1 WHERE id = $2`, string(status), res.JobID); err != nil {
+			t.Fatal(err)
+		}
+		return res.JobID
+	}
+	message := func(root uuid.UUID, budget *uuid.UUID) {
+		t.Helper()
+		if _, err := broker.Enqueue(ctx, model.JobTypeMessageReceived, []byte(`{}`), job.WithQueue(queue),
+			job.WithRootJobID(&root), job.WithParentID(&root), job.WithBudgetID(budget)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	empty := sync(job.SucceededJobStatus)
+	onlyTheirs := sync(job.SucceededJobStatus)
+	message(onlyTheirs, &other)
+	withEmail := sync(job.SucceededJobStatus)
+	message(withEmail, &mine)
+	running := sync(job.RunningJobStatus)
+	broken := sync(job.DeadJobStatus)
+
+	trees, total, err := store.ListTrees(ctx, job.JobTreeFilter{Scope: scope, HideEmptySyncs: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed := map[uuid.UUID]bool{}
+	for _, tree := range trees {
+		listed[tree.Root.ID] = true
+	}
+	for name, id := range map[string]uuid.UUID{"withEmail": withEmail, "running": running, "broken": broken} {
+		if !listed[id] {
+			t.Errorf("%s sync is missing", name)
+		}
+	}
+	for name, id := range map[string]uuid.UUID{"empty": empty, "onlyTheirs": onlyTheirs} {
+		if listed[id] {
+			t.Errorf("%s sync is still listed", name)
+		}
+	}
+	if total != 3 {
+		t.Errorf("total = %d, want 3", total)
+	}
+}
+
 func TestJobStore_ListTreesHiddenRootTypes(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()

@@ -31,11 +31,6 @@ type MessageJobService interface {
 	// LearnTransaction teaches the lookup step who a transaction was. Safe to
 	// repeat. Returns CodeTransactionLearnFailed.
 	LearnTransaction(ctx context.Context, p model.TransactionLearnPayload) error
-
-	// ReportPipeline records how a message ended in the pipeline run history
-	// and tells the Activity page. Safe to repeat. Returns CodeInvalidArgument
-	// for an unknown outcome, CodePipelineReportFailed otherwise.
-	ReportPipeline(ctx context.Context, p model.PipelineReportPayload) error
 }
 
 // MessageJobDeps are what the methods need. CreateTransactionActivity and
@@ -46,9 +41,9 @@ type MessageJobDeps struct {
 	Predictions  PredictionService
 	Websocket    WebsocketService
 	Push         PushNotificationService
-	PipelineRuns repository.PipelineRunRepository
 	DBTxn        repository.DBTxn
 
+	TransactionRepo     repository.TransactionRepository
 	Accounts            repository.AccountRepository
 	Categories          repository.CategoryRepository
 	CounterpartyAliases repository.CounterpartyAliasRepository
@@ -96,7 +91,14 @@ func (s *messageJobService) CreateTransaction(
 	}
 	amount := signedAmount(p)
 	date := p.Entities.Date.Format("2006-01-02")
-	hash := utils.Hash(account.ID.String() + date + fmt.Sprintf("%.2f", amount) + text)
+
+	// The whole text is in the older hash, so the same payment's email and SMS
+	// differ. A bank reference is the same in both.
+	textHash := utils.Hash(account.ID.String() + date + fmt.Sprintf("%.2f", amount) + text)
+	hash := textHash
+	if ref := strings.ToUpper(strings.TrimSpace(p.Entities.Ref)); ref != "" {
+		hash = utils.Hash(account.ID.String() + "|ref|" + ref)
+	}
 
 	var (
 		txn     *model.Transaction
@@ -105,6 +107,18 @@ func (s *messageJobService) CreateTransaction(
 	txCtx, cancel := context.WithTimeout(ctx, createTransactionTimeout)
 	defer cancel()
 	err = s.deps.DBTxn.Do(txCtx, func(ctx context.Context) error {
+		if hash != textHash {
+			// A transaction saved before refs were read has only the text hash,
+			// and importing that email again must still find it.
+			existing, err := s.deps.TransactionRepo.FindByDedupeHash(ctx, budgetID, textHash)
+			if err != nil {
+				return err
+			}
+			if existing != nil {
+				txn = existing
+				return nil
+			}
+		}
 		payeeID, err := s.payeeID(ctx, p.Prediction.PayeeName)
 		if err != nil {
 			return err
@@ -310,130 +324,4 @@ func (s *messageJobService) notifyCreated(ctx context.Context, budgetID uuid.UUI
 	if s.deps.Push != nil {
 		s.deps.Push.NotifyTransactionsCreated(ctx, budgetID, created)
 	}
-}
-
-// ReportPipeline implements [MessageJobService]. A pipeline run here is one
-// message, so the Activity page shows each as its own run. The run is keyed by
-// the message, and one that already finished is left alone: a redelivered
-// report can't append its events twice.
-func (s *messageJobService) ReportPipeline(ctx context.Context, p model.PipelineReportPayload) error {
-	budgetID := utils.MustBudgetID(ctx)
-	report, err := pipelineReportFor(budgetID, p)
-	if err != nil {
-		return err
-	}
-
-	var run *model.PipelineRun
-	err = s.deps.DBTxn.Do(ctx, func(ctx context.Context) error {
-		started, err := s.deps.PipelineRuns.CreateRun(ctx, model.StartPipelineRunInput{
-			BudgetID:      budgetID,
-			WorkflowID:    p.Message.IdempotencyKey(budgetID),
-			WorkflowRunID: messageRunID,
-			Trigger:       pipelineTrigger(p.Message),
-		})
-		if err != nil {
-			return err
-		}
-		if started.CompletedAt != nil {
-			return nil
-		}
-
-		report.RunID = started.ID
-		run, err = s.deps.PipelineRuns.UpdateRun(ctx, report)
-		if err != nil {
-			return err
-		}
-		return s.deps.PipelineRuns.AppendEvents(ctx, started.ID, report.Events)
-	})
-	if err != nil {
-		return errs.Wrap(errs.CodePipelineReportFailed, "record message outcome", err)
-	}
-	if run == nil {
-		return nil
-	}
-
-	// The run is saved, so a failed broadcast must not retry the job.
-	if err := s.deps.Websocket.SendNotification(ctx, budgetID, model.EventPipelineUpdate, run); err != nil {
-		logger.Logger(ctx).Warn("failed to broadcast pipeline update", "pipelineRunId", run.ID, "error", err)
-	}
-	return nil
-}
-
-// messageRunID fills pipeline_runs.workflow_run_id for job runs. A message runs
-// once, so the message alone identifies its run.
-const messageRunID = "message"
-
-func pipelineTrigger(m model.ReceivedMessage) model.PipelineTrigger {
-	if m.Provider == "gmail" {
-		return model.PipelineTriggerGmailPush
-	}
-	return model.PipelineTriggerManual
-}
-
-// pipelineReportFor turns an outcome into the run's final state and timeline.
-// The Activity page shows an email from its fetch and parse events, so every
-// report carries them. Without a parse or predict event a finished email would
-// spin on "Waiting for extraction" forever.
-func pipelineReportFor(budgetID uuid.UUID, p model.PipelineReportPayload) (model.ReportPipelineStatusInput, error) {
-	id := p.Message.ExternalID
-	reason := p.Reason
-	if reason == "" {
-		reason = string(p.Outcome)
-	}
-	event := func(step string, status model.PipelineEventStatus, detail map[string]any) model.PipelineEventInput {
-		return model.PipelineEventInput{Step: model.PipelineStep(step), Status: status, MessageID: id, Detail: detail}
-	}
-
-	report := model.ReportPipelineStatusInput{
-		BudgetID:      budgetID,
-		RunStatus:     model.PipelineRunStatusCompleted,
-		CurrentStep:   model.PipelineStepDone,
-		EmailsFetched: utils.Ptr(1),
-		Events: []model.PipelineEventInput{
-			event(model.PipelineStepFetchEmails, model.PipelineEventSucceeded, map[string]any{
-				"from":    p.Message.Sender,
-				"subject": p.Message.Subject,
-			}),
-		},
-	}
-	fail := func(step string) {
-		report.RunStatus = model.PipelineRunStatusFailed
-		report.CurrentStep = model.PipelineStep(step)
-		report.Error = &reason
-	}
-
-	switch p.Outcome {
-	case model.MessageOutcomeNotTransaction:
-		report.EmailsSkipped = utils.Ptr(1)
-		report.Events = append(report.Events,
-			event(model.PipelineStepParse, model.PipelineEventSkipped, map[string]any{"reason": reason}))
-	case model.MessageOutcomeUnverified:
-		fail(model.PipelineStepParse)
-		report.Events = append(report.Events,
-			event(model.PipelineStepParse, model.PipelineEventFailed, map[string]any{"error": reason}))
-	case model.MessageOutcomeNoPrediction:
-		fail(model.PipelineStepPredict)
-		report.Events = append(report.Events,
-			event(model.PipelineStepParse, model.PipelineEventSucceeded, nil),
-			event(model.PipelineStepPredict, model.PipelineEventFailed, map[string]any{"error": reason}))
-	case model.MessageOutcomeTransactionCreated:
-		report.TransactionsCreated = utils.Ptr(len(p.TransactionIDs))
-		report.Events = append(report.Events,
-			event(model.PipelineStepParse, model.PipelineEventSucceeded, nil),
-			event(model.PipelineStepCreateTxns, model.PipelineEventSucceeded, map[string]any{
-				"transactionIds": p.TransactionIDs,
-				"count":          len(p.TransactionIDs),
-			}))
-	case model.MessageOutcomeTransactionDuplicate:
-		report.EmailsSkipped = utils.Ptr(1)
-		report.Events = append(report.Events,
-			event(model.PipelineStepParse, model.PipelineEventSucceeded, nil),
-			event(model.PipelineStepCreateTxns, model.PipelineEventSkipped, map[string]any{
-				"reason":         "matches a transaction that already exists",
-				"transactionIds": p.TransactionIDs,
-			}))
-	default:
-		return report, errs.New(errs.CodeInvalidArgument, "unknown message outcome: %s", p.Outcome)
-	}
-	return report, nil
 }

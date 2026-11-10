@@ -294,6 +294,7 @@ func main() {
 		Driver:    cfg.JobDriver,
 		BrokerURL: cfg.JobBrokerURL,
 		StoreURL:  cfg.JobStoreURL,
+		RedisURL:  cfg.RedisURL,
 	})
 	if err != nil {
 		logger.Fatal("connect job queue", "err", err)
@@ -317,6 +318,8 @@ func main() {
 			Broker:   broker,
 			Pipeline: messagePipeline,
 			Memory:   aliasAdapter.NewLookup(database.CounterpartyAlias),
+
+			ParkLowConfidence: cfg.MessageReviewPark,
 		})
 		if err != nil {
 			workerErr <- err

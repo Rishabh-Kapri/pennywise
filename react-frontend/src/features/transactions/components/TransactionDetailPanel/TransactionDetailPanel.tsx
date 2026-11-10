@@ -6,9 +6,11 @@ import {
   TrashIcon as Trash2,
   XIcon,
 } from '@phosphor-icons/react';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useAppSelector } from '@/app/hooks';
-import { apiClient } from '@/utils';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useAppDispatch, useAppSelector } from '@/app/hooks';
+import { apiClient, errorMessage, toast } from '@/utils';
+import { createTag } from '@/features/tags/store/tagSlice';
+import { getAutoColor } from '@/features/tags/utils';
 import { Popover } from '@/components/common/Popover/Popover';
 import { getCurrencyLocaleString, getLocaleDate, getTodaysDate } from '@/utils/date.utils';
 import {
@@ -297,9 +299,17 @@ function DetailTagPicker({
   selectedTagIds: string[];
   onChange: (tagIds: string[]) => void;
 }) {
+  const dispatch = useAppDispatch();
   const [isOpen, setIsOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const selectedSet = useMemo(() => new Set(selectedTagIds), [selectedTagIds]);
+
+  const name = query.trim();
+  const needle = name.toLowerCase();
+  const shownTags = allTags.filter((tag) => tag.name.trim().toLowerCase().includes(needle));
+  const exactMatch = allTags.find((tag) => tag.name.trim().toLowerCase() === needle);
 
   const toggleTag = (tagId: string) => {
     const next = new Set(selectedSet);
@@ -311,13 +321,43 @@ function DetailTagPicker({
     onChange(Array.from(next));
   };
 
+  const closePicker = () => {
+    setIsOpen(false);
+    setQuery('');
+  };
+
+  const createAndAdd = async () => {
+    if (!name || isCreating) return;
+    setIsCreating(true);
+    try {
+      const tag = await dispatch(createTag({ name, color: getAutoColor(name) })).unwrap();
+      onChange([...selectedTagIds, tag.id]);
+      setQuery('');
+    } catch (err) {
+      toast.error("Couldn't create that tag", { description: errorMessage(err, 'Please try again.') });
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const handleSearchKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Enter' || !name) return;
+    event.preventDefault();
+    if (exactMatch) {
+      toggleTag(exactMatch.id);
+      setQuery('');
+    } else {
+      void createAndAdd();
+    }
+  };
+
   return (
     <>
       <button
         ref={triggerRef}
         type="button"
         className={`${styles.textButton} ${isOpen ? styles.textButtonOpen : ''}`}
-        onClick={() => setIsOpen((value) => !value)}
+        onClick={() => (isOpen ? closePicker() : setIsOpen(true))}
         aria-expanded={isOpen}>
         <PlusIcon size={13} weight="bold" />
         {selectedTagIds.length > 0 ? 'Edit' : 'Add'}
@@ -327,10 +367,31 @@ function DetailTagPicker({
         isOpen={isOpen}
         triggerRef={triggerRef}
         width={240}
-        onClose={() => setIsOpen(false)}>
+        onClose={closePicker}>
+        <div className={styles.tagPickerSearch}>
+          <input
+            className={styles.tagPickerInput}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={handleSearchKeyDown}
+            placeholder="Search or create tags"
+            aria-label="Search or create tags"
+            autoFocus
+          />
+        </div>
         <div className={styles.tagPickerMenu}>
-          {allTags.length === 0 && <div className={styles.emptyValue}>No tags yet</div>}
-          {allTags.map((tag) => (
+          {allTags.length === 0 && !name && <div className={styles.emptyValue}>No tags yet</div>}
+          {name && !exactMatch && (
+            <button
+              type="button"
+              className={styles.tagPickerItem}
+              disabled={isCreating}
+              onClick={() => void createAndAdd()}>
+              <PlusIcon size={13} weight="bold" className={styles.tagPickerCheck} />
+              <span className={styles.tagPickerName}>Create "{name}"</span>
+            </button>
+          )}
+          {shownTags.map((tag) => (
             <button
               key={tag.id}
               type="button"

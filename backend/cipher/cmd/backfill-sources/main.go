@@ -8,8 +8,10 @@
 // so a parser fix reaches existing rows by running this again. Existing
 // aliases (budget_id, channel, merchant) are left as they are.
 //
-// Parsing is local and rule-based (internal/narration); no text leaves the
-// process. Alias embeddings are not computed here.
+// Parsing is local and rule-based (shared/utils/narration); no text leaves the
+// process. Alias embeddings are not computed here. Only statement lines can be
+// parsed: alert emails are skipped, and their existing sources are left as they
+// are, because the rules that read them are gone.
 //
 //	go run ./cmd/backfill-sources [-budget <uuid>] [-dry-run]
 package main
@@ -25,7 +27,7 @@ import (
 	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
-	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/narration"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils/narration"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/factory"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
@@ -122,6 +124,10 @@ func run(ctx context.Context, pool *pgxpool.Pool, budgetID *uuid.UUID, dryRun bo
 	parsed := make([]parsedTxn, 0, len(rows))
 	for _, r := range rows {
 		p := narration.ParseWith(r.RawText, narration.Hint{CardAccount: r.CardAccount})
+		if p.Kind == narration.KindEmail {
+			rep.EmailsSkipped++
+			continue
+		}
 		if p.Kind == narration.KindStatementLine && r.Statement != nil {
 			fillFromStatement(&p, *r.Statement)
 			rep.StatementMatched++
@@ -538,6 +544,8 @@ type report struct {
 	ByChannel    map[string]int
 	NoKey        []uuid.UUID // transactions whose text gave no lookup key
 	NoPayee      int         // keyed, but the transaction has no payee to learn
+	// EmailsSkipped: transactions whose text is an alert email, not a statement line.
+	EmailsSkipped int
 	// StatementMatched: statement lines whose import row filled in amount,
 	// direction, date, currency and account.
 	StatementMatched int
@@ -583,6 +591,7 @@ func (r *report) print() {
 	}
 	fmt.Printf("  keyed but no payee: %d\n", r.NoPayee)
 	fmt.Printf("  statement lines matched to their import row: %d of %d\n", r.StatementMatched, r.ByKind[narration.KindStatementLine])
+	fmt.Printf("  alert emails skipped: %d\n", r.EmailsSkipped)
 	fmt.Printf("sources: %d inserted, %d updated by re-parsing, %d unchanged\n",
 		r.SourcesInserted, r.SourcesReparsed, r.SourcesExisting)
 	fmt.Printf("aliases: %d inserted, %d already present\n", r.AliasesInserted, r.AliasesExisting)

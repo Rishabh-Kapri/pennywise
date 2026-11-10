@@ -24,6 +24,10 @@ type WorkerDeps struct {
 
 	// Lookup isn't chosen per budget yet.
 	Memory ports.MemoryLookup
+
+	// ParkLowConfidence sends low-confidence check and verify answers to a
+	// person. Off, they're only logged. Details that don't match always park.
+	ParkLowConfidence bool
 }
 
 // Setup builds cipher's worker on the broker main already opened, registers

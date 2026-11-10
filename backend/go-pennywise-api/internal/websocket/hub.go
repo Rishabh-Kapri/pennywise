@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
@@ -152,26 +153,53 @@ func (r *connectionHub) UnregisterBudget(budgetId uuid.UUID) {
 
 func (r *connectionHub) broadcastToRoom(roomID string, message sharedModel.Message) {
 	r.mu.RLock()
-	clients, ok := r.rooms[roomID]
+	clients := snapshotClients(r.rooms[roomID])
 	r.mu.RUnlock()
-	if ok {
-		for c := range clients {
-			c.Send <- message
-		}
+	for _, c := range clients {
+		deliver(c, message, 0)
+	}
+}
+
+// jobUpdateWait is how long one client can hold up a job update. Updates only
+// prompt a reload, so a stuck client just misses them.
+const jobUpdateWait = 100 * time.Millisecond
+
+// snapshotClients copies the set so it can be walked without the lock.
+func snapshotClients(clients map[*Client]bool) []*Client {
+	out := make([]*Client, 0, len(clients))
+	for c := range clients {
+		out = append(out, c)
+	}
+	return out
+}
+
+// deliver sends message to c, waiting at most wait (0 means until it's taken).
+// UnregisterClient closes Send, and a client can disconnect mid-broadcast, so a
+// send on the closed channel is expected.
+func deliver(c *Client, message sharedModel.Message, wait time.Duration) {
+	defer func() { _ = recover() }()
+	if wait == 0 {
+		c.Send <- message
+		return
+	}
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case c.Send <- message:
+	case <-timer.C:
 	}
 }
 
 func (r *connectionHub) broadcastToBudget(budgetID string, message sharedModel.Message) {
+	wait := time.Duration(0)
+	if message.EventName == sharedModel.EventJobUpdate {
+		wait = jobUpdateWait
+	}
 	r.mu.RLock()
-	clients, ok := r.connections[message.BudgetID]
+	clients := snapshotClients(r.connections[message.BudgetID])
 	r.mu.RUnlock()
-	if ok {
-		for c := range clients {
-			// Don't echo message back to the sender
-			// if c.UserId != message {
-			c.Send <- message
-			// }
-		}
+	for _, c := range clients {
+		deliver(c, message, wait)
 	}
 }
 

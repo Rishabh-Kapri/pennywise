@@ -27,7 +27,6 @@ export type RootStackParamList = {
   Settings: undefined;
   Documents: undefined;
   Tags: undefined;
-  Activity: undefined;
   Jobs: undefined;
   Pipelines: undefined;
   AI: undefined;

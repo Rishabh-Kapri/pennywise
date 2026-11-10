@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/adapters/unimplemented"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/factory"
@@ -178,7 +180,7 @@ func TestRouting(t *testing.T) {
 			payload:   entities,
 			wantType:  model.JobTypePipelineReport,
 			wantQueue: model.QueuePennywise,
-			outcome:   model.MessageOutcomeUnverified,
+			outcome:   model.MessageOutcomeNeedsReview,
 		},
 		{
 			name:      "memory hit creates the transaction",
@@ -374,5 +376,219 @@ func TestStepStoresItsOutput(t *testing.T) {
 	}
 	if !got.Output.Valid || got.NextJobType != model.JobTypeMessageLookup {
 		t.Fatalf("result = %s", raw)
+	}
+}
+
+func decodeReport(t *testing.T, payload json.RawMessage) model.PipelineReportPayload {
+	t.Helper()
+	var report model.PipelineReportPayload
+	if err := json.Unmarshal(payload, &report); err != nil {
+		t.Fatal(err)
+	}
+	return report
+}
+
+func TestCheckParksLowConfidence(t *testing.T) {
+	low := 0.55
+	for name, isTransaction := range map[string]bool{"unsure yes": true, "unsure no": false} {
+		t.Run(name, func(t *testing.T) {
+			b := &fakeBroker{}
+			checker := &fakeChecker{verdict: ports.TxnVerdict{IsTransaction: isTransaction, Type: "debit", Confidence: &low}}
+			deps := WorkerDeps{Broker: b, ParkLowConfidence: true, Pipeline: fakePipeline{checker: checker}}
+			j, budget := newJob(t, testMessage)
+
+			if _, err := messageReceived(deps)(context.Background(), j); err != nil {
+				t.Fatal(err)
+			}
+			if len(b.got) != 1 || b.got[0].jobType != model.JobTypePipelineReport || b.got[0].queue != model.QueuePennywise {
+				t.Fatalf("queued %+v", b.got)
+			}
+			report := decodeReport(t, b.got[0].payload)
+			if report.Outcome != model.MessageOutcomeNeedsReview || report.Review == nil || report.Review.Step != "check" {
+				t.Fatalf("report %+v", report)
+			}
+
+			resume := report.Review.Resume
+			if resume == nil || resume.JobType != model.JobTypeMessageExtract || resume.Queue != model.QueueCipher {
+				t.Fatalf("resume %+v", resume)
+			}
+			if resume.IdempotencyKey == testMessage.IdempotencyKey(budget) {
+				t.Fatal("the resumed run shares keys with the parked one, so its report would be dropped")
+			}
+			var payload model.MessageExtractPayload
+			if err := json.Unmarshal(resume.Payload, &payload); err != nil {
+				t.Fatal(err)
+			}
+			if !payload.Verdict.IsTransaction || payload.Message.IdempotencyKey(budget) != resume.IdempotencyKey {
+				t.Fatalf("resume payload %+v", payload)
+			}
+		})
+	}
+}
+
+func TestCheckConfidenceGate(t *testing.T) {
+	low, high, unknown := 0.55, 0.95, 0.0
+	tests := []struct {
+		name          string
+		park          bool
+		isTransaction bool
+		confidence    *float64
+		want          string
+	}{
+		{"logged only until parking is on", false, true, &low, model.JobTypeMessageExtract},
+		{"confident yes", true, true, &high, model.JobTypeMessageExtract},
+		{"confident no", true, false, &high, model.JobTypePipelineReport},
+		{"a zero score means the adapter doesn't know", true, false, &unknown, model.JobTypePipelineReport},
+		{"no score", true, true, nil, model.JobTypeMessageExtract},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := &fakeBroker{}
+			checker := &fakeChecker{verdict: ports.TxnVerdict{IsTransaction: tt.isTransaction, Confidence: tt.confidence}}
+			deps := WorkerDeps{Broker: b, ParkLowConfidence: tt.park, Pipeline: fakePipeline{checker: checker}}
+			j, _ := newJob(t, testMessage)
+			if _, err := messageReceived(deps)(context.Background(), j); err != nil {
+				t.Fatal(err)
+			}
+			if b.got[0].jobType != tt.want {
+				t.Fatalf("queued %s, want %s", b.got[0].jobType, tt.want)
+			}
+			if b.got[0].jobType == model.JobTypePipelineReport &&
+				decodeReport(t, b.got[0].payload).Outcome != model.MessageOutcomeNotTransaction {
+				t.Fatalf("report %s", b.got[0].payload)
+			}
+		})
+	}
+}
+
+type resultVerifier struct{ res ports.VerifyResult }
+
+func (f resultVerifier) Verify(context.Context, ports.Message, ports.ExtractedEntities) (ports.VerifyResult, error) {
+	return f.res, nil
+}
+
+func TestVerifyAddsWhatItRead(t *testing.T) {
+	b := &fakeBroker{}
+	deps := WorkerDeps{Broker: b, Pipeline: fakePipeline{verifier: resultVerifier{ports.VerifyResult{
+		Valid: true, Confidence: 0.99, Channel: "UPI", VPA: "shop@oksbi", Ref: "900000000001", Account: "1111",
+	}}}}
+	j, _ := newJob(t, model.MessageEntitiesPayload{Message: testMessage, Entities: model.MessageEntities{Amount: 10}})
+
+	if _, err := messageVerify(deps)(context.Background(), j); err != nil {
+		t.Fatal(err)
+	}
+	var next model.MessageEntitiesPayload
+	if err := json.Unmarshal(b.got[0].payload, &next); err != nil {
+		t.Fatal(err)
+	}
+	e := next.Entities
+	if e.Channel != "UPI" || e.VPA != "shop@oksbi" || e.Ref != "900000000001" || e.Account != "1111" {
+		t.Fatalf("entities %+v", e)
+	}
+}
+
+func TestVerifyKeepsAnExtractedAccount(t *testing.T) {
+	b := &fakeBroker{}
+	deps := WorkerDeps{Broker: b, Pipeline: fakePipeline{verifier: resultVerifier{ports.VerifyResult{Valid: true, Confidence: 0.99, Account: "2222"}}}}
+	j, _ := newJob(t, model.MessageEntitiesPayload{Message: testMessage, Entities: model.MessageEntities{Account: "1111"}})
+	if _, err := messageVerify(deps)(context.Background(), j); err != nil {
+		t.Fatal(err)
+	}
+	var next model.MessageEntitiesPayload
+	if err := json.Unmarshal(b.got[0].payload, &next); err != nil {
+		t.Fatal(err)
+	}
+	if next.Entities.Account != "1111" {
+		t.Fatalf("account %q", next.Entities.Account)
+	}
+}
+
+func TestVerifyParks(t *testing.T) {
+	date := time.Date(2026, 10, 7, 0, 0, 0, 0, time.UTC)
+	complete := model.MessageEntities{Account: "1111", Merchant: "Shop", Amount: 10, Date: date}
+	tests := []struct {
+		name       string
+		park       bool
+		res        ports.VerifyResult
+		entities   model.MessageEntities
+		wantResume bool
+	}{
+		{"details don't match, parking off", false, ports.VerifyResult{Confidence: 0.2}, complete, true},
+		{"unsure match", true, ports.VerifyResult{Valid: true, Confidence: 0.6}, complete, true},
+		{"nothing to continue with: no amount", false, ports.VerifyResult{}, model.MessageEntities{Account: "1111", Date: date}, false},
+		{"nothing to continue with: no date", false, ports.VerifyResult{}, model.MessageEntities{Account: "1111", Amount: 10}, false},
+		{"nothing to continue with: no account", false, ports.VerifyResult{}, model.MessageEntities{Amount: 10, Date: date}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := &fakeBroker{}
+			deps := WorkerDeps{Broker: b, ParkLowConfidence: tt.park, Pipeline: fakePipeline{verifier: resultVerifier{tt.res}}}
+			j, _ := newJob(t, model.MessageEntitiesPayload{Message: testMessage, Entities: tt.entities})
+			if _, err := messageVerify(deps)(context.Background(), j); err != nil {
+				t.Fatal(err)
+			}
+			report := decodeReport(t, b.got[0].payload)
+			if report.Outcome != model.MessageOutcomeNeedsReview || report.Review == nil || report.Reason == "" {
+				t.Fatalf("report %+v", report)
+			}
+			if report.Review.Step != "verify" || report.Review.Entities == nil || len(report.Review.Unsure) == 0 {
+				t.Fatalf("review %+v", report.Review)
+			}
+			if got := report.Review.Resume != nil; got != tt.wantResume {
+				t.Fatalf("resume = %v, want %v", got, tt.wantResume)
+			}
+			if tt.wantResume && report.Review.Resume.JobType != model.JobTypeMessageLookup {
+				t.Fatalf("resume %+v", report.Review.Resume)
+			}
+		})
+	}
+}
+
+func TestVerifyLowConfidenceOnlyLogsUntilParkingIsOn(t *testing.T) {
+	b := &fakeBroker{}
+	deps := WorkerDeps{Broker: b, Pipeline: fakePipeline{verifier: resultVerifier{ports.VerifyResult{Valid: true, Confidence: 0.6}}}}
+	j, _ := newJob(t, model.MessageEntitiesPayload{Message: testMessage})
+	if _, err := messageVerify(deps)(context.Background(), j); err != nil {
+		t.Fatal(err)
+	}
+	if b.got[0].jobType != model.JobTypeMessageLookup {
+		t.Fatalf("queued %s", b.got[0].jobType)
+	}
+}
+
+func TestMessageSourceComesFromEntities(t *testing.T) {
+	msg := model.ReceivedMessage{Source: "sms", Body: "any wording at all"}
+	when := time.Date(2026, 10, 7, 10, 30, 0, 0, time.UTC)
+	got := messageSource(msg, model.MessageEntities{
+		Account: "XX1234 5678", Merchant: "Blue Tokai", Amount: -450.5, Date: when, Currency: "inr",
+		Channel: "UPI", VPA: "shop@oksbi", Ref: "900000000001",
+	}, model.MessageVerdict{Type: "debit"})
+
+	if got.Kind != "SMS" || got.Text != msg.Body || got.Channel != "UPI" || got.Merchant != "SHOP@OKSBI" ||
+		got.VPA != "shop@oksbi" || got.Ref != "900000000001" || got.AccountHint != "5678" ||
+		got.Direction != "DEBIT" || got.Amount != "450.50" || got.Currency != "INR" {
+		t.Fatalf("source %+v", got)
+	}
+	if got.OccurredOn == nil || got.OccurredAt == nil {
+		t.Fatalf("dates %v %v", got.OccurredOn, got.OccurredAt)
+	}
+}
+
+func TestMessageSourceLeavesUnknownsBlank(t *testing.T) {
+	got := messageSource(model.ReceivedMessage{Source: "api", Body: "text"}, model.MessageEntities{
+		Merchant: "Shop", Currency: "Rupees", Date: time.Date(2026, 10, 7, 0, 0, 0, 0, time.UTC),
+	}, model.MessageVerdict{Type: "none"})
+	if got.Kind != "" || got.Channel != "" || got.Direction != "" || got.Amount != "" || got.Currency != "" || got.OccurredAt != nil {
+		t.Fatalf("source %+v", got)
+	}
+}
+
+func TestDisplayTextKeepsLineBreaks(t *testing.T) {
+	msg := model.ReceivedMessage{Source: "email", Body: "<p>Rs.10 debited.</p><p>Call us.</p>"}
+	if got := displayText(msg); !strings.Contains(got, "\n") || strings.Contains(got, "<p>") {
+		t.Fatalf("display text %q", got)
+	}
+	if got := plainBody(msg); strings.Contains(got, "\n") {
+		t.Fatalf("hash text changed: %q", got)
 	}
 }

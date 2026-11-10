@@ -15,6 +15,10 @@ import (
 // caller's cancellation (see record), so it needs its own limit.
 const appendTimeout = 5 * time.Second
 
+// notifyTimeout is short because the worker waits for it, and a watcher missing
+// an update only means a slightly stale screen.
+const notifyTimeout = 500 * time.Millisecond
+
 // ObservedBroker wraps any Broker and records each state change it makes as
 // a JobEvent in a JobLog. It is itself a Broker, so callers can't tell it from
 // the adapter it wraps. factory.ConnectJob wraps the broker in it when a job
@@ -27,10 +31,17 @@ const appendTimeout = 5 * time.Second
 type ObservedBroker struct {
 	broker Broker
 	log    JobLog
+	notify Notifier // nil: changes aren't announced
 }
 
 func NewObservedBroker(broker Broker, log JobLog) *ObservedBroker {
 	return &ObservedBroker{broker: broker, log: log}
+}
+
+// WithNotifier announces each state change and progress update through n.
+func (o *ObservedBroker) WithNotifier(n Notifier) *ObservedBroker {
+	o.notify = n
+	return o
 }
 
 // Unwrap returns the adapter underneath.
@@ -54,6 +65,9 @@ func (o *ObservedBroker) Enqueue(
 			Attempt: 0,
 			Actor:   enqueueActor(ctx),
 		})
+		if resolved, optsErr := ResolveEnqueueOptions(jobType, payload, opts...); optsErr == nil {
+			o.announce(ctx, Update{JobID: res.JobID, BudgetID: resolved.BudgetID, Type: jobType, Status: QueuedJobStatus})
+		}
 	}
 	return res, err
 }
@@ -68,6 +82,7 @@ func (o *ObservedBroker) ClaimJob(ctx context.Context, queues []string, workerID
 			Attempt: j.Attempt,
 			Actor:   workerID,
 		})
+		o.announce(ctx, Update{JobID: j.ID, BudgetID: j.BudgetID, Type: j.Type, Status: RunningJobStatus})
 	}
 	return j, err
 }
@@ -77,7 +92,13 @@ func (o *ObservedBroker) Heartbeat(ctx context.Context, claim Claim) error {
 }
 
 func (o *ObservedBroker) UpdateProgress(ctx context.Context, claim Claim, progress json.RawMessage) error {
-	return o.broker.UpdateProgress(ctx, claim, progress)
+	err := o.broker.UpdateProgress(ctx, claim, progress)
+	if err == nil {
+		o.announce(ctx, Update{
+			JobID: claim.JobID, BudgetID: claim.BudgetID, Type: claim.Type, Status: RunningJobStatus, Progress: progress,
+		})
+	}
+	return err
 }
 
 func (o *ObservedBroker) MarkCompleted(
@@ -98,6 +119,7 @@ func (o *ObservedBroker) MarkCompleted(
 				new(duration.Milliseconds()),
 			),
 		)
+		o.announceClaim(ctx, claim, SucceededJobStatus)
 	}
 	return err
 }
@@ -122,6 +144,7 @@ func (o *ObservedBroker) MarkPending(
 		e.Error = lastError
 		e.NextRunAt = &runAt
 		o.record(ctx, e)
+		o.announceClaim(ctx, claim, QueuedJobStatus)
 		return nil
 	}
 	if errs.HasCode(err, errs.CodeJobClaimLost) {
@@ -136,6 +159,7 @@ func (o *ObservedBroker) MarkDead(ctx context.Context, claim Claim, lastError st
 		e := claimEvent(claim, EventDead, DeadJobStatus, reason, nil)
 		e.Error = lastError
 		o.record(ctx, e)
+		o.announceClaim(ctx, claim, DeadJobStatus)
 	}
 	return err
 }
@@ -159,6 +183,23 @@ func (o *ObservedBroker) record(ctx context.Context, e JobEvent) {
 	if err := o.log.Append(appendCtx, e); err != nil {
 		logger.Logger(ctx).Error("job history not recorded",
 			"job_id", e.JobID, "event", e.Type, "attempt", e.Attempt, "err", err)
+	}
+}
+
+func (o *ObservedBroker) announceClaim(ctx context.Context, c Claim, status JobStatus) {
+	o.announce(ctx, Update{JobID: c.JobID, BudgetID: c.BudgetID, Type: c.Type, Status: status})
+}
+
+// announce tells watchers about a change, logging (not returning) a failure:
+// the change already happened.
+func (o *ObservedBroker) announce(ctx context.Context, u Update) {
+	if o.notify == nil {
+		return
+	}
+	notifyCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), notifyTimeout)
+	defer cancel()
+	if err := o.notify.Notify(notifyCtx, u); err != nil {
+		logger.Logger(ctx).Warn("job update not announced", "job_id", u.JobID, "err", err)
 	}
 }
 

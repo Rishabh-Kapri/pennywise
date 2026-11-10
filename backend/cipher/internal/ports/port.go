@@ -69,7 +69,11 @@ type ExtractedEntities struct {
 	Currency  string    `json:"currency"`
 	Amount    float64   `json:"amount"`
 	Timestamp time.Time `json:"timestamp"`
-	Usage     *Usage     `json:"usage"`
+	// Channel, VPA and Ref come from the verify step. Blank means unknown.
+	Channel string `json:"channel,omitempty"`
+	VPA     string `json:"vpa,omitempty"`
+	Ref     string `json:"ref,omitempty"`
+	Usage   *Usage `json:"usage"`
 }
 
 type Extract interface {
@@ -79,6 +83,12 @@ type Extract interface {
 type VerifyResult struct {
 	Valid      bool    `json:"valid"`
 	Confidence float64 `json:"confidence"`
+	// What verify could add. Blank means it couldn't tell. Account is only set
+	// when extract left it blank.
+	Channel string `json:"channel,omitempty"`
+	VPA     string `json:"vpa,omitempty"`
+	Ref     string `json:"ref,omitempty"`
+	Account string `json:"account,omitempty"`
 }
 
 type Verifier interface {

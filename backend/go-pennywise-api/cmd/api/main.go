@@ -181,6 +181,7 @@ func main() {
 		Driver:    config.JobDriver,
 		BrokerURL: config.JobBrokerURL,
 		StoreURL:  config.JobStoreURL,
+		RedisURL:  config.RedisURL,
 	})
 	if err != nil {
 		logger.Fatal("connect job queue", "error", err)
@@ -319,8 +320,6 @@ func main() {
 	reportService := service.NewReportService(database.Report)
 	reportHandler := handler.NewReportHandler(reportService)
 
-	pipelineService := service.NewPipelineService(database.PipelineRun, nil)
-	pipelineHandler := handler.NewPipelineHandler(pipelineService)
 	pipelines, err := pipeline.Load()
 	if err != nil {
 		logger.Fatal("invalid pipeline definitions", "error", err)
@@ -329,6 +328,11 @@ func main() {
 		service.NewPipelineStepService(pipelines, database.PipelineStep, database.UserLLMModel),
 	)
 	jobHandler := handler.NewJobHandler(service.NewJobService(jobStore, broker, database.MailConnection))
+	var scheduleStore job.ScheduleStore
+	if jobs != nil {
+		scheduleStore = jobs.Schedules
+	}
+	jobScheduleHandler := handler.NewJobScheduleHandler(service.NewJobScheduleService(scheduleStore, database.MailConnection))
 
 	var ingestClient *transport.Client
 	if config.IngestServiceURL != "" {
@@ -379,6 +383,15 @@ func main() {
 	websocketHandler := handler.NewWebsocketHandler(websocketService)
 	// go websocketHub.HandleBroadcastMessages() // run once
 	go websocket.NewRedisStreamListener(redisClient, websocketHub).Listen(appCtx)
+	if jobs != nil && jobs.Updates != nil {
+		forwarder := &service.JobUpdateForwarder{
+			Source:      jobs.Updates,
+			Websocket:   websocketService,
+			Store:       jobStore,
+			Connections: database.MailConnection,
+		}
+		go forwarder.Run(appCtx)
+	}
 
 	// Auth middleware
 	authMiddleware := sharedMiddleware.Authenticate(factory.NewAuthenticators(
@@ -914,8 +927,7 @@ func main() {
 		}
 		{
 			// The budget's pipeline settings: every system pipeline (shared/pipeline)
-			// with the budget's step overrides applied. /api/pipeline below is the
-			// older email-run history.
+			// with the budget's step overrides applied.
 			pipelinesGroup := router.Group("/api/pipelines")
 			pipelinesGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
 			pipelinesGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), pipelineStepHandler.List)
@@ -928,25 +940,6 @@ func main() {
 				"/:pipeline/steps/:step",
 				middleware.RouteAuthMiddleware(sharedModel.ScopeDelete),
 				pipelineStepHandler.Reset,
-			)
-		}
-		{
-			pipelineGroup := router.Group("/api/pipeline")
-			pipelineGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
-			pipelineGroup.GET(
-				"/runs",
-				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
-				pipelineHandler.ListRuns,
-			)
-			pipelineGroup.GET(
-				"/runs/:id",
-				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
-				pipelineHandler.GetRun,
-			)
-			pipelineGroup.POST(
-				"/runs/:id/retry",
-				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
-				pipelineHandler.RetryRun,
 			)
 		}
 		{
@@ -982,9 +975,11 @@ func main() {
 			jobGroup := router.Group("/api/jobs")
 			jobGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
 			jobGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), jobHandler.List)
+			jobGroup.GET("/schedules", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), jobScheduleHandler.List)
 			jobGroup.GET("/:id", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), jobHandler.Get)
 			jobGroup.POST("/retry-failed", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), jobHandler.RetryFailed)
 			jobGroup.POST("/:id/run-again", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), jobHandler.RunAgain)
+			jobGroup.POST("/:id/continue", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), jobHandler.Continue)
 			jobGroup.POST("/:id/dismiss", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), jobHandler.Dismiss)
 			jobGroup.POST("/:id/retry", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), jobHandler.Retry)
 			jobGroup.POST("/:id/cancel", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), jobHandler.Cancel)
@@ -1051,9 +1046,9 @@ func main() {
 		Predictions:  predictionService,
 		Websocket:    websocketService,
 		Push:         pushNotificationService,
-		PipelineRuns: database.PipelineRun,
 		DBTxn:        database.DBTxn,
 
+		TransactionRepo:     database.Transaction,
 		Accounts:            database.Account,
 		Categories:          database.Category,
 		CounterpartyAliases: database.CounterpartyAlias,

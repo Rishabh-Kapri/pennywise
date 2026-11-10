@@ -151,7 +151,8 @@ export function AccountDropdown({
       emptyText="No accounts found"
       autoFocus={autoFocus}
       variant={variant}
-      menuWidth={variant === 'ghost' ? 260 : undefined}
+      // the table's account column only fits a logo, so its list can't match the field
+      menuWidth={variant === 'form' ? undefined : 260}
     />
   );
 }

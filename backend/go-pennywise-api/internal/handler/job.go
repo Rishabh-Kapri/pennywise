@@ -25,6 +25,7 @@ type JobHandler interface {
 	Cancel(c *gin.Context)
 	RetryFailed(c *gin.Context)
 	RunAgain(c *gin.Context)
+	Continue(c *gin.Context)
 	Dismiss(c *gin.Context)
 }
 
@@ -137,6 +138,18 @@ func (h *jobHandler) RunAgain(c *gin.Context) {
 		return
 	}
 	if err := h.service.RunAgain(c.Request.Context(), id); err != nil {
+		writeJobError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "queued"})
+}
+
+func (h *jobHandler) Continue(c *gin.Context) {
+	id, ok := parseJobID(c)
+	if !ok {
+		return
+	}
+	if err := h.service.Continue(c.Request.Context(), id); err != nil {
 		writeJobError(c, err)
 		return
 	}

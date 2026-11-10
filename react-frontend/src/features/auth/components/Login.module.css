@@ -39,15 +39,9 @@
 }
 
 .logoMark {
-  display: grid;
-  place-items: center;
-  width: 2.25rem;
-  height: 2.25rem;
-  border: 1px solid color-mix(in srgb, var(--color-primary) 40%, transparent);
-  border-radius: 0.85rem;
-  color: var(--on-accent);
-  background: var(--color-primary);
-  font-weight: 600;
+  width: 2.5rem;
+  height: 2.5rem;
+  display: block;
 }
 
 .logoIcon {
@@ -375,9 +369,6 @@
 .container a:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 4px;
-}
-.logoMark {
-  border-radius: 10px 10px 10px 2px;
 }
 .welcomeSubtitle {
   font-size: 18px;

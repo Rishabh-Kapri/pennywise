@@ -27,7 +27,6 @@ import { ReportsScreen } from './features/reports/screens/ReportsScreen';
 import { SettingsScreen } from './features/settings/screens/SettingsScreen';
 import { DocumentsScreen } from './features/documents/screens/DocumentsScreen';
 import { TagsScreen } from './features/tags/screens/TagsScreen';
-import { ActivityScreen } from './features/pipeline/screens/ActivityScreen';
 import { JobsScreen } from './features/jobs/screens/JobsScreen';
 import { PipelinesScreen } from './features/jobs/screens/PipelinesScreen';
 import { AIScreen } from './features/ai/screens/AIScreen';
@@ -152,7 +151,6 @@ function AppNavigator() {
         <RootStack.Screen name="Settings" component={SettingsScreen} />
         <RootStack.Screen name="Documents" component={DocumentsScreen} />
         <RootStack.Screen name="Tags" component={TagsScreen} />
-        <RootStack.Screen name="Activity" component={ActivityScreen} />
         <RootStack.Screen name="Jobs" component={JobsScreen} />
         <RootStack.Screen name="Pipelines" component={PipelinesScreen} />
         <RootStack.Screen name="AI" component={AIScreen} />

@@ -13,6 +13,8 @@ const (
 	// EventPipelineUpdate broadcasts a pipeline_runs row to the budget's
 	// websocket clients whenever the run changes.
 	EventPipelineUpdate = "pennywise::pipeline::update"
+	// EventJobUpdate tells the budget's websocket clients a job changed.
+	EventJobUpdate = "pennywise::jobs::update"
 )
 
 type Message struct {

@@ -4,7 +4,7 @@ Expo (SDK 54, RN 0.81) Android client mirroring `react-frontend`. Android only; 
 
 ## Identity
 - Package and scheme: `dev.pennywise.cloud` (`app.config.ts`). Google OAuth redirect is built by `expo-auth-session` (`LoginScreen.tsx`), not set in code; the Android OAuth client must register `dev.pennywise.cloud:/oauthredirect`.
-- Env (`src/config/env.ts`, `EXPO_PUBLIC_*`): `EXPO_PUBLIC_API_URL` (default `http://10.0.2.2:5151/api`), `EXPO_PUBLIC_GOOGLE_CLIENT_ID`, `EXPO_PUBLIC_ANDROID_GOOGLE_CLIENT_ID`. Template: `.env.example`.
+- Env (`src/config/env.ts`, `EXPO_PUBLIC_*`): `EXPO_PUBLIC_API_URL` (default `http://10.0.2.2:5151/api`), `EXPO_PUBLIC_INGEST_URL` (default `http://10.0.2.2:5180/api`, emulator only, so every EAS environment that forwards SMS must set it), `EXPO_PUBLIC_GOOGLE_CLIENT_ID`, `EXPO_PUBLIC_ANDROID_GOOGLE_CLIENT_ID`. Template: `.env.example`.
 
 ## Commands
 - `npm run typecheck` (`tsc --noEmit`)
@@ -26,11 +26,11 @@ Expo (SDK 54, RN 0.81) Android client mirroring `react-frontend`. Android only; 
 ## Architecture
 - Navigation: React Navigation (native-stack + bottom-tabs), not Expo Router. `src/App.tsx` owns the navigators. `src/app/` is the Redux store, not a route folder. `app.config.ts` `extra.router.root` is a leftover.
 - Bottom tabs (`AppTabParamList`): Dashboard, Budget, Transactions, Reports, Payees, Penny (AgentChat).
-- Root stack (`src/navigation/types.ts`, `RootStackParamList`): Main, Settings, Documents, Tags, Activity, Jobs, Pipelines, AI, Loans. Occasional screens are pushed here; there is no settings shell. Settings groups them under Library (Documents, Tags, Loans) and Automation (Activity, AI). Stack screens use `components/StackHeader`.
+- Root stack (`src/navigation/types.ts`, `RootStackParamList`): Main, Settings, Documents, Tags, Jobs, Pipelines, AI, Loans. Occasional screens are pushed here; there is no settings shell. Settings groups them under Library (Documents, Tags, Loans) and Automation (Jobs, Pipelines, AI). Stack screens use `components/StackHeader`.
 - State: feature slices in `src/features/*/store/`, registered in `src/app/store.ts`. Typed hooks in `src/app/hooks.ts`.
 - Transport: `src/utils/api.ts` (`apiClient`) is the only REST client. It injects `Authorization` and `x-budget-id`, and refreshes on 401. It is wired to the store at boot, so it is unusable headlessly.
 - Headless code (widget task handler, location snap task) must use `src/utils/headlessApi.ts`. It reads tokens from AsyncStorage and does not clear the session on failure.
-- Realtime: `src/features/websocket/WebSocketProvider.tsx` (agent stream, `pennywise::pipeline::update`, transaction created).
+- Realtime: `src/features/websocket/WebSocketProvider.tsx` (agent stream, transaction created).
 - Entry: `index.js` registers the app and the widget task handler. `setupLocationSnap()` runs at module scope in `App.tsx`.
 
 ## UI conventions
@@ -67,7 +67,6 @@ Expo (SDK 54, RN 0.81) Android client mirroring `react-frontend`. Android only; 
 - `features/sms/smsForwarder.ts` POSTs `{sender, body, receivedAt, source}` to ingest's `ingest/sms` (`EXPO_PUBLIC_INGEST_URL`, budget-scoped, headlessApi), not the main API. `source` is `live` or `inbox`; ingest ignores it and dedupes on sender + body + `receivedAt`, so both paths must send the same time: `getInboxMessages` reads `DATE_SENT` to match the live timestamp. Only alphanumeric sender IDs are sent; phone-number senders never leave the device.
 - Failed sends wait in an AsyncStorage outbox (max 50), retried on the next SMS and on app start. Signed out drops them.
 - `RECEIVE_SMS` is requested on boot, after the push permission (concurrent permission dialogs get dropped). `READ_SMS` is requested by Settings → SMS → Import recent messages (`smsInbox.ts`, always the last 30 days, so re-imports resend).
-- Settings → SMS → Test mode swaps only the SMS base URL (`headlessApi` `baseUrl` option); same token, budget header and outbox. The test ingest must accept production tokens. Release APKs block cleartext http, so use an https URL (`tailscale serve`).
 - Any non-2xx from ingest keeps the message in the outbox and shows the error. SMS permissions are Play-restricted; fine for sideloaded APKs.
 
 ## Parity gaps vs react-frontend

@@ -13,6 +13,7 @@ const OUTCOME_LABELS: Record<string, string> = {
   not_transaction: 'Not a transaction',
   unverified: 'Not verified',
   no_prediction: 'No category found',
+  needs_review: 'Needs review',
   transaction_created: 'Transaction created',
   transaction_duplicate: 'Already added'
 };
@@ -21,6 +22,7 @@ const OUTCOME_REASONS: Record<string, string> = {
   not_transaction: "The check decided this message isn't a transaction.",
   unverified: "Marked as a transaction, but it couldn't be verified.",
   no_prediction: "Couldn't work out a payee and category for it.",
+  needs_review: 'A step was not sure about this message. Review it on the web app.',
   transaction_created: 'A transaction was created from this message.',
   transaction_duplicate: 'This matches a transaction that already exists, so nothing new was added.'
 };

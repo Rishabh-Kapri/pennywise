@@ -1,9 +1,7 @@
 import { ACCOUNTS_WIDGET_NAME, AccountsWidget } from './AccountsWidget';
 import { BUDGET_WIDGET_NAME, BudgetWidget } from './BudgetWidget';
-import { PIPELINE_WIDGET_NAME, PipelineWidget } from './PipelineWidget';
 import { PRESSURE_WIDGET_NAME, PressureWidget } from './PressureWidget';
 import { RECENT_WIDGET_NAME, RecentWidget } from './RecentWidget';
-import { loadPipelineState } from './pipelineData';
 import { loadAccountsState, loadBudgetState, loadPressureState, loadRecentState } from './widgetData';
 
 /**
@@ -18,8 +16,7 @@ export const WIDGET_RENDERERS: Record<string, () => Promise<React.JSX.Element>> 
   [PRESSURE_WIDGET_NAME]: async () => <PressureWidget state={await loadPressureState()} />,
   [BUDGET_WIDGET_NAME]: async () => <BudgetWidget state={await loadBudgetState()} />,
   [ACCOUNTS_WIDGET_NAME]: async () => <AccountsWidget state={await loadAccountsState()} />,
-  [RECENT_WIDGET_NAME]: async () => <RecentWidget state={await loadRecentState()} />,
-  [PIPELINE_WIDGET_NAME]: async () => <PipelineWidget state={await loadPipelineState()} />
+  [RECENT_WIDGET_NAME]: async () => <RecentWidget state={await loadRecentState()} />
 };
 
 export const WIDGET_NAMES = Object.keys(WIDGET_RENDERERS);

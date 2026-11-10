@@ -214,10 +214,6 @@ func (s *mailboxService) Connect(
 	return conn, nil
 }
 
-func watchScheduleName(connectionID uuid.UUID) string {
-	return "mailbox.watch:" + connectionID.String()
-}
-
 // ensureWatchSchedule creates the mailbox's renewal schedule, or turns it back
 // on. A mailbox without one loses its pushes when the watch runs out, so a
 // failure here fails the request.
@@ -234,7 +230,7 @@ func (s *mailboxService) ensureWatchSchedule(ctx context.Context, connectionID u
 		return err
 	}
 	return s.deps.Schedules.EnsureSchedule(ctx, job.JobSchedule{
-		Name:      watchScheduleName(connectionID),
+		Name:      model.MailboxWatchScheduleName(connectionID),
 		Type:      model.JobTypeMailboxStartWatch,
 		Queue:     model.QueueIngest,
 		Payload:   payload,
@@ -250,7 +246,7 @@ func (s *mailboxService) disableWatchSchedule(ctx context.Context, connectionID 
 	if s.deps.Schedules == nil {
 		return
 	}
-	if err := s.deps.Schedules.DisableSchedule(ctx, watchScheduleName(connectionID)); err != nil {
+	if err := s.deps.Schedules.DisableSchedule(ctx, model.MailboxWatchScheduleName(connectionID)); err != nil {
 		logger.Logger(ctx).Warn("disable watch schedule failed", "connection_id", connectionID, "err", err)
 	}
 }
@@ -473,13 +469,15 @@ func (s *mailboxService) Backfill(
 	if err != nil {
 		return BackfillResult{}, err
 	}
+	jobrunner.ReportProgress(ctx, job.Progress{Message: "Reading the emails", Total: len(externalIDs)})
 	messages, err := provider.Fetch(ctx, *conn, externalIDs)
 	if err != nil {
 		return BackfillResult{}, err
 	}
 
 	var res BackfillResult
-	for _, msg := range messages {
+	for i, msg := range messages {
+		reportQueued(ctx, i, len(messages))
 		msg.BudgetID = []uuid.UUID{budgetID}
 		queued, err := s.deps.Ingest.Accept(ctx, msg, opts...)
 		if errs.HasCode(err, errs.CodeIngestInvalidMessage) {
@@ -498,6 +496,12 @@ func (s *mailboxService) Backfill(
 		}
 	}
 	return res, nil
+}
+
+// reportQueued says how far a job is through queuing its emails. done is how
+// many are finished before this one.
+func reportQueued(ctx context.Context, done, total int) {
+	jobrunner.ReportProgress(ctx, job.Progress{Message: "Queuing emails", Current: done + 1, Total: total})
 }
 
 // fetched is what Sync and Preview share: the connection, its live
@@ -557,6 +561,7 @@ func (s *mailboxService) Sync(
 	opts ...job.EnqueueOption,
 ) (SyncResult, error) {
 	log := logger.Logger(ctx)
+	jobrunner.ReportProgress(ctx, job.Progress{Message: "Reading the mailbox"})
 	f, skip, err := s.fetch(ctx, n)
 	if err != nil || skip != "" {
 		return SyncResult{Skipped: skip}, err
@@ -564,7 +569,8 @@ func (s *mailboxService) Sync(
 	conn, budgets, messages, cursor := f.conn, f.budgets, f.messages, f.cursor
 
 	res := SyncResult{Fetched: len(messages), Cursor: cursor}
-	for _, msg := range messages {
+	for i, msg := range messages {
+		reportQueued(ctx, i, len(messages))
 		msg.BudgetID = budgets // only budgets that still exist
 		queued, err := s.deps.Ingest.Accept(ctx, msg, opts...)
 		if errs.HasCode(err, errs.CodeIngestInvalidMessage) {

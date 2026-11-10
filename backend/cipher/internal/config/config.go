@@ -66,6 +66,9 @@ type Config struct {
 	JobBrokerURL string
 	JobStoreURL  string
 	JobQueues    []string // JOB_QUEUES, e.g. "cipher,cipher-backfill"
+	// MessageReviewPark is MESSAGE_REVIEW_PARK: send low-confidence messages to
+	// a person. Off, the pipeline only logs what it would have parked.
+	MessageReviewPark bool
 }
 
 // envInt reads a positive integer env var, returning 0 when unset or malformed
@@ -127,10 +130,11 @@ func Load() Config {
 		LLMCredentialsKey:        os.Getenv("LLM_CREDENTIALS_KEY"),
 		AllowPrivateLLMURLs:      os.Getenv("ALLOW_PRIVATE_LLM_URLS") == "true",
 
-		JobDriver:    os.Getenv("JOB_DRIVER"),
-		JobBrokerURL: os.Getenv("JOB_BROKER_URL"),
-		JobStoreURL:  os.Getenv("JOB_STORE_URL"),
-		JobQueues:    splitList(os.Getenv("JOB_QUEUES")),
+		JobDriver:         os.Getenv("JOB_DRIVER"),
+		JobBrokerURL:      os.Getenv("JOB_BROKER_URL"),
+		JobStoreURL:       os.Getenv("JOB_STORE_URL"),
+		JobQueues:         splitList(os.Getenv("JOB_QUEUES")),
+		MessageReviewPark: strings.EqualFold(strings.TrimSpace(os.Getenv("MESSAGE_REVIEW_PARK")), "true"),
 	}
 }
 

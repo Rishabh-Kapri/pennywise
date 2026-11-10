@@ -15,6 +15,12 @@ type MailboxWatch struct {
 	ConnectionID uuid.UUID `json:"connectionId"`
 }
 
+// MailboxWatchScheduleName is the job_schedules name of the connection's daily
+// watch renewal.
+func MailboxWatchScheduleName(connectionID uuid.UUID) string {
+	return "mailbox.watch:" + connectionID.String()
+}
+
 type MailboxChanged struct {
 	Provider string `json:"provider"` // gmail
 	Account  string `json:"account"`  // the email address

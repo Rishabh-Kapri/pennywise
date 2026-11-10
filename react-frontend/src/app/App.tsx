@@ -133,7 +133,7 @@ function App() {
               }
             />
             {/* These all live in Settings now; keep the old paths working */}
-            <Route path="/activity" element={<Navigate to="/settings?section=activity" replace />} />
+            <Route path="/activity" element={<Navigate to="/settings?section=jobs" replace />} />
             <Route
               path="/recurring"
               element={<Navigate to="/settings?section=recurring" replace />}

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 512" role="img" aria-label="Pennywise">
+  <rect width="1500" height="512" rx="116" fill="#0B0B10"/>
+  <g transform="translate(8 0)"><path fill='#5B64DA' d='M164 154V142A30 30 0 0 1 194 112H318A30 30 0 0 1 348 142V154Z'/>
+  <path fill='#8A93FA' d='M136 218V202A34 34 0 0 1 170 168H342A34 34 0 0 1 376 202V218Z'/>
+  <path fill='#C9CDFF' fill-rule='evenodd' d='M152 232H360A40 40 0 0 1 400 272V360A40 40 0 0 1 360 400H152A40 40 0 0 1 112 360V272A40 40 0 0 1 152 232ZM218 304A12 12 0 0 0 218 328H294A12 12 0 0 0 294 304Z'/></g>
+  <text x="470" y="318" font-family="Inter, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif" font-size="184" font-weight="600" letter-spacing="-5" fill="#F2F3FA">pennywise</text>
+</svg>

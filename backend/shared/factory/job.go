@@ -6,9 +6,11 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/adapters/memory"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/adapters/postgres"
+	redisAdapter "github.com/Rishabh-Kapri/pennywise/backend/shared/adapters/redis"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/job"
+	goredis "github.com/redis/go-redis/v9"
 )
 
 const (
@@ -21,6 +23,8 @@ type JobConfig struct {
 	Driver    string
 	BrokerURL string
 	StoreURL  string
+	// RedisURL carries job updates between services. Empty: none are sent.
+	RedisURL string
 }
 
 func (c JobConfig) driver() string {
@@ -39,7 +43,9 @@ type JobConn struct {
 	Store  job.JobStore
 	// Schedules keeps recurring jobs. Nil on the memory driver.
 	Schedules job.ScheduleStore
-	close     func()
+	// Updates delivers every service's job changes. Nil without a RedisURL.
+	Updates job.UpdateSource
+	close   func()
 }
 
 func (j *JobConn) Close() {
@@ -49,6 +55,22 @@ func (j *JobConn) Close() {
 	if j.close != nil {
 		j.close()
 	}
+}
+
+// connectJobUpdates is best effort: live updates are a convenience, so a bad
+// URL shouldn't stop the service from running jobs.
+func connectJobUpdates(ctx context.Context, url string) (*redisAdapter.JobUpdates, func()) {
+	if url == "" {
+		logger.Logger(ctx).Warn("job updates off (REDIS_URL not set)")
+		return nil, func() {}
+	}
+	options, err := goredis.ParseURL(url)
+	if err != nil {
+		logger.Logger(ctx).Error("job updates off: invalid redis url", "error", err)
+		return nil, func() {}
+	}
+	client := goredis.NewClient(options)
+	return redisAdapter.NewJobUpdates(client), func() { _ = client.Close() }
 }
 
 func ConnectJob(ctx context.Context, cfg JobConfig) (*JobConn, error) {
@@ -78,15 +100,22 @@ func ConnectJob(ctx context.Context, cfg JobConfig) (*JobConn, error) {
 		)
 		store := postgres.NewPgJobStoreAdapter(storePool)
 		logger.Logger(ctx).Info("Broker adapter configured", "driver", driver)
-		return &JobConn{
+		updates, closeUpdates := connectJobUpdates(ctx, cfg.RedisURL)
+		conn := &JobConn{
 			Broker:    broker,
 			Store:     store,
 			Schedules: postgres.NewPgJobScheduleAdapter(storePool),
 			close: func() {
+				closeUpdates()
 				closeStore()
 				closeBroker()
 			},
-		}, nil
+		}
+		if updates != nil {
+			broker.WithNotifier(updates)
+			conn.Updates = updates
+		}
+		return conn, nil
 	case JobDriverMemory:
 		// Local testing: the job history is printed to the console, not stored.
 		broker := job.NewObservedBroker(

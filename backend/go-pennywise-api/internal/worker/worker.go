@@ -99,13 +99,12 @@ func transactionCreate(deps Deps) jobrunner.HandlerFunc {
 }
 
 // pipelineReport handles model.JobTypePipelineReport, the last job of every
-// message whichever way it ended. It records the outcome in the pipeline run
-// history, for the Activity page. After a created transaction it queues
-// transaction.learn; otherwise nothing follows it.
+// message whichever way it ended. The Jobs screen reads the message's outcome
+// from this job. After a created transaction it queues transaction.learn;
+// otherwise nothing follows it.
 //
 // Errors: CodeJobInvalidPayload (no budget, or the payload doesn't decode) and
-// whatever MessageJobService.ReportPipeline returns. A failure here loses only
-// history: the transaction, if any, already exists.
+// CodeJobEnqueueFailed.
 func pipelineReport(deps Deps) jobrunner.HandlerFunc {
 	return func(ctx context.Context, j *job.Job) (json.RawMessage, error) {
 		ctx, budgetID, err := jobrunner.BudgetContext(ctx, j)
@@ -114,9 +113,6 @@ func pipelineReport(deps Deps) jobrunner.HandlerFunc {
 		}
 		p, err := jobrunner.DecodePayload[model.PipelineReportPayload](j)
 		if err != nil {
-			return nil, err
-		}
-		if err := deps.Messages.ReportPipeline(ctx, p); err != nil {
 			return nil, err
 		}
 		if p.Learn != nil {

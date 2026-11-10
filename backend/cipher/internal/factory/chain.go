@@ -2,12 +2,15 @@ package factory
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/ports"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/jobrunner"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/pipeline"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/job"
 )
 
 // chainLink is one model to try. name is what logs call it, e.g.
@@ -36,6 +39,10 @@ func firstSuccess[P, R any](
 	var lastErr error
 	for i, link := range links {
 		log.Debug("chain trying model", "model", link.name, "position", i+1, "of", len(links))
+		if len(links) > 1 {
+			_, model, _ := strings.Cut(link.name, ":") // "decisions:typesafe/jev-latest"
+			jobrunner.ReportProgress(ctx, job.Progress{Message: "Asking " + model, Current: i + 1, Total: len(links)})
+		}
 		startedAt := time.Now()
 		res, err := call(link.port)
 		elapsedMs := time.Since(startedAt).Milliseconds()

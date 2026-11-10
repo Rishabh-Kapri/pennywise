@@ -601,24 +601,43 @@ func (r *transactionRepo) CreateDeduped(
 	}
 
 	// Conflict: fetch the already-committed row.
+	existing, err := r.FindByDedupeHash(ctx, txn.BudgetID, *txn.DedupeHash)
+	if err != nil {
+		return nil, false, err
+	}
+	if existing == nil {
+		return nil, false, pgx.ErrNoRows
+	}
+	return existing, false, nil
+}
+
+// FindByDedupeHash implements [repository.TransactionRepository].
+func (r *transactionRepo) FindByDedupeHash(
+	ctx context.Context,
+	budgetID uuid.UUID,
+	hash string,
+) (*model.Transaction, error) {
 	var existing model.Transaction
 	var existingStatus *model.TransactionStatus
-	err = r.Executor(ctx).QueryRow(
+	err := r.Executor(ctx).QueryRow(
 		ctx,
 		`SELECT id, amount, budget_id, status, summary, payee_id, category_id, created_at
 		 FROM transactions
 		 WHERE budget_id = $1 AND dedupe_hash = $2 AND deleted = FALSE`,
-		txn.BudgetID,
-		txn.DedupeHash,
+		budgetID,
+		hash,
 	).Scan(
 		&existing.ID, &existing.Amount, &existing.BudgetID, &existingStatus, &existing.Summary,
 		&existing.PayeeID, &existing.CategoryID, &existing.CreatedAt,
 	)
+	if errors.Is(err, pgx.ErrNoRows) || errors.Is(err, repository.ErrNotFound) {
+		return nil, nil
+	}
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	existing.Status = scannedStatus(existingStatus)
-	return &existing, false, nil
+	return &existing, nil
 }
 
 func (r *transactionRepo) Update(

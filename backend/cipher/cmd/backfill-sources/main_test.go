@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/narration"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils/narration"
 
 	"github.com/google/uuid"
 )

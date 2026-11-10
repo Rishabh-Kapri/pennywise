@@ -39,6 +39,19 @@ func (m *mockTransactionRepo) Create(
 	return nil, args.Error(1)
 }
 
+// FindByDedupeHash implements repository.TransactionRepository.
+func (m *mockTransactionRepo) FindByDedupeHash(
+	ctx context.Context,
+	budgetID uuid.UUID,
+	hash string,
+) (*model.Transaction, error) {
+	args := m.Called(ctx, budgetID, hash)
+	if obj := args.Get(0); obj != nil {
+		return obj.(*model.Transaction), args.Error(1)
+	}
+	return nil, args.Error(1)
+}
+
 // CreateDeduped implements repository.TransactionRepository.
 func (m *mockTransactionRepo) CreateDeduped(
 	ctx context.Context,

@@ -146,7 +146,8 @@ func TestJobListHidesLearnJobsUnlessLookingForOne(t *testing.T) {
 	if _, err := svc.List(ctx, JobListInput{}); err != nil {
 		t.Fatal(err)
 	}
-	if len(store.filter.HiddenRootTypes) != 1 || store.filter.HiddenRootTypes[0] != model.JobTypeTransactionLearn {
+	if len(store.filter.HiddenRootTypes) != 1 || store.filter.HiddenRootTypes[0] != model.JobTypeTransactionLearn ||
+		!store.filter.HideEmptySyncs {
 		t.Fatalf("filter = %+v", store.filter)
 	}
 
@@ -158,9 +159,20 @@ func TestJobListHidesLearnJobsUnlessLookingForOne(t *testing.T) {
 		if _, err := svc.List(ctx, input); err != nil {
 			t.Fatal(err)
 		}
-		if len(store.filter.HiddenRootTypes) != 0 {
+		if len(store.filter.HiddenRootTypes) != 0 || store.filter.HideEmptySyncs {
 			t.Fatalf("%s: filter = %+v", name, store.filter)
 		}
+	}
+}
+
+func TestSummarizeJobNamesTheMessageSource(t *testing.T) {
+	sms := &job.Job{Type: model.JobTypeMessageReceived, Payload: []byte(`{"source":"sms","sender":"AX-HDFCBK"}`)}
+	if got := summarizeJob(sms); got.Source != "sms" || got.Label != "AX-HDFCBK" {
+		t.Fatalf("summary = %+v", got)
+	}
+	mailbox := &job.Job{Type: model.JobTypeMailboxChanged, Payload: []byte(`{"source":"sms"}`)}
+	if got := summarizeJob(mailbox); got.Source != "" {
+		t.Fatalf("mailbox job has a source: %+v", got)
 	}
 }
 
@@ -354,4 +366,80 @@ func TestJobServiceRetryFailed(t *testing.T) {
 	if err != nil || got != 3 || store.retriedCode != "MESSAGE_EXTRACT_FAILED" || store.retriedLimit != maxRetryFailed {
 		t.Fatalf("got %d, %v, store %+v", got, err, store)
 	}
+}
+
+// parkedFamily is a message parked for review at verify.
+func parkedFamily(budget uuid.UUID, resume *model.MessageResume) (msg job.Job, report job.Job, family []job.Job) {
+	root, msg, family := messageFamily(budget, model.MessageOutcomeNeedsReview)
+	step := job.Job{
+		ID: uuid.New(), Type: model.JobTypeMessageVerify, BudgetID: &budget, RootJobID: &root.ID, ParentID: &msg.ID,
+		Status: job.SucceededJobStatus,
+	}
+	payload, _ := json.Marshal(model.PipelineReportPayload{
+		Outcome: model.MessageOutcomeNeedsReview, Review: &model.MessageReview{Step: "verify", Resume: resume},
+	})
+	family[2].ParentID, family[2].Payload = &step.ID, payload
+	family = []job.Job{family[0], family[1], step, family[2]}
+	return msg, family[3], family
+}
+
+func TestJobServiceContinue(t *testing.T) {
+	budget := uuid.New()
+	ctx := utils.WithBudgetID(context.Background(), budget)
+	resume := &model.MessageResume{
+		JobType: model.JobTypeMessageLookup, Queue: model.QueueCipher, IdempotencyKey: "key:run:review:1", Payload: []byte(`{"a":1}`),
+	}
+
+	t.Run("queues the next step and removes only the report", func(t *testing.T) {
+		msg, report, family := parkedFamily(budget, resume)
+		store := &fakeJobStore{jobs: map[uuid.UUID]*job.Job{msg.ID: &msg}, family: family}
+		broker := &runAgainBroker{}
+		if err := NewJobService(store, broker, fakeConnections{}).Continue(ctx, msg.ID); err != nil {
+			t.Fatal(err)
+		}
+		if broker.jobType != resume.JobType || string(broker.payload) != `{"a":1}` {
+			t.Fatalf("queued %s %s", broker.jobType, broker.payload)
+		}
+		o := broker.opts
+		if o.Queue != resume.Queue || o.IdempotencyKey != resume.IdempotencyKey || o.BudgetID == nil || *o.BudgetID != budget ||
+			o.ParentID == nil || *o.ParentID != *report.ParentID || o.RootJobID == nil || *o.RootJobID != *report.RootJobID {
+			t.Fatalf("options %+v", o)
+		}
+		if len(store.dismissed) != 1 || store.dismissed[0] != report.ID {
+			t.Fatalf("dismissed %v, want only the report", store.dismissed)
+		}
+	})
+
+	refused := func(t *testing.T, msg job.Job, family []job.Job) {
+		t.Helper()
+		store := &fakeJobStore{jobs: map[uuid.UUID]*job.Job{msg.ID: &msg}, family: family}
+		broker := &runAgainBroker{}
+		if err := NewJobService(store, broker, fakeConnections{}).Continue(ctx, msg.ID); !errs.HasCode(err, errs.CodeJobInvalidState) {
+			t.Fatalf("err = %v", err)
+		}
+		if broker.jobType != "" || len(store.dismissed) != 0 {
+			t.Fatalf("queued %q, dismissed %v", broker.jobType, store.dismissed)
+		}
+	}
+
+	t.Run("refuses one with nothing to continue with", func(t *testing.T) {
+		msg, _, family := parkedFamily(budget, nil)
+		refused(t, msg, family)
+	})
+	t.Run("refuses one that's already moving", func(t *testing.T) {
+		msg, _, family := parkedFamily(budget, resume)
+		family[2].Status = job.QueuedJobStatus
+		refused(t, msg, family)
+	})
+	t.Run("refuses a message that wasn't parked", func(t *testing.T) {
+		_, msg, family := messageFamily(budget, model.MessageOutcomeUnverified)
+		refused(t, msg, family)
+	})
+	t.Run("refuses another budget's message", func(t *testing.T) {
+		msg, _, family := parkedFamily(uuid.New(), resume)
+		store := &fakeJobStore{jobs: map[uuid.UUID]*job.Job{msg.ID: &msg}, family: family}
+		if err := NewJobService(store, &runAgainBroker{}, fakeConnections{}).Continue(ctx, msg.ID); !errs.HasCode(err, errs.CodeJobNotFound) {
+			t.Fatalf("err = %v", err)
+		}
+	})
 }

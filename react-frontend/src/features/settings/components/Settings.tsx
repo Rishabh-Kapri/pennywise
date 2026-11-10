@@ -7,7 +7,6 @@ import {
   MagnifyingGlass,
   Money as Banknote,
   EnvelopeSimple,
-  Pulse,
   Sparkle,
   Tag,
   TreeStructure,
@@ -23,8 +22,6 @@ import {
   type KeyboardEvent,
 } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useAppSelector } from '@/app/hooks';
-import { selectActivePipelineRunCount } from '@/features/pipeline/store';
 import { apiClient } from '@/utils';
 import { GeneralSettings } from './GeneralSettings';
 import { AISettings } from './AISettings';
@@ -36,7 +33,6 @@ const PredictionReview = lazy(
   () => import('@/features/predictionReview/components/PredictionReview'),
 );
 const LoanOverview = lazy(() => import('@/features/loans/components/LoanOverview'));
-const Activity = lazy(() => import('@/features/pipeline/components/Activity'));
 const Jobs = lazy(() => import('@/features/jobs/components/Jobs'));
 const DocumentLibrary = lazy(() => import('@/features/documents/components/DocumentLibrary'));
 const StatementReconcile = lazy(() => import('@/features/reconcile/components/StatementReconcile'));
@@ -69,7 +65,6 @@ type SectionId =
   | 'recurring'
   | 'documents'
   | 'reconcile'
-  | 'activity'
   | 'mail'
   | 'jobs'
   | 'review'
@@ -175,14 +170,6 @@ const SECTIONS: SectionDef[] = [
     keywords: 'gmail mailbox connect inbox permissions',
   },
   {
-    id: 'activity',
-    group: 'automation',
-    label: 'Activity',
-    icon: Pulse,
-    description: 'Email pipeline runs, what each email became, and retries.',
-    keywords: 'pipeline email gmail runs retry',
-  },
-  {
     id: 'jobs',
     group: 'automation',
     label: 'Jobs',
@@ -205,11 +192,9 @@ function matches(section: SectionDef, query: string): boolean {
 function SidebarNav({
   active,
   onChange,
-  badges,
 }: {
   active: SectionId;
   onChange: (id: SectionId) => void;
-  badges?: Partial<Record<SectionId, number>>;
 }) {
   const [query, setQuery] = useState('');
   const visible = SECTIONS.filter((section) => matches(section, query));
@@ -258,7 +243,6 @@ function SidebarNav({
             <div key={group.id} className={styles.navGroup} role="presentation">
               <span className={styles.navGroupLabel}>{group.label}</span>
               {sections.map((section) => {
-                const badge = badges?.[section.id];
                 const isActive = active === section.id;
                 const Icon = section.icon;
                 return (
@@ -279,11 +263,6 @@ function SidebarNav({
                     onKeyDown={(event) => handleKeyDown(event, section.id)}>
                     <Icon size={18} weight={isActive ? 'fill' : 'regular'} className={styles.navIcon} />
                     <span className={styles.navLabel}>{section.label}</span>
-                    {badge ? (
-                      <span className={styles.navBadge} aria-label={`${badge} running`}>
-                        {badge}
-                      </span>
-                    ) : null}
                   </button>
                 );
               })}
@@ -315,7 +294,6 @@ export default function Settings() {
     setSearchParams(id === 'general' ? {} : { section: id }, { replace: true });
   };
 
-  const activeRunCount = useAppSelector(selectActivePipelineRunCount);
 
   useEffect(() => {
     apiClient
@@ -332,7 +310,6 @@ export default function Settings() {
       <SidebarNav
         active={activeSection}
         onChange={handleSectionChange}
-        badges={{ activity: activeRunCount }}
       />
 
       <div
@@ -369,11 +346,6 @@ export default function Settings() {
           </Suspense>
         )}
         {activeSection === 'mail' && <MailSettings />}
-        {activeSection === 'activity' && (
-          <Suspense fallback={loading}>
-            <Activity />
-          </Suspense>
-        )}
         {activeSection === 'jobs' && (
           <Suspense fallback={loading}>
             <Jobs />

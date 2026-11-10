@@ -5,8 +5,6 @@ import {
   forwardSms,
   flushSmsOutbox,
   isLikelyBankSender,
-  setSmsTestMode,
-  getSmsTestMode,
   SMS_OUTBOX_KEY
 } from '../src/features/sms/smsForwarder.ts';
 
@@ -131,41 +129,6 @@ await test('failed sends are reported as queued', async () => {
   assert.strictEqual(result.sent, 0);
   assert.strictEqual(result.queued, 1);
   assert.match(result.error ?? '', /network down/);
-});
-
-await test('test mode sends to the test URL with the same auth and budget', async () => {
-  await reset();
-  await setSmsTestMode({ enabled: true, url: ' https://my-pc.tailnet.ts.net/api/ ' });
-  await smsTask({ sender: 'AX-HDFCBK', body: 'x', timestamp: 1 });
-  assert.strictEqual(posted.length, 1);
-  assert.strictEqual(posted[0].url, 'https://my-pc.tailnet.ts.net/api/ingest/sms');
-  assert.strictEqual(posted[0].auth, 'Bearer access');
-  assert.strictEqual(posted[0].budget, 'budget-1');
-});
-
-await test('test mode off goes back to ingest and keeps the URL', async () => {
-  await reset();
-  await setSmsTestMode({ enabled: true, url: 'https://my-pc.tailnet.ts.net/api' });
-  await setSmsTestMode({ enabled: false, url: 'https://my-pc.tailnet.ts.net/api' });
-  await smsTask({ sender: 'AX-HDFCBK', body: 'x', timestamp: 1 });
-  assert.ok(!posted[0].url.includes('tailnet'));
-  assert.deepStrictEqual(await getSmsTestMode(), { enabled: false, url: 'https://my-pc.tailnet.ts.net/api' });
-});
-
-await test('test mode with an empty URL falls back to ingest', async () => {
-  await reset();
-  await setSmsTestMode({ enabled: true, url: '' });
-  await smsTask({ sender: 'AX-HDFCBK', body: 'x', timestamp: 1 });
-  assert.ok(!posted[0].url.includes('tailnet'));
-  assert.ok(posted[0].url.endsWith('/ingest/sms'));
-});
-
-await test('result names the destination in test mode', async () => {
-  await reset();
-  await setSmsTestMode({ enabled: true, url: 'https://my-pc.tailnet.ts.net/api' });
-  const result = await forwardSms([{ sender: 'AX-HDFCBK', body: 'a', timestamp: 1 }], 'inbox');
-  assert.strictEqual(result.destination, 'https://my-pc.tailnet.ts.net/api');
-  assert.strictEqual(result.sent, 1);
 });
 
 await test('signed out reports an error instead of counting messages as sent', async () => {

@@ -2,6 +2,19 @@ import type { LoadingState } from '@/utils';
 
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'cancelled' | 'dead';
 
+export interface JobProgress {
+  message?: string;
+  current?: number;
+  total?: number;
+}
+
+/** A websocket notice that a job changed. */
+export interface JobUpdate {
+  jobId: string;
+  status: JobStatus;
+  progress?: JobProgress;
+}
+
 export interface JobSummary {
   id: string;
   parentId?: string;
@@ -12,6 +25,10 @@ export interface JobSummary {
   maxAttempts: number;
   /** The subject, mailbox address, or how a message ended. */
   label?: string;
+  /** Where a message.received job came from: email, sms or api. */
+  source?: string;
+  /** What it's doing while it runs. Empty until the job reports something. */
+  progress?: JobProgress;
   lastError?: string;
   runAt: string;
   startedAt?: string;
@@ -71,6 +88,27 @@ export interface JobDetail extends JobSummary {
   events: JobEvent[];
 }
 
+/** What a person needs to decide about a message parked for review. */
+export interface MessageReview {
+  step: string;
+  /** The message as a person reads it, as plain text. */
+  text: string;
+  entities?: {
+    account?: string;
+    merchant?: string;
+    amount?: number;
+    date?: string;
+    currency?: string;
+    channel?: string;
+    vpa?: string;
+    ref?: string;
+  };
+  /** Which of amount, account, date and merchant to double-check. */
+  unsure?: string[];
+  /** Set when the message has what a transaction needs, so it can continue. */
+  resume?: unknown;
+}
+
 /** The result a message pipeline step stores. */
 export interface MessageStepResult {
   /** What the step produced. Jobs from before this was recorded don't have it. */
@@ -83,7 +121,8 @@ export interface MessageStepResult {
 export interface JobFilters {
   errorCode: string;
   jobId: string;
-  offset: number;
+  /** How many of the newest syncs to load. Grows until the days on screen are complete. */
+  limit: number;
 }
 
 export interface JobsState {
@@ -91,8 +130,10 @@ export interface JobsState {
   listLoading: LoadingState;
   error: string | null;
   filters: JobFilters;
-  /** When the list last loaded. There's no polling, so this is how fresh it is. */
+  /** When the list last loaded. */
   updatedAt: string | null;
+  /** Goes up when a job changes, which prompts the open screen to reload. */
+  liveVersion: number;
   /** Jobs opened on this screen, by ID. */
   details: Record<string, JobDetail>;
   detailLoading: LoadingState;

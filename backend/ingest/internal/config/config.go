@@ -24,6 +24,8 @@ type Config struct {
 	ServiceTokens string
 
 	// Where accepted messages are queued (see shared/factory.ConnectJob).
+	// RedisURL carries job updates to the API for live screens. Unset = off.
+	RedisURL     string
 	JobDriver    string
 	JobBrokerURL string
 	JobStoreURL  string
@@ -55,6 +57,7 @@ func Load() Config {
 		JWTSecret:         os.Getenv("JWT_SECRET"),
 		InternalAuthToken: os.Getenv("INTERNAL_AUTH_TOKEN"),
 		ServiceTokens:     os.Getenv("SERVICE_TOKENS"),
+		RedisURL:          os.Getenv("REDIS_URL"),
 		JobDriver:         os.Getenv("JOB_DRIVER"),
 		JobBrokerURL:      os.Getenv("JOB_BROKER_URL"),
 		JobStoreURL:       os.Getenv("JOB_STORE_URL"),

@@ -1,28 +1,18 @@
 import { useEffect, useState } from 'react';
-import { Alert, Linking, StyleSheet, Switch, TextInput, View } from 'react-native';
+import { Alert, Linking, StyleSheet, View } from 'react-native';
 import { AppText } from '../../../components/AppText';
 import { Button } from '../../../components/Button';
-import { getSmsTestMode, setSmsTestMode } from '../../sms/smsForwarder';
 import { importRecentSms, SMS_IMPORT_DAYS } from '../../sms/smsInbox';
 import { ensureSmsPermission, hasSmsPermission } from '../../sms/smsPermission';
-import { colors, radii, spacing } from '../../../theme';
+import { colors, spacing } from '../../../theme';
 
-/**
- * Bank SMS forwarding: permission state, a one-off inbox import, and test mode,
- * which points SMS (and only SMS) at another ingest service, e.g. a dev machine on Tailscale.
- */
+/** Bank SMS forwarding: permission state and a one-off inbox import. */
 export function SmsSettings() {
   const [granted, setGranted] = useState<boolean | null>(null);
   const [importing, setImporting] = useState(false);
-  const [testEnabled, setTestEnabled] = useState(false);
-  const [testUrl, setTestUrl] = useState('');
 
   useEffect(() => {
     void hasSmsPermission().then(setGranted);
-    void getSmsTestMode().then(({ enabled, url }) => {
-      setTestEnabled(enabled);
-      setTestUrl(url);
-    });
   }, []);
 
   const allow = async () => {
@@ -61,15 +51,6 @@ export function SmsSettings() {
     }
   };
 
-  const toggleTest = (enabled: boolean) => {
-    if (enabled && !/^https?:\/\/\S+$/.test(testUrl.trim())) {
-      Alert.alert('Test server needed', 'Enter the test ingest URL first, e.g. https://my-pc.tailnet.ts.net/api');
-      return;
-    }
-    setTestEnabled(enabled);
-    void setSmsTestMode({ enabled, url: testUrl });
-  };
-
   const importLabel = `Sends bank SMS from the last ${SMS_IMPORT_DAYS} days, every time.`;
 
   return (
@@ -94,35 +75,6 @@ export function SmsSettings() {
           {importing ? 'Importing…' : 'Import recent messages'}
         </Button>
       </View>
-
-      <View style={[styles.action, styles.divider]}>
-        <View style={styles.toggleRow}>
-          <View style={styles.main}>
-            <AppText weight="medium">Test mode</AppText>
-            <AppText variant="caption" muted>Send SMS to this ingest service instead. Everything else stays on the main API.</AppText>
-          </View>
-          <Switch
-            value={testEnabled}
-            onValueChange={toggleTest}
-            trackColor={{ true: colors.primary, false: colors.surfaceTertiary }}
-            thumbColor={colors.text}
-          />
-        </View>
-        <TextInput
-          value={testUrl}
-          onChangeText={setTestUrl}
-          onEndEditing={() => void setSmsTestMode({ enabled: testEnabled, url: testUrl })}
-          placeholder="https://my-pc.tailnet.ts.net/api"
-          placeholderTextColor={colors.faint}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="url"
-          style={styles.input}
-        />
-        <AppText variant="caption" tone="faint">
-          Connect this phone to Tailscale, and use the https URL from `tailscale serve` with /api on the end. Plain http is blocked.
-        </AppText>
-      </View>
     </>
   );
 }
@@ -133,11 +85,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     paddingVertical: spacing.md
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md
   },
   main: {
     flex: 1,
@@ -150,13 +97,5 @@ const styles = StyleSheet.create({
   divider: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border
-  },
-  input: {
-    color: colors.text,
-    fontSize: 15,
-    backgroundColor: colors.surfaceStrong,
-    borderRadius: radii.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm
   }
 });

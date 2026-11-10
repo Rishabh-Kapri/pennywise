@@ -13,7 +13,7 @@ import (
 	"github.com/google/uuid"
 )
 
-const upiEmail = "Dear Customer,Greetings from HDFC Bank!Rs.450.00 is debited from your account ending 4567 to VPA shop@oksbi BLUE TOKAI on 14-07-25."
+var upiEntities = ports.ExtractedEntities{Channel: "UPI", Merchant: "Blue Tokai", VPA: "shop@oksbi"}
 
 type fakeAliases struct {
 	repository.CounterpartyAliasRepository
@@ -21,6 +21,8 @@ type fakeAliases struct {
 	err               error
 	channel, merchant string
 	calls             int
+	tried             []string
+	matchOn           string // only this merchant matches, when set
 }
 
 func (f *fakeAliases) FindMatch(
@@ -28,6 +30,10 @@ func (f *fakeAliases) FindMatch(
 ) (*model.CounterpartyAliasMatch, error) {
 	f.calls++
 	f.channel, f.merchant = channel, merchant
+	f.tried = append(f.tried, merchant)
+	if f.matchOn != "" && merchant != f.matchOn {
+		return nil, f.err
+	}
 	return f.match, f.err
 }
 
@@ -37,20 +43,20 @@ func budgetContext() context.Context {
 
 func TestLookupHit(t *testing.T) {
 	aliases := &fakeAliases{match: &model.CounterpartyAliasMatch{PayeeName: "Blue Tokai", CategoryName: "Coffee"}}
-	got, found, err := NewLookup(aliases).Lookup(budgetContext(), ports.Message{Body: upiEmail}, ports.ExtractedEntities{})
+	got, found, err := NewLookup(aliases).Lookup(budgetContext(), ports.Message{}, upiEntities)
 	if err != nil || !found {
 		t.Fatalf("found = %v, err = %v (channel %q, merchant %q)", found, err, aliases.channel, aliases.merchant)
 	}
 	if got.PayeeName != "Blue Tokai" || got.CategoryName != "Coffee" || got.Confidence != 1 {
 		t.Fatalf("got %+v", got)
 	}
-	if aliases.channel == "" || aliases.merchant == "" {
+	if aliases.channel != "UPI" || aliases.merchant != "SHOP@OKSBI" {
 		t.Fatalf("key = %q | %q", aliases.channel, aliases.merchant)
 	}
 }
 
 func TestLookupMissesWithoutAnAlias(t *testing.T) {
-	_, found, err := NewLookup(&fakeAliases{}).Lookup(budgetContext(), ports.Message{Body: upiEmail}, ports.ExtractedEntities{})
+	_, found, err := NewLookup(&fakeAliases{}).Lookup(budgetContext(), ports.Message{}, upiEntities)
 	if err != nil || found {
 		t.Fatalf("found = %v, err = %v", found, err)
 	}
@@ -59,7 +65,7 @@ func TestLookupMissesWithoutAnAlias(t *testing.T) {
 func TestLookupSkipsTextWithNoKey(t *testing.T) {
 	aliases := &fakeAliases{}
 	_, found, err := NewLookup(aliases).Lookup(
-		budgetContext(), ports.Message{Body: "Dear Customer, your statement is ready to view online today."}, ports.ExtractedEntities{},
+		budgetContext(), ports.Message{}, ports.ExtractedEntities{Merchant: "Blue Tokai"},
 	)
 	if err != nil || found || aliases.calls != 0 {
 		t.Fatalf("found = %v, err = %v, calls = %d", found, err, aliases.calls)
@@ -68,8 +74,24 @@ func TestLookupSkipsTextWithNoKey(t *testing.T) {
 
 func TestLookupFailureIsAnError(t *testing.T) {
 	aliases := &fakeAliases{err: errors.New("db down")}
-	_, _, err := NewLookup(aliases).Lookup(budgetContext(), ports.Message{Body: upiEmail}, ports.ExtractedEntities{})
+	_, _, err := NewLookup(aliases).Lookup(budgetContext(), ports.Message{}, upiEntities)
 	if !errs.HasCode(err, errs.CodeMessageLookupFailed) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestLookupFallsBackToTheNameForOlderUPIAliases(t *testing.T) {
+	aliases := &fakeAliases{matchOn: "BLUE TOKAI", match: &model.CounterpartyAliasMatch{PayeeName: "Blue Tokai", CategoryName: "Coffee"}}
+	_, found, err := NewLookup(aliases).Lookup(budgetContext(), ports.Message{}, upiEntities)
+	if err != nil || !found || len(aliases.tried) != 2 || aliases.tried[0] != "SHOP@OKSBI" {
+		t.Fatalf("found = %v, err = %v, tried %v", found, err, aliases.tried)
+	}
+}
+
+func TestLookupTriesACardMerchantOnce(t *testing.T) {
+	aliases := &fakeAliases{}
+	_, found, err := NewLookup(aliases).Lookup(budgetContext(), ports.Message{}, ports.ExtractedEntities{Channel: "CARD", Merchant: "Redbus"})
+	if err != nil || found || len(aliases.tried) != 1 || aliases.tried[0] != "REDBUS" {
+		t.Fatalf("found = %v, err = %v, tried %v", found, err, aliases.tried)
 	}
 }

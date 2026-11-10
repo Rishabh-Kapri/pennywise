@@ -10,7 +10,6 @@ import loans from '@/features/loans/store/loanSlice';
 import tags from '@/features/tags/store';
 import agent from '@/features/agent/store';
 import reports from '@/features/reports/store';
-import pipeline from '@/features/pipeline/store';
 import jobs from '@/features/jobs/store';
 import recurring from '@/features/recurring/store';
 import predictionReview from '@/features/predictionReview/store';
@@ -34,7 +33,6 @@ export const store = configureStore({
     tags: tags,
     agent: agent,
     reports: reports,
-    pipeline: pipeline,
     jobs: jobs,
     recurring: recurring,
     predictionReview: predictionReview,

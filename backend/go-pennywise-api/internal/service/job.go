@@ -17,7 +17,7 @@ import (
 
 const (
 	defaultJobTreeLimit = 30
-	maxJobTreeLimit     = 50
+	maxJobTreeLimit     = 1000
 	jobDoneWindow       = 24 * time.Hour
 )
 
@@ -36,19 +36,21 @@ type JobListInput struct {
 // JobSummary is one job in a tree, without its payload. Label is a short
 // description for the list: the message's subject or the mailbox address.
 type JobSummary struct {
-	ID          uuid.UUID     `json:"id"`
-	ParentID    *uuid.UUID    `json:"parentId,omitempty"`
-	Type        string        `json:"type"`
-	Queue       string        `json:"queue"`
-	Status      job.JobStatus `json:"status"`
-	Attempt     int           `json:"attempt"`
-	MaxAttempts int           `json:"maxAttempts"`
-	Label       string        `json:"label,omitempty"`
-	LastError   string        `json:"lastError,omitempty"`
-	RunAt       time.Time     `json:"runAt"`
-	StartedAt   *time.Time    `json:"startedAt,omitempty"`
-	CompletedAt *time.Time    `json:"completedAt,omitempty"`
-	CreatedAt   time.Time     `json:"createdAt"`
+	ID          uuid.UUID       `json:"id"`
+	ParentID    *uuid.UUID      `json:"parentId,omitempty"`
+	Type        string          `json:"type"`
+	Queue       string          `json:"queue"`
+	Status      job.JobStatus   `json:"status"`
+	Attempt     int             `json:"attempt"`
+	MaxAttempts int             `json:"maxAttempts"`
+	Label       string          `json:"label,omitempty"`
+	Source      string          `json:"source,omitempty"` // message.received only: email, sms or api
+	Progress    json.RawMessage `json:"progress,omitempty"`
+	LastError   string          `json:"lastError,omitempty"`
+	RunAt       time.Time       `json:"runAt"`
+	StartedAt   *time.Time      `json:"startedAt,omitempty"`
+	CompletedAt *time.Time      `json:"completedAt,omitempty"`
+	CreatedAt   time.Time       `json:"createdAt"`
 }
 
 // JobTreeView is a top-level job and everything under it, oldest first.
@@ -120,6 +122,10 @@ type JobService interface {
 	// RunAgain sends a message the pipeline stopped through it again, replacing
 	// the stopped run. CodeJobInvalidState unless it's such a message.
 	RunAgain(ctx context.Context, id uuid.UUID) error
+	// Continue carries on with a message parked for review, from the step after
+	// the one that parked it. CodeJobInvalidState unless it's parked and has
+	// what a transaction needs.
+	Continue(ctx context.Context, id uuid.UUID) error
 	// Dismiss hides a finished job and what followed it. CodeJobInvalidState
 	// while any of them is still running, or for a job that fanned out into
 	// several messages.
@@ -195,6 +201,7 @@ func (s *jobService) List(ctx context.Context, input JobListInput) (JobList, err
 	// A failing hidden job still has to be reachable from "Failing now" or by ID.
 	if input.ErrorCode == "" && input.JobID == nil {
 		filter.HiddenRootTypes = hiddenRootJobTypes
+		filter.HideEmptySyncs = true
 	}
 	if input.Status == "retrying" {
 		filter.Retrying = true
@@ -320,6 +327,60 @@ func (s *jobService) RunAgain(ctx context.Context, id uuid.UUID) error {
 		return err
 	}
 	return s.store.Dismiss(ctx, jobIDs(chain))
+}
+
+func (s *jobService) Continue(ctx context.Context, id uuid.UUID) error {
+	j, err := s.visibleJob(ctx, id)
+	if err != nil {
+		return err
+	}
+	if s.broker == nil || j.BudgetID == nil || j.Type != model.JobTypeMessageReceived {
+		return errs.New(errs.CodeJobInvalidState, "only a message can continue")
+	}
+	chain, err := s.chain(ctx, j)
+	if err != nil {
+		return err
+	}
+	report, resume := parkedReport(chain)
+	if report == nil || resume == nil {
+		return errs.New(errs.CodeJobInvalidState, "the message isn't waiting for review")
+	}
+	if _, err := s.broker.Enqueue(ctx, resume.JobType, resume.Payload,
+		job.WithQueue(resume.Queue),
+		job.WithBudgetID(j.BudgetID),
+		job.WithIdempotencyKey(resume.IdempotencyKey),
+		job.WithRootJobID(report.RootJobID),
+		job.WithParentID(report.ParentID),
+	); err != nil {
+		return err
+	}
+	// The run goes on from the step that parked, so its report is over.
+	return s.store.Dismiss(ctx, []uuid.UUID{report.ID})
+}
+
+// parkedReport finds the report of a message waiting for review, and the job
+// that carries it on (nil if it can't be continued). The report is nil when
+// the message isn't waiting: all its jobs must have finished.
+func parkedReport(chain []job.Job) (*job.Job, *model.MessageResume) {
+	var parked *job.Job
+	var resume *model.MessageResume
+	for i := range chain {
+		if chain[i].Status != job.SucceededJobStatus {
+			return nil, nil
+		}
+		if chain[i].Type != model.JobTypePipelineReport {
+			continue
+		}
+		var report model.PipelineReportPayload
+		if err := json.Unmarshal(chain[i].Payload, &report); err != nil {
+			return nil, nil
+		}
+		parked, resume = nil, nil
+		if report.Outcome == model.MessageOutcomeNeedsReview && report.Review != nil {
+			parked, resume = &chain[i], report.Review.Resume
+		}
+	}
+	return parked, resume
 }
 
 func (s *jobService) Dismiss(ctx context.Context, id uuid.UUID) error {
@@ -463,12 +524,26 @@ func summarizeJob(j *job.Job) JobSummary {
 		Attempt:     j.Attempt,
 		MaxAttempts: j.MaxAttempts,
 		Label:       jobLabel(j),
+		Source:      messageSource(j),
+		Progress:    j.Progress,
 		LastError:   j.LastError,
 		RunAt:       j.RunAt,
 		StartedAt:   j.StartedAt,
 		CompletedAt: j.CompletedAt,
 		CreatedAt:   j.CreatedAt,
 	}
+}
+
+// messageSource says where a message.received job came from, or "".
+func messageSource(j *job.Job) string {
+	if j.Type != model.JobTypeMessageReceived {
+		return ""
+	}
+	var p model.ReceivedMessage
+	if err := json.Unmarshal(j.Payload, &p); err != nil {
+		return ""
+	}
+	return p.Source
 }
 
 // jobLabel names a job in the list: what a message or mailbox job is about, and

@@ -96,7 +96,7 @@ export function rowOutcome(row: JobRow): string | null {
 }
 
 /** Outcomes where the message ended without a transaction it should have had. */
-const STOPPED_OUTCOMES = ['unverified', 'no_prediction'];
+const STOPPED_OUTCOMES = ['unverified', 'no_prediction', 'needs_review'];
 
 export type StepState = 'done' | 'running' | 'queued' | 'retrying' | 'failed' | 'stopped' | 'skipped' | 'pending';
 

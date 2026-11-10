@@ -35,6 +35,6 @@ Status: mailboxes connect from the web app and sync into the job queue. The Pub/
 - `PORT` (default `5180`), `RAILWAY_ENVIRONMENT_NAME`
 - `DATABASE_URL`, `DATABASE_DRIVER`
 - `JWT_SECRET` (unset = API keys only), `INTERNAL_AUTH_TOKEN` (sent), `SERVICE_TOKENS` (accepted callers)
-- `JOB_DRIVER` (`postgres` | `memory` | unset = none), `JOB_BROKER_URL`, `JOB_STORE_URL`
+- `JOB_DRIVER` (`postgres` | `memory` | unset = none), `JOB_BROKER_URL`, `JOB_STORE_URL`, `REDIS_URL` (job updates to the API for the live Jobs screen; unset = off)
 - `MAIL_PROVIDERS` (`gmail`; unset = none), `MAIL_CREDENTIALS_KEY` (base64 32 bytes; required when any provider is set). Gmail: `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` and/or `GOOGLE_ANDROID_CLIENT_ID`, `PROJECT_ID`, `PUBSUB_TOPIC`. Missing settings fail startup
 - `SUB_NAME` (+ `PROJECT_ID`, `GOOGLE_APPLICATION_CREDENTIALS_JSON`) turns on the Gmail push receiver; unset = off

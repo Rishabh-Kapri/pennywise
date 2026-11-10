@@ -141,6 +141,37 @@ type Claim struct {
 	JobID    uuid.UUID
 	WorkerID string
 	Attempt  int
+	// Who to tell about changes (see Update). Ownership checks don't use them.
+	BudgetID *uuid.UUID
+	Type     string
+}
+
+// Progress is what a running job is doing now, stored in jobs.progress.
+type Progress struct {
+	Message string `json:"message,omitempty"`
+	Current int    `json:"current,omitempty"`
+	Total   int    `json:"total,omitempty"`
+}
+
+// Update says a job changed. BudgetID is nil for a system job.
+type Update struct {
+	JobID    uuid.UUID       `json:"jobId"`
+	BudgetID *uuid.UUID      `json:"budgetId,omitempty"`
+	Type     string          `json:"type"`
+	Status   JobStatus       `json:"status"`
+	Progress json.RawMessage `json:"progress,omitempty"`
+}
+
+// Notifier announces job changes across services. Delivery is best effort, so
+// watchers treat an update as a hint to look again, not as the job's state.
+type Notifier interface {
+	Notify(ctx context.Context, update Update) error
+}
+
+// UpdateSource delivers every service's job changes. Listen blocks until ctx
+// is cancelled.
+type UpdateSource interface {
+	Listen(ctx context.Context, handle func(Update)) error
 }
 
 type Broker interface {
@@ -199,10 +230,13 @@ type JobTreeFilter struct {
 	// HiddenRootTypes leaves out trees whose root is one of these types. A job
 	// of the type inside another tree stays.
 	HiddenRootTypes []string
-	JobID           *uuid.UUID
-	Since           *time.Time
-	Limit           int
-	Offset          int
+	// HideEmptySyncs leaves out finished mailbox jobs with nothing under them
+	// for this budget, and from the total too.
+	HideEmptySyncs bool
+	JobID          *uuid.UUID
+	Since          *time.Time
+	Limit          int
+	Offset         int
 }
 
 // JobTree is a job with no root and everything it led to, oldest first. Jobs
@@ -265,6 +299,9 @@ type ScheduleStore interface {
 	// AdvanceSchedule moves a schedule from its run at from to the one at to.
 	// If another scheduler already moved it, nothing changes.
 	AdvanceSchedule(ctx context.Context, id uuid.UUID, from, to time.Time) error
+	// ListSchedules returns the schedules scope can see, each with its latest
+	// run. Enabled ones come first, soonest next run first.
+	ListSchedules(ctx context.Context, scope ScheduleScope) ([]ScheduleOverview, error)
 }
 
 type JobLog interface {
@@ -313,4 +350,26 @@ type JobSchedule struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	DeletedAt *time.Time
+}
+
+// ScheduleScope is what one budget can see: its own schedules, and the system
+// schedules named in SystemNames (those have no budget).
+type ScheduleScope struct {
+	BudgetID    uuid.UUID
+	SystemNames []string
+}
+
+// ScheduleRun is the job a schedule queued for one tick.
+type ScheduleRun struct {
+	JobID        uuid.UUID
+	Status       JobStatus
+	ScheduledFor time.Time
+	CompletedAt  *time.Time
+	LastError    string
+}
+
+// ScheduleOverview is a schedule and its latest run, nil if it hasn't run.
+type ScheduleOverview struct {
+	JobSchedule
+	LastRun *ScheduleRun
 }

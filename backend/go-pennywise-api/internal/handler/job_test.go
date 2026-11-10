@@ -31,6 +31,7 @@ func (f *fakeJobService) Get(context.Context, uuid.UUID) (service.JobDetail, err
 func (f *fakeJobService) Retry(context.Context, uuid.UUID) error           { return f.err }
 func (f *fakeJobService) Cancel(context.Context, uuid.UUID) error          { return f.err }
 func (f *fakeJobService) RunAgain(context.Context, uuid.UUID) error        { return f.err }
+func (f *fakeJobService) Continue(context.Context, uuid.UUID) error        { return f.err }
 func (f *fakeJobService) Dismiss(context.Context, uuid.UUID) error         { return f.err }
 func (f *fakeJobService) RetryFailed(context.Context, string) (int, error) { return 2, f.err }
 

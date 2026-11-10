@@ -3,6 +3,7 @@ import { useHeader } from '@/context/HeaderContext';
 import { selectIsDemoUser } from '@/features/auth/store/authSlice';
 import { LoadingState, errorMessage, toast } from '@/utils';
 import {
+  ArrowRight,
   ArrowsClockwise,
   CaretDown,
   CaretRight,
@@ -17,9 +18,10 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { AnimatePresence, MotionConfig, motion } from 'framer-motion';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  JOBS_MAX_LIMIT,
   JOBS_PAGE_SIZE,
   fetchJobDetail,
   fetchJobs,
@@ -34,6 +36,7 @@ import {
   emailGroup,
   focusJob,
   isMailboxJob,
+  isParked,
   isStopped,
   jobLabel,
   jobState,
@@ -48,10 +51,19 @@ import {
   type JobState,
   type MessageStep,
 } from '../jobTree';
-import type { JobDetail, JobSummary, MessageStepResult } from '../types/job.types';
+import { mergeBySource, splitByDay, type ListedRun } from '../runGroups';
+import type { JobDetail, JobProgress, JobSummary, MessageReview, MessageStepResult } from '../types/job.types';
 import styles from './Jobs.module.css';
+import { formatAgo, formatTime } from '../jobTime';
 import { PipelineView } from './PipelineView';
+import { ScheduleView } from './ScheduleView';
 import { messagePrefill } from '../messagePrefill';
+import { MessageReviewPanel } from './MessageReviewPanel';
+
+const LIVE_RELOAD_MS = 1500;
+
+/** Days on screen at first, and how many more each "Show older" adds. */
+const DAYS_PER_STEP = 3;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -68,6 +80,7 @@ const OUTCOME_LABELS: Record<string, string> = {
   not_transaction: 'Not a transaction',
   unverified: 'Not verified',
   no_prediction: 'No category found',
+  needs_review: 'Needs review',
   transaction_created: 'Transaction created',
   transaction_duplicate: 'Already added',
 };
@@ -76,6 +89,7 @@ const OUTCOME_REASONS: Record<string, string> = {
   not_transaction: "The check decided this email isn't a transaction.",
   unverified: "Marked as a transaction, but it couldn't be verified.",
   no_prediction: "Couldn't work out a payee and category for it.",
+  needs_review: 'A step was not sure about this email, so it is waiting for you.',
   transaction_created: 'A transaction was created from this email.',
   transaction_duplicate: 'This matches a transaction that already exists, so nothing new was added.',
 };
@@ -105,15 +119,6 @@ const SECTIONS: { group: EmailGroup; title: string; icon: ReactNode; openByDefau
 
 const EASE_OUT = [0.22, 1, 0.36, 1] as const;
 
-function formatTime(dateString: string): string {
-  return new Date(dateString).toLocaleString(undefined, {
-    day: 'numeric',
-    month: 'short',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-}
-
 function formatClock(dateString: string): string {
   return new Date(dateString).toLocaleTimeString(undefined, {
     hour: 'numeric',
@@ -122,13 +127,17 @@ function formatClock(dateString: string): string {
   });
 }
 
-function formatAgo(dateString: string): string {
-  const minutes = Math.floor((Date.now() - new Date(dateString).getTime()) / 60_000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
+function formatHourMinute(dateString: string): string {
+  return new Date(dateString).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+function dayLabel(dateString: string): string {
+  const date = new Date(dateString);
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (date.toDateString() === new Date().toDateString()) return 'Today';
+  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return date.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
 function formatDuration(ms: number): string {
@@ -159,7 +168,8 @@ function rowStatus(row: JobRow): string {
 /** Only shown on rows that need attention; the section explains the others. */
 function rowSubtitle(row: JobRow): string {
   const verbs: Partial<Record<JobState, string>> = { failed: 'Failed at', retrying: 'Retrying' };
-  return `${verbs[rowState(row)] ?? 'Stopped at'} ${lastStepLabel(row)}`;
+  const stopped = isParked(row) ? 'Waiting at' : 'Stopped at';
+  return `${verbs[rowState(row)] ?? stopped} ${lastStepLabel(row)}`;
 }
 
 /** Why a row ended up where it did, in a sentence. */
@@ -186,6 +196,12 @@ function jobMessage(detail?: JobDetail): { sender?: string; receivedAt?: string;
   };
   const message = payload.message ?? payload;
   return { sender: message.sender, receivedAt: message.receivedAt, reason: payload.reason };
+}
+
+/** What a parked message's report carries for the person reviewing it. */
+function jobReview(detail?: JobDetail): MessageReview | undefined {
+  if (!detail?.payload || typeof detail.payload !== 'object') return undefined;
+  return (detail.payload as { review?: MessageReview }).review;
 }
 
 /** One stroke of a step icon, drawn in when the step reaches this state. */
@@ -328,6 +344,12 @@ function JobTechnical({ detail }: { detail: JobDetail }) {
         <dd>
           {detail.type} on {detail.queue}
         </dd>
+        {progressText(detail.progress) && (
+          <>
+            <dt>Progress</dt>
+            <dd>{progressText(detail.progress)}</dd>
+          </>
+        )}
         {stepResult?.nextJobType && (
           <>
             <dt>Next step</dt>
@@ -386,6 +408,8 @@ function RowDetails({ row }: { row: JobRow }) {
   const shown = details[shownId];
   const isMessage = row.jobs[0].type === 'message.received';
   const { sender, receivedAt, reason } = jobMessage(summary);
+  const parked = isParked(row);
+  const review = parked ? jobReview(summary) : undefined;
 
   useEffect(() => {
     dispatch(fetchJobDetail(focus.id));
@@ -394,22 +418,36 @@ function RowDetails({ row }: { row: JobRow }) {
 
   return (
     <div className={styles.rowDetails}>
-      {isMessage && <StepLine steps={messageSteps(row)} />}
+      {parked ? (
+        <MessageReviewPanel
+          reason={rowReason(row, reason)}
+          sender={sender}
+          receivedAt={receivedAt}
+          review={review}
+          loading={!summary}
+        >
+          <RowActions row={row} canContinue={Boolean(review?.resume)} />
+        </MessageReviewPanel>
+      ) : (
+        <>
+          {isMessage && <StepLine steps={messageSteps(row)} />}
 
-      <div>
-        <h4 className={styles.detailHeading}>What happened</h4>
-        <p>{rowReason(row, reason)}</p>
-        {/* A job that recovered keeps its last error; that's history, in technical details. */}
-        {['failed', 'retrying'].includes(jobState(focus)) && focus.lastError && (
-          <p className={styles.errorText}>{focus.lastError}</p>
-        )}
-      </div>
+          <div>
+            <h4 className={styles.detailHeading}>What happened</h4>
+            <p>{rowReason(row, reason)}</p>
+            {/* A job that recovered keeps its last error; that's history, in technical details. */}
+            {['failed', 'retrying'].includes(jobState(focus)) && focus.lastError && (
+              <p className={styles.errorText}>{focus.lastError}</p>
+            )}
+          </div>
 
-      {sender && (
-        <p className={styles.muted}>
-          From {sender}
-          {receivedAt && ` · Received ${formatTime(receivedAt)}`}
-        </p>
+          {sender && (
+            <p className={styles.muted}>
+              From {sender}
+              {receivedAt && ` · Received ${formatTime(receivedAt)}`}
+            </p>
+          )}
+        </>
       )}
       {!summary && detailLoading === LoadingState.ERROR && (
         <p className={styles.muted}>Couldn't load the details of this job.</p>
@@ -429,6 +467,7 @@ function RowDetails({ row }: { row: JobRow }) {
 
       {technicalOpen && (
         <div className={styles.technical}>
+          {parked && isMessage && <StepLine steps={messageSteps(row)} />}
           {jobs.length > 1 && (
             <div className={styles.jobPicker} role="group" aria-label="Pipeline jobs">
               {jobs.map((job) => (
@@ -452,7 +491,7 @@ function RowDetails({ row }: { row: JobRow }) {
 }
 
 /** What a person can do about a row that needs attention, without opening it. */
-function RowActions({ row }: { row: JobRow }) {
+function RowActions({ row, canContinue = false }: { row: JobRow; canContinue?: boolean }) {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const isDemoUser = useAppSelector(selectIsDemoUser);
@@ -464,13 +503,14 @@ function RowActions({ row }: { row: JobRow }) {
   const first = row.jobs[0];
   const dead = rowJobs(row).find((job: JobSummary) => job.status === 'dead');
   const stopped = isStopped(row);
+  const parked = isParked(row);
   // Still retrying on its own, so there's nothing to decide yet.
   if (isDemoUser || (!dead && !stopped)) return null;
 
   const isMessage = first.type === 'message.received';
   const busy = preparing || actingJobId !== null;
 
-  const act = async (id: string, action: 'retry' | 'run-again' | 'dismiss', done: string, failed: string) => {
+  const act = async (id: string, action: 'retry' | 'run-again' | 'continue' | 'dismiss', done: string, failed: string) => {
     try {
       await dispatch(runJobAction({ id, action })).unwrap();
       toast.success(done);
@@ -480,8 +520,10 @@ function RowActions({ row }: { row: JobRow }) {
   };
 
   const dismiss = () => {
-    if (!window.confirm("Dismiss this email? It won't come back here, and importing it again won't bring it back."))
-      return;
+    const question = parked
+      ? "Mark this as not a transaction? It won't come back here, and importing it again won't bring it back."
+      : "Dismiss this email? It won't come back here, and importing it again won't bring it back.";
+    if (!window.confirm(question)) return;
     void act(first.id, 'dismiss', 'Dismissed', "Couldn't dismiss it");
   };
 
@@ -513,7 +555,18 @@ function RowActions({ row }: { row: JobRow }) {
           Retry
         </button>
       )}
-      {stopped && (
+      {parked && canContinue && (
+        <button
+          type="button"
+          className={styles.primaryButton}
+          disabled={busy}
+          onClick={() => void act(first.id, 'continue', 'Carrying on', "Couldn't continue it")}
+        >
+          <ArrowRight size={16} />
+          Continue
+        </button>
+      )}
+      {stopped && !parked && (
         <button
           type="button"
           className={styles.primaryButton}
@@ -526,12 +579,12 @@ function RowActions({ row }: { row: JobRow }) {
       )}
       {isMessage && (
         <button type="button" className={styles.button} disabled={busy} onClick={() => void createByHand()}>
-          Create by hand
+          {parked ? 'Edit and create' : 'Create by hand'}
         </button>
       )}
       {!isMailboxJob(first.type) && (
         <button type="button" className={styles.textToggle} disabled={busy} onClick={dismiss}>
-          Dismiss
+          {parked ? 'Not a transaction' : 'Dismiss'}
         </button>
       )}
     </div>
@@ -561,7 +614,7 @@ function EmailRow({ row, open, onToggle }: { row: JobRow; open: boolean; onToggl
         )}
         <CaretRight size={16} className={`${styles.caret} ${open ? styles.caretOpen : ''}`} />
       </button>
-      {full && <RowActions row={row} />}
+      {full && !isParked(row) && <RowActions row={row} />}
       {open && <RowDetails row={row} />}
     </motion.div>
   );
@@ -647,25 +700,41 @@ function Section({
 }
 
 /** What this run did, so two syncs of the same mailbox read differently. */
-function runTitle(run: JobRun, attention: number, created: number): string {
+/** What became of a finished batch. `items` is already counted, like "3 emails". */
+function outcomeTitle(items: string, attention: number, created: number): string {
+  if (attention > 0) return `${attention} of ${items} need${attention === 1 ? 's' : ''} attention`;
+  if (created > 0) return `${plural(created, 'transaction', 'transactions')} from ${items}`;
+  return `${items}, no transactions`;
+}
+
+function runTitle(run: ListedRun, attention: number, created: number): string {
   if (run.kind === 'other') return jobLabel(run.root.type);
-  if (run.kind === 'message') return run.root.label || 'Message';
+  if (run.kind === 'message') {
+    if (!run.startedAt) return run.doing ?? rowStatus(run.rows[0]);
+    const messages = plural(run.emailCount, 'message', 'messages');
+    return run.active ? `Processing ${messages}` : outcomeTitle(messages, attention, created);
+  }
 
   const emails = plural(run.emailCount, 'email', 'emails');
   const isImport = run.root.type === 'mailbox.backfill';
   if (run.reading) return isImport ? 'Starting your import' : 'Syncing your mailbox';
   if (run.active) return `${isImport ? 'Importing' : 'Processing'} ${emails}`;
   if (run.emailCount === 0) return attention > 0 ? "Couldn't read the mailbox" : 'No new emails';
-  if (attention > 0) return `${attention} of ${emails} need${attention === 1 ? 's' : ''} attention`;
-  if (isImport && created === 0) return `${emails} imported, no transactions`;
-  if (created > 0) return `${plural(created, 'transaction', 'transactions')} from ${emails}`;
-  return `${emails}, no transactions`;
+  if (isImport && attention === 0 && created === 0) return `${emails} imported, no transactions`;
+  return outcomeTitle(emails, attention, created);
 }
 
-function runMeta(run: JobRun): string {
-  const time = formatTime(run.root.createdAt);
+function runMeta(run: ListedRun): string {
+  const spansTime = run.startedAt && formatHourMinute(run.startedAt) !== formatHourMinute(run.root.createdAt);
+  // The day is in the heading above the row.
+  const time = spansTime
+    ? `${formatHourMinute(run.startedAt!)} – ${formatHourMinute(run.root.createdAt)}`
+    : formatHourMinute(run.root.createdAt);
   if (run.kind === 'mailbox') return `${run.root.label || 'Mailbox'} · ${time}`;
-  if (run.kind === 'message') return `Message · ${time}`;
+  if (run.kind === 'message') {
+    const source = { sms: 'SMS', api: 'API' }[run.root.source ?? ''] ?? 'Message';
+    return run.startedAt || !run.root.label ? `${source} · ${time}` : `${source} · ${run.root.label} · ${time}`;
+  }
   return `${STATE_LABELS[rowState({ jobs: [run.root], children: [] })]} · ${time}`;
 }
 
@@ -690,9 +759,23 @@ function NowProcessing({ row }: { row: JobRow }) {
   );
 }
 
+/** "Queuing emails · 12 of 40". */
+function progressText(progress?: JobProgress): string | null {
+  if (!progress?.message) return null;
+  return progress.total ? `${progress.message} · ${progress.current ?? 0} of ${progress.total}` : progress.message;
+}
+
 function Progress({ run, current }: { run: JobRun; current: JobRow | null }) {
   const total = run.emailCount;
-  const percent = total > 0 ? Math.round((run.finished / total) * 100) : 0;
+  const reading = run.root.progress;
+  // While the mailbox job is still working there's no email count, only its own.
+  const measured = run.reading && !!reading?.total;
+  const percent = measured
+    ? Math.round(((reading?.current ?? 0) / (reading?.total ?? 1)) * 100)
+    : total > 0
+      ? Math.round((run.finished / total) * 100)
+      : 0;
+  const liveStep = current ? rowJobs(current).find((job) => job.status === 'running')?.progress?.message : undefined;
   return (
     <motion.div
       className={styles.progressWrap}
@@ -704,25 +787,27 @@ function Progress({ run, current }: { run: JobRun; current: JobRow | null }) {
       <div className={styles.progress}>
         <span className={styles.progressText}>
           {run.reading ? (
-            <span>Reading the mailbox</span>
+            <span>{progressText(reading) ?? 'Reading the mailbox'}</span>
           ) : (
             <span>
               <RollingCount value={run.finished} /> of {total} emails
             </span>
           )}
-          {!run.reading && <span className={styles.muted}>{run.doing ? `${run.doing}…` : 'Waiting…'}</span>}
+          {!run.reading && (
+            <span className={styles.muted}>{liveStep ?? (run.doing ? `${run.doing}…` : 'Waiting…')}</span>
+          )}
         </span>
         <div
-          className={`${styles.bar} ${run.reading ? styles.barReading : ''}`}
+          className={`${styles.bar} ${run.reading && !measured ? styles.barReading : ''}`}
           role="progressbar"
           aria-label="Emails processed"
-          aria-valuenow={run.reading ? undefined : run.finished}
+          aria-valuenow={measured ? reading?.current : run.reading ? undefined : run.finished}
           aria-valuemin={0}
-          aria-valuemax={total}
+          aria-valuemax={measured ? reading?.total : total}
         >
           <motion.span
             initial={false}
-            animate={run.reading ? undefined : { width: `${percent}%` }}
+            animate={run.reading && !measured ? undefined : { width: `${percent}%` }}
             transition={{ duration: 0.6, ease: EASE_OUT }}
           />
         </div>
@@ -739,7 +824,7 @@ function RunView({
   forceOpen,
   ...props
 }: RowListProps & {
-  run: JobRun;
+  run: ListedRun;
   show: ShowFilter;
   query: string;
   forceOpen: boolean;
@@ -769,7 +854,9 @@ function RunView({
   if (filtering && shownRows.length === 0) return null;
 
   const hasOpenRow = shownRows.some((row) => row.jobs[0].id === props.openRowId);
-  const open = userOpen ?? (run.active || groups.attention.length > 0 || forceOpen || filtering || hasOpenRow);
+  // A day's row can hold many emails; opened, it would push the other days off screen.
+  const flagged = groups.attention.length > 0 && !run.startedAt;
+  const open = userOpen ?? (run.active || flagged || forceOpen || filtering || hasOpenRow);
   const current =
     groups.active.find((row) => rowJobs(row).some((job) => job.status === 'running')) ?? groups.active[0] ?? null;
 
@@ -835,6 +922,10 @@ function RunView({
   );
 }
 
+function isEmptySync(run: JobRun): boolean {
+  return run.kind === 'mailbox' && run.rows.length === 0 && !run.active;
+}
+
 export default function Jobs() {
   const isDemoUser = useAppSelector(selectIsDemoUser);
   const [retryingCode, setRetryingCode] = useState<string | null>(null);
@@ -845,13 +936,15 @@ export default function Jobs() {
   const [search, setSearch] = useState('');
   const [show, setShow] = useState<ShowFilter>('all');
   const [refreshes, setRefreshes] = useState(0);
+  const [daysShown, setDaysShown] = useState(DAYS_PER_STEP);
   const [searchParams, setSearchParams] = useSearchParams();
-  const view = searchParams.get('view') === 'pipeline' ? 'pipeline' : 'emails';
-  const changeView = (next: 'emails' | 'pipeline') =>
+  const viewParam = searchParams.get('view');
+  const view = viewParam === 'pipeline' || viewParam === 'schedules' ? viewParam : 'emails';
+  const changeView = (next: typeof view) =>
     setSearchParams(
       (params) => {
-        if (next === 'pipeline') params.set('view', 'pipeline');
-        else params.delete('view');
+        if (next === 'emails') params.delete('view');
+        else params.set('view', next);
         return params;
       },
       { replace: true },
@@ -864,6 +957,24 @@ export default function Jobs() {
   useEffect(() => {
     dispatch(fetchJobs());
   }, [dispatch, filters]);
+
+  // A busy import sends many updates a second, so they share one reload.
+  const liveVersion = useAppSelector((state) => state.jobs.liveVersion);
+  const reloadTimer = useRef<number | null>(null);
+  useEffect(() => {
+    if (liveVersion === 0 || reloadTimer.current !== null) return;
+    reloadTimer.current = window.setTimeout(() => {
+      reloadTimer.current = null;
+      dispatch(fetchJobs());
+    }, LIVE_RELOAD_MS);
+  }, [dispatch, liveVersion]);
+  useEffect(
+    () => () => {
+      if (reloadTimer.current !== null) window.clearTimeout(reloadTimer.current);
+      reloadTimer.current = null;
+    },
+    [],
+  );
 
   useEffect(
     () => () => {
@@ -887,9 +998,12 @@ export default function Jobs() {
   const refreshing = listLoading === LoadingState.PENDING;
 
   const allRuns = useMemo(() => (list?.trees ?? []).flatMap((tree) => buildRun(tree) ?? []), [list?.trees]);
-  const isEmptySync = (run: JobRun) => run.kind === 'mailbox' && run.rows.length === 0 && !run.active;
-  const emptySyncs = allRuns.filter(isEmptySync).length;
-  const runs = allRuns.filter((run) => !isEmptySync(run));
+  const filtering = show !== 'all' || search.trim() !== '' || filters.errorCode !== '';
+  // Filters look for particular emails, so matches stay under their own run.
+  const runs = useMemo(() => {
+    const shown = allRuns.filter((run) => !isEmptySync(run));
+    return filtering ? shown : mergeBySource(shown);
+  }, [allRuns, filtering]);
 
   const changeSearch = (value: string) => {
     setSearch(value);
@@ -914,7 +1028,18 @@ export default function Jobs() {
   const failures = list?.failures ?? [];
   const query = filters.jobId ? '' : search;
   const anyAttention = runs.some((run) => run.rows.some((row) => emailGroup(row) === 'attention'));
-  const filtering = show !== 'all' || search.trim() !== '' || filters.errorCode !== '';
+  const days = useMemo(() => splitByDay(runs), [runs]);
+  const shownDays = filtering ? days : days.slice(0, daysShown);
+  const loaded = list?.trees?.length ?? 0;
+  // Fewer than asked for means there's nothing further to get.
+  const canLoadMore = total > loaded && loaded >= filters.limit && filters.limit < JOBS_MAX_LIMIT;
+  // One more day than is on screen proves the last one shown is complete.
+  const needsMore = listLoading === LoadingState.SUCCESS && canLoadMore && days.length <= daysShown;
+  useEffect(() => {
+    if (needsMore) {
+      dispatch(jobFiltersChanged({ limit: Math.min(filters.limit + JOBS_PAGE_SIZE, JOBS_MAX_LIMIT) }));
+    }
+  }, [dispatch, needsMore, filters.limit]);
 
   return (
     <MotionConfig reducedMotion="user">
@@ -924,6 +1049,7 @@ export default function Jobs() {
             [
               ['emails', 'Emails'],
               ['pipeline', 'Pipelines'],
+              ['schedules', 'Schedules'],
             ] as const
           ).map(([id, label]) => (
             <button
@@ -941,6 +1067,8 @@ export default function Jobs() {
 
         {view === 'pipeline' ? (
           <PipelineView />
+        ) : view === 'schedules' ? (
+          <ScheduleView />
         ) : list && !list.enabled ? (
           <div className={styles.empty}>
             The job queue is off. Set <code>JOB_DRIVER=postgres</code> on the API to see jobs here.
@@ -1067,44 +1195,40 @@ export default function Jobs() {
               <div className={styles.empty}>{filtering ? 'Nothing matches.' : 'No jobs yet.'}</div>
             )}
 
-            <div className={styles.runs}>
-              {runs.map((run) => (
-                <RunView
-                  key={run.id}
-                  run={run}
-                  show={show}
-                  query={query}
-                  forceOpen={filters.jobId !== '' || filters.errorCode !== ''}
-                  openRowId={openRowId}
-                  onToggle={toggleRow}
-                />
+            <div className={styles.days}>
+              {shownDays.map((day, index) => (
+                <section key={day.key} className={styles.day} aria-label={dayLabel(day.date)}>
+                  <h3 className={styles.dayHeading}>
+                    {index > 0 && <span className={styles.dayRule} aria-hidden="true" />}
+                    <span>{dayLabel(day.date)}</span>
+                    {index > 0 && <span className={styles.dayRule} aria-hidden="true" />}
+                  </h3>
+                  <div className={styles.runs}>
+                    {day.runs.map((run) => (
+                      <RunView
+                        key={run.id}
+                        run={run}
+                        show={show}
+                        query={query}
+                        forceOpen={filters.jobId !== '' || filters.errorCode !== ''}
+                        openRowId={openRowId}
+                        onToggle={toggleRow}
+                      />
+                    ))}
+                  </div>
+                </section>
               ))}
             </div>
 
-            {emptySyncs > 0 && !filtering && (
-              <p className={styles.footnote}>{plural(emptySyncs, 'sync', 'syncs')} on this page found no new email.</p>
-            )}
-
-            {total > JOBS_PAGE_SIZE && (
+            {(canLoadMore || (!filtering && days.length > daysShown)) && (
               <div className={styles.pager}>
                 <button
                   type="button"
                   className={styles.button}
-                  disabled={filters.offset === 0}
-                  onClick={() => dispatch(jobFiltersChanged({ offset: Math.max(0, filters.offset - JOBS_PAGE_SIZE) }))}
+                  disabled={refreshing}
+                  onClick={() => setDaysShown((count) => (filtering ? days.length : count) + DAYS_PER_STEP)}
                 >
-                  Newer
-                </button>
-                <span className={styles.muted}>
-                  {filters.offset + 1}–{Math.min(filters.offset + JOBS_PAGE_SIZE, total)} of {total}
-                </span>
-                <button
-                  type="button"
-                  className={styles.button}
-                  disabled={filters.offset + JOBS_PAGE_SIZE >= total}
-                  onClick={() => dispatch(jobFiltersChanged({ offset: filters.offset + JOBS_PAGE_SIZE }))}
-                >
-                  Older
+                  Show older
                 </button>
               </div>
             )}

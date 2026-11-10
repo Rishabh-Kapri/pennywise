@@ -476,7 +476,7 @@ func TestPauseAndResumeManageTheWatchSchedule(t *testing.T) {
 		if _, err := s.SetPaused(ctx, budget, conns.conn.ID, true); err != nil {
 			t.Fatal(err)
 		}
-		if len(schedules.disabled) != 1 || schedules.disabled[0] != watchScheduleName(conns.conn.ID) {
+		if len(schedules.disabled) != 1 || schedules.disabled[0] != model.MailboxWatchScheduleName(conns.conn.ID) {
 			t.Fatalf("disabled %v", schedules.disabled)
 		}
 	})
@@ -491,7 +491,7 @@ func TestPauseAndResumeManageTheWatchSchedule(t *testing.T) {
 			t.Fatalf("ensured %v", schedules.ensured)
 		}
 		got := schedules.ensured[0]
-		if got.Name != watchScheduleName(conns.conn.ID) || got.Type != model.JobTypeMailboxStartWatch ||
+		if got.Name != model.MailboxWatchScheduleName(conns.conn.ID) || got.Type != model.JobTypeMailboxStartWatch ||
 			got.Queue != model.QueueIngest || !got.NextRunAt.After(now) {
 			t.Fatalf("schedule %+v", got)
 		}

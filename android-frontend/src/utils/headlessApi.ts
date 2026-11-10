@@ -127,7 +127,7 @@ async function parse<T>(res: Response): Promise<T> {
 type RequestOptions = {
   /** Overrides the persisted budget, for callers that already know it (e.g. a push payload). */
   budgetId?: string;
-  /** Overrides `config.apiBaseUrl` for this request only (SMS test mode). Token refresh still uses the default. */
+  /** Overrides `config.apiBaseUrl` for this request only (SMS go to ingest). Token refresh still uses the default. */
   baseUrl?: string;
   body?: unknown;
 };

@@ -223,6 +223,8 @@ func (w *Worker) execute(ctx context.Context, workerID string, job *jobPort.Job)
 		JobID:    job.ID,
 		WorkerID: workerID,
 		Attempt:  job.Attempt,
+		BudgetID: job.BudgetID,
+		Type:     job.Type,
 	}
 	if !ok {
 		logger.Logger(ctx).Warn("no handler registered for job", "type", job.Type)
@@ -244,7 +246,7 @@ func (w *Worker) execute(ctx context.Context, workerID string, job *jobPort.Job)
 	defer stopHearbeat()
 
 	jobStartTime := time.Now()
-	result, err := w.runJobHandler(ctx, job, handler)
+	result, err := w.runJobHandler(withProgress(ctx, w.broker, claim), job, handler)
 	if err != nil {
 		return w.handleFailure(ctx, job, claim, err)
 	}

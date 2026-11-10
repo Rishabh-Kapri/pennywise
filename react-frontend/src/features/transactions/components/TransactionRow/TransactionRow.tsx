@@ -223,7 +223,7 @@ export function TransactionRow({
                   <div
                     data-inline-edit-cell="true"
                     ref={isActiveInlineEditCell ? activeInlineEditRef : null}
-                    className={`${styles.inlineEditHitArea} ${col.key === 'date' ? styles.dateInlineEditHitArea : ''} ${isActiveInlineEditCell ? styles.inlineEditActive : ''}`}
+                    className={`${styles.inlineEditHitArea} ${col.key === 'date' ? styles.dateInlineEditHitArea : ''} ${col.key === 'payeeName' || col.key === 'note' ? styles.inlineEditBox : ''} ${col.key === 'payeeName' ? styles.payeeInlineEdit : ''} ${isActiveInlineEditCell ? styles.inlineEditActive : ''}`}
                     onClick={editInlineField(col.key, txn)}>
                     {cell}
                   </div>

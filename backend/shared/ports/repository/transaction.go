@@ -20,5 +20,7 @@ type TransactionRepository interface {
 	UpdateStatus(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, status model.TransactionStatus) error
 	Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error)
 	CreateDeduped(ctx context.Context, txn model.Transaction) (*model.Transaction, bool, error)
+	// FindByDedupeHash returns the transaction with this hash, or nil if none.
+	FindByDedupeHash(ctx context.Context, budgetID uuid.UUID, hash string) (*model.Transaction, error)
 	DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error
 }

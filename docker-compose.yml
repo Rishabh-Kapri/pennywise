@@ -192,6 +192,7 @@ services:
       JOB_BROKER_URL: ${JOB_BROKER_URL:-}
       JOB_STORE_URL: ${JOB_STORE_URL:-}
       JOB_QUEUES: cipher
+      MESSAGE_REVIEW_PARK: ${MESSAGE_REVIEW_PARK:-false}
       OTEL_SDK_DISABLED: ${OTEL_SDK_DISABLED:-true}
       OTEL_TRACES_EXPORTER: ${OTEL_TRACES_EXPORTER:-none}
       OTEL_METRICS_EXPORTER: ${OTEL_METRICS_EXPORTER:-none}
@@ -270,6 +271,7 @@ services:
       INTERNAL_AUTH_TOKEN: ${INTERNAL_AUTH_TOKEN:-dev-internal-token-change-me}
       SERVICE_TOKENS: ${SERVICE_TOKENS:-}
       JOB_DRIVER: ${JOB_DRIVER:-memory}
+      REDIS_URL: redis://redis:6379/0
       # Mail adapters (gmail). Unset = none; when set, the Google settings
       # below and MAIL_CREDENTIALS_KEY are required or ingest won't start.
       MAIL_PROVIDERS: ${MAIL_PROVIDERS:-}

@@ -7,7 +7,6 @@ import categories from '../features/category/store/categorySlice';
 import dashboard from '../features/dashboard/store/dashboardSlice';
 import loans from '../features/loans/store/loanSlice';
 import payees from '../features/payees/store/payeeSlice';
-import pipeline from '../features/pipeline/store/pipelineSlice';
 import reports from '../features/reports/store/reportSlice';
 import tags from '../features/tags/store/tagSlice';
 import transactions from '../features/transactions/store/transactionSlice';
@@ -30,7 +29,6 @@ export const store = configureStore({
     dashboard,
     loans,
     payees,
-    pipeline,
     reports,
     tags,
     transactions

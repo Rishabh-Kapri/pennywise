@@ -26,6 +26,10 @@ func (f *fakeBroker) MarkCompleted(context.Context, Claim, json.RawMessage, time
 
 func (f *fakeBroker) MarkPending(context.Context, *Job, Claim, string, time.Time) error { return f.err }
 
+func (f *fakeBroker) UpdateProgress(context.Context, Claim, json.RawMessage) error { return f.err }
+
+func (f *fakeBroker) MarkDead(context.Context, Claim, string, string) error { return f.err }
+
 type fakeLog struct {
 	events []JobEvent
 	err    error
@@ -83,5 +87,36 @@ func TestObservedBrokerHistoryIsBestEffort(t *testing.T) {
 	if e.Type != EventRetryScheduled || e.Error != "boom" || e.NextRunAt == nil || !e.NextRunAt.Equal(runAt) ||
 		e.Attempt != 2 || e.Actor != "w-1" {
 		t.Fatalf("event = %+v", e)
+	}
+}
+
+type fakeNotifier struct{ updates []Update }
+
+func (f *fakeNotifier) Notify(_ context.Context, u Update) error {
+	f.updates = append(f.updates, u)
+	return nil
+}
+
+func TestObservedBrokerAnnouncesChanges(t *testing.T) {
+	budget := uuid.New()
+	claim := Claim{JobID: uuid.New(), WorkerID: "w", Attempt: 1, BudgetID: &budget, Type: "message.extract"}
+	notifier := &fakeNotifier{}
+	o := NewObservedBroker(&fakeBroker{}, &fakeLog{}).WithNotifier(notifier)
+
+	if err := o.UpdateProgress(context.Background(), claim, []byte(`{"message":"x"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := o.MarkDead(context.Background(), claim, "boom", "out of attempts"); err != nil {
+		t.Fatal(err)
+	}
+	if len(notifier.updates) != 2 {
+		t.Fatalf("updates = %+v", notifier.updates)
+	}
+	first, second := notifier.updates[0], notifier.updates[1]
+	if first.Status != RunningJobStatus || string(first.Progress) != `{"message":"x"}` || *first.BudgetID != budget {
+		t.Errorf("progress update = %+v", first)
+	}
+	if second.Status != DeadJobStatus || second.JobID != claim.JobID || second.Type != claim.Type {
+		t.Errorf("dead update = %+v", second)
 	}
 }

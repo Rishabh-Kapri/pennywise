@@ -60,6 +60,7 @@ func main() {
 		Driver:    cfg.JobDriver,
 		BrokerURL: cfg.JobBrokerURL,
 		StoreURL:  cfg.JobStoreURL,
+		RedisURL:  cfg.RedisURL,
 	})
 	if err != nil {
 		logger.Fatal("connect job queue", "error", err)
