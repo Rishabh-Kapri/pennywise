@@ -232,6 +232,7 @@ func (r *cipherPredictionRepo) MarkUserCorrected(
 		 SET has_user_corrected = TRUE,
 		     actual_payee_id = $1,
 		     actual_category_id = $2,
+		     reviewed_at = COALESCE(reviewed_at, NOW()),
 		     updated_at = NOW()
 		 WHERE budget_id = $3 AND transaction_id = $4 AND deleted = FALSE`,
 		actualPayeeID,
@@ -272,6 +273,39 @@ func (r *cipherPredictionRepo) MarkLearned(
 		return errNoRows
 	}
 	return nil
+}
+
+// ClaimLearning implements [repository.CipherPredictionRepository].
+func (r *cipherPredictionRepo) ClaimLearning(ctx context.Context, budgetID, txnID uuid.UUID) (bool, error) {
+	cmdTag, err := r.Executor(ctx).Exec(ctx, `
+		UPDATE cipher_predictions
+		SET learned_at = NOW(), learn_error = NULL, updated_at = NOW()
+		WHERE budget_id = $1 AND transaction_id = $2 AND deleted = FALSE AND learned_at IS NULL`,
+		budgetID, txnID)
+	if err != nil {
+		return false, err
+	}
+	return cmdTag.RowsAffected() > 0, nil
+}
+
+// MarkReviewed implements [repository.CipherPredictionRepository].
+func (r *cipherPredictionRepo) MarkReviewed(ctx context.Context, budgetID, txnID uuid.UUID) error {
+	_, err := r.Executor(ctx).Exec(ctx, `
+		UPDATE cipher_predictions
+		SET reviewed_at = NOW(), updated_at = NOW()
+		WHERE budget_id = $1 AND transaction_id = $2 AND deleted = FALSE AND reviewed_at IS NULL`,
+		budgetID, txnID)
+	return err
+}
+
+// DeleteByTransactionID implements [repository.CipherPredictionRepository].
+func (r *cipherPredictionRepo) DeleteByTransactionID(ctx context.Context, budgetID, txnID uuid.UUID) error {
+	_, err := r.Executor(ctx).Exec(ctx, `
+		UPDATE cipher_predictions
+		SET deleted = TRUE, updated_at = NOW()
+		WHERE budget_id = $1 AND transaction_id = $2 AND deleted = FALSE`,
+		budgetID, txnID)
+	return err
 }
 
 // MarkLearnFailed records why learning failed, leaving learned_at NULL so the

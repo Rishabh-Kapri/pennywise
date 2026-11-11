@@ -704,6 +704,9 @@ func (s *transactionService) applySideEffects(ctx context.Context, input sideEff
 				); err != nil {
 					return errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating cipher prediction correction", err)
 				}
+			} else if err := s.cipherPredictionRepo.MarkReviewed(ctx, input.budgetId, input.oldTxn.ID); err != nil {
+				// Approving it as it stood is a review too.
+				return errs.Wrap(errs.CodeTransactionUpdateFailed, "error marking cipher prediction reviewed", err)
 			}
 
 			if input.queueLearning != nil {
@@ -1276,6 +1279,12 @@ func (s *transactionService) deleteFound(
 	}
 	if err := s.repo.DeleteById(ctx, budgetId, txn.ID); err != nil {
 		return errs.Wrap(errs.CodeTransactionDeleteFailed, "error deleting transaction", err)
+	}
+	// Its prediction would otherwise stay live, pointing at a deleted row.
+	if s.cipherPredictionRepo != nil {
+		if err := s.cipherPredictionRepo.DeleteByTransactionID(ctx, budgetId, txn.ID); err != nil {
+			return errs.Wrap(errs.CodeTransactionDeleteFailed, "error deleting cipher prediction", err)
+		}
 	}
 	return nil
 }

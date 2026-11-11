@@ -208,3 +208,57 @@ func TestTransactionCreateRetryIsNotADuplicate(t *testing.T) {
 		t.Fatalf("%+v", report)
 	}
 }
+
+func TestTransactionCreatePossibleDuplicateWaitsForAPerson(t *testing.T) {
+	maybe := uuid.New()
+	broker := &fakeBroker{}
+	deps := Deps{Broker: broker, Messages: &fakeMessages{result: model.TransactionCreateResult{PossibleDuplicateOf: &maybe}}}
+	msg := model.ReceivedMessage{Source: "sms", Provider: "android", ExternalID: "m1"}
+	j, budget := newJob(t, model.TransactionCreatePayload{Message: msg, DisplayText: "Spent Rs.7532"})
+
+	if _, err := transactionCreate(deps)(context.Background(), j); err != nil {
+		t.Fatal(err)
+	}
+	if broker.jobType != model.JobTypePipelineReport || broker.queue != model.QueuePennywise {
+		t.Fatalf("queued %s on %s", broker.jobType, broker.queue)
+	}
+	var report model.PipelineReportPayload
+	if err := json.Unmarshal(broker.payload, &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.Outcome != model.MessageOutcomeNeedsReview || report.Review == nil || report.Review.Step != "create" ||
+		report.Review.Text != "Spent Rs.7532" || report.Learn != nil {
+		t.Fatalf("report %+v", report)
+	}
+	resume := report.Review.Resume
+	if resume == nil || resume.JobType != model.JobTypeTransactionCreate || resume.Queue != model.QueuePennywise ||
+		resume.IdempotencyKey == msg.IdempotencyKey(budget) {
+		t.Fatalf("resume %+v", resume)
+	}
+	var again model.TransactionCreatePayload
+	if err := json.Unmarshal(resume.Payload, &again); err != nil {
+		t.Fatal(err)
+	}
+	if !again.AllowDuplicate || again.Message.IdempotencyKey(budget) != resume.IdempotencyKey {
+		t.Fatalf("resume payload %+v", again)
+	}
+}
+
+func TestTransactionCreateOtherChannelMatchIsADuplicate(t *testing.T) {
+	broker := &fakeBroker{}
+	learn := &model.TransactionLearnPayload{}
+	deps := Deps{Broker: broker, Messages: &fakeMessages{result: model.TransactionCreateResult{
+		TransactionIDs: []uuid.UUID{uuid.New()}, Duplicate: true, ExistingSince: time.Now().Add(time.Hour), Learn: learn,
+	}}}
+	j, _ := newJob(t, model.TransactionCreatePayload{})
+	if _, err := transactionCreate(deps)(context.Background(), j); err != nil {
+		t.Fatal(err)
+	}
+	var report model.PipelineReportPayload
+	if err := json.Unmarshal(broker.payload, &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.Outcome != model.MessageOutcomeTransactionDuplicate || report.Learn != nil {
+		t.Fatalf("report %+v", report)
+	}
+}

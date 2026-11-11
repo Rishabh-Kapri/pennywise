@@ -611,6 +611,18 @@ func (r *transactionRepo) CreateDeduped(
 	return existing, false, nil
 }
 
+// LockForDedupe implements [repository.TransactionRepository]. The lock is a
+// transaction-level advisory lock, so it does nothing outside a transaction.
+func (r *transactionRepo) LockForDedupe(
+	ctx context.Context,
+	budgetID, accountID uuid.UUID,
+	amount float64,
+) error {
+	key := fmt.Sprintf("dedupe|%s|%s|%.2f", budgetID, accountID, amount)
+	_, err := r.Executor(ctx).Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, key)
+	return err
+}
+
 // FindByDedupeHash implements [repository.TransactionRepository].
 func (r *transactionRepo) FindByDedupeHash(
 	ctx context.Context,

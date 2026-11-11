@@ -16,8 +16,10 @@ type PromptReq struct {
 type LLMPrediction struct {
 	MerchantName string `json:"merchantName"`
 	SuggestedTag string `json:"suggestedTag"`
-	Confidence   int32  `json:"confidence"`
-	Reasoning    string `json:"reasoning"`
+	Confidence   int32  `json:"confidence"` // in the category
+	// PayeeConfidence is nil from models (and prompts) that don't give it.
+	PayeeConfidence *int32 `json:"payeeConfidence"`
+	Reasoning       string `json:"reasoning"`
 }
 
 // ── Ollama-local types ──────────────────────────────────────────

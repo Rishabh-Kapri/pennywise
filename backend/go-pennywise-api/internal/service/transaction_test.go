@@ -185,6 +185,10 @@ type mockPredictionRepo struct {
 type mockCipherPredictionRepo struct {
 	mockBaseRepo
 	mock.Mock
+	// Not testify expectations: most tests don't care about these.
+	reviewed   []uuid.UUID
+	deletedFor []uuid.UUID
+	claimed    []uuid.UUID
 }
 
 func (m *mockCipherPredictionRepo) Create(
@@ -1778,6 +1782,7 @@ func TestUpdateApprovingUnchangedPredictionDoesNotMarkCorrected(t *testing.T) {
 	require.NoError(t, err)
 	cipherPredictionRepo.AssertNotCalled(t, "MarkUserCorrected",
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	require.Equal(t, []uuid.UUID{txnId}, cipherPredictionRepo.reviewed, "approving is a review")
 	txnRepo.AssertExpectations(t)
 	cipherPredictionRepo.AssertExpectations(t)
 	cipherClient.AssertNotCalled(t, "GenerateTransactionEmbedding", mock.Anything, mock.Anything)
@@ -1933,4 +1938,23 @@ func TestLearningStatusReportsRunning(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, stats.Running)
 	require.Equal(t, 2, stats.Pending)
+}
+
+func (m *mockCipherPredictionRepo) ClaimLearning(_ context.Context, _ uuid.UUID, txnID uuid.UUID) (bool, error) {
+	m.claimed = append(m.claimed, txnID)
+	return true, nil
+}
+
+func (m *mockCipherPredictionRepo) MarkReviewed(_ context.Context, _ uuid.UUID, txnID uuid.UUID) error {
+	m.reviewed = append(m.reviewed, txnID)
+	return nil
+}
+
+func (m *mockCipherPredictionRepo) DeleteByTransactionID(_ context.Context, _ uuid.UUID, txnID uuid.UUID) error {
+	m.deletedFor = append(m.deletedFor, txnID)
+	return nil
+}
+
+func (m *mockTransactionRepo) LockForDedupe(context.Context, uuid.UUID, uuid.UUID, float64) error {
+	return nil
 }

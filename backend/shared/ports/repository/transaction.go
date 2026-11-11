@@ -20,6 +20,9 @@ type TransactionRepository interface {
 	UpdateStatus(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, status model.TransactionStatus) error
 	Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error)
 	CreateDeduped(ctx context.Context, txn model.Transaction) (*model.Transaction, bool, error)
+	// LockForDedupe holds a lock on the account and amount until the caller's
+	// transaction ends, so two messages for one payment can't both create it.
+	LockForDedupe(ctx context.Context, budgetID, accountID uuid.UUID, amount float64) error
 	// FindByDedupeHash returns the transaction with this hash, or nil if none.
 	FindByDedupeHash(ctx context.Context, budgetID uuid.UUID, hash string) (*model.Transaction, error)
 	DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error

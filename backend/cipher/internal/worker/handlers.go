@@ -153,6 +153,7 @@ func messageVerify(deps WorkerDeps) jobrunner.HandlerFunc {
 			return nil, errs.Wrap(errs.CodeMessageVerifyFailed, "verify entities", err)
 		}
 		p.Entities.Channel, p.Entities.VPA, p.Entities.Ref = res.Channel, res.VPA, res.Ref
+		p.Entities.VerifiedConfidence, p.Entities.VerifiedBy = &res.Confidence, res.Model
 		if strings.TrimSpace(p.Entities.Account) == "" {
 			p.Entities.Account = res.Account
 		}
@@ -266,11 +267,12 @@ func createTransaction(
 ) (json.RawMessage, error) {
 	return enqueue(ctx, deps, j, budgetID, p.Message, model.JobTypeTransactionCreate, model.QueuePennywise,
 		model.TransactionCreatePayload{
-			Message:    p.Message,
-			Verdict:    p.Verdict,
-			Entities:   p.Entities,
-			Prediction: toModelPrediction(res, source),
-			Source:     messageSource(p.Message, p.Entities, p.Verdict),
+			Message:     p.Message,
+			Verdict:     p.Verdict,
+			Entities:    p.Entities,
+			Prediction:  toModelPrediction(res, source),
+			Source:      messageSource(p.Message, p.Entities, p.Verdict),
+			DisplayText: displayText(p.Message),
 		}, "", output)
 }
 

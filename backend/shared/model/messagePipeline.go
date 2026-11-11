@@ -3,6 +3,7 @@ package model
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -59,6 +60,7 @@ type MessageVerdict struct {
 	IsTransaction bool               `json:"isTransaction"`
 	Type          string             `json:"type"` // debit | credit
 	Confidence    *float64           `json:"confidence,omitempty"`
+	Model         string             `json:"model,omitempty"` // the model that answered
 }
 
 // MessageEntities are the fields extracted from a message.
@@ -72,14 +74,22 @@ type MessageEntities struct {
 	Channel string `json:"channel,omitempty"` // UPI, CARD, NEFT, IMPS or NACH
 	VPA     string `json:"vpa,omitempty"`
 	Ref     string `json:"ref,omitempty"` // UPI RRN, IMPS ref, NEFT UTR: unique per payment
+	// VerifiedConfidence is how sure verify was that the details match the
+	// message, and VerifiedBy the model that said so.
+	VerifiedConfidence *float64 `json:"verifiedConfidence,omitempty"`
+	VerifiedBy         string   `json:"verifiedBy,omitempty"`
 }
 
 // MessagePrediction is the payee and category chosen for a message.
 type MessagePrediction struct {
 	PayeeName    string                  `json:"payeeName"`
 	CategoryName string                  `json:"categoryName"`
-	Confidence   float64                 `json:"confidence"`
+	Confidence   float64                 `json:"confidence"` // in the category
 	Source       MessagePredictionSource `json:"source"`
+	// PayeeConfidence is set when the step scored the payee on its own.
+	PayeeConfidence *float64 `json:"payeeConfidence,omitempty"`
+	Reasoning       string   `json:"reasoning,omitempty"`
+	Model           string   `json:"model,omitempty"`
 }
 
 // MessageExtractPayload is the payload of JobTypeMessageExtract.
@@ -104,6 +114,11 @@ type TransactionCreatePayload struct {
 	Prediction MessagePrediction `json:"prediction"`
 	// Source is what the bank text itself states, for learning.
 	Source *MessageSource `json:"source,omitempty"`
+	// DisplayText is the message as a person reads it, for a review.
+	DisplayText string `json:"displayText,omitempty"`
+	// AllowDuplicate is a person saying this isn't the payment it looked like,
+	// so the match on another channel's message is skipped.
+	AllowDuplicate bool `json:"allowDuplicate,omitempty"`
 }
 
 // MessageSource is the bank text behind a transaction and what the pipeline
@@ -130,6 +145,35 @@ type MessageSource struct {
 type CounterpartyAliasMatch struct {
 	PayeeName    string
 	CategoryName string
+	Source       string // learning_source: MANUAL or AUTO_LEARNED
+}
+
+// SourceMatchQuery looks for a transaction that another channel's message
+// already created: same account and signed amount, a source of the other kind
+// on the same day. Text is this message's, so a retry finds what it attached.
+type SourceMatchQuery struct {
+	BudgetID  uuid.UUID
+	AccountID uuid.UUID
+	Amount    float64
+	Kind      string // this message's kind: EMAIL or SMS
+	On        time.Time
+	Text      string
+}
+
+// SourceMatchCandidate is a transaction SourceMatchQuery found, and when its
+// other-channel message says the payment happened (nil without a time).
+type SourceMatchCandidate struct {
+	TransactionID uuid.UUID
+	PayeeID       *uuid.UUID
+	CategoryID    *uuid.UUID
+	CreatedAt     time.Time
+	OccurredAt    *time.Time
+}
+
+// IsUncategorized reports whether a category name is the catch-all, which says
+// nothing worth learning about a merchant.
+func IsUncategorized(name string) bool {
+	return strings.EqualFold(strings.TrimSpace(name), "Uncategorized")
 }
 
 // LookupKey is the "CHANNEL | MERCHANT" a transaction's bank text gave.
@@ -173,7 +217,7 @@ type PipelineReportPayload struct {
 
 // MessageReview is what a person needs to decide about a parked message.
 type MessageReview struct {
-	Step       string   `json:"step"` // the step that wasn't sure: check or verify
+	Step       string   `json:"step"` // the step that wasn't sure: check, verify or create
 	Confidence *float64 `json:"confidence,omitempty"`
 	// Text is the message as a person reads it, keeping its line breaks.
 	Text     string           `json:"text"`
@@ -217,6 +261,10 @@ type TransactionCreateResult struct {
 	Duplicate bool `json:"duplicate,omitempty"`
 	// ExistingSince is when an already-present transaction was saved.
 	ExistingSince time.Time `json:"-"`
+	// PossibleDuplicateOf is a transaction from another channel that may be
+	// this payment, when the times needed to be sure are missing. Nothing was
+	// created; the message waits for a person.
+	PossibleDuplicateOf *uuid.UUID `json:"possibleDuplicateOf,omitempty"`
 	// Learn is what to learn from it. Not stored with the job's result.
 	Learn *TransactionLearnPayload `json:"-"`
 }

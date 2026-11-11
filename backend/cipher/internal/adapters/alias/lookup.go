@@ -8,6 +8,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/ports"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils/narration"
@@ -52,12 +53,31 @@ func (l *lookup) Lookup(
 			log.Debug("no alias for key", "key", key)
 			continue
 		}
-		log.Info("alias matched", "key", key, "payee", match.PayeeName, "category", match.CategoryName)
+		if model.IsUncategorized(match.CategoryName) {
+			// It knows the payee but not where the money goes, so predict.
+			log.Debug("alias has no real category", "key", key)
+			continue
+		}
+		log.Info("alias matched", "key", key, "payee", match.PayeeName, "category", match.CategoryName, "source", match.Source)
 		return ports.PredictionResult{
 			PayeeName:    match.PayeeName,
 			CategoryName: match.CategoryName,
-			Confidence:   1,
+			Confidence:   aliasConfidence(match.Source),
 		}, true, nil
 	}
 	return ports.PredictionResult{}, false, nil
+}
+
+// Learned aliases come only from confident predictions, but a person's choice
+// is still worth more.
+const (
+	manualAliasConfidence  = 1.0
+	learnedAliasConfidence = 0.8
+)
+
+func aliasConfidence(source string) float64 {
+	if source == "MANUAL" {
+		return manualAliasConfidence
+	}
+	return learnedAliasConfidence
 }

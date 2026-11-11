@@ -117,7 +117,8 @@ func TestVerifyFillsInWhatTheModelPicked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !got.Valid || got.Channel != "UPI" || got.Ref != "900000000001" || got.VPA != "9000000001-3@ybl" || got.Account != "1111" {
+	if !got.Valid || got.Channel != "UPI" || got.Ref != "900000000001" || got.VPA != "9000000001-3@ybl" || got.Account != "1111" ||
+		got.Model != "m" {
 		t.Fatalf("result %+v", got)
 	}
 

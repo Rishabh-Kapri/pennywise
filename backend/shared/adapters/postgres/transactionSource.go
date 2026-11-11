@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
@@ -64,4 +65,42 @@ func (r *transactionSourceRepo) LookupKey(
 		return nil, err
 	}
 	return &key, nil
+}
+
+// FindCrossChannel implements [repository.TransactionSourceRepository]. A
+// transaction already holding a different message of this kind is left out:
+// a channel sends one message per payment.
+func (r *transactionSourceRepo) FindCrossChannel(
+	ctx context.Context,
+	q model.SourceMatchQuery,
+) ([]model.SourceMatchCandidate, error) {
+	rows, err := r.Executor(ctx).Query(ctx, `
+		SELECT t.id, t.payee_id, t.category_id, t.created_at, s.occurred_at
+		FROM transaction_sources s
+		JOIN transactions t ON t.id = s.transaction_id AND t.deleted = FALSE
+		WHERE s.budget_id = $1 AND t.budget_id = $1 AND t.account_id = $2
+		  AND t.amount = round($3::numeric, 2)
+		  AND s.kind IN ('EMAIL', 'SMS') AND s.kind <> $4
+		  AND s.occurred_on = $5::date
+		  AND NOT EXISTS (
+			SELECT 1 FROM transaction_sources o
+			WHERE o.transaction_id = t.id AND o.kind = $4 AND o.raw_text <> $6
+		  )
+		ORDER BY t.created_at DESC
+		LIMIT 10
+	`, q.BudgetID, q.AccountID, q.Amount, q.Kind, q.On.Format(time.DateOnly), q.Text)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var found []model.SourceMatchCandidate
+	for rows.Next() {
+		var c model.SourceMatchCandidate
+		if err := rows.Scan(&c.TransactionID, &c.PayeeID, &c.CategoryID, &c.CreatedAt, &c.OccurredAt); err != nil {
+			return nil, err
+		}
+		found = append(found, c)
+	}
+	return found, rows.Err()
 }

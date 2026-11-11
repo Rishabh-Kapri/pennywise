@@ -1053,6 +1053,7 @@ func main() {
 		Categories:          database.Category,
 		CounterpartyAliases: database.CounterpartyAlias,
 		TransactionSources:  database.TransactionSource,
+		CipherPredictions:   database.CipherPrediction,
 	})
 	workerErr := make(chan error, 1)
 	workerDone := make(chan struct{})

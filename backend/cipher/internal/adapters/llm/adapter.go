@@ -261,7 +261,7 @@ func (a *adapter) Predict(
 	user := fmt.Sprintf("Merchant: %s\nAmount: %.2f\nAccount: %s\n\n%s",
 		entities.Merchant, entities.Amount, entities.Account, msg.Body)
 
-	text, _, err := a.ask(ctx, errs.CodeMessagePredictFailed, system, user)
+	text, usage, err := a.ask(ctx, errs.CodeMessagePredictFailed, system, user)
 	if err != nil {
 		return ports.PredictionResult{}, err
 	}
@@ -277,15 +277,35 @@ func (a *adapter) Predict(
 	if category == "" {
 		log.Warn("no budget category matches the prediction", "suggested", parsed.SuggestedTag, "model", a.cfg.Model)
 	}
+	return toPrediction(parsed, category, entities.Merchant, a.cfg.Model, usage), nil
+}
+
+// toPrediction is the step's answer from the model's reply. The category is
+// what it matched in the budget; the model's own merchant name wins over the
+// extracted one.
+func toPrediction(
+	parsed cipherModel.LLMPrediction,
+	category, extractedMerchant, model string,
+	usage *ports.Usage,
+) ports.PredictionResult {
 	payee := parsed.MerchantName
 	if payee == "" {
-		payee = entities.Merchant
+		payee = extractedMerchant
 	}
-	return ports.PredictionResult{
+	result := ports.PredictionResult{
 		PayeeName:    payee,
 		CategoryName: category,
 		Confidence:   float64(parsed.Confidence) / 100,
-	}, nil
+		Reasoning:    strings.TrimSpace(parsed.Reasoning),
+		Model:        model,
+	}
+	if parsed.PayeeConfidence != nil {
+		result.PayeeConfidence = new(float64(*parsed.PayeeConfidence) / 100)
+	}
+	if usage != nil && usage.Model != "" {
+		result.Model = usage.Model
+	}
+	return result
 }
 
 // Verify implements [ports.Verifier]. No pipeline file offers a chat model for

@@ -576,7 +576,7 @@ func TestMessageSourceComesFromEntities(t *testing.T) {
 
 func TestMessageSourceLeavesUnknownsBlank(t *testing.T) {
 	got := messageSource(model.ReceivedMessage{Source: "api", Body: "text"}, model.MessageEntities{
-		Merchant: "Shop", Currency: "Rupees", Date: time.Date(2026, 10, 7, 0, 0, 0, 0, time.UTC),
+		Merchant: "Shop", Currency: "dollars", Date: time.Date(2026, 10, 7, 0, 0, 0, 0, time.UTC),
 	}, model.MessageVerdict{Type: "none"})
 	if got.Kind != "" || got.Channel != "" || got.Direction != "" || got.Amount != "" || got.Currency != "" || got.OccurredAt != nil {
 		t.Fatalf("source %+v", got)
@@ -590,5 +590,68 @@ func TestDisplayTextKeepsLineBreaks(t *testing.T) {
 	}
 	if got := plainBody(msg); strings.Contains(got, "\n") {
 		t.Fatalf("hash text changed: %q", got)
+	}
+}
+
+func TestMessageSourceReadsTheClockInTheBanksZone(t *testing.T) {
+	// Extract keeps "20:41:11" from the message as 20:41:11 UTC.
+	stated := time.Date(2026, 11, 10, 20, 41, 11, 0, time.UTC)
+	got := messageSource(model.ReceivedMessage{Source: "sms"}, model.MessageEntities{Date: stated}, model.MessageVerdict{})
+	want := time.Date(2026, 11, 10, 15, 11, 11, 0, time.UTC) // 20:41:11 IST
+	if got.OccurredAt == nil || !got.OccurredAt.Equal(want) {
+		t.Fatalf("occurred at %v, want %v", got.OccurredAt, want)
+	}
+	if got.OccurredOn == nil || got.OccurredOn.Format(time.DateOnly) != "2026-11-10" {
+		t.Fatalf("occurred on %v", got.OccurredOn)
+	}
+}
+
+func TestCurrency(t *testing.T) {
+	for raw, want := range map[string]string{"Rs": "INR", "Rs.": "INR", "₹": "INR", "inr": "INR", " usd ": "USD", "dollars": "", "": ""} {
+		if got := currency(raw); got != want {
+			t.Errorf("currency(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}
+
+func TestVerifyPassesItsScoreOn(t *testing.T) {
+	b := &fakeBroker{}
+	deps := WorkerDeps{Broker: b, Pipeline: fakePipeline{verifier: resultVerifier{ports.VerifyResult{Valid: true, Confidence: 0.98, Model: "jev"}}}}
+	j, _ := newJob(t, model.MessageEntitiesPayload{Message: testMessage, Entities: model.MessageEntities{Amount: 10}})
+	if _, err := messageVerify(deps)(context.Background(), j); err != nil {
+		t.Fatal(err)
+	}
+	var next model.MessageEntitiesPayload
+	if err := json.Unmarshal(b.got[0].payload, &next); err != nil {
+		t.Fatal(err)
+	}
+	if next.Entities.VerifiedConfidence == nil || *next.Entities.VerifiedConfidence != 0.98 || next.Entities.VerifiedBy != "jev" {
+		t.Fatalf("entities %+v", next.Entities)
+	}
+}
+
+func TestCreatePayloadCarriesTheReadableText(t *testing.T) {
+	b := &fakeBroker{}
+	deps := WorkerDeps{Broker: b, Memory: fakeMemory{found: true}}
+	msg := model.ReceivedMessage{Source: "email", Body: "<p>Rs.10 debited.</p><p>Call us.</p>"}
+	j, _ := newJob(t, model.MessageEntitiesPayload{Message: msg})
+	if _, err := messageLookup(deps)(context.Background(), j); err != nil {
+		t.Fatal(err)
+	}
+	var p model.TransactionCreatePayload
+	if err := json.Unmarshal(b.got[0].payload, &p); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(p.DisplayText, "\n") || p.Source == nil || p.Source.Kind != "EMAIL" {
+		t.Fatalf("payload %+v", p)
+	}
+}
+
+func TestModelNamesReachThePrediction(t *testing.T) {
+	sure := 0.9
+	verdict := toModelVerdict(ports.TxnVerdict{Usage: &ports.Usage{Model: "jev"}})
+	prediction := toModelPrediction(ports.PredictionResult{PayeeConfidence: &sure, Reasoning: "r", Model: "haiku"}, model.MessagePredictionPredictor)
+	if verdict.Model != "jev" || prediction.Model != "haiku" || prediction.Reasoning != "r" || *prediction.PayeeConfidence != 0.9 {
+		t.Fatalf("verdict %+v, prediction %+v", verdict, prediction)
 	}
 }

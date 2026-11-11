@@ -89,6 +89,7 @@ type VerifyResult struct {
 	VPA     string `json:"vpa,omitempty"`
 	Ref     string `json:"ref,omitempty"`
 	Account string `json:"account,omitempty"`
+	Model   string `json:"model,omitempty"` // the model that answered
 }
 
 type Verifier interface {
@@ -98,7 +99,11 @@ type Verifier interface {
 type PredictionResult struct {
 	PayeeName    string  `json:"payeeName"`
 	CategoryName string  `json:"categoryName"`
-	Confidence   float64 `json:"confidence"`
+	Confidence   float64 `json:"confidence"` // in the category
+	// PayeeConfidence is set when the model scored the payee on its own.
+	PayeeConfidence *float64 `json:"payeeConfidence,omitempty"`
+	Reasoning       string   `json:"reasoning,omitempty"`
+	Model           string   `json:"model,omitempty"`
 }
 
 // MemoryLookup finds a payee and category from what the budget already knows:

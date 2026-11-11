@@ -531,6 +531,21 @@ func TestDeleteById(t *testing.T) {
 		assert.Error(t, err)
 	})
 
+	t.Run("deletes_its_prediction", func(t *testing.T) {
+		mockRepo := &mockTransactionRepo{}
+		mockBudget := &mockBudgetRepo{}
+		service := newTestTransactionService(mockRepo, mockBudget, nil, nil, nil, nil, nil)
+		predictions := &mockCipherPredictionRepo{}
+		service.cipherPredictionRepo = predictions
+
+		mockBudget.On("GetById", mock.Anything, budgetId).Return(&model.Budget{}, nil).Once()
+		mockRepo.On("GetById", mock.Anything, budgetId, txnId).Return(&model.Transaction{ID: txnId}, nil).Once()
+		mockRepo.On("DeleteById", mock.Anything, budgetId, txnId).Return(nil).Once()
+
+		assert.NoError(t, service.DeleteById(ctx, txnId))
+		assert.Equal(t, []uuid.UUID{txnId}, predictions.deletedFor)
+	})
+
 	t.Run("repo_deletion_fails", func(t *testing.T) {
 		mockRepo := &mockTransactionRepo{}
 		mockBudget := &mockBudgetRepo{}

@@ -13,6 +13,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/job"
+	"github.com/google/uuid"
 )
 
 // Deps are what the handlers call.
@@ -76,9 +77,12 @@ func transactionCreate(deps Deps) jobrunner.HandlerFunc {
 		if err != nil {
 			return nil, err
 		}
+		if created.PossibleDuplicateOf != nil {
+			return parkPossibleDuplicate(ctx, deps, j, budgetID, p, created)
+		}
 
 		outcome, learn := model.MessageOutcomeTransactionCreated, created.Learn
-		if !created.Created && created.ExistingSince.Before(j.CreatedAt) {
+		if created.Duplicate || (!created.Created && created.ExistingSince.Before(j.CreatedAt)) {
 			created.Duplicate = true
 			outcome, learn = model.MessageOutcomeTransactionDuplicate, nil
 			logger.Logger(ctx).Info("message matched an existing transaction", "transactionIds", created.TransactionIDs)
@@ -96,6 +100,53 @@ func transactionCreate(deps Deps) jobrunner.HandlerFunc {
 		}
 		return jobrunner.EncodeResult(created)
 	}
+}
+
+// parkPossibleDuplicate sends a message that may repeat another channel's to a
+// person. Continuing creates it anyway; its run gets a new RunID so its jobs
+// don't share keys with this one's.
+func parkPossibleDuplicate(
+	ctx context.Context,
+	deps Deps,
+	j *job.Job,
+	budgetID uuid.UUID,
+	p model.TransactionCreatePayload,
+	created model.TransactionCreateResult,
+) (json.RawMessage, error) {
+	again := p
+	again.AllowDuplicate = true
+	again.Message.RunID = "review:" + j.ID.String()
+	payload, err := json.Marshal(again)
+	if err != nil {
+		return nil, errs.Wrap(errs.CodeInternalError, "encode resume payload", err)
+	}
+	text := p.DisplayText
+	if text == "" && p.Source != nil {
+		text = p.Source.Text
+	}
+	entities := p.Entities
+	review := model.MessageReview{
+		Step:     "create",
+		Text:     text,
+		Entities: &entities,
+		Resume: &model.MessageResume{
+			JobType:        model.JobTypeTransactionCreate,
+			Queue:          model.QueuePennywise,
+			IdempotencyKey: again.Message.IdempotencyKey(budgetID),
+			Payload:        payload,
+		},
+	}
+	_, err = jobrunner.EnqueueNext(ctx, deps.Broker, j, model.JobTypePipelineReport, model.QueuePennywise,
+		p.Message.IdempotencyKey(budgetID), model.PipelineReportPayload{
+			Message: p.Message,
+			Outcome: model.MessageOutcomeNeedsReview,
+			Reason:  "This may be the same payment as one already added from another message, but the times to be sure are missing.",
+			Review:  &review,
+		})
+	if err != nil {
+		return nil, err
+	}
+	return jobrunner.EncodeResult(created)
 }
 
 // pipelineReport handles model.JobTypePipelineReport, the last job of every

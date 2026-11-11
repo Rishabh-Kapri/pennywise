@@ -195,6 +195,7 @@ func (d *adapter) Verify(
 		VPA:        strings.ToLower(pickCandidate(resp.Answers["vpa"], vpas, minFieldConfidence, false)),
 		Ref:        pickCandidate(resp.Answers["ref"], refs, minRefConfidence, true),
 		Account:    pickCandidate(resp.Answers["account"], accounts, minRefConfidence, true),
+		Model:      cmpOr(resp.Model, d.model),
 	}, nil
 }
 
@@ -252,6 +253,15 @@ func candidateQuestion(instructions string, candidates []string, none string) sh
 	}
 	criteria[noneChoice] = new(none)
 	return sharedModel.Intent{Type: sharedModel.ChoiceIntentType, Instructions: instructions, Criteria: criteria}
+}
+
+func cmpOr(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func portUsage(res *sharedModel.DecisionResponse) *ports.Usage {

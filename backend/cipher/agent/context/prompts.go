@@ -343,6 +343,7 @@ EXPECTED JSON SCHEMA:
 {
   "merchantName": "string",
   "suggestedTag": "string",
-  "confidence": integer (0-100),
+  "confidence": integer (0-100, how sure you are of the category),
+  "payeeConfidence": integer (0-100, how sure you are of the merchant name),
   "reasoning": "string (Brief 1-sentence explanation of why you chose this category)"
 }`

@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -48,6 +50,7 @@ type MessageJobDeps struct {
 	Categories          repository.CategoryRepository
 	CounterpartyAliases repository.CounterpartyAliasRepository
 	TransactionSources  repository.TransactionSourceRepository
+	CipherPredictions   repository.CipherPredictionRepository
 }
 
 type messageJobService struct {
@@ -101,12 +104,20 @@ func (s *messageJobService) CreateTransaction(
 	}
 
 	var (
-		txn     *model.Transaction
-		created bool
+		txn      *model.Transaction
+		created  bool
+		matched  bool // another channel's message already created it
+		possible *uuid.UUID
 	)
 	txCtx, cancel := context.WithTimeout(ctx, createTransactionTimeout)
 	defer cancel()
 	err = s.deps.DBTxn.Do(txCtx, func(ctx context.Context) error {
+		txn, created, matched, possible = nil, false, false, nil // the transaction may run again
+		// The email and SMS of one payment can arrive together, so only one
+		// of them looks for the other's transaction at a time.
+		if err := s.deps.TransactionRepo.LockForDedupe(ctx, budgetID, account.ID, amount); err != nil {
+			return err
+		}
 		if hash != textHash {
 			// A transaction saved before refs were read has only the text hash,
 			// and importing that email again must still find it.
@@ -116,6 +127,20 @@ func (s *messageJobService) CreateTransaction(
 			}
 			if existing != nil {
 				txn = existing
+				return s.recordSource(ctx, budgetID, txn.ID, p)
+			}
+		}
+		if !p.AllowDuplicate {
+			match, maybe, err := s.otherChannelMatch(ctx, budgetID, account.ID, amount, p)
+			if err != nil {
+				return err
+			}
+			if match != nil {
+				txn, matched = match, true
+				return s.recordSource(ctx, budgetID, txn.ID, p)
+			}
+			if maybe != nil {
+				possible = maybe
 				return nil
 			}
 		}
@@ -137,29 +162,40 @@ func (s *messageJobService) CreateTransaction(
 		if err != nil {
 			return err
 		}
-		if !created {
-			return nil
+		if created {
+			if _, err := s.deps.Predictions.CreateCipherPrediction(ctx, cipherPrediction(budgetID, txn, p, text, amount)); err != nil {
+				return err
+			}
 		}
-
-		_, err = s.deps.Predictions.CreateCipherPrediction(ctx, cipherPrediction(budgetID, txn, p, text, amount))
-		return err
+		// Saved with the transaction, so the other channel's message finds it.
+		return s.recordSource(ctx, budgetID, txn.ID, p)
 	})
 	if err != nil {
 		return result, err
+	}
+	if possible != nil {
+		result.PossibleDuplicateOf = possible
+		logger.Logger(ctx).Info("message may be a payment already added from another channel",
+			"transactionId", *possible, "messageId", p.Message.ExternalID)
+		return result, nil
 	}
 	if txn == nil {
 		return result, errs.New(errs.CodeTransactionNotCreated, "no transaction was created")
 	}
 	result.TransactionIDs = []uuid.UUID{txn.ID}
 	result.Created = created
+	result.Duplicate = matched
 	if !created {
 		result.ExistingSince = txn.CreatedAt
 		logger.Logger(ctx).Info("transaction already exists, nothing added",
-			"transactionId", txn.ID, "existingSince", txn.CreatedAt, "messageId", p.Message.ExternalID)
+			"transactionId", txn.ID, "existingSince", txn.CreatedAt, "messageId", p.Message.ExternalID,
+			"otherChannel", matched)
 	}
-	// Also set for a duplicate: a retry after the transaction was saved still
-	// has to queue this. LearnTransaction is what makes repeating it safe.
-	if p.Source != nil && txn.PayeeID != nil {
+	// Also set when the row was already there: a retry after the transaction
+	// was saved still has to queue this. LearnTransaction makes repeating it
+	// safe. A message matched to another channel's transaction teaches nothing
+	// that one didn't.
+	if p.Source != nil && txn.PayeeID != nil && !matched && learnable(p.Prediction) {
 		result.Learn = &model.TransactionLearnPayload{
 			TransactionID: txn.ID,
 			PayeeID:       *txn.PayeeID,
@@ -171,6 +207,93 @@ func (s *messageJobService) CreateTransaction(
 		s.notifyCreated(ctx, budgetID, *txn)
 	}
 	return result, nil
+}
+
+// otherChannelWindow is how far apart an email and an SMS can say one payment
+// happened. Banks send both within seconds, with the time to the second.
+const otherChannelWindow = 2 * time.Minute
+
+// minLearnConfidence is how sure a prediction must be to become an alias
+// before a person has looked at it.
+const minLearnConfidence = 0.8
+
+// learnable reports whether a prediction is good enough to learn from on its
+// own. Anything else is learned once the user approves or edits it.
+func learnable(prediction model.MessagePrediction) bool {
+	if model.IsUncategorized(prediction.CategoryName) {
+		return false
+	}
+	return prediction.Source == model.MessagePredictionMemory || prediction.Confidence >= minLearnConfidence
+}
+
+// otherChannelMatch finds the transaction another channel's message already
+// created for this payment. Card alerts have no reference, so it goes by
+// account, amount and the time each message gives. When a time is missing it
+// can't be sure, and returns the transaction as maybe instead.
+func (s *messageJobService) otherChannelMatch(
+	ctx context.Context,
+	budgetID, accountID uuid.UUID,
+	amount float64,
+	p model.TransactionCreatePayload,
+) (match *model.Transaction, maybe *uuid.UUID, err error) {
+	src := p.Source
+	if src == nil || (src.Kind != "EMAIL" && src.Kind != "SMS") {
+		return nil, nil, nil
+	}
+	on := p.Entities.Date
+	if src.OccurredOn != nil {
+		on = *src.OccurredOn
+	}
+	if on.IsZero() {
+		return nil, nil, nil
+	}
+	candidates, err := s.deps.TransactionSources.FindCrossChannel(ctx, model.SourceMatchQuery{
+		BudgetID: budgetID, AccountID: accountID, Amount: amount, Kind: src.Kind, On: on, Text: src.Text,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	var (
+		best    *model.SourceMatchCandidate
+		bestGap time.Duration
+	)
+	for i := range candidates {
+		c := &candidates[i]
+		if src.OccurredAt == nil || c.OccurredAt == nil {
+			if maybe == nil {
+				maybe = &c.TransactionID
+			}
+			continue
+		}
+		gap := src.OccurredAt.Sub(*c.OccurredAt)
+		if gap < 0 {
+			gap = -gap
+		}
+		if gap <= otherChannelWindow && (best == nil || gap < bestGap) {
+			best, bestGap = c, gap
+		}
+	}
+	if best != nil {
+		return &model.Transaction{
+			ID: best.TransactionID, BudgetID: budgetID, PayeeID: best.PayeeID, CategoryID: best.CategoryID,
+			CreatedAt: best.CreatedAt,
+		}, nil, nil
+	}
+	return nil, maybe, nil
+}
+
+// recordSource saves the message the transaction came from. A transaction
+// keeps one message per kind; saving the same one again changes nothing.
+func (s *messageJobService) recordSource(
+	ctx context.Context,
+	budgetID, transactionID uuid.UUID,
+	p model.TransactionCreatePayload,
+) error {
+	if p.Source == nil || p.Source.Kind == "" {
+		return nil
+	}
+	_, err := s.deps.TransactionSources.RecordFromPipeline(ctx, budgetID, transactionID, *p.Source)
+	return err
 }
 
 // LearnTransaction implements [MessageJobService].
@@ -209,26 +332,35 @@ func (s *messageJobService) confirmAlias(
 	}); err != nil {
 		return err
 	}
+	if err := s.deps.CipherPredictions.MarkLearned(ctx, budgetID, p.TransactionID); err != nil &&
+		!errors.Is(err, repository.ErrNotFound) {
+		return err
+	}
 	logger.Logger(ctx).Info("alias confirmed", "transactionId", p.TransactionID, "channel", key.Channel, "merchant", key.Merchant)
 	return nil
 }
 
-// learnFromSource saves where the transaction came from and who it was. A
-// source row that already exists means this ran before, so a retry doesn't
-// count the merchant twice.
+// learnFromSource teaches the lookup step who the transaction's merchant was.
+// The prediction's learned_at is claimed first, so a retry doesn't count the
+// merchant twice.
 func (s *messageJobService) learnFromSource(
 	ctx context.Context,
 	budgetID uuid.UUID,
 	p model.TransactionLearnPayload,
 ) error {
+	// Creating the transaction saves its source now. Jobs queued before that
+	// still carry it, and saving it twice changes nothing.
 	if p.Source.Kind != "" {
-		added, err := s.deps.TransactionSources.RecordFromPipeline(ctx, budgetID, p.TransactionID, *p.Source)
-		if err != nil || !added {
+		if _, err := s.deps.TransactionSources.RecordFromPipeline(ctx, budgetID, p.TransactionID, *p.Source); err != nil {
 			return err
 		}
 	}
 	if p.Source.Channel == "" || p.Source.Merchant == "" {
 		return nil
+	}
+	first, err := s.deps.CipherPredictions.ClaimLearning(ctx, budgetID, p.TransactionID)
+	if err != nil || !first {
+		return err
 	}
 	return s.deps.CounterpartyAliases.Learn(ctx, model.CounterpartyAliasLearn{
 		BudgetID:   budgetID,
@@ -296,22 +428,83 @@ func cipherPrediction(
 	if p.Prediction.Source == model.MessagePredictionMemory {
 		source = model.PredictionSourceRule
 	}
-	confidence := p.Prediction.Confidence * 100
-	accountConfidence := 100.0
+	categoryConfidence := p.Prediction.Confidence * 100
+	payeeConfidence := categoryConfidence
+	if c := p.Prediction.PayeeConfidence; c != nil {
+		payeeConfidence = *c * 100
+	}
+	// Verify checks the account against the message with the other details.
+	var accountConfidence *float64
+	if c := p.Entities.VerifiedConfidence; c != nil {
+		accountConfidence = new(*c * 100)
+	}
+	merchant := p.Entities.Merchant
+	var reasoning *string
+	if r := strings.TrimSpace(p.Prediction.Reasoning); r != "" {
+		reasoning = &r
+	}
 	return model.CipherPredictionRecord{
 		BudgetID:            budgetID,
 		TransactionID:       txn.ID,
 		EmailText:           &text,
+		LLMReasoning:        reasoning,
+		Metadata:            predictionTrail(p),
 		ExtractedAccount:    &p.Entities.Account,
-		ExtractedPayee:      &p.Prediction.PayeeName,
+		ExtractedPayee:      &merchant,
 		PredictedPayeeID:    txn.PayeeID,
 		PredictedCategoryID: txn.CategoryID,
-		AccountConfidence:   &accountConfidence,
-		PayeeConfidence:     &confidence,
-		CategoryConfidence:  &confidence,
+		AccountConfidence:   accountConfidence,
+		PayeeConfidence:     &payeeConfidence,
+		CategoryConfidence:  &categoryConfidence,
 		Amount:              &amount,
 		Source:              source,
 	}
+}
+
+// predictionTrail is what each step decided and which model decided it, kept in
+// the prediction's metadata so a person can see later why it came out as it did.
+func predictionTrail(p model.TransactionCreatePayload) json.RawMessage {
+	type check struct {
+		Type       string   `json:"type,omitempty"`
+		Confidence *float64 `json:"confidence,omitempty"`
+		Model      string   `json:"model,omitempty"`
+	}
+	type verify struct {
+		Confidence *float64 `json:"confidence,omitempty"`
+		Model      string   `json:"model,omitempty"`
+		Channel    string   `json:"channel,omitempty"`
+		VPA        string   `json:"vpa,omitempty"`
+		Ref        string   `json:"ref,omitempty"`
+	}
+	type predict struct {
+		Source          model.MessagePredictionSource `json:"source"`
+		Confidence      float64                       `json:"confidence"`
+		PayeeConfidence *float64                      `json:"payeeConfidence,omitempty"`
+		Model           string                        `json:"model,omitempty"`
+	}
+	trail, err := json.Marshal(struct {
+		MessageSource string  `json:"messageSource,omitempty"`
+		MessageID     string  `json:"messageId,omitempty"`
+		Check         check   `json:"check"`
+		Verify        verify  `json:"verify"`
+		Predict       predict `json:"predict"`
+	}{
+		MessageSource: p.Message.Source,
+		MessageID:     p.Message.ExternalID,
+		Check:         check{Type: p.Verdict.Type, Confidence: p.Verdict.Confidence, Model: p.Verdict.Model},
+		Verify: verify{
+			Confidence: p.Entities.VerifiedConfidence, Model: p.Entities.VerifiedBy,
+			Channel: p.Entities.Channel, VPA: p.Entities.VPA, Ref: p.Entities.Ref,
+		},
+		Predict: predict{
+			Source: p.Prediction.Source, Confidence: p.Prediction.Confidence,
+			PayeeConfidence: p.Prediction.PayeeConfidence, Model: p.Prediction.Model,
+		},
+	})
+	if err != nil {
+		return nil
+	}
+	return trail
 }
 
 // notifyCreated runs after the commit. Failures are logged, not returned: the

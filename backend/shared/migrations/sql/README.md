@@ -27,6 +27,7 @@ top to bottom with no ALTER history to replay.
 | `00018_budget_pipeline_steps` | a budget's changes to the steps of the system pipelines (`shared/pipeline`), including fallback |
 | `00019_transaction_sources` | `transaction_sources` (the emails/statement lines behind a transaction, and who wrote them) and `counterparty_aliases` (`CHANNEL \| MERCHANT` → payee); not granted to the agent role |
 | `00020_llm_provider_typesafe` | adds `typesafe` to `llm_provider` (decision models only) |
+| `00021_cipher_predictions_follow_deletes` | soft-deletes the cipher predictions of transactions already deleted |
 
 ## Commands (from `backend/go-pennywise-api`)
 

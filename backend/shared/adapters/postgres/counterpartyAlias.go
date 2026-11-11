@@ -27,12 +27,12 @@ func (r *counterpartyAliasRepo) FindMatch(
 ) (*model.CounterpartyAliasMatch, error) {
 	var match model.CounterpartyAliasMatch
 	err := r.Executor(ctx).QueryRow(ctx, `
-		SELECT p.name, c.name
+		SELECT p.name, c.name, a.source::text
 		FROM counterparty_aliases a
 		JOIN payees p ON p.id = a.payee_id AND p.deleted = FALSE
 		JOIN categories c ON c.id = a.category_id AND c.deleted = FALSE
 		WHERE a.budget_id = $1 AND a.channel = $2 AND a.merchant = $3
-	`, budgetID, channel, merchant).Scan(&match.PayeeName, &match.CategoryName)
+	`, budgetID, channel, merchant).Scan(&match.PayeeName, &match.CategoryName, &match.Source)
 	if errors.Is(err, pgx.ErrNoRows) || errors.Is(err, repository.ErrNotFound) {
 		return nil, nil
 	}

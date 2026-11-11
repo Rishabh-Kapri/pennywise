@@ -1173,6 +1173,18 @@ type svcCipherPredictionRepo struct {
 	mock.Mock
 }
 
+func (m *svcCipherPredictionRepo) ClaimLearning(context.Context, uuid.UUID, uuid.UUID) (bool, error) {
+	return true, nil
+}
+
+func (m *svcCipherPredictionRepo) MarkReviewed(context.Context, uuid.UUID, uuid.UUID) error {
+	return nil
+}
+
+func (m *svcCipherPredictionRepo) DeleteByTransactionID(context.Context, uuid.UUID, uuid.UUID) error {
+	return nil
+}
+
 func (m *svcCipherPredictionRepo) Create(ctx context.Context, p model.CipherPredictionRecord) (*model.CipherPredictionRecord, error) {
 	args := m.Called(ctx, p)
 	if v := args.Get(0); v != nil {

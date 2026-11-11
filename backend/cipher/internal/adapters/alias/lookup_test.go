@@ -42,7 +42,7 @@ func budgetContext() context.Context {
 }
 
 func TestLookupHit(t *testing.T) {
-	aliases := &fakeAliases{match: &model.CounterpartyAliasMatch{PayeeName: "Blue Tokai", CategoryName: "Coffee"}}
+	aliases := &fakeAliases{match: &model.CounterpartyAliasMatch{PayeeName: "Blue Tokai", CategoryName: "Coffee", Source: "MANUAL"}}
 	got, found, err := NewLookup(aliases).Lookup(budgetContext(), ports.Message{}, upiEntities)
 	if err != nil || !found {
 		t.Fatalf("found = %v, err = %v (channel %q, merchant %q)", found, err, aliases.channel, aliases.merchant)
@@ -93,5 +93,21 @@ func TestLookupTriesACardMerchantOnce(t *testing.T) {
 	_, found, err := NewLookup(aliases).Lookup(budgetContext(), ports.Message{}, ports.ExtractedEntities{Channel: "CARD", Merchant: "Redbus"})
 	if err != nil || found || len(aliases.tried) != 1 || aliases.tried[0] != "REDBUS" {
 		t.Fatalf("found = %v, err = %v, tried %v", found, err, aliases.tried)
+	}
+}
+
+func TestLookupConfidenceFollowsWhoMadeTheAlias(t *testing.T) {
+	aliases := &fakeAliases{match: &model.CounterpartyAliasMatch{PayeeName: "Shop", CategoryName: "Food", Source: "AUTO_LEARNED"}}
+	got, found, err := NewLookup(aliases).Lookup(budgetContext(), ports.Message{}, upiEntities)
+	if err != nil || !found || got.Confidence != learnedAliasConfidence {
+		t.Fatalf("got %+v, found %v, err %v", got, found, err)
+	}
+}
+
+func TestLookupSkipsAnAliasWithoutARealCategory(t *testing.T) {
+	aliases := &fakeAliases{match: &model.CounterpartyAliasMatch{PayeeName: "PolicyBazaar", CategoryName: "Uncategorized", Source: "AUTO_LEARNED"}}
+	_, found, err := NewLookup(aliases).Lookup(budgetContext(), ports.Message{}, ports.ExtractedEntities{Channel: "CARD", Merchant: "POLICYBAZAAR COM"})
+	if err != nil || found {
+		t.Fatalf("found %v, err %v", found, err)
 	}
 }

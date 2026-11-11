@@ -32,6 +32,9 @@ type TransactionSourceRepository interface {
 		budgetID, transactionID uuid.UUID,
 		source model.MessageSource,
 	) (bool, error)
+	// FindCrossChannel lists transactions another channel's message may have
+	// created for the same payment, newest first.
+	FindCrossChannel(ctx context.Context, q model.SourceMatchQuery) ([]model.SourceMatchCandidate, error)
 	// LookupKey returns the key of the transaction's oldest source that has
 	// one, or nil when none does.
 	LookupKey(ctx context.Context, budgetID, transactionID uuid.UUID) (*model.LookupKey, error)

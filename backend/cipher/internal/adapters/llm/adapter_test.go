@@ -7,6 +7,8 @@ import (
 	"time"
 
 	prompts "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/context"
+	cipherModel "github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/ports"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 )
@@ -118,5 +120,35 @@ func TestExtractionPromptExamplesAreValid(t *testing.T) {
 	}
 	if found == 0 {
 		t.Fatal("no examples found")
+	}
+}
+
+func TestToPrediction(t *testing.T) {
+	var parsed cipherModel.LLMPrediction
+	if err := json.Unmarshal([]byte(`{"merchantName":"PolicyBazaar","suggestedTag":"Term Insurance","confidence":85,"payeeConfidence":95,"reasoning":" Insurance premium. "}`), &parsed); err != nil {
+		t.Fatal(err)
+	}
+	got := toPrediction(parsed, "Term Insurance", "POLICYBAZAAR COM", "configured", &ports.Usage{Model: "reported"})
+	if got.PayeeName != "PolicyBazaar" || got.CategoryName != "Term Insurance" || got.Confidence != 0.85 ||
+		got.PayeeConfidence == nil || *got.PayeeConfidence != 0.95 || got.Reasoning != "Insurance premium." || got.Model != "reported" {
+		t.Fatalf("got %+v", got)
+	}
+
+	// An older reply with one score: the payee has none of its own.
+	var old cipherModel.LLMPrediction
+	if err := json.Unmarshal([]byte(`{"suggestedTag":"Food","confidence":40}`), &old); err != nil {
+		t.Fatal(err)
+	}
+	got = toPrediction(old, "Food", "SWIGGY", "configured", nil)
+	if got.PayeeName != "SWIGGY" || got.PayeeConfidence != nil || got.Model != "configured" {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestPredictionPromptAsksForBothScores(t *testing.T) {
+	for _, field := range []string{`"confidence"`, `"payeeConfidence"`, `"reasoning"`} {
+		if !strings.Contains(prompts.PredictionPrompt, field) {
+			t.Errorf("prompt lacks %s", field)
+		}
 	}
 }

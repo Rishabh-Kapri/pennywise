@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -72,6 +73,29 @@ type createTransactionRepo struct {
 	repository.TransactionRepository
 	existing *model.Transaction
 	hashes   []string
+	locks    int
+}
+
+func (f *createTransactionRepo) LockForDedupe(context.Context, uuid.UUID, uuid.UUID, float64) error {
+	f.locks++
+	return nil
+}
+
+type createPredictionRepo struct {
+	repository.CipherPredictionRepository
+	alreadyLearned bool
+	claims         int
+	marked         []uuid.UUID
+}
+
+func (f *createPredictionRepo) ClaimLearning(context.Context, uuid.UUID, uuid.UUID) (bool, error) {
+	f.claims++
+	return !f.alreadyLearned, nil
+}
+
+func (f *createPredictionRepo) MarkLearned(_ context.Context, _ uuid.UUID, txnID uuid.UUID) error {
+	f.marked = append(f.marked, txnID)
+	return nil
 }
 
 func (f *createTransactionRepo) FindByDedupeHash(_ context.Context, _ uuid.UUID, hash string) (*model.Transaction, error) {
@@ -109,14 +133,23 @@ func (f *createAliases) Learn(_ context.Context, in model.CounterpartyAliasLearn
 
 type createSources struct {
 	repository.TransactionSourceRepository
-	recorded []model.MessageSource
-	existing bool
-	key      *model.LookupKey
+	recorded    []model.MessageSource
+	recordedFor []uuid.UUID
+	existing    bool
+	key         *model.LookupKey
+	candidates  []model.SourceMatchCandidate
+	queries     []model.SourceMatchQuery
 }
 
-func (f *createSources) RecordFromPipeline(_ context.Context, _, _ uuid.UUID, s model.MessageSource) (bool, error) {
+func (f *createSources) RecordFromPipeline(_ context.Context, _, txnID uuid.UUID, s model.MessageSource) (bool, error) {
 	f.recorded = append(f.recorded, s)
+	f.recordedFor = append(f.recordedFor, txnID)
 	return !f.existing, nil
+}
+
+func (f *createSources) FindCrossChannel(_ context.Context, q model.SourceMatchQuery) ([]model.SourceMatchCandidate, error) {
+	f.queries = append(f.queries, q)
+	return f.candidates, nil
 }
 
 func (f *createSources) LookupKey(context.Context, uuid.UUID, uuid.UUID) (*model.LookupKey, error) {
@@ -127,6 +160,7 @@ type createFixture struct {
 	svc          MessageJobService
 	transactions *createTransactions
 	repo         *createTransactionRepo
+	predRepo     *createPredictionRepo
 	payees       *createPayees
 	predictions  *createPredictions
 	aliases      *createAliases
@@ -138,6 +172,7 @@ func newCreateFixture(account *model.Account, created bool) createFixture {
 	f := createFixture{
 		transactions: &createTransactions{created: created},
 		repo:         &createTransactionRepo{},
+		predRepo:     &createPredictionRepo{},
 		payees:       &createPayees{id: uuid.New()},
 		predictions:  &createPredictions{},
 		aliases:      &createAliases{},
@@ -155,6 +190,7 @@ func newCreateFixture(account *model.Account, created bool) createFixture {
 		Categories:          createCategories{id: uuid.New()},
 		CounterpartyAliases: f.aliases,
 		TransactionSources:  f.sources,
+		CipherPredictions:   f.predRepo,
 	})
 	return f
 }
@@ -193,8 +229,10 @@ func TestCreateTransactionSavesAndSaysWhatToLearn(t *testing.T) {
 	if len(f.predictions.records) != 1 || f.predictions.records[0].Source != model.PredictionSourceLLM {
 		t.Fatalf("predictions = %+v", f.predictions.records)
 	}
-	if len(f.sources.recorded)+len(f.aliases.learned) != 0 {
-		t.Fatal("learning belongs to the transaction.learn job")
+	// The source is saved with the transaction, so the other channel's
+	// message can find it. The alias is still the learn job's.
+	if len(f.sources.recorded) != 1 || len(f.aliases.learned) != 0 {
+		t.Fatalf("sources %d, aliases %d", len(f.sources.recorded), len(f.aliases.learned))
 	}
 }
 
@@ -238,7 +276,7 @@ func TestLearnTransactionFromSource(t *testing.T) {
 
 func TestLearnTransactionRetryDoesntCountTwice(t *testing.T) {
 	f := newCreateFixture(nil, true)
-	f.sources.existing = true
+	f.predRepo.alreadyLearned = true
 	if err := f.svc.LearnTransaction(createContext(), learnPayload()); err != nil {
 		t.Fatal(err)
 	}
@@ -333,5 +371,194 @@ func TestCreateTransactionFindsARowSavedBeforeRefs(t *testing.T) {
 	}
 	if !res.ExistingSince.Equal(f.repo.existing.CreatedAt) {
 		t.Fatalf("existing since %v", res.ExistingSince)
+	}
+}
+
+// cardSource is a card alert's source, as cipher builds it.
+func cardSource(kind string, at *time.Time) *model.MessageSource {
+	on := time.Date(2026, 11, 10, 0, 0, 0, 0, time.FixedZone("IST", 5*3600+1800))
+	return &model.MessageSource{
+		Kind: kind, Text: kind + " text", Channel: "CARD", Merchant: "POLICYBAZAAR COM", OccurredOn: &on, OccurredAt: at,
+	}
+}
+
+func istClock(h, m, sec int) *time.Time {
+	at := time.Date(2026, 11, 10, h, m, sec, 0, time.FixedZone("IST", 5*3600+1800))
+	return &at
+}
+
+func TestCreateTransactionJoinsTheOtherChannelsTransaction(t *testing.T) {
+	f := newCreateFixture(&model.Account{ID: uuid.New()}, true)
+	payee, existing := uuid.New(), uuid.New()
+	f.sources.candidates = []model.SourceMatchCandidate{
+		{TransactionID: uuid.New(), OccurredAt: istClock(20, 30, 0)}, // same day, too far apart
+		{TransactionID: existing, PayeeID: &payee, OccurredAt: istClock(20, 41, 11), CreatedAt: time.Now().Add(-time.Minute)},
+	}
+	p := createPayload()
+	p.Source = cardSource("SMS", istClock(20, 41, 10))
+
+	res, err := f.svc.CreateTransaction(createContext(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Created || !res.Duplicate || len(res.TransactionIDs) != 1 || res.TransactionIDs[0] != existing || res.Learn != nil {
+		t.Fatalf("result %+v", res)
+	}
+	if f.transactions.got.DedupeHash != nil || len(f.predictions.records) != 0 {
+		t.Fatal("created a second transaction or prediction")
+	}
+	if len(f.sources.recordedFor) != 1 || f.sources.recordedFor[0] != existing || f.sources.recorded[0].Kind != "SMS" {
+		t.Fatalf("recorded %v", f.sources.recordedFor)
+	}
+	q := f.sources.queries[0]
+	if q.Kind != "SMS" || q.Amount != -450 || q.On.Format(time.DateOnly) != "2026-11-10" || q.Text != "SMS text" {
+		t.Fatalf("query %+v", q)
+	}
+	if f.repo.locks != 1 {
+		t.Fatalf("locks %d", f.repo.locks)
+	}
+}
+
+func TestCreateTransactionKeepsPaymentsMinutesApart(t *testing.T) {
+	f := newCreateFixture(&model.Account{ID: uuid.New()}, true)
+	f.sources.candidates = []model.SourceMatchCandidate{{TransactionID: uuid.New(), OccurredAt: istClock(20, 38, 0)}}
+	p := createPayload()
+	p.Source = cardSource("SMS", istClock(20, 41, 10))
+
+	res, err := f.svc.CreateTransaction(createContext(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Created || res.Duplicate || res.PossibleDuplicateOf != nil {
+		t.Fatalf("result %+v", res)
+	}
+	if len(f.sources.recordedFor) != 1 || f.sources.recordedFor[0] != res.TransactionIDs[0] {
+		t.Fatalf("source saved on %v, want the new transaction", f.sources.recordedFor)
+	}
+}
+
+func TestCreateTransactionAsksWhenATimeIsMissing(t *testing.T) {
+	maybe := uuid.New()
+	for name, times := range map[string][2]*time.Time{
+		"this message has no time":  {nil, istClock(20, 41, 11)},
+		"the other one has no time": {istClock(20, 41, 10), nil},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newCreateFixture(&model.Account{ID: uuid.New()}, true)
+			f.sources.candidates = []model.SourceMatchCandidate{{TransactionID: maybe, OccurredAt: times[1]}}
+			p := createPayload()
+			p.Source = cardSource("SMS", times[0])
+
+			res, err := f.svc.CreateTransaction(createContext(), p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.PossibleDuplicateOf == nil || *res.PossibleDuplicateOf != maybe || res.Created || len(res.TransactionIDs) != 0 {
+				t.Fatalf("result %+v", res)
+			}
+			if f.transactions.got.DedupeHash != nil || len(f.sources.recorded) != 0 {
+				t.Fatal("saved something for a message waiting for a person")
+			}
+		})
+	}
+}
+
+func TestCreateTransactionAllowDuplicateSkipsTheMatch(t *testing.T) {
+	f := newCreateFixture(&model.Account{ID: uuid.New()}, true)
+	f.sources.candidates = []model.SourceMatchCandidate{{TransactionID: uuid.New()}}
+	p := createPayload()
+	p.Source, p.AllowDuplicate = cardSource("SMS", nil), true
+
+	res, err := f.svc.CreateTransaction(createContext(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Created || len(f.sources.queries) != 0 {
+		t.Fatalf("result %+v, queries %d", res, len(f.sources.queries))
+	}
+}
+
+func TestCreateTransactionLearnsOnlyWhatItCanTrust(t *testing.T) {
+	tests := []struct {
+		name       string
+		prediction model.MessagePrediction
+		learn      bool
+	}{
+		{"confident prediction", model.MessagePrediction{CategoryName: "food", Confidence: 0.9, Source: model.MessagePredictionPredictor}, true},
+		{"unsure prediction", model.MessagePrediction{CategoryName: "food", Confidence: 0.45, Source: model.MessagePredictionPredictor}, false},
+		{"catch-all category", model.MessagePrediction{CategoryName: "Uncategorized", Confidence: 0.95, Source: model.MessagePredictionPredictor}, false},
+		{"known merchant", model.MessagePrediction{CategoryName: "food", Confidence: 0.8, Source: model.MessagePredictionMemory}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := learnable(tt.prediction); got != tt.learn {
+				t.Fatalf("learnable = %v, want %v", got, tt.learn)
+			}
+		})
+	}
+
+	f := newCreateFixture(&model.Account{ID: uuid.New()}, true)
+	p := createPayload()
+	p.Prediction.Confidence = 0.45
+	res, err := f.svc.CreateTransaction(createContext(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Created || res.Learn != nil || len(f.sources.recorded) != 1 {
+		t.Fatalf("result %+v, sources %d: the source is saved even when nothing is learned", res, len(f.sources.recorded))
+	}
+}
+
+func TestCreateTransactionRecordsWhatEachStepSaid(t *testing.T) {
+	f := newCreateFixture(&model.Account{ID: uuid.New()}, true)
+	p := createPayload()
+	verified, payeeSure, checked := 0.97, 0.6, 0.91
+	p.Message = model.ReceivedMessage{Source: "sms", ExternalID: "m1"}
+	p.Verdict = model.MessageVerdict{Type: "debit", Confidence: &checked, Model: "jev"}
+	p.Entities.Merchant, p.Entities.VerifiedConfidence, p.Entities.VerifiedBy = "POLICYBAZAAR COM", &verified, "jev"
+	p.Prediction.PayeeName, p.Prediction.PayeeConfidence = "PolicyBazaar", &payeeSure
+	p.Prediction.Reasoning, p.Prediction.Model = "Insurance premium.", "haiku"
+
+	if _, err := f.svc.CreateTransaction(createContext(), p); err != nil {
+		t.Fatal(err)
+	}
+	r := f.predictions.records[0]
+	if *r.ExtractedPayee != "POLICYBAZAAR COM" || *r.AccountConfidence != 97 || *r.PayeeConfidence != 60 ||
+		*r.CategoryConfidence != 90 || *r.LLMReasoning != "Insurance premium." {
+		t.Fatalf("record %+v", r)
+	}
+	var trail struct {
+		MessageSource          string `json:"messageSource"`
+		Check, Verify, Predict map[string]any
+	}
+	if err := json.Unmarshal(r.Metadata, &trail); err != nil {
+		t.Fatal(err)
+	}
+	if trail.MessageSource != "sms" || trail.Check["model"] != "jev" || trail.Verify["confidence"] != 0.97 ||
+		trail.Predict["model"] != "haiku" {
+		t.Fatalf("metadata %s", r.Metadata)
+	}
+}
+
+func TestCreateTransactionWithoutAVerifyScoreLeavesAccountConfidenceEmpty(t *testing.T) {
+	f := newCreateFixture(&model.Account{ID: uuid.New()}, true)
+	if _, err := f.svc.CreateTransaction(createContext(), createPayload()); err != nil {
+		t.Fatal(err)
+	}
+	if f.predictions.records[0].AccountConfidence != nil {
+		t.Fatal("account confidence without a verify score")
+	}
+}
+
+func TestLearnTransactionConfirmedStampsLearned(t *testing.T) {
+	f := newCreateFixture(nil, true)
+	f.sources.key = &model.LookupKey{Channel: "CARD", Merchant: "POLICYBAZAAR COM"}
+	p := learnPayload()
+	p.Source, p.Confirmed = nil, true
+	if err := f.svc.LearnTransaction(createContext(), p); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.predRepo.marked) != 1 || f.predRepo.marked[0] != p.TransactionID {
+		t.Fatalf("marked %v", f.predRepo.marked)
 	}
 }
