@@ -59,7 +59,7 @@ func main() {
 	setupLogger(cfg.ServiceName)
 
 	ctx, stop := signal.NotifyContext(utils.WithInternalAuthToken(
-		utils.WithServiceName(context.Background(), "cipher"),
+		utils.WithLocalService(context.Background(), "cipher"),
 		cfg.InternalAuthToken,
 	), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

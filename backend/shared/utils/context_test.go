@@ -16,7 +16,7 @@ func TestBuildInternalHeadersIncludesCanonicalAndLegacyFields(t *testing.T) {
 	userID := uuid.New()
 
 	ctx := context.Background()
-	ctx = WithServiceName(ctx, "cipher")
+	ctx = WithLocalService(ctx, "cipher")
 	ctx = WithCorrelationID(ctx, "corr-123")
 	ctx = WithBudgetID(ctx, budgetID)
 	ctx = WithUserID(ctx, userID)
@@ -63,7 +63,7 @@ func TestRequestMetadataSettersPreserveExistingFields(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	ctx = WithServiceName(ctx, "go-pennywise-api")
+	ctx = WithLocalService(ctx, "go-pennywise-api")
 	ctx = WithCorrelationID(ctx, "corr-789")
 	ctx = WithCallerService(ctx, "cipher")
 	ctx = WithOriginService(ctx, "gmail-watch")
@@ -78,7 +78,7 @@ func TestRequestMetadataSettersPreserveExistingFields(t *testing.T) {
 	require.Equal(t, "gmail-watch", metadata.OriginService)
 	require.True(t, metadata.InternalRequest)
 	require.True(t, metadata.VerifiedInternal)
-	require.Equal(t, "go-pennywise-api", ServiceNameFromContext(ctx))
+	require.Equal(t, "go-pennywise-api", LocalServiceFromContext(ctx))
 	require.Equal(t, "cipher", CallerServiceFromContext(ctx))
 	require.Equal(t, "gmail-watch", OriginServiceFromContext(ctx))
 	require.True(t, InternalRequestFromContext(ctx))

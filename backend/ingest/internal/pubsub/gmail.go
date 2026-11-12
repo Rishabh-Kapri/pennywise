@@ -83,7 +83,7 @@ func (s *GmailSubscriber) Run(ctx context.Context) error {
 // messageContext gives each push its own correlation ID, plus the service
 // identity (and outbound token) from the base ctx.
 func (s *GmailSubscriber) messageContext(msgCtx, base context.Context) context.Context {
-	ctx := utils.WithServiceName(msgCtx, utils.ServiceNameFromContext(base))
+	ctx := utils.WithLocalService(msgCtx, utils.LocalServiceFromContext(base))
 	ctx = utils.WithInternalAuthToken(ctx, utils.InternalAuthTokenFromContext(base))
 	ctx = utils.WithOriginService(ctx, originService)
 	return utils.WithCorrelationID(ctx, utils.NewCorrelationID())

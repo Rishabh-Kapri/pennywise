@@ -213,7 +213,7 @@ func main() {
 	logger.Setup("gmail-pubsub")
 	cfg := config.LoadConfig()
 	ctx := utils.WithInternalAuthToken(
-		utils.WithServiceName(context.Background(), "gmail-pubsub"),
+		utils.WithLocalService(context.Background(), "gmail-pubsub"),
 		cfg.InternalAuthToken,
 	)
 	log := logger.Logger(ctx)
@@ -246,7 +246,7 @@ func main() {
 		w := worker.New(temporalClient, sharedModel.GmailActivitiesTaskQueue, worker.Options{
 			UseBuildIDForVersioning: false,
 			BackgroundActivityContext: utils.WithInternalAuthToken(
-				utils.WithServiceName(context.Background(), "gmail-pubsub"),
+				utils.WithLocalService(context.Background(), "gmail-pubsub"),
 				cfg.InternalAuthToken,
 			),
 		})

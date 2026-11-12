@@ -41,7 +41,7 @@ type PredictResponse struct {
 }
 
 func (c *CipherClient) Predict(ctx context.Context, req PredictRequest) (res *PredictResponse, err error) {
-	headers := utils.GetHeaders(ctx)
+	headers := utils.BuildInternalHeaders(ctx)
 	logger.Logger(ctx).Info("predict request", "headers", utils.SanitizeHeadersForLogging(headers))
 
 	resp, err := transport.Post[PredictResponse](ctx, c.client, "/api/predict", headers, req)
@@ -52,7 +52,7 @@ func (c *CipherClient) ExtractTransactionFromEmail(
 	ctx context.Context,
 	req EmailExtractionRequest,
 ) (*model.ExtractedEmailResponse, error) {
-	header := utils.GetHeaders(ctx)
+	header := utils.BuildInternalHeaders(ctx)
 
 	res, err := transport.Post[model.ExtractedEmailResponse](ctx, c.client, "/api/email/extract", header, req)
 	if err != nil {

@@ -49,7 +49,7 @@ func main() {
 	config := config.Load()
 	logger.Setup(config.ServiceName)
 	ctx := utils.WithInternalAuthToken(
-		utils.WithServiceName(context.Background(), config.ServiceName),
+		utils.WithLocalService(context.Background(), config.ServiceName),
 		config.InternalAuthToken,
 	)
 	appCtx, cancel := context.WithCancel(ctx)
@@ -1001,7 +1001,7 @@ func main() {
 	// tick (or a restart) is caught up on the following pass.
 	go func() {
 		schedulerCtx := utils.WithInternalAuthToken(
-			utils.WithServiceName(appCtx, config.ServiceName),
+			utils.WithLocalService(appCtx, config.ServiceName),
 			config.InternalAuthToken,
 		)
 		runRecurring := func() {

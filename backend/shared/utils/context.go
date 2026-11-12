@@ -237,15 +237,6 @@ func APIKeyFromContext(ctx context.Context) *model.APIKey {
 	return nil
 }
 
-// WithServiceName returns a new context with the service name set.
-func WithServiceName(ctx context.Context, name string) context.Context {
-	return WithLocalService(ctx, name)
-}
-
-func ServiceNameFromContext(ctx context.Context) string {
-	return LocalServiceFromContext(ctx)
-}
-
 // WithBudgetID returns a new context with the budget ID set.
 func WithBudgetID(ctx context.Context, id uuid.UUID) context.Context {
 	return updateRequestMetadata(ctx, func(metadata *RequestMetadata) {
@@ -353,12 +344,6 @@ func BuildInternalHeaders(ctx context.Context) map[string][]string {
 	}
 
 	return headers
-}
-
-// GetHeaders returns a map of headers to be used in the request for internal services.
-// Deprecated: prefer BuildInternalHeaders for new call sites.
-func GetHeaders(ctx context.Context) map[string][]string {
-	return BuildInternalHeaders(ctx)
 }
 
 // sensitiveLogHeaders lists headers (lowercase) whose values carry

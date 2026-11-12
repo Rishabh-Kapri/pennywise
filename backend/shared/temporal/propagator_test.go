@@ -62,7 +62,7 @@ func TestRequestMetadataPropagatorFallsBackToLocalServiceForOrigin(t *testing.T)
 	propagator := NewRequestMetadataPropagator()
 	headers := testHeaders{}
 
-	ctx := utils.WithServiceName(context.Background(), "pennywise-api")
+	ctx := utils.WithLocalService(context.Background(), "pennywise-api")
 	ctx = utils.WithCorrelationID(ctx, "corr-456")
 
 	require.NoError(t, propagator.Inject(ctx, headers))

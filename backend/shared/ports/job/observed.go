@@ -211,7 +211,7 @@ func claimEvent(c Claim, t JobEventType, s JobStatus, r string, durationMs *int6
 
 // enqueueActor names who enqueued a job: the service in ctx, if any.
 func enqueueActor(ctx context.Context) string {
-	if name := utils.ServiceNameFromContext(ctx); name != "" {
+	if name := utils.LocalServiceFromContext(ctx); name != "" {
 		return name
 	}
 	return "unknown"

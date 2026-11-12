@@ -81,7 +81,7 @@ func (p *EventProcessor) processMessage(event *pubsub.Message) {
 	// lock the mutex
 	p.mu.Lock()
 	// Create a context with a correlation ID for this message
-	ctx := utils.WithInternalAuthToken(utils.WithServiceName(context.Background(), "gmail-pubsub"), p.internalToken)
+	ctx := utils.WithInternalAuthToken(utils.WithLocalService(context.Background(), "gmail-pubsub"), p.internalToken)
 	ctx = utils.WithOriginService(ctx, "gmail-pubsub")
 	ctx = utils.WithCorrelationID(ctx, utils.NewCorrelationID())
 	log := logger.Logger(ctx)
@@ -262,7 +262,7 @@ func PullMessages(ctx context.Context) {
 	w := worker.New(tc, sharedModel.GmailActivitiesTaskQueue, worker.Options{
 		UseBuildIDForVersioning: false,
 		BackgroundActivityContext: utils.WithInternalAuthToken(
-			utils.WithServiceName(context.Background(), "gmail-pubsub"),
+			utils.WithLocalService(context.Background(), "gmail-pubsub"),
 			config.InternalAuthToken,
 		),
 	})
