@@ -2,7 +2,14 @@ package utils
 
 import (
 	"sort"
+	"strings"
 )
+
+// GetMonthKey returns the YYYY-MM key of a YYYY-MM-DD date.
+func GetMonthKey(date string) string {
+	key := strings.Split(date, "-")
+	return key[0] + "-" + key[1]
+}
 
 func getSortedMonths(values []string) []string {
 	sort.Strings(values)
