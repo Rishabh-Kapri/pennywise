@@ -9,6 +9,7 @@ import (
 
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/job"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
@@ -742,10 +743,34 @@ func TestTxnDelete_MissingTransaction(t *testing.T) {
 
 // ─── UpdateStatus ────────────────────────────────────────────────────────────
 
-func TestTxnUpdateStatus_NonApprovalWritesInsideATransaction(t *testing.T) {
+// countingBroker counts queued jobs, to check learning is queued exactly once.
+type countingBroker struct {
+	job.Broker
+	queued int
+}
+
+func (b *countingBroker) Enqueue(context.Context, string, []byte, ...job.EnqueueOption) (job.EnqueueResult, error) {
+	b.queued++
+	return job.EnqueueResult{JobID: uuid.New()}, nil
+}
+
+// pendingTxn is a pipeline transaction waiting for review, with bank text.
+func (f txnFixture) pendingTxn() model.Transaction {
+	raw := "Rs 250 debited at BLUE TOKAI"
+	txn := f.txn()
+	txn.ID = f.txnID
+	txn.Status = model.TransactionStatusUnapproved
+	txn.RawBankText = &raw
+	return txn
+}
+
+func TestTxnUpdateStatus_RejectMovesInsideATransaction(t *testing.T) {
 	svc, d := newTxnSvc()
 	f := newTxnFixture()
-	d.repo.On("UpdateStatus", txCtx, f.budgetID, f.txnID, model.TransactionStatusRejected).Return(nil).Once()
+	found := f.pendingTxn()
+	d.repo.On("GetById", txCtx, f.budgetID, f.txnID).Return(&found, nil).Once()
+	d.repo.On("TransitionStatus", txCtx, f.budgetID, f.txnID,
+		model.TransactionStatusUnapproved, model.TransactionStatusRejected).Return(true, nil).Once()
 
 	require.NoError(t, svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusRejected))
 
@@ -754,31 +779,172 @@ func TestTxnUpdateStatus_NonApprovalWritesInsideATransaction(t *testing.T) {
 	d.assertExpectations(t)
 }
 
-func TestTxnUpdateStatus_ApprovalWithoutPredictionOnlyUpdatesStatus(t *testing.T) {
+func TestTxnUpdateStatus_ApprovalWithoutPredictionDoesNotLearn(t *testing.T) {
 	svc, d := newTxnSvc()
+	broker := &countingBroker{}
+	svc.jobBroker = broker
 	f := newTxnFixture()
-	found := f.txn()
-	found.ID = f.txnID
-	d.repo.On("GetById", outsideTx, f.budgetID, f.txnID).Return(&found, nil).Once()
-	d.cipher.On("GetByTransactionID", outsideTx, f.budgetID, f.txnID).Return(nil, repository.ErrNotFound).Once()
-	d.repo.On("UpdateStatus", txCtx, f.budgetID, f.txnID, model.TransactionStatusApproved).Return(nil).Once()
+	found := f.pendingTxn()
+	d.repo.On("GetById", txCtx, f.budgetID, f.txnID).Return(&found, nil).Once()
+	d.cipher.On("GetByTransactionID", txCtx, f.budgetID, f.txnID).Return(nil, repository.ErrNotFound).Once()
+	d.repo.On("TransitionStatus", txCtx, f.budgetID, f.txnID,
+		model.TransactionStatusUnapproved, model.TransactionStatusApproved).Return(true, nil).Once()
 
 	require.NoError(t, svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusApproved))
+	assert.Equal(t, 0, broker.queued)
 	d.assertExpectations(t)
+}
+
+func TestTxnUpdateStatus_ApprovingAPredictionLearnsOnce(t *testing.T) {
+	svc, d := newTxnSvc()
+	broker := &countingBroker{}
+	svc.jobBroker = broker
+	f := newTxnFixture()
+	pending := f.pendingTxn()
+	approved := pending
+	approved.Status = model.TransactionStatusApproved
+	d.repo.On("GetById", txCtx, f.budgetID, f.txnID).Return(&pending, nil).Once()
+	d.cipher.On("GetByTransactionID", txCtx, f.budgetID, f.txnID).
+		Return(&model.CipherPredictionRecord{TransactionID: f.txnID}, nil).Once()
+	d.repo.On("TransitionStatus", txCtx, f.budgetID, f.txnID,
+		model.TransactionStatusUnapproved, model.TransactionStatusApproved).Return(true, nil).Once()
+
+	require.NoError(t, svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusApproved))
+	assert.Equal(t, 1, broker.queued)
+
+	// Approving again finds it approved: no write, no second round of learning.
+	d.repo.On("GetById", txCtx, f.budgetID, f.txnID).Return(&approved, nil).Once()
+	require.NoError(t, svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusApproved))
+	assert.Equal(t, 1, broker.queued)
+	d.repo.AssertNumberOfCalls(t, "TransitionStatus", 1)
+	d.assertExpectations(t)
+}
+
+func TestTxnUpdateStatus_RefusesMovesOutsideTheTable(t *testing.T) {
+	tests := []struct {
+		from, to model.TransactionStatus
+	}{
+		{model.TransactionStatusManual, model.TransactionStatusUnapproved},
+		{model.TransactionStatusManual, model.TransactionStatusApproved},
+		{model.TransactionStatusApproved, model.TransactionStatusUnapproved},
+		{model.TransactionStatusApproved, model.TransactionStatusRejected},
+		{model.TransactionStatusRejected, model.TransactionStatusApproved},
+		{model.TransactionStatusUnapproved, model.TransactionStatusManual},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.from)+"->"+string(tt.to), func(t *testing.T) {
+			svc, d := newTxnSvc()
+			f := newTxnFixture()
+			found := f.pendingTxn()
+			found.Status = tt.from
+			d.repo.On("GetById", txCtx, f.budgetID, f.txnID).Return(&found, nil).Once()
+
+			err := svc.UpdateStatus(f.ctx, f.txnID, tt.to)
+
+			assert.Equal(t, errs.CodeTransactionInvalidStatus, appCode(t, err))
+			d.repo.AssertNotCalled(t, "TransitionStatus",
+				mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+			_, committed, rolledBack := d.dbTxn.counts()
+			assert.Equal(t, [2]int{0, 1}, [2]int{committed, rolledBack})
+		})
+	}
+}
+
+func TestTxnUpdateStatus_UndoRejection(t *testing.T) {
+	svc, d := newTxnSvc()
+	f := newTxnFixture()
+	found := f.pendingTxn()
+	found.Status = model.TransactionStatusRejected
+	d.repo.On("GetById", txCtx, f.budgetID, f.txnID).Return(&found, nil).Once()
+	d.repo.On("TransitionStatus", txCtx, f.budgetID, f.txnID,
+		model.TransactionStatusRejected, model.TransactionStatusUnapproved).Return(true, nil).Once()
+
+	require.NoError(t, svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusUnapproved))
+	d.assertExpectations(t)
+}
+
+func TestTxnUpdateStatus_UnknownStatusIsInvalid(t *testing.T) {
+	svc, d := newTxnSvc()
+	f := newTxnFixture()
+
+	err := svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatus("MAYBE"))
+
+	assert.Equal(t, errs.CodeInvalidArgument, appCode(t, err))
+	d.repo.AssertNotCalled(t, "GetById", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func TestTxnUpdateStatus_MissingTransaction(t *testing.T) {
+	svc, d := newTxnSvc()
+	f := newTxnFixture()
+	d.repo.On("GetById", txCtx, f.budgetID, f.txnID).Return(nil, repository.ErrNotFound).Once()
+
+	err := svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusRejected)
+
+	assert.Equal(t, errs.CodeTransactionLookupFailed, appCode(t, err))
+}
+
+func TestTxnUpdateStatus_TransferMovesBothHalves(t *testing.T) {
+	svc, d := newTxnSvc()
+	f := newTxnFixture()
+	counterpartID := uuid.New()
+	found := f.pendingTxn()
+	found.TransferTransactionID = &counterpartID
+	d.repo.On("GetById", txCtx, f.budgetID, f.txnID).Return(&found, nil).Once()
+	d.repo.On("TransitionStatus", txCtx, f.budgetID, f.txnID,
+		model.TransactionStatusUnapproved, model.TransactionStatusRejected).Return(true, nil).Once()
+	d.repo.On("TransitionStatus", txCtx, f.budgetID, counterpartID,
+		model.TransactionStatusUnapproved, model.TransactionStatusRejected).Return(true, nil).Once()
+
+	require.NoError(t, svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusRejected))
+	d.assertExpectations(t)
+}
+
+func TestTxnUpdateStatus_LosingARaceToTheSameStatusSucceedsWithoutLearning(t *testing.T) {
+	svc, d := newTxnSvc()
+	broker := &countingBroker{}
+	svc.jobBroker = broker
+	f := newTxnFixture()
+	pending := f.pendingTxn()
+	approved := pending
+	approved.Status = model.TransactionStatusApproved
+	d.repo.On("GetById", txCtx, f.budgetID, f.txnID).Return(&pending, nil).Once()
+	d.cipher.On("GetByTransactionID", txCtx, f.budgetID, f.txnID).
+		Return(&model.CipherPredictionRecord{TransactionID: f.txnID}, nil).Once()
+	d.repo.On("TransitionStatus", txCtx, f.budgetID, f.txnID,
+		model.TransactionStatusUnapproved, model.TransactionStatusApproved).Return(false, nil).Once()
+	d.repo.On("GetById", txCtx, f.budgetID, f.txnID).Return(&approved, nil).Once()
+
+	require.NoError(t, svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusApproved))
+	assert.Equal(t, 0, broker.queued, "the request that won the race queued the learning")
+	d.assertExpectations(t)
+}
+
+func TestTxnUpdateStatus_LosingARaceToAnotherStatusConflicts(t *testing.T) {
+	svc, d := newTxnSvc()
+	f := newTxnFixture()
+	pending := f.pendingTxn()
+	rejected := pending
+	rejected.Status = model.TransactionStatusRejected
+	d.repo.On("GetById", txCtx, f.budgetID, f.txnID).Return(&pending, nil).Once()
+	d.cipher.On("GetByTransactionID", txCtx, f.budgetID, f.txnID).Return(nil, repository.ErrNotFound).Once()
+	d.repo.On("TransitionStatus", txCtx, f.budgetID, f.txnID,
+		model.TransactionStatusUnapproved, model.TransactionStatusApproved).Return(false, nil).Once()
+	d.repo.On("GetById", txCtx, f.budgetID, f.txnID).Return(&rejected, nil).Once()
+
+	err := svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusApproved)
+
+	assert.Equal(t, errs.CodeTransactionInvalidStatus, appCode(t, err))
 }
 
 func TestTxnUpdateStatus_WriteFailureIsWrapped(t *testing.T) {
 	svc, d := newTxnSvc()
 	f := newTxnFixture()
-	raw := "Rs 250 debited at BLUE TOKAI"
-	found := f.txn()
-	found.ID = f.txnID
-	found.RawBankText = &raw
-	d.repo.On("GetById", mock.Anything, f.budgetID, f.txnID).Return(&found, nil).Once()
-	d.cipher.On("GetByTransactionID", mock.Anything, f.budgetID, f.txnID).
+	found := f.pendingTxn()
+	d.repo.On("GetById", txCtx, f.budgetID, f.txnID).Return(&found, nil).Once()
+	d.cipher.On("GetByTransactionID", txCtx, f.budgetID, f.txnID).
 		Return(&model.CipherPredictionRecord{TransactionID: f.txnID}, nil).Once()
-	d.repo.On("UpdateStatus", txCtx, f.budgetID, f.txnID, model.TransactionStatusApproved).
-		Return(errors.New("boom")).Once()
+	d.repo.On("TransitionStatus", txCtx, f.budgetID, f.txnID,
+		model.TransactionStatusUnapproved, model.TransactionStatusApproved).Return(false, errors.New("boom")).Once()
 
 	err := svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusApproved)
 

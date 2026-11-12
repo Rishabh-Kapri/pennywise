@@ -327,7 +327,8 @@ func main() {
 	pipelineStepHandler := handler.NewPipelineStepHandler(
 		service.NewPipelineStepService(pipelines, database.PipelineStep, database.UserLLMModel),
 	)
-	jobHandler := handler.NewJobHandler(service.NewJobService(jobStore, broker, database.MailConnection))
+	jobHandler := handler.NewJobHandler(service.NewJobService(jobStore, broker, database.MailConnection, database.InboundMessage))
+	inboundMessageHandler := handler.NewInboundMessageHandler(service.NewInboundMessageService(database.InboundMessage))
 	var scheduleStore job.ScheduleStore
 	if jobs != nil {
 		scheduleStore = jobs.Schedules
@@ -983,6 +984,10 @@ func main() {
 			jobGroup.POST("/:id/dismiss", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), jobHandler.Dismiss)
 			jobGroup.POST("/:id/retry", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), jobHandler.Retry)
 			jobGroup.POST("/:id/cancel", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), jobHandler.Cancel)
+
+			messageGroup := router.Group("/api/messages")
+			messageGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
+			messageGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), inboundMessageHandler.List)
 		}
 		{
 			smsGroup := router.Group("/api/sms")
@@ -1054,6 +1059,7 @@ func main() {
 		CounterpartyAliases: database.CounterpartyAlias,
 		TransactionSources:  database.TransactionSource,
 		CipherPredictions:   database.CipherPrediction,
+		InboundMessages:     database.InboundMessage,
 	})
 	workerErr := make(chan error, 1)
 	workerDone := make(chan struct{})

@@ -35,11 +35,16 @@ export function SmsSettings() {
         return;
       }
       const found = `${result.matched} bank SMS among ${result.scanned} from the last ${SMS_IMPORT_DAYS} days.`;
-      if (result.error) {
+      if (result.signedOut) {
+        Alert.alert("Couldn't send SMS", `${found}\nYou're signed out, so none were sent. Sign in and import again.`);
+      } else if (result.error) {
         const left = result.queued ? ` ${result.queued} will retry later.` : '';
+        const lost = result.dropped
+          ? ` ${result.dropped} didn't fit in the retry queue; import again once sending works.`
+          : '';
         Alert.alert(
           "Couldn't send SMS",
-          `${found}\nSent ${result.sent} to ${result.destination} before it failed:\n${result.error}${left}`
+          `${found}\nSent ${result.sent} to ${result.destination} before it failed:\n${result.error}${left}${lost}`
         );
       } else {
         Alert.alert('Import done', `${found}\nSent ${result.sent} to ${result.destination}.`);

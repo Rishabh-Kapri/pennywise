@@ -3,11 +3,13 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"slices"
 	"strings"
 	"time"
 
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/job"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
@@ -136,14 +138,22 @@ type jobService struct {
 	store       job.JobStore // nil when JOB_DRIVER is unset or memory
 	broker      job.Broker
 	connections repository.MailConnectionRepository
+	// messages is where each message stands. Continue, RunAgain and Dismiss
+	// move it through model.InboundMessageStatus.CanMoveTo.
+	messages repository.InboundMessageRepository
 }
 
 // hiddenRootJobTypes are jobs that only add noise as their own entry in the
 // list. Inside a message's pipeline they're still shown.
 var hiddenRootJobTypes = []string{model.JobTypeTransactionLearn}
 
-func NewJobService(store job.JobStore, broker job.Broker, connections repository.MailConnectionRepository) JobService {
-	return &jobService{store: store, broker: broker, connections: connections}
+func NewJobService(
+	store job.JobStore,
+	broker job.Broker,
+	connections repository.MailConnectionRepository,
+	messages repository.InboundMessageRepository,
+) JobService {
+	return &jobService{store: store, broker: broker, connections: connections, messages: messages}
 }
 
 // scope reads the budget from ctx and finds the mailboxes feeding it.
@@ -311,6 +321,17 @@ func (s *jobService) RunAgain(ctx context.Context, id uuid.UUID) error {
 	if err := json.Unmarshal(j.Payload, &msg); err != nil {
 		return errs.Wrap(errs.CodeJobInvalidPayload, "decode message", err)
 	}
+	row, err := s.inboundMessage(ctx, msg.Key(*j.BudgetID), chain)
+	if err != nil {
+		return err
+	}
+	// done -> processing; a message with no row gets one when this run reports.
+	if row != nil {
+		if err := s.moveMessage(ctx, row, model.InboundMessageProcessing); err != nil {
+			return err
+		}
+	}
+
 	// The stopped job's ID: a double click queues one run, not two.
 	msg.RunID = j.ID.String()
 	payload, err := json.Marshal(msg)
@@ -324,6 +345,7 @@ func (s *jobService) RunAgain(ctx context.Context, id uuid.UUID) error {
 		job.WithRootJobID(j.RootJobID),
 		job.WithParentID(j.ParentID),
 	); err != nil {
+		s.undoMove(ctx, row, model.InboundMessageProcessing)
 		return err
 	}
 	return s.store.Dismiss(ctx, jobIDs(chain))
@@ -341,10 +363,30 @@ func (s *jobService) Continue(ctx context.Context, id uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	report, resume := parkedReport(chain)
-	if report == nil || resume == nil {
+	if activeJob(chain) {
+		return errs.New(errs.CodeJobInvalidState, "the message is still in the pipeline")
+	}
+	var msg model.ReceivedMessage
+	if err := json.Unmarshal(j.Payload, &msg); err != nil {
+		return errs.Wrap(errs.CodeJobInvalidPayload, "decode message", err)
+	}
+	row, err := s.inboundMessage(ctx, msg.Key(*j.BudgetID), chain)
+	if err != nil {
+		return err
+	}
+	if row == nil || row.Status != model.InboundMessageNeedsReview || row.Review == nil || row.Review.Resume == nil {
 		return errs.New(errs.CodeJobInvalidState, "the message isn't waiting for review")
 	}
+	report := jobByID(chain, row.ReportJobID)
+	if report == nil {
+		return errs.New(errs.CodeJobInvalidState, "the message's review isn't in this run")
+	}
+
+	// Moving first makes a double click lose here instead of queueing twice.
+	if err := s.moveMessage(ctx, row, model.InboundMessageProcessing); err != nil {
+		return err
+	}
+	resume := row.Review.Resume
 	if _, err := s.broker.Enqueue(ctx, resume.JobType, resume.Payload,
 		job.WithQueue(resume.Queue),
 		job.WithBudgetID(j.BudgetID),
@@ -352,35 +394,11 @@ func (s *jobService) Continue(ctx context.Context, id uuid.UUID) error {
 		job.WithRootJobID(report.RootJobID),
 		job.WithParentID(report.ParentID),
 	); err != nil {
+		s.undoMove(ctx, row, model.InboundMessageProcessing)
 		return err
 	}
 	// The run goes on from the step that parked, so its report is over.
 	return s.store.Dismiss(ctx, []uuid.UUID{report.ID})
-}
-
-// parkedReport finds the report of a message waiting for review, and the job
-// that carries it on (nil if it can't be continued). The report is nil when
-// the message isn't waiting: all its jobs must have finished.
-func parkedReport(chain []job.Job) (*job.Job, *model.MessageResume) {
-	var parked *job.Job
-	var resume *model.MessageResume
-	for i := range chain {
-		if chain[i].Status != job.SucceededJobStatus {
-			return nil, nil
-		}
-		if chain[i].Type != model.JobTypePipelineReport {
-			continue
-		}
-		var report model.PipelineReportPayload
-		if err := json.Unmarshal(chain[i].Payload, &report); err != nil {
-			return nil, nil
-		}
-		parked, resume = nil, nil
-		if report.Outcome == model.MessageOutcomeNeedsReview && report.Review != nil {
-			parked, resume = &chain[i], report.Review.Resume
-		}
-	}
-	return parked, resume
 }
 
 func (s *jobService) Dismiss(ctx context.Context, id uuid.UUID) error {
@@ -394,12 +412,127 @@ func (s *jobService) Dismiss(ctx context.Context, id uuid.UUID) error {
 	}
 	for i := range chain {
 		fannedOut := chain[i].ID != j.ID && chain[i].Type == model.JobTypeMessageReceived
-		active := chain[i].Status == job.QueuedJobStatus || chain[i].Status == job.RunningJobStatus
-		if fannedOut || active {
+		if fannedOut || activeJob(chain[i:i+1]) {
 			return errs.New(errs.CodeJobInvalidState, "this job can't be dismissed")
 		}
 	}
+	// The message first: if hiding the jobs then fails, dismissing again
+	// finishes the job and finds the message already dismissed.
+	if j.Type == model.JobTypeMessageReceived && j.BudgetID != nil {
+		var msg model.ReceivedMessage
+		if err := json.Unmarshal(j.Payload, &msg); err != nil {
+			return errs.Wrap(errs.CodeJobInvalidPayload, "decode message", err)
+		}
+		row, err := s.inboundMessage(ctx, msg.Key(*j.BudgetID), chain)
+		if err != nil {
+			return err
+		}
+		if row != nil && row.Status != model.InboundMessageDismissed {
+			if err := s.moveMessage(ctx, row, model.InboundMessageDismissed); err != nil {
+				return err
+			}
+		}
+	}
 	return s.store.Dismiss(ctx, jobIDs(chain))
+}
+
+// inboundMessage returns where a message stands, or nil if it has no row yet
+// (its run hasn't reported). A message whose report predates its row, such as
+// one reported while the table was being added, gets its row from that report.
+func (s *jobService) inboundMessage(
+	ctx context.Context,
+	key model.InboundMessageKey,
+	chain []job.Job,
+) (*model.InboundMessage, error) {
+	if s.messages == nil {
+		return nil, errs.New(errs.CodeInternalError, "message store is not configured")
+	}
+	row, err := s.messages.Get(ctx, key)
+	if err == nil {
+		return row, nil
+	}
+	if !errors.Is(err, repository.ErrNotFound) {
+		return nil, errs.Wrap(errs.CodeJobLookupFailed, "get message", err)
+	}
+
+	report := latestReport(chain)
+	if report == nil {
+		return nil, nil
+	}
+	var p model.PipelineReportPayload
+	if err := json.Unmarshal(report.Payload, &p); err != nil {
+		return nil, errs.Wrap(errs.CodeJobInvalidPayload, "decode report", err)
+	}
+	if _, err := s.messages.RecordReport(ctx, model.InboundMessageReport{
+		Key: key, Outcome: p.Outcome, Reason: p.Reason, Review: p.Review, TransactionIDs: p.TransactionIDs,
+		ReportJobID: report.ID, ReportedAt: report.CreatedAt,
+	}); err != nil {
+		return nil, errs.Wrap(errs.CodeJobUpdateFailed, "record message", err)
+	}
+	row, err = s.messages.Get(ctx, key)
+	if err != nil {
+		return nil, errs.Wrap(errs.CodeJobLookupFailed, "get message", err)
+	}
+	return row, nil
+}
+
+// moveMessage makes one move of the message state machine. It fails with
+// CodeJobInvalidState when the move isn't allowed, or when another request
+// moved the message first (a double click).
+func (s *jobService) moveMessage(ctx context.Context, row *model.InboundMessage, to model.InboundMessageStatus) error {
+	if !row.Status.CanMoveTo(to) {
+		return errs.New(errs.CodeJobInvalidState, "a message that is %s can't become %s", row.Status, to)
+	}
+	moved, err := s.messages.Transition(ctx, row.Key(), row.Status, to)
+	if err != nil {
+		return errs.Wrap(errs.CodeJobUpdateFailed, "update message", err)
+	}
+	if !moved {
+		return errs.New(errs.CodeJobInvalidState, "the message changed; reload and try again")
+	}
+	return nil
+}
+
+// undoMove puts a message back after its job couldn't be queued. Best effort:
+// the caller is already returning the queueing error.
+func (s *jobService) undoMove(ctx context.Context, row *model.InboundMessage, from model.InboundMessageStatus) {
+	if row == nil {
+		return
+	}
+	if _, err := s.messages.Transition(ctx, row.Key(), from, row.Status); err != nil {
+		logger.Logger(ctx).Warn("couldn't put the message back", "status", row.Status, "error", err)
+	}
+}
+
+// latestReport is the newest pipeline.report among a message's jobs.
+func latestReport(chain []job.Job) *job.Job {
+	var latest *job.Job
+	for i := range chain {
+		if chain[i].Type == model.JobTypePipelineReport && chain[i].Status == job.SucceededJobStatus &&
+			(latest == nil || chain[i].CreatedAt.After(latest.CreatedAt)) {
+			latest = &chain[i]
+		}
+	}
+	return latest
+}
+
+func jobByID(jobs []job.Job, id uuid.UUID) *job.Job {
+	for i := range jobs {
+		if jobs[i].ID == id {
+			return &jobs[i]
+		}
+	}
+	return nil
+}
+
+// activeJob reports whether any of jobs is queued or running.
+func activeJob(jobs []job.Job) bool {
+	for i := range jobs {
+		if jobs[i].Status == job.QueuedJobStatus || jobs[i].Status == job.RunningJobStatus {
+			return true
+		}
+	}
+	return false
 }
 
 // chain returns j and every job that followed from it.

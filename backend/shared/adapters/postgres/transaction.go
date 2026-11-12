@@ -734,25 +734,23 @@ func (r *transactionRepo) UpdateLocation(
 	return nil
 }
 
-func (r *transactionRepo) UpdateStatus(
+// TransitionStatus implements [repository.TransactionRepository]. It leaves
+// updated_at alone: it orders the running balance and the page cursor, and a
+// review decision mustn't move a transaction in the list.
+func (r *transactionRepo) TransitionStatus(
 	ctx context.Context,
-	budgetId uuid.UUID,
-	id uuid.UUID,
-	status model.TransactionStatus,
-) error {
-	cmdTag, err := r.Executor(ctx).Exec(
-		ctx, `
-			UPDATE transactions 
-			SET status = $1 WHERE budget_id = $2 AND id = $3 
-			`, status, budgetId, id,
+	budgetId, id uuid.UUID,
+	from, to model.TransactionStatus,
+) (bool, error) {
+	cmdTag, err := r.Executor(ctx).Exec(ctx, `
+		UPDATE transactions SET status = $1
+		WHERE budget_id = $2 AND id = $3 AND status = $4 AND deleted = FALSE`,
+		to, budgetId, id, from,
 	)
 	if err != nil {
-		return err
+		return false, err
 	}
-	if cmdTag.RowsAffected() == 0 {
-		return fmt.Errorf("transaction not found for id %v: %w", id, errNoRows)
-	}
-	return nil
+	return cmdTag.RowsAffected() == 1, nil
 }
 
 func (r *transactionRepo) DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error {

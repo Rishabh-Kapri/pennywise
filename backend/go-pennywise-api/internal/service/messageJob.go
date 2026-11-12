@@ -33,6 +33,12 @@ type MessageJobService interface {
 	// LearnTransaction teaches the lookup step who a transaction was. Safe to
 	// repeat. Returns CodeTransactionLearnFailed.
 	LearnTransaction(ctx context.Context, p model.TransactionLearnPayload) error
+
+	// RecordReport saves how a message's run ended, from its pipeline.report
+	// job: the message's first report creates its inbound_messages row, a later
+	// one moves it out of processing. Safe to repeat. Returns
+	// CodePipelineReportFailed.
+	RecordReport(ctx context.Context, reportJobID uuid.UUID, reportedAt time.Time, p model.PipelineReportPayload) error
 }
 
 // MessageJobDeps are what the methods need. CreateTransactionActivity and
@@ -51,6 +57,7 @@ type MessageJobDeps struct {
 	CounterpartyAliases repository.CounterpartyAliasRepository
 	TransactionSources  repository.TransactionSourceRepository
 	CipherPredictions   repository.CipherPredictionRepository
+	InboundMessages     repository.InboundMessageRepository
 }
 
 type messageJobService struct {
@@ -517,4 +524,43 @@ func (s *messageJobService) notifyCreated(ctx context.Context, budgetID uuid.UUI
 	if s.deps.Push != nil {
 		s.deps.Push.NotifyTransactionsCreated(ctx, budgetID, created)
 	}
+}
+
+// RecordReport implements [MessageJobService]. A report the row refuses (it
+// wasn't waiting on a run) is logged, not retried: the row is right and the
+// report is kept on its job.
+func (s *messageJobService) RecordReport(
+	ctx context.Context,
+	reportJobID uuid.UUID,
+	reportedAt time.Time,
+	p model.PipelineReportPayload,
+) error {
+	if s.deps.InboundMessages == nil {
+		return nil
+	}
+	key := p.Message.Key(utils.MustBudgetID(ctx))
+	wrote, err := s.deps.InboundMessages.RecordReport(ctx, model.InboundMessageReport{
+		Key:            key,
+		Outcome:        p.Outcome,
+		Reason:         p.Reason,
+		Review:         p.Review,
+		TransactionIDs: p.TransactionIDs,
+		ReportJobID:    reportJobID,
+		ReportedAt:     reportedAt,
+	})
+	if err != nil {
+		return errs.Wrap(errs.CodePipelineReportFailed, "record message outcome", err)
+	}
+	if wrote {
+		return nil
+	}
+	row, err := s.deps.InboundMessages.Get(ctx, key)
+	if err != nil {
+		return errs.Wrap(errs.CodePipelineReportFailed, "read message outcome", err)
+	}
+	if row.ReportJobID != reportJobID {
+		logger.Logger(ctx).Warn("a run reported for a message that wasn't waiting on one",
+			"status", row.Status, "outcome", p.Outcome, "reportJobId", reportJobID)
+	}
+	return nil
 }

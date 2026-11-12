@@ -150,12 +150,14 @@ func parkPossibleDuplicate(
 }
 
 // pipelineReport handles model.JobTypePipelineReport, the last job of every
-// message whichever way it ended. The Jobs screen reads the message's outcome
-// from this job. After a created transaction it queues transaction.learn;
-// otherwise nothing follows it.
+// message whichever way it ended. It saves the outcome as the message's status
+// (inbound_messages), which the Jobs screen's continue and dismiss move on
+// from. After a created transaction it queues transaction.learn; otherwise
+// nothing follows it.
 //
-// Errors: CodeJobInvalidPayload (no budget, or the payload doesn't decode) and
-// CodeJobEnqueueFailed.
+// Errors: CodeJobInvalidPayload (no budget, or the payload doesn't decode),
+// CodePipelineReportFailed and CodeJobEnqueueFailed. Both writes are safe to
+// repeat.
 func pipelineReport(deps Deps) jobrunner.HandlerFunc {
 	return func(ctx context.Context, j *job.Job) (json.RawMessage, error) {
 		ctx, budgetID, err := jobrunner.BudgetContext(ctx, j)
@@ -164,6 +166,9 @@ func pipelineReport(deps Deps) jobrunner.HandlerFunc {
 		}
 		p, err := jobrunner.DecodePayload[model.PipelineReportPayload](j)
 		if err != nil {
+			return nil, err
+		}
+		if err := deps.Messages.RecordReport(ctx, j.ID, j.CreatedAt, p); err != nil {
 			return nil, err
 		}
 		if p.Learn != nil {

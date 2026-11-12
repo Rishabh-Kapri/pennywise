@@ -12,6 +12,8 @@ export interface JobSummary {
   maxAttempts: number;
   /** The subject, mailbox address, or how a message ended. */
   label?: string;
+  /** Where a message.received job came from: email, sms or api. */
+  source?: string;
   lastError?: string;
   runAt: string;
   startedAt?: string;

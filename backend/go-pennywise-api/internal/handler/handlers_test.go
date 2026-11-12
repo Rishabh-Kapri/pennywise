@@ -1476,6 +1476,16 @@ func TestTransactionHandler_UpdateStatus(t *testing.T) {
 		NewTransactionHandler(svc).UpdateStatus(c)
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
+	t.Run("move_not_allowed_returns_409", func(t *testing.T) {
+		svc := &mockTransactionService{}
+		svc.On("UpdateStatus", mock.Anything, id, mock.Anything).
+			Return(errs.New(errs.CodeTransactionInvalidStatus, "a MANUAL transaction can't be marked APPROVED"))
+		w, c := makeReq("PATCH", "/transactions/"+id.String()+"/status", model.TransactionStatusReq{Status: model.TransactionStatusApproved})
+		c.Params = gin.Params{{Key: "id", Value: id.String()}}
+		NewTransactionHandler(svc).UpdateStatus(c)
+		assert.Equal(t, http.StatusConflict, w.Code)
+		assert.Contains(t, w.Body.String(), string(errs.CodeTransactionInvalidStatus))
+	})
 }
 
 func TestTransactionHandler_DeleteById(t *testing.T) {

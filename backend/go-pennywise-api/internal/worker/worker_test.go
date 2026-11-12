@@ -37,6 +37,14 @@ type fakeMessages struct {
 	err       error
 	learned   *model.TransactionLearnPayload
 	gotBudget uuid.UUID
+	reported  []uuid.UUID
+	reportErr error
+}
+
+func (f *fakeMessages) RecordReport(ctx context.Context, reportJobID uuid.UUID, _ time.Time, _ model.PipelineReportPayload) error {
+	f.gotBudget, _ = utils.BudgetIDFromContext(ctx)
+	f.reported = append(f.reported, reportJobID)
+	return f.reportErr
 }
 
 func (f *fakeMessages) CreateTransaction(
@@ -129,6 +137,31 @@ func TestPipelineReportQueuesLearning(t *testing.T) {
 	}
 	if b.jobType != model.JobTypeTransactionLearn || b.queue != model.QueuePennywise {
 		t.Fatalf("queued %s on %s", b.jobType, b.queue)
+	}
+}
+
+func TestPipelineReportRecordsTheOutcomeFirst(t *testing.T) {
+	b := &fakeBroker{}
+	m := &fakeMessages{}
+	j, budget := newJob(t, model.PipelineReportPayload{
+		Outcome: model.MessageOutcomeTransactionCreated,
+		Learn:   &model.TransactionLearnPayload{TransactionID: uuid.New()},
+	})
+	if _, err := pipelineReport(Deps{Broker: b, Messages: m})(context.Background(), j); err != nil {
+		t.Fatal(err)
+	}
+	if len(m.reported) != 1 || m.reported[0] != j.ID || m.gotBudget != budget {
+		t.Fatalf("recorded %v for %s", m.reported, m.gotBudget)
+	}
+
+	// A failed save is retried, and nothing is learned before it lands.
+	b = &fakeBroker{}
+	m = &fakeMessages{reportErr: errs.New(errs.CodePipelineReportFailed, "db down")}
+	if _, err := pipelineReport(Deps{Broker: b, Messages: m})(context.Background(), j); !errs.HasCode(err, errs.CodePipelineReportFailed) {
+		t.Fatalf("err = %v", err)
+	}
+	if b.jobType != "" {
+		t.Fatalf("queued %s before the outcome was saved", b.jobType)
 	}
 }
 

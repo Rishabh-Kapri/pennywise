@@ -20,6 +20,40 @@ const (
 	TransactionStatusRejected   TransactionStatus = "REJECTED"
 )
 
+// transactionStatusMoves is the review state machine of a transaction the
+// pipeline created: the statuses each status may move to. A status missing
+// here is final. MANUAL never enters review; APPROVED is final because
+// approving teaches the pipeline, which can't be taken back.
+//
+//	UNAPPROVED ──► APPROVED
+//	     │  ▲
+//	     ▼  │ (undo)
+//	  REJECTED
+var transactionStatusMoves = map[TransactionStatus][]TransactionStatus{
+	TransactionStatusUnapproved: {TransactionStatusApproved, TransactionStatusRejected},
+	TransactionStatusRejected:   {TransactionStatusUnapproved},
+}
+
+// Valid reports whether s is a known status.
+func (s TransactionStatus) Valid() bool {
+	switch s {
+	case TransactionStatusManual, TransactionStatusApproved, TransactionStatusUnapproved, TransactionStatusRejected:
+		return true
+	}
+	return false
+}
+
+// CanMoveTo reports whether a transaction in status s may move to next. Staying
+// in the same status is not a move.
+func (s TransactionStatus) CanMoveTo(next TransactionStatus) bool {
+	for _, allowed := range transactionStatusMoves[s] {
+		if allowed == next {
+			return true
+		}
+	}
+	return false
+}
+
 // check if date is valid and is in the format YYYY-MM-DD
 func (d Date) Valid() error {
 	if d == "" {

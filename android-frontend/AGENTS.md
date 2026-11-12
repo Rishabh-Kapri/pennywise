@@ -41,7 +41,7 @@ Expo (SDK 54, RN 0.81) Android client mirroring `react-frontend`. Android only; 
 - Charts: `components/charts.tsx` (bars are Views; lines and rings use `react-native-svg`, already in the native build via lucide).
 
 ## Data ported from react-frontend
-- Jobs (`features/jobs`): `jobTree.ts` is a copy of the web's; keep the two in step. AI keys and models are in `features/ai/llmSetup.ts` and `AIModelsPanel.tsx`.
+- Jobs (`features/jobs`): `jobTree.ts` and `runGroups.ts` are copies of the web's; keep them in step. The list groups like the web (one card per source per day, outcome sections inside) but pages by `offset`, so a day can split across pages. AI keys and models are in `features/ai/llmSetup.ts` and `AIModelsPanel.tsx`.
 - Reports (`features/reports`): `cashFlow.ts` is a verbatim copy of the web's; keep the two in step. Group treatments persist per device in AsyncStorage.
 - Dashboard (`features/dashboard/store`): its own 6-month transaction window plus `reports/income-expense`, never the shared transactions slice (same rule as the web).
 - Loans: balances come from `GET /reports/loans` (amortized server-side); don't go back to original-minus-payments.
@@ -65,7 +65,7 @@ Expo (SDK 54, RN 0.81) Android client mirroring `react-frontend`. Android only; 
 
 ## SMS forwarding
 - `features/sms/smsForwarder.ts` POSTs `{sender, body, receivedAt, source}` to ingest's `ingest/sms` (`EXPO_PUBLIC_INGEST_URL`, budget-scoped, headlessApi), not the main API. `source` is `live` or `inbox`; ingest ignores it and dedupes on sender + body + `receivedAt`, so both paths must send the same time: `getInboxMessages` reads `DATE_SENT` to match the live timestamp. Only alphanumeric sender IDs are sent; phone-number senders never leave the device.
-- Failed sends wait in an AsyncStorage outbox (max 50), retried on the next SMS and on app start. Signed out drops them.
+- Every message goes into an AsyncStorage outbox (max 50, inbox imports trimmed before live messages) and leaves it only when ingest accepts it, on sign-out, or when trimmed; it's retried on the next SMS and on app start. The live task, the app-start flush and imports run at the same time, so change the outbox only through `mutateOutbox` (one lock) and send only through `drain` (one sender); a plain read, send and write loses messages. `ForwardResult` counts `sent`/`queued`/`dropped` per call from item ids.
 - `RECEIVE_SMS` is requested on boot, after the push permission (concurrent permission dialogs get dropped). `READ_SMS` is requested by Settings → SMS → Import recent messages (`smsInbox.ts`, always the last 30 days, so re-imports resend).
 - Any non-2xx from ingest keeps the message in the outbox and shows the error. SMS permissions are Play-restricted; fine for sideloaded APKs.
 

@@ -28,6 +28,7 @@ top to bottom with no ALTER history to replay.
 | `00019_transaction_sources` | `transaction_sources` (the emails/statement lines behind a transaction, and who wrote them) and `counterparty_aliases` (`CHANNEL \| MERCHANT` → payee); not granted to the agent role |
 | `00020_llm_provider_typesafe` | adds `typesafe` to `llm_provider` (decision models only) |
 | `00021_cipher_predictions_follow_deletes` | soft-deletes the cipher predictions of transactions already deleted |
+| `00022_inbound_messages` | one row per bank message with its status (`needs_review`, `done`, ...), written when its run reports; backfilled from `pipeline.report` jobs; not granted to the agent role |
 
 ## Commands (from `backend/go-pennywise-api`)
 

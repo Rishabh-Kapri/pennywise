@@ -135,7 +135,70 @@ await test('signed out reports an error instead of counting messages as sent', a
   await reset(false);
   const result = await forwardSms([{ sender: 'AX-HDFCBK', body: 'a', timestamp: 1 }], 'inbox');
   assert.strictEqual(result.sent, 0);
+  assert.strictEqual(result.signedOut, true);
+  assert.strictEqual(result.dropped, 1);
   assert.strictEqual(result.error, 'Signed out');
+});
+
+const bank = (body: string, timestamp: number) => ({ sender: 'AX-HDFCBK', body, timestamp });
+
+await test('concurrent senders lose nothing and send each message once', async () => {
+  await reset();
+  // The first send fails, the rest succeed: the old read-send-write let one
+  // caller's write wipe out what the other had queued.
+  let calls = 0;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string, init: any) => {
+    const call = ++calls;
+    await new Promise((r) => setTimeout(r, 5));
+    if (call === 1) throw new Error('network down');
+    return realFetch(url, init);
+  }) as any;
+  try {
+    await Promise.all([smsTask(bank('x', 1)), smsTask(bank('y', 2))]);
+    await flushSmsOutbox();
+    const bodies = posted.map((p) => p.body.body).sort();
+    assert.deepStrictEqual(bodies, ['x', 'y']);
+    assert.deepStrictEqual(await outbox(), []);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+await test('an import bigger than the outbox reports what it dropped', async () => {
+  await reset();
+  serverUp = false;
+  const messages = Array.from({ length: 80 }, (_, i) => bank(`m${i}`, i + 1));
+  const result = await forwardSms(messages, 'inbox');
+  assert.strictEqual(result.matched, 80);
+  assert.strictEqual(result.sent, 0);
+  assert.strictEqual(result.queued, 50);
+  assert.strictEqual(result.dropped, 30);
+  assert.strictEqual((await outbox()).length, 50);
+});
+
+await test('a full outbox drops imports before live messages', async () => {
+  await reset();
+  serverUp = false;
+  await smsTask(bank('live-1', 1));
+  await forwardSms(
+    Array.from({ length: 60 }, (_, i) => bank(`inbox-${i}`, i + 10)),
+    'inbox'
+  );
+  const kept = (await outbox()).map((item: any) => item.payload.body);
+  assert.strictEqual(kept.length, 50);
+  assert.ok(kept.includes('live-1'), 'the live message survives the trim');
+});
+
+await test('outboxes written by older builds still send', async () => {
+  await reset();
+  await AsyncStorage.setItem(
+    SMS_OUTBOX_KEY,
+    JSON.stringify([{ sender: 'AX-HDFCBK', body: 'old', receivedAt: '2026-10-30T10:00:00.000Z', source: 'live' }])
+  );
+  await flushSmsOutbox();
+  assert.deepStrictEqual(posted.map((p) => p.body.body), ['old']);
+  assert.deepStrictEqual(await outbox(), []);
 });
 
 if (failures) {

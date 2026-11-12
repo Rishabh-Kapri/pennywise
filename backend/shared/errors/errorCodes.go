@@ -53,6 +53,11 @@ const (
 	CodePredictionCreateFailed  Code = "PREDICTION_CREATE_FAILED"
 	CodePredictionUpdateFailed  Code = "PREDICTION_UPDATE_FAILED"
 	CodePredictionDeleteFailed  Code = "PREDICTION_DELETE_FAILED"
+
+	// CodeTransactionInvalidStatus: the transaction's status can't move to the
+	// one asked for (model.TransactionStatus.CanMoveTo), e.g. approving a
+	// manual transaction. Maps to 409.
+	CodeTransactionInvalidStatus Code = "TRANSACTION_INVALID_STATUS"
 )
 
 // Payee/Account/Category error codes

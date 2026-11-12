@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
+	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	"github.com/gin-gonic/gin"
@@ -283,6 +284,10 @@ func (h *transactionHandler) UpdateStatus(c *gin.Context) {
 	}
 	err := h.service.UpdateStatus(ctx, parsedId, body.Status)
 	if err != nil {
+		if errs.HasCode(err, errs.CodeTransactionInvalidStatus) {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": errs.CodeTransactionInvalidStatus})
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}

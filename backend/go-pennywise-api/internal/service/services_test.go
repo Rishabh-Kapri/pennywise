@@ -2481,7 +2481,7 @@ func TestUpdateStatus_NilCipherPredRepo(t *testing.T) {
 	budgetID := uuid.New()
 	txnID := uuid.New()
 	txnRepo := &mockTransactionRepo{}
-	foundTxn := &model.Transaction{ID: txnID}
+	foundTxn := &model.Transaction{ID: txnID, Status: model.TransactionStatusUnapproved}
 	txnRepo.On("GetById", mock.Anything, budgetID, txnID).Return(foundTxn, nil)
 	svc := &transactionService{dbTxn: fakeDBTxn{},
 		repo:                 txnRepo,
@@ -2497,7 +2497,7 @@ func TestUpdateStatus_CipherPredRepoError(t *testing.T) {
 	txnID := uuid.New()
 	txnRepo := &mockTransactionRepo{}
 	cipherPredRepo := &mockCipherPredictionRepo{}
-	foundTxn := &model.Transaction{ID: txnID}
+	foundTxn := &model.Transaction{ID: txnID, Status: model.TransactionStatusUnapproved}
 	txnRepo.On("GetById", mock.Anything, budgetID, txnID).Return(foundTxn, nil)
 	cipherPredRepo.On("GetByTransactionID", mock.Anything, budgetID, txnID).Return((*model.CipherPredictionRecord)(nil), assert.AnError)
 	svc := &transactionService{dbTxn: fakeDBTxn{},
@@ -2516,7 +2516,7 @@ func TestUpdateStatus_PayeeIDNil(t *testing.T) {
 	cipherPredRepo := &mockCipherPredictionRepo{}
 	catID := uuid.New()
 	rawText := "BANK TEXT"
-	foundTxn := &model.Transaction{ID: txnID, PayeeID: nil, CategoryID: &catID, RawBankText: &rawText}
+	foundTxn := &model.Transaction{ID: txnID, Status: model.TransactionStatusUnapproved, PayeeID: nil, CategoryID: &catID, RawBankText: &rawText}
 	cipherPred := &model.CipherPredictionRecord{}
 	txnRepo.On("GetById", mock.Anything, budgetID, txnID).Return(foundTxn, nil)
 	cipherPredRepo.On("GetByTransactionID", mock.Anything, budgetID, txnID).Return(cipherPred, nil)
@@ -2536,7 +2536,7 @@ func TestUpdateStatus_CategoryIDNil(t *testing.T) {
 	cipherPredRepo := &mockCipherPredictionRepo{}
 	payeeID := uuid.New()
 	rawText := "BANK TEXT"
-	foundTxn := &model.Transaction{ID: txnID, PayeeID: &payeeID, CategoryID: nil, RawBankText: &rawText}
+	foundTxn := &model.Transaction{ID: txnID, Status: model.TransactionStatusUnapproved, PayeeID: &payeeID, CategoryID: nil, RawBankText: &rawText}
 	cipherPred := &model.CipherPredictionRecord{}
 	txnRepo.On("GetById", mock.Anything, budgetID, txnID).Return(foundTxn, nil)
 	cipherPredRepo.On("GetByTransactionID", mock.Anything, budgetID, txnID).Return(cipherPred, nil)
@@ -2556,7 +2556,7 @@ func TestUpdateStatus_RawBankTextNil(t *testing.T) {
 	cipherPredRepo := &mockCipherPredictionRepo{}
 	payeeID := uuid.New()
 	catID := uuid.New()
-	foundTxn := &model.Transaction{ID: txnID, PayeeID: &payeeID, CategoryID: &catID, RawBankText: nil}
+	foundTxn := &model.Transaction{ID: txnID, Status: model.TransactionStatusUnapproved, PayeeID: &payeeID, CategoryID: &catID, RawBankText: nil}
 	cipherPred := &model.CipherPredictionRecord{}
 	txnRepo.On("GetById", mock.Anything, budgetID, txnID).Return(foundTxn, nil)
 	cipherPredRepo.On("GetByTransactionID", mock.Anything, budgetID, txnID).Return(cipherPred, nil)

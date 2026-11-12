@@ -17,7 +17,11 @@ type TransactionRepository interface {
 	) (model.PaginatedResponse[model.Transaction], error)
 	Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, txn model.Transaction) error
 	UpdateLocation(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, lat *float64, lng *float64, name *string, source *model.LocationSource) error
-	UpdateStatus(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, status model.TransactionStatus) error
+	// TransitionStatus moves a live transaction from status `from` to `to` and
+	// reports whether it moved: false means it no longer exists or isn't in
+	// `from`. Callers check model.TransactionStatus.CanMoveTo first; this only
+	// makes the move safe against a concurrent one.
+	TransitionStatus(ctx context.Context, budgetId, id uuid.UUID, from, to model.TransactionStatus) (bool, error)
 	Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error)
 	CreateDeduped(ctx context.Context, txn model.Transaction) (*model.Transaction, bool, error)
 	// LockForDedupe holds a lock on the account and amount until the caller's

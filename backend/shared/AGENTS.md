@@ -53,6 +53,7 @@ for d in cipher go-pennywise-api go-gmail workflows; do (cd $d && GOWORK=off go 
 - Not found: check `errors.Is(err, repository.ErrNotFound)`, never `== pgx.ErrNoRows` (adapter errors are wrapped). In the adapter, use `r.Executor(ctx)` (maps no-rows) and `errNoRows` for explicit misses.
 - A repository method that issues several statements wraps them in `r.InTx(ctx, ...)` (see `payeeRepo.Merge`).
 - `transactions.status` may be NULL on legacy rows: always read through `scannedStatus` (`adapters/postgres/transaction.go`), which maps NULL/empty to `MANUAL`. Do not scan it into a plain string.
+- Status columns with rules (`transactions.status`, `inbound_messages.status`) change only through a guarded repo method (`TransitionStatus`, `Transition`, `RecordReport`) that writes from the status the caller read and reports whether it moved. The allowed moves live on the model type (`CanMoveTo`); check them in the service first.
 - Budget isolation: repos take `budgetId` explicitly; read-only agent queries rely on Postgres RLS via `app.budget_id`, not on Go code.
 - Internal trust comes only from `utils.VerifiedInternalFromContext` (set by `middleware.InternalRequestAuth`). Never trust raw headers.
 - Header names (`utils/context.go`): `X-Correlation-ID`, `X-Caller-Service`, `X-Origin-Service`, `X-Internal-Token`, `X-Internal-Service`, `X-Service-Name`, `X-Budget-ID`.

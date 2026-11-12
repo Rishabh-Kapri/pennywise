@@ -134,14 +134,13 @@ func (m *mockTransactionRepo) UpdateLocation(
 	return args.Error(0)
 }
 
-func (m *mockTransactionRepo) UpdateStatus(
+func (m *mockTransactionRepo) TransitionStatus(
 	ctx context.Context,
-	budgetId uuid.UUID,
-	id uuid.UUID,
-	status model.TransactionStatus,
-) error {
-	args := m.Called(ctx, budgetId, id, status)
-	return args.Error(0)
+	budgetId, id uuid.UUID,
+	from, to model.TransactionStatus,
+) (bool, error) {
+	args := m.Called(ctx, budgetId, id, from, to)
+	return args.Bool(0), args.Error(1)
 }
 
 type mockBudgetRepo struct {
@@ -834,7 +833,9 @@ func TestUpdateStatusRejectedOnlyUpdatesStatus(t *testing.T) {
 	txnRepo := &mockTransactionRepo{}
 	svc := &transactionService{dbTxn: fakeDBTxn{}, repo: txnRepo}
 
-	txnRepo.On("UpdateStatus", mock.Anything, budgetId, txnId, model.TransactionStatusRejected).Return(nil).Once()
+	pending := &model.Transaction{ID: txnId, BudgetID: budgetId, Status: model.TransactionStatusUnapproved}
+	txnRepo.On("GetById", mock.Anything, budgetId, txnId).Return(pending, nil).Once()
+	txnRepo.On("TransitionStatus", mock.Anything, budgetId, txnId, model.TransactionStatusUnapproved, model.TransactionStatusRejected).Return(true, nil).Once()
 
 	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusRejected)
 
@@ -848,6 +849,7 @@ func TestUpdateStatusApprovedWithoutCipherPredictionOnlyUpdatesStatus(t *testing
 	rawBankText := "paid to coffee shop"
 	txn := &model.Transaction{
 		ID:          txnId,
+		Status:      model.TransactionStatusUnapproved,
 		BudgetID:    budgetId,
 		PayeeID:     &payeeId,
 		CategoryID:  &categoryId,
@@ -860,7 +862,7 @@ func TestUpdateStatusApprovedWithoutCipherPredictionOnlyUpdatesStatus(t *testing
 
 	txnRepo.On("GetById", mock.Anything, budgetId, txnId).Return(txn, nil).Once()
 	cipherPredictionRepo.On("GetByTransactionID", mock.Anything, budgetId, txnId).Return(nil, repository.ErrNotFound).Once()
-	txnRepo.On("UpdateStatus", mock.Anything, budgetId, txnId, model.TransactionStatusApproved).Return(nil).Once()
+	txnRepo.On("TransitionStatus", mock.Anything, budgetId, txnId, model.TransactionStatusUnapproved, model.TransactionStatusApproved).Return(true, nil).Once()
 
 	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved)
 
@@ -875,6 +877,7 @@ func TestUpdateStatusApprovedWithNonLLMCipherPredictionDoesNotEmbed(t *testing.T
 	rawBankText := "paid to coffee shop"
 	txn := &model.Transaction{
 		ID:          txnId,
+		Status:      model.TransactionStatusUnapproved,
 		BudgetID:    budgetId,
 		PayeeID:     &payeeId,
 		CategoryID:  &categoryId,
@@ -900,7 +903,7 @@ func TestUpdateStatusApprovedWithNonLLMCipherPredictionDoesNotEmbed(t *testing.T
 		TransactionID: txnId,
 		Source:        model.PredictionSourceVector,
 	}, nil).Once()
-	txnRepo.On("UpdateStatus", mock.Anything, budgetId, txnId, model.TransactionStatusApproved).Return(nil).Once()
+	txnRepo.On("TransitionStatus", mock.Anything, budgetId, txnId, model.TransactionStatusUnapproved, model.TransactionStatusApproved).Return(true, nil).Once()
 
 	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved)
 
@@ -917,6 +920,7 @@ func TestUpdateStatusApprovedWithLLMCipherPredictionDoesNotEmbed(t *testing.T) {
 	extractedMerchant := "amazon marketplace"
 	txn := &model.Transaction{
 		ID:          txnId,
+		Status:      model.TransactionStatusUnapproved,
 		BudgetID:    budgetId,
 		PayeeID:     &payeeId,
 		CategoryID:  &categoryId,
@@ -943,7 +947,7 @@ func TestUpdateStatusApprovedWithLLMCipherPredictionDoesNotEmbed(t *testing.T) {
 		Source:         model.PredictionSourceLLM,
 		ExtractedPayee: &extractedMerchant,
 	}, nil).Once()
-	txnRepo.On("UpdateStatus", mock.Anything, budgetId, txnId, model.TransactionStatusApproved).Return(nil).Once()
+	txnRepo.On("TransitionStatus", mock.Anything, budgetId, txnId, model.TransactionStatusUnapproved, model.TransactionStatusApproved).Return(true, nil).Once()
 
 	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved)
 
@@ -1499,6 +1503,7 @@ func TestUpdateStatus_NilCipherPredictionRepo_ReturnsError(t *testing.T) {
 
 	txn := &model.Transaction{
 		ID:          txnId,
+		Status:      model.TransactionStatusUnapproved,
 		BudgetID:    budgetId,
 		PayeeID:     &payeeId,
 		CategoryID:  &categoryId,
@@ -1527,6 +1532,7 @@ func TestUpdateStatus_CipherPredictionGetError_ReturnsError(t *testing.T) {
 
 	txn := &model.Transaction{
 		ID:          txnId,
+		Status:      model.TransactionStatusUnapproved,
 		BudgetID:    budgetId,
 		PayeeID:     &payeeId,
 		CategoryID:  &categoryId,
@@ -1553,6 +1559,7 @@ func TestUpdateStatus_NilPayeeID_ReturnsError(t *testing.T) {
 
 	txn := &model.Transaction{
 		ID:          txnId,
+		Status:      model.TransactionStatusUnapproved,
 		BudgetID:    budgetId,
 		PayeeID:     nil, // nil payee
 		CategoryID:  &categoryId,
@@ -1580,6 +1587,7 @@ func TestUpdateStatus_NilCategoryID_ReturnsError(t *testing.T) {
 
 	txn := &model.Transaction{
 		ID:          txnId,
+		Status:      model.TransactionStatusUnapproved,
 		BudgetID:    budgetId,
 		PayeeID:     &payeeId,
 		CategoryID:  nil, // nil category
@@ -1607,6 +1615,7 @@ func TestUpdateStatus_NilRawBankText_ReturnsError(t *testing.T) {
 
 	txn := &model.Transaction{
 		ID:          txnId,
+		Status:      model.TransactionStatusUnapproved,
 		BudgetID:    budgetId,
 		PayeeID:     &payeeId,
 		CategoryID:  &categoryId,
@@ -1635,6 +1644,7 @@ func TestUpdateStatus_BlankRawBankText_ReturnsError(t *testing.T) {
 
 	txn := &model.Transaction{
 		ID:          txnId,
+		Status:      model.TransactionStatusUnapproved,
 		BudgetID:    budgetId,
 		PayeeID:     &payeeId,
 		CategoryID:  &categoryId,

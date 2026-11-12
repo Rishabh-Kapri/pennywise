@@ -1176,64 +1176,119 @@ func (s *transactionService) UpdateLocation(
 	return updated, nil
 }
 
+// UpdateStatus moves a transaction through review (model.TransactionStatus
+// .CanMoveTo). Asking for the status it already has does nothing, so approving
+// twice can't teach the pipeline twice. A transfer's other half moves with it.
 func (s *transactionService) UpdateStatus(ctx context.Context, id uuid.UUID, status model.TransactionStatus) error {
 	txCtx, txCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer txCancel()
 	budgetId := utils.MustBudgetID(ctx)
 	logger.Logger(txCtx).Info("updating transaction status", "id", id, "status", status)
 
-	if status != model.TransactionStatusApproved {
-		return s.dbTxn.Do(txCtx, func(txCtx context.Context) error {
-			return s.repo.UpdateStatus(txCtx, budgetId, id, status)
-		})
+	if !status.Valid() {
+		return errs.New(errs.CodeInvalidArgument, "unknown transaction status %q", status)
 	}
 
-	foundTxn, err := s.repo.GetById(txCtx, budgetId, id)
+	var found *model.Transaction
+	learn := false
+	err := s.dbTxn.Do(txCtx, func(txCtx context.Context) error {
+		current, err := s.getForStatusChange(txCtx, budgetId, id)
+		if err != nil {
+			return err
+		}
+		found = current
+		if current.Status == status {
+			return nil
+		}
+		if !current.Status.CanMoveTo(status) {
+			return errs.New(errs.CodeTransactionInvalidStatus,
+				"a %s transaction can't be marked %s", current.Status, status)
+		}
+		if status == model.TransactionStatusApproved {
+			if learn, err = s.approvalLearns(txCtx, budgetId, current); err != nil {
+				return err
+			}
+		}
+
+		moved, err := s.repo.TransitionStatus(txCtx, budgetId, id, current.Status, status)
+		if err != nil {
+			return errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating transaction status", err)
+		}
+		if !moved {
+			// Another request changed it since the read. If it got where this
+			// one was going, there's nothing left to do (and nothing to learn).
+			learn = false
+			latest, err := s.getForStatusChange(txCtx, budgetId, id)
+			if err != nil {
+				return err
+			}
+			if latest.Status == status {
+				return nil
+			}
+			return errs.New(errs.CodeTransactionInvalidStatus,
+				"the transaction is now %s; reload and try again", latest.Status)
+		}
+
+		// Both halves of a transfer are one payment, so they share a status.
+		// A half that has drifted to another status is left alone.
+		if current.TransferTransactionID != nil {
+			if _, err := s.repo.TransitionStatus(
+				txCtx, budgetId, *current.TransferTransactionID, current.Status, status,
+			); err != nil {
+				return errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating transfer counterpart status", err)
+			}
+		}
+		return nil
+	})
 	if err != nil {
-		return errs.Wrap(errs.CodeTransactionLookupFailed, "error getting transaction", err)
+		return err
 	}
 
-	if foundTxn == nil {
-		return errs.New(errs.CodeTransactionLookupFailed, "transaction not found for id %v", id)
+	if learn {
+		s.queueAliasConfirm(ctx, budgetId, *found)
 	}
-	if s.cipherPredictionRepo == nil {
-		return errs.New(errs.CodeInternalError, "cipher prediction repository is not configured")
-	}
+	return nil
+}
 
-	cipherPrediction, err := s.cipherPredictionRepo.GetByTransactionID(txCtx, budgetId, foundTxn.ID)
+// getForStatusChange loads a live transaction, mapping a miss to a lookup error.
+func (s *transactionService) getForStatusChange(ctx context.Context, budgetId, id uuid.UUID) (*model.Transaction, error) {
+	txn, err := s.repo.GetById(ctx, budgetId, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return s.dbTxn.Do(txCtx, func(txCtx context.Context) error {
-				return s.repo.UpdateStatus(txCtx, budgetId, id, status)
-			})
+			return nil, errs.New(errs.CodeTransactionLookupFailed, "transaction not found for id %v", id)
 		}
-		return errs.Wrap(errs.CodeTransactionLookupFailed, "error getting cipher prediction", err)
+		return nil, errs.Wrap(errs.CodeTransactionLookupFailed, "error getting transaction", err)
 	}
-	if cipherPrediction == nil {
-		return s.dbTxn.Do(txCtx, func(txCtx context.Context) error {
-			return s.repo.UpdateStatus(txCtx, budgetId, id, status)
-		})
+	if txn == nil {
+		return nil, errs.New(errs.CodeTransactionLookupFailed, "transaction not found for id %v", id)
 	}
+	return txn, nil
+}
 
-	if foundTxn.PayeeID == nil {
-		return errs.New(errs.CodeInvalidArgument, "payee is required to approve transaction")
+// approvalLearns checks a transaction can be approved and reports whether the
+// approval should teach the pipeline: only a transaction the pipeline predicted
+// does, and it needs a payee, a category and its bank text to learn from.
+func (s *transactionService) approvalLearns(ctx context.Context, budgetId uuid.UUID, txn *model.Transaction) (bool, error) {
+	if s.cipherPredictionRepo == nil {
+		return false, errs.New(errs.CodeInternalError, "cipher prediction repository is not configured")
 	}
-	if foundTxn.CategoryID == nil {
-		return errs.New(errs.CodeInvalidArgument, "category is required to approve transaction")
+	prediction, err := s.cipherPredictionRepo.GetByTransactionID(ctx, budgetId, txn.ID)
+	if errors.Is(err, repository.ErrNotFound) || (err == nil && prediction == nil) {
+		return false, nil
 	}
-	if foundTxn.RawBankText == nil || strings.TrimSpace(*foundTxn.RawBankText) == "" {
-		return errs.New(errs.CodeInvalidArgument, "raw bank text is required to approve transaction")
+	if err != nil {
+		return false, errs.Wrap(errs.CodeTransactionLookupFailed, "error getting cipher prediction", err)
 	}
-
-	if err := s.dbTxn.Do(txCtx, func(txCtx context.Context) error {
-		return s.repo.UpdateStatus(txCtx, budgetId, id, status)
-	}); err != nil {
-		return errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating transaction status", err)
+	if txn.PayeeID == nil {
+		return false, errs.New(errs.CodeInvalidArgument, "payee is required to approve transaction")
 	}
-
-	s.queueAliasConfirm(ctx, budgetId, *foundTxn)
-
-	return nil
+	if txn.CategoryID == nil {
+		return false, errs.New(errs.CodeInvalidArgument, "category is required to approve transaction")
+	}
+	if txn.RawBankText == nil || strings.TrimSpace(*txn.RawBankText) == "" {
+		return false, errs.New(errs.CodeInvalidArgument, "raw bank text is required to approve transaction")
+	}
+	return true, nil
 }
 
 func (s *transactionService) DeleteById(ctx context.Context, id uuid.UUID) error {

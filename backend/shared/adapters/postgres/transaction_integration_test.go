@@ -611,21 +611,6 @@ func TestTransactionRepo_UpdateLocationSetsAndClears(t *testing.T) {
 	assert.Nil(t, got.LocationSource)
 }
 
-func TestTransactionRepo_UpdateStatus(t *testing.T) {
-	_, repo, s := setup(t)
-	ctx := context.Background()
-	in := newTxn(s, "2026-10-12", -10)
-	in.Status = model.TransactionStatusUnapproved
-	created := mustCreate(t, repo, in)
-
-	require.NoError(t, repo.UpdateStatus(ctx, s.budgetID, created.ID, model.TransactionStatusApproved))
-	got, err := repo.GetById(ctx, s.budgetID, created.ID)
-	require.NoError(t, err)
-	assert.Equal(t, model.TransactionStatusApproved, got.Status)
-
-	assert.Error(t, repo.UpdateStatus(ctx, s.budgetID, created.ID, "PENDING"), "status is an enum")
-}
-
 func TestTransactionRepo_DeleteByIdIsASoftDelete(t *testing.T) {
 	pool, repo, s := setup(t)
 	ctx := context.Background()
@@ -654,9 +639,6 @@ func TestTransactionRepo_WritesReportNotFoundForMissingRows(t *testing.T) {
 		},
 		"UpdateLocation": func(id uuid.UUID) error {
 			return repo.UpdateLocation(ctx, s.budgetID, id, &lat, &lng, nil, nil)
-		},
-		"UpdateStatus": func(id uuid.UUID) error {
-			return repo.UpdateStatus(ctx, s.budgetID, id, model.TransactionStatusApproved)
 		},
 		"DeleteById": func(id uuid.UUID) error {
 			return repo.DeleteById(ctx, s.budgetID, id)
@@ -784,4 +766,54 @@ func TestTransactionRepo_GetAllNormalizedPageSize(t *testing.T) {
 		assert.Equal(t, 105, page.Total)
 		assert.NotEmpty(t, page.Pagination.NextCursor, "limit %d leaves rows for a next page", tt.limit)
 	}
+}
+
+// ─── TransitionStatus ────────────────────────────────────────────────────────
+
+func TestTransactionRepo_TransitionStatusMovesOnlyFromTheExpectedStatus(t *testing.T) {
+	_, repo, s := setup(t)
+	ctx := context.Background()
+	in := newTxn(s, "2026-10-12", -100)
+	in.Status = model.TransactionStatusUnapproved
+	created := mustCreate(t, repo, in)
+	before, err := repo.GetById(ctx, s.budgetID, created.ID)
+	require.NoError(t, err)
+
+	moved, err := repo.TransitionStatus(ctx, s.budgetID, created.ID,
+		model.TransactionStatusUnapproved, model.TransactionStatusApproved)
+	require.NoError(t, err)
+	assert.True(t, moved)
+
+	// A second request that read UNAPPROVED loses: the row has moved on.
+	moved, err = repo.TransitionStatus(ctx, s.budgetID, created.ID,
+		model.TransactionStatusUnapproved, model.TransactionStatusRejected)
+	require.NoError(t, err)
+	assert.False(t, moved)
+
+	got, err := repo.GetById(ctx, s.budgetID, created.ID)
+	require.NoError(t, err)
+	assert.Equal(t, model.TransactionStatusApproved, got.Status)
+	assert.Equal(t, before.UpdatedAt, got.UpdatedAt, "a review decision doesn't reorder the list")
+
+	_, err = repo.TransitionStatus(ctx, s.budgetID, created.ID, model.TransactionStatusApproved, "PENDING")
+	assert.Error(t, err, "status is an enum")
+}
+
+func TestTransactionRepo_TransitionStatusSkipsDeletedAndOtherBudgets(t *testing.T) {
+	_, repo, s := setup(t)
+	ctx := context.Background()
+	in := newTxn(s, "2026-10-12", -100)
+	in.Status = model.TransactionStatusUnapproved
+	created := mustCreate(t, repo, in)
+
+	moved, err := repo.TransitionStatus(ctx, uuid.New(), created.ID,
+		model.TransactionStatusUnapproved, model.TransactionStatusApproved)
+	require.NoError(t, err)
+	assert.False(t, moved, "another budget's id must not move it")
+
+	require.NoError(t, repo.DeleteById(ctx, s.budgetID, created.ID))
+	moved, err = repo.TransitionStatus(ctx, s.budgetID, created.ID,
+		model.TransactionStatusUnapproved, model.TransactionStatusApproved)
+	require.NoError(t, err)
+	assert.False(t, moved, "a deleted transaction can't change status")
 }

@@ -104,6 +104,7 @@ type Repositories struct {
 	DevicePushToken      repository.DevicePushTokenRepository
 	Embedding            repository.EmbeddingRepository
 	GoogleProvider       repository.GoogleProviderRepository
+	InboundMessage       repository.InboundMessageRepository
 	LoanMetadata         repository.LoanMetadataRepository
 	MailConnection       repository.MailConnectionRepository
 	MonthlyBudget        repository.MonthlyBudgetRepository
@@ -145,6 +146,7 @@ func newPostgresRepositories(pool *pgxpool.Pool) *Repositories {
 		DevicePushToken:      postgres.NewDevicePushTokenRepository(pool),
 		Embedding:            postgres.NewEmbeddingRepository(pool),
 		GoogleProvider:       postgres.NewGoogleProviderRepository(pool),
+		InboundMessage:       postgres.NewInboundMessageRepository(pool),
 		LoanMetadata:         postgres.NewLoanMetadataRepository(pool),
 		MailConnection:       postgres.NewMailConnectionRepository(pool),
 		MonthlyBudget:        postgres.NewMonthlyBudgetRepository(pool),
