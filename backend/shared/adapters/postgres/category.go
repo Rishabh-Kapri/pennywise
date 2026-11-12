@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"errors"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
@@ -21,48 +20,61 @@ func NewCategoryRepository(pool *pgxpool.Pool) repository.CategoryRepository {
 	return &categoryRepo{BaseRepository: NewBaseRepository(pool)}
 }
 
-func (r *categoryRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Category, error) {
-	rows, err := r.Executor(ctx).Query(
-		ctx, `
-			SELECT 
-				categories.id, 
-		    categories.name, 
-				categories.budget_id, 
-				categories.category_group_id, 
-				categories.hidden, 
-				categories.note, 
-				categories.description,
-				`+categoryGoalJSON("categories.id")+` AS goal,
-				categories.is_system, 
-				categories.created_at, 
-				categories.updated_at,
-		    COALESCE(
-		      json_object_agg(monthly_budgets.month, monthly_budgets.budgeted) 
-		      FILTER (WHERE monthly_budgets.month IS NOT NULL), '{}'
-		    ) AS budgeted,
-		    COALESCE(
-		      (
-		        SELECT json_object_agg(tx.month, tx.sum)
-		        FROM (
-		          SELECT
-		            TO_CHAR(date_trunc('month', transactions.date::date), 'YYYY-MM') AS month,
-		            SUM(transactions.amount) AS sum
-		          FROM transactions
-		          WHERE transactions.category_id = categories.id AND transactions.deleted = FALSE
-		          GROUP BY month
-		        ) AS tx
-		      ), '{}'
-		    ) AS activity,
-		    COALESCE(
-		      json_object_agg(monthly_budgets.month, monthly_budgets.carryover_balance) 
-		      FILTER (WHERE monthly_budgets.month IS NOT NULL), '{}'
-		    ) AS balance
-			FROM categories 
-		  LEFT JOIN monthly_budgets ON categories.id = monthly_budgets.category_id
-			WHERE categories.budget_id = $1 AND categories.deleted = FALSE
-		  GROUP BY categories.id
-		`, budgetId,
+// categorySelect reads a category with its per-month amounts. Append a WHERE
+// clause and categoryGroupBy.
+// note is COALESCEd because the column is nullable and Category.Note is not.
+var categorySelect = `
+	SELECT
+		categories.id,
+		categories.name,
+		categories.budget_id,
+		categories.category_group_id,
+		categories.hidden,
+		COALESCE(categories.note, ''),
+		categories.description,
+		` + categoryGoalJSON("categories.id") + ` AS goal,
+		categories.is_system,
+		categories.created_at,
+		categories.updated_at,
+		COALESCE(
+			json_object_agg(monthly_budgets.month, monthly_budgets.budgeted)
+			FILTER (WHERE monthly_budgets.month IS NOT NULL), '{}'
+		) AS budgeted,
+		COALESCE(
+			(
+				SELECT json_object_agg(tx.month, tx.sum)
+				FROM (
+					SELECT
+						TO_CHAR(date_trunc('month', transactions.date::date), 'YYYY-MM') AS month,
+						SUM(transactions.amount) AS sum
+					FROM transactions
+					WHERE transactions.category_id = categories.id AND transactions.deleted = FALSE
+					GROUP BY month
+				) AS tx
+			), '{}'
+		) AS activity,
+		COALESCE(
+			json_object_agg(monthly_budgets.month, monthly_budgets.carryover_balance)
+			FILTER (WHERE monthly_budgets.month IS NOT NULL), '{}'
+		) AS balance
+	FROM categories
+	LEFT JOIN monthly_budgets ON categories.id = monthly_budgets.category_id
+`
+
+const categoryGroupBy = ` GROUP BY categories.id`
+
+func scanCategory(row pgx.Row) (model.Category, error) {
+	var c model.Category
+	err := row.Scan(
+		&c.ID, &c.Name, &c.BudgetID, &c.CategoryGroupID, &c.Hidden, &c.Note, &c.Description, &c.Goal,
+		&c.IsSystem, &c.CreatedAt, &c.UpdatedAt, &c.Budgeted, &c.Activity, &c.Balance,
 	)
+	return c, err
+}
+
+// queryCategories runs categorySelect with where (which starts with WHERE).
+func (r *categoryRepo) queryCategories(ctx context.Context, where string, args ...any) ([]model.Category, error) {
+	rows, err := r.Executor(ctx).Query(ctx, categorySelect+where+categoryGroupBy, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -70,23 +82,7 @@ func (r *categoryRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.
 
 	var categories []model.Category
 	for rows.Next() {
-		var c model.Category
-		err := rows.Scan(
-			&c.ID,
-			&c.Name,
-			&c.BudgetID,
-			&c.CategoryGroupID,
-			&c.Hidden,
-			&c.Note,
-			&c.Description,
-			&c.Goal,
-			&c.IsSystem,
-			&c.CreatedAt,
-			&c.UpdatedAt,
-			&c.Budgeted,
-			&c.Activity,
-			&c.Balance,
-		)
+		c, err := scanCategory(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -98,18 +94,29 @@ func (r *categoryRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.
 	return categories, nil
 }
 
+func (r *categoryRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Category, error) {
+	return r.queryCategories(ctx, `WHERE categories.budget_id = $1 AND categories.deleted = FALSE`, budgetId)
+}
+
+// assignableCategories is the FROM/WHERE for the categories a transaction can
+// be assigned to: not hidden, not the inflow category, not a credit-card
+// payment category. It binds $1 to the budget. GetAllSimplified (what the model
+// is offered) and FindClosestSimplified (what a guess is matched against) share
+// it so the two can't disagree.
+const assignableCategories = `FROM categories
+	LEFT JOIN budgets ON categories.budget_id = budgets.id
+	WHERE categories.budget_id = $1 AND
+		categories.deleted = FALSE AND
+		categories.hidden = FALSE AND
+		categories.is_system = FALSE AND
+		categories.id != (budgets.metadata ->> 'inflowCategoryId')::uuid AND
+		categories.category_group_id != (budgets.metadata ->> 'ccGroupId')::uuid`
+
 func (r *categoryRepo) GetAllSimplified(ctx context.Context, budgetId uuid.UUID) ([]model.CategorySimplified, error) {
 	rows, err := r.Executor(ctx).Query(
 		ctx, `
-			SELECT categories.id, categories.name 
-			FROM categories 
-			LEFT JOIN budgets ON categories.budget_id = budgets.id
-			WHERE categories.budget_id = $1 AND 
-					categories.deleted = FALSE AND 
-					categories.hidden = FALSE AND 
-					categories.is_system = FALSE AND
-					categories.id != (budgets.metadata ->> 'inflowCategoryId')::uuid AND
-					categories.category_group_id != (budgets.metadata ->> 'ccGroupId')::uuid
+			SELECT categories.id, categories.name
+			`+assignableCategories+`
 		`, budgetId,
 	)
 	if err != nil {
@@ -180,14 +187,7 @@ func (r *categoryRepo) FindClosestSimplified(
 	rows, err := r.Executor(ctx).Query(
 		ctx, `
 			SELECT categories.id, categories.name, similarity(categories.name, $2) AS score
-			FROM categories
-			LEFT JOIN budgets ON categories.budget_id = budgets.id
-			WHERE categories.budget_id = $1 AND
-					categories.deleted = FALSE AND
-					categories.hidden = FALSE AND
-					categories.is_system = FALSE AND
-					categories.id != (budgets.metadata ->> 'inflowCategoryId')::uuid AND
-					categories.category_group_id != (budgets.metadata ->> 'ccGroupId')::uuid
+			`+assignableCategories+`
 			ORDER BY score DESC, categories.name ASC
 			LIMIT $3
 		`, budgetId, name, limit,
@@ -210,146 +210,18 @@ func (r *categoryRepo) FindClosestSimplified(
 }
 
 func (r *categoryRepo) Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.Category, error) {
-	rows, err := r.Executor(ctx).Query(
-		ctx, `
-			SELECT 
-				categories.id,
-				categories.name,
-				categories.budget_id,
-				categories.category_group_id,
-				categories.hidden,
-				categories.note,
-				categories.description,
-				`+categoryGoalJSON("categories.id")+` AS goal,
-				categories.is_system,
-				categories.created_at,
-				categories.updated_at,
-				COALESCE(
-					json_object_agg(monthly_budgets.month, monthly_budgets.budgeted)
-					FILTER (WHERE monthly_budgets.month IS NOT NULL), '{}'
-				) AS budgeted,
-				COALESCE(
-					(
-						SELECT json_object_agg(tx.month, tx.sum)
-						FROM (
-							SELECT
-								TO_CHAR(date_trunc('month', transactions.date::date), 'YYYY-MM') AS month,
-								SUM(transactions.amount) AS sum
-							FROM transactions
-							WHERE transactions.category_id = categories.id AND transactions.deleted = FALSE
-							GROUP BY month
-						) AS tx
-					), '{}'
-				) AS activity,
-				COALESCE(
-					json_object_agg(monthly_budgets.month, monthly_budgets.carryover_balance) 
-					FILTER (WHERE monthly_budgets.month IS NOT NULL), '{}'
-				) AS balance
-			FROM categories 
-		  LEFT JOIN monthly_budgets ON categories.id = monthly_budgets.category_id
-			WHERE categories.budget_id  = $1 AND categories.deleted = FALSE AND categories.name LIKE $2
-		  GROUP BY categories.id
-		`, budgetId, "%"+query+"%",
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var categories []model.Category
-	for rows.Next() {
-		var c model.Category
-		err := rows.Scan(
-			&c.ID,
-			&c.Name,
-			&c.BudgetID,
-			&c.CategoryGroupID,
-			&c.Hidden,
-			&c.Note,
-			&c.Description,
-			&c.Goal,
-			&c.IsSystem,
-			&c.CreatedAt,
-			&c.UpdatedAt,
-			&c.Budgeted,
-			&c.Activity,
-			&c.Balance,
-		)
-		if err != nil {
-			return nil, err
-		}
-		categories = append(categories, c)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return categories, nil
+	return r.queryCategories(ctx,
+		`WHERE categories.budget_id = $1 AND categories.deleted = FALSE AND categories.name LIKE $2`,
+		budgetId, "%"+query+"%")
 }
 
 func (r *categoryRepo) GetById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Category, error) {
-	row := r.Executor(ctx).QueryRow(
-		ctx, `
-			SELECT 
-				categories.id,
-				categories.name,
-				categories.budget_id,
-				categories.category_group_id,
-				categories.hidden,
-				categories.note,
-				categories.description,
-				`+categoryGoalJSON("categories.id")+` AS goal,
-				categories.is_system,
-				categories.created_at,
-				categories.updated_at,
-				COALESCE(
-					json_object_agg(monthly_budgets.month, monthly_budgets.budgeted)
-					FILTER (WHERE monthly_budgets.month IS NOT NULL), '{}'
-				) AS budgeted,
-				COALESCE(
-					(
-						SELECT json_object_agg(tx.month, tx.sum)
-						FROM (
-							SELECT
-								TO_CHAR(date_trunc('month', transactions.date::date), 'YYYY-MM') AS month,
-								SUM(transactions.amount) AS sum
-							FROM transactions
-							WHERE transactions.category_id = categories.id AND transactions.deleted = FALSE
-							GROUP BY month
-						) AS tx
-					), '{}'
-				) AS activity,
-				COALESCE(
-					json_object_agg(monthly_budgets.month, monthly_budgets.carryover_balance) 
-					FILTER (WHERE monthly_budgets.month IS NOT NULL), '{}'
-				) AS balance
-			FROM categories 
-		  LEFT JOIN monthly_budgets ON categories.id = monthly_budgets.category_id
-			WHERE categories.budget_id = $1 AND categories.deleted = FALSE AND categories.id = $2
-		  GROUP BY categories.id
-		`, budgetId, id,
-	)
-
-	var c model.Category
-	err := row.Scan(
-		&c.ID,
-		&c.Name,
-		&c.BudgetID,
-		&c.CategoryGroupID,
-		&c.Hidden,
-		&c.Note,
-		&c.Description,
-		&c.Goal,
-		&c.IsSystem,
-		&c.CreatedAt,
-		&c.UpdatedAt,
-		&c.Budgeted,
-		&c.Activity,
-		&c.Balance,
-	)
+	c, err := scanCategory(r.Executor(ctx).QueryRow(ctx,
+		categorySelect+`WHERE categories.budget_id = $1 AND categories.deleted = FALSE AND categories.id = $2`+categoryGroupBy,
+		budgetId, id))
 	if err != nil {
 		return nil, err
 	}
-
 	return &c, nil
 }
 
@@ -395,17 +267,18 @@ func (r *categoryRepo) DeleteById(ctx context.Context, budgetId uuid.UUID, id uu
 	cmdTag, err := r.Executor(ctx).Exec(
 		ctx,
 		`UPDATE categories SET 
-	    deleted = TRUE
+		  deleted = TRUE,
 		  updated_at = NOW()
 		WHERE id = $1 AND budget_id = $2`,
 		id, budgetId,
 	)
-
-	if cmdTag.RowsAffected() == 0 {
-		return errors.New("Category not found")
+	if err != nil {
+		return err
 	}
-
-	return err
+	if cmdTag.RowsAffected() == 0 {
+		return notFoundError("Category")
+	}
+	return nil
 }
 
 func (r *categoryRepo) Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, category model.Category) error {

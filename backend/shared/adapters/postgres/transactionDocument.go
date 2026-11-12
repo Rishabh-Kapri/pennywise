@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -274,7 +273,7 @@ func (r *transactionDocumentRepo) DeleteById(ctx context.Context, budgetId uuid.
 		return err
 	}
 	if cmdTag.RowsAffected() == 0 {
-		return errors.New("Document not found")
+		return notFoundError("Document")
 	}
 	return nil
 }

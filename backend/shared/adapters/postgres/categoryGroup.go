@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
@@ -323,8 +322,11 @@ func (r *categoryGroupRepo) DeleteById(ctx context.Context, budgetId uuid.UUID, 
 		id,
 		budgetId,
 	)
-	if cmdTag.RowsAffected() == 0 {
-		return errors.New("Category group not found")
+	if err != nil {
+		return err
 	}
-	return err
+	if cmdTag.RowsAffected() == 0 {
+		return notFoundError("Category group")
+	}
+	return nil
 }

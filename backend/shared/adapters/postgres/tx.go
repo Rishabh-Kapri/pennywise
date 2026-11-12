@@ -49,6 +49,12 @@ func (t *dbTxn) Do(ctx context.Context, fn func(ctx context.Context) error) erro
 // errNoRows is what repositories return when an explicit lookup finds nothing.
 var errNoRows = notFound(pgx.ErrNoRows)
 
+// notFoundError is errNoRows for a write that matched no row, named for what
+// was being looked for.
+func notFoundError(what string) error {
+	return fmt.Errorf("%s not found: %w", what, errNoRows)
+}
+
 // notFound wraps err so callers can match it with errors.Is against
 // repository.ErrNotFound; it still matches pgx.ErrNoRows too.
 func notFound(err error) error {

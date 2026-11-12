@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"errors"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
@@ -79,7 +78,7 @@ func (r *devicePushTokenRepo) DeleteByToken(ctx context.Context, authUserId uuid
 		return err
 	}
 	if cmdTag.RowsAffected() == 0 {
-		return errors.New("Push token not found")
+		return notFoundError("Push token")
 	}
 	return nil
 }

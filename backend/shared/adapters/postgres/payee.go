@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"errors"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
@@ -130,7 +129,7 @@ func (r *payeeRepo) DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.
 		return err
 	}
 	if cmdTag.RowsAffected() == 0 {
-		return errors.New("Payee not found")
+		return notFoundError("Payee")
 	}
 	return nil
 }
@@ -146,7 +145,7 @@ func (r *payeeRepo) Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID
 	)
 
 	if cmdTag.RowsAffected() == 0 {
-		return errors.New("Payee not found")
+		return notFoundError("Payee")
 	}
 
 	return err
