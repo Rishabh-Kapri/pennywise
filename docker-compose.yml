@@ -273,9 +273,9 @@ services:
       JOB_DRIVER: ${JOB_DRIVER:-memory}
       REDIS_URL: redis://redis:6379/0
       # Mail adapters (gmail). Unset = none; when set, the Google settings
-      # below and MAIL_CREDENTIALS_KEY are required or ingest won't start.
+      # below and CREDENTIALS_KEY are required or ingest won't start.
       MAIL_PROVIDERS: ${MAIL_PROVIDERS:-}
-      MAIL_CREDENTIALS_KEY: ${MAIL_CREDENTIALS_KEY:-}
+      CREDENTIALS_KEY: ${MAIL_CREDENTIALS_KEY:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_ANDROID_CLIENT_ID: ${GOOGLE_ANDROID_CLIENT_ID:-}

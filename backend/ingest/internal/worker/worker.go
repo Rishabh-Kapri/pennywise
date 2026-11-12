@@ -17,16 +17,14 @@ import (
 
 // Deps are what the handlers call.
 type Deps struct {
-	Queues  []string
 	Broker  job.Broker
 	Mailbox service.MailboxService
 }
 
-// Setup builds ingest's worker on the broker main already opened, registers
-// its handlers and starts it. The returned channel closes once the worker has
-// stopped: after ctx is cancelled and in-flight jobs finish. With no broker
-// (JOB_DRIVER unset) nothing starts and the channel is already closed.
-func Setup(ctx context.Context, deps Deps) error {
+// Run claims and runs jobs from model.QueueIngest, where every ingest job is
+// queued, until ctx is cancelled and in-flight jobs finish. With no broker
+// (JOB_DRIVER unset) it returns at once.
+func Run(ctx context.Context, deps Deps) error {
 	if deps.Broker == nil {
 		logger.Logger(ctx).Info("job worker off (JOB_DRIVER not set)")
 		return nil
@@ -35,7 +33,7 @@ func Setup(ctx context.Context, deps Deps) error {
 	w, err := jobrunner.NewWorker(
 		deps.Broker,
 		jobrunner.WithConcurrency(2),
-		jobrunner.WithQueues(deps.Queues),
+		jobrunner.WithQueues([]string{model.QueueIngest}),
 		jobrunner.WithPrefix("ingest"),
 	)
 	if err != nil {
@@ -45,9 +43,7 @@ func Setup(ctx context.Context, deps Deps) error {
 	w.RegisterJobHandler(model.JobTypeMailboxBackfill, mailboxBackfill(deps))
 	w.RegisterJobHandler(model.JobTypeMailboxStartWatch, mailboxRenewWatch(deps))
 
-	err = w.Run(ctx)
-	logger.Logger(ctx).Info("run returned")
-	if err != nil {
+	if err := w.Run(ctx); err != nil {
 		return errs.Wrap(errs.CodeWorkerRunError, "worker run failed", err)
 	}
 	return nil

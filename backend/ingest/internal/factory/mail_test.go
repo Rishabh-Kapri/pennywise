@@ -13,7 +13,7 @@ func validConfig() MailConfig {
 	key := make([]byte, 32)
 	_, _ = rand.Read(key)
 	return MailConfig{
-		Providers:      " Gmail , gmail ",
+		Providers:      []string{"Gmail", "gmail"},
 		CredentialsKey: base64.StdEncoding.EncodeToString(key),
 		Gmail: GmailConfig{
 			WebClientID: "id", WebClientSecret: "secret", ProjectID: "p", PubsubTopic: "t",
@@ -45,7 +45,7 @@ func TestNewMailProviders(t *testing.T) {
 	})
 
 	fails := map[string]func(*MailConfig){
-		"unknown provider":      func(c *MailConfig) { c.Providers = "outlook" },
+		"unknown provider":      func(c *MailConfig) { c.Providers = []string{"outlook"} },
 		"bad credentials key":   func(c *MailConfig) { c.CredentialsKey = "short" },
 		"no client id":          func(c *MailConfig) { c.Gmail.WebClientID, c.Gmail.WebClientSecret = "", "" },
 		"web id without secret": func(c *MailConfig) { c.Gmail.WebClientSecret = "" },

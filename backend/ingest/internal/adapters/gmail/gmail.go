@@ -27,32 +27,27 @@ import (
 )
 
 const (
-	providerName = "gmail"
 	// currentUser is Gmail's name for the account a token belongs to.
 	currentUser = "me"
 	// webRedirectURL is what Google's popup flow uses in place of a real URL.
 	webRedirectURL = "postmessage"
 )
 
-// maxSearchDays and maxSearchResults bound a search; Gmail's own limit is the
-// account's whole history, which would be read one message at a time.
-const (
-	maxSearchDays    = 30
-	maxSearchResults = 2000
-	// fetchConcurrency stays well inside Gmail's per-user rate limit.
-	fetchConcurrency = 10
-)
+// fetchConcurrency stays well inside Gmail's per-user rate limit.
+const fetchConcurrency = 10
 
 var scopes = []string{"https://mail.google.com/", "https://www.googleapis.com/auth/userinfo.email"}
 
-// Config is the app-level Gmail setup, the same for every connection.
+// Config is the app-level Gmail setup, the same for every connection. It
+// needs the web client (ID and secret), the Android client, or both: each
+// refreshes the tokens issued to it.
 type Config struct {
-	WebClientID     string
-	WebClientSecret string
-	AndroidClientID string
+	WebClientID     string // GOOGLE_CLIENT_ID
+	WebClientSecret string // GOOGLE_CLIENT_SECRET
+	AndroidClientID string // GOOGLE_ANDROID_CLIENT_ID
 	// ProjectID and PubsubTopic name the topic Gmail pushes to.
-	ProjectID   string
-	PubsubTopic string
+	ProjectID   string // PROJECT_ID
+	PubsubTopic string // PUBSUB_TOPIC
 	// Box opens Connection.Credentials.
 	Box *utils.SecretBox
 }
@@ -84,22 +79,32 @@ type adapter struct {
 	exchange exchangeCode
 }
 
-func New(cfg Config) ports.MailProvider {
+// New checks cfg and returns the adapter, so a misconfigured deploy fails at
+// startup, not on the first email.
+func New(cfg Config) (ports.MailProvider, error) {
+	hasWeb := cfg.WebClientID != "" && cfg.WebClientSecret != ""
+	if !hasWeb && cfg.AndroidClientID == "" {
+		return nil, errs.New(errs.CodeMailNotConfigured,
+			"gmail needs GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, or GOOGLE_ANDROID_CLIENT_ID")
+	}
+	if cfg.ProjectID == "" || cfg.PubsubTopic == "" {
+		return nil, errs.New(errs.CodeMailNotConfigured, "gmail needs PROJECT_ID and PUBSUB_TOPIC")
+	}
+	if cfg.Box == nil {
+		return nil, errs.New(errs.CodeMailNotConfigured, "gmail needs a credentials key")
+	}
 	return &adapter{
 		cfg:  cfg,
 		open: openSDKMailbox,
 		exchange: func(ctx context.Context, cfg *oauth2.Config, code string) (*oauth2.Token, error) {
 			return cfg.Exchange(ctx, code)
 		},
-	}
+	}, nil
 }
 
 // Connect implements [ports.MailProvider] for the web client. The address comes
 // from Gmail, not the caller, so a user can only connect a mailbox they granted.
 func (a *adapter) Connect(ctx context.Context, code string) (ports.ConnectedMailbox, error) {
-	if a.cfg.Box == nil {
-		return ports.ConnectedMailbox{}, errs.New(errs.CodeMailNotConfigured, "gmail adapter has no credentials key")
-	}
 	oauthCfg, err := a.oauthConfig(model.GoogleOAuthClientTypeWeb)
 	if err != nil {
 		return ports.ConnectedMailbox{}, err
@@ -138,9 +143,6 @@ func (a *adapter) Connect(ctx context.Context, code string) (ports.ConnectedMail
 // Watch implements [ports.MailProvider]: Gmail pushes new INBOX mail to the
 // Pub/Sub topic until expiresAt (about a week), so call it again before then.
 func (a *adapter) Watch(ctx context.Context, conn model.MailConnection) (string, time.Time, error) {
-	if a.cfg.ProjectID == "" || a.cfg.PubsubTopic == "" {
-		return "", time.Time{}, errs.New(errs.CodeMailNotConfigured, "gmail watch needs PROJECT_ID and PUBSUB_TOPIC")
-	}
 	mb, err := a.mailboxFor(ctx, conn)
 	if err != nil {
 		return "", time.Time{}, err
@@ -227,14 +229,11 @@ func (a *adapter) FetchSince(ctx context.Context, conn model.MailConnection) ([]
 // Search implements [ports.MailProvider]: everything in the mailbox newer than
 // q.Days, newest first. Gmail leaves out Spam and Trash.
 func (a *adapter) Search(ctx context.Context, conn model.MailConnection, q ports.Query) ([]ports.InboundMessage, error) {
-	days := min(max(q.Days, 1), maxSearchDays)
-	maxResults := min(max(q.MaxResults, 1), maxSearchResults)
-
 	mb, err := a.mailboxFor(ctx, conn)
 	if err != nil {
 		return nil, err
 	}
-	found, err := mb.search(ctx, fmt.Sprintf("newer_than:%dd", days), maxResults)
+	found, err := mb.search(ctx, fmt.Sprintf("newer_than:%dd", q.Days), q.MaxResults)
 	if err != nil {
 		return nil, googleError("search messages", conn, err)
 	}
@@ -287,7 +286,7 @@ func (a *adapter) fetchMessages(
 	messages := make([]ports.InboundMessage, 0, len(ids))
 	for _, msg := range loaded {
 		if msg != nil {
-			messages = append(messages, toInbound(conn, msg))
+			messages = append(messages, toInbound(msg))
 		}
 	}
 	return messages, nil
@@ -312,9 +311,6 @@ func (a *adapter) mailboxFor(ctx context.Context, conn model.MailConnection) (ma
 }
 
 func (a *adapter) openCredentials(conn model.MailConnection) (Credentials, error) {
-	if a.cfg.Box == nil {
-		return Credentials{}, errs.New(errs.CodeMailNotConfigured, "gmail adapter has no credentials key")
-	}
 	raw, err := a.cfg.Box.Open(conn.Credentials)
 	if err != nil {
 		return Credentials{}, errs.Wrap(errs.CodeMailInvalidConnection, "open credentials", err, connDetails(conn))
@@ -370,5 +366,5 @@ func isStatus(err error, status int) bool {
 }
 
 func connDetails(conn model.MailConnection) errs.Option {
-	return errs.WithDetails(map[string]any{"connection_id": conn.ID, "provider": providerName})
+	return errs.WithDetails(map[string]any{"connection_id": conn.ID, "provider": ports.ProviderGmail})
 }

@@ -4,8 +4,11 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -16,6 +19,26 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/job"
 )
 
+// Enqueuer is the part of the job queue the services use.
+type Enqueuer interface {
+	Enqueue(ctx context.Context, jobType string, payload []byte, opts ...job.EnqueueOption) (job.EnqueueResult, error)
+}
+
+// NewEnqueuer returns broker, or with no job queue (nil) one that fails
+// every call with CodeIngestQueueUnavailable.
+func NewEnqueuer(broker job.Broker) Enqueuer {
+	if broker == nil {
+		return noQueue{}
+	}
+	return broker
+}
+
+type noQueue struct{}
+
+func (noQueue) Enqueue(context.Context, string, []byte, ...job.EnqueueOption) (job.EnqueueResult, error) {
+	return job.EnqueueResult{}, errs.New(errs.CodeIngestQueueUnavailable, "no job queue configured")
+}
+
 // Queued is the job created (or found) for one budget.
 type Queued struct {
 	BudgetID  uuid.UUID `json:"budgetId"`
@@ -23,40 +46,49 @@ type Queued struct {
 	Duplicate bool      `json:"duplicate"` // already queued earlier
 }
 
+// Accepted is what Accept queued for one message.
+type Accepted struct {
+	// ExternalID is the message's, or the one derived from its content.
+	ExternalID string   `json:"externalId"`
+	Jobs       []Queued `json:"jobs"`
+}
+
 type IngestService interface {
-	// Accept queues msg once for each budget in msg.BudgetID. It is safe to
-	// call again with the same message: the job idempotency key
-	// (budget, source, provider, external ID) returns the first job instead.
-	// Email bodies are sanitized here, so every path into the pipeline gets
-	// the same text. opts apply to each queued job.
-	Accept(ctx context.Context, msg ports.InboundMessage, opts ...job.EnqueueOption) ([]Queued, error)
+	// Accept queues msg once for each of budgets. It is safe to call again
+	// with the same message: the job idempotency key (budget, source,
+	// provider, external ID) returns the first job instead. A message without
+	// an ExternalID gets one derived from its sender, subject, body and
+	// ReceivedAt. Email bodies are sanitized here, so every path into the
+	// pipeline gets the same text. opts apply to each queued job.
+	Accept(ctx context.Context, budgets []uuid.UUID, msg ports.InboundMessage, opts ...job.EnqueueOption) (Accepted, error)
 }
 
 type ingestService struct {
-	broker job.Broker // nil when no job queue is configured
+	queue Enqueuer
 }
 
-func NewIngestService(broker job.Broker) IngestService {
-	return &ingestService{broker: broker}
+func NewIngestService(queue Enqueuer) IngestService {
+	return &ingestService{queue: queue}
 }
 
 func (s *ingestService) Accept(
 	ctx context.Context,
+	budgets []uuid.UUID,
 	msg ports.InboundMessage,
 	opts ...job.EnqueueOption,
-) ([]Queued, error) {
-	if s.broker == nil {
-		return nil, errs.New(errs.CodeIngestQueueUnavailable, "no job queue configured")
+) (Accepted, error) {
+	if msg.ExternalID == "" && !msg.ReceivedAt.IsZero() {
+		msg.ExternalID = contentID(msg)
 	}
-	if msg.Source == ports.EmailSource {
+	if msg.Source == model.SourceEmail {
 		msg.Body = sanitize.Text(msg.Body)
 	}
-	if err := validate(msg); err != nil {
-		return nil, err
+	if err := validate(budgets, msg); err != nil {
+		return Accepted{}, err
 	}
 
 	payload, err := json.Marshal(model.ReceivedMessage{
-		Source:     string(msg.Source),
+		Source:     msg.Source,
 		Provider:   msg.Provider,
 		ExternalID: msg.ExternalID,
 		Sender:     msg.Sender,
@@ -65,12 +97,12 @@ func (s *ingestService) Accept(
 		ReceivedAt: msg.ReceivedAt,
 	})
 	if err != nil {
-		return nil, errs.Wrap(errs.CodeInternalError, "encode message", err)
+		return Accepted{}, errs.Wrap(errs.CodeInternalError, "encode message", err)
 	}
 
-	queued := make([]Queued, 0, len(msg.BudgetID))
-	for _, budgetID := range msg.BudgetID {
-		res, err := s.broker.Enqueue(
+	accepted := Accepted{ExternalID: msg.ExternalID, Jobs: make([]Queued, 0, len(budgets))}
+	for _, budgetID := range budgets {
+		res, err := s.queue.Enqueue(
 			ctx, model.JobTypeMessageReceived, payload,
 			append([]job.EnqueueOption{
 				job.WithQueue(model.QueueCipher),
@@ -81,20 +113,30 @@ func (s *ingestService) Accept(
 		if err != nil {
 			// Budgets queued before this one stay queued; a retry of the
 			// whole message dedupes them and queues the rest.
-			return nil, err
+			return Accepted{}, err
 		}
-		queued = append(queued, Queued{BudgetID: budgetID, JobID: res.JobID, Duplicate: res.Duplicate})
+		accepted.Jobs = append(accepted.Jobs, Queued{BudgetID: budgetID, JobID: res.JobID, Duplicate: res.Duplicate})
 	}
-	return queued, nil
+	return accepted, nil
 }
 
 // idempotencyKey is unique per budget and message. The jobs table enforces
 // (queue, type, key) across all budgets, so the budget must be part of it.
 func idempotencyKey(budgetID uuid.UUID, msg ports.InboundMessage) string {
-	return strings.Join([]string{budgetID.String(), string(msg.Source), msg.Provider, msg.ExternalID}, ":")
+	return strings.Join([]string{budgetID.String(), msg.Source, msg.Provider, msg.ExternalID}, ":")
 }
 
-func validate(msg ports.InboundMessage) error {
+// contentID derives a stable ID: the same message sent twice gets the same
+// ID, while two identical alerts at different times don't collide. How the
+// message arrived stays out of it, so an SMS caught live and imported from the
+// inbox later is one message. Changing it re-queues messages already queued.
+func contentID(msg ports.InboundMessage) string {
+	sum := sha256.Sum256([]byte(msg.Sender + "\x00" + msg.Subject + "\x00" + msg.Body + "\x00" +
+		msg.ReceivedAt.UTC().Format(time.RFC3339Nano)))
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+func validate(budgets []uuid.UUID, msg ports.InboundMessage) error {
 	var missing []string
 	if msg.Source == "" {
 		missing = append(missing, "source")
@@ -103,12 +145,12 @@ func validate(msg ports.InboundMessage) error {
 		missing = append(missing, "provider")
 	}
 	if msg.ExternalID == "" {
-		missing = append(missing, "external id")
+		missing = append(missing, "external id or received time")
 	}
 	if strings.TrimSpace(msg.Body) == "" {
 		missing = append(missing, "body")
 	}
-	if len(msg.BudgetID) == 0 {
+	if len(budgets) == 0 {
 		missing = append(missing, "budget")
 	}
 	if len(missing) > 0 {

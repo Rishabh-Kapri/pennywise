@@ -16,6 +16,7 @@ import (
 	"cloud.google.com/go/pubsub"
 	"google.golang.org/api/option"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/ingest/internal/ports"
 	"github.com/Rishabh-Kapri/pennywise/backend/ingest/internal/service"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
@@ -72,7 +73,7 @@ func (s *GmailSubscriber) Run(ctx context.Context) error {
 	// Receive runs the callback concurrently; that's safe because handling
 	// only enqueues, and duplicates collapse on the idempotency key.
 	return sub.Receive(ctx, func(msgCtx context.Context, msg *pubsub.Message) {
-		if s.handle(s.messageContext(msgCtx, ctx), msg.Data) {
+		if s.handle(messageContext(msgCtx), msg.Data) {
 			msg.Ack()
 		} else {
 			msg.Nack()
@@ -80,12 +81,10 @@ func (s *GmailSubscriber) Run(ctx context.Context) error {
 	})
 }
 
-// messageContext gives each push its own correlation ID, plus the service
-// identity (and outbound token) from the base ctx.
-func (s *GmailSubscriber) messageContext(msgCtx, base context.Context) context.Context {
-	ctx := utils.WithLocalService(msgCtx, utils.LocalServiceFromContext(base))
-	ctx = utils.WithInternalAuthToken(ctx, utils.InternalAuthTokenFromContext(base))
-	ctx = utils.WithOriginService(ctx, originService)
+// messageContext gives each push its own correlation ID. msgCtx derives from
+// Run's ctx, so it already carries the service identity and outbound token.
+func messageContext(msgCtx context.Context) context.Context {
+	ctx := utils.WithOriginService(msgCtx, originService)
 	return utils.WithCorrelationID(ctx, utils.NewCorrelationID())
 }
 
@@ -102,7 +101,7 @@ func (s *GmailSubscriber) handle(ctx context.Context, data []byte) (ack bool) {
 	}
 
 	res, err := s.mailbox.Changed(ctx, model.MailboxChanged{
-		Provider: "gmail",
+		Provider: ports.ProviderGmail,
 		Account:  push.EmailAddress,
 		Cursor:   strconv.FormatUint(push.HistoryID, 10),
 	})

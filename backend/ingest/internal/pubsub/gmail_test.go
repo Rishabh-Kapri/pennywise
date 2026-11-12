@@ -18,10 +18,6 @@ type fakeMailbox struct {
 	err error
 }
 
-func (f *fakeMailbox) Sync(context.Context, model.MailboxChanged, ...job.EnqueueOption) (service.SyncResult, error) {
-	return service.SyncResult{}, nil
-}
-
 func (f *fakeMailbox) Changed(_ context.Context, n model.MailboxChanged) (job.EnqueueResult, error) {
 	f.got = append(f.got, n)
 	return job.EnqueueResult{JobID: uuid.New()}, f.err

@@ -22,13 +22,13 @@ import (
 )
 
 // MailProviders picks the adapter for a connection's provider. The factory's
-// registry (factory.MailProviders) satisfies it.
+// registry (factory.MailProviderRegistry) satisfies it.
 type MailProviders interface {
 	For(provider string) (ports.MailProvider, error)
 }
 
-// MailboxDeps is what Sync needs. Changed only needs the broker.
 type MailboxDeps struct {
+	Queue       Enqueuer
 	Connections repository.MailConnectionRepository
 	Budgets     repository.BudgetRepository
 	Providers   MailProviders
@@ -48,15 +48,20 @@ type WatchRenewal struct {
 	Skipped string `json:"skipped,omitempty"`
 }
 
+// Counts is what queuing a batch of messages did.
+type Counts struct {
+	Queued     int `json:"queued"`     // new message.received jobs
+	Duplicates int `json:"duplicates"` // already queued earlier
+	Dropped    int `json:"dropped"`    // messages that can never be queued (e.g. empty body)
+}
+
 // SyncResult is what one Sync did; it becomes the job's result.
 type SyncResult struct {
 	// Skipped says why nothing was fetched; empty when the sync ran.
-	Skipped    string `json:"skipped,omitempty"`
-	Fetched    int    `json:"fetched"`
-	Queued     int    `json:"queued"`     // new message.received jobs
-	Duplicates int    `json:"duplicates"` // already queued earlier
-	Dropped    int    `json:"dropped"`    // messages that can never be queued (e.g. empty body)
-	Cursor     string `json:"cursor,omitempty"`
+	Skipped string `json:"skipped,omitempty"`
+	Fetched int    `json:"fetched"`
+	Counts
+	Cursor string `json:"cursor,omitempty"`
 }
 
 const (
@@ -68,9 +73,7 @@ const (
 
 // BackfillResult is what one Backfill did.
 type BackfillResult struct {
-	Queued     int `json:"queued"`
-	Duplicates int `json:"duplicates"` // imported earlier
-	Dropped    int `json:"dropped"`    // messages that can never be queued (e.g. empty body)
+	Counts
 }
 
 type MailboxService interface {
@@ -89,9 +92,10 @@ type MailboxService interface {
 	// without bodies, for the user to choose from. Nothing is queued.
 	BackfillCandidates(ctx context.Context, budgetID, connectionID uuid.UUID) ([]ports.InboundMessage, error)
 
-	// QueueBackfill queues the job that imports the emails named by externalIDs.
-	// The same choice queued twice maps to the same job. Returns
-	// CodeConnectionNotFound for another budget's mailbox.
+	// QueueBackfill queues the job that imports the emails named by externalIDs,
+	// at most as many as BackfillCandidates lists. The same choice queued twice
+	// maps to the same job. Returns CodeConnectionNotFound for another budget's
+	// mailbox.
 	QueueBackfill(
 		ctx context.Context,
 		budgetID, connectionID uuid.UUID,
@@ -148,12 +152,11 @@ type MailboxService interface {
 }
 
 type mailboxService struct {
-	broker job.Broker // nil when no job queue is configured
-	deps   MailboxDeps
+	deps MailboxDeps
 }
 
-func NewMailboxService(broker job.Broker, deps MailboxDeps) MailboxService {
-	return &mailboxService{broker: broker, deps: deps}
+func NewMailboxService(deps MailboxDeps) MailboxService {
+	return &mailboxService{deps: deps}
 }
 
 func (s *mailboxService) Changed(ctx context.Context, n model.MailboxChanged) (job.EnqueueResult, error) {
@@ -164,15 +167,12 @@ func (s *mailboxService) Changed(ctx context.Context, n model.MailboxChanged) (j
 		return job.EnqueueResult{}, errs.New(errs.CodeIngestInvalidMessage,
 			"mailbox notification needs provider, account and cursor")
 	}
-	if s.broker == nil {
-		return job.EnqueueResult{}, errs.New(errs.CodeIngestQueueUnavailable, "no job queue configured")
-	}
 
 	payload, err := json.Marshal(n)
 	if err != nil {
 		return job.EnqueueResult{}, errs.Wrap(errs.CodeInternalError, "encode notification", err)
 	}
-	return s.broker.Enqueue(ctx, model.JobTypeMailboxChanged, payload,
+	return s.deps.Queue.Enqueue(ctx, model.JobTypeMailboxChanged, payload,
 		job.WithQueue(model.QueueIngest),
 		job.WithIdempotencyKey(n.Provider+":"+n.Account+":"+n.Cursor))
 }
@@ -197,11 +197,7 @@ func (s *mailboxService) Connect(
 
 	cursor, expiresAt, err := provider.Watch(ctx, *conn)
 	if err != nil {
-		if saveErr := s.deps.Connections.SaveFailure(
-			ctx, conn.ID, model.MailConnectionError, err.Error(),
-		); saveErr != nil {
-			logger.Logger(ctx).Error("record failed watch", "connection_id", conn.ID, "err", saveErr)
-		}
+		s.recordFailure(ctx, conn.ID, err)
 		return nil, err
 	}
 	if err := s.deps.Connections.SaveWatch(ctx, conn.ID, cursor, expiresAt); err != nil {
@@ -261,13 +257,8 @@ func (s *mailboxService) RenewWatch(ctx context.Context, connectionID uuid.UUID)
 	if err != nil {
 		return WatchRenewal{}, err
 	}
-	switch {
-	case conn.PausedAt != nil:
-		return WatchRenewal{Skipped: "connection is paused"}, nil
-	case len(conn.BudgetIDs) == 0:
-		return WatchRenewal{Skipped: "connection has no budgets"}, nil
-	case conn.Status == model.MailConnectionNeedsReconnect:
-		return WatchRenewal{Skipped: "connection needs reconnecting"}, nil
+	if skip := unusable(conn); skip != "" {
+		return WatchRenewal{Skipped: skip}, nil
 	}
 
 	provider, err := s.deps.Providers.For(conn.Provider)
@@ -275,16 +266,16 @@ func (s *mailboxService) RenewWatch(ctx context.Context, connectionID uuid.UUID)
 		return WatchRenewal{}, err
 	}
 	cursor, expiresAt, err := provider.Watch(ctx, *conn)
-	if errs.HasCode(err, errs.CodeMailAuthFailed) {
-		if saveErr := s.deps.Connections.SaveFailure(
-			ctx, conn.ID, model.MailConnectionNeedsReconnect, err.Error(),
-		); saveErr != nil {
-			return WatchRenewal{}, saveErr
-		}
-		return WatchRenewal{Skipped: "credentials were refused"}, nil
-	}
 	if err != nil {
-		return WatchRenewal{}, err
+		// A temporary failure isn't recorded: the old watch still runs.
+		status, skip := failure(err)
+		if skip == "" {
+			return WatchRenewal{}, err
+		}
+		if err := s.deps.Connections.SaveFailure(ctx, conn.ID, status, err.Error()); err != nil {
+			return WatchRenewal{}, err
+		}
+		return WatchRenewal{Skipped: skip}, nil
 	}
 	// Keep the stored cursor: Watch returns the mailbox's latest position, and
 	// moving to it would skip anything not synced yet.
@@ -344,19 +335,17 @@ func (s *mailboxService) SetPaused(
 		return nil, err
 	}
 	cursor, expiresAt, err := provider.Watch(ctx, *conn)
-	switch {
-	case errs.HasCode(err, errs.CodeMailAuthFailed):
-		if err := s.deps.Connections.SaveFailure(
-			ctx, conn.ID, model.MailConnectionNeedsReconnect, err.Error(),
-		); err != nil {
+	if err != nil {
+		// Only a failure retrying can't fix resumes the mailbox, in that state.
+		status, skip := failure(err)
+		if skip == "" {
 			return nil, err
 		}
-	case err != nil:
+		if err := s.deps.Connections.SaveFailure(ctx, conn.ID, status, err.Error()); err != nil {
+			return nil, err
+		}
+	} else if err := s.deps.Connections.SaveWatch(ctx, conn.ID, cursor, expiresAt); err != nil {
 		return nil, err
-	default:
-		if err := s.deps.Connections.SaveWatch(ctx, conn.ID, cursor, expiresAt); err != nil {
-			return nil, err
-		}
 	}
 	// Before unpausing: once unpaused, a retry returns early and would never
 	// get here.
@@ -431,12 +420,13 @@ func (s *mailboxService) QueueBackfill(
 	budgetID, connectionID uuid.UUID,
 	externalIDs []string,
 ) (job.EnqueueResult, error) {
+	if len(externalIDs) > backfillMaxEmails {
+		return job.EnqueueResult{}, errs.New(errs.CodeIngestInvalidMessage,
+			"choose at most %d emails", backfillMaxEmails)
+	}
 	conn, err := s.connectionFor(ctx, budgetID, connectionID)
 	if err != nil {
 		return job.EnqueueResult{}, err
-	}
-	if s.broker == nil {
-		return job.EnqueueResult{}, errs.New(errs.CodeIngestQueueUnavailable, "no job queue configured")
 	}
 
 	ids := slices.Sorted(slices.Values(externalIDs))
@@ -449,7 +439,7 @@ func (s *mailboxService) QueueBackfill(
 		return job.EnqueueResult{}, errs.Wrap(errs.CodeInternalError, "encode backfill", err)
 	}
 	choice := sha256.Sum256([]byte(strings.Join(ids, "\x00")))
-	return s.broker.Enqueue(ctx, model.JobTypeMailboxBackfill, payload,
+	return s.deps.Queue.Enqueue(ctx, model.JobTypeMailboxBackfill, payload,
 		job.WithQueue(model.QueueIngest),
 		job.WithBudgetID(&budgetID),
 		job.WithIdempotencyKey(budgetID.String()+":"+conn.ID.String()+":"+hex.EncodeToString(choice[:])))
@@ -475,84 +465,40 @@ func (s *mailboxService) Backfill(
 		return BackfillResult{}, err
 	}
 
-	var res BackfillResult
+	counts, err := s.queueAll(ctx, []uuid.UUID{budgetID}, messages, opts)
+	return BackfillResult{Counts: counts}, err
+}
+
+// queueAll accepts each message for budgets, reporting progress as it goes.
+// A message that can never be queued is dropped, so it can't block the rest;
+// any other failure stops the batch for a retry.
+func (s *mailboxService) queueAll(
+	ctx context.Context,
+	budgets []uuid.UUID,
+	messages []ports.InboundMessage,
+	opts []job.EnqueueOption,
+) (Counts, error) {
+	var counts Counts
 	for i, msg := range messages {
-		reportQueued(ctx, i, len(messages))
-		msg.BudgetID = []uuid.UUID{budgetID}
-		queued, err := s.deps.Ingest.Accept(ctx, msg, opts...)
+		jobrunner.ReportProgress(ctx, job.Progress{Message: "Queuing emails", Current: i + 1, Total: len(messages)})
+		accepted, err := s.deps.Ingest.Accept(ctx, budgets, msg, opts...)
 		if errs.HasCode(err, errs.CodeIngestInvalidMessage) {
-			res.Dropped++
+			logger.Logger(ctx).Warn("dropping message that can't be queued", "external_id", msg.ExternalID, "err", err)
+			counts.Dropped++
 			continue
 		}
 		if err != nil {
-			return res, err
+			return counts, err
 		}
-		for _, q := range queued {
+		for _, q := range accepted.Jobs {
 			if q.Duplicate {
-				res.Duplicates++
+				counts.Duplicates++
 			} else {
-				res.Queued++
+				counts.Queued++
 			}
 		}
 	}
-	return res, nil
-}
-
-// reportQueued says how far a job is through queuing its emails. done is how
-// many are finished before this one.
-func reportQueued(ctx context.Context, done, total int) {
-	jobrunner.ReportProgress(ctx, job.Progress{Message: "Queuing emails", Current: done + 1, Total: total})
-}
-
-// fetched is what Sync and Preview share: the connection, its live
-// budgets, and what the provider returned.
-type fetched struct {
-	conn     *model.MailConnection
-	budgets  []uuid.UUID
-	messages []ports.InboundMessage
-	cursor   string
-}
-
-// fetch looks the connection up and fetches from its cursor. A non-empty
-// skip means there is nothing to do (and no error to retry).
-func (s *mailboxService) fetch(ctx context.Context, n model.MailboxChanged) (*fetched, string, error) {
-	conn, err := s.deps.Connections.GetByAccount(ctx, n.Provider, n.Account)
-	if errs.HasCode(err, errs.CodeConnectionNotFound) {
-		// e.g. a mailbox go-gmail still watches but ingest doesn't know yet
-		return nil, "no connection for this mailbox", nil
-	}
-	if err != nil {
-		return nil, "", err
-	}
-	if len(conn.BudgetIDs) == 0 {
-		return nil, "connection is disabled", nil
-	}
-	if conn.PausedAt != nil {
-		return nil, "connection is paused", nil
-	}
-	if conn.Status == model.MailConnectionNeedsReconnect {
-		return nil, "connection needs reconnecting", nil
-	}
-
-	budgets, err := s.liveBudgets(ctx, conn.BudgetIDs)
-	if err != nil {
-		return nil, "", err
-	}
-	if len(budgets) == 0 {
-		return nil, "none of the connection's budgets exist", nil
-	}
-
-	provider, err := s.deps.Providers.For(conn.Provider)
-	if err != nil {
-		return nil, "", err // config problem: retried, then dead
-	}
-
-	messages, cursor, err := provider.FetchSince(ctx, *conn)
-	if err != nil {
-		skip, err := s.fetchFailed(ctx, conn, err)
-		return nil, skip, err
-	}
-	return &fetched{conn: conn, budgets: budgets, messages: messages, cursor: cursor}, "", nil
+	return counts, nil
 }
 
 func (s *mailboxService) Sync(
@@ -562,65 +508,89 @@ func (s *mailboxService) Sync(
 ) (SyncResult, error) {
 	log := logger.Logger(ctx)
 	jobrunner.ReportProgress(ctx, job.Progress{Message: "Reading the mailbox"})
-	f, skip, err := s.fetch(ctx, n)
-	if err != nil || skip != "" {
-		return SyncResult{Skipped: skip}, err
-	}
-	conn, budgets, messages, cursor := f.conn, f.budgets, f.messages, f.cursor
 
-	res := SyncResult{Fetched: len(messages), Cursor: cursor}
-	for i, msg := range messages {
-		reportQueued(ctx, i, len(messages))
-		msg.BudgetID = budgets // only budgets that still exist
-		queued, err := s.deps.Ingest.Accept(ctx, msg, opts...)
-		if errs.HasCode(err, errs.CodeIngestInvalidMessage) {
-			// It will be just as invalid next time; don't block the mailbox on it.
-			log.Warn("dropping message that can't be queued",
-				"connection_id", conn.ID, "external_id", msg.ExternalID, "err", err)
-			res.Dropped++
-			continue
-		}
-		if err != nil {
-			return SyncResult{}, err // cursor not saved: the retry refetches
-		}
-		for _, q := range queued {
-			if q.Duplicate {
-				res.Duplicates++
-			} else {
-				res.Queued++
-			}
-		}
+	conn, err := s.deps.Connections.GetByAccount(ctx, n.Provider, n.Account)
+	if errs.HasCode(err, errs.CodeConnectionNotFound) {
+		// e.g. a mailbox go-gmail still watches but ingest doesn't know yet
+		return SyncResult{Skipped: "no connection for this mailbox"}, nil
+	}
+	if err != nil {
+		return SyncResult{}, err
+	}
+	if skip := unusable(conn); skip != "" {
+		return SyncResult{Skipped: skip}, nil
+	}
+	budgets, err := s.liveBudgets(ctx, conn.BudgetIDs)
+	if err != nil {
+		return SyncResult{}, err
+	}
+	if len(budgets) == 0 {
+		return SyncResult{Skipped: "none of the connection's budgets exist"}, nil
+	}
+	provider, err := s.deps.Providers.For(conn.Provider)
+	if err != nil {
+		return SyncResult{}, err // config problem: retried, then dead
 	}
 
+	messages, cursor, err := provider.FetchSince(ctx, *conn)
+	if err != nil {
+		if skip := s.recordFailure(ctx, conn.ID, err); skip != "" {
+			log.Warn("mailbox sync skipped", "connection_id", conn.ID, "reason", skip, "err", err)
+			return SyncResult{Skipped: skip}, nil
+		}
+		return SyncResult{}, err
+	}
+
+	counts, err := s.queueAll(ctx, budgets, messages, opts)
+	if err != nil {
+		return SyncResult{}, err // cursor not saved: the retry refetches
+	}
 	// Only now, with every message queued, move the cursor forward.
 	if err := s.deps.Connections.SaveSync(ctx, conn.ID, cursor); err != nil {
 		return SyncResult{}, err
 	}
+	res := SyncResult{Fetched: len(messages), Counts: counts, Cursor: cursor}
 	log.Info("mailbox synced", "connection_id", conn.ID, "fetched", res.Fetched,
 		"queued", res.Queued, "duplicates", res.Duplicates, "dropped", res.Dropped)
 	return res, nil
 }
 
-// fetchFailed classifies a failed fetch and writes it to the connection. Failures only the user (or a new watch) can fix return
-// a skip reason and no error; anything else is returned for a retry.
-func (s *mailboxService) fetchFailed(ctx context.Context, conn *model.MailConnection, err error) (string, error) {
-	status, skip := model.MailConnectionError, ""
+// unusable says why a connection can't be synced or watched right now; ""
+// when it can.
+func unusable(conn *model.MailConnection) string {
+	switch {
+	case len(conn.BudgetIDs) == 0:
+		return "connection has no budgets"
+	case conn.PausedAt != nil:
+		return "connection is paused"
+	case conn.Status == model.MailConnectionNeedsReconnect:
+		return "connection needs reconnecting"
+	}
+	return ""
+}
+
+// failure is what a provider error means for a connection: the status to
+// show, and why retrying won't help ("" when it might).
+func failure(err error) (status model.MailConnectionStatus, permanent string) {
 	switch {
 	case errs.HasCode(err, errs.CodeMailAuthFailed):
-		status, skip = model.MailConnectionNeedsReconnect, "credentials refused; user must reconnect"
+		return model.MailConnectionNeedsReconnect, "credentials refused; user must reconnect"
 	case errs.HasCode(err, errs.CodeMailCursorExpired):
-		skip = "history cursor expired; mailbox needs a new watch and a backfill"
+		return model.MailConnectionError, "history cursor expired; mailbox needs a new watch and a backfill"
 	case errs.HasCode(err, errs.CodeMailInvalidConnection):
-		skip = "connection row is unusable (credentials or cursor)"
+		return model.MailConnectionError, "connection row is unusable (credentials or cursor)"
 	}
-	if saveErr := s.deps.Connections.SaveFailure(ctx, conn.ID, status, err.Error()); saveErr != nil {
-		logger.Logger(ctx).Error("record sync failure", "connection_id", conn.ID, "err", saveErr)
+	return model.MailConnectionError, ""
+}
+
+// recordFailure writes err to the connection, best effort, and returns
+// failure's reason retrying won't help.
+func (s *mailboxService) recordFailure(ctx context.Context, connectionID uuid.UUID, err error) string {
+	status, permanent := failure(err)
+	if saveErr := s.deps.Connections.SaveFailure(ctx, connectionID, status, err.Error()); saveErr != nil {
+		logger.Logger(ctx).Error("record connection failure", "connection_id", connectionID, "err", saveErr)
 	}
-	if skip != "" {
-		logger.Logger(ctx).Warn("mailbox sync skipped", "connection_id", conn.ID, "reason", skip, "err", err)
-		return skip, nil
-	}
-	return "", err
+	return permanent
 }
 
 // liveBudgets drops budgets that were deleted since they were attached

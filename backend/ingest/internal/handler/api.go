@@ -3,8 +3,7 @@
 package handler
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
+	"cmp"
 	"net/http"
 	"time"
 
@@ -15,6 +14,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/ingest/internal/service"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	sharedMiddleware "github.com/Rishabh-Kapri/pennywise/backend/shared/middleware"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 )
@@ -22,15 +22,6 @@ import (
 // maxRequestBytes caps one request. Bank alerts are a few KB; this leaves
 // room for HTML emails without letting a client stream megabytes in.
 const maxRequestBytes = 256 << 10
-
-// APIProvider is the provider name for messages posted to the API.
-const APIProvider = "api"
-
-// SmsProvider is the provider name for SMS forwarded by the Android app.
-const SmsProvider = "android"
-
-// defaultMailProvider is used when a request names no provider.
-const defaultMailProvider = "gmail"
 
 // APIMessageReq is one message posted directly by a client.
 type APIMessageReq struct {
@@ -99,7 +90,7 @@ type BackfillCandidate struct {
 
 // BackfillReq names the candidates to import.
 type BackfillReq struct {
-	ExternalIDs []string `json:"externalIds" binding:"required,min=1,max=2000,dive,required,max=200"`
+	ExternalIDs []string `json:"externalIds" binding:"required,min=1,dive,required,max=200"`
 }
 
 // TestMailboxReq names the mailbox to sync, as a provider push would.
@@ -108,50 +99,37 @@ type TestMailboxReq struct {
 	Account  string `json:"account"  binding:"required,max=320"`
 }
 
-type APIHandler interface {
-	// Ingest is POST /api/ingest/messages. The budget comes from
-	// X-Budget-ID (BudgetIdMiddleware). Replies 202 with the queued jobs.
-	Ingest(c *gin.Context)
-	// Sms is POST /api/ingest/sms, for SMS from the Android app. The budget
-	// comes from X-Budget-ID. Replies 202 with the queued jobs.
-	Sms(c *gin.Context)
-	// Connect is POST /api/ingest/connections: it connects the mailbox behind a
-	// consent code to the budget in X-Budget-ID.
-	Connect(c *gin.Context)
-	// BackfillCandidates is GET /api/ingest/connections/:id/backfill.
-	BackfillCandidates(c *gin.Context)
-	// Backfill is POST /api/ingest/connections/:id/backfill. It queues the
-	// import and replies 202 with the job.
-	Backfill(c *gin.Context)
-	// UpdateConnection is PATCH /api/ingest/connections/:id: it pauses or
-	// resumes a mailbox.
-	UpdateConnection(c *gin.Context)
-	// Disconnect is DELETE /api/ingest/connections/:id: it removes a mailbox
-	// from the budget in X-Budget-ID. Replies 204.
-	Disconnect(c *gin.Context)
-	// ListConnections is GET /api/ingest/connections.
-	ListConnections(c *gin.Context)
-	// Test is POST /api/ingest/test: it queues a mailbox.changed job for a
-	// mailbox of the budget in X-Budget-ID. Replies 202 with the job.
-	Test(c *gin.Context)
-}
-
-type apiHandler struct {
+// APIHandler serves /api/ingest. Every route writes to or reads the budget in
+// X-Budget-ID, which the caller's middleware has already checked.
+type APIHandler struct {
 	ingest  service.IngestService
 	mailbox service.MailboxService
 }
 
-func NewAPIHandler(ingest service.IngestService, mailbox service.MailboxService) APIHandler {
-	return &apiHandler{ingest: ingest, mailbox: mailbox}
+func NewAPIHandler(ingest service.IngestService, mailbox service.MailboxService) *APIHandler {
+	return &APIHandler{ingest: ingest, mailbox: mailbox}
 }
 
-func (h *apiHandler) Ingest(c *gin.Context) {
-	ctx := c.Request.Context()
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxRequestBytes)
+// Register adds the routes, each with the API key scope it needs.
+func (h *APIHandler) Register(r gin.IRoutes) {
+	read := sharedMiddleware.RequireScopes(model.ScopeRead)
+	write := sharedMiddleware.RequireScopes(model.ScopeWrite)
+	r.POST("/messages", write, h.Ingest)
+	r.POST("/sms", write, h.Sms)
+	r.GET("/connections", read, h.ListConnections)
+	r.POST("/connections", write, h.Connect)
+	r.PATCH("/connections/:id", write, h.UpdateConnection)
+	r.DELETE("/connections/:id", write, h.Disconnect)
+	r.GET("/connections/:id/backfill", read, h.BackfillCandidates)
+	r.POST("/connections/:id/backfill", write, h.Backfill)
+	r.POST("/test", write, h.Test)
+}
 
+// Ingest queues a message posted by a client. Replies 202 with the queued jobs.
+func (h *APIHandler) Ingest(c *gin.Context) {
 	var req APIMessageReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	budgetID, ok := bindForBudget(c, &req)
+	if !ok {
 		return
 	}
 	if req.ExternalID == "" && req.ReceivedAt == nil {
@@ -160,90 +138,55 @@ func (h *apiHandler) Ingest(c *gin.Context) {
 		})
 		return
 	}
-
-	budgetID, err := utils.BudgetIDFromContext(ctx)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "missing budget"})
-		return
-	}
-
-	receivedAt := time.Now().UTC()
+	receivedAt := time.Now()
 	if req.ReceivedAt != nil {
-		receivedAt = req.ReceivedAt.UTC()
+		receivedAt = *req.ReceivedAt
 	}
-	externalID := req.ExternalID
-	if externalID == "" {
-		externalID = contentID(req.Sender, req.Subject, req.Body, receivedAt)
-	}
-
-	queued, err := h.ingest.Accept(ctx, ports.InboundMessage{
-		Source:     ports.ApiSource,
-		Provider:   APIProvider,
-		BudgetID:   []uuid.UUID{budgetID},
-		ExternalID: externalID,
+	h.accept(c, budgetID, ports.InboundMessage{
+		Source:     model.SourceAPI,
+		Provider:   ports.ProviderAPI,
+		ExternalID: req.ExternalID,
 		Sender:     req.Sender,
 		Subject:    req.Subject,
 		Body:       req.Body,
-		ReceivedAt: receivedAt,
+		ReceivedAt: receivedAt.UTC(),
 	})
-	if err != nil {
-		writeError(c, err)
-		return
-	}
-	c.JSON(http.StatusAccepted, gin.H{"externalId": externalID, "jobs": queued})
 }
 
-func (h *apiHandler) Sms(c *gin.Context) {
-	ctx := c.Request.Context()
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxRequestBytes)
-
+// Sms queues an SMS from the Android app. Replies 202 with the queued jobs.
+func (h *APIHandler) Sms(c *gin.Context) {
 	var req SmsMessageReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	budgetID, ok := bindForBudget(c, &req)
+	if !ok {
 		return
 	}
-	budgetID, err := utils.BudgetIDFromContext(ctx)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "missing budget"})
-		return
-	}
-
-	receivedAt := req.ReceivedAt.UTC()
-	externalID := contentID(req.Sender, "", req.Body, receivedAt)
-	queued, err := h.ingest.Accept(ctx, ports.InboundMessage{
-		Source:     ports.SmsSource,
-		Provider:   SmsProvider,
-		BudgetID:   []uuid.UUID{budgetID},
-		ExternalID: externalID,
+	h.accept(c, budgetID, ports.InboundMessage{
+		Source:     model.SourceSMS,
+		Provider:   ports.ProviderAndroid,
 		Sender:     req.Sender,
 		Body:       req.Body,
-		ReceivedAt: receivedAt,
+		ReceivedAt: req.ReceivedAt.UTC(),
 	})
+}
+
+func (h *APIHandler) accept(c *gin.Context, budgetID uuid.UUID, msg ports.InboundMessage) {
+	accepted, err := h.ingest.Accept(c.Request.Context(), []uuid.UUID{budgetID}, msg)
 	if err != nil {
 		writeError(c, err)
 		return
 	}
-	c.JSON(http.StatusAccepted, gin.H{"externalId": externalID, "jobs": queued})
+	c.JSON(http.StatusAccepted, accepted)
 }
 
-func (h *apiHandler) Connect(c *gin.Context) {
-	ctx := c.Request.Context()
+// Connect connects the mailbox behind a consent code to the budget.
+func (h *APIHandler) Connect(c *gin.Context) {
 	var req ConnectMailboxReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	budgetID, ok := bindForBudget(c, &req)
+	if !ok {
 		return
 	}
-	budgetID, err := utils.BudgetIDFromContext(ctx)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "missing budget"})
-		return
-	}
-	provider := req.Provider
-	if provider == "" {
-		provider = defaultMailProvider
-	}
-
-	conn, err := h.mailbox.Connect(ctx, budgetID, provider, req.Code)
+	provider := cmp.Or(req.Provider, ports.ProviderGmail)
+	conn, err := h.mailbox.Connect(c.Request.Context(), budgetID, provider, req.Code)
 	if err != nil {
 		writeError(c, err)
 		return
@@ -251,14 +194,14 @@ func (h *apiHandler) Connect(c *gin.Context) {
 	c.JSON(http.StatusCreated, connectionView(*conn))
 }
 
-func (h *apiHandler) UpdateConnection(c *gin.Context) {
+// UpdateConnection pauses or resumes a mailbox.
+func (h *APIHandler) UpdateConnection(c *gin.Context) {
 	budgetID, connectionID, ok := connectionTarget(c)
 	if !ok {
 		return
 	}
 	var req UpdateConnectionReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if !bind(c, &req) {
 		return
 	}
 	conn, err := h.mailbox.SetPaused(c.Request.Context(), budgetID, connectionID, *req.Paused)
@@ -269,7 +212,8 @@ func (h *apiHandler) UpdateConnection(c *gin.Context) {
 	c.JSON(http.StatusOK, connectionView(*conn))
 }
 
-func (h *apiHandler) Disconnect(c *gin.Context) {
+// Disconnect removes a mailbox from the budget. Replies 204.
+func (h *APIHandler) Disconnect(c *gin.Context) {
 	budgetID, connectionID, ok := connectionTarget(c)
 	if !ok {
 		return
@@ -281,23 +225,8 @@ func (h *apiHandler) Disconnect(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// connectionTarget reads the budget and connection a /connections/:id route is for. On
-// false it has already answered the request.
-func connectionTarget(c *gin.Context) (budgetID, connectionID uuid.UUID, ok bool) {
-	budgetID, err := utils.BudgetIDFromContext(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "missing budget"})
-		return uuid.Nil, uuid.Nil, false
-	}
-	connectionID, err = uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid connection id"})
-		return uuid.Nil, uuid.Nil, false
-	}
-	return budgetID, connectionID, true
-}
-
-func (h *apiHandler) BackfillCandidates(c *gin.Context) {
+// BackfillCandidates lists a mailbox's recent emails, without bodies.
+func (h *APIHandler) BackfillCandidates(c *gin.Context) {
 	budgetID, connectionID, ok := connectionTarget(c)
 	if !ok {
 		return
@@ -319,14 +248,14 @@ func (h *apiHandler) BackfillCandidates(c *gin.Context) {
 	c.JSON(http.StatusOK, candidates)
 }
 
-func (h *apiHandler) Backfill(c *gin.Context) {
+// Backfill queues the import of the chosen emails. Replies 202 with the job.
+func (h *APIHandler) Backfill(c *gin.Context) {
 	budgetID, connectionID, ok := connectionTarget(c)
 	if !ok {
 		return
 	}
 	var req BackfillReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	if !bind(c, &req) {
 		return
 	}
 	queued, err := h.mailbox.QueueBackfill(c.Request.Context(), budgetID, connectionID, req.ExternalIDs)
@@ -337,14 +266,13 @@ func (h *apiHandler) Backfill(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{"jobId": queued.JobID})
 }
 
-func (h *apiHandler) ListConnections(c *gin.Context) {
-	ctx := c.Request.Context()
-	budgetID, err := utils.BudgetIDFromContext(ctx)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "missing budget"})
+// ListConnections lists the budget's mailboxes.
+func (h *APIHandler) ListConnections(c *gin.Context) {
+	budgetID, ok := budget(c)
+	if !ok {
 		return
 	}
-	connections, err := h.mailbox.ListConnections(ctx, budgetID)
+	connections, err := h.mailbox.ListConnections(c.Request.Context(), budgetID)
 	if err != nil {
 		writeError(c, err)
 		return
@@ -356,24 +284,16 @@ func (h *apiHandler) ListConnections(c *gin.Context) {
 	c.JSON(http.StatusOK, views)
 }
 
-func (h *apiHandler) Test(c *gin.Context) {
-	ctx := c.Request.Context()
+// Test queues a mailbox.changed job for one of the budget's mailboxes, as a
+// provider push would. Replies 202 with the job.
+func (h *APIHandler) Test(c *gin.Context) {
 	var req TestMailboxReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	budgetID, ok := bindForBudget(c, &req)
+	if !ok {
 		return
 	}
-	budgetID, err := utils.BudgetIDFromContext(ctx)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "missing budget"})
-		return
-	}
-	provider := req.Provider
-	if provider == "" {
-		provider = defaultMailProvider
-	}
-
-	res, err := h.mailbox.Test(ctx, budgetID, provider, req.Account)
+	provider := cmp.Or(req.Provider, ports.ProviderGmail)
+	res, err := h.mailbox.Test(c.Request.Context(), budgetID, provider, req.Account)
 	if err != nil {
 		writeError(c, err)
 		return
@@ -381,12 +301,46 @@ func (h *apiHandler) Test(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{"jobId": res.JobID})
 }
 
-// contentID derives a stable dedupe ID: the same message sent twice gets the
-// same ID, while two identical alerts at different times don't collide.
-func contentID(sender, subject, body string, receivedAt time.Time) string {
-	sum := sha256.Sum256([]byte(sender + "\x00" + subject + "\x00" + body + "\x00" +
-		receivedAt.Format(time.RFC3339Nano)))
-	return "sha256:" + hex.EncodeToString(sum[:])
+// The helpers below answer the request themselves when they return false.
+
+// bind reads the JSON body into req, at most maxRequestBytes of it.
+func bind(c *gin.Context, req any) bool {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxRequestBytes)
+	if err := c.ShouldBindJSON(req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return false
+	}
+	return true
+}
+
+// budget reads the budget BudgetIdMiddleware put on the request.
+func budget(c *gin.Context) (uuid.UUID, bool) {
+	budgetID, err := utils.BudgetIDFromContext(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing budget"})
+		return uuid.Nil, false
+	}
+	return budgetID, true
+}
+
+func bindForBudget(c *gin.Context, req any) (uuid.UUID, bool) {
+	if !bind(c, req) {
+		return uuid.Nil, false
+	}
+	return budget(c)
+}
+
+// connectionTarget reads the budget and connection a /connections/:id route is for.
+func connectionTarget(c *gin.Context) (budgetID, connectionID uuid.UUID, ok bool) {
+	if budgetID, ok = budget(c); !ok {
+		return uuid.Nil, uuid.Nil, false
+	}
+	connectionID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid connection id"})
+		return uuid.Nil, uuid.Nil, false
+	}
+	return budgetID, connectionID, true
 }
 
 // writeError maps service errors to HTTP statuses.

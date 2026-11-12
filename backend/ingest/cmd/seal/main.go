@@ -9,8 +9,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/ingest/internal/config"
 	"github.com/Rishabh-Kapri/pennywise/backend/ingest/internal/adapters/gmail"
+	"github.com/Rishabh-Kapri/pennywise/backend/ingest/internal/config"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 )

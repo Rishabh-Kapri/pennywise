@@ -4,24 +4,23 @@ import (
 	"context"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 )
 
-type Source string
-
+// Provider names. A mail provider's name is also Connection.Provider and the
+// key it is built under (MAIL_PROVIDERS).
 const (
-	EmailSource Source = "email"
-	SmsSource   Source = "sms"
-	ApiSource   Source = "api"
+	ProviderGmail   = "gmail"
+	ProviderAPI     = "api"     // posted to POST /api/ingest/messages
+	ProviderAndroid = "android" // SMS forwarded by the Android app
 )
 
+// InboundMessage is a message from any source, before it is queued. Which
+// budgets it goes to is up to the caller of Accept.
 type InboundMessage struct {
-	Source     Source
+	Source     string // model.SourceEmail, SourceSMS or SourceAPI
 	Provider   string
-	BudgetID   []uuid.UUID
-	ExternalID string // Gmail message ID, SMS hash
+	ExternalID string // Gmail message ID; derived from the content when empty
 	Sender     string
 	Subject    string
 	Body       string

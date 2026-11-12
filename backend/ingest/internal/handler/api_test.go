@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -15,9 +16,30 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/ingest/internal/service"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/auth"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/job"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 )
+
+var testBudget = uuid.New()
+
+// serve sends one request through the registered routes, as a caller of
+// testBudget. principal, when set, stands in for the auth middleware.
+func serve(h *APIHandler, principal *auth.Principal, method, path, body string) *httptest.ResponseRecorder {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	h.Register(r.Group("", func(c *gin.Context) {
+		ctx := utils.WithBudgetID(c.Request.Context(), testBudget)
+		if principal != nil {
+			ctx = auth.WithPrincipal(ctx, principal)
+		}
+		c.Request = c.Request.WithContext(ctx)
+		c.Next()
+	}))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(method, path, strings.NewReader(body)))
+	return w
+}
 
 type fakeIngest struct {
 	got []ports.InboundMessage
@@ -25,74 +47,42 @@ type fakeIngest struct {
 }
 
 func (f *fakeIngest) Accept(
-	_ context.Context, msg ports.InboundMessage, _ ...job.EnqueueOption,
-) ([]service.Queued, error) {
+	_ context.Context, budgets []uuid.UUID, msg ports.InboundMessage, _ ...job.EnqueueOption,
+) (service.Accepted, error) {
+	if len(budgets) != 1 || budgets[0] != testBudget {
+		return service.Accepted{}, errs.New(errs.CodeInternalError, "wrong budgets %v", budgets)
+	}
 	f.got = append(f.got, msg)
 	if f.err != nil {
-		return nil, f.err
+		return service.Accepted{}, f.err
 	}
-	return []service.Queued{{BudgetID: msg.BudgetID[0], JobID: uuid.New()}}, nil
+	return service.Accepted{ExternalID: msg.ExternalID, Jobs: []service.Queued{{BudgetID: testBudget, JobID: uuid.New()}}}, nil
 }
 
-var testBudget = uuid.New()
+func TestSms(t *testing.T) {
+	post := func(f *fakeIngest, body string) *httptest.ResponseRecorder {
+		return serve(NewAPIHandler(f, nil), nil, http.MethodPost, "/sms", body)
+	}
 
-func post(t *testing.T, svc service.IngestService, body string) *httptest.ResponseRecorder {
-	t.Helper()
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	r.POST("/", func(c *gin.Context) {
-		// stands in for BudgetIdMiddleware
-		c.Request = c.Request.WithContext(utils.WithBudgetID(c.Request.Context(), testBudget))
-		c.Next()
-	}, NewAPIHandler(svc, nil).Ingest)
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body)))
-	return w
-}
-
-func postSms(t *testing.T, svc service.IngestService, body string) *httptest.ResponseRecorder {
-	t.Helper()
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	r.POST("/", func(c *gin.Context) {
-		// stands in for BudgetIdMiddleware
-		c.Request = c.Request.WithContext(utils.WithBudgetID(c.Request.Context(), testBudget))
-		c.Next()
-	}, NewAPIHandler(svc, nil).Sms)
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body)))
-	return w
-}
-
-func TestAPISms(t *testing.T) {
 	t.Run("queues an sms for the budget", func(t *testing.T) {
 		f := &fakeIngest{}
-		w := postSms(t, f, `{"sender":"AX-HDFCBK","body":"Rs 10 debited","receivedAt":"2026-11-03T10:00:00Z"}`)
-		if w.Code != http.StatusAccepted {
+		w := post(f, `{"sender":"AX-HDFCBK","body":"Rs 10 debited","receivedAt":"2026-11-03T10:00:00Z"}`)
+		if w.Code != http.StatusAccepted || !strings.Contains(w.Body.String(), `"jobs"`) {
 			t.Fatalf("status = %d: %s", w.Code, w.Body)
 		}
 		m := f.got[0]
-		if m.Source != ports.SmsSource || m.Provider != SmsProvider || m.ExternalID == "" ||
-			len(m.BudgetID) != 1 || m.BudgetID[0] != testBudget || m.ReceivedAt.IsZero() {
+		if m.Source != model.SourceSMS || m.Provider != ports.ProviderAndroid || m.ExternalID != "" ||
+			m.ReceivedAt.Location() != time.UTC || m.ReceivedAt.IsZero() {
 			t.Fatalf("message = %+v", m)
 		}
 	})
 
-	t.Run("live and inbox copies share an id", func(t *testing.T) {
+	t.Run("ignores how the app caught it", func(t *testing.T) {
 		f := &fakeIngest{}
-		postSms(t, f, `{"sender":"AX-HDFCBK","body":"Rs 10","receivedAt":"2026-11-03T10:00:00Z","source":"live"}`)
-		postSms(t, f, `{"sender":"AX-HDFCBK","body":"Rs 10","receivedAt":"2026-11-03T15:30:00+05:30","source":"inbox"}`)
-		if f.got[0].ExternalID != f.got[1].ExternalID {
-			t.Fatalf("ids = %q, %q", f.got[0].ExternalID, f.got[1].ExternalID)
-		}
-	})
-
-	t.Run("the same text later is a new message", func(t *testing.T) {
-		f := &fakeIngest{}
-		postSms(t, f, `{"sender":"AX-HDFCBK","body":"Rs 10","receivedAt":"2026-11-03T10:00:00Z"}`)
-		postSms(t, f, `{"sender":"AX-HDFCBK","body":"Rs 10","receivedAt":"2026-11-03T10:05:00Z"}`)
-		if f.got[0].ExternalID == f.got[1].ExternalID {
-			t.Fatalf("both ids = %q", f.got[0].ExternalID)
+		post(f, `{"sender":"AX-HDFCBK","body":"Rs 10","receivedAt":"2026-11-03T10:00:00Z","source":"live"}`)
+		post(f, `{"sender":"AX-HDFCBK","body":"Rs 10","receivedAt":"2026-11-03T15:30:00+05:30","source":"inbox"}`)
+		if f.got[0] != f.got[1] {
+			t.Fatalf("messages differ: %+v vs %+v", f.got[0], f.got[1])
 		}
 	})
 
@@ -103,91 +93,97 @@ func TestAPISms(t *testing.T) {
 	} {
 		t.Run(name+" is rejected", func(t *testing.T) {
 			f := &fakeIngest{}
-			w := postSms(t, f, body)
-			if w.Code != http.StatusBadRequest || len(f.got) != 0 {
+			if w := post(f, body); w.Code != http.StatusBadRequest || len(f.got) != 0 {
 				t.Fatalf("status = %d, calls = %d", w.Code, len(f.got))
 			}
 		})
 	}
 }
 
-func TestAPIIngest(t *testing.T) {
+func TestIngest(t *testing.T) {
+	post := func(f *fakeIngest, body string) *httptest.ResponseRecorder {
+		return serve(NewAPIHandler(f, nil), nil, http.MethodPost, "/messages", body)
+	}
+
 	t.Run("with external id", func(t *testing.T) {
 		f := &fakeIngest{}
-		w := post(t, f, `{"externalId":"x1","sender":"bank","body":"Rs 10 debited"}`)
+		w := post(f, `{"externalId":"x1","sender":"bank","body":"Rs 10 debited"}`)
 		if w.Code != http.StatusAccepted {
 			t.Fatalf("status = %d: %s", w.Code, w.Body)
 		}
+		var resp service.Accepted
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil || resp.ExternalID != "x1" || len(resp.Jobs) != 1 {
+			t.Fatalf("response %s: %v", w.Body, err)
+		}
 		m := f.got[0]
-		if m.Source != ports.ApiSource || m.Provider != "api" || m.ExternalID != "x1" ||
-			len(m.BudgetID) != 1 || m.BudgetID[0] != testBudget || m.ReceivedAt.IsZero() {
+		if m.Source != model.SourceAPI || m.Provider != ports.ProviderAPI || m.ExternalID != "x1" || m.ReceivedAt.IsZero() {
 			t.Fatalf("message = %+v", m)
-		}
-	})
-
-	t.Run("derived id is stable for a retry", func(t *testing.T) {
-		f := &fakeIngest{}
-		body := `{"sender":"bank","body":"Rs 10 debited","receivedAt":"2026-11-03T10:00:00+05:30"}`
-		post(t, f, body)
-		post(t, f, body)
-		if f.got[0].ExternalID == "" || f.got[0].ExternalID != f.got[1].ExternalID {
-			t.Fatalf("ids = %q, %q", f.got[0].ExternalID, f.got[1].ExternalID)
-		}
-		var resp struct{ ExternalID string }
-		w := post(t, f, body)
-		_ = json.Unmarshal(w.Body.Bytes(), &resp)
-		if resp.ExternalID != f.got[0].ExternalID {
-			t.Fatalf("response id = %q", resp.ExternalID)
 		}
 	})
 
 	t.Run("no id and no time is rejected", func(t *testing.T) {
 		f := &fakeIngest{}
-		w := post(t, f, `{"sender":"bank","body":"Rs 10 debited"}`)
-		if w.Code != http.StatusBadRequest || len(f.got) != 0 {
+		if w := post(f, `{"sender":"bank","body":"Rs 10 debited"}`); w.Code != http.StatusBadRequest || len(f.got) != 0 {
 			t.Fatalf("status = %d, calls = %d", w.Code, len(f.got))
 		}
 	})
 
 	t.Run("missing body is rejected", func(t *testing.T) {
-		w := post(t, &fakeIngest{}, `{"externalId":"x","sender":"bank"}`)
-		if w.Code != http.StatusBadRequest {
+		if w := post(&fakeIngest{}, `{"externalId":"x","sender":"bank"}`); w.Code != http.StatusBadRequest {
 			t.Fatalf("status = %d", w.Code)
 		}
 	})
 
 	t.Run("too large", func(t *testing.T) {
 		big := `{"externalId":"x","sender":"bank","body":"` + strings.Repeat("a", maxRequestBytes) + `"}`
-		w := post(t, &fakeIngest{}, big)
-		if w.Code != http.StatusBadRequest {
+		if w := post(&fakeIngest{}, big); w.Code != http.StatusBadRequest {
 			t.Fatalf("status = %d", w.Code)
 		}
 	})
 
 	t.Run("no queue is 503", func(t *testing.T) {
 		f := &fakeIngest{err: errs.New(errs.CodeIngestQueueUnavailable, "no queue")}
-		w := post(t, f, `{"externalId":"x","sender":"bank","body":"b"}`)
-		if w.Code != http.StatusServiceUnavailable {
+		if w := post(f, `{"externalId":"x","sender":"bank","body":"b"}`); w.Code != http.StatusServiceUnavailable {
 			t.Fatalf("status = %d", w.Code)
 		}
 	})
 }
 
+func TestReadOnlyKeysCantWrite(t *testing.T) {
+	readOnly := &auth.Principal{Kind: auth.APIKeyKind, APIKey: &model.APIKey{Scopes: []model.Scope{model.ScopeRead}}}
+	f := &fakeIngest{}
+	h := NewAPIHandler(f, &fakeMailbox{})
+
+	w := serve(h, readOnly, http.MethodPost, "/messages", `{"externalId":"x","sender":"bank","body":"b"}`)
+	if w.Code != http.StatusForbidden || len(f.got) != 0 {
+		t.Fatalf("write: status = %d, calls = %d", w.Code, len(f.got))
+	}
+	if w := serve(h, readOnly, http.MethodGet, "/connections", ""); w.Code != http.StatusOK {
+		t.Fatalf("read: status = %d", w.Code)
+	}
+}
+
 type fakeMailbox struct {
 	service.MailboxService
-	budget            uuid.UUID
-	provider, account string
-	err               error
+	budget, connection uuid.UUID
+	provider, arg      string // arg: the consent code or the account
+	paused             *bool
+	disconnected       bool
+	err                error
 }
 
 func (f *fakeMailbox) Connect(
 	_ context.Context, budget uuid.UUID, provider, code string,
 ) (*model.MailConnection, error) {
-	f.budget, f.provider, f.account = budget, provider, code
+	f.budget, f.provider, f.arg = budget, provider, code
 	if f.err != nil {
 		return nil, f.err
 	}
 	return &model.MailConnection{Provider: provider, Account: "me@example.com", Credentials: []byte("secret")}, nil
+}
+
+func (f *fakeMailbox) ListConnections(context.Context, uuid.UUID) ([]model.MailConnection, error) {
+	return nil, f.err
 }
 
 func (f *fakeMailbox) BackfillCandidates(
@@ -205,67 +201,55 @@ func (f *fakeMailbox) QueueBackfill(
 func (f *fakeMailbox) Test(
 	_ context.Context, budget uuid.UUID, provider, account string,
 ) (job.EnqueueResult, error) {
-	f.budget, f.provider, f.account = budget, provider, account
+	f.budget, f.provider, f.arg = budget, provider, account
 	return job.EnqueueResult{JobID: uuid.New()}, f.err
 }
 
-func postTest(t *testing.T, m *fakeMailbox, body string) *httptest.ResponseRecorder {
-	t.Helper()
-	gin.SetMode(gin.TestMode)
-	r := gin.New()
-	r.POST("/", func(c *gin.Context) {
-		c.Request = c.Request.WithContext(utils.WithBudgetID(c.Request.Context(), testBudget))
-		c.Next()
-	}, NewAPIHandler(nil, m).Test)
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body)))
-	return w
+func (f *fakeMailbox) SetPaused(
+	_ context.Context, budget, connection uuid.UUID, paused bool,
+) (*model.MailConnection, error) {
+	f.budget, f.connection, f.paused = budget, connection, &paused
+	return &model.MailConnection{ID: connection, Account: "me@gmail.com"}, nil
 }
 
-func TestAPITest(t *testing.T) {
+func (f *fakeMailbox) Disconnect(_ context.Context, budget, connection uuid.UUID) error {
+	f.budget, f.connection, f.disconnected = budget, connection, true
+	return nil
+}
+
+func mailboxRequest(m *fakeMailbox, method, path, body string) *httptest.ResponseRecorder {
+	return serve(NewAPIHandler(&fakeIngest{}, m), nil, method, path, body)
+}
+
+func TestTestMailbox(t *testing.T) {
 	t.Run("queues for the mailbox, gmail by default", func(t *testing.T) {
 		m := &fakeMailbox{}
-		w := postTest(t, m, `{"account":"me@example.com"}`)
-		if w.Code != http.StatusAccepted {
-			t.Fatalf("status = %d: %s", w.Code, w.Body)
-		}
-		if m.budget != testBudget || m.provider != "gmail" || m.account != "me@example.com" {
-			t.Fatalf("%+v", m)
+		w := mailboxRequest(m, http.MethodPost, "/test", `{"account":"me@example.com"}`)
+		if w.Code != http.StatusAccepted || m.budget != testBudget || m.provider != "gmail" || m.arg != "me@example.com" {
+			t.Fatalf("status = %d: %s, %+v", w.Code, w.Body, m)
 		}
 	})
 
 	t.Run("missing account", func(t *testing.T) {
 		m := &fakeMailbox{}
-		if w := postTest(t, m, `{}`); w.Code != http.StatusBadRequest || m.account != "" {
+		if w := mailboxRequest(m, http.MethodPost, "/test", `{}`); w.Code != http.StatusBadRequest || m.arg != "" {
 			t.Fatalf("status = %d", w.Code)
 		}
 	})
 
 	t.Run("mailbox not on the budget", func(t *testing.T) {
 		m := &fakeMailbox{err: errs.New(errs.CodeConnectionNotFound, "no")}
-		if w := postTest(t, m, `{"account":"other@example.com"}`); w.Code != http.StatusNotFound {
+		if w := mailboxRequest(m, http.MethodPost, "/test", `{"account":"other@example.com"}`); w.Code != http.StatusNotFound {
 			t.Fatalf("status = %d", w.Code)
 		}
 	})
 }
 
-func TestAPIConnect(t *testing.T) {
-	run := func(m *fakeMailbox, body string) *httptest.ResponseRecorder {
-		gin.SetMode(gin.TestMode)
-		r := gin.New()
-		r.POST("/", func(c *gin.Context) {
-			c.Request = c.Request.WithContext(utils.WithBudgetID(c.Request.Context(), testBudget))
-			c.Next()
-		}, NewAPIHandler(nil, m).Connect)
-		w := httptest.NewRecorder()
-		r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body)))
-		return w
-	}
-
+func TestConnect(t *testing.T) {
 	t.Run("connects and never returns credentials", func(t *testing.T) {
 		m := &fakeMailbox{}
-		w := run(m, `{"code":"abc"}`)
-		if w.Code != http.StatusCreated || m.budget != testBudget || m.provider != "gmail" || m.account != "abc" {
+		w := mailboxRequest(m, http.MethodPost, "/connections", `{"code":"abc"}`)
+		if w.Code != http.StatusCreated || m.budget != testBudget || m.provider != "gmail" || m.arg != "abc" {
 			t.Fatalf("status = %d, %+v", w.Code, m)
 		}
 		if strings.Contains(w.Body.String(), "secret") || !strings.Contains(w.Body.String(), "me@example.com") {
@@ -274,128 +258,77 @@ func TestAPIConnect(t *testing.T) {
 	})
 
 	t.Run("missing code", func(t *testing.T) {
-		if w := run(&fakeMailbox{}, `{}`); w.Code != http.StatusBadRequest {
+		if w := mailboxRequest(&fakeMailbox{}, http.MethodPost, "/connections", `{}`); w.Code != http.StatusBadRequest {
 			t.Fatalf("status = %d", w.Code)
 		}
 	})
 
 	t.Run("no refresh token asks the user to act", func(t *testing.T) {
 		m := &fakeMailbox{err: errs.New(errs.CodeMailNoRefreshToken, "none")}
-		if w := run(m, `{"code":"abc"}`); w.Code != http.StatusConflict {
+		if w := mailboxRequest(m, http.MethodPost, "/connections", `{"code":"abc"}`); w.Code != http.StatusConflict {
 			t.Fatalf("status = %d", w.Code)
 		}
 	})
 }
 
-func TestAPIBackfill(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	run := func(method, id, body string) *httptest.ResponseRecorder {
-		r := gin.New()
-		h := NewAPIHandler(nil, &fakeMailbox{})
-		budget := func(c *gin.Context) {
-			c.Request = c.Request.WithContext(utils.WithBudgetID(c.Request.Context(), testBudget))
-			c.Next()
-		}
-		r.GET("/:id", budget, h.BackfillCandidates)
-		r.POST("/:id", budget, h.Backfill)
-		w := httptest.NewRecorder()
-		r.ServeHTTP(w, httptest.NewRequest(method, "/"+id, strings.NewReader(body)))
-		return w
-	}
-	id := uuid.NewString()
+func TestBackfill(t *testing.T) {
+	path := "/connections/" + uuid.NewString() + "/backfill"
 
 	t.Run("candidates leave out the body", func(t *testing.T) {
-		w := run(http.MethodGet, id, "")
+		w := mailboxRequest(&fakeMailbox{}, http.MethodGet, path, "")
 		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"externalId":"m1"`) ||
 			strings.Contains(w.Body.String(), "secret body") {
 			t.Fatalf("status = %d: %s", w.Code, w.Body)
 		}
 	})
 	t.Run("queues the chosen emails", func(t *testing.T) {
-		w := run(http.MethodPost, id, `{"externalIds":["a","b"]}`)
+		w := mailboxRequest(&fakeMailbox{}, http.MethodPost, path, `{"externalIds":["a","b"]}`)
 		if w.Code != http.StatusAccepted || !strings.Contains(w.Body.String(), `"jobId"`) {
 			t.Fatalf("status = %d: %s", w.Code, w.Body)
 		}
 	})
 	t.Run("needs at least one email", func(t *testing.T) {
-		if w := run(http.MethodPost, id, `{"externalIds":[]}`); w.Code != http.StatusBadRequest {
+		if w := mailboxRequest(&fakeMailbox{}, http.MethodPost, path, `{"externalIds":[]}`); w.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d", w.Code)
+		}
+	})
+	t.Run("too many emails", func(t *testing.T) {
+		m := &fakeMailbox{err: errs.New(errs.CodeIngestInvalidMessage, "too many")}
+		if w := mailboxRequest(m, http.MethodPost, path, `{"externalIds":["a"]}`); w.Code != http.StatusBadRequest {
 			t.Fatalf("status = %d", w.Code)
 		}
 	})
 	t.Run("bad connection id", func(t *testing.T) {
-		if w := run(http.MethodGet, "nope", ""); w.Code != http.StatusBadRequest {
+		if w := mailboxRequest(&fakeMailbox{}, http.MethodGet, "/connections/nope/backfill", ""); w.Code != http.StatusBadRequest {
 			t.Fatalf("status = %d", w.Code)
 		}
 	})
 }
 
-type pauseMailbox struct {
-	fakeMailbox
-	budget, connection uuid.UUID
-	paused             bool
-	disconnected       bool
-}
-
-func (m *pauseMailbox) SetPaused(
-	_ context.Context, budget, connection uuid.UUID, paused bool,
-) (*model.MailConnection, error) {
-	m.budget, m.connection, m.paused = budget, connection, paused
-	return &model.MailConnection{ID: connection, Account: "me@gmail.com"}, nil
-}
-
-func (m *pauseMailbox) Disconnect(_ context.Context, budget, connection uuid.UUID) error {
-	m.budget, m.connection, m.disconnected = budget, connection, true
-	return nil
-}
-
-func connectionRequest(t *testing.T, m *pauseMailbox, method, path, body string) *httptest.ResponseRecorder {
-	t.Helper()
-	gin.SetMode(gin.TestMode)
-	h := NewAPIHandler(&fakeIngest{}, m)
-	r := gin.New()
-	r.Use(func(c *gin.Context) {
-		c.Request = c.Request.WithContext(utils.WithBudgetID(c.Request.Context(), testBudget))
-		c.Next()
-	})
-	r.PATCH("/connections/:id", h.UpdateConnection)
-	r.DELETE("/connections/:id", h.Disconnect)
-	w := httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(method, path, strings.NewReader(body)))
-	return w
-}
-
-func TestAPIUpdateConnection(t *testing.T) {
+func TestUpdateConnection(t *testing.T) {
 	id := uuid.New()
+	path := "/connections/" + id.String()
 
-	t.Run("pauses", func(t *testing.T) {
-		m := &pauseMailbox{}
-		w := connectionRequest(t, m, http.MethodPatch, "/connections/"+id.String(), `{"paused":true}`)
-		if w.Code != http.StatusOK || !m.paused || m.budget != testBudget || m.connection != id {
-			t.Fatalf("status = %d, mailbox = %+v", w.Code, m)
+	for _, paused := range []bool{true, false} {
+		m := &fakeMailbox{}
+		w := mailboxRequest(m, http.MethodPatch, path, `{"paused":`+map[bool]string{true: "true", false: "false"}[paused]+`}`)
+		if w.Code != http.StatusOK || m.paused == nil || *m.paused != paused || m.budget != testBudget || m.connection != id {
+			t.Fatalf("paused %v: status = %d, mailbox = %+v", paused, w.Code, m)
 		}
-	})
-
-	t.Run("resumes on an explicit false", func(t *testing.T) {
-		m := &pauseMailbox{paused: true}
-		w := connectionRequest(t, m, http.MethodPatch, "/connections/"+id.String(), `{"paused":false}`)
-		if w.Code != http.StatusOK || m.paused {
-			t.Fatalf("status = %d, mailbox = %+v", w.Code, m)
-		}
-	})
+	}
 
 	t.Run("an empty body changes nothing", func(t *testing.T) {
-		m := &pauseMailbox{}
-		w := connectionRequest(t, m, http.MethodPatch, "/connections/"+id.String(), `{}`)
-		if w.Code != http.StatusBadRequest || m.connection != uuid.Nil {
+		m := &fakeMailbox{}
+		if w := mailboxRequest(m, http.MethodPatch, path, `{}`); w.Code != http.StatusBadRequest || m.paused != nil {
 			t.Fatalf("status = %d, mailbox = %+v", w.Code, m)
 		}
 	})
 }
 
-func TestAPIDisconnect(t *testing.T) {
+func TestDisconnect(t *testing.T) {
 	id := uuid.New()
-	m := &pauseMailbox{}
-	w := connectionRequest(t, m, http.MethodDelete, "/connections/"+id.String(), "")
+	m := &fakeMailbox{}
+	w := mailboxRequest(m, http.MethodDelete, "/connections/"+id.String(), "")
 	if w.Code != http.StatusNoContent || !m.disconnected || m.budget != testBudget || m.connection != id {
 		t.Fatalf("status = %d, mailbox = %+v", w.Code, m)
 	}

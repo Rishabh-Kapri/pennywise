@@ -18,7 +18,7 @@ import (
 
 func TestMailboxChangedDedupesRedeliveries(t *testing.T) {
 	broker := &fakeBroker{byKey: map[string]uuid.UUID{}}
-	s := NewMailboxService(broker, MailboxDeps{})
+	s := NewMailboxService(MailboxDeps{Queue: broker})
 	n := model.MailboxChanged{Provider: "Gmail", Account: " Me@Gmail.com ", Cursor: "100"}
 
 	first, err := s.Changed(context.Background(), n)
@@ -41,12 +41,12 @@ func TestMailboxChangedDedupesRedeliveries(t *testing.T) {
 }
 
 func TestMailboxChangedRejects(t *testing.T) {
-	_, err := NewMailboxService(&fakeBroker{byKey: map[string]uuid.UUID{}}, MailboxDeps{}).
+	_, err := NewMailboxService(MailboxDeps{Queue: &fakeBroker{byKey: map[string]uuid.UUID{}}}).
 		Changed(context.Background(), model.MailboxChanged{Provider: "gmail", Account: "a@b.c"})
 	if !errs.HasCode(err, errs.CodeIngestInvalidMessage) {
 		t.Fatalf("missing cursor: err = %v", err)
 	}
-	_, err = NewMailboxService(nil, MailboxDeps{}).Changed(context.Background(), model.MailboxChanged{Provider: "gmail", Account: "a@b.c", Cursor: "1"})
+	_, err = NewMailboxService(MailboxDeps{Queue: NewEnqueuer(nil)}).Changed(context.Background(), model.MailboxChanged{Provider: "gmail", Account: "a@b.c", Cursor: "1"})
 	if !errs.HasCode(err, errs.CodeIngestQueueUnavailable) {
 		t.Fatalf("no queue: err = %v", err)
 	}
@@ -56,7 +56,7 @@ func TestMailboxTest(t *testing.T) {
 	budget := uuid.New()
 	conn := &model.MailConnection{Provider: "gmail", Account: "me@example.com", BudgetIDs: []uuid.UUID{budget}}
 	broker := &fakeBroker{byKey: map[string]uuid.UUID{}}
-	s := NewMailboxService(broker, MailboxDeps{Connections: &fakeConns{conn: conn}})
+	s := NewMailboxService(MailboxDeps{Queue: broker, Connections: &fakeConns{conn: conn}})
 	ctx := context.Background()
 
 	first, err := s.Test(ctx, budget, "gmail", conn.Account)
@@ -125,7 +125,7 @@ func TestConnect(t *testing.T) {
 	ctx := context.Background()
 	budget := uuid.New()
 	connect := func(p *connectProvider, conns *connectConns) (*model.MailConnection, error) {
-		s := NewMailboxService(nil, MailboxDeps{Connections: conns, Providers: oneProvider{p}})
+		s := NewMailboxService(MailboxDeps{Connections: conns, Providers: oneProvider{p}})
 		return s.Connect(ctx, budget, "gmail", "code")
 	}
 
@@ -200,7 +200,7 @@ func TestQueueBackfill(t *testing.T) {
 		ID: uuid.New(), Provider: "gmail", Account: "me@example.com", BudgetIDs: []uuid.UUID{budget},
 	}}
 	broker := &fakeBroker{byKey: map[string]uuid.UUID{}}
-	s := NewMailboxService(broker, MailboxDeps{Connections: conns})
+	s := NewMailboxService(MailboxDeps{Queue: broker, Connections: conns})
 
 	first, err := s.QueueBackfill(ctx, budget, uuid.New(), []string{"b", "a"})
 	if err != nil {
@@ -232,7 +232,7 @@ func TestBackfill(t *testing.T) {
 			{ExternalID: "b", Body: "Rs 20 debited"},
 		}}
 		conns := &backfillConns{conn: &model.MailConnection{Provider: "gmail", BudgetIDs: []uuid.UUID{budget}}}
-		return NewMailboxService(nil, MailboxDeps{
+		return NewMailboxService(MailboxDeps{
 			Connections: conns, Providers: oneProvider{provider}, Ingest: ingest,
 		}), ingest, provider
 	}
@@ -257,10 +257,10 @@ func TestBackfill(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if res.Queued != 1 || len(ingest.got) != 1 || ingest.got[0].ExternalID != "b" {
+		if res.Queued != 1 || len(ingest.got) != 1 || ingest.got[0].msg.ExternalID != "b" {
 			t.Fatalf("%+v %+v", res, ingest.got)
 		}
-		if got := ingest.got[0].BudgetID; len(got) != 1 || got[0] != budget {
+		if got := ingest.got[0].budgets; len(got) != 1 || got[0] != budget {
 			t.Fatalf("budgets %v", got)
 		}
 	})
@@ -346,7 +346,7 @@ func TestSetPaused(t *testing.T) {
 		conns := &pauseConns{conn: &model.MailConnection{
 			ID: uuid.New(), Provider: "gmail", BudgetIDs: []uuid.UUID{budget}, PausedAt: pausedAt,
 		}}
-		return NewMailboxService(nil, MailboxDeps{Connections: conns, Providers: oneProvider{p}}), conns
+		return NewMailboxService(MailboxDeps{Connections: conns, Providers: oneProvider{p}}), conns
 	}
 
 	t.Run("pausing stops the watch", func(t *testing.T) {
@@ -413,7 +413,7 @@ func TestDisconnect(t *testing.T) {
 			conn:      &model.MailConnection{ID: uuid.New(), Provider: "gmail", BudgetIDs: []uuid.UUID{budget}},
 			remaining: remaining,
 		}
-		return NewMailboxService(nil, MailboxDeps{Connections: conns, Providers: oneProvider{p}}), conns
+		return NewMailboxService(MailboxDeps{Connections: conns, Providers: oneProvider{p}}), conns
 	}
 
 	t.Run("the last budget stops the watch", func(t *testing.T) {
@@ -465,7 +465,7 @@ func TestPauseAndResumeManageTheWatchSchedule(t *testing.T) {
 		conns := &pauseConns{conn: &model.MailConnection{
 			ID: uuid.New(), Provider: "gmail", BudgetIDs: []uuid.UUID{budget}, PausedAt: pausedAt,
 		}}
-		return NewMailboxService(nil, MailboxDeps{
+		return NewMailboxService(MailboxDeps{
 			Connections: conns, Providers: oneProvider{&pauseProvider{}}, Schedules: schedules,
 		}), conns
 	}
@@ -549,7 +549,7 @@ func TestRenewWatch(t *testing.T) {
 		return &model.MailConnection{ID: uuid.New(), Provider: "gmail", BudgetIDs: []uuid.UUID{uuid.New()}, Cursor: "stored"}
 	}
 	run := func(conns *renewConns, p *renewProvider, schedules *fakeSchedules) (WatchRenewal, error) {
-		return NewMailboxService(nil, MailboxDeps{
+		return NewMailboxService(MailboxDeps{
 			Connections: conns, Providers: oneProvider{p}, Schedules: schedules,
 		}).RenewWatch(ctx, uuid.New())
 	}

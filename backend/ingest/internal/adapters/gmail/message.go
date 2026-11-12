@@ -2,7 +2,6 @@ package gmail
 
 import (
 	"encoding/base64"
-	"slices"
 	"strings"
 	"time"
 
@@ -12,13 +11,11 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 )
 
-// toInbound turns a full Gmail message into the common message shape. The
-// message goes to every budget the connection feeds.
-func toInbound(conn model.MailConnection, msg *gmailv1.Message) ports.InboundMessage {
+// toInbound turns a Gmail message into the common message shape.
+func toInbound(msg *gmailv1.Message) ports.InboundMessage {
 	in := ports.InboundMessage{
-		Source:     ports.EmailSource,
-		Provider:   providerName,
-		BudgetID:   slices.Clone(conn.BudgetIDs),
+		Source:     model.SourceEmail,
+		Provider:   ports.ProviderGmail,
 		ExternalID: msg.Id,
 		ReceivedAt: time.UnixMilli(msg.InternalDate),
 	}

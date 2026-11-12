@@ -145,9 +145,9 @@ func TestFetchSinceReadsEveryPageAndAdvancesCursor(t *testing.T) {
 		t.Fatalf("got %d messages, want 3 (m2 once, gone skipped)", len(msgs))
 	}
 	m := msgs[0]
-	if m.ExternalID != "m1" || m.Source != ports.EmailSource || m.Provider != "gmail" ||
+	if m.ExternalID != "m1" || m.Source != model.SourceEmail || m.Provider != "gmail" ||
 		m.Sender != "alerts@bank.example" || m.Subject != "Debited" || m.Body != "<b>Rs 499</b>" ||
-		len(m.BudgetID) != 2 || m.ReceivedAt.UnixMilli() != 1_700_000_000_000 {
+		m.ReceivedAt.UnixMilli() != 1_700_000_000_000 {
 		t.Fatalf("message = %+v", m)
 	}
 }
@@ -288,11 +288,11 @@ func TestSearchListsEverythingWithoutBodies(t *testing.T) {
 	}
 	a, conn := newAdapter(t, mb)
 
-	got, err := a.Search(context.Background(), conn, ports.Query{Days: 14, MaxResults: 9999})
+	got, err := a.Search(context.Background(), conn, ports.Query{Days: 14, MaxResults: 50})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if mb.query != "newer_than:14d" || mb.maxResults != maxSearchResults {
+	if mb.query != "newer_than:14d" || mb.maxResults != 50 {
 		t.Fatalf("query %q, max %d", mb.query, mb.maxResults)
 	}
 	if mb.headerCalls.Load() != 3 {

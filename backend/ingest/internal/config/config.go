@@ -10,8 +10,6 @@ import (
 
 type Config struct {
 	Port string
-	// Environment is RAILWAY_ENVIRONMENT_NAME; "local" when unset.
-	Environment string
 
 	DatabaseDriver string
 	DatabaseURL    string
@@ -29,12 +27,10 @@ type Config struct {
 	JobDriver    string
 	JobBrokerURL string
 	JobStoreURL  string
-	JobQueues    []string
-
-	CredentialsKey string // CredentialsKey
 
 	// Mail providers (see internal/factory.NewMailProviders).
-	MailProviders         string // MAIL_PROVIDERS, e.g. "gmail"
+	MailProviders         []string // MAIL_PROVIDERS, e.g. "gmail"
+	CredentialsKey        string   // CREDENTIALS_KEY
 	GoogleClientID        string
 	GoogleClientSecret    string
 	GoogleAndroidClientID string
@@ -46,12 +42,11 @@ type Config struct {
 	GoogleCredentialsJSON    string // GOOGLE_APPLICATION_CREDENTIALS_JSON
 }
 
-// Load reads .env if present, then the environment.
+// Load reads .env if present into the environment, then reads the settings.
 func Load() Config {
 	_ = godotenv.Load()
 	return Config{
 		Port:              getEnv("PORT", "5180"),
-		Environment:       getEnv("RAILWAY_ENVIRONMENT_NAME", "local"),
 		DatabaseDriver:    os.Getenv("DATABASE_DRIVER"),
 		DatabaseURL:       os.Getenv("DATABASE_URL"),
 		JWTSecret:         os.Getenv("JWT_SECRET"),
@@ -62,9 +57,8 @@ func Load() Config {
 		JobBrokerURL:      os.Getenv("JOB_BROKER_URL"),
 		JobStoreURL:       os.Getenv("JOB_STORE_URL"),
 
-		CredentialsKey: os.Getenv("CREDENTIALS_KEY"),
-
-		MailProviders:         os.Getenv("MAIL_PROVIDERS"),
+		MailProviders:         splitList(os.Getenv("MAIL_PROVIDERS")),
+		CredentialsKey:        os.Getenv("CREDENTIALS_KEY"),
 		GoogleClientID:        os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret:    os.Getenv("GOOGLE_CLIENT_SECRET"),
 		GoogleAndroidClientID: os.Getenv("GOOGLE_ANDROID_CLIENT_ID"),
@@ -73,7 +67,6 @@ func Load() Config {
 
 		GooglePubsubSubscription: os.Getenv("SUB_NAME"),
 		GoogleCredentialsJSON:    os.Getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON"),
-		JobQueues:                splitList(os.Getenv("JOB_QUEUES")),
 	}
 }
 
