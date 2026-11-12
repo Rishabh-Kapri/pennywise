@@ -62,6 +62,9 @@ func (r *loanMetadataRepo) GetAllByBudgetId(ctx context.Context, budgetId uuid.U
 		}
 		loans = append(loans, l)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return loans, nil
 }
 

@@ -70,6 +70,9 @@ func (r *accountRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.A
 		}
 		accounts = append(accounts, a)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return accounts, nil
 }
 
@@ -176,6 +179,9 @@ func (r *accountRepo) Search(ctx context.Context, budgetId uuid.UUID, query stri
 			return nil, err
 		}
 		accounts = append(accounts, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return accounts, nil

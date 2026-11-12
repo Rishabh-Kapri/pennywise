@@ -92,6 +92,9 @@ func (r *categoryRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.
 		}
 		categories = append(categories, c)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return categories, nil
 }
 
@@ -122,6 +125,9 @@ func (r *categoryRepo) GetAllSimplified(ctx context.Context, budgetId uuid.UUID)
 			return nil, err
 		}
 		categories = append(categories, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return categories, nil
 }
@@ -273,6 +279,9 @@ func (r *categoryRepo) Search(ctx context.Context, budgetId uuid.UUID, query str
 			return nil, err
 		}
 		categories = append(categories, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return categories, nil
 }

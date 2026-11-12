@@ -127,6 +127,9 @@ func (r *transactionRepo) GetAll(
 		txn.Status = scannedStatus(status)
 		transactions = append(transactions, txn)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return transactions, nil
 }
 

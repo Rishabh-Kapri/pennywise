@@ -40,6 +40,9 @@ func (r *payeeRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Pay
 		}
 		payees = append(payees, payee)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return payees, nil
 }
 
@@ -64,6 +67,9 @@ func (r *payeeRepo) Search(ctx context.Context, budgetId uuid.UUID, query string
 			return nil, err
 		}
 		payees = append(payees, payee)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return payees, nil
 }

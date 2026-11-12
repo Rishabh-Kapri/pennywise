@@ -79,6 +79,9 @@ func (r *predictionRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]mode
 		}
 		predictions = append(predictions, p)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return predictions, nil
 }
 

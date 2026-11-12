@@ -41,6 +41,9 @@ func (r *tagRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Tag, 
 		}
 		tags = append(tags, tag)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return tags, nil
 }
 
@@ -65,6 +68,9 @@ func (r *tagRepo) Search(ctx context.Context, budgetId uuid.UUID, query string) 
 			return nil, err
 		}
 		tags = append(tags, tag)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return tags, nil
 }

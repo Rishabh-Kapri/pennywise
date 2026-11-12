@@ -275,6 +275,9 @@ func (r *categoryGroupRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]m
 		}
 		groups = append(groups, g)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return groups, nil
 }
 

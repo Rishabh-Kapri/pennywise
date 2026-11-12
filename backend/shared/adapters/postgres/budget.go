@@ -43,6 +43,9 @@ func (r *budgetRepo) GetAll(ctx context.Context, userID uuid.UUID) ([]model.Budg
 		}
 		budgets = append(budgets, b)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return budgets, nil
 }
 

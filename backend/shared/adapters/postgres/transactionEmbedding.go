@@ -69,6 +69,9 @@ func (r *transactionEmbeddingRepository) SearchSimilar(ctx context.Context, budg
 		}
 		results = append(results, e)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return results, nil
 }
 

@@ -121,6 +121,9 @@ func (r *agentMemoryRepo) GetObservationalMemory(
 		}
 		oms = append(oms, om)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	return oms, err
 }
