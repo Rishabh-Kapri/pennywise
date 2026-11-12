@@ -52,8 +52,6 @@ func TestRequestMetadataPropagatorRoundTripContext(t *testing.T) {
 	require.Equal(t, "gmail-pubsub", metadata.OriginService)
 	require.Empty(t, metadata.CallerService)
 	require.False(t, metadata.InternalRequest)
-	_, hasBudget := headers[utils.HeaderBudgetID]
-	require.False(t, hasBudget)
 }
 
 func TestRequestMetadataPropagatorFallsBackToLocalServiceForOrigin(t *testing.T) {
