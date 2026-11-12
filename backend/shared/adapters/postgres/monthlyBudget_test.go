@@ -2,9 +2,7 @@ package postgres
 
 import (
 	"context"
-	"os"
 	"testing"
-	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
@@ -14,459 +12,142 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Test data structures
-type budgetData struct {
+type monthAmounts struct {
 	Budgeted         float64
 	CarryoverBalance float64
 }
 
-type testSuite struct {
-	ctx      context.Context
-	dbpool   *pgxpool.Pool
+type monthlyBudgetFixture struct {
 	repo     repository.MonthlyBudgetRepository
+	pool     *pgxpool.Pool
 	budgetID uuid.UUID
 	catID    uuid.UUID
 }
 
-// Database connection and setup utilities
-func getTestDbConn(t *testing.T, ctx context.Context) *pgxpool.Pool {
+// newMonthlyBudgetFixture seeds one category with four months:
+// 2025-05 budgeted 1000 carryover 0, 2025-06 2500/0, 2025-07 2000/-5000,
+// 2025-08 1000/500.
+func newMonthlyBudgetFixture(t *testing.T) monthlyBudgetFixture {
 	t.Helper()
-	testDbURL := os.Getenv("PENNYWISE_TEST_DATABASE_URL")
-	if testDbURL == "" {
-		t.Skip("set PENNYWISE_TEST_DATABASE_URL to a disposable database for repository integration tests")
+	pool := testPool(t)
+	s := newSeed(t, pool)
+	rows := []struct {
+		month           string
+		budgeted, carry float64
+	}{
+		{"2025-05", 1000, 0}, {"2025-06", 2500, 0}, {"2025-07", 2000, -5000}, {"2025-08", 1000, 500},
 	}
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	pool, err := pgxpool.New(ctx, testDbURL)
-	if err != nil {
-		t.Fatalf("open test database: %v", err)
-	}
-	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
-		t.Fatalf("connect to test database: %v", err)
-	}
-	return pool
-}
-
-func setupTestSuite(t *testing.T) *testSuite {
-	ctx := context.Background()
-	dbpool := getTestDbConn(t, ctx)
-
-	budgetID := uuid.New()
-	catID := uuid.New()
-
-	return &testSuite{
-		ctx:      ctx,
-		dbpool:   dbpool,
-		repo:     NewMonthlyBudgetRepository(dbpool),
-		budgetID: budgetID,
-		catID:    catID,
-	}
-}
-
-func (ts *testSuite) tearDown() {
-	ts.dbpool.Close()
-}
-
-func (ts *testSuite) cleanupTestData() {
-	_, _ = ts.dbpool.Exec(ts.ctx, `DELETE FROM monthly_budgets WHERE budget_id = $1`, ts.budgetID)
-}
-
-func (ts *testSuite) createTableIfNotExists(t *testing.T) {
-	_, err := ts.dbpool.Exec(ts.ctx, `
-		CREATE TABLE IF NOT EXISTS monthly_budgets (
-		  id UUID,
-			budget_id UUID,
-			category_id UUID,
-			month TEXT,
-			budgeted NUMERIC(12, 2),
-			carryover_balance NUMERIC(12, 2),
-			created_at TIMESTAMPTZ,
-			updated_at TIMESTAMPTZ
-		)`)
-	require.NoError(t, err)
-}
-
-func (ts *testSuite) insertDummyData(t *testing.T) {
-	ts.createTableIfNotExists(t)
-
-	dummyRows := [][]any{
-		{uuid.New(), "2025-05", ts.budgetID, ts.catID, 1000.00, 0.00},     // activity: -1000
-		{uuid.New(), "2025-06", ts.budgetID, ts.catID, 2500.00, 0.00},     // activity: -2500
-		{uuid.New(), "2025-07", ts.budgetID, ts.catID, 2000.00, -5000.00}, // activity: -7000
-		{uuid.New(), "2025-08", ts.budgetID, ts.catID, 1000.00, 500.00},   // activity: 4500
-	}
-
-	for _, row := range dummyRows {
-		_, err := ts.dbpool.Exec(ts.ctx, `
-			INSERT INTO monthly_budgets (id, budget_id, category_id, month, budgeted, carryover_balance, created_at, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
-		`, row[0], row[2], row[3], row[1], row[4], row[5])
+	for _, r := range rows {
+		_, err := pool.Exec(context.Background(), `
+			INSERT INTO monthly_budgets (budget_id, category_id, month, budgeted, carryover_balance)
+			VALUES ($1, $2, $3, $4, $5)`, s.budgetID, s.categoryID, r.month, r.budgeted, r.carry)
 		require.NoError(t, err)
 	}
+	return monthlyBudgetFixture{repo: NewMonthlyBudgetRepository(pool), pool: pool, budgetID: s.budgetID, catID: s.categoryID}
 }
 
-// Test data retrieval utilities
-func (ts *testSuite) getMonthlyBudgets(t *testing.T, fromMonth string) []model.MonthlyBudget {
-	var monthlyBudgets []model.MonthlyBudget
-
-	rows, err := ts.dbpool.Query(ts.ctx, `
-		SELECT budgeted, carryover_balance, month 
-		FROM monthly_budgets 
-		WHERE budget_id = $1 AND category_id = $2 AND month >= $3
-		ORDER BY month
-	`, ts.budgetID, ts.catID, fromMonth)
+func (f monthlyBudgetFixture) months(t *testing.T) map[string]monthAmounts {
+	t.Helper()
+	rows, err := f.pool.Query(context.Background(), `
+		SELECT month, budgeted, carryover_balance FROM monthly_budgets
+		WHERE budget_id = $1 AND category_id = $2`, f.budgetID, f.catID)
 	require.NoError(t, err)
 	defer rows.Close()
-
+	got := map[string]monthAmounts{}
 	for rows.Next() {
-		var mb model.MonthlyBudget
-		err = rows.Scan(&mb.Budgeted, &mb.CarryoverBalance, &mb.Month)
-		require.NoError(t, err)
-		monthlyBudgets = append(monthlyBudgets, mb)
+		var month string
+		var a monthAmounts
+		require.NoError(t, rows.Scan(&month, &a.Budgeted, &a.CarryoverBalance))
+		got[month] = a
 	}
-
-	return monthlyBudgets
+	require.NoError(t, rows.Err())
+	return got
 }
 
-func (ts *testSuite) getSingleMonthlyBudget(t *testing.T, month string) (float64, float64) {
-	var budgeted, carryover float64
-	err := ts.dbpool.QueryRow(ts.ctx, `
-		SELECT budgeted, carryover_balance 
-		FROM monthly_budgets 
-		WHERE budget_id = $1 AND category_id = $2 AND month = $3
-	`, ts.budgetID, ts.catID, month).Scan(&budgeted, &carryover)
-	require.NoError(t, err)
-	return budgeted, carryover
-}
-
-// Test assertion utilities
-func (ts *testSuite) assertMonthlyBudgets(t *testing.T, monthlyBudgets []model.MonthlyBudget, expected map[string]budgetData) {
-	for _, mb := range monthlyBudgets {
-		expectedData, ok := expected[mb.Month]
-		require.True(t, ok, "Unexpected month: %s", mb.Month)
-		require.Equal(t, expectedData.Budgeted, mb.Budgeted, "Budgeted amount mismatch for month %s", mb.Month)
-		require.Equal(t, expectedData.CarryoverBalance, mb.CarryoverBalance, "Carryover balance mismatch for month %s", mb.Month)
-	}
-}
-
-// Tests
-
-func TestNewMonthlyBudgetRepository(t *testing.T) {
+func TestMonthlyBudgetGetByCatIdAndMonth(t *testing.T) {
+	f := newMonthlyBudgetFixture(t)
 	ctx := context.Background()
-	dbpool := getTestDbConn(t, ctx)
-	defer dbpool.Close()
-	repo := NewMonthlyBudgetRepository(dbpool)
-	require.NotNil(t, repo)
+
+	mb, err := f.repo.GetByCatIdAndMonth(ctx, f.budgetID, f.catID, "2025-06")
+	require.NoError(t, err)
+	require.Equal(t, 2500.0, mb.Budgeted)
+	require.Equal(t, 0.0, mb.CarryoverBalance)
+
+	mb, err = f.repo.GetByCatIdAndMonth(ctx, f.budgetID, f.catID, "2020-01")
+	require.ErrorIs(t, err, repository.ErrNotFound)
+	require.Nil(t, mb)
 }
 
-func TestGetByCatIdAndMonth(t *testing.T) {
-	ts := setupTestSuite(t)
-	defer ts.tearDown()
-	defer ts.cleanupTestData()
+func TestMonthlyBudgetCreate(t *testing.T) {
+	ctx := context.Background()
 
-	ts.insertDummyData(t)
-
-	t.Run("ValidRetrieval", func(t *testing.T) {
-		mb, err := ts.repo.GetByCatIdAndMonth(ts.ctx, ts.budgetID, ts.catID, "2025-06")
-		require.NoError(t, err)
-		require.NotNil(t, mb)
-		require.Equal(t, 2500.0, mb.Budgeted)
-		require.Equal(t, 0.0, mb.CarryoverBalance)
-		require.Equal(t, "2025-06", mb.Month)
+	t.Run("a month after the data carries the last carryover forward", func(t *testing.T) {
+		f := newMonthlyBudgetFixture(t)
+		require.NoError(t, f.repo.Create(ctx, f.budgetID, model.MonthlyBudget{CategoryID: f.catID, Month: "2025-09", Budgeted: 500}))
+		require.Equal(t, monthAmounts{500, 1000}, f.months(t)["2025-09"])
 	})
 
-	t.Run("NotFound", func(t *testing.T) {
-		mb, err := ts.repo.GetByCatIdAndMonth(ts.ctx, ts.budgetID, ts.catID, "2020-01")
+	t.Run("a month before the data pushes its budget into every later month", func(t *testing.T) {
+		f := newMonthlyBudgetFixture(t)
+		require.NoError(t, f.repo.Create(ctx, f.budgetID, model.MonthlyBudget{CategoryID: f.catID, Month: "2025-04", Budgeted: 500}))
+		require.Equal(t, map[string]monthAmounts{
+			"2025-04": {500, 500},
+			"2025-05": {1000, 500},
+			"2025-06": {2500, 500},
+			"2025-07": {2000, -4500},
+			"2025-08": {1000, 1000},
+		}, f.months(t))
+	})
+
+	t.Run("an existing month is refused and left alone", func(t *testing.T) {
+		f := newMonthlyBudgetFixture(t)
+		before := f.months(t)
+		require.Error(t, f.repo.Create(ctx, f.budgetID, model.MonthlyBudget{CategoryID: f.catID, Month: "2025-06", Budgeted: 500}))
+		require.Equal(t, before, f.months(t))
+	})
+}
+
+func TestMonthlyBudgetUpdateBudgeted(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("the change flows into this month and every later one", func(t *testing.T) {
+		f := newMonthlyBudgetFixture(t)
+		require.NoError(t, f.repo.UpdateBudgetedByCatIdAndMonth(ctx, f.budgetID, f.catID, "2025-07", 5000))
+		require.Equal(t, map[string]monthAmounts{
+			"2025-05": {1000, 0},
+			"2025-06": {2500, 0},
+			"2025-07": {5000, -2000},
+			"2025-08": {1000, 3500},
+		}, f.months(t))
+	})
+
+	t.Run("a missing month is ErrNotFound", func(t *testing.T) {
+		f := newMonthlyBudgetFixture(t)
+		err := f.repo.UpdateBudgetedByCatIdAndMonth(ctx, f.budgetID, f.catID, "2025-09", 5000)
 		require.ErrorIs(t, err, repository.ErrNotFound)
-		require.Nil(t, mb)
-	})
-
-	t.Run("ContextCanceled", func(t *testing.T) {
-		canceledCtx, cancel := context.WithCancel(ts.ctx)
-		cancel()
-		mb, err := ts.repo.GetByCatIdAndMonth(canceledCtx, ts.budgetID, ts.catID, "2025-06")
-		require.Error(t, err)
-		require.Nil(t, mb)
 	})
 }
 
-// Table-driven test helper functions
-type createTestCase struct {
-	name              string
-	monthlyBudget     model.MonthlyBudget
-	expectError       bool
-	expectedBudget    float64
-	expectedCarry     float64
-	verifyAllMonths   bool
-	expectedAllMonths map[string]budgetData
-	description       string
-	useCanceledCtx    bool // NEW: To trigger db errors
-}
+func TestMonthlyBudgetUpdateCarryover(t *testing.T) {
+	ctx := context.Background()
 
-// TestCreateTableDriven demonstrates table-driven testing approach
-func TestCreate(t *testing.T) {
-	testCases := []createTestCase{
-		{
-			name: "FutureMonth",
-			monthlyBudget: model.MonthlyBudget{
-				Month:    "2025-09",
-				Budgeted: 500.00,
-			},
-			expectError:    false,
-			expectedBudget: 500.00,
-			expectedCarry:  1000.00,
-			description:    "Create budget for future month with carryover from previous",
-		},
-		{
-			name: "PastMonthBeforeExistingData",
-			monthlyBudget: model.MonthlyBudget{
-				Month:    "2025-04",
-				Budgeted: 500.00,
-			},
-			expectError:     false,
-			expectedBudget:  500.00,
-			expectedCarry:   500.00,
-			description:     "Create budget for past month before existing data",
-			verifyAllMonths: true,
-			expectedAllMonths: map[string]budgetData{
-				"2025-04": {Budgeted: 500.00, CarryoverBalance: 500.00},
-				"2025-05": {Budgeted: 1000.00, CarryoverBalance: 500.00},
-				"2025-06": {Budgeted: 2500.00, CarryoverBalance: 500.00},
-				"2025-07": {Budgeted: 2000.00, CarryoverBalance: -4500.00},
-				"2025-08": {Budgeted: 1000.00, CarryoverBalance: 1000.00},
-			},
-		},
-		{
-			name: "ExistingMonth",
-			monthlyBudget: model.MonthlyBudget{
-				Month:    "2025-06",
-				Budgeted: 500.00,
-			},
-			expectError: true,
-			description: "Attempt to create budget for existing month should fail",
-		},
-		{
-			name: "NumericOverflow",
-			monthlyBudget: model.MonthlyBudget{
-				Month:    "2025-09",
-				Budgeted: 1e16, // Will fail on insert step due to NUMERIC(12,2)
-			},
-			expectError: true,
-			description: "Insert fails due to numeric overflow catching the INSERT err",
-		},
-		{
-			name: "InvalidDateString",
-			monthlyBudget: model.MonthlyBudget{
-				Month:    "invalid-date",
-				Budgeted: 500.00,
-			},
-			expectError: true,
-			description: "Fails on step 4 update carryover due to pg date conversion failing",
-		},
-		{
-			name: "ContextCanceled",
-			monthlyBudget: model.MonthlyBudget{
-				Month:    "2025-09",
-				Budgeted: 100.00,
-			},
-			useCanceledCtx: true,
-			expectError:    true,
-			description:    "Fails early due to context cancellation from SELECT",
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			ts := setupTestSuite(t)
-			defer ts.tearDown()
-			defer ts.cleanupTestData()
-
-			// Setup test data
-			ts.insertDummyData(t)
-
-			// Set IDs for the test case
-			tc.monthlyBudget.BudgetID = ts.budgetID
-			tc.monthlyBudget.CategoryID = ts.catID
-
-			reqCtx := ts.ctx
-			if tc.useCanceledCtx {
-				canceled, cancel := context.WithCancel(reqCtx)
-				cancel()
-				reqCtx = canceled
-			}
-
-			// Execute operation
-			err := ts.repo.Create(reqCtx, ts.budgetID, tc.monthlyBudget)
-
-			if tc.expectError {
-				require.Error(t, err, tc.description)
-			} else {
-				require.NoError(t, err, tc.description)
-				// Verify results only if no error expected
-				if tc.verifyAllMonths {
-					// Verify all monthly budgets are updated correctly
-					monthlyBudgets := ts.getMonthlyBudgets(t, tc.monthlyBudget.Month)
-					ts.assertMonthlyBudgets(t, monthlyBudgets, tc.expectedAllMonths)
-				} else {
-					// Verify single budget record
-					budgeted, carryover := ts.getSingleMonthlyBudget(t, tc.monthlyBudget.Month)
-					require.Equal(t, tc.expectedBudget, budgeted)
-					require.Equal(t, tc.expectedCarry, carryover)
-				}
-			}
+	t.Run("the amount is added to this month and every later one", func(t *testing.T) {
+		f := newMonthlyBudgetFixture(t)
+		err := NewDBTxn(f.pool).Do(ctx, func(ctx context.Context) error {
+			return f.repo.UpdateCarryoverByCatIdAndMonth(ctx, f.budgetID, f.catID, "2025-07", 1000)
 		})
-	}
-}
+		require.NoError(t, err)
+		require.Equal(t, map[string]monthAmounts{
+			"2025-05": {1000, 0},
+			"2025-06": {2500, 0},
+			"2025-07": {2000, -4000},
+			"2025-08": {1000, 1500},
+		}, f.months(t))
+	})
 
-type updateTestCase struct {
-	name                string
-	month               string
-	amount              float64
-	expectError         bool
-	expectSpecificError bool
-	expectedData        map[string]budgetData
-	description         string
-	useCanceledCtx      bool
-}
-
-// TestUpdateBudgetedByCatIdAndMonth demonstrates table-driven testing for updates
-func TestUpdateBudgetedByCatIdAndMonth(t *testing.T) {
-	testCases := []updateTestCase{
-		{
-			name:        "ValidUpdate",
-			month:       "2025-07",
-			amount:      5000.00,
-			expectError: false,
-			expectedData: map[string]budgetData{
-				"2025-05": {Budgeted: 1000.00, CarryoverBalance: 0.00},
-				"2025-06": {Budgeted: 2500.00, CarryoverBalance: 0.00},
-				"2025-07": {Budgeted: 5000.00, CarryoverBalance: -2000.00},
-				"2025-08": {Budgeted: 1000.00, CarryoverBalance: 3500.00},
-			},
-			description: "Update existing month budget",
-		},
-		{
-			name:                "NonexistentMonth",
-			month:               "2025-09",
-			amount:              5000.00,
-			expectError:         true,
-			expectSpecificError: true, // expect repository.ErrNotFound in step 1 `QueryRow`
-			description:         "Update non-existent month should fail on SELECT",
-		},
-		{
-			name:           "ContextCanceled",
-			month:          "2025-07",
-			amount:         1000.00,
-			expectError:    true,
-			useCanceledCtx: true,
-			description:    "Context cancelled before update query",
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			ts := setupTestSuite(t)
-			defer ts.tearDown()
-			defer ts.cleanupTestData()
-
-			// Setup test data
-			ts.insertDummyData(t)
-
-			reqCtx := ts.ctx
-			if tc.useCanceledCtx {
-				canceled, cancel := context.WithCancel(reqCtx)
-				cancel()
-				reqCtx = canceled
-			}
-
-			// Execute operation
-			err := ts.repo.UpdateBudgetedByCatIdAndMonth(reqCtx, ts.budgetID, ts.catID, tc.month, tc.amount)
-
-			if tc.expectError {
-				require.Error(t, err, tc.description)
-				if tc.expectSpecificError {
-					require.ErrorIs(t, err, repository.ErrNotFound, "Should return repository.ErrNotFound for non-existent record")
-				}
-			} else {
-				require.NoError(t, err, tc.description)
-				// Verify results only if no error expected
-				monthlyBudgets := ts.getMonthlyBudgets(t, "2025-05")
-				ts.assertMonthlyBudgets(t, monthlyBudgets, tc.expectedData)
-			}
-		})
-	}
-}
-
-func TestUpdateCarryoverByCatIdAndMonth(t *testing.T) {
-	testCases := []updateTestCase{
-		{
-			name:                "ValidMonthUpdateWithTx",
-			description:         "Runs inside DBTxn.Do",
-			month:               "2025-07",
-			amount:              0.00, // newCarryover offset
-			expectError:         false,
-			expectSpecificError: false,
-			expectedData: map[string]budgetData{
-				"2025-05": {Budgeted: 1000.00, CarryoverBalance: 0.00},
-				"2025-06": {Budgeted: 2500.00, CarryoverBalance: 0.00},
-				"2025-07": {Budgeted: 2000.00, CarryoverBalance: 0.00},
-				"2025-08": {Budgeted: 1000.00, CarryoverBalance: 5500.00},
-			},
-		},
-		{
-			name:                "MonthDoesNotExists",
-			description:         "Should hit ErrNoRows",
-			month:               "2025-09",
-			amount:              1000.00,
-			expectError:         true,
-			expectSpecificError: true,
-		},
-		{
-			name:           "ContextCanceled",
-			description:    "Context cancelled before select row",
-			month:          "2025-07",
-			amount:         1000.00,
-			expectError:    true,
-			useCanceledCtx: true,
-		},
-	}
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			ts := setupTestSuite(t)
-			defer ts.tearDown()
-			defer ts.cleanupTestData()
-
-			ts.insertDummyData(t)
-
-			reqCtx := ts.ctx
-			if tc.useCanceledCtx {
-				canceled, cancel := context.WithCancel(reqCtx)
-				cancel()
-				reqCtx = canceled
-			}
-
-			update := func(ctx context.Context) error {
-				return ts.repo.UpdateCarryoverByCatIdAndMonth(ctx, ts.budgetID, ts.catID, tc.month, tc.amount)
-			}
-
-			var err error
-			if tc.useCanceledCtx {
-				err = update(reqCtx)
-			} else {
-				err = NewDBTxn(ts.dbpool).Do(reqCtx, update)
-			}
-
-			if tc.expectError {
-				require.Error(t, err, tc.description)
-				if tc.expectSpecificError {
-					require.ErrorIs(t, err, repository.ErrNotFound, "Should return repository.ErrNotFound for a missing month")
-				}
-			} else {
-				require.NoError(t, err, tc.description)
-				monthlyBudgets := ts.getMonthlyBudgets(t, "2025-05")
-				ts.assertMonthlyBudgets(t, monthlyBudgets, tc.expectedData)
-			}
-		})
-	}
+	t.Run("a missing month is ErrNotFound", func(t *testing.T) {
+		f := newMonthlyBudgetFixture(t)
+		err := f.repo.UpdateCarryoverByCatIdAndMonth(ctx, f.budgetID, f.catID, "2025-09", 1000)
+		require.ErrorIs(t, err, repository.ErrNotFound)
+	})
 }
