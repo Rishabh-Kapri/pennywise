@@ -124,35 +124,15 @@ func (h *httpTransport) handleBodyParse(ctx context.Context, req doResult) (tran
 
 	parsedBody, err := io.ReadAll(body)
 	if err != nil {
-		log.Error(
-			"error reading body",
-			"method",
-			originalReq.Method,
-			"url",
-			originalReq.URL.String(),
-			"status",
-			req.StatusCode,
-		)
-		req.StatusCode = http.StatusInternalServerError
-		return resp, errs.New(
-			errs.CodeHTTPClientError,
-			"%s request for %s failed with status code: %d",
-			originalReq.Method,
-			originalReq.URL.String(),
-			req.StatusCode,
-		)
+		log.Error("error reading body", "method", originalReq.Method, "url", originalReq.URL.String(),
+			"status", req.StatusCode, "error", err)
+		return resp, errs.Wrap(errs.CodeHTTPClientError,
+			fmt.Sprintf("%s request for %s: reading the response body failed", originalReq.Method, originalReq.URL.String()), err)
 	}
-	log.Info(
-		"response",
-		"method",
-		originalReq.Method,
-		"url",
-		originalReq.URL.String(),
-		"status",
-		req.StatusCode,
-		"body",
-		string(parsedBody),
-	)
+	// Bodies carry LLM output and bank text, so they are only logged at debug.
+	log.Info("response", "method", originalReq.Method, "url", originalReq.URL.String(),
+		"status", req.StatusCode, "bytes", len(parsedBody))
+	log.Debug("response body", "url", originalReq.URL.String(), "body", string(parsedBody))
 
 	resp.StatusCode = req.StatusCode
 	resp.Body = parsedBody
@@ -182,13 +162,18 @@ func (h *httpTransport) handleSSE(ctx context.Context, doReq doResult) <-chan tr
 			line := scanner.Text()
 			if line == "" {
 				if eventName != "" || len(dataLines) > 0 {
-					out <- transport.SSEEvent{
+					select {
+					case out <- transport.SSEEvent{
 						Event: eventName,
 						Data:  []byte(strings.Join(dataLines, "\n")),
+					}:
+					case <-ctx.Done():
+						return
 					}
 					eventName = ""
 					dataLines = make([]string, 0)
 				}
+				continue
 			}
 
 			if strings.HasPrefix(line, "event: ") {
@@ -200,6 +185,9 @@ func (h *httpTransport) handleSSE(ctx context.Context, doReq doResult) <-chan tr
 				dataLines = append(dataLines, strings.TrimPrefix(line, "data: "))
 				continue
 			}
+		}
+		if err := scanner.Err(); err != nil && ctx.Err() == nil {
+			logger.Logger(ctx).Error("event stream ended early", "error", err)
 		}
 	}()
 

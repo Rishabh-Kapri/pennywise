@@ -74,3 +74,14 @@ func Load() *Config {
 		LangfuseURL:         os.Getenv("LANGFUSE_URL"),
 	}
 }
+
+// redacted is the config with the Langfuse keys masked, for logging.
+func (c Config) redacted() Config {
+	if c.LangfuseSecretKey != "" {
+		c.LangfuseSecretKey = "***"
+	}
+	if c.LangfusePublicKey != "" {
+		c.LangfusePublicKey = "***"
+	}
+	return c
+}

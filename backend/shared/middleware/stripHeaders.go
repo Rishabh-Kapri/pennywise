@@ -5,18 +5,52 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+var internalResponseHeaders = []string{
+	utils.HeaderCorrelationID,
+	utils.HeaderCallerService,
+	utils.HeaderOriginService,
+	utils.HeaderInternalToken,
+	utils.HeaderInternalService,
+	utils.HeaderServiceName,
+}
+
+// StripInternalHeaders keeps the internal headers off every response, whoever
+// set them. Headers can't be changed once the status line is written, so the
+// strip happens at that moment, not after the handlers return.
 func StripInternalHeaders() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		c.Writer = &stripWriter{ResponseWriter: c.Writer}
 		c.Next()
-
-		// Delete internal headers after handlers run.
-		// Gin buffers response headers until the first Write call, so deleting
-		// here (after c.Next) is safe — they won't have been sent yet.
-		c.Writer.Header().Del(utils.HeaderCorrelationID)
-		c.Writer.Header().Del(utils.HeaderCallerService)
-		c.Writer.Header().Del(utils.HeaderOriginService)
-		c.Writer.Header().Del(utils.HeaderInternalToken)
-		c.Writer.Header().Del(utils.HeaderInternalService)
-		c.Writer.Header().Del(utils.HeaderServiceName)
 	}
+}
+
+type stripWriter struct{ gin.ResponseWriter }
+
+func (w *stripWriter) strip() {
+	if w.Written() {
+		return
+	}
+	for _, h := range internalResponseHeaders {
+		w.Header().Del(h)
+	}
+}
+
+func (w *stripWriter) WriteHeader(code int) {
+	w.strip()
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *stripWriter) WriteHeaderNow() {
+	w.strip()
+	w.ResponseWriter.WriteHeaderNow()
+}
+
+func (w *stripWriter) Write(b []byte) (int, error) {
+	w.strip()
+	return w.ResponseWriter.Write(b)
+}
+
+func (w *stripWriter) WriteString(s string) (int, error) {
+	w.strip()
+	return w.ResponseWriter.WriteString(s)
 }

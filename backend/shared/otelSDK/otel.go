@@ -51,7 +51,7 @@ type Telemetry struct {
 // Telemetry struct or an error if provider initialization fails.
 func NewTelemetry(ctx context.Context, cfg Config) (*Telemetry, error) {
 	logs := logger.Logger(ctx)
-	logs.Info("telemetry init", "cfg", cfg)
+	logs.Info("telemetry init", "cfg", cfg.redacted())
 	if cfg.OtelSdkDisabled {
 		logs.Warn("otel sdk disabled")
 		return &Telemetry{
