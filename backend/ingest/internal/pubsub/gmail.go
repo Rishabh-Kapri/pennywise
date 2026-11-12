@@ -17,10 +17,10 @@ import (
 	"google.golang.org/api/option"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/ingest/internal/ports"
-	"github.com/Rishabh-Kapri/pennywise/backend/ingest/internal/service"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/job"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 )
 
@@ -38,12 +38,18 @@ type Config struct {
 	CredentialsJSON string // GOOGLE_APPLICATION_CREDENTIALS_JSON; empty uses the default credentials
 }
 
-type GmailSubscriber struct {
-	cfg     Config
-	mailbox service.MailboxService
+// Notifier queues the job for one mailbox notification
+// (service.MailboxService.Changed).
+type Notifier interface {
+	Changed(ctx context.Context, n model.MailboxChanged) (job.EnqueueResult, error)
 }
 
-func NewGmailSubscriber(cfg Config, mailbox service.MailboxService) *GmailSubscriber {
+type GmailSubscriber struct {
+	cfg     Config
+	mailbox Notifier
+}
+
+func NewGmailSubscriber(cfg Config, mailbox Notifier) *GmailSubscriber {
 	return &GmailSubscriber{cfg: cfg, mailbox: mailbox}
 }
 

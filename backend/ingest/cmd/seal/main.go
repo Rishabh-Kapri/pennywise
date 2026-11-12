@@ -19,6 +19,12 @@ func main() {
 	cfg := config.Load()
 	client := flag.String("client", "web", "Oauth client type the token was issued to: web | android")
 	flag.Parse()
+	clientType := model.GoogleOAuthClientType(*client)
+	if clientType != model.GoogleOAuthClientTypeWeb && clientType != model.GoogleOAuthClientTypeAndroid {
+		// The adapter reads anything but android as web, so a typo would only
+		// show up later as refused credentials.
+		log.Fatalf("-client must be web or android, not %q", *client)
+	}
 
 	raw, err := io.ReadAll(os.Stdin)
 	if err != nil {
@@ -33,7 +39,7 @@ func main() {
 	}
 	sealed, err := gmail.SealCredentials(box, gmail.Credentials{
 		RefreshToken:    strings.TrimSpace(string(raw)),
-		OAuthClientType: model.GoogleOAuthClientType(*client),
+		OAuthClientType: clientType,
 	})
 	if err != nil {
 		log.Fatal(err)

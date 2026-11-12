@@ -7,13 +7,11 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/ingest/internal/service"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/job"
 )
 
 type fakeMailbox struct {
-	service.MailboxService
 	got []model.MailboxChanged
 	err error
 }

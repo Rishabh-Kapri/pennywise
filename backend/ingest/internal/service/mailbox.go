@@ -40,7 +40,10 @@ type MailboxDeps struct {
 
 // watchRenewalCron renews every watch daily, as Gmail recommends. A watch lasts
 // about 7 days, so a few failed runs in a row still don't lose it.
-const watchRenewalCron = "0 3 * * *"
+const (
+	watchRenewalCron     = "0 3 * * *"
+	watchRenewalTimezone = "UTC"
+)
 
 // WatchRenewal is what one RenewWatch did; it becomes the job's result.
 type WatchRenewal struct {
@@ -221,7 +224,7 @@ func (s *mailboxService) ensureWatchSchedule(ctx context.Context, connectionID u
 	if err != nil {
 		return errs.Wrap(errs.CodeInternalError, "encode watch schedule", err)
 	}
-	next, err := jobrunner.NextCronRun(watchRenewalCron, "UTC", time.Now())
+	next, err := jobrunner.NextCronRun(watchRenewalCron, watchRenewalTimezone, time.Now())
 	if err != nil {
 		return err
 	}
@@ -231,7 +234,7 @@ func (s *mailboxService) ensureWatchSchedule(ctx context.Context, connectionID u
 		Queue:     model.QueueIngest,
 		Payload:   payload,
 		Cron:      watchRenewalCron,
-		Timezone:  "UTC",
+		Timezone:  watchRenewalTimezone,
 		NextRunAt: next,
 	})
 }
@@ -377,8 +380,8 @@ func (s *mailboxService) Test(
 	if err != nil {
 		return job.EnqueueResult{}, err
 	}
-	if !slices.Contains(conn.BudgetIDs, budgetID) {
-		return job.EnqueueResult{}, errs.New(errs.CodeConnectionNotFound, "mailbox is not connected to this budget")
+	if err := requireBudget(conn, budgetID); err != nil {
+		return job.EnqueueResult{}, err
 	}
 	return s.Changed(ctx, model.MailboxChanged{
 		Provider: conn.Provider,
@@ -394,10 +397,19 @@ func (s *mailboxService) connectionFor(ctx context.Context, budgetID, id uuid.UU
 	if err != nil {
 		return nil, err
 	}
-	if !slices.Contains(conn.BudgetIDs, budgetID) {
-		return nil, errs.New(errs.CodeConnectionNotFound, "mailbox is not connected to this budget")
+	if err := requireBudget(conn, budgetID); err != nil {
+		return nil, err
 	}
 	return conn, nil
+}
+
+// requireBudget fails unless budgetID is one of conn's budgets. Another
+// budget's mailbox reads as missing.
+func requireBudget(conn *model.MailConnection, budgetID uuid.UUID) error {
+	if !slices.Contains(conn.BudgetIDs, budgetID) {
+		return errs.New(errs.CodeConnectionNotFound, "mailbox is not connected to this budget")
+	}
+	return nil
 }
 
 func (s *mailboxService) BackfillCandidates(
@@ -429,7 +441,7 @@ func (s *mailboxService) QueueBackfill(
 		return job.EnqueueResult{}, err
 	}
 
-	ids := slices.Sorted(slices.Values(externalIDs))
+	ids := slices.Compact(slices.Sorted(slices.Values(externalIDs))) // the same choice, however it's listed
 	payload, err := json.Marshal(model.MailboxBackfill{
 		ConnectionID: conn.ID,
 		Account:      conn.Account,

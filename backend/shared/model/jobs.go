@@ -34,10 +34,9 @@ const (
 	// POST /api/ingest/connections/:id/backfill; payload MailboxBackfill.
 	JobTypeMailboxBackfill = "mailbox.backfill"
 
-	// JobTypeMailboxStartWatch / JobTypeMailboxStopWatch: start (or renew)
-	// and stop a connection's provider watch.
+	// JobTypeMailboxStartWatch: start (or renew) a connection's provider
+	// watch. Stopping one is done in the request, not as a job.
 	JobTypeMailboxStartWatch = "mailbox.watch.start"
-	JobTypeMailboxStopWatch  = "mailbox.watch.stop"
 
 	// JobTypeMessageExtract, JobTypeMessageVerify, JobTypeMessageLookup,
 	// JobTypeMessagePredict: cipher's classification steps (extract fields,

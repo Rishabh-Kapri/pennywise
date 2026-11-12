@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strconv"
 	"testing"
 	"time"
 
@@ -206,7 +207,7 @@ func TestQueueBackfill(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	again, err := s.QueueBackfill(ctx, budget, uuid.New(), []string{"a", "b"})
+	again, err := s.QueueBackfill(ctx, budget, uuid.New(), []string{"a", "b", "a"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,6 +220,13 @@ func TestQueueBackfill(t *testing.T) {
 
 	if _, err := s.QueueBackfill(ctx, uuid.New(), uuid.New(), []string{"a"}); !errs.HasCode(err, errs.CodeConnectionNotFound) {
 		t.Fatalf("got %v", err)
+	}
+	tooMany := make([]string, backfillMaxEmails+1)
+	for i := range tooMany {
+		tooMany[i] = strconv.Itoa(i)
+	}
+	if _, err := s.QueueBackfill(ctx, budget, uuid.New(), tooMany); !errs.HasCode(err, errs.CodeIngestInvalidMessage) {
+		t.Fatalf("more than the candidates: %v", err)
 	}
 }
 
