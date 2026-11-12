@@ -2,7 +2,6 @@ package model
 
 import (
 	"encoding/base64"
-	"slices"
 	"strings"
 	"time"
 
@@ -103,11 +102,6 @@ func (k *APIKey) HasScope(scope Scope) bool {
 	return false
 }
 
-// Checks whether the API Key has any of the scopes
-func (k *APIKey) CheckScope(scopes ...Scope) bool {
-	return slices.ContainsFunc(scopes, k.HasScope)
-}
-
 // Check where API Key is valid
 func (k *APIKey) IsValid() bool {
 	if !k.IsActive {
@@ -123,12 +117,4 @@ func (k *APIKey) IsValid() bool {
 	}
 
 	return true
-}
-
-func (k *APIKey) NeedRotation() bool {
-	if k.RotationDueAt == nil {
-		return false
-	}
-
-	return time.Now().After(*k.RotationDueAt)
 }

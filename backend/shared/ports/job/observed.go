@@ -44,11 +44,6 @@ func (o *ObservedBroker) WithNotifier(n Notifier) *ObservedBroker {
 	return o
 }
 
-// Unwrap returns the adapter underneath.
-func (o *ObservedBroker) Unwrap() Broker {
-	return o.broker
-}
-
 func (o *ObservedBroker) Enqueue(
 	ctx context.Context,
 	jobType string,

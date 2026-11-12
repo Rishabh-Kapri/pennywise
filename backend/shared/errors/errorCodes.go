@@ -24,9 +24,6 @@ const (
 	CodeHTTPClientError Code = "HTTP_CLIENT_ERROR"
 )
 
-// Websocket error codes
-const ()
-
 // User error codes
 const (
 	CodeUserLookupFailed Code = "USER_LOOKUP_FAILED"
@@ -188,7 +185,6 @@ const (
 	CodeMessageVerifyFailed  Code = "MESSAGE_VERIFY_FAILED"
 	CodeMessageLookupFailed  Code = "MESSAGE_LOOKUP_FAILED"
 	CodeMessagePredictFailed Code = "MESSAGE_PREDICT_FAILED"
-	// CodePipelineReportFailed: recording how a message ended failed.
 )
 
 // Workers
