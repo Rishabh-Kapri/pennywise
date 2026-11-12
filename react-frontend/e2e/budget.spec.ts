@@ -63,7 +63,10 @@ test('demo transaction changes balances and survives reload', async ({ page }, t
     await page.reload();
     await page.getByPlaceholder('Search transactions').fill(note);
     await expect(page.getByText(note, { exact: true })).toBeVisible();
-    await page.getByTestId(`transaction-${transactionId}`).click();
+    // Payee, date, category, account and note edit in place; the amount opens the panel.
+    const row = page.getByTestId(`transaction-${transactionId}`);
+    const box = await row.boundingBox();
+    await row.click({ position: { x: box!.width - 24, y: box!.height / 2 } });
     await page.getByPlaceholder("Anything you'd like to remember about this?").fill(`${note} edited`);
     const updatedResponse = page.waitForResponse(r => r.url().includes(`/api/transactions/${transactionId}`) && r.request().method() === 'PATCH');
     await page.getByRole('button', { name: 'Save', exact: true }).click();
