@@ -21,9 +21,10 @@ func TestStripInternalHeadersKeepsThemOffTheResponse(t *testing.T) {
 	}
 	r.GET("/json", func(c *gin.Context) { setAll(c); c.JSON(http.StatusOK, gin.H{"ok": true}) })
 	r.GET("/status", func(c *gin.Context) { setAll(c); c.Status(http.StatusNoContent) })
+	r.GET("/empty", func(c *gin.Context) { setAll(c) })
 	r.GET("/string", func(c *gin.Context) { setAll(c); c.String(http.StatusOK, "hi") })
 
-	for _, path := range []string{"/json", "/status", "/string"} {
+	for _, path := range []string{"/json", "/status", "/string", "/empty"} {
 		t.Run(path, func(t *testing.T) {
 			w := httptest.NewRecorder()
 			r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))

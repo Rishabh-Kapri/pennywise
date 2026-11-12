@@ -33,7 +33,7 @@ type jobBroker struct {
 // scheduleTick identifies one firing of a schedule.
 type scheduleTick struct {
 	schedule uuid.UUID
-	at       time.Time
+	at       int64 // UnixNano: equal instants compare equal whatever their location
 }
 
 // idempotencyKey is the map key for duplicate checks. The key is unique per
@@ -86,7 +86,7 @@ func (b *jobBroker) Enqueue(
 	}
 
 	if o.ScheduleID != nil && o.ScheduledFor != nil {
-		if existingID, ok := b.ticks[scheduleTick{*o.ScheduleID, *o.ScheduledFor}]; ok {
+		if existingID, ok := b.ticks[scheduleTick{*o.ScheduleID, o.ScheduledFor.UnixNano()}]; ok {
 			return job.EnqueueResult{JobID: existingID, Duplicate: true}, nil
 		}
 	}
@@ -118,7 +118,7 @@ func (b *jobBroker) Enqueue(
 		b.keys[idempotencyKey{queue: o.Queue, jobType: o.Type, key: o.IdempotencyKey}] = j.ID
 	}
 	if o.ScheduleID != nil && o.ScheduledFor != nil {
-		b.ticks[scheduleTick{*o.ScheduleID, *o.ScheduledFor}] = j.ID
+		b.ticks[scheduleTick{*o.ScheduleID, o.ScheduledFor.UnixNano()}] = j.ID
 	}
 
 	return job.EnqueueResult{JobID: j.ID, Duplicate: false}, nil

@@ -18,8 +18,8 @@ import (
 
 // TelemetryProvider defines the contract for telemetry operations.
 // It is designed to allow easy mocking in tests, though in practice, OTel
-// itself acts as the primary abstraction layer. Functions here expose basic
-// instrument creation, span generation, and Gin middleware handlers.
+// itself acts as the primary abstraction layer. It exposes only what services
+// use: spans under an instrumentation scope, and shutdown.
 type TelemetryProvider interface {
 	TraceStartWithScope(ctx context.Context, scope, name string) (context.Context, oteltrace.Span)
 	Shutdown(ctx context.Context) error

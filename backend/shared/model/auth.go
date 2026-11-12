@@ -35,7 +35,7 @@ type AuthUser struct {
 }
 
 type GoogleProviderUser struct {
-	ID              string                `json:"id"` // AuthProvider.ProviderID
+	ID              string                `json:"id"` // the Google user ID
 	OAuthClientType GoogleOAuthClientType `json:"oauthClientType"`
 	Name            string                `json:"name"`
 	Picture         string                `json:"picture"`

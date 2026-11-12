@@ -217,21 +217,12 @@ func (h *httpTransport) do(
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		body, _ := io.ReadAll(res.Body)
 		res.Body.Close()
-		log.Error(
-			"request failed",
-			"method",
-			req.Method,
-			"url",
-			req.URL.String(),
-			"status",
-			res.StatusCode,
-			"body",
-			string(body),
-		)
 		errBody := strings.TrimSpace(string(body))
 		if len(errBody) > 512 {
 			errBody = errBody[:512] + "..."
 		}
+		log.Error("request failed", "method", req.Method, "url", req.URL.String(),
+			"status", res.StatusCode, "body", errBody)
 		msg := fmt.Sprintf("%s request for %s failed with status code: %d", req.Method, req.URL.String(), res.StatusCode)
 		if errBody != "" {
 			msg += ": " + errBody

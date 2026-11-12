@@ -21,7 +21,7 @@ Gmail Pub/Sub listener and Gmail activity worker. Starts `EmailToTransactionWork
 - The `/api/temporal` HTTP handler starts the workflow WITHOUT an ID, so it has no dedupe. Use it for manual testing only.
 - `/api/backfill` (onboarding, called by the API) lists recent bank alerts with a Gmail search (`backfillQuery`, capped by days and count) and starts `ParsedEmailToTransactionWorkflow` directly with `backfill-<budget>-<unix>` as the ID. It has no history id and no parent, so the child records its own pipeline run (trigger `manual`). Transactions dedupe on `(budget_id, dedupe_hash)`, so overlapping a push is safe.
 - `FetchEmailData` is the only Gmail read in the pipeline. It returns raw bodies plus `From`/`Subject`/`Snippet` headers. Parsing happens in cipher (`ParseEmail`, one email per activity).
-- Activities restamp `gmail-pubsub` as the service name (`utils.WithServiceName`) before calling downstream HTTP.
+- Activities restamp `gmail-pubsub` as the service name (`utils.WithLocalService`) before calling downstream HTTP.
 - Production runs two activity workers on `gmail-activities` in one process: `cmd/main.go` and `pubsub.PullMessages`, both registering `GmailActivities`. Keep registrations identical in both.
 - The worker and the subscriber start only when `RAILWAY_ENVIRONMENT_NAME` is not `local` (default `local`). Locally, only the HTTP routes run.
 - Gmail watch is refreshed by `RefreshGmailWatchWorkflow` (workflows service) calling `GmailWatchCall` here.

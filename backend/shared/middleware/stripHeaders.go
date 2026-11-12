@@ -19,8 +19,11 @@ var internalResponseHeaders = []string{
 // strip happens at that moment, not after the handlers return.
 func StripInternalHeaders() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Writer = &stripWriter{ResponseWriter: c.Writer}
+		w := &stripWriter{ResponseWriter: c.Writer}
+		c.Writer = w
 		c.Next()
+		// A response with no body is flushed by gin itself, not through w.
+		w.strip()
 	}
 }
 

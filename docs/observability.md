@@ -39,8 +39,6 @@ All OTel infrastructure lives in `backend/shared/otelSDK/`. This package is impo
 backend/shared/otelSDK/
 ├── config.go       — Reads SERVICE_NAME, SERVICE_VERSION, env vars
 ├── providers.go    — Creates LoggerProvider, MeterProvider, TracerProvider
-├── metrics.go      — Metric definitions (name, unit, description)
-├── middlewares.go  — Gin middleware for request duration and inflight count
 └── otel.go         — Telemetry struct, TelemetryProvider interface, constructor
 ```
 
@@ -146,201 +144,11 @@ The `LoggerProvider` is initialized but not yet bridged to `slog`. In production
 
 ## 6. Cipher Gin Middleware
 
-Four telemetry-related Gin middlewares are registered in `cipher/cmd/api/main.go`:
+`cipher/cmd/api/main.go` registers `otelgin.Middleware` (from `go.opentelemetry.io/contrib/instrumentation/...`), which creates a trace span for each HTTP request and propagates W3C TraceContext headers. Request logging is `RequestLogger` from `backend/shared/middleware`.
 
-### `otelgin.Middleware` (from `go.opentelemetry.io/contrib/instrumentation/...`)
-
-Automatically creates a trace span for each HTTP request, propagating W3C TraceContext headers. This integrates Gin request handling into the OTel trace tree.
-
-### `tel.LogRequest()`
-
-Logs each request (method, path, status, latency) at the `INFO` level via the shared `slog` logger, with correlation ID from context.
-
-### `tel.MeterRequestDuration()`
-
-Wraps every request with a timer. After `c.Next()` returns, it records the elapsed milliseconds into a histogram instrument. The histogram uses the default OTel bucket boundaries (`0, 5, 10, 25, 50, ... 10000 ms`).
-
-> Note: Cipher makes calls to Ollama which can take 5–20 seconds. The default histogram boundaries max out at 10,000 ms. This should be overridden with service-specific boundaries such as `[0, 100, 500, 1000, 2500, 5000, 10000, 20000, 60000]` before hooking up a production metrics backend.
-
-### `tel.MeterRequestsInFlight()`
-
-Uses an `Int64UpDownCounter` that increments before `c.Next()` and decrements after. This gives a real-time concurrency gauge. At idle, the value is `0`. During a slow Ollama call, it reflects how many requests are being served simultaneously.
-
-`MeterRequestDuration` and `MeterRequestsInFlight` attach HTTP semantic convention attributes (`http.method`, `net.host.name`, `user_agent.original`, etc.) via `httpconv.ServerRequest(...)`. These are standardized attribute names recognized by any OTel-compatible backend.
+The package once had `tel.LogRequest()`, `tel.MeterRequestDuration()` and `tel.MeterRequestsInFlight()` middlewares. No service registered them, so they were removed along with the `Metric` definitions; the git history has them if request metrics are wanted again.
 
 ---
-
-## 7. Production Upgrade Path
-
-### 7.1 Swapping to OTLP exporters (metrics + traces)
-
-In production, the `stdout*` exporters in `providers.go` are replaced with OTLP HTTP exporters pointing at a Grafana Alloy collector or a Prometheus-compatible endpoint. No instrumentation code changes — only the exporter initialization.
-
-```go
-// Replace stdoutmetric with:
-import "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
-
-exporter, _ := otlpmetrichttp.New(ctx,
-    otlpmetrichttp.WithEndpointURL(cfg.OTLPEndpoint),
-)
-```
-
-The `cfg.Env` field (read from `RAILWAY_ENVIRONMENT_NAME`) gates which exporter is created:
-
-```go
-if cfg.Env == "local" {
-    // stdout exporter
-} else {
-    // OTLP exporter → Grafana Alloy
-}
-```
-
-### 7.2 The `slog`-to-OTel bridge (logs to Loki)
-
-Today, `slog` writes to `stdout`. In production on Railway, logs are collected from stdout by the platform's log drain. This is sufficient.
-
-If a centralized log aggregator like Grafana Loki is added, logs can flow via the OTel Collector instead of stdout by installing the `slog` bridge:
-
-```go
-import "go.opentelemetry.io/contrib/bridges/otelslog"
-
-// The bridge is an slog.Handler implementation.
-// Instead of writing to os.Stdout, it converts each slog.Record
-// into an OTel LogRecord and sends it to the LoggerProvider.
-otelHandler := otelslog.NewHandler("cipher",
-    otelslog.WithLoggerProvider(loggerProvider),
-)
-
-// In logger.Setup(), swap the handler based on environment:
-if env == "local" {
-    handler = tint.NewHandler(os.Stdout, ...)   // colorized stdout, unchanged
-} else {
-    handler = otelHandler                         // → OTel → Collector → Loki
-}
-```
-
-No calling code changes. `logger.Logger(ctx).Info(...)` continues to work identically. The `LoggerProvider` already exists in `Telemetry`; wiring the bridge is a one-line change in `logger.Setup()`.
-
-This means the complete production stack routes through a single OTel Collector endpoint:
-
-```
-cipher
-├── slog (via bridge) ─────────► OTel Collector ──► Grafana Loki (logs)
-├── MeterProvider (OTLP) ──────► OTel Collector ──► Grafana Mimir (metrics)
-└── TracerProvider (OTLP) ─────► Langfuse (LLM traces)
-                                 └── Grafana Tempo (distributed traces)
-```
-
-### 7.3 Langfuse integration (LLM traces)
-
-Langfuse is an LLM observability platform that acts as an OTLP trace backend. It maps OTel spans carrying [GenAI semantic convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/) attributes to its own data model, providing per-request visibility into model calls, token usage, cost, latency, and prompt/completion content.
-
-**Why Langfuse for cipher specifically:** Cipher's `Predict` pipeline makes multiple sequential LLM calls — Phase 1 extraction via Ollama/Gemma, Phase 3 embedding via bge-m3, and Phase 4 classification via OpenAI. Each call has variable latency and cost. Without tracing, debugging a slow or incorrect prediction requires log-grepping. With Langfuse, the full trace tree is visible in a single UI.
-
-#### Setup
-
-Langfuse authenticates via Basic Auth. The base64-encoded `publicKey:secretKey` is passed as a request header to its OTLP endpoint.
-
-Add to `cipher/.env`:
-
-```env
-# For self-hosted Langfuse, use your own domain or localhost
-LANGFUSE_ENDPOINT=http://localhost:3000/api/public/otel
-LANGFUSE_PUBLIC_KEY=pk-lf-...
-LANGFUSE_SECRET_KEY=sk-lf-...
-```
-
-In `providers.go`, add a second trace exporter alongside `stdouttrace`:
-
-```go
-import (
-    "encoding/base64"
-    "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
-)
-
-func newLangfuseExporter(ctx context.Context, cfg Config) (trace.SpanExporter, error) {
-    if cfg.LangfusePublicKey == "" {
-        return nil, nil
-    }
-    auth := base64.StdEncoding.EncodeToString(
-        []byte(cfg.LangfusePublicKey + ":" + cfg.LangfuseSecretKey),
-    )
-    return otlptracehttp.New(ctx,
-        otlptracehttp.WithEndpointURL(cfg.LangfuseEndpoint),
-        otlptracehttp.WithHeaders(map[string]string{
-            "Authorization":                "Basic " + auth,
-            "x-langfuse-ingestion-version": "4",
-        }),
-    )
-}
-```
-
-Both exporters attach to the same `TracerProvider` via `trace.WithBatcher(...)`. No code changes are needed in `predictionService` or anywhere else that creates spans — OTel routes each span to all registered exporters automatically.
-
-#### Instrumenting LLM calls
-
-Spans are created in `OllamaClient` and `doOpenAI` wrapping each network call. The GenAI semantic conventions tell Langfuse how to render them:
-
-```go
-// In doOpenAI / doLocalGenerate / Embed:
-ctx, span := c.tracer.Start(ctx, "chat "+model,
-    oteltrace.WithSpanKind(oteltrace.SpanKindClient),
-)
-defer span.End()
-
-span.SetAttributes(
-    attribute.String("gen_ai.system", "openai"),       // provider
-    attribute.String("gen_ai.request.model", model),   // model name
-    attribute.String("gen_ai.prompt", prompt),          // input → Langfuse "Input"
-    attribute.String("gen_ai.completion", response),    // output → Langfuse "Output"
-    // For OpenAI responses (token counts are in the response body):
-    attribute.Int("gen_ai.usage.input_tokens", resp.Usage.PromptTokens),
-    attribute.Int("gen_ai.usage.output_tokens", resp.Usage.CompletionTokens),
-)
-```
-
-Because `context.Context` propagates the active span, child spans created inside `Predict` (embed → generate → classify) automatically form a tree in Langfuse without any manual parent-child linking.
-
-#### What Langfuse shows per prediction request
-
-```
-Trace: cipher-predict
-├── Generation: "embed bge-m3"       (Phase 3: vector embedding)
-│   ├── System: ollama
-│   ├── Input: "debit SWIGGY"
-│   └── Duration: 0.4s
-│
-├── Generation: "chat gemma4"        (Phase 1: email extraction)
-│   ├── System: ollama
-│   ├── Input: extraction prompt + raw email text
-│   ├── Output: {"merchant": "SWIGGY", "amount": 500.0, ...}
-│   └── Duration: 3.2s
-│
-└── Generation: "chat gpt-4.1"      (Phase 4: LLM fallback)
-    ├── System: openai
-    ├── Input: classification prompt
-    ├── Output: {"merchantName": "Swiggy", "suggestedTag": "🍽️ Dining Out"...}
-    ├── Input tokens: 850  → cost calculated automatically
-    ├── Output tokens: 45
-    └── Duration: 1.8s
-```
-
----
-
-## 8. `Shutdown` and Graceful Flush
-
-All three providers buffer data before exporting. The `Shutdown(ctx)` method on `Telemetry` is deferred in each service's `main()`:
-
-```go
-tel, err := otelSDK.NewTelemetry(ctx, *otelConfig)
-defer tel.Shutdown(ctx)
-```
-
-Without this, any buffered spans or metrics accumulated since the last flush would be silently dropped on process exit. This is especially important for traces — a slow batch flush (e.g., Langfuse network call) needs time to complete before the process terminates.
-
----
-
-## 9. Design Note: The `Telemetry` Wrapper Is an Over-Abstraction
 
 The current `Telemetry` struct and `TelemetryProvider` interface wrap OTel in a custom abstraction. In hindsight, this is unnecessary and arguably harmful. The package was kept as-is for learning purposes, but the problems are worth documenting.
 
@@ -348,8 +156,8 @@ The current `Telemetry` struct and `TelemetryProvider` interface wrap OTel in a 
 
 **The abstraction leaks in three places:**
 
-1. `TraceStart` returns `oteltrace.Span`. Callers must import `go.opentelemetry.io/otel/trace` to call `span.End()` and `span.SetAttributes(...)`. The wrapper provides no isolation.
-2. `MeterInt64Histogram` and `MeterInt64UpDownCounter` return OTel metric types. Once again, the caller depends on OTel directly.
+1. `TraceStartWithScope` returns `oteltrace.Span`. Callers must import `go.opentelemetry.io/otel/trace` to call `span.End()` and `span.SetAttributes(...)`. The wrapper provides no isolation.
+2. (The metric instrument helpers that returned OTel metric types have been removed; they had no callers.)
 3. `providers.go` sets global OTel state via `otel.SetMeterProvider` and `otel.SetTracerProvider`. Any third-party OTel middleware uses these globals, bypassing the wrapper entirely.
 
 If you write an abstraction on top of a library but callers still need to import the underlying library, the abstraction is not providing value.
