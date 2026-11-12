@@ -25,10 +25,7 @@ const (
 )
 
 // Websocket error codes
-const (
-	CodeWebsocketClientError Code = "WS_CLIENT_ERROR"
-	CodeWebsocketMessageRead Code = "WS_MESSAGE_READ_ERROR"
-)
+const ()
 
 // User error codes
 const (
@@ -47,12 +44,10 @@ const (
 	CodeTransactionDeleteFailed Code = "TRANSACTION_DELETE_FAILED"
 	CodeTransferCreateFailed    Code = "TRANSFER_CREATE_FAILED"
 	CodeTransferNotCreated      Code = "TRANSFER_NOT_CREATED"
-	CodeTransferLinkFailed      Code = "TRANSFER_LINK_FAILED"
 	CodeBudgetLookupFailed      Code = "BUDGET_LOOKUP_FAILED"
 	CodePredictionLookupFailed  Code = "PREDICTION_LOOKUP_FAILED"
 	CodePredictionCreateFailed  Code = "PREDICTION_CREATE_FAILED"
 	CodePredictionUpdateFailed  Code = "PREDICTION_UPDATE_FAILED"
-	CodePredictionDeleteFailed  Code = "PREDICTION_DELETE_FAILED"
 )
 
 // Payee/Account/Category error codes
@@ -68,7 +63,6 @@ const (
 const (
 	CodeMonthlyBudgetLookupFailed Code = "MONTHLY_BUDGET_LOOKUP_FAILED"
 	CodeMonthlyBudgetCreateFailed Code = "MONTHLY_BUDGET_CREATE_FAILED"
-	CodeMonthlyBudgetUpdateFailed Code = "MONTHLY_BUDGET_UPDATE_FAILED"
 )
 
 // Agent
@@ -77,7 +71,6 @@ const (
 	// CodeAIProviderNotConfigured: the budget owner has no enabled AI provider
 	// (user_llm_providers). Not retryable until they add one.
 	CodeAIProviderNotConfigured       Code = "AI_PROVIDER_NOT_CONFIGURED"
-	CodeAgentCreateFailed             Code = "AGENT_CREATE_FAILED"
 	CodeAgentRunNotFound              Code = "AGENT_RUN_NOT_FOUND"
 	CodeAgentRunLookupFailed          Code = "AGENT_RUN_LOOKUP_FAILED"
 	CodeAgentRunCreateFailed          Code = "AGENT_RUN_CREATE_FAILED"
@@ -168,8 +161,7 @@ const (
 	CodeJobInvalidOption      Code = "JOB_INVALID_OPTION"
 	// CodeJobInvalidPayload: a job's payload can't be decoded, or it has no
 	// budget. A retry can't fix it; it dies after MaxAttempts.
-	CodeJobInvalidPayload    Code = "JOB_INVALID_PAYLOAD"
-	CodeJobPayloadParseError Code = "JOB_PAYLOAD_PARSE_FAILED"
+	CodeJobInvalidPayload Code = "JOB_INVALID_PAYLOAD"
 	// CodeJobsUnavailable: ClaimJob found no job ready to run. Not a failure;
 	// the worker waits and claims again.
 	CodeJobsUnavailable  Code = "JOBS_UNAVAILABLE"
@@ -197,7 +189,6 @@ const (
 	CodeMessageLookupFailed  Code = "MESSAGE_LOOKUP_FAILED"
 	CodeMessagePredictFailed Code = "MESSAGE_PREDICT_FAILED"
 	// CodePipelineReportFailed: recording how a message ended failed.
-	CodePipelineReportFailed Code = "PIPELINE_REPORT_FAILED"
 )
 
 // Workers

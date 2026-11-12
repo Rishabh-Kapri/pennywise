@@ -3,7 +3,6 @@ package factory
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/adapters/redis"
@@ -20,11 +19,6 @@ type QueueConfig struct {
 	// Driver picks the adapter. Empty means QueueDriverRedis.
 	Driver string
 	URL    string
-}
-
-// QueueConfigFromEnv reads QUEUE_DRIVER and REDIS_URL.
-func QueueConfigFromEnv() QueueConfig {
-	return QueueConfig{Driver: os.Getenv("QUEUE_DRIVER"), URL: os.Getenv("REDIS_URL")}
 }
 
 func (c QueueConfig) driver() string {

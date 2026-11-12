@@ -15,7 +15,6 @@ type contextKey string
 const (
 	budgetIDKey      contextKey = "budgetId"
 	userIDKey        contextKey = "userId"
-	userKey          contextKey = "user"
 	correlationIDKey contextKey = "correlationId"
 	serviceNameKey   contextKey = "serviceName"
 	requestMetaKey   contextKey = "requestMetadata"
@@ -150,10 +149,6 @@ func RequestMetadataFromHeaders(headers http.Header) RequestMetadata {
 	}
 
 	return metadata.normalized()
-}
-
-func RequestMetadataFromHeaderMap(headers map[string][]string) RequestMetadata {
-	return RequestMetadataFromHeaders(http.Header(headers))
 }
 
 func WithLocalService(ctx context.Context, name string) context.Context {
@@ -293,10 +288,6 @@ func UserIDFromContext(ctx context.Context) (uuid.UUID, error) {
 	}
 
 	return *metadata.UserID, nil
-}
-
-func WithUser(ctx context.Context, user *model.AuthUser) context.Context {
-	return context.WithValue(ctx, userKey, user)
 }
 
 func MustUserID(ctx context.Context) uuid.UUID {

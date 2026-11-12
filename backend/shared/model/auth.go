@@ -34,17 +34,6 @@ type AuthUser struct {
 	Deleted          bool      `json:"deleted"`
 }
 
-type AuthProvider struct {
-	ID              uuid.UUID             `json:"id"`
-	AuthUserID      uuid.UUID             `json:"authUserId"` // AuthUser.ID
-	ProviderType    AuthProviderType      `json:"providerType"`
-	ProviderID      string                `json:"providerId"` // eg, google_id
-	OAuthClientType GoogleOAuthClientType `json:"oauthClientType"`
-	VerifiedAt      time.Time             `json:"verifiedAt"` // when the user verified the provider (eg, email verification)
-	CreatedAt       time.Time             `json:"createdAt"`
-	UpdatedAt       time.Time             `json:"updatedAt"`
-}
-
 type GoogleProviderUser struct {
 	ID              string                `json:"id"` // AuthProvider.ProviderID
 	OAuthClientType GoogleOAuthClientType `json:"oauthClientType"`
@@ -118,13 +107,6 @@ type RefreshTokenResponse struct {
 	ExpiresIn   int    `json:"expiresIn"`
 }
 
-// JWTClaims represents the claims in our JWT token
-type JWTClaims struct {
-	UserID       uuid.UUID `json:"userId"`
-	Email        string    `json:"email"`
-	TokenVersion int       `json:"tokenVersion"`
-}
-
 // GoogleUserInfo is returned for internal service lookups by email.
 // Contains google provider data plus the user's budget context. The Gmail
 // fields are always empty: Gmail access moved to mail_connections, and they stay
@@ -138,18 +120,4 @@ type GoogleUserInfo struct {
 	LastGmailSync   *time.Time            `json:"lastGmailSync"`
 	UserID          uuid.UUID             `json:"userId"`
 	BudgetID        uuid.UUID             `json:"budgetId"`
-}
-
-// GoogleTokenPayload represents the decoded Google ID token
-type GoogleTokenPayload struct {
-	Aud           string `json:"aud"`
-	Sub           string `json:"sub"` // Google User ID
-	Email         string `json:"email"`
-	EmailVerified bool   `json:"email_verified"`
-	Name          string `json:"name"`
-	Picture       string `json:"picture"`
-	GivenName     string `json:"given_name"`
-	FamilyName    string `json:"family_name"`
-	Iat           int64  `json:"iat"`
-	Exp           int64  `json:"exp"`
 }

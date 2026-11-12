@@ -20,7 +20,7 @@ func NewTransactionEmbeddingRepository(pool *pgxpool.Pool) repository.Transactio
 }
 
 func (r *transactionEmbeddingRepository) SearchSimilar(ctx context.Context, budgetID uuid.UUID, amount float64, embedding []float64, limit int) ([]model.TransactionEmbedding, error) {
-	embeddingStr := vectorLiteral(embedding)
+	embeddingStr := model.FormatVector(embedding)
 	rows, err := r.Executor(ctx).Query(
 		ctx, `
 			SELECT
@@ -73,7 +73,7 @@ func (r *transactionEmbeddingRepository) SearchSimilar(ctx context.Context, budg
 }
 
 func (r *transactionEmbeddingRepository) Upsert(ctx context.Context, data model.TransactionEmbedding, embedding []float64) error {
-	embeddingStr := vectorLiteral(embedding)
+	embeddingStr := model.FormatVector(embedding)
 	executor := r.Executor(ctx)
 	query := `
 	  INSERT INTO transaction_embeddings (

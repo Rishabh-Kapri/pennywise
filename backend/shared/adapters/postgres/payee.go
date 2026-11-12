@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"errors"
-	"log"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
@@ -45,7 +44,6 @@ func (r *payeeRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Pay
 }
 
 func (r *payeeRepo) Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.Payee, error) {
-	log.Printf("%v %v", budgetId, query)
 	rows, err := r.Executor(ctx).Query(
 		ctx,
 		`SELECT id, name, budget_id, transfer_account_id, created_at, updated_at FROM payees 

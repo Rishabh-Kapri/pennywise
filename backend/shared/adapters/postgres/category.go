@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
@@ -131,7 +130,6 @@ func (r *categoryRepo) GetAllSimplified(ctx context.Context, budgetId uuid.UUID)
 func (r *categoryRepo) GetInflowBalance(ctx context.Context, budgetId uuid.UUID) (float64, error) {
 	var balance float64
 
-	log.Printf("%v", budgetId)
 	err := r.Executor(ctx).QueryRow(ctx, `
 			WITH inflow_cat AS (
 				SELECT id FROM categories
@@ -166,8 +164,6 @@ func (r *categoryRepo) GetByFilter(ctx context.Context, budgetId uuid.UUID, filt
 		args = append(args, *filter.IsSystem)
 		argIndex++
 	}
-	log.Printf("%v", sql)
-	log.Printf("%v", args)
 
 	rows, err := r.Executor(ctx).Query(ctx, sql, args...)
 	if err != nil {
@@ -247,7 +243,6 @@ func (r *categoryRepo) FindClosestSimplified(
 }
 
 func (r *categoryRepo) Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.Category, error) {
-	log.Printf("%v %v", budgetId, query)
 	rows, err := r.Executor(ctx).Query(
 		ctx, `
 			SELECT 

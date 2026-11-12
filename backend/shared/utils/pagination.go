@@ -11,15 +11,6 @@ import (
 	"github.com/google/uuid"
 )
 
-func CreateCursor(id string, createdAt time.Time, pointsNext bool) sharedModel.Cursor {
-	parsedID, _ := uuid.Parse(id)
-	return sharedModel.Cursor{
-		ID:         parsedID,
-		UpdatedAt:  createdAt,
-		PointsNext: pointsNext,
-	}
-}
-
 func GeneratePager(next sharedModel.Cursor, prev sharedModel.Cursor) sharedModel.Pagination {
 	return sharedModel.Pagination{
 		NextCursor: encodeCursor(next),

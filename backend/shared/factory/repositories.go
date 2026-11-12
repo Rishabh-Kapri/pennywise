@@ -6,7 +6,6 @@ package factory
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/adapters/postgres"
@@ -23,11 +22,6 @@ type Config struct {
 	// Driver picks the adapter. Empty means DriverPostgres.
 	Driver string
 	URL    string
-}
-
-// ConfigFromEnv reads DATABASE_DRIVER and DATABASE_URL.
-func ConfigFromEnv() Config {
-	return Config{Driver: os.Getenv("DATABASE_DRIVER"), URL: os.Getenv("DATABASE_URL")}
 }
 
 func (c Config) driver() string {

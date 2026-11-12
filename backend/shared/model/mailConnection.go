@@ -10,8 +10,8 @@ import (
 // It is read once and its messages go to every budget in BudgetIDs. Login identity is separate (google_provider_users).
 type MailConnection struct {
 	ID        uuid.UUID
-	Provider  string      // gmail
-	Account   string      // email address, lowercase
+	Provider  string // gmail
+	Account   string // email address, lowercase
 	BudgetIDs []uuid.UUID
 	// Credentials are sealed by the provider adapter; opaque everywhere else.
 	Credentials []byte

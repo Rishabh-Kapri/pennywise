@@ -97,12 +97,6 @@ func Fatal(msg string, args ...any) {
 	os.Exit(1)
 }
 
-// FatalContext logs at error level with context and exits with code 1.
-func FatalContext(ctx context.Context, msg string, args ...any) {
-	writeRecord(ctx, Logger(ctx).Handler(), slog.LevelError, msg, 3, args...)
-	os.Exit(1)
-}
-
 // Logger returns an slog.Logger enriched with the correlation ID from context.
 // Use this in handlers and services to get request-scoped logging.
 func Logger(ctx context.Context) *ContextLogger {

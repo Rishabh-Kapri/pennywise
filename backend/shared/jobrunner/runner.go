@@ -85,13 +85,6 @@ func WithPrefix(p string) workerOpt {
 	}
 }
 
-// WithShutdownTimeout sets the timeout for worker after context is cancelled. Default: 30s
-func WithShutdownTimeout(t time.Duration) workerOpt {
-	return func(wo *workerOpts) {
-		wo.shutdownTimeout = t
-	}
-}
-
 // Returns a new worker that will run the job
 func NewWorker(broker jobPort.Broker, opts ...workerOpt) (*Worker, error) {
 	workerOpts := defaultWorkerOpts()

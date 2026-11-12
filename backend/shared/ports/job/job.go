@@ -104,12 +104,6 @@ func WithQueue(q string) EnqueueOption {
 	}
 }
 
-func WithJobType(t string) EnqueueOption {
-	return func(opts *EnqueueOptions) {
-		opts.Type = t
-	}
-}
-
 func WithRootJobID(id *uuid.UUID) EnqueueOption {
 	return func(opts *EnqueueOptions) {
 		opts.RootJobID = id
