@@ -37,11 +37,19 @@ type MailboxBackfill struct {
 	ExternalIDs  []string  `json:"externalIds"`
 }
 
+// Where a ReceivedMessage came from. Cipher reads emails differently from
+// SMS and API messages, so producer and reader must agree on these.
+const (
+	SourceEmail = "email"
+	SourceSMS   = "sms"
+	SourceAPI   = "api"
+)
+
 // ReceivedMessage is the JSON payload of a JobTypeMessageReceived job: one
 // message that might be a bank transaction, in the same shape whatever it
 // came from.
 type ReceivedMessage struct {
-	Source     string    `json:"source"`   // email | sms | api
+	Source     string    `json:"source"`   // SourceEmail | SourceSMS | SourceAPI
 	Provider   string    `json:"provider"` // gmail, android, api, ...
 	ExternalID string    `json:"externalId"`
 	Sender     string    `json:"sender"`
