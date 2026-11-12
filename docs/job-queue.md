@@ -628,8 +628,8 @@ Roughly in order.
 4. **Fill in the message pipeline.** The jobs and handlers exist; the logic
    doesn't yet (see [The message pipeline](#the-message-pipeline)).
 5. **Watch lifecycle.** Renewal is done: connecting or resuming a mailbox turns
-   on its schedule, pausing or removing it turns it off. `mailbox.watch.stop`
-   is still unused.
+   on its schedule, pausing or removing it turns it off. Stopping a watch
+   happens in the request (`MailProvider.StopWatch`), not as a job.
 6. **Connect flow.** "Connect Gmail" in onboarding with its own consent:
    OAuth code → sealed credentials → `MailConnection.Upsert` → `Watch`. Not in
    the `MailProvider` port yet.
