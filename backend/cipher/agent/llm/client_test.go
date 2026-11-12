@@ -6,10 +6,7 @@ import (
 	"testing"
 
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/otelSDK"
-	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
@@ -17,23 +14,10 @@ import (
 
 type observationTestTelemetry struct{ provider *sdktrace.TracerProvider }
 
-func (t observationTestTelemetry) GetServiceName() string { return "cipher-test" }
-func (t observationTestTelemetry) MeterInt64Histogram(otelSDK.Metric) (metric.Int64Histogram, error) {
-	return nil, nil
-}
-func (t observationTestTelemetry) MeterInt64UpDownCounter(otelSDK.Metric) (metric.Int64UpDownCounter, error) {
-	return nil, nil
-}
-func (t observationTestTelemetry) TraceStart(ctx context.Context, name string) (context.Context, trace.Span) {
-	return t.provider.Tracer("test").Start(ctx, name)
-}
 func (t observationTestTelemetry) TraceStartWithScope(ctx context.Context, scope, name string) (context.Context, trace.Span) {
 	return t.provider.Tracer(scope).Start(ctx, name)
 }
-func (observationTestTelemetry) LogRequest() gin.HandlerFunc            { return nil }
-func (observationTestTelemetry) MeterRequestDuration() gin.HandlerFunc  { return nil }
-func (observationTestTelemetry) MeterRequestsInFlight() gin.HandlerFunc { return nil }
-func (observationTestTelemetry) Shutdown(context.Context) error         { return nil }
+func (observationTestTelemetry) Shutdown(context.Context) error { return nil }
 
 type observationTestLLM struct{ chunks []sharedModel.StreamChunk }
 

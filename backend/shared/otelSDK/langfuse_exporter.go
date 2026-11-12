@@ -36,7 +36,7 @@ func (e langfuseAIExporter) ExportSpans(ctx context.Context, spans []sdktrace.Re
 	aiSpans := make([]sdktrace.ReadOnlySpan, 0, len(spans))
 	for _, span := range spans {
 		switch span.InstrumentationScope().Name {
-		case AgentScope, LLMScope, EmbeddingScope:
+		case AgentScope, LLMScope:
 			if isAgentEntrySpan(span) {
 				span = langfuseRootSpan{ReadOnlySpan: span}
 			}

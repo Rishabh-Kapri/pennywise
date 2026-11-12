@@ -6,7 +6,6 @@ import (
 	"log/slog"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
-	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel"
 	otelmetric "go.opentelemetry.io/otel/metric"
@@ -22,14 +21,7 @@ import (
 // itself acts as the primary abstraction layer. Functions here expose basic
 // instrument creation, span generation, and Gin middleware handlers.
 type TelemetryProvider interface {
-	GetServiceName() string
-	MeterInt64Histogram(metric Metric) (otelmetric.Int64Histogram, error)
-	MeterInt64UpDownCounter(metric Metric) (otelmetric.Int64UpDownCounter, error)
-	TraceStart(ctx context.Context, name string) (context.Context, oteltrace.Span)
 	TraceStartWithScope(ctx context.Context, scope, name string) (context.Context, oteltrace.Span)
-	LogRequest() gin.HandlerFunc
-	MeterRequestDuration() gin.HandlerFunc
-	MeterRequestsInFlight() gin.HandlerFunc
 	Shutdown(ctx context.Context) error
 }
 
@@ -115,47 +107,6 @@ func NewTelemetry(ctx context.Context, cfg Config) (*Telemetry, error) {
 		Tracer: tracer,
 		cfg:    cfg,
 	}, nil
-}
-
-// GetServiceName returns the configured name of the service, derived from Config.
-func (t *Telemetry) GetServiceName() string {
-	return t.cfg.ServiceName
-}
-
-// MeterInt64Histogram creates or retrieves an Int64Histogram instrument from the underlying
-// OTel meter. Histograms are ideal for recording value distributions, such as request latencies.
-func (t *Telemetry) MeterInt64Histogram(metric Metric) (otelmetric.Int64Histogram, error) {
-	histogram, err := t.meter.Int64Histogram(
-		metric.Name,
-		otelmetric.WithDescription(metric.Description),
-		otelmetric.WithUnit(metric.Unit),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return histogram, nil
-}
-
-// MeterInt64UpDownCounter creates or retrieves an Int64UpDownCounter instrument from the underlying
-// OTel meter. UpDownCounters are suitable for metrics that can increase or decrease, such as active requests.
-func (t *Telemetry) MeterInt64UpDownCounter(metric Metric) (otelmetric.Int64UpDownCounter, error) { //nolint:ireturn
-	counter, err := t.meter.Int64UpDownCounter(
-		metric.Name,
-		otelmetric.WithDescription(metric.Description),
-		otelmetric.WithUnit(metric.Unit),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return counter, nil
-}
-
-// TraceStart initiates a new OTel trace span with the specified name using the internal tracer.
-// The caller is responsible for ending the returned span (typically via defer span.End()).
-func (t *Telemetry) TraceStart(ctx context.Context, name string) (context.Context, oteltrace.Span) {
-	return t.Tracer.Start(ctx, name)
 }
 
 // TraceStartWithScope records a span under an explicit instrumentation scope.

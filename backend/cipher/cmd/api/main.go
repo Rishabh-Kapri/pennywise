@@ -227,9 +227,6 @@ func main() {
 	router.Use(sharedMiddleware.InternalUserIDMiddleware())
 	router.Use(sharedMiddleware.RequestLogger())
 	router.Use(otelgin.Middleware(otelConfig.ServiceName))
-	// router.Use(tel.LogRequest())
-	// router.Use(tel.MeterRequestDuration())
-	// router.Use(tel.MeterRequestsInFlight())
 
 	router.Use(cors.New(cors.Config{
 		AllowOrigins: []string{"http://localhost:5173"},
