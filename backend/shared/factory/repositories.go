@@ -96,7 +96,6 @@ type Repositories struct {
 	CategoryGroup        repository.CategoryGroupRepository
 	CipherPrediction     repository.CipherPredictionRepository
 	DevicePushToken      repository.DevicePushTokenRepository
-	Embedding            repository.EmbeddingRepository
 	GoogleProvider       repository.GoogleProviderRepository
 	LoanMetadata         repository.LoanMetadataRepository
 	MailConnection       repository.MailConnectionRepository
@@ -137,7 +136,6 @@ func newPostgresRepositories(pool *pgxpool.Pool) *Repositories {
 		CategoryGroup:        postgres.NewCategoryGroupRepository(pool),
 		CipherPrediction:     postgres.NewCipherPredictionRepository(pool),
 		DevicePushToken:      postgres.NewDevicePushTokenRepository(pool),
-		Embedding:            postgres.NewEmbeddingRepository(pool),
 		GoogleProvider:       postgres.NewGoogleProviderRepository(pool),
 		LoanMetadata:         postgres.NewLoanMetadataRepository(pool),
 		MailConnection:       postgres.NewMailConnectionRepository(pool),

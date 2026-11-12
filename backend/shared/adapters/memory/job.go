@@ -23,9 +23,17 @@ import (
 //	keys      ≈ the UNIQUE (queue, type, idempotency_key) index
 //	mu        ≈ Postgres row locks: only one goroutine changes the map at a time
 type jobBroker struct {
-	mu   sync.Mutex
-	jobs map[uuid.UUID]*job.Job
-	keys map[idempotencyKey]uuid.UUID
+	mu         sync.Mutex
+	jobs       map[uuid.UUID]*job.Job
+	keys       map[idempotencyKey]uuid.UUID
+	ticks      map[scheduleTick]uuid.UUID // ≈ the UNIQUE (schedule_id, scheduled_for) index
+	heartbeats map[uuid.UUID]time.Time    // ≈ the heartbeat_at column
+}
+
+// scheduleTick identifies one firing of a schedule.
+type scheduleTick struct {
+	schedule uuid.UUID
+	at       time.Time
 }
 
 // idempotencyKey is the map key for duplicate checks. The key is unique per
@@ -38,8 +46,10 @@ type idempotencyKey struct {
 
 func NewMemoryJobBrokerAdapter() job.Broker {
 	return &jobBroker{
-		jobs: map[uuid.UUID]*job.Job{},
-		keys: map[idempotencyKey]uuid.UUID{},
+		jobs:       map[uuid.UUID]*job.Job{},
+		keys:       map[idempotencyKey]uuid.UUID{},
+		ticks:      map[scheduleTick]uuid.UUID{},
+		heartbeats: map[uuid.UUID]time.Time{},
 	}
 }
 
@@ -75,6 +85,12 @@ func (b *jobBroker) Enqueue(
 		}
 	}
 
+	if o.ScheduleID != nil && o.ScheduledFor != nil {
+		if existingID, ok := b.ticks[scheduleTick{*o.ScheduleID, *o.ScheduledFor}]; ok {
+			return job.EnqueueResult{JobID: existingID, Duplicate: true}, nil
+		}
+	}
+
 	// 3. "Insert the row".
 	now := time.Now()
 	j := &job.Job{
@@ -101,15 +117,17 @@ func (b *jobBroker) Enqueue(
 	if o.IdempotencyKey != "" {
 		b.keys[idempotencyKey{queue: o.Queue, jobType: o.Type, key: o.IdempotencyKey}] = j.ID
 	}
+	if o.ScheduleID != nil && o.ScheduledFor != nil {
+		b.ticks[scheduleTick{*o.ScheduleID, *o.ScheduledFor}] = j.ID
+	}
 
 	return job.EnqueueResult{JobID: j.ID, Duplicate: false}, nil
 }
 
 // ClaimJob implements [job.Broker].
 //
-// Barebones version: it looks once and returns straight away. If nothing is
-// ready it returns an error with code CodeJobsUnavailable; it does NOT wait
-// for a job to show up. The waiting (ticker / NOTIFY) is the next step.
+// It looks once and never waits: with nothing ready it returns an error with
+// code CodeJobsUnavailable. Waiting and polling are the runner's job.
 //
 // Postgres equivalent:
 //
@@ -158,8 +176,11 @@ func (b *jobBroker) ClaimJob(ctx context.Context, queues []string, workerID stri
 	lockedBy := workerID
 	best.LockedBy = &lockedBy
 	best.LockedAt = &now
-	best.StartedAt = &now
+	if best.StartedAt == nil {
+		best.StartedAt = &now
+	}
 	best.UpdatedAt = now
+	b.heartbeats[best.ID] = now
 
 	// 3. Return a copy, not the pointer stored in the map. If we returned
 	//    `best`, the handler could change the job (say, set Status) without
@@ -195,12 +216,36 @@ func runsBefore(a, b *job.Job) bool {
 
 // Heartbeat implements [job.Broker].
 func (b *jobBroker) Heartbeat(ctx context.Context, claim job.Claim) error {
-	panic("unimplemented")
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	j, err := b.claimedJob(claim, "heartbeat")
+	if err != nil {
+		return err
+	}
+	b.touch(j)
+	return nil
 }
 
 // UpdateProgress implements [job.Broker].
 func (b *jobBroker) UpdateProgress(ctx context.Context, claim job.Claim, progress json.RawMessage) error {
-	panic("unimplemented")
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	j, err := b.claimedJob(claim, "update progress")
+	if err != nil {
+		return err
+	}
+	j.Progress = slices.Clone(progress)
+	b.touch(j)
+	return nil
+}
+
+// touch records a sign of life from the job's worker. The caller must hold b.mu.
+func (b *jobBroker) touch(j *job.Job) {
+	now := time.Now()
+	b.heartbeats[j.ID] = now
+	j.UpdatedAt = now
 }
 
 // MarkCompleted implements [job.Broker]. The attempt's duration is recorded in
@@ -227,21 +272,79 @@ func (b *jobBroker) MarkCompleted(ctx context.Context, claim job.Claim, result j
 	return nil
 }
 
-// MarkPending implements [job.Broker].
+// MarkPending implements [job.Broker]: the attempt failed and the job runs
+// again at runAt.
 func (b *jobBroker) MarkPending(ctx context.Context, _ *job.Job, claim job.Claim, lastError string, runAt time.Time) error {
-	panic("unimplemented")
-}
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
-// MarkDead implements [job.Broker].
-func (b *jobBroker) MarkDead(ctx context.Context, claim job.Claim, lastError string, _ string) error {
+	j, err := b.claimedJob(claim, "mark pending")
+	if err != nil {
+		return err
+	}
+	j.Status = job.QueuedJobStatus
+	j.LastError = lastError
+	j.RunAt = runAt
+	j.UpdatedAt = time.Now()
 	return nil
 }
 
-// RequeueStaleRunning implements [job.Broker].
+// MarkDead implements [job.Broker]. The reason goes to the job history
+// (ObservedBroker); the job keeps lastError.
+func (b *jobBroker) MarkDead(ctx context.Context, claim job.Claim, lastError string, _ string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	j, err := b.claimedJob(claim, "mark dead")
+	if err != nil {
+		return err
+	}
+	now := time.Now()
+	j.Status = job.DeadJobStatus
+	j.LastError = lastError
+	j.CompletedAt = &now
+	j.UpdatedAt = now
+	return nil
+}
+
+// RequeueStaleRunning implements [job.Broker]: running jobs with no sign of
+// life for staleThreshold go back to queued, or to dead when no attempts are
+// left.
 func (b *jobBroker) RequeueStaleRunning(
 	ctx context.Context,
 	staleThreshold time.Duration,
 	reaperID string,
 ) (int64, error) {
-	panic("unimplemented")
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	now := time.Now()
+	var requeued int64
+	for _, j := range b.jobs {
+		if j.Status != job.RunningJobStatus {
+			continue
+		}
+		lastSeen := b.heartbeats[j.ID]
+		if lastSeen.IsZero() && j.LockedAt != nil {
+			lastSeen = *j.LockedAt
+		}
+		if now.Sub(lastSeen) <= staleThreshold {
+			continue
+		}
+		owner := "unknown worker"
+		if j.LockedBy != nil {
+			owner = *j.LockedBy
+		}
+		j.LastError = "no heartbeat from " + owner
+		j.RunAt = now
+		j.UpdatedAt = now
+		if j.Attempt >= j.MaxAttempts {
+			j.Status = job.DeadJobStatus
+			j.CompletedAt = &now
+		} else {
+			j.Status = job.QueuedJobStatus
+		}
+		requeued++
+	}
+	return requeued, nil
 }

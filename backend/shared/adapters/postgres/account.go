@@ -73,29 +73,6 @@ func (r *accountRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.A
 	return accounts, nil
 }
 
-func (r *accountRepo) GetAllSimplified(ctx context.Context, budgetId uuid.UUID) ([]model.AccountSimplified, error) {
-	rows, err := r.Executor(ctx).Query(
-		ctx,
-		`SELECT id, name FROM accounts WHERE budget_id = $1 AND deleted = FALSE AND closed = FALSE`,
-		budgetId,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	accounts := make([]model.AccountSimplified, 0)
-	for rows.Next() {
-		var a model.AccountSimplified
-		if err := rows.Scan(&a.ID, &a.Name); err != nil {
-			logger.Logger(ctx).Error("error scanning account", "error", err)
-			return nil, err
-		}
-		accounts = append(accounts, a)
-	}
-	return accounts, nil
-}
-
 func (r *accountRepo) GetById(ctx context.Context, budgetId uuid.UUID, accountId uuid.UUID) (*model.Account, error) {
 	var a model.Account
 	err := r.Executor(ctx).QueryRow(

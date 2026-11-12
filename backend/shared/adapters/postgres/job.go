@@ -300,65 +300,6 @@ func (s *jobStore) GetJobByID(ctx context.Context, id uuid.UUID) (*job.Job, erro
 	return j, nil
 }
 
-// ListJobs implements [job.JobStore]. Newest first. Retrying means a queued
-// job that has already failed at least once.
-func (s *jobStore) ListJobs(ctx context.Context, filter job.JobFilter) ([]job.Job, int, error) {
-	where := sq.And{sq.Eq{"deleted_at": nil}}
-	if filter.Status != "" {
-		where = append(where, sq.Expr("status = ?::job_status", string(filter.Status)))
-	}
-	if filter.Type != "" {
-		where = append(where, sq.Eq{"type": filter.Type})
-	}
-	if filter.Retrying != nil {
-		if *filter.Retrying {
-			where = append(where, sq.Expr("status = 'queued' AND attempt > 0"))
-		} else {
-			where = append(where, sq.Expr("NOT (status = 'queued' AND attempt > 0)"))
-		}
-	}
-
-	psql := sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
-	query := psql.Select(jobColumns, "count(*) OVER () AS total").
-		From("jobs").
-		Where(where).
-		OrderBy("created_at DESC")
-	if filter.Limit > 0 {
-		query = query.Limit(uint64(filter.Limit))
-	}
-	if filter.Offset > 0 {
-		query = query.Offset(uint64(filter.Offset))
-	}
-	sqlStr, args, err := query.ToSql()
-	if err != nil {
-		return nil, 0, errs.Wrap(errs.CodeJobLookupFailed, "build list jobs query", err)
-	}
-
-	rows, err := s.Executor(ctx).Query(ctx, sqlStr, args...)
-	if err != nil {
-		return nil, 0, errs.Wrap(errs.CodeJobLookupFailed, "list jobs", err)
-	}
-	defer rows.Close()
-
-	var (
-		jobs  []job.Job
-		total int
-	)
-	for rows.Next() {
-		j, err := scanJob(rows, &total)
-		if err != nil {
-			return nil, 0, errs.Wrap(errs.CodeJobLookupFailed, "scan job", err)
-		}
-		jobs = append(jobs, *j)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, 0, errs.Wrap(errs.CodeJobLookupFailed, "list jobs", err)
-	}
-	// count(*) OVER () rides on each row, so a page past the end has no row
-	// to carry it and total reads 0.
-	return jobs, total, nil
-}
-
 // ListByRoot implements [job.JobStore]: the root job and every job it
 // spawned, oldest first.
 func (s *jobStore) ListByRoot(ctx context.Context, rootID uuid.UUID) ([]job.Job, error) {

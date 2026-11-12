@@ -55,7 +55,6 @@ func (o *ObservedBroker) Enqueue(
 	payload []byte,
 	opts ...EnqueueOption,
 ) (EnqueueResult, error) {
-	logger.Logger(ctx).Info("enqueuing message", "payload", string(payload))
 	res, err := o.broker.Enqueue(ctx, jobType, payload, opts...)
 	if err == nil && !res.Duplicate {
 		o.record(ctx, JobEvent{

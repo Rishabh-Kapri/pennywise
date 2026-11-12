@@ -165,14 +165,6 @@ func (r *agentMemoryRepo) CreateObservationalMemory(
 	return &om, nil
 }
 
-func (r *agentMemoryRepo) UpdateObservationalMemory(
-	ctx context.Context,
-	id uuid.UUID,
-	data model.AgentObservationalMemory,
-) (*model.AgentObservationalMemory, error) {
-	return nil, nil
-}
-
 func (r *agentMemoryRepo) PatchWorkingMemory(
 	ctx context.Context,
 	budgetID uuid.UUID,

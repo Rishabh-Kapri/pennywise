@@ -4,12 +4,10 @@ package jobrunner
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"math/rand"
 	"os"
-
-	// "errors"
-	"fmt"
 	"runtime/debug"
 	"sync"
 	"time"
@@ -19,7 +17,8 @@ import (
 	jobPort "github.com/Rishabh-Kapri/pennywise/backend/shared/ports/job"
 )
 
-// separate timeout for marking a job dead
+// A job's outcome is written with its own context and timeout, so shutting
+// the worker down doesn't leave a finished job marked running.
 const persistTimeout = 10 * time.Second
 
 type HandlerFunc func(ctx context.Context, job *jobPort.Job) (json.RawMessage, error)
@@ -31,6 +30,7 @@ type workerOpts struct {
 	reaperInterval    time.Duration
 	staleThreshold    time.Duration
 	shutdownTimeout   time.Duration
+	pollInterval      time.Duration // wait after finding no job ready
 	baseBackoff       time.Duration
 	maxBackoff        time.Duration
 	queues            []string
@@ -45,8 +45,6 @@ type Worker struct {
 	broker   jobPort.Broker
 	registry jobRegistry
 	config   workerOpts
-	stopCh   chan struct{}
-	stopOnce sync.Once
 	wg       sync.WaitGroup
 }
 
@@ -58,13 +56,14 @@ func defaultWorkerOpts() workerOpts {
 		staleThreshold:    5 * time.Minute,
 		prefix:            "pw",
 		shutdownTimeout:   time.Second * 30,
+		pollInterval:      time.Second * 10,
 		baseBackoff:       time.Second * 10,
 		maxBackoff:        time.Minute * 5,
 	}
 }
 
-// WithQueue sets the queue the worker claims from (a model.Queue*
-// constant). Required: a worker only ever sees jobs on its own queue.
+// WithQueues sets the queues the worker claims from (model.Queue*
+// constants). Required: a worker only ever sees jobs on its own queues.
 func WithQueues(q []string) workerOpt {
 	return func(wo *workerOpts) {
 		wo.queues = q
@@ -92,7 +91,7 @@ func NewWorker(broker jobPort.Broker, opts ...workerOpt) (*Worker, error) {
 		opt(&workerOpts)
 	}
 	if len(workerOpts.queues) == 0 {
-		return nil, errs.New(errs.CodeJobInvalidOption, "worker needs a queue (jobrunner.WithQueue)")
+		return nil, errs.New(errs.CodeJobInvalidOption, "worker needs a queue (jobrunner.WithQueues)")
 	}
 	logger.Logger(context.Background()).Info("opts", "queues", workerOpts.queues,
 		"prefix", workerOpts.prefix, "concurrency", workerOpts.concurrency)
@@ -115,14 +114,7 @@ func (w *Worker) Run(ctx context.Context) error {
 	// start the worker pool
 	w.poolStart(runCtx)
 
-	// check for original context to be cancelled, this is blocking
-	select {
-	case <-ctx.Done():
-	case <-w.stopCh:
-	}
-	// this is needed so that w.stopCh branch works
-	// otherwise calling Stop() never cancels the context
-	// and ctx.Done() is never called for worker goroutines
+	<-ctx.Done()
 	runCtxCancel()
 
 	// separate context for shutdown
@@ -131,11 +123,6 @@ func (w *Worker) Run(ctx context.Context) error {
 
 	err := w.poolWait(waitCtx)
 	return err
-}
-
-// Request a graceful shutdown
-func (w *Worker) Stop() {
-	w.stopOnce.Do(func() { close(w.stopCh) })
 }
 
 func instanceID() string {
@@ -163,6 +150,9 @@ func (w *Worker) runJobHandler(
 }
 
 func (w *Worker) handleFailure(ctx context.Context, job *jobPort.Job, claim jobPort.Claim, jobErr error) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), persistTimeout)
+	defer cancel()
+
 	var err error
 	if job.Attempt >= job.MaxAttempts {
 		err = w.broker.MarkDead(ctx, claim, jobErr.Error(), "all attempts exhausted")
@@ -175,13 +165,12 @@ func (w *Worker) handleFailure(ctx context.Context, job *jobPort.Job, claim jobP
 		logger.Logger(ctx).Warn("lost job claim before persisting failure attempt", "claim", claim)
 		return nil
 	}
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
-func (w *Worker) startHeartbeat(heartbeatCtx context.Context, claim jobPort.Claim) func() {
+// startHeartbeat keeps the claim alive until the returned stop func is called.
+// When the broker says the claim is lost, it calls onLost.
+func (w *Worker) startHeartbeat(heartbeatCtx context.Context, claim jobPort.Claim, onLost func()) func() {
 	heartbeatCtx, cancel := context.WithCancel(heartbeatCtx)
 
 	go func() {
@@ -199,7 +188,7 @@ func (w *Worker) startHeartbeat(heartbeatCtx context.Context, claim jobPort.Clai
 				}
 				if errs.HasCode(err, errs.CodeJobClaimLost) {
 					logger.Logger(heartbeatCtx).Warn("lost claim of job before heartbeat")
-					cancel()
+					onLost()
 					return
 				}
 				logger.Logger(heartbeatCtx).Warn("heartbeat failed, retyring on next tick", "err", err)
@@ -235,11 +224,14 @@ func (w *Worker) execute(ctx context.Context, workerID string, job *jobPort.Job)
 		return nil
 	}
 
-	stopHearbeat := w.startHeartbeat(ctx, claim)
-	defer stopHearbeat()
+	// A lost claim means another worker may own the job now: stop the handler.
+	handlerCtx, cancelHandler := context.WithCancel(ctx)
+	defer cancelHandler()
+	stopHeartbeat := w.startHeartbeat(handlerCtx, claim, cancelHandler)
+	defer stopHeartbeat()
 
 	jobStartTime := time.Now()
-	result, err := w.runJobHandler(withProgress(ctx, w.broker, claim), job, handler)
+	result, err := w.runJobHandler(withProgress(handlerCtx, w.broker, claim), job, handler)
 	if err != nil {
 		return w.handleFailure(ctx, job, claim, err)
 	}
@@ -253,7 +245,6 @@ func (w *Worker) execute(ctx context.Context, workerID string, job *jobPort.Job)
 			logger.Logger(ctx).Warn("lost task ownership before MarkCompleted")
 			return nil
 		}
-		// return w.handleFailure(ctx, job, claim, err)
 		return errs.Wrap(errs.CodeJobUpdateFailed, "error while marking job complete", err)
 	}
 	logger.Logger(ctx).Info("job completed", "duration_s", duration.Seconds())
@@ -286,7 +277,7 @@ func (w *Worker) poolStart(ctx context.Context) {
 			for {
 				job, err := w.broker.ClaimJob(ctx, w.config.queues, workerID)
 				if err == nil {
-					log.Info("got a job", "job", job, "worker", workerID, "err", err)
+					log.Info("got a job", "job_id", job.ID, "type", job.Type, "attempt", job.Attempt, "worker", workerID)
 					if jobErr := w.execute(ctx, workerID, job); jobErr != nil {
 						log.Error("execute job failed", "err", jobErr)
 					}
@@ -296,8 +287,7 @@ func (w *Worker) poolStart(ctx context.Context) {
 					return
 				}
 				if errs.HasCode(err, errs.CodeJobsUnavailable) {
-					// no jobs available
-					sleep(ctx, w.config.baseBackoff)
+					sleep(ctx, w.config.pollInterval)
 					continue
 				}
 				log.Error("claim failed, will retry", "err", err)
@@ -336,10 +326,10 @@ func (w *Worker) poolWait(ctx context.Context) error {
 
 func (w *Worker) computeBackoff(attempts int) time.Duration {
 	base := float64(w.config.baseBackoff)
-	cap := float64(w.config.maxBackoff)
+	ceiling := float64(w.config.maxBackoff)
 	attempt := float64(max(attempts-1, 0))
 
-	exp := math.Min(cap, base*math.Pow(2, attempt))
+	exp := math.Min(ceiling, base*math.Pow(2, attempt))
 	// used to prevent all workers retyring at the exact same time
 	jitter := rand.Float64() * exp
 	backoff := time.Duration(jitter)

@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
@@ -153,44 +152,6 @@ func (r *categoryRepo) GetInflowBalance(ctx context.Context, budgetId uuid.UUID)
 		return 0, err
 	}
 	return balance, err
-}
-
-func (r *categoryRepo) GetByFilter(ctx context.Context, budgetId uuid.UUID, filter model.CategoryFilter) ([]model.Category, error) {
-	sql := `SELECT id, name, budget_id, category_group_id, hidden, note, is_system, created_at, updated_at FROM categories WHERE deleted = FALSE AND budget_id = $1`
-	args := []any{budgetId}
-	argIndex := 2 // $1 is budget_id
-	if filter.IsSystem != nil {
-		sql += fmt.Sprintf(" AND is_system = $%d", argIndex)
-		args = append(args, *filter.IsSystem)
-		argIndex++
-	}
-
-	rows, err := r.Executor(ctx).Query(ctx, sql, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var categories []model.Category
-	for rows.Next() {
-		var c model.Category
-		err := rows.Scan(
-			&c.ID,
-			&c.Name,
-			&c.BudgetID,
-			&c.CategoryGroupID,
-			&c.Hidden,
-			&c.Note,
-			&c.IsSystem,
-			&c.CreatedAt,
-			&c.UpdatedAt,
-		)
-		if err != nil {
-			return nil, err
-		}
-		categories = append(categories, c)
-	}
-	return categories, nil
 }
 
 // FindClosestSimplified ranks the budget's assignable categories by trigram
