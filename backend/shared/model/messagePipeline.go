@@ -145,8 +145,14 @@ type MessageSource struct {
 type CounterpartyAliasMatch struct {
 	PayeeName    string
 	CategoryName string
-	Source       string // learning_source: MANUAL or AUTO_LEARNED
+	Source       string // learning_source: AliasSourceManual or AliasSourceLearned
 }
+
+// Who made a counterparty alias (counterparty_aliases.learning_source).
+const (
+	AliasSourceManual  = "MANUAL"
+	AliasSourceLearned = "AUTO_LEARNED"
+)
 
 // SourceMatchQuery looks for a transaction that another channel's message
 // already created: same account and signed amount, a source of the other kind

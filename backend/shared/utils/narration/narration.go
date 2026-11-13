@@ -14,8 +14,10 @@ import (
 	"time"
 )
 
+// Kinds of bank text (transaction_sources.kind).
 const (
 	KindEmail         = "EMAIL"
+	KindSMS           = "SMS"
 	KindStatementLine = "STATEMENT_LINE"
 
 	ChannelUPI  = "UPI"
@@ -27,6 +29,15 @@ const (
 	Debit  = "DEBIT"
 	Credit = "CREDIT"
 )
+
+// BankZone is the timezone banks write their dates and clocks in.
+var BankZone = func() *time.Location {
+	loc, err := time.LoadLocation("Asia/Kolkata")
+	if err != nil {
+		return time.FixedZone("IST", 5*3600+1800)
+	}
+	return loc
+}()
 
 // Parsed is what one piece of bank text states. Empty strings and nil
 // pointers mean the text didn't say.

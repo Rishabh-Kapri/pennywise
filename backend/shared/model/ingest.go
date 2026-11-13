@@ -37,11 +37,18 @@ type MailboxBackfill struct {
 	ExternalIDs  []string  `json:"externalIds"`
 }
 
+// Where a ReceivedMessage came from.
+const (
+	MessageSourceEmail = "email"
+	MessageSourceSMS   = "sms"
+	MessageSourceAPI   = "api"
+)
+
 // ReceivedMessage is the JSON payload of a JobTypeMessageReceived job: one
 // message that might be a bank transaction, in the same shape whatever it
 // came from.
 type ReceivedMessage struct {
-	Source     string    `json:"source"`   // email | sms | api
+	Source     string    `json:"source"`   // MessageSourceEmail, MessageSourceSMS or MessageSourceAPI
 	Provider   string    `json:"provider"` // gmail, android, api, ...
 	ExternalID string    `json:"externalId"`
 	Sender     string    `json:"sender"`
