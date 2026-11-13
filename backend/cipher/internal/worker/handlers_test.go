@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/adapters/unimplemented"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/factory"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/ports"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
@@ -62,6 +61,7 @@ type fakePipeline struct {
 	checker   ports.CheckTransaction
 	extractor ports.Extract
 	verifier  ports.Verifier
+	memory    ports.MemoryLookup
 	predictor ports.Predictor
 	err       error
 }
@@ -76,6 +76,10 @@ func (f fakePipeline) Extract(context.Context, uuid.UUID) (ports.Extract, error)
 
 func (f fakePipeline) Verify(context.Context, uuid.UUID) (ports.Verifier, error) {
 	return f.verifier, f.err
+}
+
+func (f fakePipeline) Lookup(context.Context, uuid.UUID) (ports.MemoryLookup, error) {
+	return f.memory, f.err
 }
 
 func (f fakePipeline) Predict(context.Context, uuid.UUID) (ports.Predictor, error) {
@@ -185,7 +189,7 @@ func TestRouting(t *testing.T) {
 		{
 			name:      "memory hit creates the transaction",
 			handler:   messageLookup,
-			deps:      WorkerDeps{Memory: fakeMemory{found: true}},
+			deps:      WorkerDeps{Pipeline: fakePipeline{memory: fakeMemory{found: true}}},
 			payload:   entities,
 			wantType:  model.JobTypeTransactionCreate,
 			wantQueue: model.QueuePennywise,
@@ -193,7 +197,7 @@ func TestRouting(t *testing.T) {
 		{
 			name:      "memory miss goes to predict",
 			handler:   messageLookup,
-			deps:      WorkerDeps{Memory: fakeMemory{}},
+			deps:      WorkerDeps{Pipeline: fakePipeline{memory: fakeMemory{}}},
 			payload:   entities,
 			wantType:  model.JobTypeMessagePredict,
 			wantQueue: model.QueueCipher,
@@ -255,7 +259,7 @@ func TestPredictionSource(t *testing.T) {
 		deps    WorkerDeps
 		want    model.MessagePredictionSource
 	}{
-		"memory":    {messageLookup, WorkerDeps{Memory: fakeMemory{found: true}}, model.MessagePredictionMemory},
+		"memory":    {messageLookup, WorkerDeps{Pipeline: fakePipeline{memory: fakeMemory{found: true}}}, model.MessagePredictionMemory},
 		"predictor": {messagePredict, WorkerDeps{Pipeline: fakePipeline{predictor: fakePredictor{category: "Food"}}}, model.MessagePredictionPredictor},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -289,7 +293,7 @@ func TestPortFailures(t *testing.T) {
 		{"check", messageReceived(WorkerDeps{Pipeline: fakePipeline{checker: &fakeChecker{err: boom}}}), testMessage, errs.CodeMessageCheckFailed},
 		{"extract", messageExtract(WorkerDeps{Pipeline: fakePipeline{extractor: fakeExtractor{err: boom}}}), model.MessageExtractPayload{}, errs.CodeMessageExtractFailed},
 		{"verify", messageVerify(WorkerDeps{Pipeline: fakePipeline{verifier: fakeVerifier{err: boom}}}), entities, errs.CodeMessageVerifyFailed},
-		{"lookup", messageLookup(WorkerDeps{Memory: fakeMemory{err: boom}}), entities, errs.CodeMessageLookupFailed},
+		{"lookup", messageLookup(WorkerDeps{Pipeline: fakePipeline{memory: fakeMemory{err: boom}}}), entities, errs.CodeMessageLookupFailed},
 		{"predict", messagePredict(WorkerDeps{Pipeline: fakePipeline{predictor: fakePredictor{err: boom}}}), entities, errs.CodeMessagePredictFailed},
 	}
 	for _, tt := range tests {
@@ -299,15 +303,6 @@ func TestPortFailures(t *testing.T) {
 				t.Fatalf("got %v", err)
 			}
 		})
-	}
-}
-
-func TestStandInsFailVisibly(t *testing.T) {
-	j, _ := newJob(t, model.MessageExtractPayload{Message: testMessage})
-	deps := WorkerDeps{Broker: &fakeBroker{}, Pipeline: fakePipeline{extractor: unimplemented.NewExtract()}}
-	_, err := messageExtract(deps)(context.Background(), j)
-	if !errs.HasCode(err, errs.CodeNotImplemented) {
-		t.Fatalf("got %v", err)
 	}
 }
 
@@ -338,12 +333,6 @@ func TestEnqueueFailureIsRetried(t *testing.T) {
 	}
 	if checker.budget != budget {
 		t.Fatalf("port saw budget %s, want %s", checker.budget, budget)
-	}
-}
-
-func TestToPortMessageMapsAPISource(t *testing.T) {
-	if got := toPortMessage(model.ReceivedMessage{Source: "api"}).Source; got != ports.TextSource {
-		t.Fatalf("got %s", got)
 	}
 }
 
@@ -427,7 +416,7 @@ func TestCheckParksLowConfidence(t *testing.T) {
 }
 
 func TestCheckConfidenceGate(t *testing.T) {
-	low, high, unknown := 0.55, 0.95, 0.0
+	low, high := 0.55, 0.95
 	tests := []struct {
 		name          string
 		park          bool
@@ -438,8 +427,8 @@ func TestCheckConfidenceGate(t *testing.T) {
 		{"logged only until parking is on", false, true, &low, model.JobTypeMessageExtract},
 		{"confident yes", true, true, &high, model.JobTypeMessageExtract},
 		{"confident no", true, false, &high, model.JobTypePipelineReport},
-		{"a zero score means the adapter doesn't know", true, false, &unknown, model.JobTypePipelineReport},
-		{"no score", true, true, nil, model.JobTypeMessageExtract},
+		{"a no without a score ends the message", true, false, nil, model.JobTypePipelineReport},
+		{"a yes without a score goes on", true, true, nil, model.JobTypeMessageExtract},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -632,7 +621,7 @@ func TestVerifyPassesItsScoreOn(t *testing.T) {
 
 func TestCreatePayloadCarriesTheReadableText(t *testing.T) {
 	b := &fakeBroker{}
-	deps := WorkerDeps{Broker: b, Memory: fakeMemory{found: true}}
+	deps := WorkerDeps{Broker: b, Pipeline: fakePipeline{memory: fakeMemory{found: true}}}
 	msg := model.ReceivedMessage{Source: "email", Body: "<p>Rs.10 debited.</p><p>Call us.</p>"}
 	j, _ := newJob(t, model.MessageEntitiesPayload{Message: msg})
 	if _, err := messageLookup(deps)(context.Background(), j); err != nil {

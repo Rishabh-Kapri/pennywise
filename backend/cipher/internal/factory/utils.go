@@ -45,6 +45,14 @@ func describeModels(models []sharedModel.UserLLMModel) []string {
 	return out
 }
 
+// attemptModel is the model an attempt runs, or its adapter when it uses none.
+func attemptModel(attempt pipeline.Attempt) string {
+	if attempt.Model == nil {
+		return attempt.Adapter
+	}
+	return attempt.Model.Slug
+}
+
 func describeAttempt(attempt pipeline.Attempt) string {
 	if attempt.Model == nil {
 		return attempt.Adapter

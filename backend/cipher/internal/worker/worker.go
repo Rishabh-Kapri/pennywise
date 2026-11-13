@@ -7,7 +7,6 @@ import (
 	"context"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/factory"
-	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/ports"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/jobrunner"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
@@ -21,9 +20,6 @@ type WorkerDeps struct {
 	Broker job.Broker
 	// Pipeline picks a step's adapter for each budget.
 	Pipeline factory.MessagePipeline
-
-	// Lookup isn't chosen per budget yet.
-	Memory ports.MemoryLookup
 
 	// ParkLowConfidence sends low-confidence check and verify answers to a
 	// person. Off, they're only logged. Details that don't match always park.

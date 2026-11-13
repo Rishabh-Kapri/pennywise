@@ -2,13 +2,12 @@ package main
 
 import (
 	"context"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/service"
 	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 )
-
-const embeddingModel = "bge-m3"
 
 // backfillEmbedding generates a vector embedding for a single prediction
 // and upserts it into the transaction_embeddings table (Phase 3 memory from cipher.md).
@@ -28,8 +27,7 @@ func (d *BackfillDeps) backfillEmbedding(ctx context.Context, p resolvedPredicti
 		return err
 	}
 
-	// For embedding, we only use transaction type (debit/credit) + merchant name (no upi handles)
-	embeddingText := parsed.TransactionType + " " + parsed.MerchantName
+	embeddingText := service.MatchKeysFor(parsed.MerchantString, p.Amount).EmbeddingText
 	log.Info(
 		"embedding",
 		"id",
@@ -43,7 +41,7 @@ func (d *BackfillDeps) backfillEmbedding(ctx context.Context, p resolvedPredicti
 	)
 
 	// Generate bge-m3 embedding via Ollama
-	embedding, err := d.OllamaClient.Embed(ctx, embeddingModel, embeddingText)
+	embedding, err := d.Ollama.embed(ctx, embeddingModel, embeddingText)
 	if err != nil {
 		return err
 	}

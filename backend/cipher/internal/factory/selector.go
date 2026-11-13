@@ -2,7 +2,9 @@ package factory
 
 import (
 	"context"
+	"time"
 
+	aliasAdapter "github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/adapters/alias"
 	decisionsAdapter "github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/adapters/decisions"
 	llmAdapter "github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/adapters/llm"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/adapters/regex"
@@ -20,24 +22,96 @@ type MessagePipeline interface {
 	Check(ctx context.Context, budgetID uuid.UUID) (ports.CheckTransaction, error)
 	Extract(ctx context.Context, budgetID uuid.UUID) (ports.Extract, error)
 	Verify(ctx context.Context, budgetID uuid.UUID) (ports.Verifier, error)
+	Lookup(ctx context.Context, budgetID uuid.UUID) (ports.MemoryLookup, error)
 	Predict(ctx context.Context, budgetID uuid.UUID) (ports.Predictor, error)
 }
 
-// data for message pipeline adapters
-type messagePipeline struct {
-	pipeline         *pipeline.Pipeline
-	pipelineStepRepo repository.PipelineStepRepository
-	llmModelsRepo    repository.UserLLMModelRepository
-	categories       repository.CategoryRepository
-	resolver         resolver.Resolver
+// MessagePipelineDeps is what the message pipeline's adapters run with.
+type MessagePipelineDeps struct {
+	PipelineSteps repository.PipelineStepRepository
+	LLMModels     repository.UserLLMModelRepository
+	Categories    repository.CategoryRepository
+	Aliases       repository.CounterpartyAliasRepository
+	Clients       resolver.Resolver
+	// LLMCallTimeout bounds each chat model call (CIPHER_LLM_CALL_TIMEOUT).
+	LLMCallTimeout time.Duration
 }
 
-func NewMessagePipeline(
-	pipelineStepsRepo repository.PipelineStepRepository,
-	llmModelsRepo repository.UserLLMModelRepository,
-	categories repository.CategoryRepository,
-	resolver resolver.Resolver,
-) (MessagePipeline, error) {
+type messagePipeline struct {
+	pipeline *pipeline.Pipeline
+	deps     MessagePipelineDeps
+}
+
+// builders are the adapters cipher can run for one step, by the adapter ID
+// that pipelines/message.json uses.
+type builders[P any] map[string]func(p *messagePipeline, attempt pipeline.Attempt) (P, error)
+
+var (
+	checkAdapters = builders[ports.CheckTransaction]{
+		"regex": func(*messagePipeline, pipeline.Attempt) (ports.CheckTransaction, error) {
+			return regex.NewCheckTransaction(), nil
+		},
+		"decisions": func(p *messagePipeline, a pipeline.Attempt) (ports.CheckTransaction, error) { return p.decisions(a) },
+		"llm":       func(p *messagePipeline, a pipeline.Attempt) (ports.CheckTransaction, error) { return p.llm(a) },
+	}
+	extractAdapters = builders[ports.Extract]{
+		"llm": func(p *messagePipeline, a pipeline.Attempt) (ports.Extract, error) { return p.llm(a) },
+	}
+	verifyAdapters = builders[ports.Verifier]{
+		"decisions": func(p *messagePipeline, a pipeline.Attempt) (ports.Verifier, error) { return p.decisions(a) },
+	}
+	lookupAdapters = builders[ports.MemoryLookup]{
+		"aliases": func(p *messagePipeline, _ pipeline.Attempt) (ports.MemoryLookup, error) {
+			return aliasAdapter.NewLookup(p.deps.Aliases), nil
+		},
+	}
+	predictAdapters = builders[ports.Predictor]{
+		"llm": func(p *messagePipeline, a pipeline.Attempt) (ports.Predictor, error) { return p.llm(a) },
+	}
+)
+
+// knownAdapters is every adapter ID cipher runs, by step. Create isn't
+// cipher's: go-pennywise-api runs it.
+func knownAdapters() map[pipeline.StepID]map[string]bool {
+	return map[pipeline.StepID]map[string]bool{
+		pipeline.StepCheck:   ids(checkAdapters),
+		pipeline.StepExtract: ids(extractAdapters),
+		pipeline.StepVerify:  ids(verifyAdapters),
+		pipeline.StepLookup:  ids(lookupAdapters),
+		pipeline.StepPredict: ids(predictAdapters),
+	}
+}
+
+func ids[P any](b builders[P]) map[string]bool {
+	out := make(map[string]bool, len(b))
+	for id := range b {
+		out[id] = true
+	}
+	return out
+}
+
+// checkKnown fails when the pipeline file has a step or adapter cipher can't
+// run, so a new one in the file fails at startup instead of on a message.
+func checkKnown(p *pipeline.Pipeline) error {
+	known := knownAdapters()
+	for _, step := range p.Steps {
+		if step.ID == pipeline.StepCreate {
+			continue
+		}
+		adapters, ok := known[step.ID]
+		if !ok {
+			return errs.New(errs.CodePipelineInvalid, "cipher can't run %s step %q", p.ID, step.ID)
+		}
+		for _, adapter := range step.Adapters {
+			if !adapters[adapter.ID] {
+				return errs.New(errs.CodePipelineInvalid, "cipher has no %q adapter for %s step %q", adapter.ID, p.ID, step.ID)
+			}
+		}
+	}
+	return nil
+}
+
+func NewMessagePipeline(deps MessagePipelineDeps) (MessagePipeline, error) {
 	catalog, err := pipeline.Load()
 	if err != nil {
 		return nil, err
@@ -46,22 +120,17 @@ func NewMessagePipeline(
 	if !ok {
 		return nil, errs.New(errs.CodePipelineInvalid, "no %s pipeline", pipeline.MessagePipeline)
 	}
+	if err := checkKnown(pipelineConfig); err != nil {
+		return nil, err
+	}
 	logger.Logger(context.Background()).Info(
 		"message pipeline loaded",
 		"pipeline", pipelineConfig.ID,
 		"version", pipelineConfig.Version,
 		"steps", len(pipelineConfig.Steps),
 	)
-
-	return &messagePipeline{
-		pipeline:         pipelineConfig,
-		pipelineStepRepo: pipelineStepsRepo,
-		llmModelsRepo:    llmModelsRepo,
-		categories:       categories,
-		resolver:         resolver,
-	}, nil
+	return &messagePipeline{pipeline: pipelineConfig, deps: deps}, nil
 }
-
 func (p *messagePipeline) attempts(
 	ctx context.Context,
 	budgetID uuid.UUID,
@@ -82,7 +151,7 @@ func (p *messagePipeline) attempts(
 		"adapters", adapterIDs(step),
 	)
 
-	budgetOverrides, err := p.pipelineStepRepo.ListByBudgetAndPipeline(ctx, budgetID, pipeline.MessagePipeline)
+	budgetOverrides, err := p.deps.PipelineSteps.ListByBudgetAndPipeline(ctx, budgetID, pipeline.MessagePipeline)
 	if err != nil {
 		log.Error("loading the budget's overrides failed", "error", err)
 		return nil, err
@@ -96,7 +165,7 @@ func (p *messagePipeline) attempts(
 	}
 	log.Debug("budget override", "override", describeOverride(override))
 
-	models, err := p.llmModelsRepo.ListUsableForBudget(ctx, budgetID)
+	models, err := p.deps.LLMModels.ListUsableForBudget(ctx, budgetID)
 	if err != nil {
 		log.Error("loading the owner's models failed", "error", err)
 		return nil, err
@@ -123,29 +192,26 @@ func (p *messagePipeline) attempts(
 }
 
 func (p *messagePipeline) llm(attempt pipeline.Attempt) (llmAdapter.LLM, error) {
-	client, err := p.resolver.ResolveLLM(*attempt.Model)
+	client, err := p.deps.Clients.ResolveLLM(*attempt.Model)
 	if err != nil {
 		return nil, err
 	}
 	return llmAdapter.NewLLMAdapter(llmAdapter.Config{
-		Client:     client,
-		Provider:   string(attempt.Model.Provider),
-		Model:      attempt.Model.Slug,
-		MaxTokens:  attempt.MaxTokens,
-		Categories: p.categories,
+		Client:      client,
+		Provider:    string(attempt.Model.Provider),
+		Model:       attempt.Model.Slug,
+		MaxTokens:   attempt.MaxTokens,
+		Categories:  p.deps.Categories,
+		CallTimeout: p.deps.LLMCallTimeout,
 	}), nil
 }
 
 func (p *messagePipeline) decisions(attempt pipeline.Attempt) (decisionsAdapter.DecisionAdapter, error) {
-	client, err := p.resolver.ResolveDecisions(*attempt.Model)
+	client, err := p.deps.Clients.ResolveDecisions(*attempt.Model)
 	if err != nil {
 		return nil, err
 	}
 	return decisionsAdapter.NewDecisionsAdapter(client, attempt.Model.Slug), nil
-}
-
-func unknownAdapter(step pipeline.StepID, adapter string) error {
-	return errs.New(errs.CodeAdapterNotConfigured, "unknown adapter for %s step %q", step, adapter)
 }
 
 // buildStep turns a step's attempts into the adapter to run: the only one, or
@@ -156,7 +222,7 @@ func buildStep[P any](
 	p *messagePipeline,
 	budgetID uuid.UUID,
 	stepID pipeline.StepID,
-	build func(pipeline.Attempt) (P, error),
+	adapters builders[P],
 	chain func([]chainLink[P]) P,
 ) (P, error) {
 	log := logger.Logger(ctx).With("step", stepID, "budgetId", budgetID)
@@ -172,13 +238,13 @@ func buildStep[P any](
 	for _, attempt := range attempts {
 		name := describeAttempt(attempt)
 		log.Debug("building adapter", "attempt", name, "maxTokens", attempt.MaxTokens)
-		link, err := build(attempt)
+		link, err := build(p, adapters, stepID, attempt)
 		if err != nil {
 			log.Warn("skipping model", "attempt", name, "error", err)
 			buildErr = err
 			continue
 		}
-		links = append(links, chainLink[P]{name: name, port: link})
+		links = append(links, chainLink[P]{name: name, model: attemptModel(attempt), port: link})
 	}
 
 	switch len(links) {
@@ -194,59 +260,46 @@ func buildStep[P any](
 	}
 }
 
+// build makes the adapter an attempt names.
+func build[P any](p *messagePipeline, adapters builders[P], stepID pipeline.StepID, attempt pipeline.Attempt) (P, error) {
+	b, ok := adapters[attempt.Adapter]
+	if !ok {
+		var zero P
+		return zero, errs.New(errs.CodeAdapterNotConfigured, "unknown adapter for %s step %q", stepID, attempt.Adapter)
+	}
+	return b(p, attempt)
+}
+
 // Check returns the adapter for this budget's check step.
 func (p *messagePipeline) Check(ctx context.Context, budgetID uuid.UUID) (ports.CheckTransaction, error) {
-	return buildStep(ctx, p, budgetID, pipeline.StepCheck,
-		func(attempt pipeline.Attempt) (ports.CheckTransaction, error) {
-			switch attempt.Adapter {
-			case "regex":
-				return regex.NewCheckTransaction(), nil
-			case "decisions":
-				return p.decisions(attempt)
-			case "llm":
-				return p.llm(attempt)
-			}
-			return nil, unknownAdapter(pipeline.StepCheck, attempt.Adapter)
-		},
-		func(links []chainLink[ports.CheckTransaction]) ports.CheckTransaction { return checkChain{links} },
-	)
+	return buildStep(ctx, p, budgetID, pipeline.StepCheck, checkAdapters,
+		func(links []chainLink[ports.CheckTransaction]) ports.CheckTransaction { return checkChain{links} })
 }
 
 // Extract returns the adapter for this budget's extract step.
 func (p *messagePipeline) Extract(ctx context.Context, budgetID uuid.UUID) (ports.Extract, error) {
-	return buildStep(ctx, p, budgetID, pipeline.StepExtract,
-		func(attempt pipeline.Attempt) (ports.Extract, error) {
-			if attempt.Adapter == "llm" {
-				return p.llm(attempt)
-			}
-			return nil, unknownAdapter(pipeline.StepExtract, attempt.Adapter)
-		},
-		func(links []chainLink[ports.Extract]) ports.Extract { return extractChain{links} },
-	)
+	return buildStep(ctx, p, budgetID, pipeline.StepExtract, extractAdapters,
+		func(links []chainLink[ports.Extract]) ports.Extract { return extractChain{links} })
 }
 
 // Verify returns the adapter for this budget's verify step.
 func (p *messagePipeline) Verify(ctx context.Context, budgetID uuid.UUID) (ports.Verifier, error) {
-	return buildStep(ctx, p, budgetID, pipeline.StepVerify,
-		func(attempt pipeline.Attempt) (ports.Verifier, error) {
-			if attempt.Adapter == "decisions" {
-				return p.decisions(attempt)
-			}
-			return nil, unknownAdapter(pipeline.StepVerify, attempt.Adapter)
-		},
-		func(links []chainLink[ports.Verifier]) ports.Verifier { return verifyChain{links} },
-	)
+	return buildStep(ctx, p, budgetID, pipeline.StepVerify, verifyAdapters,
+		func(links []chainLink[ports.Verifier]) ports.Verifier { return verifyChain{links} })
+}
+
+// Lookup returns the adapter for this budget's lookup step. Its adapters use
+// no model, so there is one attempt and never a chain.
+func (p *messagePipeline) Lookup(ctx context.Context, budgetID uuid.UUID) (ports.MemoryLookup, error) {
+	attempts, err := p.attempts(ctx, budgetID, pipeline.StepLookup)
+	if err != nil {
+		return nil, err
+	}
+	return build(p, lookupAdapters, pipeline.StepLookup, attempts[0])
 }
 
 // Predict returns the adapter for this budget's predict step.
 func (p *messagePipeline) Predict(ctx context.Context, budgetID uuid.UUID) (ports.Predictor, error) {
-	return buildStep(ctx, p, budgetID, pipeline.StepPredict,
-		func(attempt pipeline.Attempt) (ports.Predictor, error) {
-			if attempt.Adapter == "llm" {
-				return p.llm(attempt)
-			}
-			return nil, unknownAdapter(pipeline.StepPredict, attempt.Adapter)
-		},
-		func(links []chainLink[ports.Predictor]) ports.Predictor { return predictChain{links} },
-	)
+	return buildStep(ctx, p, budgetID, pipeline.StepPredict, predictAdapters,
+		func(links []chainLink[ports.Predictor]) ports.Predictor { return predictChain{links} })
 }

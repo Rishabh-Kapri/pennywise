@@ -2,7 +2,6 @@ package factory
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/ports"
@@ -14,10 +13,11 @@ import (
 )
 
 // chainLink is one model to try. name is what logs call it, e.g.
-// "decisions:typesafe/jev-latest".
+// "decisions:typesafe/jev-latest"; model is what the job's progress shows.
 type chainLink[P any] struct {
-	name string
-	port P
+	name  string
+	model string
+	port  P
 }
 
 type checkChain struct {
@@ -36,12 +36,14 @@ func firstSuccess[P, R any](
 	log.Debug("chain started", "links", linkNames(links))
 
 	var zero R
+	if len(links) == 0 {
+		return zero, errs.New(errs.CodeAdapterNotConfigured, "no model configured for %s", step)
+	}
 	var lastErr error
 	for i, link := range links {
 		log.Debug("chain trying model", "model", link.name, "position", i+1, "of", len(links))
 		if len(links) > 1 {
-			_, model, _ := strings.Cut(link.name, ":") // "decisions:typesafe/jev-latest"
-			jobrunner.ReportProgress(ctx, job.Progress{Message: "Asking " + model, Current: i + 1, Total: len(links)})
+			jobrunner.ReportProgress(ctx, job.Progress{Message: "Asking " + link.model, Current: i + 1, Total: len(links)})
 		}
 		startedAt := time.Now()
 		res, err := call(link.port)
@@ -71,9 +73,6 @@ func firstSuccess[P, R any](
 }
 
 func (c checkChain) Check(ctx context.Context, msg ports.Message) (ports.TxnVerdict, error) {
-	if len(c.links) == 0 {
-		return ports.TxnVerdict{}, errs.New(errs.CodeMessageCheckFailed, "no model configured")
-	}
 	return firstSuccess(ctx, pipeline.StepCheck, c.links, func(link ports.CheckTransaction) (ports.TxnVerdict, error) {
 		return link.Check(ctx, msg)
 	})

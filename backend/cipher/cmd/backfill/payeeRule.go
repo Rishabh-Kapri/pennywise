@@ -42,36 +42,6 @@ func (d *BackfillDeps) backfillPayeeRules(ctx context.Context, p resolvedPredict
 	return d.handleUPIMerchant(ctx, parsed.MerchantName, parsed.UPIText, p.Payee, p.Category)
 }
 
-// backfillPayeeRulesiaLLM normalizes a merchant via LLM and creates global merchant + mapping.
-// This implements Phase 4 of the cipher.md classification pipeline.
-// Currently not called — enable when LLM bridge is integrated.
-//
-//nolint:unused
-func (d *BackfillDeps) backfillPayeeRulesiaLLM(ctx context.Context, parsed *parsedEmailText) error {
-	log := logger.Logger(ctx)
-	_ = log
-
-	// TODO: Uncomment when Phase 4 LLM bridge is ready.
-	// The flow:
-	// 1. Send merchant name to LLM for normalization → {canonical_name, mcc_tag}
-	// 2. Create/find global_merchant record
-	// 3. Create global_merchant_mapping (cleaned_raw_text → merchant_id)
-	//
-	// prompt := fmt.Sprintf(`Analyze this raw bank transaction merchant string: "%s" ...`, parsed.MerchantName)
-	// req := client.PromptReq{Model: "openai/gpt-5.4-mini", Prompt: prompt}
-	// normalized, err := client.GenericLLMCall[normalizedMCC](ctx, d.OllamaClient, req)
-	// ...
-	// merchantData := model.GlobalMerchant{CanonicalName: normalized.CanonicalName, MCCTag: model.GlobalMCCTag(normalized.MCCTag)}
-	// globalMerchant, err := d.MerchantRepo.CreateGlobalMerchant(ctx, nil, merchantData)
-	// ...
-	// cleanedRawText := parsed.UPIText
-	// if cleanedRawText == "" { cleanedRawText = parsed.MerchantName }
-	// mapping := model.GlobalMerchantMapping{CleanedRawText: cleanedRawText, MerchantID: globalMerchant.ID}
-	// return d.MerchantRepo.CreateGlolabMerchantMapping(ctx, nil, mapping)
-
-	return nil
-}
-
 // handleUPIMerchant creates a payee_match record linking a UPI handle to an existing
 // or newly created payee. This is the Phase 2 "Fast Path" builder from cipher.md.
 func (d *BackfillDeps) handleUPIMerchant(

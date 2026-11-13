@@ -13,8 +13,6 @@ import (
 
 type AgentHandler interface {
 	CreateRun(c *gin.Context)
-	GetRun(c *gin.Context)
-	CancelRun(c *gin.Context)
 }
 
 type agentHandler struct {
@@ -49,10 +47,4 @@ func (h *agentHandler) CreateRun(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, res)
-}
-
-func (h *agentHandler) GetRun(c *gin.Context) {
-}
-
-func (h *agentHandler) CancelRun(c *gin.Context) {
 }

@@ -1,25 +1,20 @@
 package handler
 
 import (
-	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/service"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type PredictionHandler interface {
-	NormalizeEmailText(c *gin.Context)
 	ExtractEmailData(c *gin.Context)
 	Predict(c *gin.Context)
 	GenerateTransactionEmbedding(c *gin.Context)
-	HandleCorrection(c *gin.Context)
 	SuggestCategoryDescription(c *gin.Context)
 	ExtractStatement(c *gin.Context)
 }
@@ -30,27 +25,6 @@ type predictionHandler struct {
 
 func NewPredictionHandler(ps service.PredictionService) PredictionHandler {
 	return &predictionHandler{predictionService: ps}
-}
-
-func (h *predictionHandler) NormalizeEmailText(c *gin.Context) {
-	ctx := c.Request.Context()
-
-	var req struct {
-		EmailText string `json:"emailText"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	res, err := h.predictionService.SummarizeEmailText(ctx, req.EmailText)
-	if err != nil {
-		logger.Logger(ctx).Error("email text normalization failed", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "email text normalization failed"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": res})
 }
 
 func (h *predictionHandler) ExtractEmailData(c *gin.Context) {
@@ -110,24 +84,6 @@ func (h *predictionHandler) GenerateTransactionEmbedding(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
-func (h *predictionHandler) HandleCorrection(c *gin.Context) {
-	ctx := c.Request.Context()
-
-	var req service.CorrectionRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	if err := h.predictionService.HandleCorrection(ctx, req); err != nil {
-		logger.Logger(ctx).Error("correction handling failed", "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to process correction"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "correction processed"})
-}
-
 func (h *predictionHandler) SuggestCategoryDescription(c *gin.Context) {
 	ctx := c.Request.Context()
 
@@ -175,12 +131,4 @@ func (h *predictionHandler) ExtractStatement(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, res)
-}
-
-func extractBudgetID(c *gin.Context) (uuid.UUID, error) {
-	budgetIDStr := c.GetHeader(utils.HeaderBudgetID)
-	if budgetIDStr == "" {
-		return uuid.Nil, fmt.Errorf("missing %s header", utils.HeaderBudgetID)
-	}
-	return uuid.Parse(budgetIDStr)
 }

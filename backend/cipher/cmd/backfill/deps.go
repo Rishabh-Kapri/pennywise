@@ -5,14 +5,11 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/factory"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/client"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
 
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/otelSDK"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 
@@ -21,7 +18,7 @@ import (
 
 // BackfillDeps holds all dependencies needed by backfill operations.
 type BackfillDeps struct {
-	OllamaClient  *client.OllamaClient
+	Ollama        *ollamaClient
 	EmbeddingRepo repository.TransactionEmbeddingRepository
 	PayeeRepo     repository.PayeesRepository
 	PayeeRuleRepo repository.PayeeRuleRepository
@@ -37,24 +34,18 @@ func initDeps(
 	budgetID uuid.UUID,
 	database *factory.Database,
 ) (*BackfillDeps, *transport.Client) {
-	ctx := context.Background()
-	otelCfg := otelSDK.Load()
-	tel, err := otelSDK.NewTelemetry(ctx, *otelCfg)
-	if err != nil {
-		logger.Fatal("error while initializing telemetry", err)
-	}
-	defer tel.Shutdown(ctx)
 	// Ollama client via shared transport
-	ollamaEngine := httpclient.NewHttpTransport(cfg.OllamaURL)
-	ollamaTransport := transport.NewClient("ollama", ollamaEngine)
-	ollamaClient := client.NewOllamaClient(ollamaTransport, tel.Tracer)
+	ollama := &ollamaClient{
+		client:      transport.NewClient("ollama", httpclient.NewHttpTransport(cfg.OllamaURL)),
+		callTimeout: cfg.LLMCallTimeout,
+	}
 
 	// Pennywise API client via shared transport
 	pennywiseEngine := httpclient.NewHttpTransport(pennywiseAPI)
 	pennywiseClient := transport.NewClient("pennywise-api", pennywiseEngine)
 
 	return &BackfillDeps{
-		OllamaClient:  ollamaClient,
+		Ollama:        ollama,
 		EmbeddingRepo: database.TransactionEmbedding,
 		PayeeRepo:     database.Payee,
 		PayeeRuleRepo: database.PayeeRule,

@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"strings"
 
-	// "io"
-
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/ports"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/jobrunner"
@@ -15,7 +13,6 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/pipeline"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/job"
 	"github.com/google/uuid"
-	// "golang.org/x/net/html"
 )
 
 // The message pipeline, one handler per step (the flow is drawn in
@@ -50,10 +47,7 @@ func messageReceived(deps WorkerDeps) jobrunner.HandlerFunc {
 		}
 
 		switch msg.Source {
-		case "api":
-		case "email":
-		case "sms":
-			break
+		case model.MessageSourceAPI, model.MessageSourceEmail, model.MessageSourceSMS:
 		default:
 			return nil, errs.New(errs.CodeJobInvalidOption, "invalid message source: %s", msg.Source)
 		}
@@ -189,7 +183,11 @@ func messageLookup(deps WorkerDeps) jobrunner.HandlerFunc {
 			return nil, err
 		}
 
-		res, found, err := deps.Memory.Lookup(ctx, toPortMessage(p.Message), toPortEntities(p.Entities))
+		memory, err := deps.Pipeline.Lookup(ctx, budgetID)
+		if err != nil {
+			return nil, errs.Wrap(errs.CodeMessageLookupFailed, "pick lookup adapter", err)
+		}
+		res, found, err := memory.Lookup(ctx, toPortMessage(p.Message), toPortEntities(p.Entities))
 		if err != nil {
 			return nil, errs.Wrap(errs.CodeMessageLookupFailed, "memory lookup", err)
 		}
@@ -300,10 +298,10 @@ const reviewThreshold = 0.7
 
 // shouldPark reports whether a step's confidence is low enough to park the
 // message. Until ParkLowConfidence is on it only logs what it would have parked,
-// so the threshold can be checked against real scores first. A zero score isn't
-// low: it's how adapters without a model (regex, noop) say they don't know.
+// so the threshold can be checked against real scores first. No score means
+// the adapter doesn't give one.
 func (d WorkerDeps) shouldPark(ctx context.Context, step pipeline.StepID, confidence *float64) bool {
-	if confidence == nil || *confidence <= 0 || *confidence >= reviewThreshold {
+	if confidence == nil || *confidence >= reviewThreshold {
 		return false
 	}
 	if !d.ParkLowConfidence {

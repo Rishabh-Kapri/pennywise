@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/client"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
@@ -76,7 +77,7 @@ func main() {
 		fmt.Println("\nEmbeddings skipped: pass -ollama to compare them.")
 		return
 	}
-	embed, err := embeddingScores(ctx, aliases, *ollamaURL, *embedModel)
+	embed, err := embeddingScores(ctx, aliases, *ollamaURL, *embedModel, cfg.LLMCallTimeout)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "embedding failed:", err)
 		os.Exit(1)
@@ -185,14 +186,17 @@ func trigramScores(ctx context.Context, tx pgx.Tx, aliases []alias) (scoreFn, er
 	return func(i, j int) float64 { return scores[i][j] }, nil
 }
 
-func embeddingScores(ctx context.Context, aliases []alias, url, slug string) (scoreFn, error) {
+func embeddingScores(ctx context.Context, aliases []alias, url, slug string, callTimeout time.Duration) (scoreFn, error) {
 	embedder, err := client.NewUserEmbedder(model.LLMProviderOllama, url, "", http.DefaultClient)
 	if err != nil {
 		return nil, err
 	}
 	vectors := make([][]float64, len(aliases))
 	for i, a := range aliases {
-		if vectors[i], err = embedder.Embed(ctx, slug, a.Merchant); err != nil {
+		callCtx, cancel := context.WithTimeout(ctx, callTimeout)
+		vectors[i], err = embedder.Embed(callCtx, slug, a.Merchant)
+		cancel()
+		if err != nil {
 			return nil, err
 		}
 	}

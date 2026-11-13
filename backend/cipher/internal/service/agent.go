@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 
@@ -15,7 +14,6 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
@@ -25,8 +23,6 @@ import (
 
 type AgentService interface {
 	CreateRun(ctx context.Context, req sharedModel.AgentRunCreateRequest) (*sharedModel.AgentRun, error)
-	GetRun(ctx context.Context, id uuid.UUID) (*sharedModel.AgentRun, error)
-	CancelRun(ctx context.Context, id uuid.UUID) (*sharedModel.AgentRun, error)
 }
 
 // ClarifyError is returned by CreateRun when the router needs more information
@@ -35,16 +31,14 @@ type ClarifyError struct {
 	Prompt string
 }
 
-func (e *ClarifyError) Error() string   { return e.Prompt }
-func (e *ClarifyError) StatusCode() int { return http.StatusUnprocessableEntity }
+func (e *ClarifyError) Error() string { return e.Prompt }
 
 type agentService struct {
-	redis           *redis.Client
-	agent           *agent.Agent
-	agentMemoryRepo repository.AgentMemoryRepository
-	pennywiseAPI    *transport.Client
-	memoryService   memory.Memory
-	llmResolver     llm.LLMResolver
+	redis         *redis.Client
+	agent         *agent.Agent
+	pennywiseAPI  *transport.Client
+	memoryService memory.Memory
+	llmResolver   llm.LLMResolver
 }
 
 func NewAgentService(
@@ -570,12 +564,4 @@ func (s *agentService) CreateRun(
 		}
 	}
 	return run, nil
-}
-
-func (s *agentService) GetRun(ctx context.Context, id uuid.UUID) (*sharedModel.AgentRun, error) {
-	return nil, nil
-}
-
-func (s *agentService) CancelRun(ctx context.Context, id uuid.UUID) (*sharedModel.AgentRun, error) {
-	return nil, nil
 }

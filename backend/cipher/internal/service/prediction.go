@@ -10,12 +10,11 @@ import (
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
-	"jaytaylor.com/html2text"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
-	agent "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/runtime"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/categorymatch"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/client"
-	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/emailtext"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/llmusage"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/progress"
@@ -30,22 +29,11 @@ import (
 	"github.com/google/uuid"
 )
 
+// Semantic search accepts its best match above similarityThreshold, or above
+// exactAmountThreshold when the amounts agree exactly.
 const (
-	SimilarityThreshold  = 0.80 // harder threshold for pgvector
-	ExactAmountThreshold = 0.70 // lower threshold for pgvector when exact amount is known
-	MLPConfThreshold     = 0.70
-	EmbeddingModel       = "bge-m3"
-	SourcePrediction     = "prediction"
-	SourceUserCorrected  = "user_corrected"
-)
-
-// Re-export shared prediction source constants for convenience within this package.
-const (
-	SourcePayeeRule = sharedModel.PredictionSourceRule
-	SourcePgvector  = sharedModel.PredictionSourceVector
-	SourceMLP       = sharedModel.PredictionSource("MLP") // MLP is not in the DB enum but used internally
-	SourceLLM       = sharedModel.PredictionSourceLLM
-	SourceFallback  = sharedModel.PredictionSource("FALLBACK") // FALLBACK is used internally
+	similarityThreshold  = 0.80
+	exactAmountThreshold = 0.70
 )
 
 type ExtractEmailDataRequest struct {
@@ -75,11 +63,6 @@ type TransactionEmbeddingResponse struct {
 	Embedding     string `json:"embedding"`
 }
 
-type LLMRequest struct {
-	Text   string  `json:"text"`
-	Amount float64 `json:"amount"`
-}
-
 type PredictResponse struct {
 	Summary    string                       `json:"summary"`
 	Account    string                       `json:"account"`
@@ -95,15 +78,6 @@ type PredictResponse struct {
 	Metadata   map[string]any               `json:"metadata,omitempty"`
 }
 
-type CorrectionRequest struct {
-	EmailText     string     `json:"emailText"`
-	Amount        float64    `json:"amount"`
-	TransactionID *uuid.UUID `json:"transactionId,omitempty"`
-	Payee         string     `json:"payee"`
-	Category      string     `json:"category"`
-	Account       string     `json:"account"`
-}
-
 type PredictionService interface {
 	// Normalizes the email text using LLM to remove any formatting or other irrelevant information
 	SummarizeEmailText(ctx context.Context, text string) (string, error)
@@ -113,7 +87,6 @@ type PredictionService interface {
 		ctx context.Context,
 		req TransactionEmbeddingRequest,
 	) (*TransactionEmbeddingResponse, error)
-	HandleCorrection(ctx context.Context, req CorrectionRequest) error
 	// SuggestCategoryDescription drafts a one- or two-sentence description of
 	// what belongs in a budget category.
 	SuggestCategoryDescription(ctx context.Context, req sharedModel.CategoryDescriptionContext) (string, error)
@@ -126,22 +99,17 @@ type PredictionService interface {
 }
 
 type predictionService struct {
-	agent         *agent.Agent
 	llmResolver   llm.LLMResolver
-	ollama        *client.OllamaClient
-	mlp           *client.MLPClient
 	embeddingRepo repository.TransactionEmbeddingRepository
 	accountRepo   repository.AccountRepository
 	payeeRepo     repository.PayeesRepository
 	payeeRuleRepo repository.PayeeRuleRepository
 	categoryRepo  repository.CategoryRepository
+	llmModels     repository.UserLLMModelRepository
+	embedders     EmbedderResolver
 	tracer        oteltrace.Tracer
-	// llmCallTimeout bounds each chat-endpoint LLM call made through the
-	// llmResolver (the OllamaClient bounds its own calls).
+	// llmCallTimeout bounds each model and embedding call.
 	llmCallTimeout time.Duration
-	// llmModels and embedders find and call the budget owner's embedding model.
-	llmModels repository.UserLLMModelRepository
-	embedders EmbedderResolver
 }
 
 // EmbedderResolver gets a client for one of the user's embedding models.
@@ -149,35 +117,35 @@ type EmbedderResolver interface {
 	ResolveEmbedder(m sharedModel.UserLLMModel) (client.Embedder, error)
 }
 
+// PredictionDeps is what the prediction service runs with.
+type PredictionDeps struct {
+	LLMResolver   llm.LLMResolver
+	EmbeddingRepo repository.TransactionEmbeddingRepository
+	AccountRepo   repository.AccountRepository
+	PayeeRepo     repository.PayeesRepository
+	PayeeRuleRepo repository.PayeeRuleRepository
+	CategoryRepo  repository.CategoryRepository
+	// LLMModels and Embedders find and call the budget owner's embedding model.
+	LLMModels repository.UserLLMModelRepository
+	Embedders EmbedderResolver
+	Tracer    oteltrace.Tracer
+	// LLMCallTimeout bounds each model and embedding call (CIPHER_LLM_CALL_TIMEOUT).
+	LLMCallTimeout time.Duration
+}
+
 // NewPredictionService wires the prediction pipeline.
-func NewPredictionService(
-	agent *agent.Agent,
-	llmResolver llm.LLMResolver,
-	ollama *client.OllamaClient,
-	mlp *client.MLPClient,
-	embeddingRepo repository.TransactionEmbeddingRepository,
-	accountRepo repository.AccountRepository,
-	payeeRepo repository.PayeesRepository,
-	payeeRuleRepo repository.PayeeRuleRepository,
-	categoryRepo repository.CategoryRepository,
-	tracer oteltrace.Tracer,
-	llmModels repository.UserLLMModelRepository,
-	embedders EmbedderResolver,
-) PredictionService {
+func NewPredictionService(d PredictionDeps) PredictionService {
 	return &predictionService{
-		agent:          agent,
-		llmResolver:    llmResolver,
-		ollama:         ollama,
-		mlp:            mlp,
-		embeddingRepo:  embeddingRepo,
-		accountRepo:    accountRepo,
-		payeeRepo:      payeeRepo,
-		payeeRuleRepo:  payeeRuleRepo,
-		categoryRepo:   categoryRepo,
-		tracer:         tracer,
-		llmCallTimeout: config.Load().LLMCallTimeout,
-		llmModels:      llmModels,
-		embedders:      embedders,
+		llmResolver:    d.LLMResolver,
+		embeddingRepo:  d.EmbeddingRepo,
+		accountRepo:    d.AccountRepo,
+		payeeRepo:      d.PayeeRepo,
+		payeeRuleRepo:  d.PayeeRuleRepo,
+		categoryRepo:   d.CategoryRepo,
+		llmModels:      d.LLMModels,
+		embedders:      d.Embedders,
+		tracer:         d.Tracer,
+		llmCallTimeout: d.LLMCallTimeout,
 	}
 }
 
@@ -204,8 +172,10 @@ func (s *predictionService) embed(ctx context.Context, text string) ([]float64, 
 		return nil, none, err
 	}
 
+	embedCtx, cancel := s.withLLMTimeout(ctx)
+	defer cancel()
 	startedAt := time.Now()
-	embedding, err := embedder.Embed(ctx, m.Slug, text)
+	embedding, err := embedder.Embed(embedCtx, m.Slug, text)
 	call := sharedModel.LLMCall{
 		Step:       "predict:embed",
 		Provider:   string(m.Provider),
@@ -331,13 +301,9 @@ func (s *predictionService) chatWithFallback(
 		"all email pipeline providers failed for step "+step, lastErr)
 }
 
-// withLLMTimeout bounds a single chat-endpoint LLM call.
+// withLLMTimeout bounds a single model or embedding call.
 func (s *predictionService) withLLMTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
-	timeout := s.llmCallTimeout
-	if timeout <= 0 {
-		timeout = config.DefaultLLMCallTimeout
-	}
-	return context.WithTimeout(ctx, timeout)
+	return context.WithTimeout(ctx, s.llmCallTimeout)
 }
 
 func (s *predictionService) getPayeeAndCategory(
@@ -389,7 +355,7 @@ func (s *predictionService) handlePayeeRules(
 	}
 	result.Payee = payee.Name
 	result.Category = category.Name
-	result.Source = SourcePayeeRule
+	result.Source = sharedModel.PredictionSourceRule
 	result.Confidence = "100"
 	result.Metadata = map[string]any{
 		"strategy":     "payee_rule",
@@ -432,12 +398,8 @@ func (s *predictionService) handleSemanticSearch(
 		}
 		result.Payee = payee.Name
 		result.Category = category.Name
-		// Record which backend produced the query vector — with a fallback chain
-		// the corpus can mix backends, and that is worth being able to see.
-		if result.Metadata != nil {
-			result.Metadata["embedding_model"] = embedModel.Slug
-			result.Metadata["embedding_provider"] = string(embedModel.Provider)
-		}
+		result.Metadata["embedding_model"] = embedModel.Slug
+		result.Metadata["embedding_provider"] = string(embedModel.Provider)
 		return result, nil
 	}
 	return nil, nil
@@ -446,19 +408,9 @@ func (s *predictionService) handleSemanticSearch(
 func (s *predictionService) handleLLM(
 	ctx context.Context,
 	budgetId uuid.UUID,
-	embeddingText string,
 	req PredictRequest,
 ) (*PredictResponse, error) {
-	log := logger.Logger(ctx)
-
-	llmReq := LLMRequest{
-		Text:   req.EmailText,
-		Amount: req.Amount,
-	}
-	log.Info("handleLLm", "llmReq", llmReq)
-
-	parsed, categoryID, metadata, err := s.llmFallback(ctx, budgetId, llmReq)
-	log.Info("after llmFallback", "parsed", parsed, "categoryID", categoryID, "metadata", metadata, "err", err)
+	parsed, categoryID, metadata, err := s.llmFallback(ctx, budgetId, req)
 	if err != nil {
 		return nil, err
 	}
@@ -474,7 +426,7 @@ func (s *predictionService) handleLLM(
 	}
 
 	result.CategoryID = categoryID
-	result.Source = SourceLLM
+	result.Source = sharedModel.PredictionSourceLLM
 	result.Payee = parsed.MerchantName
 	result.Category = parsed.SuggestedTag
 	result.Reasoning = parsed.Reasoning
@@ -484,43 +436,17 @@ func (s *predictionService) handleLLM(
 	return &result, nil
 }
 
+var htmlTags = regexp.MustCompile(`<[^>]*>`)
+
 type summaryResponse struct {
 	Summary string `json:"summary"`
-}
-
-func cleanEmail(text string) string {
-	// Remove forwarded headers
-	if idx := strings.Index(text, "Dear Customer"); idx != -1 {
-		text = text[idx:]
-	}
-	// Remove from "Warm Regards" onwards
-	for _, marker := range []string{"Warm Regards", "warm regards", "Warm regards"} {
-		if idx := strings.Index(text, marker); idx != -1 {
-			text = text[:idx]
-		}
-	}
-	// Remove URLs
-	urlRegex := regexp.MustCompile(`https?://\S+`)
-	text = urlRegex.ReplaceAllString(text, "")
-	// Remove UPI ref
-	upiRegex := regexp.MustCompile(`(?i)UPI (transaction )?reference (no\.?|number)[^.]*\.`)
-	text = upiRegex.ReplaceAllString(text, "")
-	// Remove support sections
-	for _, marker := range []string{"If you did not auth", "Important Note", "What You Can Do", "Need Help"} {
-		if idx := strings.Index(text, marker); idx != -1 {
-			text = text[:idx]
-		}
-	}
-	return strings.TrimSpace(text)
 }
 
 func (s *predictionService) SummarizeEmailText(ctx context.Context, text string) (string, error) {
 	log := logger.Logger(ctx)
 	log.Info("SummarizeEmailText started", "text", text)
 
-	// text = cleanEmail(text)
-	htmlRegex := regexp.MustCompile(`<[^>]*>`)
-	text = htmlRegex.ReplaceAllString(text, "")
+	text = htmlTags.ReplaceAllString(text, "")
 
 	log.Info("SummarizeEmailText before prompt", "text", text)
 
@@ -533,7 +459,7 @@ func (s *predictionService) SummarizeEmailText(ctx context.Context, text string)
 					Content: []sharedModel.ContentBlock{
 						{
 							Type: "text",
-							Text: client.EmailSummarizationPrompt,
+							Text: emailSummarizationPrompt,
 						},
 					},
 				},
@@ -587,15 +513,10 @@ func (s *predictionService) ExtractEmailData(
 		attribute.String("emailText", req.EmailHtml),
 	)
 
-	text, err := html2text.FromString(
-		req.EmailHtml,
-		html2text.Options{PrettyTables: false, OmitLinks: true, TextOnly: true},
-	)
+	text, err := emailtext.Plain(req.EmailHtml)
 	if err != nil {
 		return nil, err
 	}
-	text = strings.ReplaceAll(text, "\n", "")
-	text = strings.TrimSpace(text)
 
 	chatRes, err := s.chatWithFallback(ctx, "parse:extract", func(model string) sharedModel.ChatRequest {
 		return sharedModel.ChatRequest{
@@ -606,7 +527,7 @@ func (s *predictionService) ExtractEmailData(
 					Content: []sharedModel.ContentBlock{
 						{
 							Type: "text",
-							Text: client.ExtractionPrompt,
+							Text: EmailExtractionPrompt,
 						},
 					},
 				},
@@ -623,7 +544,7 @@ func (s *predictionService) ExtractEmailData(
 			Temperature: 0.0,
 			MaxTokens:   100000,
 			Stream:      false,
-			Format:      client.ExtractionSchema,
+			Format:      emailExtractionSchema,
 		}
 	})
 	if err != nil {
@@ -668,11 +589,6 @@ func (s *predictionService) Predict(ctx context.Context, req PredictRequest) (*P
 		attribute.Float64("amount", req.Amount),
 	)
 
-	transactionType := "debit"
-	if req.Amount > 0 {
-		transactionType = "credit"
-	}
-
 	extractedEmail := sharedModel.ExtractedEmailResponse{}
 
 	if req.ExtractedInputs != nil {
@@ -709,26 +625,12 @@ func (s *predictionService) Predict(ctx context.Context, req PredictRequest) (*P
 		// rather than a retryable infrastructure failure.
 		return nil, errs.New(errs.CodeAccountLookupFailed, "account not found for suffix %q", accountStr)
 	}
-	if err != nil {
-		logger.Logger(ctx).Warn("email extraction failed", "error", err)
-		return nil, err
-	}
 
-	var predictResponse *PredictResponse = &PredictResponse{}
-
-	upiText, merchantName := utils.CleanUPIText(extractedEmail.Merchant)
-	merchantName = utils.CleanMerchantString(extractedEmail.Merchant)
-	var matchString string
-	if upiText != "" {
-		matchString = upiText
-	} else {
-		matchString = merchantName
-	}
-	embeddingText := transactionType + " " + merchantName
-	log.Info("cleaned email text", "text", embeddingText)
+	keys := MatchKeysFor(extractedEmail.Merchant, req.Amount)
+	log.Info("cleaned email text", "text", keys.EmbeddingText)
 
 	// Step 2: Search for payee specific rules
-	predictResponse, err = s.handlePayeeRules(ctx, budgetId, matchString)
+	predictResponse, err := s.handlePayeeRules(ctx, budgetId, keys.MatchString)
 	if err != nil {
 		log.Warn("payee rule search failed, falling back to semantic search", "error", err)
 	}
@@ -743,7 +645,7 @@ func (s *predictionService) Predict(ctx context.Context, req PredictRequest) (*P
 	}
 
 	// Step 3: Semantic search in transaction embeddings
-	predictResponse, err = s.handleSemanticSearch(ctx, budgetId, embeddingText, req)
+	predictResponse, err = s.handleSemanticSearch(ctx, budgetId, keys.EmbeddingText, req)
 	if err != nil {
 		log.Warn("semantic search failed, falling back to LLM", "error", err)
 	}
@@ -768,7 +670,7 @@ func (s *predictionService) Predict(ctx context.Context, req PredictRequest) (*P
 	// the email as a skip and drop it silently. Surfacing the error instead
 	// parks the email on the retry signal, where it can be reprocessed once the
 	// cause (a missing category, an LLM outage) is dealt with.
-	predictResponse, err = s.handleLLM(ctx, budgetId, embeddingText, req)
+	predictResponse, err = s.handleLLM(ctx, budgetId, req)
 	if err != nil {
 		log.Error("LLM prediction failed", "error", err)
 		return nil, err
@@ -794,11 +696,6 @@ func (s *predictionService) GenerateTransactionEmbedding(
 		return nil, errs.New(errs.CodeInvalidArgument, "rawBankText is required")
 	}
 
-	transactionType := "debit"
-	if req.Amount > 0 {
-		transactionType = "credit"
-	}
-
 	// Go through the provider chain rather than straight to ollama, like every
 	// other extraction in the pipeline: this runs when the user approves or
 	// corrects a transaction, and a local ollama outage used to silently cost
@@ -811,73 +708,55 @@ func (s *predictionService) GenerateTransactionEmbedding(
 		return nil, errs.New(errs.CodeInternalError, "transaction embedding text extraction failed")
 	}
 
-	upiText, merchantName := utils.CleanUPIText(extracted.Merchant)
-	merchantName = utils.CleanMerchantString(merchantName)
-	if merchantName == "" {
+	keys := MatchKeysFor(extracted.Merchant, req.Amount)
+	if keys.MerchantName == "" {
 		return nil, errs.New(errs.CodeInvalidArgument, "merchant name could not be extracted")
 	}
 
-	var matchString string
-	if upiText != "" {
-		matchString = upiText
-	} else {
-		matchString = merchantName
-	}
-
-	embeddingText := transactionType + " " + merchantName
-	embedding, _, err := s.embed(ctx, embeddingText)
+	embedding, _, err := s.embed(ctx, keys.EmbeddingText)
 	if err != nil {
 		return nil, errs.Wrap(errs.CodeInternalError, "generate transaction embedding", err)
 	}
 
 	return &TransactionEmbeddingResponse{
-		MatchString:   matchString,
-		EmbeddingText: embeddingText,
+		MatchString:   keys.MatchString,
+		EmbeddingText: keys.EmbeddingText,
 		Embedding:     sharedModel.FormatVector(embedding),
 	}, nil
 }
 
-func (s *predictionService) HandleCorrection(ctx context.Context, req CorrectionRequest) error {
-	budgetID := utils.MustBudgetID(ctx)
-	logger := logger.Logger(ctx)
+// MatchKeys are what a merchant is found by: payee rules by MatchString (the
+// UPI handle, else the name), stored embeddings by EmbeddingText.
+type MatchKeys struct {
+	MerchantName  string
+	MatchString   string
+	EmbeddingText string
+}
 
-	// Generate embedding for the corrected transaction
-	embedding, _, err := s.embed(ctx, req.EmailText)
-	if err != nil {
-		return errs.Wrap(errs.CodeInternalError, "embed correction", err)
+// MatchKeysFor builds the keys the same way for a lookup (Predict) and for
+// what is stored (GenerateTransactionEmbedding, cmd/backfill), so they meet.
+func MatchKeysFor(merchant string, amount float64) MatchKeys {
+	upiText, merchantName := utils.CleanUPIText(merchant)
+	merchantName = utils.CleanMerchantString(merchantName)
+	transactionType := "debit"
+	if amount > 0 {
+		transactionType = "credit"
 	}
-
-	data := sharedModel.TransactionEmbedding{
-		BudgetID:      budgetID,
-		EmbeddingText: req.EmailText,
-		// PayeeID:       req.PayeeID,
-		// CategoryID:    req.CategoryID,
-		Amount: req.Amount,
-		Source: SourceUserCorrected,
+	matchString := upiText
+	if matchString == "" {
+		matchString = merchantName
 	}
-
-	if err := s.embeddingRepo.Upsert(ctx, data, embedding); err != nil {
-		return fmt.Errorf("upsert correction embedding: %w", err)
+	return MatchKeys{
+		MerchantName:  merchantName,
+		MatchString:   matchString,
+		EmbeddingText: transactionType + " " + merchantName,
 	}
-
-	logger.Info("correction embedding stored",
-		"payee", req.Payee,
-		"category", req.Category,
-		"transactionId", req.TransactionID,
-	)
-
-	return nil
 }
 
 func (s *predictionService) resolveMatches(matches []sharedModel.TransactionEmbedding) *PredictResponse {
 	if len(matches) == 0 {
 		return nil
 	}
-	// log := logger.Logger(context.Background())
-	// log.Info("resolveMatches", "match 0", *matches[0].VectorDistance, "penalty", *matches[0].AmountPenalty, "similarity", 1-*matches[0].VectorDistance)
-	// log.Info("resolveMatches", "match 1", *matches[1].VectorDistance, "penalty", *matches[1].AmountPenalty, "similarity", 1-*matches[1].VectorDistance)
-	// log.Info("resolveMatches", "match 2", *matches[2].VectorDistance, "penalty", *matches[2].AmountPenalty, "similarity", 1-*matches[2].VectorDistance)
-
 	best := matches[0]
 	if best.VectorDistance == nil || best.AmountPenalty == nil {
 		return nil
@@ -889,67 +768,31 @@ func (s *predictionService) resolveMatches(matches []sharedModel.TransactionEmbe
 		CategoryID: best.CategoryID,
 		Amount:     best.Amount,
 		Confidence: fmt.Sprintf("%.2f", (1-(*best.VectorDistance+amountPenalty*0.15))*100),
-		Source:     SourcePgvector,
+		Source:     sharedModel.PredictionSourceVector,
 		Metadata: map[string]any{
 			"strategy":        "semantic_search",
-			"embedding_model": EmbeddingModel,
 			"vector_distance": best.VectorDistance,
 			"amount_penalty":  best.AmountPenalty,
 		},
 	}
 
-	if similarity >= SimilarityThreshold {
+	if similarity >= similarityThreshold {
 		return res
 	}
 
-	if amountPenalty == 0.0 && similarity >= ExactAmountThreshold {
+	if amountPenalty == 0.0 && similarity >= exactAmountThreshold {
 		return res
 	}
 
 	return nil
 }
 
-// func (s *predictionService) mlpFallback(ctx context.Context, req PredictRequest) (*PredictResponse, error) {
-// 	log := logger.Logger(ctx)
-//
-// 	accountResult, payeeResult, categoryResult, err := s.mlp.PredictAll(ctx, req.EmailText, req.Amount)
-// 	if err != nil {
-// 		log.Error("MLP predict failed", "error", err)
-// 		return nil, err
-// 	}
-//
-// 	// Use confidence gating like go-gmail does
-// 	result := s.defaultFallback(req)
-//
-// 	// if accountResult.Confidence >= MLPConfThreshold {
-// 	// 	result.Account = accountResult.Label
-// 	// }
-// 	// if payeeResult != nil && payeeResult.Confidence >= MLPConfThreshold {
-// 	// 	result.PayeeID = payeeResult.Label
-// 	// }
-// 	// if categoryResult != nil && categoryResult.Confidence >= MLPConfThreshold {
-// 	// 	result.Category = categoryResult.Label
-// 	// }
-//
-// 	// Only mark as MLP source if at least account passed threshold
-// 	if accountResult.Confidence >= MLPConfThreshold {
-// 		result.Source = SourceMLP
-// 		result.Confidence = accountResult.Confidence
-// 	}
-//
-// 	log.Info("MLP prediction", "payee", result.Payee, "category", result.Category, "account", result.Account, "source", result.Source)
-//
-// 	return result, nil
-// }
-
-// llmFallback calls the LLM with the active prompt (promptV2), parses the JSON response,
-// resolves the suggested category against the budget's category list, and returns the
-// parsed prediction together with the resolved category UUID.
-// Category resolution is done here so callers don't need to repeat the DB lookup.
+// llmFallback asks the owner's chat model for a payee and category, and
+// resolves the category against the budget's (categorymatch).
 func (s *predictionService) llmFallback(
 	ctx context.Context,
 	budgetId uuid.UUID,
-	req LLMRequest,
+	req PredictRequest,
 ) (*model.LLMPrediction, uuid.UUID, map[string]any, error) {
 	log := logger.Logger(ctx)
 
@@ -957,41 +800,23 @@ func (s *predictionService) llmFallback(
 	if err != nil {
 		return nil, uuid.Nil, nil, err
 	}
-	log.Info("categories found", "userCategories", userCategories, "err", err)
-
-	userCategoriesMap := make(map[string]uuid.UUID, len(userCategories))
 	userCategoriesText := ""
 	for _, c := range userCategories {
 		userCategoriesText += c.Name + ", "
-		userCategoriesMap[c.Name] = c.ID
 	}
-
-	log.Info("categories map", "map", userCategoriesMap, "text", userCategoriesText, "prompt", promptV2)
-
-	prompt := strings.ReplaceAll(promptV2, "{categories}", userCategoriesText)
-	log.Info("llmFallback", "prompt", prompt)
+	prompt := strings.ReplaceAll(predictionPrompt, "{categories}", userCategoriesText)
 
 	chatRes, err := s.chatWithFallback(ctx, "predict:llm_fallback", func(model string) sharedModel.ChatRequest {
 		return sharedModel.ChatRequest{
 			Model: model,
 			Messages: []sharedModel.AgentMessage{
 				{
-					Role: sharedModel.RoleSystem,
-					Content: []sharedModel.ContentBlock{
-						{
-							Type: "text",
-							Text: prompt,
-						},
-					},
+					Role:    sharedModel.RoleSystem,
+					Content: []sharedModel.ContentBlock{{Type: "text", Text: prompt}},
 				},
 				{
-					Role: sharedModel.RoleUser,
-					Content: []sharedModel.ContentBlock{
-						{
-							Type: "text",
-							Text: req.Text,
-						},
-					},
+					Role:    sharedModel.RoleUser,
+					Content: []sharedModel.ContentBlock{{Type: "text", Text: req.EmailText}},
 				},
 			},
 			Temperature: 0.0,
@@ -1003,7 +828,7 @@ func (s *predictionService) llmFallback(
 	if err != nil {
 		return nil, uuid.Nil, nil, errs.Wrap(errs.CodeInternalError, "error in llm fallback", err)
 	}
-	if chatRes.Message.Content == nil {
+	if len(chatRes.Message.Content) == 0 {
 		return nil, uuid.Nil, nil, errs.New(errs.CodeInternalError, "LLM fallback: no content returned")
 	}
 
@@ -1013,124 +838,35 @@ func (s *predictionService) llmFallback(
 	}
 
 	suggested := parsed.SuggestedTag
-	categoryID, ok := userCategoriesMap[suggested]
-	matchKind := "exact"
-	matchScore := 1.0
-	if !ok {
-		// Local models routinely return a category that is right but not
-		// byte-identical -- dropping the emoji prefix, changing case or
-		// spacing. Ask the database for the closest name it can find before
-		// giving up on an otherwise usable prediction.
-		match, err := s.resolveCategoryFuzzy(ctx, budgetId, suggested)
-		if err != nil {
-			return nil, uuid.Nil, nil, err
-		}
-		if match == nil {
-			return nil, uuid.Nil, nil, errs.New(
-				errs.CodeCategoryLookupFailed, "category not found for %q", suggested,
-			)
-		}
-		log.Info("category resolved by fuzzy match",
-			"suggested", suggested, "matched", match.Name, "score", match.Score)
-		categoryID = match.ID
-		matchKind = "fuzzy"
-		matchScore = match.Score
-		// Report the canonical name onwards: callers surface SuggestedTag as
-		// the prediction's category, and it must agree with categoryID.
-		parsed.SuggestedTag = match.Name
+	match, ok, err := categorymatch.Match(ctx, s.categoryRepo, budgetId, userCategories, suggested)
+	if err != nil {
+		return nil, uuid.Nil, nil, err
 	}
+	if !ok {
+		// Deterministic: the activity parks the email instead of retrying.
+		return nil, uuid.Nil, nil, errs.New(errs.CodeCategoryLookupFailed, "category not found for %q", suggested)
+	}
+	if match.Kind == categorymatch.Fuzzy {
+		log.Info("category resolved by fuzzy match", "suggested", suggested, "matched", match.Name, "score", match.Score)
+	}
+	// Callers surface SuggestedTag as the prediction's category, so it must
+	// agree with the ID.
+	parsed.SuggestedTag = match.Name
 
 	metadata := map[string]any{
 		"strategy":             "llm_fallback",
 		"model":                chatRes.Model,
 		"prompt":               prompt,
-		"input_text":           req.Text,
+		"input_text":           req.EmailText,
 		"input_amount":         req.Amount,
 		"response":             chatRes.Message.Content[0].Text,
 		"categories_count":     len(userCategories),
 		"prompt_template":      "promptV2",
 		"response_category":    suggested,
-		"category_match":       matchKind,
-		"category_matched":     parsed.SuggestedTag,
-		"category_match_score": matchScore,
+		"category_match":       string(match.Kind),
+		"category_matched":     match.Name,
+		"category_match_score": match.Score,
 	}
 
-	return &parsed, categoryID, metadata, nil
-}
-
-// Trigram thresholds for resolving a category name the model got almost right.
-//
-// pg_trgm treats emoji and punctuation as word separators and folds case, so
-// the common near-misses score at or near the top of the range while invented
-// names score far below the floor. Measured against the real category list:
-// a suggested "Dining Out/Entertainment" scores 1.00 against the stored
-// emoji-prefixed name (next best 0.07), lowercase "groceries" scores 1.00
-// (next 0.08), and "Uncategorized" -- a name no budget has a category for --
-// tops out at 0.10.
-//
-// The margin guards the other failure mode: sibling categories that differ by a
-// suffix both score well against a truncated name -- "Travel" scores exactly
-// 0.70 against both "Travel - ST" and "Travel - LT". Picking the higher one
-// would silently miscategorize, so when the top two are that close no answer
-// beats a coin flip: the prediction fails and the email parks for a retry.
-const (
-	categoryFuzzyMinScore  = 0.45
-	categoryFuzzyMinMargin = 0.10
-)
-
-// resolveCategoryFuzzy finds the budget category whose name is closest to the
-// one the model suggested. It returns nil (no error) when nothing is close
-// enough, or when the best two candidates are too close to call.
-func (s *predictionService) resolveCategoryFuzzy(
-	ctx context.Context,
-	budgetId uuid.UUID,
-	suggested string,
-) (*sharedModel.CategoryNameMatch, error) {
-	log := logger.Logger(ctx)
-
-	matches, err := s.categoryRepo.FindClosestSimplified(ctx, budgetId, suggested, 2)
-	if err != nil {
-		return nil, err
-	}
-	if len(matches) == 0 {
-		return nil, nil
-	}
-
-	best := matches[0]
-	if best.Score < categoryFuzzyMinScore {
-		log.Warn("no category close enough to the suggested one",
-			"suggested", suggested, "closest", best.Name, "score", best.Score)
-		return nil, nil
-	}
-	if len(matches) > 1 && best.Score-matches[1].Score < categoryFuzzyMinMargin {
-		log.Warn("ambiguous category match, refusing to guess",
-			"suggested", suggested,
-			"first", best.Name, "firstScore", best.Score,
-			"second", matches[1].Name, "secondScore", matches[1].Score)
-		return nil, nil
-	}
-	return &best, nil
-}
-
-func (s *predictionService) storeEmbedding(
-	ctx context.Context,
-	budgetID uuid.UUID,
-	req PredictRequest,
-	embeddingText string,
-	result *PredictResponse,
-	source string,
-	embedding []float64,
-) {
-	data := sharedModel.TransactionEmbedding{
-		BudgetID:      budgetID,
-		EmbeddingText: embeddingText,
-		PayeeID:       result.PayeeID,
-		CategoryID:    result.CategoryID,
-		Amount:        req.Amount,
-		Source:        source,
-	}
-
-	if err := s.embeddingRepo.Upsert(ctx, data, embedding); err != nil {
-		logger.Logger(ctx).Error("failed to store prediction embedding", "error", err)
-	}
+	return &parsed, match.ID, metadata, nil
 }

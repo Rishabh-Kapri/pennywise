@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
-	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
@@ -93,20 +92,20 @@ func (c *lumoClient) Stream(ctx context.Context, req sharedModel.ChatRequest) <-
 	return out
 }
 
-// NewLumoClient connects to lumo-tamer using the shared Responses API adapter.
-func NewLumoClient() (llm.LLM, error) {
-	cfg := config.Load()
-	baseURL := strings.TrimRight(strings.TrimSpace(cfg.LumoBaseURL), "/")
+// NewLumoClient connects to lumo-tamer at baseURL using the shared Responses
+// API adapter.
+func NewLumoClient(baseURL, apiKey string) (llm.LLM, error) {
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	parsed, err := url.Parse(baseURL)
 	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
 		parsed.RawQuery != "" ||
 		parsed.Fragment != "" {
 		return nil, errs.New(
 			errs.CodeInternalError,
-			"LUMO_BASE_URL must be an absolute HTTP(S) URL without query or fragment",
+			"the lumo base URL must be an absolute HTTP(S) URL without query or fragment",
 		)
 	}
 	// Accept server roots and conventional OpenAI-compatible /v1 base URLs.
 	baseURL = strings.TrimSuffix(baseURL, "/v1")
-	return &lumoClient{responses: newResponsesClient("lumo", baseURL, cfg.LumoAPIKey)}, nil
+	return &lumoClient{responses: newResponsesClient("lumo", baseURL, apiKey)}, nil
 }

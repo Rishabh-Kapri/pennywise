@@ -18,9 +18,9 @@ func TestCheckTransaction(t *testing.T) {
 		msg  ports.Message
 		want ports.TxnVerdict
 	}{
-		{"hdfc credit card email", ports.Message{Body: hdfcCreditCardEmail, Source: ports.EmailSource}, ports.TxnVerdict{IsTransaction: true, Confidence: new(1.0)}},
-		{"hdfc credit card sms", ports.Message{Body: hdfcCreditCardSMS, Source: ports.SMSSource}, ports.TxnVerdict{IsTransaction: true, Confidence: new(1.0)}},
-		{"unknown format", ports.Message{Body: "Your OTP is 123456", Source: ports.SMSSource}, ports.TxnVerdict{IsTransaction: false, Confidence: new(0.0)}},
+		{"hdfc credit card email", ports.Message{Body: hdfcCreditCardEmail, Source: "email"}, ports.TxnVerdict{IsTransaction: true, Confidence: new(1.0)}},
+		{"hdfc credit card sms", ports.Message{Body: hdfcCreditCardSMS, Source: "sms"}, ports.TxnVerdict{IsTransaction: true, Confidence: new(1.0)}},
+		{"unknown format", ports.Message{Body: "Your OTP is 123456", Source: "sms"}, ports.TxnVerdict{IsTransaction: false}},
 	}
 
 	adapter := NewCheckTransaction()

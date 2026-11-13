@@ -1,3 +1,6 @@
+// Package resolver builds the client for one of a user's saved models from its
+// key: chat, embedding or decisions. It is the only place that decrypts a key
+// or picks a provider's client; userllm and the pipeline factory ask it.
 package resolver
 
 import (
@@ -46,8 +49,8 @@ func NewResolver(box *utils.SecretBox, httpClient *http.Client, tel otelSDK.Tele
 }
 
 func (r *resolver) cacheKey(m sharedModel.UserLLMModel) string {
-	// ProviderID-Endpoint-BaseURL-KeyUpdatedAt
-	key := fmt.Sprintf("%s|%s|%s|%d", m.ProviderID.String(), m.Endpoint, m.BaseURL, m.KeyUpdatedAt.UnixNano())
+	// A new key, URL or endpoint is a new client.
+	key := fmt.Sprintf("%s|%s|%s|%s|%d", m.Provider, m.ProviderID, m.Endpoint, m.BaseURL, m.KeyUpdatedAt.UnixNano())
 	return base64.StdEncoding.EncodeToString([]byte(key))
 }
 
@@ -71,7 +74,7 @@ func (r *resolver) ResolveLLM(m sharedModel.UserLLMModel) (*llm.ObservedLLM, err
 	case sharedModel.LLMProviderOpenAI:
 		client, err = llmProviders.NewOpenAIClientWithKey(apikey)
 	case sharedModel.LLMProviderAnthropic:
-		client, err = llmProviders.NewAnthropicClientWithKey("chat", apikey)
+		client, err = llmProviders.NewAnthropicClientWithKey(apikey)
 	case sharedModel.LLMProviderOpenRouter:
 		client, err = llmProviders.NewOpenRouterClientWithKey(apikey)
 	case sharedModel.LLMProviderOllama:
@@ -94,9 +97,13 @@ func (r *resolver) openKey(m sharedModel.UserLLMModel) (string, error) {
 		return "", nil
 	}
 	if r.box == nil {
-		return "", errs.New(errs.CodeCredentialsNotSet, "not set")
+		return "", utils.ErrSecretBoxKeyMissing
 	}
-	return r.box.Open(m.APIKeyEncrypted)
+	key, err := r.box.Open(m.APIKeyEncrypted)
+	if err != nil {
+		return "", fmt.Errorf("decrypting key: %w", err)
+	}
+	return key, nil
 }
 
 func (r *resolver) ResolveEmbedder(m sharedModel.UserLLMModel) (client.Embedder, error) {
@@ -141,7 +148,6 @@ func (r *resolver) ResolveDecisions(m sharedModel.UserLLMModel) (decisions.Decis
 	if err != nil {
 		return nil, err
 	}
-	observed := decisions.NewObservedDecisions(client, r.tel)
-	r.decisionsRegistry[key] = observed
-	return observed, nil
+	r.decisionsRegistry[key] = client
+	return client, nil
 }

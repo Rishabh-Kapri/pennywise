@@ -12,9 +12,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/resolver"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/otelSDK"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
@@ -78,7 +80,8 @@ func newTestResolverWith(t *testing.T, repo *fakeRepo, keys *fakeKeys, allowPriv
 	if err != nil {
 		t.Fatal(err)
 	}
-	return New(repo, keys, box, tel, allowPrivate), box
+	clients := resolver.NewResolver(box, transport.NewUserURLClient(allowPrivate), tel)
+	return New(repo, keys, clients, tel), box
 }
 
 func sealed(t *testing.T, box *utils.SecretBox, key string) []byte {
@@ -163,7 +166,7 @@ func TestResolver(t *testing.T) {
 	})
 }
 
-func TestResolverModelAndDecisionTest(t *testing.T) {
+func TestDecisionModelTest(t *testing.T) {
 	ctx := utils.WithBudgetID(context.Background(), uuid.New())
 
 	var gotAuth, gotModel string
@@ -222,23 +225,4 @@ func TestResolverModelAndDecisionTest(t *testing.T) {
 		t.Fatalf("missing key: %v", err)
 	}
 
-	// Model picks the requested model of the kind, else the default.
-	chat := model.UserLLMModel{ID: uuid.New(), Kind: model.LLMModelChat, Slug: "chat", IsDefault: true}
-	dec1 := model.UserLLMModel{ID: uuid.New(), Kind: model.LLMModelDecision, Slug: "d1", IsDefault: true,
-		APIKeyEncrypted: sealed(t, box, "k1")}
-	dec2 := model.UserLLMModel{ID: uuid.New(), Kind: model.LLMModelDecision, Slug: "d2", APIKeyEncrypted: sealed(t, box, "k2")}
-	repo.rows = []model.UserLLMModel{chat, dec1, dec2}
-	if m, key, err := r.Model(ctx, model.LLMModelDecision, nil); err != nil || m.Slug != "d1" || key != "k1" {
-		t.Fatalf("default decision = %q %q %v", m.Slug, key, err)
-	}
-	if m, key, err := r.Model(ctx, model.LLMModelDecision, &dec2.ID); err != nil || m.Slug != "d2" || key != "k2" {
-		t.Fatalf("chosen decision = %q %q %v", m.Slug, key, err)
-	}
-	if m, _, err := r.Model(ctx, model.LLMModelDecision, &chat.ID); err != nil || m.Slug != "d1" {
-		t.Fatalf("a chat id for a decision lookup should fall back: %q %v", m.Slug, err)
-	}
-	repo.rows = []model.UserLLMModel{chat}
-	if _, _, err := r.Model(ctx, model.LLMModelDecision, nil); !errors.Is(err, ErrNotConfigured) {
-		t.Fatalf("no decision model: %v", err)
-	}
 }

@@ -7,22 +7,19 @@ package userllm
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/decisions"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
-	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm/providers"
-	decisions "github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/adapters/decisions"
-	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/client"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/resolver"
 
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/otelSDK"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
@@ -33,11 +30,10 @@ var ErrNotConfigured = errs.New(errs.CodeAIProviderNotConfigured,
 	"no AI provider configured: add one in Settings → AI")
 
 type Resolver struct {
-	models     repository.UserLLMModelRepository
-	keys       repository.UserLLMProviderRepository
-	box        *utils.SecretBox // nil when LLM_CREDENTIALS_KEY is unset
-	tel        otelSDK.TelemetryProvider
-	userURLCli *http.Client
+	models  repository.UserLLMModelRepository
+	keys    repository.UserLLMProviderRepository
+	clients resolver.Resolver
+	tel     otelSDK.TelemetryProvider
 
 	mu    sync.Mutex
 	cache map[uuid.UUID]cachedRegistry // budget id → clients
@@ -48,22 +44,19 @@ type cachedRegistry struct {
 	registry    llm.LLMResolver
 }
 
-// New builds a Resolver. allowPrivateURLs lets user Ollama URLs reach private
-// addresses; only turn it on for single-tenant self-hosted deployments.
+// New builds a Resolver. clients builds each model's client from its key.
 func New(
 	models repository.UserLLMModelRepository,
 	keys repository.UserLLMProviderRepository,
-	box *utils.SecretBox,
+	clients resolver.Resolver,
 	tel otelSDK.TelemetryProvider,
-	allowPrivateURLs bool,
 ) *Resolver {
 	return &Resolver{
-		models:     models,
-		keys:       keys,
-		box:        box,
-		tel:        tel,
-		userURLCli: transport.NewUserURLClient(allowPrivateURLs),
-		cache:      map[uuid.UUID]cachedRegistry{},
+		models:  models,
+		keys:    keys,
+		clients: clients,
+		tel:     tel,
+		cache:   map[uuid.UUID]cachedRegistry{},
 	}
 }
 
@@ -81,10 +74,6 @@ func (r *Resolver) Resolve(ctx context.Context, provider, model string) (*llm.Ob
 		}
 	}
 	return registry.Resolve(ctx, "", "")
-}
-
-func (r *Resolver) HTTPClient() *http.Client {
-	return r.userURLCli
 }
 
 func (r *Resolver) Targets(ctx context.Context) ([]llm.Target, error) {
@@ -125,7 +114,7 @@ func (r *Resolver) registryFor(ctx context.Context) (llm.LLMResolver, error) {
 		if _, seen := entries[name]; seen {
 			continue // rows come default first, so the key's first model wins
 		}
-		client, err := r.buildClient(row.Provider, row.APIKeyEncrypted, row.BaseURL)
+		client, err := r.clients.ResolveLLM(row)
 		if err != nil {
 			// One broken key (e.g. undecryptable after a key rotation) must not
 			// take the others down.
@@ -156,49 +145,6 @@ func fingerprintOf(rows []model.UserLLMModel) string {
 	return b.String()
 }
 
-func (r *Resolver) openKey(sealed []byte) (string, error) {
-	if len(sealed) == 0 {
-		return "", nil
-	}
-	if r.box == nil {
-		return "", utils.ErrSecretBoxKeyMissing
-	}
-	key, err := r.box.Open(sealed)
-	if err != nil {
-		return "", fmt.Errorf("decrypting key: %w", err)
-	}
-	return key, nil
-}
-
-func (r *Resolver) buildClient(
-	provider model.LLMProviderName,
-	sealedKey []byte,
-	baseURL string,
-) (*llm.ObservedLLM, error) {
-	apiKey, err := r.openKey(sealedKey)
-	if err != nil {
-		return nil, err
-	}
-
-	var client llm.LLM
-	switch provider {
-	case model.LLMProviderOpenAI:
-		client, err = providers.NewOpenAIClientWithKey(apiKey)
-	case model.LLMProviderAnthropic:
-		client, err = providers.NewAnthropicClientWithKey("chat", apiKey)
-	case model.LLMProviderOpenRouter:
-		client, err = providers.NewOpenRouterClientWithKey(apiKey)
-	case model.LLMProviderOllama:
-		client, err = providers.NewUserOllamaClient(baseURL, apiKey, r.userURLCli)
-	default:
-		err = fmt.Errorf("unsupported provider %q", provider)
-	}
-	if err != nil {
-		return nil, err
-	}
-	return llm.NewObservedLLM(client, r.tel), nil
-}
-
 // Test makes a tiny call to a model with the owner's saved key for
 // req.Provider: a one-word chat for a chat model, a one-question decision for a
 // decision model. With req.ModelID set, the outcome is recorded on that model.
@@ -220,13 +166,14 @@ func (r *Resolver) Test(
 	res := &model.TestUserLLMModelResponse{Model: req.Slug}
 	started := time.Now()
 	callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	m := keyModel(key, req)
 	switch req.Kind {
 	case model.LLMModelChat:
-		res.Model, err = r.testChat(callCtx, key, req.Slug)
+		res.Model, err = r.testChat(callCtx, m)
 	case model.LLMModelDecision:
-		res.Model, err = r.testDecision(callCtx, key, req.Slug, req.Endpoint)
+		res.Model, err = r.testDecision(callCtx, m)
 	case model.LLMModelEmbedding:
-		res.Model, err = r.testEmbedding(callCtx, key, req.Slug)
+		res.Model, err = r.testEmbedding(callCtx, m)
 	default:
 		err = fmt.Errorf("unknown model kind %q", req.Kind)
 	}
@@ -248,14 +195,29 @@ func (r *Resolver) Test(
 	return res, nil
 }
 
-func (r *Resolver) testChat(ctx context.Context, key *model.UserLLMProvider, slug string) (string, error) {
-	client, err := r.buildClient(key.Provider, key.APIKeyEncrypted, key.BaseURL)
+// keyModel is the model req names, run on the saved key, for building a client
+// before the model is saved.
+func keyModel(key *model.UserLLMProvider, req model.TestUserLLMModelRequest) model.UserLLMModel {
+	return model.UserLLMModel{
+		ProviderID:      key.ID,
+		Provider:        key.Provider,
+		Kind:            req.Kind,
+		Slug:            req.Slug,
+		Endpoint:        req.Endpoint,
+		APIKeyEncrypted: key.APIKeyEncrypted,
+		BaseURL:         key.BaseURL,
+		KeyUpdatedAt:    key.UpdatedAt,
+	}
+}
+
+func (r *Resolver) testChat(ctx context.Context, m model.UserLLMModel) (string, error) {
+	client, err := r.clients.ResolveLLM(m)
 	if err != nil {
 		return "", err
 	}
 	chatRes, err := client.Chat(ctx, model.ChatRequest{
-		Provider:  string(key.Provider),
-		Model:     slug,
+		Provider:  string(m.Provider),
+		Model:     m.Slug,
 		MaxTokens: 64,
 		Messages: []model.AgentMessage{{
 			Role:    model.RoleUser,
@@ -271,72 +233,26 @@ func (r *Resolver) testChat(ctx context.Context, key *model.UserLLMProvider, slu
 	return "", nil
 }
 
-func (r *Resolver) testDecision(
-	ctx context.Context,
-	key *model.UserLLMProvider,
-	slug, endpoint string,
-) (string, error) {
-	if endpoint == "" {
+func (r *Resolver) testDecision(ctx context.Context, m model.UserLLMModel) (string, error) {
+	if m.Endpoint == "" {
 		return "", fmt.Errorf("a decision model needs an endpoint")
 	}
-	apiKey, err := r.openKey(key.APIKeyEncrypted)
+	client, err := r.clients.ResolveDecisions(m)
 	if err != nil {
 		return "", err
 	}
-	// The endpoint is user-given: dial it through the client that refuses
-	// private addresses unless the server allows them.
-	client := decisions.NewUserClient(endpoint, apiKey, slug, r.userURLCli)
-	return client.Probe(ctx)
+	return decisions.Probe(ctx, client, m.Slug)
 }
 
 // testEmbedding checks the model answers, with vectors of the size stored ones
 // have.
-func (r *Resolver) testEmbedding(ctx context.Context, key *model.UserLLMProvider, slug string) (string, error) {
-	apiKey, err := r.openKey(key.APIKeyEncrypted)
+func (r *Resolver) testEmbedding(ctx context.Context, m model.UserLLMModel) (string, error) {
+	embedder, err := r.clients.ResolveEmbedder(m)
 	if err != nil {
 		return "", err
 	}
-	embedder, err := client.NewUserEmbedder(key.Provider, key.BaseURL, apiKey, r.userURLCli)
-	if err != nil {
+	if _, err := embedder.Embed(ctx, m.Slug, "Rs. 100 debited at a cafe"); err != nil {
 		return "", err
 	}
-	if _, err := embedder.Embed(ctx, slug, "Rs. 100 debited at a cafe"); err != nil {
-		return "", err
-	}
-	return slug, nil
-}
-
-// Model returns the owner's model of kind with id, or their default of that
-// kind when id is nil or no longer usable, plus its decrypted key.
-func (r *Resolver) Model(
-	ctx context.Context,
-	kind model.LLMModelKind,
-	id *uuid.UUID,
-) (model.UserLLMModel, string, error) {
-	budgetID, err := utils.BudgetIDFromContext(ctx)
-	if err != nil {
-		return model.UserLLMModel{}, "", err
-	}
-	all, err := r.models.ListUsableForBudget(ctx, budgetID, kind)
-	if err != nil {
-		return model.UserLLMModel{}, "", err
-	}
-	var picked *model.UserLLMModel
-	for i := range all {
-		if id != nil && all[i].ID == *id {
-			picked = &all[i]
-			break
-		}
-		if picked == nil {
-			picked = &all[i] // rows come default first
-		}
-	}
-	if picked == nil {
-		return model.UserLLMModel{}, "", ErrNotConfigured
-	}
-	apiKey, err := r.openKey(picked.APIKeyEncrypted)
-	if err != nil {
-		return model.UserLLMModel{}, "", err
-	}
-	return *picked, apiKey, nil
+	return m.Slug, nil
 }

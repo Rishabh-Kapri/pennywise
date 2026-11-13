@@ -7,9 +7,8 @@ import (
 	"strings"
 	"time"
 
-	prompts "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/context"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
-	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/categorymatch"
 	cipherModel "github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/ports"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
@@ -17,7 +16,6 @@ import (
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	sharedUtils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
-	"github.com/google/uuid"
 )
 
 // Config is what one adapter runs with.
@@ -27,6 +25,8 @@ type Config struct {
 	Model      string
 	MaxTokens  int // 0 leaves it to the provider
 	Categories repository.CategoryRepository
+	// CallTimeout bounds each model call (CIPHER_LLM_CALL_TIMEOUT).
+	CallTimeout time.Duration
 }
 
 type adapter struct {
@@ -36,7 +36,6 @@ type adapter struct {
 type LLM interface {
 	ports.CheckTransaction
 	ports.Extract
-	ports.Verifier
 	ports.Predictor
 }
 
@@ -50,7 +49,7 @@ func (a *adapter) ask(
 	failCode errs.Code,
 	system, user string,
 ) (string, *ports.Usage, error) {
-	ctx, cancel := context.WithTimeout(ctx, config.DefaultLLMCallTimeout)
+	ctx, cancel := context.WithTimeout(ctx, a.cfg.CallTimeout)
 	defer cancel()
 
 	res, err := a.cfg.Client.Chat(ctx, sharedModel.ChatRequest{
@@ -101,7 +100,7 @@ func replyText(res *sharedModel.ChatResponse, model string, failCode errs.Code) 
 
 // Check implements [ports.CheckTransaction]
 func (a *adapter) Check(ctx context.Context, msg ports.Message) (ports.TxnVerdict, error) {
-	text, usage, err := a.ask(ctx, errs.CodeMessageCheckFailed, prompts.CheckTransactionPrompt, msg.Body)
+	text, usage, err := a.ask(ctx, errs.CodeMessageCheckFailed, checkTransactionPrompt, msg.Body)
 	if err != nil {
 		return ports.TxnVerdict{}, err
 	}
@@ -186,7 +185,7 @@ func toEntities(e extraction) (ports.ExtractedEntities, error) {
 
 // Extract implements [ports.Extract].
 func (a *adapter) Extract(ctx context.Context, msg ports.Message) (ports.ExtractedEntities, error) {
-	text, usage, err := a.ask(ctx, errs.CodeMessageExtractFailed, prompts.ExtractionPrompt, msg.Body)
+	text, usage, err := a.ask(ctx, errs.CodeMessageExtractFailed, extractionPrompt, msg.Body)
 	if err != nil {
 		return ports.ExtractedEntities{}, err
 	}
@@ -200,40 +199,6 @@ func (a *adapter) Extract(ctx context.Context, msg ports.Message) (ports.Extract
 	}
 	entities.Usage = usage
 	return entities, nil
-}
-
-// How close a category name must be when the model got it almost right. These
-// match the old prediction service; see resolveCategoryFuzzy there.
-const (
-	categoryFuzzyMinScore  = 0.45
-	categoryFuzzyMinMargin = 0.10
-)
-
-// matchCategory returns the budget's name for suggested, or "" when nothing is
-// close enough or the two best matches are too close to call.
-func (a *adapter) matchCategory(
-	ctx context.Context,
-	budgetID uuid.UUID,
-	names map[string]bool,
-	suggested string,
-) (string, error) {
-	if suggested == "" {
-		return "", nil
-	}
-	if names[suggested] {
-		return suggested, nil
-	}
-	matches, err := a.cfg.Categories.FindClosestSimplified(ctx, budgetID, suggested, 2)
-	if err != nil {
-		return "", err
-	}
-	if len(matches) == 0 || matches[0].Score < categoryFuzzyMinScore {
-		return "", nil
-	}
-	if len(matches) > 1 && matches[0].Score-matches[1].Score < categoryFuzzyMinMargin {
-		return "", nil
-	}
-	return matches[0].Name, nil
 }
 
 // Predict implements [ports.Predictor].
@@ -251,13 +216,11 @@ func (a *adapter) Predict(
 	if err != nil {
 		return ports.PredictionResult{}, err
 	}
-	names := make(map[string]bool, len(categories))
 	list := make([]string, 0, len(categories))
 	for _, category := range categories {
-		names[category.Name] = true
 		list = append(list, category.Name)
 	}
-	system := strings.ReplaceAll(prompts.PredictionPrompt, "{categories}", strings.Join(list, ", "))
+	system := strings.ReplaceAll(predictionPrompt, "{categories}", strings.Join(list, ", "))
 	user := fmt.Sprintf("Merchant: %s\nAmount: %.2f\nAccount: %s\n\n%s",
 		entities.Merchant, entities.Amount, entities.Account, msg.Body)
 
@@ -270,14 +233,14 @@ func (a *adapter) Predict(
 		return ports.PredictionResult{}, err
 	}
 
-	category, err := a.matchCategory(ctx, budgetID, names, parsed.SuggestedTag)
+	match, ok, err := categorymatch.Match(ctx, a.cfg.Categories, budgetID, categories, parsed.SuggestedTag)
 	if err != nil {
 		return ports.PredictionResult{}, err
 	}
-	if category == "" {
+	if !ok {
 		log.Warn("no budget category matches the prediction", "suggested", parsed.SuggestedTag, "model", a.cfg.Model)
 	}
-	return toPrediction(parsed, category, entities.Merchant, a.cfg.Model, usage), nil
+	return toPrediction(parsed, match.Name, entities.Merchant, a.cfg.Model, usage), nil
 }
 
 // toPrediction is the step's answer from the model's reply. The category is
@@ -306,10 +269,4 @@ func toPrediction(
 		result.Model = usage.Model
 	}
 	return result
-}
-
-// Verify implements [ports.Verifier]. No pipeline file offers a chat model for
-// verify yet.
-func (a *adapter) Verify(context.Context, ports.Message, ports.ExtractedEntities) (ports.VerifyResult, error) {
-	return ports.VerifyResult{}, errs.New(errs.CodeNotImplemented, "verify on a chat model isn't built yet")
 }

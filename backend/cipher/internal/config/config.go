@@ -9,24 +9,19 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// DefaultLLMCallTimeout bounds a single LLM/embedding round-trip. A cold local
+// defaultLLMCallTimeout bounds a single LLM/embedding round-trip. A cold local
 // ollama model can take 1-2 minutes, so this must stay comfortably above that.
-const DefaultLLMCallTimeout = 3 * time.Minute
+const defaultLLMCallTimeout = 3 * time.Minute
 
 type Config struct {
-	Environment string
 	ServiceName string
 	// DatabaseDriver picks the adapter behind the repositories (default postgres).
-	DatabaseDriver      string
-	DatabaseURL         string
-	RedisURL            string
+	DatabaseDriver string
+	DatabaseURL    string
+	RedisURL       string
+	// OllamaURL is the backfill tool's own Ollama; the server never uses it.
 	OllamaURL           string
-	MLPServiceURL       string
 	PennywiseServiceURL string
-	LumoBaseURL         string
-	LumoAPIKey          string
-	OpenAIAPIKey        string
-	TypesafeAPIKey      string
 	InternalAuthToken   string
 	// ServiceTokens is SERVICE_TOKENS: "name:token,..." for each service that may call in.
 	ServiceTokens string
@@ -34,8 +29,7 @@ type Config struct {
 	// LLMCallTimeout bounds each individual LLM/embedding HTTP call.
 	LLMCallTimeout time.Duration
 	// LLMCredentialsKey opens user AI provider keys (user_llm_providers). Must
-	// match the API's. Chat models (pipeline, statements, agent) come only from
-	// those user providers; the server's own keys serve embeddings alone.
+	// match the API's. Every model the server calls is a user's own.
 	LLMCredentialsKey string
 	// AllowPrivateLLMURLs lets a user's Ollama URL reach private addresses.
 	// Only for single-tenant self-hosting.
@@ -58,8 +52,6 @@ type Config struct {
 	// this when running somewhere that does not, or "yesterday" queries drift by
 	// a day at the boundary.
 	AgentTimezone string
-
-	// Adapters
 
 	// Job
 	JobDriver    string
@@ -88,17 +80,12 @@ func envInt(key string) int {
 func Load() Config {
 	_ = godotenv.Load(".env")
 
-	env := os.Getenv("RAILWAY_ENVIRONMENT_NAME")
-	if env == "" {
-		env = "local"
-	}
-
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "5160"
 	}
 
-	llmCallTimeout := DefaultLLMCallTimeout
+	llmCallTimeout := defaultLLMCallTimeout
 	if raw := os.Getenv("CIPHER_LLM_CALL_TIMEOUT"); raw != "" {
 		if parsed, err := time.ParseDuration(raw); err == nil && parsed > 0 {
 			llmCallTimeout = parsed
@@ -106,18 +93,12 @@ func Load() Config {
 	}
 
 	return Config{
-		Environment:              env,
 		ServiceName:              os.Getenv("SERVICE_NAME"),
 		DatabaseDriver:           os.Getenv("DATABASE_DRIVER"),
 		DatabaseURL:              os.Getenv("DATABASE_URL"),
 		RedisURL:                 os.Getenv("REDIS_URL"),
 		OllamaURL:                os.Getenv("OLLAMA_URL"),
-		MLPServiceURL:            os.Getenv("MLP_SERVICE_URL"),
 		PennywiseServiceURL:      os.Getenv("PENNYWISE_SERVICE_URL"),
-		OpenAIAPIKey:             os.Getenv("OPENAI_API_KEY"),
-		TypesafeAPIKey:           os.Getenv("TYPESAFE_API_KEY"),
-		LumoBaseURL:              strings.TrimSpace(os.Getenv("LUMO_BASE_URL")),
-		LumoAPIKey:               os.Getenv("LUMO_API_KEY"),
 		InternalAuthToken:        os.Getenv("INTERNAL_AUTH_TOKEN"),
 		ServiceTokens:            os.Getenv("SERVICE_TOKENS"),
 		Port:                     port,

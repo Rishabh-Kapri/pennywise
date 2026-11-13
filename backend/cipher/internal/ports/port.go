@@ -6,20 +6,13 @@ import (
 	"time"
 )
 
-type Source string
-
-const (
-	EmailSource Source = "email"
-	SMSSource   Source = "sms"
-	TextSource  Source = "text" // used for api calls
-)
-
-// Defines the raw input data for this the prediction input flow
+// Message is the text a pipeline step reads.
 type Message struct {
-	// The input that we want to extract the information from
-	Body   string `json:"body"`
-	Source Source `json:"source"`
-	Sender string `json:"sender"` // api call, bank email address etc
+	// Body is the text to read (an email's HTML already turned into text).
+	Body string `json:"body"`
+	// Source is model.ReceivedMessage.Source: email, sms or api.
+	Source string `json:"source"`
+	Sender string `json:"sender"` // bank email address, SMS sender, ...
 }
 
 type (
