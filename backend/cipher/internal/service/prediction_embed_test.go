@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/client"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
@@ -55,7 +56,7 @@ func TestEmbedUsesTheDefaultModel(t *testing.T) {
 		{Slug: "bge-m3", Provider: sharedModel.LLMProviderOllama, IsDefault: true},
 		{Slug: "other", Provider: sharedModel.LLMProviderOpenRouter},
 	}}
-	svc := &predictionService{llmModels: models, embedders: fakeEmbedResolver{embedder}}
+	svc := &predictionService{llmCallTimeout: time.Minute, llmModels: models, embedders: fakeEmbedResolver{embedder}}
 
 	vector, used, err := svc.embed(embedContext(), "text")
 	require.NoError(t, err)
@@ -66,7 +67,7 @@ func TestEmbedUsesTheDefaultModel(t *testing.T) {
 }
 
 func TestEmbedErrorsWithoutAModel(t *testing.T) {
-	svc := &predictionService{llmModels: &fakeEmbedModels{}, embedders: fakeEmbedResolver{}}
+	svc := &predictionService{llmCallTimeout: time.Minute, llmModels: &fakeEmbedModels{}, embedders: fakeEmbedResolver{}}
 	_, _, err := svc.embed(embedContext(), "text")
 	require.True(t, errs.HasCode(err, errs.CodeAIProviderNotConfigured), "%v", err)
 }
@@ -76,7 +77,7 @@ func TestEmbedErrorsWithoutAModel(t *testing.T) {
 func TestEmbedDoesNotSwitchModelsWhenTheDefaultIsDisabled(t *testing.T) {
 	embedder := &fakeEmbedder{vector: []float64{1}}
 	models := &fakeEmbedModels{rows: []sharedModel.UserLLMModel{{Slug: "other"}}}
-	svc := &predictionService{llmModels: models, embedders: fakeEmbedResolver{embedder}}
+	svc := &predictionService{llmCallTimeout: time.Minute, llmModels: models, embedders: fakeEmbedResolver{embedder}}
 
 	_, _, err := svc.embed(embedContext(), "text")
 	require.True(t, errs.HasCode(err, errs.CodeAIProviderNotConfigured), "%v", err)
@@ -86,7 +87,7 @@ func TestEmbedDoesNotSwitchModelsWhenTheDefaultIsDisabled(t *testing.T) {
 func TestEmbedDoesNotTryAnotherModelOnFailure(t *testing.T) {
 	embedder := &fakeEmbedder{err: errors.New("down")}
 	models := &fakeEmbedModels{rows: []sharedModel.UserLLMModel{{Slug: "bge-m3", IsDefault: true}, {Slug: "other"}}}
-	svc := &predictionService{llmModels: models, embedders: fakeEmbedResolver{embedder}}
+	svc := &predictionService{llmCallTimeout: time.Minute, llmModels: models, embedders: fakeEmbedResolver{embedder}}
 
 	_, _, err := svc.embed(embedContext(), "text")
 	require.Error(t, err)

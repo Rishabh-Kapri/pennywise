@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/userllm"
@@ -73,7 +74,7 @@ func (r *fakeResolver) Resolve(_ context.Context, provider, model string) (*llm.
 func newTestService(t *testing.T, resolver *fakeResolver, targets []llm.Target) *predictionService {
 	t.Helper()
 	resolver.targets = targets
-	return &predictionService{llmResolver: resolver}
+	return &predictionService{llmResolver: resolver, llmCallTimeout: time.Minute}
 }
 
 func newTestTelemetry(t *testing.T) otelSDK.TelemetryProvider {
