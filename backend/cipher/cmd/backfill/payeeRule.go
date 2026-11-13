@@ -32,9 +32,7 @@ func (d *BackfillDeps) backfillPayeeRules(ctx context.Context, p resolvedPredict
 	log.Info("cleaned merchant", "merchant name", parsed.MerchantName, "upiText", parsed.UPIText)
 
 	if parsed.UPIText == "" {
-		// Non-UPI merchant: Phase 4 LLM normalization.
-		// Currently disabled — enable when the LLM bridge (cipher.md Phase 4) is integrated.
-		// See backfillMCCViaLLM() for the implementation.
+		// Payee rules are only learned for UPI handles.
 		return nil
 	}
 
@@ -51,19 +49,10 @@ func (d *BackfillDeps) handleUPIMerchant(
 	log := logger.Logger(ctx)
 	budgetID := d.BudgetID
 
-	// Check if mapping already exists
-	// payeeMatch, err := d.PayeeRuleRepo.FindByMatchString(ctx, budgetID, upiText)
-	// if err != nil {
-	// 	return errs.Wrap(errs.CodeInternalError, "failed to find payee match", err)
-	// }
-	// if payeeMatch != nil {
-	// 	return errs.New(errs.CodeInternalError, "payee match already exists")
-	// }
-
 	log.Info("creating payee match", "match", upiText)
 
 	// Look up category
-	foundCategory, err := d.getCategory(ctx, budgetID, predictedCategory, false)
+	foundCategory, err := d.getCategory(ctx, budgetID, predictedCategory)
 	if err != nil {
 		return err
 	}

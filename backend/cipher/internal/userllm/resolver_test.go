@@ -81,7 +81,7 @@ func newTestResolverWith(t *testing.T, repo *fakeRepo, keys *fakeKeys, allowPriv
 		t.Fatal(err)
 	}
 	clients := resolver.NewResolver(box, transport.NewUserURLClient(allowPrivate), tel)
-	return New(repo, keys, clients, tel), box
+	return New(repo, keys, clients), box
 }
 
 func sealed(t *testing.T, box *utils.SecretBox, key string) []byte {

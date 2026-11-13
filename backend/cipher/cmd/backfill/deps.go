@@ -58,20 +58,12 @@ func (d *BackfillDeps) getPayee(
 	ctx context.Context,
 	budgetID uuid.UUID,
 	payeeName string,
-	shouldCreate bool,
 ) (*model.Payee, error) {
 	foundPayee, err := d.PayeeRepo.Search(ctx, budgetID, payeeName)
 	if err != nil {
 		return nil, err
 	}
 	if len(foundPayee) == 0 {
-		if shouldCreate {
-			newPayee := model.Payee{
-				Name:     payeeName,
-				BudgetID: budgetID,
-			}
-			return d.PayeeRepo.Create(ctx, newPayee)
-		}
 		return nil, errs.New(errs.CodeInternalError, "payee not found")
 	}
 	return &foundPayee[0], nil
@@ -81,21 +73,12 @@ func (d *BackfillDeps) getCategory(
 	ctx context.Context,
 	budgetID uuid.UUID,
 	categoryName string,
-	shouldCreate bool,
 ) (*model.Category, error) {
 	foundCategory, err := d.CategoryRepo.Search(ctx, budgetID, categoryName)
 	if err != nil {
 		return nil, err
 	}
 	if len(foundCategory) == 0 {
-		if shouldCreate {
-			newCategory := model.Category{
-				Name:            categoryName,
-				BudgetID:        budgetID,
-				CategoryGroupID: uuid.New(),
-			}
-			return d.CategoryRepo.Create(ctx, newCategory)
-		}
 		return nil, errs.New(errs.CodeInternalError, "category not found")
 	}
 	return &foundCategory[0], nil

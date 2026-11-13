@@ -33,6 +33,9 @@ func NewDecisionsAdapter(c decisions.Decisions, model string) DecisionAdapter {
 	return &adapter{client: c, model: model}
 }
 
+// transactionAlert is what counts as a transaction, for both check questions.
+const transactionAlert = "A direct bank or card issuer alert reporting a completed debit, credit, purchase, transfer, or refund on the customer's account or card."
+
 // Check implements [ports.CheckTransaction].
 func (d *adapter) Check(ctx context.Context, msg ports.Message) (ports.TxnVerdict, error) {
 	questions := map[string]sharedModel.Intent{
@@ -40,9 +43,7 @@ func (d *adapter) Check(ctx context.Context, msg ports.Message) (ports.TxnVerdic
 			Type:         sharedModel.ChoiceIntentType,
 			Instructions: "What kind of message this is?",
 			Criteria: map[string]*string{
-				"transaction": new(
-					"A direct bank or card issuer alert reporting a completed debit, credit, purchase, transfer, or refund on the customer's account or card.",
-				),
+				"transaction": new(transactionAlert),
 				"statement": new(
 					"A direct bank or card issuer message reporting a statement for partticular account or card.",
 				),
@@ -55,9 +56,7 @@ func (d *adapter) Check(ctx context.Context, msg ports.Message) (ports.TxnVerdic
 			Type:         sharedModel.NoulIntentType,
 			Instructions: "Should this text create a transaction from a bank account or card alert?",
 			Criteria: map[string]*string{
-				"true": new(
-					"A direct bank or card issuer alert reporting a completed debit, credit, purchase, transfer, or refund on the customer's account or card.",
-				),
+				"true": new(transactionAlert),
 				"false": new(
 					"A newsletter, merchant receipt, account or card notice, OTP texts, upcoming payment notice, or e-mandate/auto-payment confirmation. Exclude e-mandate confirmations even when they say 'successfully paid'; a separate bank alert is used for that payment.",
 				),

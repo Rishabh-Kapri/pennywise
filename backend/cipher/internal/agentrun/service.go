@@ -132,11 +132,6 @@ func (s *agentService) generateTitle(ctx context.Context, message string) (strin
 	return strings.TrimSpace(messageText(titleRes.Message.Content)), nil
 }
 
-type runToolExchange struct {
-	Call   sharedModel.ToolCall
-	Result sharedModel.ToolResult
-}
-
 func toolResultFromRaw(raw json.RawMessage, call sharedModel.ToolCall) sharedModel.ToolResult {
 	result := sharedModel.ToolResult{
 		ToolCallId: call.ID,

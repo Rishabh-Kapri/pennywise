@@ -145,7 +145,7 @@ func main() {
 	// User URLs (Ollama, decision endpoints) are dialled through a client that
 	// refuses private addresses.
 	modelClients := resolver.NewResolver(llmCredentialsBox, transport.NewUserURLClient(cfg.AllowPrivateLLMURLs), tel)
-	llmResolver := userllm.New(database.UserLLMModel, database.UserLLMProvider, modelClients, tel)
+	llmResolver := userllm.New(database.UserLLMModel, database.UserLLMProvider, modelClients)
 	llmProviderHandler := handler.NewLLMProviderHandler(llmResolver)
 	memoryService := memory.NewMemoryService(database.AgentMemory, llmResolver, agentLocation)
 

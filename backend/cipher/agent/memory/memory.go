@@ -372,7 +372,6 @@ func (m *memory) PrepareContext(ctx context.Context, req MemoryContextRequest) (
 	messages := slices.Clone(req.Messages)
 	activeObservations := []sharedModel.AgentObservationalMemory{}
 
-
 	var b strings.Builder
 
 	for _, om := range observations {

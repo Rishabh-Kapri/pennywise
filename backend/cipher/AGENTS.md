@@ -19,8 +19,8 @@ Docker and CI build with `-mod=vendor`; verify with `GOWORK=off go build -mod=ve
 - `cmd/api` — HTTP server, DI wiring, LLM provider registry. It no longer connects to Temporal; `internal/temporal` and `internal/handler/workflow.go` are kept but not wired in.
 - `cmd/backfill` — one-off backfill tool (payee rules, embeddings, extraction). The only user of `OLLAMA_URL`: it has its own Ollama client; the server only runs users' models.
 - `cmd/backfill-sources` — moves `transactions.raw_bank_text` into `transaction_sources` (statement lines also take amount, direction, date and account from their `statement_imports` row) and learns `counterparty_aliases`, all in one DB transaction (`-dry-run` rolls back; a re-run re-parses every existing source and updates it only if the parsed fields changed). It parses statement lines only: alert emails are skipped and their sources left alone. Uses `db.Pool` directly. Doesn't embed aliases.
-- `internal/service` — the old email flow's prediction (`prediction.go`, prompts in `prompts.go`), statement extraction, category descriptions.
-- `internal/agentrun` — the chat agent's run service: builds a run's request from the conversation, runs the agent, titles new conversations. `MatchKeysFor` builds payee-rule and embedding keys for both lookups and what's stored (also `cmd/backfill`).
+- `internal/service` — the old email flow's prediction (`prediction.go`, prompts in `prompts.go`), statement extraction, category descriptions. `MatchKeysFor` builds payee-rule and embedding keys for both lookups and what's stored (also `cmd/backfill`).
+- `internal/agentrun` — the chat agent's run service: builds a run's request from the conversation, runs the agent, titles new conversations.
 - `internal/client` — the user embedder (Ollama or OpenRouter, 1024 dims). Callers bound each call.
 - `internal/resolver` — builds the client for one saved model from its key (chat, embedding, decisions) and caches it per key. The only place that decrypts a key or picks a provider's client.
 - `internal/categorymatch` — the one way a model's category name resolves to the budget's: exact, then trigram (score ≥ 0.45, lead ≥ 0.10 over the runner-up).
@@ -32,7 +32,7 @@ Docker and CI build with `-mod=vendor`; verify with `GOWORK=off go build -mod=ve
 - Review: details that fail verify always park as `needs_review` through `park()`; low-confidence check and verify answers do only with `MESSAGE_REVIEW_PARK=true`, and are otherwise logged as "would park for review". An adapter with no score (regex) leaves `Confidence` nil, which never parks. `reviewThreshold` is in `worker/handlers.go`. The report carries `review.resume`, the next job with a fresh `RunID`; without that the rest of the run shares idempotency keys with the parked one and its final report is dropped. Predict never parks: a low-confidence payee is created unapproved and handled in Prediction review.
 - `internal/handler` — Gin handlers; `internal/config` — env parsing (only `main`s call `config.Load`; pass values in); `internal/llmusage` — per-call usage collector; `internal/progress` — step reporter for heartbeats.
 - `agent/runtime` — tool-calling loop (`agent.go`). `PublishChatEvent` is the one writer of chat events (to `model.AgentEventsRedisStream`); run metadata stores tool calls as `[]RunToolCall`. `agent/tools` — tools + `query.go` (shared filters, read-only tx). `agent/memory` — observations, token budget. `agent/context` — system prompts. `agent/llm` — client, registry, `providers/` (anthropic, openai, openrouter, lumo, ollama). `agent/decisions` — the Decisions client interface, `Probe`, and `providers/openrouter.go` (the one Decisions HTTP client).
-- `agent/handler` — SSE/Redis stream delivery to the Go API.
+- `agent/handler` — `ProcessStream` folds a model's stream chunks into one step result; the runtime publishes events from its callbacks.
 
 ## Email pipeline
 

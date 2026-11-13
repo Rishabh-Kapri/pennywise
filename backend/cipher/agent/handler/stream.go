@@ -134,6 +134,11 @@ func ProcessStream(
 					if appendCompletedToolCall(&stepResult, activeTool) {
 						activeTool.args.Reset()
 						delete(activeTools, outputIndex)
+					} else if activeTool != nil {
+						// The stream is over, so this call is lost. Say why, or the
+						// run only reports a tool-use stop with no tool calls.
+						log.Warn("dropping tool call with invalid JSON arguments",
+							"tool", activeTool.name, "id", activeTool.id)
 					}
 				}
 				stepResult.Usage = event.Usage

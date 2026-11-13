@@ -76,9 +76,9 @@ func messageSource(m model.ReceivedMessage, e model.MessageEntities, v model.Mes
 		AccountHint: accountHint(e.Account),
 	}
 	switch v.Type {
-	case "debit":
+	case string(ports.DebitTransactionType):
 		source.Direction = narration.Debit
-	case "credit":
+	case string(ports.CreditTransactionType):
 		source.Direction = narration.Credit
 	}
 	if e.Amount != 0 {

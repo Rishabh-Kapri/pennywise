@@ -4,7 +4,6 @@ import (
 	"context"
 
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/otelSDK"
 )
 
 // Target is one provider/model pair in a fallback chain.
@@ -16,10 +15,9 @@ type Target struct {
 // llmRegistry is a stateless registry of pre-built LLM clients, one per provider.
 // Clients are constructed once and reused safely across concurrent calls.
 type llmRegistry struct {
-	clients   map[string]*ObservedLLM // provider → raw client (e.g. *anthropicClient)
-	defaults  map[string]string       // provider → default model name
-	order     []string                // fallback order; order[0] is the default provider
-	telemetry otelSDK.TelemetryProvider
+	clients  map[string]*ObservedLLM // provider → raw client (e.g. *anthropicClient)
+	defaults map[string]string       // provider → default model name
+	order    []string                // fallback order; order[0] is the default provider
 }
 
 // RegistryEntry holds the raw LLM client and its default model for one provider.
@@ -41,12 +39,8 @@ type LLMResolver interface {
 // NewLLMRegistry builds a registry from a map of provider → RegistryEntry.
 // order lists the providers in fallback order; its first entry is used when
 // Resolve is called with provider="". Providers in order without an entry are
-// ignored. tel is wired into every ObservedLLM returned by Resolve.
-func NewLLMRegistry(
-	entries map[string]RegistryEntry,
-	order []string,
-	tel otelSDK.TelemetryProvider,
-) LLMResolver {
+// ignored.
+func NewLLMRegistry(entries map[string]RegistryEntry, order []string) LLMResolver {
 	clients := make(map[string]*ObservedLLM, len(entries))
 	defaults := make(map[string]string, len(entries))
 	for provider, entry := range entries {
@@ -61,10 +55,9 @@ func NewLLMRegistry(
 	}
 
 	return &llmRegistry{
-		clients:   clients,
-		defaults:  defaults,
-		order:     known,
-		telemetry: tel,
+		clients:  clients,
+		defaults: defaults,
+		order:    known,
 	}
 }
 

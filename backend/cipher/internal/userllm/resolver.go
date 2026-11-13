@@ -18,7 +18,6 @@ import (
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/otelSDK"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
@@ -33,7 +32,6 @@ type Resolver struct {
 	models  repository.UserLLMModelRepository
 	keys    repository.UserLLMProviderRepository
 	clients resolver.Resolver
-	tel     otelSDK.TelemetryProvider
 
 	mu    sync.Mutex
 	cache map[uuid.UUID]cachedRegistry // budget id → clients
@@ -49,13 +47,11 @@ func New(
 	models repository.UserLLMModelRepository,
 	keys repository.UserLLMProviderRepository,
 	clients resolver.Resolver,
-	tel otelSDK.TelemetryProvider,
 ) *Resolver {
 	return &Resolver{
 		models:  models,
 		keys:    keys,
 		clients: clients,
-		tel:     tel,
 		cache:   map[uuid.UUID]cachedRegistry{},
 	}
 }
@@ -127,7 +123,7 @@ func (r *Resolver) registryFor(ctx context.Context) (llm.LLMResolver, error) {
 	if len(order) == 0 {
 		return nil, ErrNotConfigured
 	}
-	registry := llm.NewLLMRegistry(entries, order, r.tel)
+	registry := llm.NewLLMRegistry(entries, order)
 
 	r.mu.Lock()
 	r.cache[budgetID] = cachedRegistry{fingerprint: fingerprint, registry: registry}

@@ -16,13 +16,13 @@ func (d *BackfillDeps) backfillEmbedding(ctx context.Context, p resolvedPredicti
 	budgetID := d.BudgetID
 
 	// Resolve payee → UUID
-	foundPayee, err := d.getPayee(ctx, budgetID, p.Payee, false)
+	foundPayee, err := d.getPayee(ctx, budgetID, p.Payee)
 	if err != nil {
 		return err
 	}
 
 	// Resolve category → UUID
-	foundCategory, err := d.getCategory(ctx, budgetID, p.Category, false)
+	foundCategory, err := d.getCategory(ctx, budgetID, p.Category)
 	if err != nil {
 		return err
 	}

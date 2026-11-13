@@ -203,8 +203,9 @@ func (a *Agent) executeTool(
 	toolResult, err := tool.Execute(ctx, toolCall)
 	span.SetAttributes(attribute.Float64("tool.execution.duration_ms", float64(time.Since(started))/float64(time.Millisecond)))
 	if err != nil {
+		// The tool is known, so the caller can still show its failure.
 		setSpanError(span, err)
-		return nil, nil, errs.Wrap(errs.CodeToolExecuteFail, "tool execution failed", err)
+		return &tool, nil, errs.Wrap(errs.CodeToolExecuteFail, "tool execution failed", err)
 	}
 
 	recordToolResult(span, toolResult)
@@ -897,7 +898,7 @@ func (a *Agent) Run(
 						// Hand the failure back to the model instead of dropping it, so it
 						// can correct a bad query rather than losing the whole run.
 						log.Error("tool execution failed", "tool", call.Name, "error", execErr)
-						executions[index] = toolExecution{result: toolErrorResult(call, execErr)}
+						executions[index] = toolExecution{tool: tool, result: toolErrorResult(call, execErr)}
 						return
 					}
 					executions[index] = toolExecution{tool: tool, result: *toolResult}

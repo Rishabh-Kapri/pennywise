@@ -20,11 +20,6 @@ type (
 	MessageType     string
 )
 
-const (
-	TransactionMessageType MessageType = "transaction"
-	StatementMessageType   MessageType = "statement"
-)
-
 type TxnVerdict struct {
 	MessageType   MessageType     `json:"messageType"` //
 	IsTransaction bool            `json:"isTransaction"`
