@@ -10,6 +10,7 @@ import (
 
 	agentPrompts "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/context"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/tools"
 
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
@@ -202,11 +203,6 @@ func formatMessagesForObserver(
 		if b.Len() > before {
 			hasContent = true
 		}
-
-		// if b.Len() > observerTranscriptMaxChars {
-		// 	b.WriteString("\n[Transcript truncated for observer input]\n")
-		// 	break
-		// }
 	}
 
 	if !hasContent {
@@ -222,7 +218,7 @@ func appendToolResultForObserver(
 	sequence int,
 	at time.Time,
 ) {
-	if result == nil || result.Name == "get_schema" {
+	if result == nil || result.Name == tools.GetSchemaToolName {
 		return
 	}
 
@@ -233,9 +229,9 @@ func appendToolResultForObserver(
 
 	title := "Tool Result"
 	switch result.Name {
-	case "update_working_memory":
+	case tools.UpdateWorkingMemoryToolName:
 		title = "Working Memory Update Result"
-	case "get_budget_info", "execute_sql":
+	case tools.GetBudgetInfoToolName, tools.ExecuteSQLToolName:
 		title = "Finance Lookup Result"
 	}
 	if result.IsError {
@@ -788,5 +784,3 @@ func (m *memory) OnRunPersisted(ctx context.Context, data AgentRunData) error {
 
 	return nil
 }
-
-func (m *memory) GenerateReflections() {}

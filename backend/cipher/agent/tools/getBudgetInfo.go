@@ -16,7 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const getBudgetToolName = "get_budget_info"
+const GetBudgetInfoToolName = "get_budget_info"
 
 // budgetInfoNameCap bounds each name list. An active budget accumulates hundreds
 // of payees, and dumping all of them into context crowds out the actual answer.
@@ -51,7 +51,7 @@ func NewGetBudgetInfoTool(db *pgxpool.Pool) Tool {
 
 func (t GetBudgetInfoTool) Definition() sharedModel.ToolDefiniton {
 	return sharedModel.ToolDefiniton{
-		Name:        getBudgetToolName,
+		Name:        GetBudgetInfoToolName,
 		Description: "Return the category, payee, and tag names the user actually used in a specific date range. Use this to discover what entities exist before answering questions about them. Only call this tool when the date range is known.",
 		InputSchema: sharedModel.ToolSchema{
 			Type: "object",
@@ -138,8 +138,8 @@ func (t GetBudgetInfoTool) budgetNamesQuery(
 
 func (t GetBudgetInfoTool) Execute(ctx context.Context, call sharedModel.ToolCall) (*sharedModel.ToolResult, error) {
 	var args BudgetToolArgs
-	if err := json.Unmarshal(call.Arguments, &args); err != nil {
-		return nil, errs.Wrap(errs.CodeInternalError, "parse get_budget_info arguments", err)
+	if err := decodeToolArgs(GetBudgetInfoToolName, call.Arguments, &args); err != nil {
+		return nil, err
 	}
 	if args.DateRange.Start == "" || args.DateRange.End == "" {
 		return nil, errs.New(errs.CodeToolExecuteFail, "date range is required")
@@ -176,7 +176,7 @@ func (t GetBudgetInfoTool) Execute(ctx context.Context, call sharedModel.ToolCal
 		return nil, errs.Wrap(errs.CodeToolExecuteFail, "failed to execute tool get_budget_info", err)
 	}
 
-	return jsonToolResult(call, getBudgetToolName, result)
+	return jsonToolResult(call, GetBudgetInfoToolName, result)
 }
 
 func (t GetBudgetInfoTool) GetNormalizedName(isDone bool) string {

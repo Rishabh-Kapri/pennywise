@@ -212,6 +212,10 @@ const (
 	AgentEventChatStream    AgentEvent = "pennywise::agent::chat::stream"
 )
 
+// AgentEventsRedisStream is the Redis stream cipher writes chat events to and
+// go-pennywise-api reads them from for its websockets.
+const AgentEventsRedisStream = "pubsub"
+
 type AgentRunStatus string
 
 const (

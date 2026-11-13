@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	executeSQLToolName = "execute_sql"
+	ExecuteSQLToolName = "execute_sql"
 	executeSQLRowCap   = 500
 	// executeSQLByteCap bounds the serialized result. The row cap alone is not
 	// enough: 500 wide rows can be hundreds of KB of JSON, which crowds the
@@ -39,7 +39,7 @@ func NewExecuteSQLTool(pool *pgxpool.Pool) Tool {
 
 func (t ExecuteSQLTool) Definition() sharedModel.ToolDefiniton {
 	return sharedModel.ToolDefiniton{
-		Name:        executeSQLToolName,
+		Name:        ExecuteSQLToolName,
 		Description: "Fallback for questions no specific tool covers. Prefer get_spending_summary for spending totals grouped by category, payee, or tag; get_top_transactions for individual transactions; and get_budget_info to discover which categories, payees, and tags exist. Reach for this only when none of those can answer the question — for example category balances, account balances, month-over-month comparisons, or loan data. Call get_schema first unless its output is already in this conversation, and follow the query_rules it returns. The query must be a single SELECT or WITH statement scoped by budget_id.",
 		InputSchema: sharedModel.ToolSchema{
 			Type: "object",
@@ -61,8 +61,8 @@ func (t ExecuteSQLTool) Definition() sharedModel.ToolDefiniton {
 
 func (t ExecuteSQLTool) Execute(ctx context.Context, call sharedModel.ToolCall) (*sharedModel.ToolResult, error) {
 	var args executeSQLArgs
-	if err := json.Unmarshal(call.Arguments, &args); err != nil {
-		return nil, errs.Wrap(errs.CodeInternalError, "parse execute_sql arguments", err)
+	if err := decodeToolArgs(ExecuteSQLToolName, call.Arguments, &args); err != nil {
+		return nil, err
 	}
 
 	query, err := validateReadOnlyQuery(args.Query)

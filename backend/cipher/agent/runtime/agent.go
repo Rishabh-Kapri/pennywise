@@ -151,8 +151,6 @@ func NewAgent(llmResolver llm.LLMResolver, toolRegistry *tools.ToolRegistry, opt
 	}, nil
 }
 
-const redisPubsubStream = "pubsub"
-
 // SystemPrompt is split so the bulk of the instructions can be cached. Static
 // must be byte-identical across requests; Dynamic holds everything that varies
 // (date, learned preferences, budget id) and is placed after it.
@@ -162,26 +160,12 @@ type SystemPrompt struct {
 	Args    []any
 }
 type AgentRunOptions struct {
-	enableTools       bool
 	updateRunMetadata bool
-	requiresContext   bool
 	systemPrompt      SystemPrompt
 	memoryEnabled     bool
 }
 
 type AgentRunOption func(*AgentRunOptions)
-
-func WithToolsEnabled(value bool) AgentRunOption {
-	return func(opts *AgentRunOptions) {
-		opts.enableTools = value
-	}
-}
-
-func WithRequiresContext(value bool) AgentRunOption {
-	return func(opts *AgentRunOptions) {
-		opts.requiresContext = value
-	}
-}
 
 func WithUpdateMetadata(value bool) AgentRunOption {
 	return func(opts *AgentRunOptions) {
@@ -225,17 +209,6 @@ func (a *Agent) executeTool(
 
 	recordToolResult(span, toolResult)
 	return &tool, toolResult, nil
-}
-
-func (a *Agent) Chat(ctx context.Context, req sharedModel.ChatRequest) (*sharedModel.ChatResponse, error) {
-	req.Stream = false
-	return a.Run(ctx, req)
-}
-
-func (a *Agent) Stream(ctx context.Context, req sharedModel.ChatRequest) error {
-	req.Stream = true
-	_, err := a.Run(ctx, req)
-	return err
 }
 
 func chatResToStepResult(chatRes sharedModel.ChatResponse) sharedModel.StepResult {
@@ -417,7 +390,7 @@ func appendMessageToolCallPart(
 	tool tools.Tool,
 	toolCall sharedModel.ToolCall,
 	messageParts *[]sharedModel.MessagePart,
-	metaToolCalls *[]map[string]any,
+	metaToolCalls *[]RunToolCall,
 	args map[string]any,
 	resultJSON json.RawMessage,
 ) *sharedModel.ToolResultNormalized {
@@ -445,29 +418,38 @@ func appendMessageToolCallPart(
 	return normalizedResult
 }
 
+// RunMetadataToolCalls is the run metadata key that holds a run's
+// []RunToolCall. The agent service reads it back to replay earlier runs.
+const RunMetadataToolCalls = "toolCalls"
+
+// RunToolCall is one tool call as a run's metadata stores it.
+type RunToolCall struct {
+	ID     string          `json:"id,omitempty"`
+	Name   string          `json:"name,omitempty"`
+	Args   map[string]any  `json:"args"`
+	Result json.RawMessage `json:"result"`
+}
+
 // appendMetaToolCall records a tool call in the run metadata. Kept separate from
 // appendMessageToolCallPart so calls that never resolved to a tool are still
 // recorded.
 func appendMetaToolCall(
-	metaToolCalls *[]map[string]any,
+	metaToolCalls *[]RunToolCall,
 	toolCall sharedModel.ToolCall,
 	args map[string]any,
 	resultJSON json.RawMessage,
 ) {
-	metaToolCall := make(map[string]any)
-	if toolCall.Name != "" {
-		metaToolCall["name"] = toolCall.Name
-	}
-	if toolCall.ID != "" {
-		metaToolCall["id"] = toolCall.ID
-	}
-	metaToolCall["args"] = args
-	metaToolCall["result"] = resultJSON
-
-	*metaToolCalls = append(*metaToolCalls, metaToolCall)
+	*metaToolCalls = append(*metaToolCalls, RunToolCall{
+		ID:     toolCall.ID,
+		Name:   toolCall.Name,
+		Args:   args,
+		Result: resultJSON,
+	})
 }
 
-func (a *Agent) publishChatStreamEvent(
+// PublishChatEvent sends one chat event to the budget's websocket clients
+// through go-pennywise-api. conversationId may be blank.
+func (a *Agent) PublishChatEvent(
 	ctx context.Context,
 	budgetId uuid.UUID,
 	userId uuid.UUID,
@@ -503,7 +485,7 @@ func (a *Agent) publishChatStreamEvent(
 
 	pipe := a.redisClient.Pipeline()
 	pipe.XAdd(ctx, &redis.XAddArgs{
-		Stream: redisPubsubStream,
+		Stream: sharedModel.AgentEventsRedisStream,
 		Values: values,
 	})
 	if _, err := pipe.Exec(ctx); err != nil {
@@ -531,7 +513,7 @@ func (a *Agent) runLLMStep(ctx context.Context, req sharedModel.ChatRequest) (sh
 		stepResult := handler.ProcessStream(ctx, &req, events, handler.StreamHandler{
 			OnTextDelta: func(textDelta string) {
 				// log.Info("stream \"text_delta\" received", "textDelta", textDelta)
-				a.publishChatStreamEvent(
+				a.PublishChatEvent(
 					ctx,
 					budgetId,
 					userId,
@@ -542,7 +524,7 @@ func (a *Agent) runLLMStep(ctx context.Context, req sharedModel.ChatRequest) (sh
 				)
 			},
 			OnReasoningDelta: func(textDelta string) {
-				a.publishChatStreamEvent(ctx, budgetId, userId, conversationId,
+				a.PublishChatEvent(ctx, budgetId, userId, conversationId,
 					req.Metadata["messageId"], "reasoning_delta", textDelta)
 			},
 			OnToolCallStart: func(ctx context.Context, toolCall sharedModel.ToolCall) {
@@ -560,7 +542,7 @@ func (a *Agent) runLLMStep(ctx context.Context, req sharedModel.ChatRequest) (sh
 					return
 				}
 
-				a.publishChatStreamEvent(
+				a.PublishChatEvent(
 					ctx,
 					budgetId,
 					userId,
@@ -606,7 +588,7 @@ type runFinishedContext struct {
 	tokenUsage     map[string]int
 	maxTokens      int
 	traceID        string
-	agentToolCalls []map[string]any
+	agentToolCalls []RunToolCall
 	messageParts   []sharedModel.MessagePart
 	allMessages    []sharedModel.AgentMessage
 }
@@ -620,13 +602,13 @@ func (a *Agent) processRunFinish(ctx context.Context, payload runFinishedContext
 			"inputTokens":  payload.tokenUsage["input"],
 			// Cache counters make a broken prompt prefix visible: cacheReadTokens
 			// stuck at zero across turns means something volatile is in the prefix.
-			"cacheReadTokens":  payload.tokenUsage["cacheRead"],
-			"cacheWriteTokens": payload.tokenUsage["cacheWrite"],
-			"outputTokens":     payload.tokenUsage["output"],
-			"totalTokens":      payload.tokenUsage["input"] + payload.tokenUsage["output"],
-			"maxTokens":        payload.maxTokens,
-			"traceId":          payload.traceID,
-			"toolCalls":        payload.agentToolCalls,
+			"cacheReadTokens":    payload.tokenUsage["cacheRead"],
+			"cacheWriteTokens":   payload.tokenUsage["cacheWrite"],
+			"outputTokens":       payload.tokenUsage["output"],
+			"totalTokens":        payload.tokenUsage["input"] + payload.tokenUsage["output"],
+			"maxTokens":          payload.maxTokens,
+			"traceId":            payload.traceID,
+			RunMetadataToolCalls: payload.agentToolCalls,
 		}
 		backgroundCtx := utils.DetachedRequestContext(ctx)
 		_, err := transport.Patch[any](
@@ -688,9 +670,7 @@ func (a *Agent) Run(
 	opts ...AgentRunOption,
 ) (res *sharedModel.ChatResponse, err error) {
 	runOpts := AgentRunOptions{
-		enableTools:       true,
 		updateRunMetadata: true,
-		requiresContext:   true,
 		memoryEnabled:     true,
 		systemPrompt:      SystemPrompt{Args: []any{}},
 	}
@@ -728,7 +708,7 @@ func (a *Agent) Run(
 	maxTokensUsed := req.MaxTokens
 
 	messageParts := make([]sharedModel.MessagePart, 0)
-	agentMetaToolCalls := make([]map[string]any, 0)
+	agentMetaToolCalls := make([]RunToolCall, 0)
 
 	defer func() {
 		defer span.End()
@@ -737,7 +717,7 @@ func (a *Agent) Run(
 			budgetID, budgetErr := utils.BudgetIDFromContext(ctx)
 			userID, userErr := utils.UserIDFromContext(ctx)
 			if budgetErr == nil && userErr == nil {
-				a.publishChatStreamEvent(ctx, budgetID, userID, conversationID,
+				a.PublishChatEvent(ctx, budgetID, userID, conversationID,
 					messageID, "run_completed", map[string]string{"runId": runID})
 			}
 		}
@@ -747,7 +727,7 @@ func (a *Agent) Run(
 			budgetID, budgetErr := utils.BudgetIDFromContext(ctx)
 			userID, userErr := utils.UserIDFromContext(ctx)
 			if budgetErr == nil && userErr == nil {
-				a.publishChatStreamEvent(
+				a.PublishChatEvent(
 					ctx,
 					budgetID,
 					userID,
@@ -780,7 +760,7 @@ func (a *Agent) Run(
 	assistantSequence := nextAgentMessageSequence(messages)
 
 	// Enrich with tools
-	if runOpts.enableTools && len(a.toolRegistry.GetAllTools()) > 0 {
+	if len(a.toolRegistry.GetAllTools()) > 0 {
 		req.Tools = make([]sharedModel.ToolDefiniton, 0)
 
 		for _, tool := range a.toolRegistry.GetAllTools() {
@@ -979,7 +959,7 @@ func (a *Agent) Run(
 					if displayName == "" {
 						continue
 					}
-					a.publishChatStreamEvent(
+					a.PublishChatEvent(
 						ctx,
 						utils.MustBudgetID(ctx),
 						utils.MustUserID(ctx),
@@ -995,7 +975,7 @@ func (a *Agent) Run(
 						},
 					)
 				case normalizedResult != nil:
-					a.publishChatStreamEvent(
+					a.PublishChatEvent(
 						ctx,
 						utils.MustBudgetID(ctx),
 						utils.MustUserID(ctx),
@@ -1013,7 +993,7 @@ func (a *Agent) Run(
 				case displayName != "":
 					// A normalizer may decline to display a result. Complete the
 					// pending UI entry so it does not keep animating indefinitely.
-					a.publishChatStreamEvent(
+					a.PublishChatEvent(
 						ctx,
 						utils.MustBudgetID(ctx),
 						utils.MustUserID(ctx),

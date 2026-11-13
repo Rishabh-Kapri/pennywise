@@ -16,8 +16,6 @@ type StreamHandler struct {
 	OnToolCallStart  func(ctx context.Context, tool sharedModel.ToolCall)
 	OnToolCall       func(ctx context.Context, tool sharedModel.ToolCall)
 	OnDone           func(usage sharedModel.Usage)
-	OnComplete       func()
-	OnError          func()
 }
 
 type eventToolCall struct {
@@ -167,9 +165,6 @@ func ProcessStream(
 
 			case sharedModel.ChunkEventError:
 				log.Error("llm stream returned an error chunk", "error", event.Text)
-				if handlerCallback.OnError != nil {
-					handlerCallback.OnError()
-				}
 				stepResult.StopReason = sharedModel.StopReasonError
 				if event.Text != "" {
 					stepResult.Err = errs.New(errs.CodeInternalError, "llm stream error: %s", event.Text)

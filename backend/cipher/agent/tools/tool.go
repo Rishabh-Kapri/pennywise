@@ -73,12 +73,6 @@ func NewToolRegistry() *ToolRegistry {
 	}
 }
 
-func (r *ToolRegistry) RegisterMultipleTools(tools []Tool) {
-	for _, tool := range tools {
-		r.RegisterTool(tool)
-	}
-}
-
 func (r *ToolRegistry) RegisterTool(tool Tool) {
 	if tool == nil {
 		return

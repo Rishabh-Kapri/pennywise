@@ -176,7 +176,7 @@ func main() {
 		LLMCallTimeout: cfg.LLMCallTimeout,
 	})
 
-	agentService := service.NewAgentService(redisClient, agent, pennywiseHttpTransport, memoryService, llmResolver)
+	agentService := service.NewAgentService(agent, pennywiseHttpTransport, memoryService, llmResolver)
 
 	// Handler
 	predictionHandler := handler.NewPredictionHandler(predictionService)

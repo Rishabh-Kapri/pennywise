@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	updateWorkingMemoryToolName = "update_working_memory"
+	UpdateWorkingMemoryToolName = "update_working_memory"
 )
 
 type updateMemoryArgs struct {
@@ -32,7 +32,7 @@ func NewUpdateWorkingMemoryTool(memory repository.AgentMemoryRepository) Tool {
 
 func (t UpdateWorkingMemoryTool) Definition() sharedModel.ToolDefiniton {
 	return sharedModel.ToolDefiniton{
-		Name:        updateWorkingMemoryToolName,
+		Name:        UpdateWorkingMemoryToolName,
 		Description: "Store a lasting user preference or category/payee mapping. Only call when the user explicitly corrects your understanding or confirms a preference that should apply to future conversations.",
 		InputSchema: sharedModel.ToolSchema{
 			Type: "object",
@@ -61,8 +61,8 @@ func (t UpdateWorkingMemoryTool) Definition() sharedModel.ToolDefiniton {
 func (t UpdateWorkingMemoryTool) Execute(ctx context.Context, call sharedModel.ToolCall) (*sharedModel.ToolResult, error) {
 	var args updateMemoryArgs
 
-	if err := json.Unmarshal(call.Arguments, &args); err != nil {
-		return nil, errs.Wrap(errs.CodeInternalError, "parse update_working_memory arguments", err)
+	if err := decodeToolArgs(UpdateWorkingMemoryToolName, call.Arguments, &args); err != nil {
+		return nil, err
 	}
 	valueJSON := args.Value
 	if len(valueJSON) == 0 || strings.TrimSpace(string(valueJSON)) == "" {

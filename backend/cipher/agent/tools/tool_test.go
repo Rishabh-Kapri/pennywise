@@ -165,3 +165,25 @@ func TestValidateReadOnlyQuery(t *testing.T) {
 		})
 	}
 }
+
+// Every tool that takes arguments refuses one it doesn't declare, before it
+// touches the database (the tools here have none).
+func TestEveryToolRejectsUnknownArguments(t *testing.T) {
+	for _, tool := range []Tool{
+		NewGetBudgetInfoTool(nil),
+		NewGetSpendingSummaryTool(nil),
+		NewGetTopTransactionsTool(nil),
+		NewGetSchemaTool(),
+		NewExecuteSQLTool(nil),
+		NewUpdateWorkingMemoryTool(nil),
+	} {
+		name := tool.Definition().Name
+		t.Run(name, func(t *testing.T) {
+			call := sharedModel.ToolCall{Name: name, Arguments: json.RawMessage(`{"notAnArgument": 1}`)}
+			_, err := tool.Execute(context.Background(), call)
+			if err == nil || !strings.Contains(err.Error(), "notAnArgument") {
+				t.Fatalf("got %v, want an error naming the unknown argument", err)
+			}
+		})
+	}
+}
