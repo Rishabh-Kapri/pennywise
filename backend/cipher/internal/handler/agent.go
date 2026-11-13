@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/service"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/agentrun"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
@@ -16,10 +16,10 @@ type AgentHandler interface {
 }
 
 type agentHandler struct {
-	service service.AgentService
+	service agentrun.AgentService
 }
 
-func NewAgentHandler(agentService service.AgentService) AgentHandler {
+func NewAgentHandler(agentService agentrun.AgentService) AgentHandler {
 	return &agentHandler{service: agentService}
 }
 
@@ -34,7 +34,7 @@ func (h *agentHandler) CreateRun(c *gin.Context) {
 
 	res, err := h.service.CreateRun(ctx, req)
 	if err != nil {
-		var clarify *service.ClarifyError
+		var clarify *agentrun.ClarifyError
 		if errors.As(err, &clarify) {
 			c.JSON(http.StatusUnprocessableEntity, gin.H{"clarify": clarify.Prompt})
 			return

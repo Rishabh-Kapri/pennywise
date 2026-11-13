@@ -13,6 +13,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/memory"
 	agent "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/runtime"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/tools"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/agentrun"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/factory"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/handler"
@@ -176,7 +177,7 @@ func main() {
 		LLMCallTimeout: cfg.LLMCallTimeout,
 	})
 
-	agentService := service.NewAgentService(agent, pennywiseHttpTransport, memoryService, llmResolver)
+	agentService := agentrun.NewAgentService(agent, pennywiseHttpTransport, memoryService, llmResolver)
 
 	// Handler
 	predictionHandler := handler.NewPredictionHandler(predictionService)
