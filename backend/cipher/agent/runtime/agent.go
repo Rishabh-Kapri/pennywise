@@ -494,7 +494,6 @@ func (a *Agent) PublishChatEvent(
 }
 
 func (a *Agent) runLLMStep(ctx context.Context, req sharedModel.ChatRequest) (sharedModel.StepResult, error) {
-	// budgetId := utils.MustBudgetID(ctx)
 	budgetId := utils.MustBudgetID(ctx)
 	userId := utils.MustUserID(ctx)
 
@@ -512,7 +511,6 @@ func (a *Agent) runLLMStep(ctx context.Context, req sharedModel.ChatRequest) (sh
 
 		stepResult := handler.ProcessStream(ctx, &req, events, handler.StreamHandler{
 			OnTextDelta: func(textDelta string) {
-				// log.Info("stream \"text_delta\" received", "textDelta", textDelta)
 				a.PublishChatEvent(
 					ctx,
 					budgetId,
@@ -528,8 +526,6 @@ func (a *Agent) runLLMStep(ctx context.Context, req sharedModel.ChatRequest) (sh
 					req.Metadata["messageId"], "reasoning_delta", textDelta)
 			},
 			OnToolCallStart: func(ctx context.Context, toolCall sharedModel.ToolCall) {
-				// log.Info("stream \"tool_call_start\" received", "tool", toolCall)
-
 				tool, err := a.toolRegistry.GetTool(toolCall.Name)
 				if err != nil {
 					log.Error("tool not found", "toolName", toolCall.Name, "error", err)
@@ -555,12 +551,6 @@ func (a *Agent) runLLMStep(ctx context.Context, req sharedModel.ChatRequest) (sh
 						"displayName": normalizedName,
 					},
 				)
-			},
-			OnToolCall: func(ctx context.Context, tool sharedModel.ToolCall) {
-				// log.Info("stream \"tool_call\" received", "tool", tool)
-			},
-			OnDone: func(usage sharedModel.Usage) {
-				// log.Info("stream done received", "usage", usage)
 			},
 		})
 		if stepResult.Err != nil {
