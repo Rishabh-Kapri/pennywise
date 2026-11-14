@@ -32,6 +32,7 @@ top to bottom with no ALTER history to replay.
 | `00023_statement_import_jobs` | `statement_imports.job_id`: the cipher job reading the statement |
 | `00024_statement_import_files` | `statement_imports.file_path`: the uploaded PDF's key in the document store |
 | `00025_account_statement_passwords` | `account_statement_passwords`: an account's statement PDF password, sealed; not granted to the agent role |
+| `00026_budget_members` | `budget_members` (who may open a budget: owner/editor/viewer, and each member's selected budget; backfilled with every owner) and `budget_invites` (by email, 14-day expiry); not granted to the agent role |
 
 ## Commands (from `backend/go-pennywise-api`)
 

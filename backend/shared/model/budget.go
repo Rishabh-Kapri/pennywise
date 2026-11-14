@@ -13,14 +13,19 @@ type BudgetMetadata struct {
 }
 
 type Budget struct {
-	ID         uuid.UUID        `json:"id"`
-	UserID     uuid.UUID        `json:"userId"`
-	Name       string           `json:"name"`
-	IsSelected bool             `json:"isSelected"`
-	CreatedAt  time.Time        `json:"createdAt"`
-	UpdatedAt  time.Time        `json:"updatedAt"`
-	Metadata   BudgetMetadata   `json:"metadata"`
-	Onboarding BudgetOnboarding `json:"onboarding"`
+	ID uuid.UUID `json:"id"`
+	// UserID is the budget's owner.
+	UserID uuid.UUID `json:"userId"`
+	Name   string    `json:"name"`
+	// IsSelected, Role and MemberCount are about the user reading the list:
+	// whether it's the budget they last opened, and what they may do in it.
+	IsSelected  bool             `json:"isSelected"`
+	Role        BudgetRole       `json:"role,omitempty"`
+	MemberCount int              `json:"memberCount,omitempty"`
+	CreatedAt   time.Time        `json:"createdAt"`
+	UpdatedAt   time.Time        `json:"updatedAt"`
+	Metadata    BudgetMetadata   `json:"metadata"`
+	Onboarding  BudgetOnboarding `json:"onboarding"`
 }
 
 // Onboarding wizard steps, in order. OnboardingStepDone means the wizard has

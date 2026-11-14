@@ -15,6 +15,7 @@ import {
   STARTER_BUDGET_TEMPLATE_GROUPS,
 } from '../constants/budgetTemplates';
 import { LoadingState, toast } from '@/utils';
+import { PendingInvites } from '@/features/sharing/components/PendingInvites';
 import styles from './BudgetOnboarding.module.css';
 
 export default function BudgetOnboarding() {
@@ -96,6 +97,9 @@ export default function BudgetOnboarding() {
           Start with a practical category template, then customize it once your
           budget opens.
         </p>
+        {/* Someone invited to a shared budget joins it here instead of
+            creating their own. */}
+        <PendingInvites title="Or join a budget you were invited to" className={styles.invites} />
       </section>
 
       <section className={styles.card}>

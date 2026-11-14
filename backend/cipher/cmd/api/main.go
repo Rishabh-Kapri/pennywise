@@ -253,7 +253,7 @@ func main() {
 		api.GET("", healthPage)
 
 		budgetApi := api.Group("")
-		budgetApi.Use(sharedMiddleware.BudgetIdMiddleware(database.Budget))
+		budgetApi.Use(sharedMiddleware.BudgetIdMiddleware(database.BudgetMember))
 		budgetApi.POST("/email/normalize", predictionHandler.NormalizeEmailText)
 		budgetApi.POST("/email/extract", predictionHandler.ExtractEmailData)
 		budgetApi.POST("/predict", predictionHandler.Predict)
@@ -265,7 +265,7 @@ func main() {
 
 		{
 			agentApi := api.Group("/agent")
-			agentApi.Use(sharedMiddleware.BudgetIdMiddleware(database.Budget))
+			agentApi.Use(sharedMiddleware.BudgetIdMiddleware(database.BudgetMember))
 			agentApi.GET("/runs", agentHandler.GetRun)
 			agentApi.POST("/runs", agentHandler.CreateRun)
 			agentApi.GET("/runs/cancel/:id", agentHandler.CancelRun)

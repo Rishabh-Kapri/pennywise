@@ -1,4 +1,11 @@
-import { Check, CaretDown as ChevronDown, Plus, Wallet as WalletCards } from '@phosphor-icons/react';
+import {
+  Check,
+  CaretDown as ChevronDown,
+  EnvelopeOpen,
+  Plus,
+  UsersThree,
+  Wallet as WalletCards,
+} from '@phosphor-icons/react';
 import { useEffect, useRef, useState } from 'react';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { selectIsDemoUser } from '@/features/auth/store';
@@ -9,7 +16,17 @@ import {
   updateBudgetSelection,
 } from '../store';
 import { useNavigate } from 'react-router-dom';
+import { useMyInvites } from '@/features/sharing/hooks/useMyInvites';
+import { ROLE_LABELS } from '@/features/sharing/types';
+import type { Budget } from '../types/budget.types';
 import styles from './BudgetSwitcher.module.css';
+
+/** "Shared" on a budget you share, your role on one shared with you. */
+function sharingTag(budget: Budget): string | null {
+  if (budget.role && budget.role !== 'owner') return ROLE_LABELS[budget.role];
+  if ((budget.memberCount ?? 1) > 1) return 'Shared';
+  return null;
+}
 
 export default function BudgetSwitcher() {
   const dispatch = useAppDispatch();
@@ -18,12 +35,15 @@ export default function BudgetSwitcher() {
   const selectedBudget = useAppSelector(selectSelectedBudget);
   const isDemoUser = useAppSelector(selectIsDemoUser);
   const [isOpen, setIsOpen] = useState(false);
+  const { invites, reload: reloadInvites } = useMyInvites();
+  const inviteCount = invites?.length ?? 0;
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!isOpen) {
       return;
     }
+    void reloadInvites();
 
     const handlePointerDown = (event: PointerEvent) => {
       if (!containerRef.current?.contains(event.target as Node)) {
@@ -33,7 +53,7 @@ export default function BudgetSwitcher() {
 
     document.addEventListener('pointerdown', handlePointerDown);
     return () => document.removeEventListener('pointerdown', handlePointerDown);
-  }, [isOpen]);
+  }, [isOpen, reloadInvites]);
 
   const handleSelectBudget = (budgetId?: string) => {
     const budget = budgets.find((item) => item.id === budgetId);
@@ -96,13 +116,42 @@ export default function BudgetSwitcher() {
                 aria-selected={isSelected}
                 className={`${styles.option} ${isSelected ? styles.optionSelected : ''}`}
                 onClick={() => handleSelectBudget(budget.id)}>
-                <span>{budget.name}</span>
+                <span className={styles.optionName}>
+                  <span>{budget.name}</span>
+                  {sharingTag(budget) && <span className={styles.tag}>{sharingTag(budget)}</span>}
+                </span>
                 {isSelected && <Check size={15} strokeWidth={2.2} weight="fill" />}
               </button>
             );
           })}
 
           <div className={styles.divider} />
+
+          {inviteCount > 0 && (
+            <button
+              type="button"
+              className={styles.createOption}
+              onClick={() => {
+                setIsOpen(false);
+                navigate('/settings?section=sharing');
+              }}>
+              <EnvelopeOpen size={15} strokeWidth={2.2} />
+              <span>
+                {inviteCount === 1 ? '1 invitation' : `${inviteCount} invitations`} to join
+              </span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            className={styles.createOption}
+            onClick={() => {
+              setIsOpen(false);
+              navigate('/settings?section=sharing');
+            }}>
+            <UsersThree size={15} strokeWidth={2.2} />
+            <span>Share this budget</span>
+          </button>
 
           <button
             type="button"

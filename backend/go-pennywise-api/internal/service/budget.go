@@ -2,9 +2,12 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 
+	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
@@ -15,11 +18,15 @@ import (
 type BudgetService interface {
 	GetAll(ctx context.Context, userID uuid.UUID) ([]model.Budget, error)
 	Create(ctx context.Context, input model.CreateBudgetRequest, userID uuid.UUID) (*model.Budget, error)
-	UpdateById(ctx context.Context, id uuid.UUID, budget model.Budget) error
+	// Update renames a budget (owner only) and selects it for userID (any
+	// member). A name equal to the current one isn't a rename, so older
+	// clients that send the whole budget on select still work for members.
+	Update(ctx context.Context, userID, id uuid.UUID, req model.UpdateBudgetRequest) error
 }
 
 type budgetService struct {
 	repo         repository.BudgetRepository
+	members      repository.BudgetMemberRepository
 	payeeRepo    repository.PayeesRepository
 	catRepo      repository.CategoryRepository
 	catGroupRepo repository.CategoryGroupRepository
@@ -28,12 +35,13 @@ type budgetService struct {
 
 func NewBudgetService(
 	repo repository.BudgetRepository,
+	members repository.BudgetMemberRepository,
 	payeeRepo repository.PayeesRepository,
 	catRepo repository.CategoryRepository,
 	catGroupRepo repository.CategoryGroupRepository,
 	dbTxn repository.DBTxn,
 ) BudgetService {
-	return &budgetService{repo, payeeRepo, catRepo, catGroupRepo, dbTxn}
+	return &budgetService{repo, members, payeeRepo, catRepo, catGroupRepo, dbTxn}
 }
 
 func (s *budgetService) GetAll(ctx context.Context, userID uuid.UUID) ([]model.Budget, error) {
@@ -46,13 +54,7 @@ func (s *budgetService) Create(ctx context.Context, input model.CreateBudgetRequ
 	if name == "" {
 		return nil, fmt.Errorf("budget name is required")
 	}
-	existingBudgets, err := s.repo.GetAll(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("budgetService.Create; error checking existing budgets: %v", err)
-	}
-	isFirstBudget := len(existingBudgets) == 0
-
-	err = s.dbTxn.Do(ctx, func(ctx context.Context) error {
+	err := s.dbTxn.Do(ctx, func(ctx context.Context) error {
 		// 1. create budget
 		budget, err := s.repo.Create(ctx, name, userID)
 		if err != nil {
@@ -141,8 +143,7 @@ func (s *budgetService) Create(ctx context.Context, input model.CreateBudgetRequ
 
 		// 5. update budget with metadata
 		updatedBudget := model.Budget{
-			Name:       budget.Name,
-			IsSelected: isFirstBudget,
+			Name: budget.Name,
 			Metadata: model.BudgetMetadata{
 				InflowCategoryID:   createdCat.ID,
 				CCGroupID:          createdCCGroup.ID,
@@ -153,7 +154,6 @@ func (s *budgetService) Create(ctx context.Context, input model.CreateBudgetRequ
 		if err != nil {
 			return fmt.Errorf("budgetService.Create; error updating budget metadata: %v", err)
 		}
-		createdBudget.IsSelected = updatedBudget.IsSelected
 		createdBudget.Metadata = updatedBudget.Metadata
 		return nil
 	})
@@ -163,6 +163,37 @@ func (s *budgetService) Create(ctx context.Context, input model.CreateBudgetRequ
 	return createdBudget, nil
 }
 
-func (s *budgetService) UpdateById(ctx context.Context, id uuid.UUID, budget model.Budget) error {
-	return s.repo.UpdateById(ctx, id, budget)
+func (s *budgetService) Update(ctx context.Context, userID, id uuid.UUID, req model.UpdateBudgetRequest) error {
+	role, err := s.members.Role(ctx, id, userID)
+	if errors.Is(err, repository.ErrNotFound) {
+		return errs.NewWith(errs.CodeBudgetNotFound, "budget not found", errs.WithStatus(http.StatusNotFound))
+	}
+	if err != nil {
+		return err
+	}
+
+	if req.Name != nil {
+		name := strings.TrimSpace(*req.Name)
+		current, err := s.repo.GetById(ctx, id)
+		if err != nil {
+			return err
+		}
+		if name != current.Name {
+			if role != model.BudgetRoleOwner {
+				return errOwnerOnly
+			}
+			if name == "" {
+				return errs.NewWith(errs.CodeInvalidArgument, "budget name is required", errs.WithStatus(http.StatusBadRequest))
+			}
+			if err := s.repo.Rename(ctx, id, name); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Unselecting is implied by selecting another budget, so false is ignored.
+	if req.IsSelected != nil && *req.IsSelected {
+		return s.members.SetSelected(ctx, userID, id)
+	}
+	return nil
 }

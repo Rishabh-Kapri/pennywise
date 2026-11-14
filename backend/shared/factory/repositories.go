@@ -96,6 +96,8 @@ type Repositories struct {
 	APIKey               repository.APIKeyRepository
 	Auth                 repository.AuthRepository
 	Budget               repository.BudgetRepository
+	BudgetMember         repository.BudgetMemberRepository
+	BudgetInvite         repository.BudgetInviteRepository
 	BulkInserter         repository.BulkInserter
 	Category             repository.CategoryRepository
 	CategoryGoal         repository.CategoryGoalRepository
@@ -139,6 +141,8 @@ func newPostgresRepositories(pool *pgxpool.Pool) *Repositories {
 		APIKey:               postgres.NewAPIKeyRepository(pool),
 		Auth:                 postgres.NewAuthRepository(pool),
 		Budget:               postgres.NewBudgetRepository(pool),
+		BudgetMember:         postgres.NewBudgetMemberRepository(pool),
+		BudgetInvite:         postgres.NewBudgetInviteRepository(pool),
 		BulkInserter:         postgres.NewBulkInserter(pool),
 		Category:             postgres.NewCategoryRepository(pool),
 		CategoryGoal:         postgres.NewCategoryGoalRepository(pool),

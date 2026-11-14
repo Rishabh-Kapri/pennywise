@@ -49,8 +49,8 @@ func (r *devicePushTokenRepo) GetByBudgetId(
 		ctx,
 		`SELECT t.id, t.auth_user_id, t.expo_push_token, t.platform, t.created_at, t.last_seen_at
 		 FROM device_push_tokens t
-		 JOIN budgets b ON b.user_id = t.auth_user_id
-		 WHERE b.id = $1`,
+		 JOIN budget_members m ON m.user_id = t.auth_user_id
+		 WHERE m.budget_id = $1`,
 		budgetId,
 	)
 	if err != nil {

@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
+	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
@@ -69,9 +71,15 @@ func (h *budgetHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, budget)
 }
 
+// UpdateById is PATCH /budgets/:id: rename (owner) and select (any member).
 func (h *budgetHandler) UpdateById(c *gin.Context) {
 	ctx := c.Request.Context()
 
+	userID, err := utils.UserIDFromContext(ctx)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+		return
+	}
 	id, ok := c.Params.Get("id")
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})
@@ -82,15 +90,30 @@ func (h *budgetHandler) UpdateById(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "error while parsing ID"})
 		return
 	}
-	var body model.Budget
+	var body model.UpdateBudgetRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	err = h.service.UpdateById(ctx, parsedId, body)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	if err := h.service.Update(ctx, userID, parsedId, body); err != nil {
+		writeStatusError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, nil)
+}
+
+// writeStatusError answers with the status an errs.Error carries (500 when it
+// has none) and its code.
+func writeStatusError(c *gin.Context, err error) {
+	status := errs.StatusOf(err)
+	if status == 0 {
+		status = http.StatusInternalServerError
+	}
+	body := gin.H{"error": err.Error()}
+	var e *errs.Error
+	if errors.As(err, &e) {
+		body["error"] = e.Message
+		body["code"] = e.Code
+	}
+	c.JSON(status, body)
 }

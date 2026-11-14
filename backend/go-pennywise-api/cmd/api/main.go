@@ -134,6 +134,7 @@ func main() {
 
 	budgetService := service.NewBudgetService(
 		database.Budget,
+		database.BudgetMember,
 		database.Payee,
 		database.Category,
 		database.CategoryGroup,
@@ -285,6 +286,12 @@ func main() {
 		llmCredentialsBox = nil
 	}
 	isDemoUser := service.NewDemoUserCheck(database.GoogleProvider, config.DemoMode)
+	budgetSharingHandler := handler.NewBudgetSharingHandler(service.NewBudgetSharingService(
+		database.BudgetMember,
+		database.BudgetInvite,
+		database.DBTxn,
+		isDemoUser,
+	))
 	aiProviderHandler := handler.NewAIProviderHandler(service.NewAIProviderService(
 		database.UserLLMProvider,
 		llmCredentialsBox,
@@ -414,7 +421,7 @@ func main() {
 		database.Auth,
 	)...)
 	rateLimitMiddleware := middleware.RateLimitMiddleware(service.NewRateLimitService(redisClient))
-	budgetMiddleware := sharedMiddleware.BudgetIdMiddleware(database.Budget)
+	budgetMiddleware := sharedMiddleware.BudgetIdMiddleware(database.BudgetMember)
 
 	// Websocket routes
 	{
@@ -532,6 +539,60 @@ func main() {
 			budgetGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), budgetHandler.List)
 			budgetGroup.POST("", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), budgetHandler.Create)
 			budgetGroup.PATCH("/:id", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), budgetHandler.UpdateById)
+			// Not budget-scoped: a viewer may leave, and BudgetIdMiddleware
+			// refuses a viewer's writes.
+			budgetGroup.POST(
+				"/:id/leave",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				budgetSharingHandler.Leave,
+			)
+		}
+		{
+			// The request's budget's people. Anyone in it can see who else is;
+			// only the owner changes it.
+			ownerOnly := sharedMiddleware.RequireBudgetRole(sharedModel.BudgetRoleOwner)
+			memberGroup := router.Group("/api/budget-members")
+			memberGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
+			memberGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), budgetSharingHandler.ListMembers)
+			memberGroup.PUT(
+				"/:userId",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				ownerOnly,
+				budgetSharingHandler.UpdateMember,
+			)
+			memberGroup.DELETE(
+				"/:userId",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeDelete),
+				ownerOnly,
+				budgetSharingHandler.RemoveMember,
+			)
+
+			budgetInviteGroup := router.Group("/api/budget-invites")
+			budgetInviteGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware, ownerOnly)
+			budgetInviteGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), budgetSharingHandler.ListInvites)
+			budgetInviteGroup.POST("", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), budgetSharingHandler.CreateInvite)
+			budgetInviteGroup.DELETE(
+				"/:id",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeDelete),
+				budgetSharingHandler.RevokeInvite,
+			)
+		}
+		{
+			// Invites to the signed-in user, by their login emails. Not
+			// budget-scoped: the invitee isn't a member yet.
+			myInviteGroup := router.Group("/api/invites")
+			myInviteGroup.Use(authMiddleware, rateLimitMiddleware)
+			myInviteGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), budgetSharingHandler.ListMyInvites)
+			myInviteGroup.POST(
+				"/:id/accept",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				budgetSharingHandler.AcceptInvite,
+			)
+			myInviteGroup.POST(
+				"/:id/decline",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				budgetSharingHandler.DeclineInvite,
+			)
 		}
 		// Auth-only provider user routes (no budget middleware) — used by internal services
 		{
@@ -558,7 +619,12 @@ func main() {
 			// Providers belong to the user; the budget header is only needed
 			// because cipher resolves a test call through the budget owner.
 			aiProviderGroup := router.Group("/api/ai-providers")
-			aiProviderGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
+			// Owner only: a shared budget runs on its owner's keys, and cipher's
+			// test call resolves through the owner.
+			aiProviderGroup.Use(
+				authMiddleware, rateLimitMiddleware, budgetMiddleware,
+				sharedMiddleware.RequireBudgetRole(sharedModel.BudgetRoleOwner),
+			)
 			aiProviderGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), aiProviderHandler.List)
 			aiProviderGroup.PUT(
 				"/:provider",
@@ -576,7 +642,10 @@ func main() {
 			// it's saved or changed. Like keys, they belong to the user; the budget
 			// header is only for cipher's test call.
 			aiModelGroup := router.Group("/api/ai-models")
-			aiModelGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
+			aiModelGroup.Use(
+				authMiddleware, rateLimitMiddleware, budgetMiddleware,
+				sharedMiddleware.RequireBudgetRole(sharedModel.BudgetRoleOwner),
+			)
 			aiModelGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), aiModelHandler.List)
 			aiModelGroup.POST("", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), aiModelHandler.Create)
 			aiModelGroup.PUT("/order", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), aiModelHandler.Reorder)

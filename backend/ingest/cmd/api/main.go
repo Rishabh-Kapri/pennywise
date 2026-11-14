@@ -151,7 +151,7 @@ func main() {
 	// Callers are a user (API key or JWT) or a verified service, writing to
 	// the budget in X-Budget-ID.
 	ingest := api.Group("/ingest")
-	ingest.Use(userAuth, sharedMiddleware.BudgetIdMiddleware(database.Budget))
+	ingest.Use(userAuth, sharedMiddleware.BudgetIdMiddleware(database.BudgetMember))
 	ingest.POST("/messages", sharedMiddleware.RequireScopes(model.ScopeWrite), apiHandler.Ingest)
 	ingest.POST("/sms", sharedMiddleware.RequireScopes(model.ScopeWrite), apiHandler.Sms)
 	ingest.POST("/connections", sharedMiddleware.RequireScopes(model.ScopeWrite), apiHandler.Connect)

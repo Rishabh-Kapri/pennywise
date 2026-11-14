@@ -220,3 +220,22 @@ const (
 	CodeStatementExtractFailed    Code = "STATEMENT_EXTRACT_FAILED"
 	CodeStatementPasswordRequired Code = "STATEMENT_PASSWORD_REQUIRED"
 )
+
+// Budget sharing error codes. Each carries its HTTP status (errs.StatusOf).
+const (
+	// CodeBudgetForbidden: the user's role in the budget doesn't allow this.
+	CodeBudgetForbidden Code = "BUDGET_FORBIDDEN"
+	// CodeBudgetNotFound: no such budget, or the user isn't a member.
+	CodeBudgetNotFound Code = "BUDGET_NOT_FOUND"
+	// CodeBudgetMemberNotFound: no such member, or the member is the owner,
+	// whose role and membership can't be changed.
+	CodeBudgetMemberNotFound Code = "BUDGET_MEMBER_NOT_FOUND"
+	// CodeBudgetAlreadyMember: the invited email already belongs to a member.
+	CodeBudgetAlreadyMember Code = "BUDGET_ALREADY_MEMBER"
+	// CodeBudgetInviteExists: the email already has an open invite.
+	CodeBudgetInviteExists Code = "BUDGET_INVITE_EXISTS"
+	// CodeBudgetInviteNotFound: no open invite with that ID for this user.
+	CodeBudgetInviteNotFound Code = "BUDGET_INVITE_NOT_FOUND"
+	// CodeBudgetOwnerCannotLeave: the owner tried to leave their own budget.
+	CodeBudgetOwnerCannotLeave Code = "BUDGET_OWNER_CANNOT_LEAVE"
+)

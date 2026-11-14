@@ -402,3 +402,21 @@ func SanitizeHeadersForLogging(headers map[string][]string) map[string][]string 
 
 	return sanitized
 }
+
+// budgetRoleKey holds the user's role in the request's budget. It lives
+// outside RequestMetadata on purpose: metadata travels to other services and
+// into stored jobs, and a role must not be trusted once it leaves this request.
+const budgetRoleKey contextKey = "budgetRole"
+
+// WithBudgetRole records the user's role in the request's budget
+// (set by BudgetIdMiddleware).
+func WithBudgetRole(ctx context.Context, role model.BudgetRole) context.Context {
+	return context.WithValue(ctx, budgetRoleKey, role)
+}
+
+// BudgetRoleFromContext returns the user's role in the request's budget, or
+// "" when no user's membership was checked (internal requests, no budget).
+func BudgetRoleFromContext(ctx context.Context) model.BudgetRole {
+	role, _ := ctx.Value(budgetRoleKey).(model.BudgetRole)
+	return role
+}

@@ -168,7 +168,7 @@ func (m *mockBudgetRepo) UpdateById(ctx context.Context, id uuid.UUID, budget mo
 	panic("unimplemented")
 }
 
-func (m *mockBudgetRepo) IsOwnedByUser(ctx context.Context, budgetID uuid.UUID, userID uuid.UUID) (bool, error) {
+func (m *mockBudgetRepo) Rename(ctx context.Context, id uuid.UUID, name string) error {
 	panic("unimplemented")
 }
 
