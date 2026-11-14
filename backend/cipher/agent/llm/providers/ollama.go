@@ -28,6 +28,9 @@ type ollamaChatReq struct {
 	Options   map[string]any  `json:"options,omitempty"`
 	KeepAlive string          `json:"keep_alive,omitempty"`
 	Format    any             `json:"format,omitempty"`
+	// Think turns a thinking model's reasoning on or off. Nil leaves the
+	// model's default (on, for models that can think).
+	Think *bool `json:"think,omitempty"`
 }
 
 type ollamaMessage struct {
@@ -108,7 +111,18 @@ func (c *ollamaClient) toOllamaReq(req sharedModel.ChatRequest) ollamaChatReq {
 		format = nil
 	}
 
+	// A thinking model spends num_predict on its reasoning before the answer,
+	// so a structured reply (extraction, classification) comes back empty and
+	// cut off. Those steps don't need reasoning: turn it off for them, and
+	// when the caller asks for low effort. A model that can't think ignores it.
+	var think *bool
+	if format != nil || req.ReasoningEffort == "low" {
+		off := false
+		think = &off
+	}
+
 	return ollamaChatReq{
+		Think:     think,
 		Model:     req.Model,
 		Messages:  toOllamaMessages(req.Messages),
 		Tools:     toOllamaTools(req.Tools),

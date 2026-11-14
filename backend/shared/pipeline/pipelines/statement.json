@@ -1,0 +1,73 @@
+{
+  "$schema": "../pipeline.schema.json",
+  "id": "statement",
+  "label": "Statements",
+  "description": "Turns bank and card statement PDFs into transactions to review.",
+  "version": 1,
+  "steps": [
+    {
+      "id": "ocr",
+      "label": "Read scans",
+      "description": "Reads pages that are images. Pages with real text skip this step and use the PDF's own text.",
+      "defaultAdapter": "glm_ocr",
+      "adapters": [
+        {
+          "id": "glm_ocr",
+          "label": "GLM-OCR",
+          "description": "A small vision model that reads each page as an image.",
+          "usesModel": true,
+          "modelKind": "chat",
+          "maxTokens": 8192
+        },
+        {
+          "id": "docling",
+          "label": "Docling",
+          "description": "Finds the table on each page and reads it with PaddleOCR. No AI provider needed.",
+          "unavailable": true
+        }
+      ]
+    },
+    {
+      "id": "extract",
+      "label": "Extract",
+      "description": "Turns the page text into transactions using the statement's column layout.",
+      "defaultAdapter": "columns",
+      "adapters": [
+        {
+          "id": "columns",
+          "label": "Column layout",
+          "description": "Finds the header line and puts each word in the column it sits under. No AI."
+        }
+      ]
+    },
+    {
+      "id": "fallback",
+      "label": "Fallback",
+      "description": "Runs when the rows don't add up to the statement's balances and totals, or when you ask. Keeps whichever result checks out better.",
+      "defaultAdapter": "llm",
+      "adapters": [
+        {
+          "id": "llm",
+          "label": "Your AI",
+          "description": "Sends the statement text to your own AI provider, one page at a time.",
+          "usesModel": true,
+          "modelKind": "chat",
+          "maxTokens": 8192
+        }
+      ]
+    },
+    {
+      "id": "save",
+      "label": "Save",
+      "description": "Saves the rows for you to review and match against your transactions.",
+      "defaultAdapter": "api",
+      "adapters": [
+        {
+          "id": "api",
+          "label": "Pennywise API",
+          "description": "Saves the statement import."
+        }
+      ]
+    }
+  ]
+}

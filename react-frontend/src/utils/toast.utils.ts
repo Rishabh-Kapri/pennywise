@@ -1,4 +1,5 @@
 import { createElement } from 'react';
+import { errorText } from './errorText';
 import { addToast } from '@heroui/react';
 import {
   CheckCircleIcon,
@@ -55,12 +56,15 @@ function showToast(title: string, color: ToastColor, options?: ToastOptions) {
   });
 }
 
-/** Message from a thrown error or a rejected thunk, else the fallback. */
+/**
+ * Message from a thrown error or a rejected thunk, else the fallback. Server
+ * codes ("INVALID_ARGUMENT: file is not a PDF") are put into words.
+ */
 export function errorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message) return error.message;
-  if (typeof error === 'string' && error) return error;
+  if (error instanceof Error && error.message) return errorText(error.message);
+  if (typeof error === 'string' && error) return errorText(error);
   if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string' && error.message) {
-    return error.message;
+    return errorText(error.message);
   }
   return fallback;
 }

@@ -7,7 +7,8 @@ import (
 )
 
 // StatementPasswordRepository stores each account's sealed statement PDF
-// password. It never sees the plain password: the API seals and opens it.
+// password. It never sees the plain password: the API seals it, cipher opens it
+// when a statement job runs. Both use LLM_CREDENTIALS_KEY.
 type StatementPasswordRepository interface {
 	// Set saves (or replaces) the account's sealed password.
 	Set(ctx context.Context, budgetID, accountID uuid.UUID, sealed []byte) error

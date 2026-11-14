@@ -131,6 +131,8 @@ export interface StatementSectionReconciliation {
   emiPlans?: StatementEMIPlan[];
   rewardPointsOnRows?: number;
   charges?: StatementChargeTotal[];
+  /** Cashback credited on the statement, net of reversals. */
+  cashback?: StatementChargeTotal;
   rowCount: number;
   matched: StatementMatch[];
   missing: StatementRow[];

@@ -29,6 +29,8 @@ export interface JobSummary {
   label?: string;
   /** Where a message.received job came from: email, sms or api. */
   source?: string;
+  /** Rows a finished statement.extract read; 0 = no transactions found. */
+  statementRows?: number;
   /** What it's doing while it runs. Empty until the job reports something. */
   progress?: JobProgress;
   lastError?: string;

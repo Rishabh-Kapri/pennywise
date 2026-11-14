@@ -50,3 +50,25 @@ func TestOpenAIReasoningEffortOverridesDefault(t *testing.T) {
 		t.Errorf("gpt-5 reasoning = %#v, want summary auto + effort medium", got.Reasoning)
 	}
 }
+
+// A thinking model on Ollama spends the output budget reasoning, so structured
+// replies and low-effort requests turn thinking off; plain chat keeps the
+// model's default.
+func TestOllamaThinking(t *testing.T) {
+	client := &ollamaClient{}
+
+	if got := client.toOllamaReq(reasoningReq("qwen3.5:9b", "ollama", "")); got.Think != nil {
+		t.Errorf("think = %v, want unset for plain chat", *got.Think)
+	}
+
+	low := client.toOllamaReq(reasoningReq("qwen3.5:9b", "ollama", "low"))
+	if low.Think == nil || *low.Think {
+		t.Errorf("think = %v, want false for low effort", low.Think)
+	}
+
+	structured := reasoningReq("qwen3.5:9b", "ollama", "")
+	structured.Format = "json"
+	if got := client.toOllamaReq(structured); got.Think == nil || *got.Think {
+		t.Errorf("think = %v, want false for a JSON reply", got.Think)
+	}
+}

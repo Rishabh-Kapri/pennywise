@@ -995,3 +995,9 @@
   color: var(--color-warning);
   font-size: 0.8125rem;
 }
+
+.page .errorWhy {
+  display: block;
+  margin-top: 0.125rem;
+  color: var(--color-text-secondary);
+}

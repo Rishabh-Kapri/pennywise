@@ -88,6 +88,7 @@ type ChatRequest struct {
 	// ReasoningEffort ("low", "medium", "high") caps how long a reasoning
 	// model thinks before answering. Empty keeps the provider's default.
 	// Honoured by the Responses-API providers (OpenRouter, OpenAI, Lumo);
+	// Ollama turns thinking off for "low", and for any request with a Format;
 	// mechanical steps such as transcribing a statement set it low, since
 	// the thinking otherwise eats the output budget the answer needs.
 	ReasoningEffort string

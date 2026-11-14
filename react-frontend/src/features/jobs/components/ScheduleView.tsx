@@ -1,5 +1,5 @@
 import { useAppSelector } from '@/app/hooks';
-import { errorMessage } from '@/utils';
+import { errorMessage, errorText } from '@/utils';
 import { ApiError } from '@/utils/api';
 import { CheckCircle, CircleNotch, MinusCircle, WarningCircle, type Icon } from '@phosphor-icons/react';
 import { useEffect, useState } from 'react';
@@ -47,7 +47,11 @@ function LastRun({ run }: { run?: JobScheduleRun }) {
           Last run: {label.toLowerCase()} {formatAgo(run.completedAt ?? run.scheduledFor)}
         </span>
       </div>
-      {failed && run.lastError && <div className={styles.error}>{run.lastError}</div>}
+      {failed && run.lastError && (
+        <div className={styles.error} title={run.lastError}>
+          {errorText(run.lastError)}
+        </div>
+      )}
     </>
   );
 }

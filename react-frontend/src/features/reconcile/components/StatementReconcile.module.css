@@ -931,6 +931,10 @@
   font-variant-numeric: tabular-nums;
 }
 
+.page .cardPanel li.cashbackRow > span:last-child {
+  color: var(--color-success);
+}
+
 .page .cardPanel li > span:first-child {
   display: flex;
   flex-direction: column;

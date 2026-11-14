@@ -32,6 +32,7 @@ export function CardSummary({ section }: { section: StatementSectionReconciliati
 
   const charges = section.charges ?? [];
   const chargesTotal = charges.reduce((sum, c) => sum + c.amount, 0);
+  const cashback = section.cashback;
   const rewards = section.rewards;
   const rewardRows = rewards
     ? ([
@@ -44,7 +45,14 @@ export function CardSummary({ section }: { section: StatementSectionReconciliati
     : [];
   const plans = section.emiPlans ?? [];
 
-  if (!tiles.length && !charges.length && !rewardRows.length && section.rewardPointsOnRows === undefined && !plans.length) {
+  if (
+    !tiles.length &&
+    !charges.length &&
+    !cashback &&
+    !rewardRows.length &&
+    section.rewardPointsOnRows === undefined &&
+    !plans.length
+  ) {
     return null;
   }
 
@@ -62,11 +70,11 @@ export function CardSummary({ section }: { section: StatementSectionReconciliati
       )}
 
       <div className={styles.cardPanels}>
-        {charges.length > 0 && (
+        {(charges.length > 0 || cashback) && (
           <section className={styles.cardPanel}>
             <header>
-              <h4>Charges</h4>
-              <strong>{money(chargesTotal)}</strong>
+              <h4>{cashback && charges.length ? 'Charges and cashback' : cashback ? 'Cashback' : 'Charges'}</h4>
+              {charges.length > 0 && <strong>{money(chargesTotal)}</strong>}
             </header>
             <ul>
               {charges.map((c) => (
@@ -80,6 +88,17 @@ export function CardSummary({ section }: { section: StatementSectionReconciliati
                   <span>{money(c.amount)}</span>
                 </li>
               ))}
+              {cashback && (
+                <li className={styles.cashbackRow}>
+                  <span>
+                    Cashback received
+                    <small>
+                      {cashback.count} line{cashback.count === 1 ? '' : 's'}
+                    </small>
+                  </span>
+                  <span>+ {money(cashback.amount)}</span>
+                </li>
+              )}
             </ul>
           </section>
         )}

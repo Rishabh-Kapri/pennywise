@@ -26,6 +26,15 @@ func TestEmbeddedPipelinesLoad(t *testing.T) {
 			t.Errorf("message pipeline has no %q step", id)
 		}
 	}
+	stmt, ok := c.Pipeline(StatementPipeline)
+	if !ok {
+		t.Fatal("no statement pipeline")
+	}
+	for _, id := range []StepID{StepOCR, StepExtract, StepFallback, StepSave} {
+		if _, ok := stmt.Step(id); !ok {
+			t.Errorf("statement pipeline has no %q step", id)
+		}
+	}
 }
 
 func mustSchema(t *testing.T) *jsonschema.Schema {

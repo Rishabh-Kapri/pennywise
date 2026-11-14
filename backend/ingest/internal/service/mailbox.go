@@ -191,7 +191,10 @@ func (s *mailboxService) FetchStatement(
 		if !att.IsPDF() || att.Size > maxStatementBytes {
 			continue
 		}
-		jobrunner.ReportProgress(ctx, job.Progress{Message: "Downloading the statement", Current: i + 1, Total: len(p.Attachments)})
+		jobrunner.ReportProgress(
+			ctx,
+			job.Progress{Message: "Downloading the statement", Current: i + 1, Total: len(p.Attachments)},
+		)
 		data, err := provider.Attachment(ctx, *conn, p.MessageID, att.FileName)
 		if err != nil {
 			return queued, err

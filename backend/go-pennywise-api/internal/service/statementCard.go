@@ -25,6 +25,7 @@ var (
 	emiNumRe     = regexp.MustCompile(`(?i)\b(\d{1,3})\s*(?:/|of|out\s+of)\s*(\d{1,3})\b`)
 	principalRe  = regexp.MustCompile(`(?i)\bprin(?:cipal|\.)?\b`)
 	conversionRe = regexp.MustCompile(`(?i)\bconver(?:t|ted|sion)\b`)
+	cashbackRe   = regexp.MustCompile(`(?i)cash\s*-?\s*back`)
 )
 
 // EMI parts.
@@ -117,6 +118,27 @@ func statementCharges(rows []model.StatementRow) []model.StatementChargeTotal {
 		}
 	}
 	return out
+}
+
+// statementCashback totals the cashback rows: credits add, a reversed
+// cashback (a debit) takes away. Nil when there is none.
+func statementCashback(rows []model.StatementRow) *model.StatementChargeTotal {
+	var t *model.StatementChargeTotal
+	for _, r := range rows {
+		text := r.Description
+		if r.RawDescription != "" {
+			text = r.RawDescription
+		}
+		if r.ChargeKind != "" || !cashbackRe.MatchString(text) {
+			continue
+		}
+		if t == nil {
+			t = &model.StatementChargeTotal{Kind: "cashback"}
+		}
+		t.Amount = roundCents(t.Amount + r.SignedAmount())
+		t.Count++
+	}
+	return t
 }
 
 // rowRewardPoints adds up the points printed against rows, nil when none.

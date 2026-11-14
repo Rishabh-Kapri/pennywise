@@ -13,7 +13,7 @@ import {
 import { useMemo, useRef, useState, type DragEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAppSelector } from '@/app/hooks';
-import { errorMessage, toast } from '@/utils';
+import { errorMessage, errorText, toast } from '@/utils';
 import {
   openStatementPdf,
   statementProgressLabel,
@@ -206,7 +206,7 @@ export default function StatementReconcile({ accountId: cardId }: { accountId?: 
         )}
 
         {detail.isLoading && !detail.data && <p className={styles.muted}>Loading…</p>}
-        {detail.error && <p className={styles.error}>{detail.error}</p>}
+        {detail.error && <p className={styles.error}>{errorText(detail.error)}</p>}
         {detail.data && (
           <StatementDetail
             {...detail}
@@ -329,7 +329,7 @@ export default function StatementReconcile({ accountId: cardId }: { accountId?: 
       <section className={styles.listSection} aria-label="Uploaded statements">
         {imports.length > 0 && <h3>{cardId ? "This card's statements" : 'Your statements'}</h3>}
         {isLoading && <p className={styles.muted}>Loading…</p>}
-        {error && <p className={styles.error}>{error}</p>}
+        {error && <p className={styles.error}>{errorText(error)}</p>}
         {imports.length > 0 && (
           <ul className={styles.importList}>
             {imports.map((imp) => (
@@ -430,10 +430,15 @@ function StatementDetail({
       <div className={styles.stateCard}>
         <WarningCircle size={32} className={`${styles.stateIcon} ${styles.stateIconFailed}`} />
         <h3>This statement couldn't be read</h3>
-        {imp.error && <p className={styles.errorDetail}>{imp.error}</p>}
-        <p className={styles.muted}>
-          If the PDF is locked with a password, delete it and upload it again with the password.
-        </p>
+        {imp.error ? (
+          <p className={styles.errorDetail} title={imp.error}>
+            {errorText(imp.error)}
+          </p>
+        ) : (
+          <p className={styles.muted}>
+            If the PDF is locked with a password, delete it and upload it again with the password.
+          </p>
+        )}
         <div className={styles.stateActions}>
           {imp.jobId && (
             <button type="button" className={styles.primaryButton} onClick={onRetry}>

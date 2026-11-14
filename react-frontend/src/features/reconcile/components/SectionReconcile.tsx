@@ -2,7 +2,7 @@ import { Bank, CheckCircle, CircleNotch, Plus, WarningCircle } from '@phosphor-i
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAppSelector } from '@/app/hooks';
-import { errorMessage, toast } from '@/utils';
+import { errorMessage, errorText, toast } from '@/utils';
 import {
   signedAmount,
   type StatementCreateItem,
@@ -136,7 +136,7 @@ export function SectionReconcile({ section, accounts, onAccountChange, onCreate 
       );
       const parts: string[] = [];
       if (res.skipped.length) parts.push(`${res.skipped.length} already there`);
-      if (res.failed.length) parts.push(`${res.failed.length} failed: ${res.failed[0].error}`);
+      if (res.failed.length) parts.push(`${res.failed.length} failed: ${errorText(res.failed[0].error)}`);
       const title = `Created ${res.created.length} transaction${res.created.length === 1 ? '' : 's'}`;
       const description = parts.join(' · ') || 'They are unapproved, so you can review them in Transactions.';
       if (res.failed.length) toast.warning(title, { description });

@@ -12,11 +12,29 @@ export const MESSAGE_STEPS: { type: string; label: string; doing: string }[] = [
   { type: 'transaction.learn', label: 'Learn', doing: 'Learning' },
 ];
 
+/** A statement upload's jobs, in order. One fetched from email adds its own fetch and import jobs above. */
+export const STATEMENT_STEPS: { type: string; label: string; doing: string }[] = [
+  { type: 'statement.extract', label: 'Read', doing: 'Reading' },
+  { type: 'statement.save', label: 'Save', doing: 'Saving' },
+];
+
 const STEP_LABELS = new Map([
   ['mailbox.changed', 'Mailbox'],
   ['mailbox.backfill', 'Import'],
+  ['statement.fetch', 'Fetch statement'],
+  ['statement.import', 'Import statement'],
   ...MESSAGE_STEPS.map((step): [string, string] => [step.type, step.label]),
+  ...STATEMENT_STEPS.map((step): [string, string] => [step.type, step.label]),
 ]);
+
+export function isStatementRow(row: JobRow): boolean {
+  return row.jobs[0]?.type === 'statement.extract';
+}
+
+/** How many rows a statement's read found, once it has finished. */
+export function statementRowCount(row: JobRow): number | undefined {
+  return row.jobs[0]?.statementRows;
+}
 
 export function jobLabel(type: string): string {
   return STEP_LABELS.get(type) ?? type;
@@ -145,6 +163,17 @@ export function messageSteps(row: JobRow): MessageStep[] {
   });
 }
 
+/** A statement's steps: each one done, running, failed or still to come. */
+export function statementSteps(row: JobRow): MessageStep[] {
+  const known = new Map(rowJobs(row).map((job) => [job.type, job]));
+  return STATEMENT_STEPS.map(({ type, label }) => {
+    const job = known.get(type);
+    if (!job) return { label, state: 'pending' };
+    const state = jobState(job);
+    return { label, state: state === 'cancelled' ? 'stopped' : state, job };
+  });
+}
+
 /** The step a message ended on, for "Stopped at Verify". */
 export function lastStepLabel(row: JobRow): string {
   const last = [...row.jobs].reverse().find((job) => job.type !== 'pipeline.report');
@@ -168,6 +197,9 @@ export function emailGroup(row: JobRow): EmailGroup {
   if (state === 'running' || state === 'queued') return 'active';
   if (state === 'cancelled') return 'cancelled';
 
+  // A statement read without errors has its rows waiting to be reviewed,
+  // unless it found none.
+  if (isStatementRow(row)) return statementRowCount(row) === 0 ? 'skipped' : 'created';
   const outcome = rowOutcome(row);
   if (outcome === 'transaction_created') return 'created';
   return STOPPED_OUTCOMES.includes(outcome ?? '') ? 'attention' : 'skipped';
@@ -177,7 +209,7 @@ export function emailGroup(row: JobRow): EmailGroup {
 export interface JobRun {
   id: string;
   root: JobSummary;
-  kind: 'mailbox' | 'message' | 'other';
+  kind: 'mailbox' | 'message' | 'statement' | 'other';
   /** The rows a person cares about: emails, plus the sync itself if it broke. */
   rows: JobRow[];
   emailCount: number;
@@ -198,9 +230,10 @@ export function isMailboxJob(type: string): boolean {
 
 const ACTIVE_STATES: JobState[] = ['running', 'queued', 'retrying'];
 
-function currentStep(jobs: JobSummary[]): string | null {
+/** What the running job among these is doing, like "Checking". */
+export function currentStep(jobs: JobSummary[]): string | null {
   const running = jobs.find((job) => jobState(job) === 'running');
-  return MESSAGE_STEPS.find((step) => step.type === running?.type)?.doing ?? null;
+  return [...MESSAGE_STEPS, ...STATEMENT_STEPS].find((step) => step.type === running?.type)?.doing ?? null;
 }
 
 export function buildRun(tree: JobTree): JobRun | null {
@@ -215,9 +248,10 @@ export function buildRun(tree: JobTree): JobRun | null {
   if (!isMailboxJob(root.type)) {
     return {
       ...base,
-      kind: root.type === 'message.received' ? 'message' : 'other',
+      kind: root.type === 'message.received' ? 'message' : isStatementRow(row) ? 'statement' : 'other',
       rows: [row],
-      emailCount: root.type === 'message.received' ? 1 : 0,
+      // Statements count too, so a day's statements fold into one row.
+      emailCount: root.type === 'message.received' || isStatementRow(row) ? 1 : 0,
       finished: active ? 0 : 1,
       reading: false,
     };

@@ -36,7 +36,8 @@ const schemaURL = "https://pennywise.cloud/schemas/pipeline.schema.json"
 // define others; the service that runs a pipeline checks at startup that it
 // knows every step.
 const (
-	MessagePipeline = "message"
+	MessagePipeline   = "message"
+	StatementPipeline = "statement"
 )
 
 type StepID string
@@ -49,6 +50,14 @@ const (
 	StepLookup  StepID = "lookup"
 	StepPredict StepID = "predict"
 	StepCreate  StepID = "create"
+)
+
+// Steps of the statement pipeline. It shares StepExtract with the message
+// pipeline.
+const (
+	StepOCR      StepID = "ocr"
+	StepFallback StepID = "fallback"
+	StepSave     StepID = "save"
 )
 
 // Adapter is one way of running a step.

@@ -305,7 +305,9 @@ func (s *statementImport) Extract(ctx context.Context, budgetID uuid.UUID) (port
 		}
 	}
 	if client == nil {
-		return nil, errs.New(errs.CodeStatementExtractFailed, "no client")
+		return nil, errs.New(errs.CodeStatementExtractFailed,
+			"reading statements needs the %s model %q, and this budget's owner hasn't added it (or it's disabled) in AI settings",
+			s.cfg.Provider, s.cfg.Model)
 	}
 
 	switch client.Type {

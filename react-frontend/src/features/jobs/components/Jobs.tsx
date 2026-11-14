@@ -1,7 +1,7 @@
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { useHeader } from '@/context/HeaderContext';
 import { selectIsDemoUser } from '@/features/auth/store/authSlice';
-import { LoadingState, errorMessage, toast } from '@/utils';
+import { LoadingState, errorMessage, explainError, toast } from '@/utils';
 import {
   ArrowRight,
   ArrowsClockwise,
@@ -11,6 +11,7 @@ import {
   CircleNotch,
   Copy,
   EnvelopeSimple,
+  FileText,
   MagnifyingGlass,
   Prohibit,
   Tray,
@@ -33,10 +34,12 @@ import {
 import {
   buildAttempts,
   buildRun,
+  currentStep,
   emailGroup,
   focusJob,
   isMailboxJob,
   isParked,
+  isStatementRow,
   isStopped,
   jobLabel,
   jobState,
@@ -45,6 +48,8 @@ import {
   rowJobs,
   rowOutcome,
   rowState,
+  statementRowCount,
+  statementSteps,
   type EmailGroup,
   type JobRow,
   type JobRun,
@@ -99,12 +104,30 @@ const OUTCOME_REASONS: Record<string, string> = {
 type ShowFilter = 'all' | 'attention' | 'active' | 'created' | 'skipped';
 
 const SHOW_OPTIONS: { value: ShowFilter; label: string }[] = [
-  { value: 'all', label: 'All emails' },
+  { value: 'all', label: 'Any status' },
   { value: 'attention', label: 'Needs attention' },
   { value: 'active', label: 'In progress' },
-  { value: 'created', label: 'Transactions created' },
+  { value: 'created', label: 'Completed' },
   { value: 'skipped', label: 'No new transaction' },
 ];
+
+/** What a run came from, for the "show only" filter. */
+type SourceFilter = 'all' | 'email' | 'message' | 'statement';
+
+const SOURCE_OPTIONS: { value: SourceFilter; label: string }[] = [
+  { value: 'all', label: 'Everything' },
+  { value: 'email', label: 'Emails' },
+  { value: 'message', label: 'SMS and API' },
+  { value: 'statement', label: 'Statements' },
+];
+
+/** Jobs that are neither a message nor a statement only show under Everything. */
+function runSource(run: JobRun): SourceFilter | null {
+  if (run.kind === 'mailbox') return 'email';
+  if (run.kind === 'statement') return 'statement';
+  if (run.kind === 'message') return ['sms', 'api'].includes(run.root.source ?? '') ? 'message' : 'email';
+  return null;
+}
 
 const SECTIONS: { group: EmailGroup; title: string; icon: ReactNode; openByDefault: boolean }[] = [
   { group: 'attention', title: 'Needs attention', icon: <Warning size={16} weight="fill" />, openByDefault: true },
@@ -156,6 +179,7 @@ function rowTitle(row: JobRow): string {
   const first = row.jobs[0];
   if (first.type === 'mailbox.backfill') return 'Reading the chosen emails';
   if (first.type === 'mailbox.changed') return 'Reading the mailbox';
+  if (isStatementRow(row)) return first.label || `Statement from ${formatHourMinute(first.createdAt)}`;
   return first.label || jobLabel(first.type);
 }
 
@@ -182,6 +206,13 @@ function rowReason(row: JobRow, reason?: string): string {
   if (state === 'failed') return `${step} failed after ${plural(job.attempt, 'attempt', 'attempts')}.`;
   if (state === 'retrying') {
     return `${step} failed. Trying again, attempt ${job.attempt + 1} of ${job.maxAttempts}.`;
+  }
+  if (isStatementRow(row) && rowState(row) === 'done') {
+    const count = statementRowCount(row);
+    if (count === 0) return 'The statement was read, but no transactions were found in it.';
+    const found =
+      count === undefined ? 'the statement' : `${plural(count, 'transaction', 'transactions')} from the statement`;
+    return `Read ${found}. They are waiting for you to review.`;
   }
   const outcome = rowOutcome(row) ?? '';
   return reason || OUTCOME_REASONS[outcome] || STATE_LABELS[rowState(row)];
@@ -433,13 +464,20 @@ function RowDetails({ row }: { row: JobRow }) {
       ) : (
         <>
           {isMessage && <StepLine steps={messageSteps(row)} />}
+          {isStatementRow(row) && <StepLine steps={statementSteps(row)} />}
 
           <div>
             <h4 className={styles.detailHeading}>What happened</h4>
             <p>{rowReason(row, reason)}</p>
             {/* A job that recovered keeps its last error; that's history, in technical details. */}
+            {/* In words here; the error as the server wrote it is in technical details. */}
             {['failed', 'retrying'].includes(jobState(focus)) && focus.lastError && (
-              <p className={styles.errorText}>{focus.lastError}</p>
+              <p className={styles.errorText}>
+                {explainError(focus.lastError).title}
+                {explainError(focus.lastError).detail && (
+                  <span className={styles.errorWhy}>{explainError(focus.lastError).detail}</span>
+                )}
+              </p>
             )}
           </div>
 
@@ -512,7 +550,12 @@ function RowActions({ row, canContinue = false }: { row: JobRow; canContinue?: b
   const isMessage = first.type === 'message.received';
   const busy = preparing || actingJobId !== null;
 
-  const act = async (id: string, action: 'retry' | 'run-again' | 'continue' | 'dismiss', done: string, failed: string) => {
+  const act = async (
+    id: string,
+    action: 'retry' | 'run-again' | 'continue' | 'dismiss',
+    done: string,
+    failed: string,
+  ) => {
     try {
       await dispatch(runJobAction({ id, action })).unwrap();
       toast.success(done);
@@ -524,7 +567,9 @@ function RowActions({ row, canContinue = false }: { row: JobRow; canContinue?: b
   const dismiss = () => {
     const question = parked
       ? "Mark this as not a transaction? It won't come back here, and importing it again won't bring it back."
-      : "Dismiss this email? It won't come back here, and importing it again won't bring it back.";
+      : isStatementRow(row)
+        ? "Dismiss this statement's job? It won't come back here. The statement itself stays where it is."
+        : "Dismiss this email? It won't come back here, and importing it again won't bring it back.";
     if (!window.confirm(question)) return;
     void act(first.id, 'dismiss', 'Dismissed', "Couldn't dismiss it");
   };
@@ -709,7 +754,30 @@ function outcomeTitle(items: string, attention: number, created: number): string
   return `${items}, no transactions`;
 }
 
+/** A statement upload, or a day's uploads, as the run's headline. */
+function statementTitle(run: ListedRun, attention: number): string {
+  if (run.rows.length > 1) {
+    const statements = plural(run.rows.length, 'statement', 'statements');
+    if (run.active) return `Reading ${statements}`;
+    if (attention > 0) return `${attention} of ${statements} need${attention === 1 ? 's' : ''} attention`;
+    const empty = run.rows.filter((row) => statementRowCount(row) === 0).length;
+    if (empty === run.rows.length) return `No transactions found in ${statements}`;
+    return empty > 0 ? `${statements} read, ${empty} with no transactions` : `${statements} read`;
+  }
+  const state = rowState(run.rows[0]);
+  if (state === 'failed') return "Couldn't read the statement";
+  if (state === 'retrying') return 'Reading the statement, trying again';
+  if (state === 'cancelled') return 'Statement cancelled';
+  if (run.active) return run.doing === 'Saving' ? 'Saving the statement' : 'Reading the statement';
+  const count = statementRowCount(run.rows[0]);
+  if (count === 0) return 'No transactions found in the statement';
+  return count === undefined
+    ? 'Statement read'
+    : `${plural(count, 'transaction', 'transactions')} read from a statement`;
+}
+
 function runTitle(run: ListedRun, attention: number, created: number): string {
+  if (run.kind === 'statement') return statementTitle(run, attention);
   if (run.kind === 'other') return jobLabel(run.root.type);
   if (run.kind === 'message') {
     if (!run.startedAt) return run.doing ?? rowStatus(run.rows[0]);
@@ -733,6 +801,11 @@ function runMeta(run: ListedRun): string {
     ? `${formatHourMinute(run.startedAt!)} – ${formatHourMinute(run.root.createdAt)}`
     : formatHourMinute(run.root.createdAt);
   if (run.kind === 'mailbox') return `${run.root.label || 'Mailbox'} · ${time}`;
+  if (run.kind === 'statement' && run.rows.length > 1) return `Statements · ${time}`;
+  if (run.kind === 'statement') {
+    const live = progressText(rowJobs(run.rows[0]).find((job) => job.status === 'running')?.progress);
+    return [run.root.label || 'Statement', live ?? time].join(' · ');
+  }
   if (run.kind === 'message') {
     const source = { sms: 'SMS', api: 'API' }[run.root.source ?? ''] ?? 'Message';
     return run.startedAt || !run.root.label ? `${source} · ${time}` : `${source} · ${run.root.label} · ${time}`;
@@ -778,6 +851,8 @@ function Progress({ run, current }: { run: JobRun; current: JobRow | null }) {
       ? Math.round((run.finished / total) * 100)
       : 0;
   const liveStep = current ? rowJobs(current).find((job) => job.status === 'running')?.progress?.message : undefined;
+  // The followed row's own step, not whichever job in the run reported last.
+  const doing = current ? currentStep(rowJobs(current)) : run.doing;
   return (
     <motion.div
       className={styles.progressWrap}
@@ -796,7 +871,7 @@ function Progress({ run, current }: { run: JobRun; current: JobRow | null }) {
             </span>
           )}
           {!run.reading && (
-            <span className={styles.muted}>{liveStep ?? (run.doing ? `${run.doing}…` : 'Waiting…')}</span>
+            <span className={styles.muted}>{liveStep ?? (doing ? `${doing}…` : 'Waiting…')}</span>
           )}
         </span>
         <div
@@ -832,6 +907,7 @@ function RunView({
   forceOpen: boolean;
 }) {
   const [userOpen, setUserOpen] = useState<boolean | null>(null);
+  const [followedId, setFollowedId] = useState<string | null>(null);
 
   const groups = useMemo(() => {
     const byGroup: Record<EmailGroup, JobRow[]> = {
@@ -859,8 +935,15 @@ function RunView({
   // A day's row can hold many emails; opened, it would push the other days off screen.
   const flagged = groups.attention.length > 0 && !run.startedAt;
   const open = userOpen ?? (run.active || flagged || forceOpen || filtering || hasOpenRow);
+  // Several rows run at once, and each reports on its own. Stay on one row
+  // until it finishes, or the steps on show would jump between them.
   const current =
-    groups.active.find((row) => rowJobs(row).some((job) => job.status === 'running')) ?? groups.active[0] ?? null;
+    groups.active.find((row) => row.jobs[0].id === followedId) ??
+    groups.active.find((row) => rowJobs(row).some((job) => job.status === 'running')) ??
+    groups.active[0] ??
+    null;
+  const currentId = current?.jobs[0].id ?? null;
+  if (currentId !== followedId) setFollowedId(currentId);
 
   const shownSections = SECTIONS.filter(({ group }) => visible(group).length > 0);
   const isMain = ({ openByDefault }: (typeof SECTIONS)[number]) => openByDefault;
@@ -871,7 +954,15 @@ function RunView({
     <Section
       key={group}
       group={group}
-      title={title}
+      title={
+        run.kind !== 'statement'
+          ? title
+          : group === 'created'
+            ? 'Statements read'
+            : group === 'skipped'
+              ? 'No transactions found'
+              : title
+      }
       icon={icon}
       rows={visible(group)}
       defaultOpen={openByDefault || filtering}
@@ -887,6 +978,8 @@ function RunView({
             <CircleNotch size={20} className={styles.spin} />
           ) : groups.attention.length > 0 ? (
             <Warning size={20} className={styles.warn} />
+          ) : run.kind === 'statement' ? (
+            <FileText size={20} className={styles.muted} />
           ) : run.kind === 'other' ? (
             <CheckCircle size={20} className={styles.muted} />
           ) : (
@@ -913,10 +1006,18 @@ function RunView({
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.25, ease: EASE_OUT }}
           >
-            <div className={`${styles.runBody} ${split ? styles.runBodySplit : ''}`}>
-              {main.length > 0 && <div className={styles.runColumn}>{main.map(renderSection)}</div>}
-              {side.length > 0 && <div className={styles.runColumn}>{side.map(renderSection)}</div>}
-            </div>
+            {run.kind === 'statement' && run.rows.length === 1 ? (
+              // One statement, so its details sit right under the header.
+              <div className={styles.runBody}>
+                {groups.attention.length > 0 && <RowActions row={run.rows[0]} />}
+                <RowDetails row={run.rows[0]} />
+              </div>
+            ) : (
+              <div className={`${styles.runBody} ${split ? styles.runBodySplit : ''}`}>
+                {main.length > 0 && <div className={styles.runColumn}>{main.map(renderSection)}</div>}
+                {side.length > 0 && <div className={styles.runColumn}>{side.map(renderSection)}</div>}
+              </div>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -937,15 +1038,16 @@ export default function Jobs() {
   const [openRowId, setOpenRowId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [show, setShow] = useState<ShowFilter>('all');
+  const [source, setSource] = useState<SourceFilter>('all');
   const [refreshes, setRefreshes] = useState(0);
   const [daysShown, setDaysShown] = useState(DAYS_PER_STEP);
   const [searchParams, setSearchParams] = useSearchParams();
   const viewParam = searchParams.get('view');
-  const view = viewParam === 'pipeline' || viewParam === 'schedules' ? viewParam : 'emails';
+  const view = viewParam === 'pipeline' || viewParam === 'schedules' ? viewParam : 'activity';
   const changeView = (next: typeof view) =>
     setSearchParams(
       (params) => {
-        if (next === 'emails') params.delete('view');
+        if (next === 'activity') params.delete('view');
         else params.set('view', next);
         return params;
       },
@@ -1001,11 +1103,11 @@ export default function Jobs() {
 
   const allRuns = useMemo(() => (list?.trees ?? []).flatMap((tree) => buildRun(tree) ?? []), [list?.trees]);
   const filtering = show !== 'all' || search.trim() !== '' || filters.errorCode !== '';
-  // Filters look for particular emails, so matches stay under their own run.
+  // Filters look for particular items, so matches stay under their own run.
   const runs = useMemo(() => {
-    const shown = allRuns.filter((run) => !isEmptySync(run));
+    const shown = allRuns.filter((run) => !isEmptySync(run) && (source === 'all' || runSource(run) === source));
     return filtering ? shown : mergeBySource(shown);
-  }, [allRuns, filtering]);
+  }, [allRuns, filtering, source]);
 
   const changeSearch = (value: string) => {
     setSearch(value);
@@ -1049,7 +1151,7 @@ export default function Jobs() {
         <div className={styles.views} role="tablist" aria-label="Jobs view">
           {(
             [
-              ['emails', 'Emails'],
+              ['activity', 'Activity'],
               ['pipeline', 'Pipelines'],
               ['schedules', 'Schedules'],
             ] as const
@@ -1081,15 +1183,27 @@ export default function Jobs() {
               <label className={styles.search}>
                 <MagnifyingGlass size={16} />
                 <input
-                  aria-label="Search by subject or job ID"
-                  placeholder="Search subject or paste a job ID"
+                  aria-label="Search by subject, file name or job ID"
+                  placeholder="Search subject, file name or job ID"
                   value={search}
                   onChange={(event) => changeSearch(event.target.value)}
                 />
               </label>
               <select
                 className={styles.select}
-                aria-label="Show"
+                aria-label="Show only"
+                value={source}
+                onChange={(event) => setSource(event.target.value as SourceFilter)}
+              >
+                {SOURCE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                className={styles.select}
+                aria-label="Status"
                 value={show}
                 onChange={(event) => setShow(event.target.value as ShowFilter)}
               >
@@ -1140,8 +1254,8 @@ export default function Jobs() {
                         )
                       }
                     >
-                      <span className={styles.failureText} title={failure.message}>
-                        {failure.code}
+                      <span className={styles.failureText} title={`${failure.code}: ${failure.message}`}>
+                        {explainError(`${failure.code}: ${failure.message}`).title}
                       </span>
                       <span className={styles.failureMeta}>
                         <span className={styles.muted}>
@@ -1172,7 +1286,7 @@ export default function Jobs() {
             {filters.errorCode && (
               <p className={styles.filterNote}>
                 <span>
-                  Only showing jobs failing with <code>{filters.errorCode}</code>
+                  Only showing jobs where: {explainError(filters.errorCode).title} <code>{filters.errorCode}</code>
                 </span>
                 <button
                   type="button"
@@ -1184,7 +1298,7 @@ export default function Jobs() {
               </p>
             )}
 
-            {list && runs.length > 0 && !anyAttention && !isActive && !filtering && (
+            {list && runs.length > 0 && !anyAttention && !isActive && !filtering && source === 'all' && (
               <p className={styles.allClear}>
                 <CheckCircle size={18} />
                 Nothing needs attention.
@@ -1194,7 +1308,7 @@ export default function Jobs() {
             {listLoading === LoadingState.ERROR && <div className={styles.empty}>{error}</div>}
             {!list && listLoading === LoadingState.PENDING && <div className={styles.empty}>Loading jobs…</div>}
             {list && runs.length === 0 && listLoading !== LoadingState.ERROR && (
-              <div className={styles.empty}>{filtering ? 'Nothing matches.' : 'No jobs yet.'}</div>
+              <div className={styles.empty}>{filtering || source !== 'all' ? 'Nothing matches.' : 'No jobs yet.'}</div>
             )}
 
             <div className={styles.days}>

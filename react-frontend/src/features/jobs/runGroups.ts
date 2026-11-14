@@ -21,6 +21,7 @@ function dayOf(run: JobRun): string {
 function sourceOf(run: JobRun): string | null {
   // A message with no sync above it is its own job (SMS, API).
   if (run.kind === 'message') return run.root.source ? `message:${run.root.source}` : null;
+  if (run.kind === 'statement') return 'statement';
   if (run.root.type !== 'mailbox.changed') return null;
   // A sync that's running or broke shows its own progress or error, and
   // joins the day's row once it has finished.
