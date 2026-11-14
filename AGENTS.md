@@ -15,7 +15,7 @@ Personal budgeting app (YNAB-style) with AI transaction classification from bank
 | `android-frontend` | Expo React Native app | [AGENTS.md](android-frontend/AGENTS.md) |
 | `frontend` | Angular 17 app, legacy and maintenance only | [AGENTS.md](frontend/AGENTS.md) |
 
-`backend/python-mlp` (deprecated) and `backend/file-parser` (experimental) are not run anywhere. Don't extend them. `docs/` holds architecture notes.
+`backend/file-parser` (experimental) is not run anywhere. Don't extend it. `docs/` holds architecture notes.
 
 ## Main flow
 

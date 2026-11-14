@@ -90,7 +90,6 @@ The agent's LLM provider is configurable per user in Settings → AI Configurati
 | React frontend | [`react-frontend`](react-frontend/README.md) | Active development | Main web app |
 | Android app | [`android-frontend`](android-frontend/README.md) | Active development | Expo React Native client |
 | Angular frontend | [`frontend`](frontend/README.md) | Legacy/maintenance | Older web app |
-| Python MLP | [`backend/python-mlp`](backend/python-mlp/README.md) | Deprecated | Former prediction service, replaced by Cipher |
 | File parser | [`backend/file-parser`](backend/file-parser/README.md) | Experimental | Clojure scaffold for bulk uploads |
 
 Architectural notes worth knowing: `cipher` and the API share a Go repository package instead of chattering over HTTP, so classification reads are sub-millisecond; service-to-service calls carry correlation/caller/origin headers plus a shared internal token, propagated through Temporal workflow hops. See [AGENTS.md](AGENTS.md) for the full map.
