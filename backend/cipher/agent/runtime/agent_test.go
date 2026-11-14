@@ -23,7 +23,7 @@ type scriptedLLM struct {
 	requests  []sharedModel.ChatRequest
 }
 
-func (s *scriptedLLM) Chat(_ context.Context, req sharedModel.ChatRequest) (*sharedModel.ChatResponse, error) {
+func (s *scriptedLLM) Chat(_ context.Context, req sharedModel.ChatRequest, _ *string) (*sharedModel.ChatResponse, error) {
 	s.requests = append(s.requests, req)
 	if s.calls >= len(s.responses) {
 		return nil, errors.New("scriptedLLM: more calls than scripted responses")
@@ -33,7 +33,7 @@ func (s *scriptedLLM) Chat(_ context.Context, req sharedModel.ChatRequest) (*sha
 	return &res, nil
 }
 
-func (s *scriptedLLM) Stream(context.Context, sharedModel.ChatRequest) <-chan sharedModel.StreamChunk {
+func (s *scriptedLLM) Stream(context.Context, sharedModel.ChatRequest, *string) <-chan sharedModel.StreamChunk {
 	ch := make(chan sharedModel.StreamChunk)
 	close(ch)
 	return ch

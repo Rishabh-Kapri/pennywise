@@ -25,6 +25,7 @@ type fakeLLM struct {
 func (f *fakeLLM) Chat(
 	ctx context.Context,
 	req sharedModel.ChatRequest,
+	_ *string,
 ) (*sharedModel.ChatResponse, error) {
 	f.calls++
 	f.gotModel = req.Model
@@ -40,7 +41,7 @@ func (f *fakeLLM) Chat(
 	}, nil
 }
 
-func (f *fakeLLM) Stream(ctx context.Context, req sharedModel.ChatRequest) <-chan sharedModel.StreamChunk {
+func (f *fakeLLM) Stream(ctx context.Context, req sharedModel.ChatRequest, _ *string) <-chan sharedModel.StreamChunk {
 	ch := make(chan sharedModel.StreamChunk)
 	close(ch)
 	return ch

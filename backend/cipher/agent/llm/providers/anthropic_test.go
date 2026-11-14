@@ -67,7 +67,7 @@ func TestAnthropicStreamTextAndUsage(t *testing.T) {
 				},
 			},
 		},
-	}))
+	}, nil))
 
 	if got, want := len(chunks), 5; got != want {
 		t.Fatalf("chunk count = %d, want %d: %#v", got, want, chunks)
@@ -130,7 +130,7 @@ func TestAnthropicStreamToolUse(t *testing.T) {
 				},
 			},
 		},
-	}))
+	}, nil))
 
 	if got, want := len(chunks), 6; got != want {
 		t.Fatalf("chunk count = %d, want %d: %#v", got, want, chunks)

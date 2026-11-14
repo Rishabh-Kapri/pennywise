@@ -95,7 +95,7 @@ func TestOpenRouterChatUsesResponsesAPIAndNormalizesToolCalls(t *testing.T) {
 		},
 		ToolChoice: []sharedModel.ToolChoice{{Type: sharedModel.ToolChoiceAuto}},
 		MaxTokens:  256,
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("Chat returned error: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestOpenRouterStreamProcessesResponsesToolEvents(t *testing.T) {
 			Messages: []sharedModel.AgentMessage{
 				{Role: sharedModel.RoleUser, Content: []sharedModel.ContentBlock{{Type: "text", Text: "today?"}}},
 			},
-		}),
+		}, nil),
 		handler.StreamHandler{},
 	)
 
@@ -205,7 +205,7 @@ func TestOpenRouterStreamProcessesContentPartDelta(t *testing.T) {
 			Messages: []sharedModel.AgentMessage{
 				{Role: sharedModel.RoleUser, Content: []sharedModel.ContentBlock{{Type: "text", Text: "hello"}}},
 			},
-		}),
+		}, nil),
 		handler.StreamHandler{},
 	)
 

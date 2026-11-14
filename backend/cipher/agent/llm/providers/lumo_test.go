@@ -56,7 +56,7 @@ func TestLumoResponses(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			res, err := client.Chat(context.Background(), sharedModel.ChatRequest{Model: "lumo-max"})
+			res, err := client.Chat(context.Background(), sharedModel.ChatRequest{Model: "lumo-max"}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -67,7 +67,7 @@ func TestLumoResponses(t *testing.T) {
 				t.Fatalf("reasoning = %q", res.Reasoning)
 			}
 			completed, tool, reasoning := false, false, false
-			for chunk := range client.Stream(context.Background(), sharedModel.ChatRequest{Model: "lumo-max"}) {
+			for chunk := range client.Stream(context.Background(), sharedModel.ChatRequest{Model: "lumo-max"}, nil) {
 				if chunk.Type == sharedModel.ChunkEventReasoning && chunk.Text == "Checking the tool." {
 					reasoning = true
 				}
@@ -125,7 +125,7 @@ func TestLumoStreamReportsProviderErrors(t *testing.T) {
 				t.Fatal(err)
 			}
 			req := sharedModel.ChatRequest{Model: "lumo-max"}
-			result := handler.ProcessStream(context.Background(), &req, client.Stream(context.Background(), req), handler.StreamHandler{})
+			result := handler.ProcessStream(context.Background(), &req, client.Stream(context.Background(), req, nil), handler.StreamHandler{})
 			if result.Err == nil || !strings.Contains(result.Err.Error(), tc.want) {
 				t.Fatalf("stream error = %v, want %q", result.Err, tc.want)
 			}
@@ -162,7 +162,7 @@ func TestLumoStreamFallsBackToLiteAfterPremiumQuota(t *testing.T) {
 		t.Fatal(err)
 	}
 	req := sharedModel.ChatRequest{Model: "lumo-max"}
-	result := handler.ProcessStream(context.Background(), &req, client.Stream(context.Background(), req), handler.StreamHandler{})
+	result := handler.ProcessStream(context.Background(), &req, client.Stream(context.Background(), req, nil), handler.StreamHandler{})
 	if result.Err != nil || result.Text != "Lite answer" || result.Model != "lumo-lite" {
 		t.Fatalf("stream result = %+v", result)
 	}
@@ -188,7 +188,7 @@ func TestLumoStreamDoesNotRetryAfterOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	req := sharedModel.ChatRequest{Model: "lumo-max"}
-	result := handler.ProcessStream(context.Background(), &req, client.Stream(context.Background(), req), handler.StreamHandler{})
+	result := handler.ProcessStream(context.Background(), &req, client.Stream(context.Background(), req, nil), handler.StreamHandler{})
 	if result.Err == nil || requests.Load() != 1 {
 		t.Fatalf("stream result = %+v, requests = %d", result, requests.Load())
 	}
@@ -216,7 +216,7 @@ func TestLumoChatFallsBackToLiteAfterPremiumQuota(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	response, err := client.Chat(context.Background(), sharedModel.ChatRequest{Model: "lumo-max"})
+	response, err := client.Chat(context.Background(), sharedModel.ChatRequest{Model: "lumo-max"}, nil)
 	if err != nil || response == nil || response.Model != "lumo-lite" || requests.Load() != 2 {
 		t.Fatalf("response = %+v, error = %v, requests = %d", response, err, requests.Load())
 	}

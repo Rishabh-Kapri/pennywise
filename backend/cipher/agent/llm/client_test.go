@@ -37,10 +37,10 @@ func (observationTestTelemetry) Shutdown(context.Context) error         { return
 
 type observationTestLLM struct{ chunks []sharedModel.StreamChunk }
 
-func (observationTestLLM) Chat(context.Context, sharedModel.ChatRequest) (*sharedModel.ChatResponse, error) {
+func (observationTestLLM) Chat(context.Context, sharedModel.ChatRequest, *string) (*sharedModel.ChatResponse, error) {
 	return nil, nil
 }
-func (l observationTestLLM) Stream(context.Context, sharedModel.ChatRequest) <-chan sharedModel.StreamChunk {
+func (l observationTestLLM) Stream(context.Context, sharedModel.ChatRequest, *string) <-chan sharedModel.StreamChunk {
 	out := make(chan sharedModel.StreamChunk, len(l.chunks))
 	for _, chunk := range l.chunks {
 		out <- chunk
