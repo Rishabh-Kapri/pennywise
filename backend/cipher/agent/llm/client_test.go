@@ -58,7 +58,7 @@ func TestObservedStreamRecordsReasoningAndToolOutput(t *testing.T) {
 		{Type: sharedModel.ChunkEventToolCallStart, OutputIndex: 0, ToolCallID: "call_1", ToolName: "get_budget"},
 		{Type: sharedModel.ChunkEventToolCallDelta, OutputIndex: 0, ToolArgsDelta: `{"month":"September"}`},
 		{Type: sharedModel.ChunkEventCompleted, Model: "lumo-lite"},
-	}}, observationTestTelemetry{provider})
+	}}, observationTestTelemetry{provider}, "lumo")
 	req := sharedModel.ChatRequest{Model: "lumo-lite", Messages: []sharedModel.AgentMessage{{
 		Role: sharedModel.RoleUser, Content: []sharedModel.ContentBlock{{Type: "text", Text: "Show my budget"}},
 	}}}

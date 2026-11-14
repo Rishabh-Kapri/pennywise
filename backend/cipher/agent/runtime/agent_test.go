@@ -109,7 +109,7 @@ func newTestAgent(t *testing.T, client llm.LLM, registry *tools.ToolRegistry, op
 	}
 
 	opts = append([]AgentOption{WithTelemetry(tel)}, opts...)
-	resolver := scriptedResolver{client: llm.NewObservedLLM(client, tel)}
+	resolver := scriptedResolver{client: llm.NewObservedLLM(client, tel, "test")}
 	agent, err := NewAgent(resolver, registry, opts...)
 	if err != nil {
 		t.Fatalf("NewAgent: %v", err)

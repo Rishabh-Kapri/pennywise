@@ -67,7 +67,7 @@ func (r *fakeResolver) Resolve(_ context.Context, provider, model string) (*llm.
 	if model == "" {
 		model = r.models[provider]
 	}
-	return llm.NewObservedLLM(client, r.telemetry), model, nil
+	return llm.NewObservedLLM(client, r.telemetry, "test"), model, nil
 }
 
 func newTestService(t *testing.T, resolver *fakeResolver, targets []llm.Target) *predictionService {
