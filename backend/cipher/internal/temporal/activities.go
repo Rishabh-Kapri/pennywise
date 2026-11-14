@@ -195,8 +195,8 @@ func activityLogger(ctx context.Context) *logger.ContextLogger {
 // detected at the HeartbeatTimeout instead of the whole StartToCloseTimeout.
 func withHeartbeats(ctx context.Context) context.Context {
 	activity.RecordHeartbeat(ctx, "started")
-	return progress.With(ctx, func(step string) {
-		activity.RecordHeartbeat(ctx, step)
+	return progress.With(ctx, func(s progress.Step) {
+		activity.RecordHeartbeat(ctx, s.Name)
 	})
 }
 

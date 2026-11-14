@@ -726,6 +726,20 @@
   transition: width 0.3s ease;
 }
 
+.timeHint {
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sourceCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
 .rawTextBlock {
   width: 100%;
   max-height: 10rem;

@@ -2,6 +2,7 @@
 import { ArrowLeft, CalendarDots as CalendarDays, CaretLeft as ChevronLeft, CaretRight as ChevronRight, FileText, Info, PencilLine, Receipt as ReceiptText } from '@phosphor-icons/react';
 import { getCurrencyLocaleString } from '@/utils/date.utils';
 import type { Transaction } from '../../types/transaction.types';
+import { formatSourceTime } from '../../utils/sourceTime';
 import styles from '../Transaction/Transaction.module.css';
 import { useEffect, useMemo, useState } from 'react';
 import { useAppSelector } from '@/app/hooks';
@@ -44,19 +45,23 @@ function getDateGroupLabel(txn: Transaction) {
 }
 
 function getCardDateLabel(txn: Transaction) {
-  return getTransactionDate(txn).toLocaleDateString('en-US', {
+  const date = getTransactionDate(txn).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
   });
+  const time = formatSourceTime(txn.occurredAt);
+  return time ? `${date} · ${time}` : date;
 }
 
 function getDetailDateLabel(txn: Transaction) {
-  return getTransactionDate(txn).toLocaleDateString('en-US', {
+  const date = getTransactionDate(txn).toLocaleDateString('en-US', {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
     year: '2-digit',
   });
+  const time = formatSourceTime(txn.occurredAt);
+  return time ? `${date} · ${time}` : date;
 }
 
 interface TransactionCardView {

@@ -355,7 +355,11 @@ func contentBlocksText(blocks []sharedModel.ContentBlock) string {
 	return strings.Join(parts, "\n\n")
 }
 
-func (c *openAIClient) Chat(ctx context.Context, req sharedModel.ChatRequest) (*sharedModel.ChatResponse, error) {
+func (c *openAIClient) Chat(
+	ctx context.Context,
+	req sharedModel.ChatRequest,
+	conversationID *string,
+) (*sharedModel.ChatResponse, error) {
 	log := logger.Logger(ctx)
 	openAIReq := c.toOpenAIReq(req)
 	log.Info("open ai req", "req", openAIReq)
@@ -374,7 +378,11 @@ func (c *openAIClient) Chat(ctx context.Context, req sharedModel.ChatRequest) (*
 	return &chatRes, nil
 }
 
-func (c *openAIClient) Stream(ctx context.Context, req sharedModel.ChatRequest) <-chan sharedModel.StreamChunk {
+func (c *openAIClient) Stream(
+	ctx context.Context,
+	req sharedModel.ChatRequest,
+	conversationID *string,
+) <-chan sharedModel.StreamChunk {
 	log := logger.Logger(ctx)
 	openAIReq := c.toOpenAIReq(req)
 	openAIReq.Stream = true
@@ -421,7 +429,15 @@ func (c *openAIClient) Stream(ctx context.Context, req sharedModel.ChatRequest) 
 					} `json:"item"`
 				}
 				if err := json.Unmarshal(event.Data, &ev); err != nil {
-					log.Error("failed to unmarshal stream event", "event", event.Event, "data", string(event.Data), "error", err)
+					log.Error(
+						"failed to unmarshal stream event",
+						"event",
+						event.Event,
+						"data",
+						string(event.Data),
+						"error",
+						err,
+					)
 					continue
 				}
 				switch ev.Item.Type {
@@ -458,7 +474,15 @@ func (c *openAIClient) Stream(ctx context.Context, req sharedModel.ChatRequest) 
 					Delta string `json:"delta"`
 				}
 				if err := json.Unmarshal(event.Data, &ev); err != nil {
-					log.Error("failed to unmarshal stream event", "event", event.Event, "data", string(event.Data), "error", err)
+					log.Error(
+						"failed to unmarshal stream event",
+						"event",
+						event.Event,
+						"data",
+						string(event.Data),
+						"error",
+						err,
+					)
 					continue
 				}
 				events <- sharedModel.StreamChunk{
@@ -471,7 +495,15 @@ func (c *openAIClient) Stream(ctx context.Context, req sharedModel.ChatRequest) 
 					Delta       string `json:"delta"`
 				}
 				if err := json.Unmarshal(event.Data, &ev); err != nil {
-					log.Error("failed to unmarshal stream event", "event", event.Event, "data", string(event.Data), "error", err)
+					log.Error(
+						"failed to unmarshal stream event",
+						"event",
+						event.Event,
+						"data",
+						string(event.Data),
+						"error",
+						err,
+					)
 					continue
 				}
 				events <- sharedModel.StreamChunk{
@@ -484,7 +516,15 @@ func (c *openAIClient) Stream(ctx context.Context, req sharedModel.ChatRequest) 
 					OutputIndex int `json:"output_index"`
 				}
 				if err := json.Unmarshal(event.Data, &ev); err != nil {
-					log.Error("failed to unmarshal stream event", "event", event.Event, "data", string(event.Data), "error", err)
+					log.Error(
+						"failed to unmarshal stream event",
+						"event",
+						event.Event,
+						"data",
+						string(event.Data),
+						"error",
+						err,
+					)
 					continue
 				}
 				events <- sharedModel.StreamChunk{
@@ -515,7 +555,15 @@ func (c *openAIClient) Stream(ctx context.Context, req sharedModel.ChatRequest) 
 				}
 
 				if err := json.Unmarshal(event.Data, &ev); err != nil {
-					log.Error("failed to unmarshal stream event", "event", event.Event, "data", string(event.Data), "error", err)
+					log.Error(
+						"failed to unmarshal stream event",
+						"event",
+						event.Event,
+						"data",
+						string(event.Data),
+						"error",
+						err,
+					)
 					continue
 				}
 				response := openAIRes{

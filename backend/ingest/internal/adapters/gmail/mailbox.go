@@ -19,6 +19,7 @@ type mailbox interface {
 	// headers loads a message without its body.
 	headers(ctx context.Context, id string) (*gmailv1.Message, error)
 	search(ctx context.Context, query string, maxResults int64) ([]*gmailv1.Message, error)
+	attachment(ctx context.Context, messageID, attachmentID string) (*gmailv1.MessagePartBody, error)
 }
 
 // openMailbox connects to one account. ts refreshes the access token from
@@ -79,6 +80,10 @@ func (m *sdkMailbox) headers(ctx context.Context, id string) (*gmailv1.Message, 
 		MetadataHeaders("From", "Subject").
 		Context(ctx).
 		Do()
+}
+
+func (m *sdkMailbox) attachment(ctx context.Context, messageID, attachmentID string) (*gmailv1.MessagePartBody, error) {
+	return m.svc.Users.Messages.Attachments.Get(m.account, messageID, attachmentID).Context(ctx).Do()
 }
 
 // search reads every page until maxResults messages are found.

@@ -37,6 +37,9 @@ const (
 	// MessageOutcomeTransactionDuplicate: the message matched a transaction that
 	// already existed, so nothing new was added.
 	MessageOutcomeTransactionDuplicate MessageOutcome = "transaction_duplicate"
+	// MessageOutcomeStatement: the message was a statement; its PDFs went to
+	// statement.fetch instead of becoming a transaction.
+	MessageOutcomeStatement MessageOutcome = "statement"
 )
 
 // MessagePredictionSource is the step that produced a prediction.

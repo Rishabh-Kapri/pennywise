@@ -254,6 +254,30 @@ func (a *adapter) Fetch(ctx context.Context, conn model.MailConnection, ids []st
 	return a.fetchMessages(ctx, conn, ids, mb.message)
 }
 
+// Attachment implements [ports.MailProvider]. It loads the message again for
+// a fresh attachment handle and downloads the file named fileName.
+func (a *adapter) Attachment(ctx context.Context, conn model.MailConnection, messageID, fileName string) ([]byte, error) {
+	mb, err := a.mailboxFor(ctx, conn)
+	if err != nil {
+		return nil, err
+	}
+	msg, err := mb.message(ctx, messageID)
+	if err != nil {
+		return nil, googleError("get message", conn, err)
+	}
+	for _, att := range attachments(msg.Payload) {
+		if att.FileName != fileName {
+			continue
+		}
+		body, err := mb.attachment(ctx, messageID, att.ID)
+		if err != nil {
+			return nil, googleError("get attachment", conn, err)
+		}
+		return decodeBytes(body.Data)
+	}
+	return nil, errs.New(errs.CodeInternalError, "attachment %q not found on message", fileName)
+}
+
 // fetchMessages loads each message with load, keeping the order of ids. A
 // message deleted since it was listed is skipped; any other failure fails the
 // whole fetch.

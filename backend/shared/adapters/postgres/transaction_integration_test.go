@@ -265,6 +265,36 @@ func TestTransactionRepo_GetAllNormalizedWithoutFilter(t *testing.T) {
 	assert.Len(t, page.Data, 1)
 }
 
+func TestTransactionRepo_GetAllNormalizedCarriesTheSourceTime(t *testing.T) {
+	pool, repo, s := setup(t)
+	ctx := context.Background()
+
+	timed := mustCreate(t, repo, newTxn(s, "2026-10-12", -20))
+	dateOnly := mustCreate(t, repo, newTxn(s, "2026-10-11", -30))
+	byHand := mustCreate(t, repo, newTxn(s, "2026-10-10", -40))
+
+	// timed has a source without a time (its email) and a later one with it
+	// (its SMS); dateOnly has only the first kind.
+	at := time.Date(2026, 10, 12, 14, 35, 0, 0, time.UTC)
+	_, err := pool.Exec(ctx, `
+		INSERT INTO transaction_sources (budget_id, transaction_id, kind, raw_text, occurred_at, created_at) VALUES
+		($1, $2, 'EMAIL', 'email', NULL, now() - interval '1 minute'),
+		($1, $2, 'SMS', 'sms', $4, now()),
+		($1, $3, 'EMAIL', 'email', NULL, now())`, s.budgetID, timed.ID, dateOnly.ID, at)
+	require.NoError(t, err)
+
+	page, err := repo.GetAllNormalized(ctx, s.budgetID, &model.TransactionFilter{SortOrder: "DESC"})
+	require.NoError(t, err)
+	byID := map[uuid.UUID]model.Transaction{}
+	for _, txn := range page.Data {
+		byID[txn.ID] = txn
+	}
+	require.NotNil(t, byID[timed.ID].OccurredAt)
+	assert.True(t, byID[timed.ID].OccurredAt.Equal(at))
+	assert.Nil(t, byID[dateOnly.ID].OccurredAt)
+	assert.Nil(t, byID[byHand.ID].OccurredAt)
+}
+
 func TestTransactionRepo_GetAllNormalizedFiltersAndDerivedColumns(t *testing.T) {
 	_, repo, s := setup(t)
 	ctx := context.Background()

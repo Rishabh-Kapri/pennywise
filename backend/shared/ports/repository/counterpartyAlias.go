@@ -38,4 +38,15 @@ type TransactionSourceRepository interface {
 	// LookupKey returns the key of the transaction's oldest source that has
 	// one, or nil when none does.
 	LookupKey(ctx context.Context, budgetID, transactionID uuid.UUID) (*model.LookupKey, error)
+	// ListByTransaction returns every source of the transaction, oldest first.
+	// It is empty for a transaction made by hand.
+	ListByTransaction(ctx context.Context, budgetID, transactionID uuid.UUID) ([]model.TransactionSource, error)
+	// RefsByTransaction returns the references the transactions' messages
+	// (email, SMS) stated, per transaction. Statement lines are left out, so
+	// a statement can't confirm its own match.
+	RefsByTransaction(ctx context.Context, budgetID uuid.UUID, transactionIDs []uuid.UUID) (map[uuid.UUID][]string, error)
+	// ReplaceStatementLines makes lines the statement lines importID recorded:
+	// the import's earlier ones are removed, and a transaction already linked
+	// to another statement's line is moved to this one.
+	ReplaceStatementLines(ctx context.Context, budgetID, importID uuid.UUID, lines []model.StatementLineSource) error
 }

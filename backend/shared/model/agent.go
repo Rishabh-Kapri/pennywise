@@ -57,6 +57,7 @@ type AgentMessage struct {
 	Sequence int
 	Role     Role
 	Content  []ContentBlock
+	Images   []string
 	// CreatedAt is when the message actually happened, carried over from
 	// ConversationMessage on replay. The memory observer records a timestamp per
 	// observation and has no other source for it — left zero it invents one.
@@ -75,10 +76,15 @@ type ChatRequest struct {
 	ToolChoice  []ToolChoice
 	Temperature float32
 	MaxTokens   int
-	Metadata    map[string]string
-	Stream      bool
-	Format      any // "json" forces JSON output; a JSON-schema map constrains the output shape via structured outputs (Ollama only for now)
-	ChatType    ChatType
+	// ContextWindow is how many tokens the prompt and answer may use
+	// together. 0 keeps the provider's default. Only Ollama honours it
+	// (num_ctx); its default (4096) is too small once a page image is in
+	// the prompt.
+	ContextWindow int
+	Metadata      map[string]string
+	Stream        bool
+	Format        any // "json" forces JSON output; a JSON-schema map constrains the output shape via structured outputs (Ollama only for now)
+	ChatType      ChatType
 	// ReasoningEffort ("low", "medium", "high") caps how long a reasoning
 	// model thinks before answering. Empty keeps the provider's default.
 	// Honoured by the Responses-API providers (OpenRouter, OpenAI, Lumo);

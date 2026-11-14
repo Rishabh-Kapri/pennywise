@@ -179,6 +179,7 @@ func (r *Resolver) buildClient(
 	if err != nil {
 		return nil, err
 	}
+	providerType := "cloud"
 
 	var client llm.LLM
 	switch provider {
@@ -190,13 +191,14 @@ func (r *Resolver) buildClient(
 		client, err = providers.NewOpenRouterClientWithKey(apiKey)
 	case model.LLMProviderOllama:
 		client, err = providers.NewUserOllamaClient(baseURL, apiKey, r.userURLCli)
+		providerType = "local"
 	default:
 		err = fmt.Errorf("unsupported provider %q", provider)
 	}
 	if err != nil {
 		return nil, err
 	}
-	return llm.NewObservedLLM(client, r.tel), nil
+	return llm.NewObservedLLM(client, r.tel, providerType), nil
 }
 
 // Test makes a tiny call to a model with the owner's saved key for

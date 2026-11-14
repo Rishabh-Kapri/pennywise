@@ -25,6 +25,9 @@ type StatementHandler interface {
 	CreateMissing(c *gin.Context)
 	Retry(c *gin.Context)
 	Delete(c *gin.Context)
+	File(c *gin.Context)
+	ListPasswords(c *gin.Context)
+	SetPassword(c *gin.Context)
 }
 
 type statementHandler struct {
@@ -36,8 +39,9 @@ func NewStatementHandler(service service.StatementService) StatementHandler {
 }
 
 // Upload takes one PDF (`file`), an optional default `accountId` and an
-// optional `password`, and answers 202 while extraction runs. A file already
-// uploaded answers 200 with the existing import.
+// optional `password`, and answers 202 with the new import while cipher reads
+// it (the import's jobId). A file already uploaded answers 200 with the
+// existing import. A wrong password shows up later, as the import's error.
 func (h *statementHandler) Upload(c *gin.Context) {
 	ctx := c.Request.Context()
 
@@ -46,8 +50,7 @@ func (h *statementHandler) Upload(c *gin.Context) {
 
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
-		var tooLarge *http.MaxBytesError
-		if errors.As(err, &tooLarge) {
+		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
 			c.JSON(http.StatusRequestEntityTooLarge, gin.H{
 				"error": fmt.Sprintf("statement exceeds the %dMB limit", service.MaxStatementSizeBytes>>20),
 			})
@@ -82,14 +85,7 @@ func (h *statementHandler) Upload(c *gin.Context) {
 
 	imp, duplicate, err := h.service.Upload(ctx, header.Filename, data, c.PostForm("password"), accountID)
 	if err != nil {
-		switch {
-		case errors.Is(err, service.ErrStatementPasswordRequired):
-			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error(), "code": "password_required"})
-		case errors.Is(err, service.ErrStatementNoText):
-			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error(), "code": "no_text"})
-		default:
-			writeStatementError(c, err)
-		}
+		writeStatementError(c, err)
 		return
 	}
 	if duplicate {
@@ -187,6 +183,63 @@ func (h *statementHandler) Delete(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// File serves the uploaded PDF, inline unless ?download=true. A locked PDF
+// stays locked: the viewer asks for its password.
+func (h *statementHandler) File(c *gin.Context) {
+	id, ok := statementID(c)
+	if !ok {
+		return
+	}
+	imp, f, err := h.service.File(c.Request.Context(), id)
+	if err != nil {
+		writeStatementError(c, err)
+		return
+	}
+	defer f.Close()
+
+	disposition := "inline"
+	if c.Query("download") == "true" {
+		disposition = "attachment"
+	}
+	c.Header("Content-Type", "application/pdf")
+	c.Header("Content-Disposition", fmt.Sprintf("%s; filename=%q", disposition, imp.FileName))
+	c.Header("Cache-Control", "private, max-age=3600")
+	http.ServeContent(c.Writer, c.Request, imp.FileName, imp.CreatedAt, f)
+}
+
+// ListPasswords returns the accounts that have a statement password saved.
+// The passwords themselves are never sent back.
+func (h *statementHandler) ListPasswords(c *gin.Context) {
+	ids, err := h.service.StatementPasswordAccounts(c.Request.Context())
+	if err != nil {
+		writeStatementError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"accountIds": ids})
+}
+
+// SetPassword saves the password that opens an account's statement PDFs, so
+// statements fetched from email can be read. An empty password removes it.
+func (h *statementHandler) SetPassword(c *gin.Context) {
+	accountID, err := uuid.Parse(c.Param("accountId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid account id"})
+		return
+	}
+	var body struct {
+		Password string `json:"password"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+	if err := h.service.SetStatementPassword(c.Request.Context(), accountID, body.Password); err != nil {
+		writeStatementError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 func statementID(c *gin.Context) (uuid.UUID, bool) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -201,8 +254,15 @@ func writeStatementError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, service.ErrStatementNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+	case errors.Is(err, service.ErrStatementNoFile):
+		c.JSON(http.StatusNotFound, gin.H{"error": "this statement was uploaded before PDFs were kept; upload it again to view it"})
 	case errors.As(err, &e) && e.Code == errs.CodeInvalidArgument:
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	case errors.As(err, &e) && e.Code == errs.CodeAdapterNotConfigured:
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": e.Message})
+	case errors.As(err, &e) && e.Code == errs.CodeJobEnqueueFailed:
+		logger.Logger(c.Request.Context()).Error("statement job not queued", "error", err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "statements can't be read right now; try again later"})
 	default:
 		logger.Logger(c.Request.Context()).Error("statement request failed", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

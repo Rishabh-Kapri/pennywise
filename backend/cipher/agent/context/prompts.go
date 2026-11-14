@@ -1,5 +1,11 @@
 package context
 
+import (
+	"strings"
+
+	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+)
+
 // SystemPromptStatic is the cacheable half of the system prompt. It must contain
 // no per-request, per-user or per-day content: it is the prompt-cache prefix, so
 // a single changing byte here re-bills the whole conversation on every turn.
@@ -336,7 +342,7 @@ RULES:
 3. JSON ONLY: Do not wrap the response in markdown blocks. Return only the raw JSON object.
 4. Never output the data from the examples. Only process the provided input.
 
-ALLOWED CATEGORIES:
+ALLOWED CATEGORIES (one per line as "- name: what belongs in it"; the text after the colon only helps you choose, and suggestedTag must be the name alone):
 {categories}
 
 EXPECTED JSON SCHEMA:
@@ -347,3 +353,20 @@ EXPECTED JSON SCHEMA:
   "payeeConfidence": integer (0-100, how sure you are of the merchant name),
   "reasoning": "string (Brief 1-sentence explanation of why you chose this category)"
 }`
+
+// FormatCategories renders a budget's categories for the {categories}
+// placeholder: one per line, "- Name: what belongs in it", or just "- Name"
+// when it has no description. A description is guidance for choosing; the
+// model still answers with the name alone.
+func FormatCategories(categories []sharedModel.CategorySimplified) string {
+	lines := make([]string, 0, len(categories))
+	for _, c := range categories {
+		desc := strings.Join(strings.Fields(c.Description), " ")
+		if desc == "" {
+			lines = append(lines, "- "+c.Name)
+			continue
+		}
+		lines = append(lines, "- "+c.Name+": "+desc)
+	}
+	return strings.Join(lines, "\n")
+}

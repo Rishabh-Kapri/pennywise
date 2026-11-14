@@ -20,6 +20,8 @@ const initialState: JobsState = {
   filters: initialFilters,
   updatedAt: null,
   liveVersion: 0,
+  latest: {},
+  statementVersion: 0,
   details: {},
   detailLoading: LoadingState.IDLE,
   actingJobId: null,
@@ -77,7 +79,11 @@ const jobSlice = createSlice({
     /** Shows the change right away; the reload it prompts brings the rest. */
     jobUpdated: (state, action: PayloadAction<JobUpdate>) => {
       state.liveVersion += 1;
-      const { jobId, status, progress } = action.payload;
+      const { jobId, type, status, progress } = action.payload;
+      state.latest[jobId] = { ...state.latest[jobId], ...action.payload, progress: progress ?? state.latest[jobId]?.progress };
+      if (type?.startsWith('statement.') && status !== 'queued' && status !== 'running') {
+        state.statementVersion += 1;
+      }
       for (const tree of state.list?.trees ?? []) {
         const job = tree.jobs.find((candidate) => candidate.id === jobId);
         if (!job) continue;
@@ -93,6 +99,8 @@ const jobSlice = createSlice({
     },
     jobsMayHaveChanged: (state) => {
       state.liveVersion += 1;
+      // Updates may have been missed while the socket was down.
+      state.statementVersion += 1;
     },
     jobDetailsCleared: (state) => {
       state.details = {};

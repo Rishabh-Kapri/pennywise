@@ -95,7 +95,7 @@ RULES:
 4. JSON ONLY: Do not wrap the response in markdown blocks. Return only the raw JSON object.
 5. Never output the data from the examples. Only process the provided input.
 
-ALLOWED CATEGORIES:
+ALLOWED CATEGORIES (one per line as "- name: what belongs in it"; the text after the colon only helps you choose, and suggestedTag must be the name alone):
 {categories}
 
 EXPECTED JSON SCHEMA:

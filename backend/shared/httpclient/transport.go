@@ -150,8 +150,8 @@ func (h *httpTransport) handleBodyParse(ctx context.Context, req doResult) (tran
 		originalReq.URL.String(),
 		"status",
 		req.StatusCode,
-		"body",
-		string(parsedBody),
+		// "body",
+		// string(parsedBody)[:1000],
 	)
 
 	resp.StatusCode = req.StatusCode

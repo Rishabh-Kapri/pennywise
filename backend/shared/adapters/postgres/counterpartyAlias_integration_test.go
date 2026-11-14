@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
@@ -80,6 +81,36 @@ func TestCounterpartyAliasesAndSources(t *testing.T) {
 	}
 	if none, err := sources.LookupKey(ctx, budgetID, uuid.New()); err != nil || none != nil {
 		t.Fatalf("no source: %+v, %v", none, err)
+	}
+
+	// Listing returns the source with its parsed fields; blanks stay nil.
+	listed, err := sources.ListByTransaction(ctx, budgetID, txnID)
+	if err != nil || len(listed) != 1 {
+		t.Fatalf("listed = %+v, %v", listed, err)
+	}
+	if l := listed[0]; l.Kind != "EMAIL" || l.Origin != "PIPELINE" || l.RawText != "first" ||
+		l.Channel == nil || *l.Channel != "UPI" || l.Amount == nil || *l.Amount != 10.5 ||
+		l.Ref != nil || l.OccurredAt != nil || l.OccurredOn != nil {
+		t.Fatalf("listed source = %+v", l)
+	}
+	// Another budget sees nothing, and a transaction made by hand gets an empty list.
+	if other, err := sources.ListByTransaction(ctx, uuid.New(), txnID); err != nil || len(other) != 0 {
+		t.Fatalf("other budget: %+v, %v", other, err)
+	}
+	// The time of day and date a source stated come back.
+	at := time.Date(2026, 11, 8, 14, 35, 0, 0, time.FixedZone("IST", 5*3600+1800))
+	on := time.Date(2026, 11, 8, 0, 0, 0, 0, time.UTC)
+	smsTxn := uuid.New()
+	exec(`INSERT INTO transactions (id, budget_id, account_id, amount, date) VALUES ($1, $2, $3, -10, '2026-11-08')`, smsTxn, budgetID, accountID)
+	if _, err := sources.RecordFromPipeline(ctx, budgetID, smsTxn, model.MessageSource{
+		Kind: "SMS", Text: "sms", OccurredOn: &on, OccurredAt: &at,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := sources.ListByTransaction(ctx, budgetID, smsTxn); err != nil || len(got) != 1 ||
+		got[0].OccurredOn == nil || *got[0].OccurredOn != "2026-11-08" ||
+		got[0].OccurredAt == nil || !got[0].OccurredAt.Equal(at) {
+		t.Fatalf("timed source = %+v, %v", got, err)
 	}
 
 	// The user's word replaces the payee and category.

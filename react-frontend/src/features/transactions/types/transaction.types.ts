@@ -42,6 +42,8 @@ export interface Transaction {
   locationLng?: number | null;
   locationName?: string | null;
   locationSource?: LocationSource | null;
+  /** When the bank's message says the payment happened; absent without a time of day. Read only. */
+  occurredAt?: string | null;
   deleted?: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -132,6 +134,31 @@ export interface TransactionDocument {
   sizeBytes: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export type TransactionSourceKind = 'EMAIL' | 'SMS' | 'STATEMENT_LINE';
+
+/**
+ * A bank email, SMS or statement line that reported a transaction
+ * (GET /transactions/:id/sources). Fields the source didn't state are absent.
+ * `occurredAt` is set only when the source gave a time of day.
+ */
+export interface TransactionSource {
+  id: string;
+  kind: TransactionSourceKind;
+  origin: 'BACKFILL' | 'PIPELINE';
+  rawText: string;
+  channel?: string;
+  merchant?: string;
+  vpa?: string;
+  ref?: string;
+  accountHint?: string;
+  direction?: 'DEBIT' | 'CREDIT';
+  amount?: number;
+  currency?: string;
+  occurredOn?: string;
+  occurredAt?: string;
+  createdAt: string;
 }
 
 export interface TransactionStatusDTO {

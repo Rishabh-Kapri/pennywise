@@ -3,8 +3,10 @@ package factory
 import (
 	"context"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
 	decisionsAdapter "github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/adapters/decisions"
 	llmAdapter "github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/adapters/llm"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/adapters/localocr"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/adapters/regex"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/ports"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/resolver"
@@ -196,7 +198,8 @@ func buildStep[P any](
 
 // Check returns the adapter for this budget's check step.
 func (p *messagePipeline) Check(ctx context.Context, budgetID uuid.UUID) (ports.CheckTransaction, error) {
-	return buildStep(ctx, p, budgetID, pipeline.StepCheck,
+	return buildStep(
+		ctx, p, budgetID, pipeline.StepCheck,
 		func(attempt pipeline.Attempt) (ports.CheckTransaction, error) {
 			switch attempt.Adapter {
 			case "regex":
@@ -214,7 +217,8 @@ func (p *messagePipeline) Check(ctx context.Context, budgetID uuid.UUID) (ports.
 
 // Extract returns the adapter for this budget's extract step.
 func (p *messagePipeline) Extract(ctx context.Context, budgetID uuid.UUID) (ports.Extract, error) {
-	return buildStep(ctx, p, budgetID, pipeline.StepExtract,
+	return buildStep(
+		ctx, p, budgetID, pipeline.StepExtract,
 		func(attempt pipeline.Attempt) (ports.Extract, error) {
 			if attempt.Adapter == "llm" {
 				return p.llm(attempt)
@@ -227,7 +231,8 @@ func (p *messagePipeline) Extract(ctx context.Context, budgetID uuid.UUID) (port
 
 // Verify returns the adapter for this budget's verify step.
 func (p *messagePipeline) Verify(ctx context.Context, budgetID uuid.UUID) (ports.Verifier, error) {
-	return buildStep(ctx, p, budgetID, pipeline.StepVerify,
+	return buildStep(
+		ctx, p, budgetID, pipeline.StepVerify,
 		func(attempt pipeline.Attempt) (ports.Verifier, error) {
 			if attempt.Adapter == "decisions" {
 				return p.decisions(attempt)
@@ -240,7 +245,8 @@ func (p *messagePipeline) Verify(ctx context.Context, budgetID uuid.UUID) (ports
 
 // Predict returns the adapter for this budget's predict step.
 func (p *messagePipeline) Predict(ctx context.Context, budgetID uuid.UUID) (ports.Predictor, error) {
-	return buildStep(ctx, p, budgetID, pipeline.StepPredict,
+	return buildStep(
+		ctx, p, budgetID, pipeline.StepPredict,
 		func(attempt pipeline.Attempt) (ports.Predictor, error) {
 			if attempt.Adapter == "llm" {
 				return p.llm(attempt)
@@ -249,4 +255,68 @@ func (p *messagePipeline) Predict(ctx context.Context, budgetID uuid.UUID) (port
 		},
 		func(links []chainLink[ports.Predictor]) ports.Predictor { return predictChain{links} },
 	)
+}
+
+type StatementImport interface {
+	Extract(ctx context.Context, budgetID uuid.UUID) (ports.StatementImport, error)
+}
+
+type statementImport struct {
+	cfg           OCRConfig
+	resolver      resolver.Resolver
+	llmModelsRepo repository.UserLLMModelRepository
+}
+
+type OCRConfig struct {
+	Driver    string // llm | local
+	Provider  string // empty for local
+	Model     string // empty for local
+	MaxTokens int
+}
+
+// Statement extraction requires glm-ocr from ollama to be configured to work if ollama is selected.
+// Can't change the extraction config without re-deployment for now
+func NewStatementFactory(
+	cfg OCRConfig,
+	resolver resolver.Resolver,
+	llmModelsRepo repository.UserLLMModelRepository,
+) StatementImport {
+	return &statementImport{cfg, resolver, llmModelsRepo}
+}
+
+func (s *statementImport) Extract(ctx context.Context, budgetID uuid.UUID) (ports.StatementImport, error) {
+	if s.cfg.Driver == "local" {
+		return nil, nil
+	}
+
+	models, err := s.llmModelsRepo.ListUsableForBudget(ctx, budgetID, sharedModel.LLMModelChat)
+	if err != nil {
+		return nil, errs.Wrap(errs.CodeStatementExtractFailed, "cannot get model", err)
+	}
+
+	var client *llm.ObservedLLM
+	for _, m := range models {
+		if m.Provider == sharedModel.LLMProviderName(s.cfg.Provider) && m.Slug == s.cfg.Model {
+			client, err = s.resolver.ResolveLLM(m)
+			if err != nil {
+				return nil, errs.Wrap(errs.CodeStatementExtractFailed, "cannot resolve llm client", err)
+			}
+			break
+		}
+	}
+	if client == nil {
+		return nil, errs.New(errs.CodeStatementExtractFailed, "no client")
+	}
+
+	switch client.Type {
+	case "local":
+		return localocr.NewOCRAdapter(
+			client,
+			localocr.OCRConfig{Provider: s.cfg.Provider, Model: s.cfg.Model, MaxTokens: s.cfg.MaxTokens},
+		)
+	case "cloud":
+		return nil, errs.New(errs.CodeAdapterNotConfigured, "no adatper for ocr for cloud llm")
+	default:
+		return nil, nil
+	}
 }

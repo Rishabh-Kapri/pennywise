@@ -1,6 +1,7 @@
 package model
 
 import (
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -51,4 +52,23 @@ type ReceivedMessage struct {
 	// RunID is set when a person sends a finished message through the pipeline
 	// again. It makes that run's jobs new ones instead of duplicates.
 	RunID string `json:"runId,omitempty"`
+	// MailAccount is the mailbox an email came from, so its attachments can
+	// be fetched later. Empty for SMS and API messages.
+	MailAccount string `json:"mailAccount,omitempty"`
+	// Attachments lists an email's files without their bytes.
+	Attachments []MessageAttachment `json:"attachments,omitempty"`
+}
+
+// MessageAttachment is one file attached to an email. ID is the provider's
+// handle for downloading it.
+type MessageAttachment struct {
+	ID       string `json:"id"`
+	FileName string `json:"fileName"`
+	MimeType string `json:"mimeType"`
+	Size     int64  `json:"size"`
+}
+
+// IsPDF reports whether the attachment is a PDF, by type or file name.
+func (a MessageAttachment) IsPDF() bool {
+	return strings.EqualFold(a.MimeType, "application/pdf") || strings.HasSuffix(strings.ToLower(a.FileName), ".pdf")
 }

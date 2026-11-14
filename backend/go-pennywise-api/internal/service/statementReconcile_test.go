@@ -1,15 +1,10 @@
 package service
 
 import (
-	"bytes"
-	"context"
-	"os/exec"
-	"strings"
 	"testing"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
-	"github.com/go-pdf/fpdf"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -106,37 +101,6 @@ func TestStatementTextSimilarity(t *testing.T) {
 	r := model.StatementRow{Description: "MC DONALDSPUNE"}
 	assert.Equal(t, 1.0, statementTextSimilarity(r, model.StatementLedgerTxn{PayeeName: "McDonalds"}))
 	assert.Equal(t, 0.0, statementTextSimilarity(r, model.StatementLedgerTxn{PayeeName: "Zepto"}))
-}
-
-func TestMergeExtractedSections(t *testing.T) {
-	chunk1 := []model.StatementSection{
-		{
-			AccountLabel: "HDFC Savings", AccountNumber: "XXXX1234",
-			PeriodStart: sp("2026-08-01"), OpeningBalance: f(1000),
-			Rows: []model.StatementRow{row("", "2026-08-02", "A", 10, model.StatementDebit)},
-		},
-		{
-			AccountLabel: "HDFC FD", AccountNumber: "XX9876",
-			Rows: []model.StatementRow{row("", "2026-08-03", "B", 20, model.StatementCredit)},
-		},
-	}
-	chunk2 := []model.StatementSection{
-		// continuation page with no header: belongs to the last section (FD)
-		{Rows: []model.StatementRow{row("", "2026-08-04", "C", 30, model.StatementCredit)}},
-		// same savings account, number printed differently
-		{
-			AccountNumber: "50100001234", PeriodEnd: sp("2026-08-31"), ClosingBalance: f(990),
-			Rows: []model.StatementRow{row("", "2026-08-05", "D", 40, model.StatementDebit)},
-		},
-	}
-
-	merged := mergeExtractedSections([][]model.StatementSection{chunk1, chunk2})
-	require.Len(t, merged, 2)
-	assert.Len(t, merged[0].Rows, 2)
-	assert.Equal(t, "2026-08-31", *merged[0].PeriodEnd)
-	assert.Equal(t, 990.0, *merged[0].ClosingBalance)
-	assert.Equal(t, 1000.0, *merged[0].OpeningBalance)
-	assert.Len(t, merged[1].Rows, 2)
 }
 
 func TestCleanStatementSections(t *testing.T) {
@@ -237,63 +201,41 @@ func TestStatementRowHashOccurrence(t *testing.T) {
 	assert.Equal(t, statementRowHash(key, 0), statementRowHash(statementRowKey(acc, r), 0))
 }
 
-func TestChunkStatementPages(t *testing.T) {
-	pages := []string{"page one   \n\n\n\nline", "", strings.Repeat("x", 50), "short"}
-	chunks := chunkStatementPages(pages, 90)
-	require.Len(t, chunks, 2)
-	assert.Equal(t, 1, chunks[0].FirstPage)
-	assert.Equal(t, 1, chunks[0].LastPage)
-	assert.Contains(t, chunks[0].Text, "=== Page 1 ===\npage one\n\nline")
-	assert.Equal(t, 3, chunks[1].FirstPage)
-	assert.Equal(t, 4, chunks[1].LastPage)
-}
-
-func TestSplitPDFPages(t *testing.T) {
-	pages, err := splitPDFPages("one\ftwo\f")
-	require.NoError(t, err)
-	assert.Equal(t, []string{"one", "two"}, pages)
-
-	_, err = splitPDFPages(" \f \f")
-	assert.ErrorIs(t, err, ErrStatementNoText)
-}
-
 // TestExtractPDFPages runs the real pdftotext over generated PDFs, plain and
 // password protected. Skipped where poppler is not installed.
-func TestExtractPDFPages(t *testing.T) {
-	if _, err := exec.LookPath(pdftotextBinary); err != nil {
-		t.Skip("pdftotext not installed")
-	}
 
-	build := func(password string) []byte {
-		pdf := fpdf.New("P", "mm", "A4", "")
-		if password != "" {
-			pdf.SetProtection(fpdf.CnProtectPrint, password, "owner-"+password)
-		}
-		pdf.SetFont("Helvetica", "", 10)
-		pdf.AddPage()
-		pdf.Cell(40, 8, "02/08/2026")
-		pdf.Cell(80, 8, "SWIGGY BANGALORE")
-		pdf.Cell(30, 8, "450.00 Dr")
-		pdf.AddPage()
-		pdf.Cell(40, 8, "05/08/2026")
-		pdf.Cell(80, 8, "SALARY ACME")
-		var buf bytes.Buffer
-		require.NoError(t, pdf.Output(&buf))
-		return buf.Bytes()
-	}
+func TestReconcileMatchesByReference(t *testing.T) {
+	// Ten days apart and the text shares nothing, but both sides state the
+	// same reference: the same payment.
+	r := row("0-0", "2026-10-12", "UPI-SOMEONE-x@ybl-YESB0YBLUPI-555566667777", 250, model.StatementDebit)
+	r.Reference = "555566667777"
+	other := ledger("2026-10-02", -250, "Unrelated Name")
+	same := ledger("2026-10-02", -250, "Also Unrelated")
+	same.Refs = []string{"555566667777"}
 
-	ctx := context.Background()
-	pages, err := extractPDFPages(ctx, build(""), "")
-	require.NoError(t, err)
-	require.Len(t, pages, 2)
-	assert.Regexp(t, `02/08/2026\s+SWIGGY BANGALORE\s+450.00 Dr`, pages[0])
+	matched, missing, _ := reconcileStatementRows(
+		[]model.StatementRow{r}, []model.StatementLedgerTxn{other, same}, "2026-10-01", "2026-10-31", map[uuid.UUID]bool{},
+	)
+	require.Len(t, matched, 1)
+	assert.Empty(t, missing)
+	assert.Equal(t, same.ID, matched[0].Transaction.ID)
+	assert.Equal(t, model.StatementMatchExact, matched[0].Kind)
+}
 
-	locked := build("s3cret")
-	_, err = extractPDFPages(ctx, locked, "")
-	assert.ErrorIs(t, err, ErrStatementPasswordRequired)
-	_, err = extractPDFPages(ctx, locked, "wrong")
-	assert.ErrorIs(t, err, ErrStatementPasswordRequired)
-	pages, err = extractPDFPages(ctx, locked, "s3cret")
-	require.NoError(t, err)
-	assert.Contains(t, pages[1], "SALARY ACME")
+func TestCleanStatementSectionsReadsNarration(t *testing.T) {
+	r := row("", "2026-10-02",
+		"UPI-Example Shop-shop.1@okaxis-UTIB0000001-123412341234-Payment Value Dt 09/10/2026 Ref 123412341234",
+		99, model.StatementDebit)
+	out, dropped := cleanStatementSections([]model.StatementSection{{Rows: []model.StatementRow{r}}})
+	require.Zero(t, dropped)
+	got := out[0].Rows[0]
+	assert.Equal(t, "UPI-Example Shop-shop.1@okaxis-UTIB0000001-123412341234-Payment", got.Description)
+	assert.Contains(t, got.RawDescription, "Value Dt 09/10/2026")
+	assert.Equal(t, "UPI", got.Channel)
+	assert.Equal(t, "EXAMPLE SHOP", got.Merchant)
+	assert.Equal(t, "shop.1@okaxis", got.VPA)
+	assert.Equal(t, "123412341234", got.Reference)
+	assert.Equal(t, "2026-10-09", got.ValueDate)
+	assert.True(t, got.ValueDateMismatch, "value date a week after the row's date")
+	assert.Equal(t, "Example Shop", got.Payee)
 }

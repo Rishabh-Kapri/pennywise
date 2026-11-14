@@ -83,6 +83,7 @@ const OUTCOME_LABELS: Record<string, string> = {
   needs_review: 'Needs review',
   transaction_created: 'Transaction created',
   transaction_duplicate: 'Already added',
+  statement: 'Statement',
 };
 
 const OUTCOME_REASONS: Record<string, string> = {
@@ -92,6 +93,7 @@ const OUTCOME_REASONS: Record<string, string> = {
   needs_review: 'A step was not sure about this email, so it is waiting for you.',
   transaction_created: 'A transaction was created from this email.',
   transaction_duplicate: 'This matches a transaction that already exists, so nothing new was added.',
+  statement: 'A statement email: its PDF was sent to Reconcile to be read.',
 };
 
 type ShowFilter = 'all' | 'attention' | 'active' | 'created' | 'skipped';

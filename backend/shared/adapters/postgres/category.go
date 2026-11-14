@@ -100,12 +100,12 @@ func (r *categoryRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.
 func (r *categoryRepo) GetAllSimplified(ctx context.Context, budgetId uuid.UUID) ([]model.CategorySimplified, error) {
 	rows, err := r.Executor(ctx).Query(
 		ctx, `
-			SELECT categories.id, categories.name 
-			FROM categories 
+			SELECT categories.id, categories.name, categories.description
+			FROM categories
 			LEFT JOIN budgets ON categories.budget_id = budgets.id
-			WHERE categories.budget_id = $1 AND 
-					categories.deleted = FALSE AND 
-					categories.hidden = FALSE AND 
+			WHERE categories.budget_id = $1 AND
+					categories.deleted = FALSE AND
+					categories.hidden = FALSE AND
 					categories.is_system = FALSE AND
 					categories.id != (budgets.metadata ->> 'inflowCategoryId')::uuid AND
 					categories.category_group_id != (budgets.metadata ->> 'ccGroupId')::uuid
@@ -119,7 +119,7 @@ func (r *categoryRepo) GetAllSimplified(ctx context.Context, budgetId uuid.UUID)
 	var categories []model.CategorySimplified
 	for rows.Next() {
 		var c model.CategorySimplified
-		if err := rows.Scan(&c.ID, &c.Name); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Description); err != nil {
 			logger.Logger(ctx).Error("error scanning category", "error", err)
 			return nil, err
 		}

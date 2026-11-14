@@ -25,7 +25,6 @@ type CategoryDescriptionResponse struct {
 type CipherClient interface {
 	GenerateTransactionEmbedding(ctx context.Context, req TransactionEmbeddingRequest) (*TransactionEmbeddingResponse, error)
 	SuggestCategoryDescription(ctx context.Context, req model.CategoryDescriptionContext) (*CategoryDescriptionResponse, error)
-	ExtractStatement(ctx context.Context, req model.StatementExtractRequest) (*model.StatementExtractResponse, error)
 }
 
 type cipherClient struct {
@@ -45,13 +44,6 @@ func (c *cipherClient) SuggestCategoryDescription(
 	req model.CategoryDescriptionContext,
 ) (*CategoryDescriptionResponse, error) {
 	return transport.Post[*CategoryDescriptionResponse](ctx, c.client, "/api/categories/describe", nil, req)
-}
-
-func (c *cipherClient) ExtractStatement(
-	ctx context.Context,
-	req model.StatementExtractRequest,
-) (*model.StatementExtractResponse, error) {
-	return transport.Post[*model.StatementExtractResponse](ctx, c.client, "/api/statements/extract", nil, req)
 }
 
 // DecisionMessage is the input cipher's /api/test-decisions classifies

@@ -372,7 +372,7 @@ func toOpenRouterStopReason(res openRouterRes) sharedModel.StopReason {
 	}
 }
 
-func (c *openRouterClient) Chat(ctx context.Context, req sharedModel.ChatRequest) (*sharedModel.ChatResponse, error) {
+func (c *openRouterClient) Chat(ctx context.Context, req sharedModel.ChatRequest, conversationID *string) (*sharedModel.ChatResponse, error) {
 	log := logger.Logger(ctx)
 	openRouterReq := c.toOpenRouterReq(req)
 	res, err := transport.Post[openRouterRes](ctx, c.httpClient, openRouterResponsesPath, nil, openRouterReq)
@@ -389,7 +389,7 @@ func (c *openRouterClient) Chat(ctx context.Context, req sharedModel.ChatRequest
 	return &chatRes, nil
 }
 
-func (c *openRouterClient) Stream(ctx context.Context, req sharedModel.ChatRequest) <-chan sharedModel.StreamChunk {
+func (c *openRouterClient) Stream(ctx context.Context, req sharedModel.ChatRequest, conversationID *string) <-chan sharedModel.StreamChunk {
 	log := logger.Logger(ctx)
 	openRouterReq := c.toOpenRouterReq(req)
 	openRouterReq.Stream = true

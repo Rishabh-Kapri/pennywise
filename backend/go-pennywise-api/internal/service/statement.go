@@ -5,16 +5,23 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"path"
 	"strings"
 	"time"
 
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/job"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils/narration"
+
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/storage"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -22,30 +29,52 @@ import (
 
 const (
 	MaxStatementSizeBytes = 20 << 20
-	MaxStatementPages     = 60
-
-	// statementChunkRunes sizes one extraction request: about two dense
-	// statement pages, small enough for a local model's context and for its
-	// output (every row echoed back as JSON) to fit the response budget.
-	statementChunkRunes = 9000
-	// statementChunkTimeout bounds one chunk across the whole provider chain.
-	statementChunkTimeout = 10 * time.Minute
-	statementRunTimeout   = time.Hour
 	statementListLimit    = 50
 )
 
-var ErrStatementNotFound = errors.New("statement not found")
+var (
+	ErrStatementNotFound = errors.New("statement not found")
+	ErrStatementNoFile   = errors.New("statement has no file")
+)
 
 type StatementService interface {
-	// Upload reads the PDF's text and queues extraction, returning at once.
-	// The same file uploaded again returns the existing import.
-	Upload(ctx context.Context, fileName string, pdf []byte, password string, defaultAccountID *uuid.UUID) (*model.StatementImport, bool, error)
+	// Upload creates the import and queues its statement.extract job in
+	// cipher, returning at once. The same file uploaded again returns the
+	// existing import.
+	Upload(
+		ctx context.Context,
+		fileName string,
+		pdf []byte,
+		password string,
+		defaultAccountID *uuid.UUID,
+	) (*model.StatementImport, bool, error)
 	List(ctx context.Context) ([]model.StatementImport, error)
 	Reconcile(ctx context.Context, id uuid.UUID) (*model.StatementReconciliation, error)
-	SetSectionAccount(ctx context.Context, id uuid.UUID, section int, accountID *uuid.UUID) (*model.StatementReconciliation, error)
+	SetSectionAccount(
+		ctx context.Context,
+		id uuid.UUID,
+		section int,
+		accountID *uuid.UUID,
+	) (*model.StatementReconciliation, error)
 	CreateMissing(ctx context.Context, id uuid.UUID, req model.StatementCreateReq) (*model.StatementCreateResult, error)
+	// Retry queues a failed import's dead jobs again.
 	Retry(ctx context.Context, id uuid.UUID) (*model.StatementImport, error)
 	Delete(ctx context.Context, id uuid.UUID) error
+	// File opens the uploaded PDF. ErrStatementNoFile when the import has
+	// none (uploaded before PDFs were kept).
+	File(ctx context.Context, id uuid.UUID) (*model.StatementImport, io.ReadSeekCloser, error)
+	// ImportFromEmail is the statement.import job: a statement PDF fetched
+	// from email becomes an import like an upload, without a typed password
+	// or account. The same file imported again returns the existing import.
+	ImportFromEmail(ctx context.Context, p model.StatementImportPayload) (*model.StatementImport, error)
+	// SetStatementPassword saves the password that opens accountID's
+	// statement PDFs, sealed. An empty password removes it.
+	SetStatementPassword(ctx context.Context, accountID uuid.UUID, password string) error
+	// StatementPasswordAccounts lists the accounts that have one saved.
+	StatementPasswordAccounts(ctx context.Context) ([]uuid.UUID, error)
+	// SaveExtraction is the statement.save job: it saves what cipher read
+	// onto the import and maps its sections to accounts.
+	SaveExtraction(ctx context.Context, p model.StatementSavePayload) error
 	// FailInterrupted is called once at startup; see the repository method.
 	FailInterrupted(ctx context.Context)
 }
@@ -57,12 +86,20 @@ type statementService struct {
 	payeeRepo          repository.PayeesRepository
 	categoryRepo       repository.CategoryRepository
 	transactionService TransactionService
-	cipherClient       CipherClient
-	// extractSlot serialises extraction across uploads: several PDFs dropped
-	// at once would otherwise all queue on the same local model anyway, each
-	// holding its timeout while it waits.
-	extractSlot chan struct{}
-	dbTxn       repository.DBTxn
+	broker             job.Broker
+	// jobStore reads the import's jobs; nil on the memory job driver, where
+	// an import's progress and failure aren't visible.
+	jobStore job.JobStore
+	// files keeps the uploaded PDFs, in the same store as receipts.
+	files storage.Store
+	// sources holds the bank text behind transactions: the references used
+	// for matching, and the statement lines recorded for matched rows.
+	sources repository.TransactionSourceRepository
+	// passwords holds each account's statement password, sealed by box. box
+	// is nil when LLM_CREDENTIALS_KEY is unset; passwords can't be saved then.
+	passwords repository.StatementPasswordRepository
+	box       *utils.SecretBox
+	dbTxn     repository.DBTxn
 }
 
 func NewStatementService(
@@ -72,8 +109,13 @@ func NewStatementService(
 	payeeRepo repository.PayeesRepository,
 	categoryRepo repository.CategoryRepository,
 	transactionService TransactionService,
-	cipherClient CipherClient,
 	dbTxn repository.DBTxn,
+	broker job.Broker,
+	jobStore job.JobStore,
+	files storage.Store,
+	sources repository.TransactionSourceRepository,
+	passwords repository.StatementPasswordRepository,
+	box *utils.SecretBox,
 ) StatementService {
 	return &statementService{
 		dbTxn:              dbTxn,
@@ -83,12 +125,37 @@ func NewStatementService(
 		payeeRepo:          payeeRepo,
 		categoryRepo:       categoryRepo,
 		transactionService: transactionService,
-		cipherClient:       cipherClient,
-		extractSlot:        make(chan struct{}, 1),
+		broker:             broker,
+		jobStore:           jobStore,
+		files:              files,
+		sources:            sources,
+		passwords:          passwords,
+		box:                box,
 	}
 }
 
 func (s *statementService) Upload(
+	ctx context.Context,
+	fileName string,
+	pdf []byte,
+	password string,
+	defaultAccountID *uuid.UUID,
+) (*model.StatementImport, bool, error) {
+	return s.create(ctx, fileName, pdf, password, defaultAccountID)
+}
+
+func (s *statementService) ImportFromEmail(
+	ctx context.Context,
+	p model.StatementImportPayload,
+) (*model.StatementImport, error) {
+	imp, _, err := s.create(ctx, p.FileName, p.Data, "", nil)
+	return imp, err
+}
+
+// create stores the PDF, queues its statement.extract and creates the
+// import. The extract gets the typed password, if any, and every saved
+// account password, which cipher tries in turn on a locked PDF.
+func (s *statementService) create(
 	ctx context.Context,
 	fileName string,
 	pdf []byte,
@@ -105,6 +172,9 @@ func (s *statementService) Upload(
 			return nil, false, errs.New(errs.CodeInvalidArgument, "account not found")
 		}
 	}
+	if s.broker == nil {
+		return nil, false, errs.New(errs.CodeJobEnqueueFailed, "reading statements needs the job queue (JOB_DRIVER)")
+	}
 
 	sum := sha256.Sum256(pdf)
 	hash := hex.EncodeToString(sum[:])
@@ -114,64 +184,380 @@ func (s *statementService) Upload(
 		return existing, true, nil
 	}
 
-	pages, err := extractPDFPages(ctx, pdf, password)
+	// The job is queued first so the row can name it. Its key is the new
+	// import, not the file: a failed import's file may be uploaded again.
+	importID := uuid.New()
+	payload, err := json.Marshal(model.StatementInput{
+		ImportID:   importID,
+		Data:       pdf,
+		Password:   password,
+		Candidates: s.passwordCandidates(ctx, budgetID),
+	})
 	if err != nil {
-		return nil, false, err
+		return nil, false, errs.Wrap(errs.CodeInternalError, "error encoding statement", err)
 	}
-	if len(pages) > MaxStatementPages {
-		return nil, false, errs.New(errs.CodeInvalidArgument,
-			"statement has %d pages, the limit is %d", len(pages), MaxStatementPages)
+	queued, err := s.broker.Enqueue(
+		ctx,
+		model.JobTypeStatementExtract,
+		payload,
+		job.WithQueue(model.QueueCipher),
+		job.WithBudgetID(&budgetID),
+		job.WithIdempotencyKey("statement:"+hash),
+	)
+	if err != nil {
+		return nil, false, errs.Wrap(errs.CodeJobEnqueueFailed, "error queueing "+model.JobTypeStatementExtract, err)
 	}
 
+	// The PDF is kept so the user can open it later. Its key is the import,
+	// not the file name, which the user chose and may repeat.
+	filePath, err := s.files.Save(
+		path.Join("statements", budgetID.String()),
+		importID.String()+".pdf",
+		bytes.NewReader(pdf),
+	)
+	if err != nil {
+		return nil, false, errs.Wrap(errs.CodeInternalError, "error storing statement", err)
+	}
+
+	// If this fails the job still runs, and statement.save finds no import to
+	// save onto, so it does nothing.
 	imp, err := s.repo.Create(ctx, model.StatementImport{
+		ID:               importID,
 		BudgetID:         budgetID,
 		FileName:         fileName,
 		FileHash:         hash,
 		Status:           model.StatementImportProcessing,
-		PageCount:        len(pages),
+		JobID:            &queued.JobID,
 		DefaultAccountID: defaultAccountID,
-		// Pages are rejoined with the form feed pdftotext split them on, so a
-		// retry re-chunks the stored text exactly as the first run did.
-		SourceText: strings.Join(pages, "\f"),
 	})
 	if err != nil {
+		s.deleteFile(ctx, filePath)
 		return nil, false, errs.Wrap(errs.CodeInternalError, "error saving statement", err)
 	}
-
-	s.startExtraction(ctx, budgetID, *imp)
 	return imp, false, nil
 }
 
 func (s *statementService) List(ctx context.Context) ([]model.StatementImport, error) {
-	return s.repo.List(ctx, utils.MustBudgetID(ctx), statementListLimit)
+	imports, err := s.repo.List(ctx, utils.MustBudgetID(ctx), statementListLimit)
+	if err != nil {
+		return nil, err
+	}
+	for i := range imports {
+		s.applyJobState(ctx, &imports[i])
+	}
+	return imports, nil
+}
+
+// applyJobState fills a processing import's progress from its jobs, and marks
+// it failed when one of them has stopped for good. Clients learn about live
+// changes from the job updates on the websocket; this is what a page sees
+// when it loads.
+func (s *statementService) applyJobState(ctx context.Context, imp *model.StatementImport) {
+	if imp.Status != model.StatementImportProcessing || imp.JobID == nil || s.jobStore == nil {
+		return
+	}
+	jobs, err := s.importJobs(ctx, *imp.JobID)
+	if err != nil {
+		logger.Logger(ctx).Warn("could not read statement jobs", "statementId", imp.ID, "error", err)
+		return
+	}
+	for _, j := range jobs {
+		switch j.Status {
+		case job.DeadJobStatus, job.CancelledJobStatus:
+			message := j.LastError
+			if message == "" {
+				message = "reading the statement was stopped"
+			}
+			if err := s.repo.Fail(ctx, imp.ID, message); err != nil {
+				logger.Logger(ctx).Warn("could not mark statement failed", "statementId", imp.ID, "error", err)
+				return
+			}
+			imp.Status = model.StatementImportFailed
+			imp.Error = &message
+			return
+		case job.QueuedJobStatus, job.RunningJobStatus:
+			imp.Stage = "waiting"
+			if j.Type == model.JobTypeStatementSave {
+				imp.Stage = "saving rows"
+			}
+			var p job.Progress
+			if len(j.Progress) > 0 && json.Unmarshal(j.Progress, &p) == nil && p.Message != "" {
+				imp.Stage = p.Message
+				imp.PagesProcessed, imp.PageCount = p.Current, p.Total
+			}
+		}
+	}
+}
+
+// importJobs returns the import's statement.extract job and the jobs it
+// queued, extract first.
+func (s *statementService) importJobs(ctx context.Context, jobID uuid.UUID) ([]job.Job, error) {
+	extract, err := s.jobStore.GetJobByID(ctx, jobID)
+	if err != nil {
+		return nil, err
+	}
+	rest, err := s.jobStore.ListByRoot(ctx, jobID)
+	if err != nil {
+		return nil, err
+	}
+	out := []job.Job{*extract}
+	for _, j := range rest {
+		if j.ID != extract.ID {
+			out = append(out, j)
+		}
+	}
+	return out, nil
 }
 
 func (s *statementService) Retry(ctx context.Context, id uuid.UUID) (*model.StatementImport, error) {
 	budgetID := utils.MustBudgetID(ctx)
+	imp, err := s.load(ctx, budgetID, id)
+	if err != nil {
+		return nil, err
+	}
+	if imp.Status != model.StatementImportFailed {
+		return nil, errs.New(errs.CodeInvalidArgument, "only a failed statement can be retried")
+	}
+	if imp.JobID == nil {
+		return nil, errs.New(errs.CodeInvalidArgument, "this statement was read before jobs; upload it again")
+	}
+	if s.jobStore == nil {
+		return nil, errs.New(
+			errs.CodeInvalidArgument,
+			"statements can't be retried without a job store; upload it again",
+		)
+	}
+
+	jobs, err := s.importJobs(ctx, *imp.JobID)
+	if err != nil {
+		return nil, err
+	}
+	retried := 0
+	for _, j := range jobs {
+		if j.Status != job.DeadJobStatus {
+			continue
+		}
+		if _, err := s.jobStore.RetryDead(ctx, j.ID, jobActor(ctx)); err != nil {
+			return nil, err
+		}
+		retried++
+	}
+	if retried == 0 {
+		return nil, errs.New(errs.CodeInvalidArgument, "nothing to retry; upload the statement again")
+	}
+
 	if err := s.repo.Restart(ctx, budgetID, id); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return nil, errs.New(errs.CodeInvalidArgument, "only a failed statement can be retried")
 		}
 		return nil, err
 	}
-	imp, err := s.load(ctx, budgetID, id)
-	if err != nil {
-		return nil, err
-	}
-	s.startExtraction(ctx, budgetID, *imp)
-	return imp, nil
+	return s.load(ctx, budgetID, id)
 }
 
 func (s *statementService) Delete(ctx context.Context, id uuid.UUID) error {
-	err := s.repo.Delete(ctx, utils.MustBudgetID(ctx), id)
+	budgetID := utils.MustBudgetID(ctx)
+	imp, err := s.load(ctx, budgetID, id)
+	if err != nil {
+		return err
+	}
+	err = s.repo.Delete(ctx, budgetID, id)
 	if errors.Is(err, repository.ErrNotFound) {
 		return ErrStatementNotFound
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	s.deleteFile(ctx, imp.FilePath)
+	// A deleted statement is no longer evidence for anything.
+	if s.sources != nil {
+		if err := s.sources.ReplaceStatementLines(ctx, budgetID, id, nil); err != nil {
+			logger.Logger(ctx).Warn("statement sources not removed", "statementId", id, "error", err)
+		}
+	}
+	return nil
+}
+
+// recordSources links each exactly matched statement row to its transaction
+// as a STATEMENT_LINE source, replacing what this statement recorded before.
+// Near matches (amount differs) aren't recorded: the pair may be wrong. A
+// failure is logged, not returned: the statement itself is saved either way.
+func (s *statementService) recordSources(ctx context.Context, id uuid.UUID) {
+	if s.sources == nil {
+		return
+	}
+	rec, err := s.Reconcile(ctx, id)
+	if err != nil || rec.Import.Status != model.StatementImportReady {
+		if err != nil {
+			logger.Logger(ctx).Warn("statement sources not recorded", "statementId", id, "error", err)
+		}
+		return
+	}
+	var lines []model.StatementLineSource
+	for _, section := range rec.Sections {
+		hint := accountNumberSuffix(section.AccountNumber)
+		for _, m := range section.Matched {
+			if m.Kind != model.StatementMatchExact {
+				continue
+			}
+			lines = append(lines, statementLineSource(m, hint, section.Currency))
+		}
+	}
+	err = s.dbTxn.Do(ctx, func(ctx context.Context) error {
+		return s.sources.ReplaceStatementLines(ctx, rec.Import.BudgetID, id, lines)
+	})
+	if err != nil {
+		logger.Logger(ctx).Warn("statement sources not recorded", "statementId", id, "error", err)
+		return
+	}
+	logger.Logger(ctx).Info("statement sources recorded", "statementId", id, "lines", len(lines))
+}
+
+func statementLineSource(m model.StatementMatch, accountHint, currency string) model.StatementLineSource {
+	r := m.Row
+	raw := r.RawDescription
+	if raw == "" {
+		raw = r.Description
+	}
+	direction := narration.Debit
+	if r.Direction == model.StatementCredit {
+		direction = narration.Credit
+	}
+	return model.StatementLineSource{
+		TransactionID: m.Transaction.ID,
+		RawText:       raw,
+		Channel:       r.Channel,
+		Merchant:      r.Merchant,
+		VPA:           r.VPA,
+		Ref:           r.Reference,
+		AccountHint:   accountHint,
+		Direction:     direction,
+		Amount:        r.Amount,
+		Currency:      currency,
+		OccurredOn:    r.Date,
+		RewardsPoints: r.RewardPoints,
+	}
+}
+
+func (s *statementService) File(ctx context.Context, id uuid.UUID) (*model.StatementImport, io.ReadSeekCloser, error) {
+	imp, err := s.load(ctx, utils.MustBudgetID(ctx), id)
+	if err != nil {
+		return nil, nil, err
+	}
+	if imp.FilePath == "" {
+		return nil, nil, ErrStatementNoFile
+	}
+	f, err := s.files.Open(imp.FilePath)
+	if err != nil {
+		return nil, nil, errs.Wrap(errs.CodeInternalError, "error opening statement", err)
+	}
+	return imp, f, nil
+}
+
+// deleteFile removes a stored PDF. A failure is only logged: the row is
+// already gone or never written, and an orphaned file harms nothing.
+func (s *statementService) deleteFile(ctx context.Context, filePath string) {
+	if filePath == "" {
+		return
+	}
+	if err := s.files.Delete(filePath); err != nil {
+		logger.Logger(ctx).Warn("statement file not deleted", "path", filePath, "error", err)
+	}
+}
+
+func (s *statementService) SaveExtraction(ctx context.Context, p model.StatementSavePayload) error {
+	budgetID := utils.MustBudgetID(ctx)
+	imp, err := s.load(ctx, budgetID, p.ImportID)
+	if errors.Is(err, ErrStatementNotFound) {
+		// Deleted while it was read, or its row was never saved.
+		logger.Logger(ctx).Info("statement import gone, rows not saved", "statementId", p.ImportID)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if imp.Status != model.StatementImportProcessing {
+		return nil
+	}
+
+	sections, dropped := cleanStatementSections(p.Sections)
+	if len(sections) == 0 {
+		return s.repo.Fail(ctx, imp.ID, "no transactions were found in this statement")
+	}
+	// The account whose saved password opened the PDF stands in for one
+	// picked at upload.
+	if imp.DefaultAccountID == nil && p.OpenedWith != nil {
+		imp.DefaultAccountID = p.OpenedWith
+	}
+	s.autoMapAccounts(ctx, *imp, sections)
+	if err := s.repo.Complete(ctx, imp.ID, sections, dropped); err != nil {
+		return err
+	}
+	s.recordSources(ctx, imp.ID)
+	return nil
+}
+
+// passwordCandidates opens the budget's saved statement passwords. One that
+// won't open (the key changed) is skipped: the PDF may not need it.
+func (s *statementService) passwordCandidates(ctx context.Context, budgetID uuid.UUID) []model.StatementPasswordCandidate {
+	if s.passwords == nil || s.box == nil {
+		return nil
+	}
+	sealed, err := s.passwords.ListByBudget(ctx, budgetID)
+	if err != nil {
+		logger.Logger(ctx).Warn("statement passwords not loaded", "error", err)
+		return nil
+	}
+	out := make([]model.StatementPasswordCandidate, 0, len(sealed))
+	for accountID, box := range sealed {
+		pw, err := s.box.Open(box)
+		if err != nil {
+			logger.Logger(ctx).Warn("statement password not opened", "accountId", accountID, "error", err)
+			continue
+		}
+		out = append(out, model.StatementPasswordCandidate{AccountID: accountID, Password: pw})
+	}
+	return out
+}
+
+func (s *statementService) SetStatementPassword(ctx context.Context, accountID uuid.UUID, password string) error {
+	budgetID := utils.MustBudgetID(ctx)
+	if _, err := s.accountRepo.GetById(ctx, budgetID, accountID); err != nil {
+		return errs.New(errs.CodeInvalidArgument, "account not found")
+	}
+	if s.passwords == nil {
+		return errs.New(errs.CodeAdapterNotConfigured, "statement passwords need a database")
+	}
+	if password == "" {
+		return s.passwords.Delete(ctx, budgetID, accountID)
+	}
+	if s.box == nil {
+		return errs.New(errs.CodeAdapterNotConfigured, "saving passwords needs LLM_CREDENTIALS_KEY on the API")
+	}
+	sealed, err := s.box.Seal(password)
+	if err != nil {
+		return errs.Wrap(errs.CodeInternalError, "error sealing password", err)
+	}
+	return s.passwords.Set(ctx, budgetID, accountID, sealed)
+}
+
+func (s *statementService) StatementPasswordAccounts(ctx context.Context) ([]uuid.UUID, error) {
+	if s.passwords == nil {
+		return []uuid.UUID{}, nil
+	}
+	sealed, err := s.passwords.ListByBudget(ctx, utils.MustBudgetID(ctx))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]uuid.UUID, 0, len(sealed))
+	for id := range sealed {
+		out = append(out, id)
+	}
+	return out, nil
 }
 
 func (s *statementService) FailInterrupted(ctx context.Context) {
-	n, err := s.repo.FailInterrupted(ctx, "extraction was interrupted by a server restart; retry it")
+	n, err := s.repo.FailInterrupted(ctx, "extraction was interrupted by a server restart; upload it again")
 	if err != nil {
 		logger.Logger(ctx).Warn("could not mark interrupted statement imports", "error", err)
 		return
@@ -192,152 +578,18 @@ func (s *statementService) load(ctx context.Context, budgetID, id uuid.UUID) (*m
 	return imp, nil
 }
 
-// startExtraction runs the model over the statement in the background: a
-// multi-page statement is several LLM round-trips, far past a proxy's request
-// timeout. Progress is written as each chunk finishes and clients poll.
-func (s *statementService) startExtraction(ctx context.Context, budgetID uuid.UUID, imp model.StatementImport) {
-	// Detach from the request: this outlives the response by design.
-	bgCtx := utils.WithRequestMetadata(context.Background(), utils.RequestMetadataFromContext(ctx))
-	bgCtx = utils.WithInternalAuthToken(bgCtx, utils.InternalAuthTokenFromContext(ctx))
-	bgCtx = utils.WithBudgetID(bgCtx, budgetID)
-
-	go func() {
-		runCtx, cancel := context.WithTimeout(bgCtx, statementRunTimeout)
-		defer cancel()
-		log := logger.Logger(runCtx).With("statementId", imp.ID)
-
-		select {
-		case s.extractSlot <- struct{}{}:
-			defer func() { <-s.extractSlot }()
-		case <-runCtx.Done():
-			s.fail(runCtx, imp.ID, "timed out waiting for another statement to finish")
-			return
-		}
-
-		if err := s.runExtraction(runCtx, imp); err != nil {
-			log.Warn("statement extraction failed", "error", err)
-			// The run context may be what expired; record the failure anyway.
-			s.fail(bgCtx, imp.ID, err.Error())
-			return
-		}
-		log.Info("statement extraction finished")
-	}()
-}
-
-func (s *statementService) fail(ctx context.Context, id uuid.UUID, message string) {
-	if err := s.repo.Fail(ctx, id, message); err != nil {
-		logger.Logger(ctx).Error("could not record statement failure", "statementId", id, "error", err)
-	}
-}
-
-func (s *statementService) runExtraction(ctx context.Context, imp model.StatementImport) error {
-	pages := strings.Split(imp.SourceText, "\f")
-	chunks := chunkStatementPages(pages, statementChunkRunes)
-	if len(chunks) == 0 {
-		return ErrStatementNoText
-	}
-
-	results := make([][]model.StatementSection, 0, len(chunks))
-	previous := ""
-	for _, chunk := range chunks {
-		sections, err := s.extractChunk(ctx, chunk, previous)
-		if err != nil && chunk.LastPage > chunk.FirstPage {
-			// Most often the model ran out of output budget on a dense
-			// chunk; one page at a time is less to transcribe per call.
-			logger.Logger(ctx).Warn("statement chunk failed, retrying page by page",
-				"firstPage", chunk.FirstPage, "lastPage", chunk.LastPage, "error", err)
-			sections, err = s.extractPageByPage(ctx, pages, chunk, previous)
-		}
-		if err != nil {
-			return err
-		}
-		if len(sections) > 0 {
-			results = append(results, sections)
-			last := sections[len(sections)-1]
-			previous = strings.TrimSpace(last.AccountLabel + " " + last.AccountNumber)
-		}
-		if err := s.repo.UpdateProgress(ctx, imp.ID, chunk.LastPage); err != nil {
-			logger.Logger(ctx).Warn("could not record statement progress", "error", err)
-		}
-	}
-
-	sections, dropped := cleanStatementSections(mergeExtractedSections(results))
-	if len(sections) == 0 {
-		return errors.New("no transactions were found in this statement")
-	}
-	s.autoMapAccounts(ctx, imp, sections)
-	return s.repo.Complete(ctx, imp.ID, sections, dropped)
-}
-
-func (s *statementService) extractChunk(
-	ctx context.Context,
-	chunk statementChunk,
-	previous string,
-) ([]model.StatementSection, error) {
-	chunkCtx, cancel := context.WithTimeout(ctx, statementChunkTimeout)
-	defer cancel()
-	res, err := s.cipherClient.ExtractStatement(chunkCtx, model.StatementExtractRequest{
-		Text:            chunk.Text,
-		FirstPage:       chunk.FirstPage,
-		LastPage:        chunk.LastPage,
-		PreviousSection: previous,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("pages %d-%d: %w", chunk.FirstPage, chunk.LastPage, err)
-	}
-	if res == nil {
-		return nil, nil
-	}
-	return res.Sections, nil
-}
-
-// extractPageByPage re-runs a failed chunk one page per call, carrying the
-// account forward between pages as the chunk loop does.
-func (s *statementService) extractPageByPage(
-	ctx context.Context,
-	pages []string,
-	chunk statementChunk,
-	previous string,
-) ([]model.StatementSection, error) {
-	var all []model.StatementSection
-	for page := chunk.FirstPage; page <= chunk.LastPage; page++ {
-		single := chunkStatementPages(pagesOnly(pages, page), statementChunkRunes)
-		if len(single) == 0 {
-			continue
-		}
-		sections, err := s.extractChunk(ctx, single[0], previous)
-		if err != nil {
-			return nil, err
-		}
-		if len(sections) > 0 {
-			last := sections[len(sections)-1]
-			previous = strings.TrimSpace(last.AccountLabel + " " + last.AccountNumber)
-		}
-		all = append(all, sections...)
-	}
-	return all, nil
-}
-
-// pagesOnly blanks every page but one, keeping page numbers intact for
-// chunkStatementPages (which skips empty pages).
-func pagesOnly(pages []string, page int) []string {
-	out := make([]string, len(pages))
-	if page >= 1 && page <= len(pages) {
-		out[page-1] = pages[page-1]
-	}
-	return out
-}
-
 // autoMapAccounts points each section at a ledger account: by the account
 // number's last four digits (accounts.suffix), else the account chosen at
 // upload — for a single-section statement always, otherwise only when exactly
 // one section is still unmapped, since guessing between several would be
 // worse than asking.
-func (s *statementService) autoMapAccounts(ctx context.Context, imp model.StatementImport, sections []model.StatementSection) {
-	if len(sections) == 1 && imp.DefaultAccountID != nil {
-		sections[0].AccountID = imp.DefaultAccountID
-		return
-	}
+func (s *statementService) autoMapAccounts(
+	ctx context.Context,
+	imp model.StatementImport,
+	sections []model.StatementSection,
+) {
+	// The printed number wins over the account picked at upload: a statement
+	// says which card it is, a dropdown can be left on the wrong one.
 	unmapped := []int{}
 	for i := range sections {
 		if suffix := accountNumberSuffix(sections[i].AccountNumber); suffix != "" {
@@ -377,6 +629,7 @@ func (s *statementService) SetSectionAccount(
 	if err := s.repo.UpdateSections(ctx, budgetID, id, imp.Sections); err != nil {
 		return nil, err
 	}
+	s.recordSources(ctx, id)
 	return s.Reconcile(ctx, id)
 }
 
@@ -387,6 +640,7 @@ func (s *statementService) Reconcile(ctx context.Context, id uuid.UUID) (*model.
 	if err != nil {
 		return nil, err
 	}
+	s.applyJobState(ctx, imp)
 
 	result := &model.StatementReconciliation{
 		Import:   *imp,
@@ -405,24 +659,42 @@ func (s *statementService) Reconcile(ctx context.Context, id uuid.UUID) (*model.
 	for i, section := range imp.Sections {
 		start, end := statementPeriod(section)
 		rec := model.StatementSectionReconciliation{
-			Index:          i,
-			AccountLabel:   section.AccountLabel,
-			AccountNumber:  section.AccountNumber,
-			Currency:       section.Currency,
-			AccountID:      section.AccountID,
-			PeriodStart:    start,
-			PeriodEnd:      end,
-			OpeningBalance: section.OpeningBalance,
-			ClosingBalance: section.ClosingBalance,
-			BalanceCheck:   statementBalanceCheck(section),
-			RowCount:       len(section.Rows),
-			Matched:        []model.StatementMatch{},
-			Missing:        section.Rows,
-			LedgerOnly:     []model.StatementLedgerTxn{},
+			Index:              i,
+			AccountLabel:       section.AccountLabel,
+			AccountNumber:      section.AccountNumber,
+			Kind:               section.Kind,
+			Currency:           section.Currency,
+			AccountID:          section.AccountID,
+			PeriodStart:        start,
+			PeriodEnd:          end,
+			OpeningBalance:     section.OpeningBalance,
+			ClosingBalance:     section.ClosingBalance,
+			BalanceCheck:       statementBalanceCheck(section),
+			StatementDate:      section.StatementDate,
+			DueDate:            section.DueDate,
+			TotalDue:           section.TotalDue,
+			MinimumDue:         section.MinimumDue,
+			CreditLimit:        section.CreditLimit,
+			Rewards:            section.Rewards,
+			EMIPlans:           section.EMIPlans,
+			RewardPointsOnRows: rowRewardPoints(section.Rows),
+			Charges:            statementCharges(section.Rows),
+			RowCount:           len(section.Rows),
+			Matched:            []model.StatementMatch{},
+			LedgerOnly:         []model.StatementLedgerTxn{},
+			Covered:            []model.StatementRow{},
 		}
-		if rec.Missing == nil {
-			rec.Missing = []model.StatementRow{}
+		// EMI instalments are set aside before matching: the purchase they
+		// pay off is already in the budget.
+		matchable := make([]model.StatementRow, 0, len(section.Rows))
+		for _, r := range section.Rows {
+			if coveredByEMI(r) {
+				rec.Covered = append(rec.Covered, r)
+			} else {
+				matchable = append(matchable, r)
+			}
 		}
+		rec.Missing = matchable
 
 		if section.AccountID != nil && start != "" {
 			rec.AccountName = names.accounts[*section.AccountID]
@@ -435,7 +707,12 @@ func (s *statementService) Reconcile(ctx context.Context, id uuid.UUID) (*model.
 				used = map[uuid.UUID]bool{}
 				usedByAccount[*section.AccountID] = used
 			}
-			rec.Matched, rec.Missing, rec.LedgerOnly = reconcileStatementRows(section.Rows, txns, start, end, used)
+			rec.Matched, rec.Missing, rec.LedgerOnly = reconcileStatementRows(matchable, txns, start, end, used)
+		}
+		for j := range rec.Missing {
+			if kind := rec.Missing[j].ChargeKind; kind != "" {
+				rec.Missing[j].SuggestedCategoryID = chargeCategory(kind, names.pickable)
+			}
 		}
 		result.Sections = append(result.Sections, rec)
 	}
@@ -446,6 +723,8 @@ type ledgerNameIndex struct {
 	accounts   map[uuid.UUID]string
 	payees     map[uuid.UUID]string
 	categories map[uuid.UUID]string
+	// pickable are the categories a suggestion may use: not hidden or deleted.
+	pickable map[uuid.UUID]string
 }
 
 func (s *statementService) ledgerNames(ctx context.Context, budgetID uuid.UUID) (*ledgerNameIndex, error) {
@@ -453,6 +732,7 @@ func (s *statementService) ledgerNames(ctx context.Context, budgetID uuid.UUID) 
 		accounts:   map[uuid.UUID]string{},
 		payees:     map[uuid.UUID]string{},
 		categories: map[uuid.UUID]string{},
+		pickable:   map[uuid.UUID]string{},
 	}
 	accounts, err := s.accountRepo.GetAll(ctx, budgetID)
 	if err != nil {
@@ -474,6 +754,9 @@ func (s *statementService) ledgerNames(ctx context.Context, budgetID uuid.UUID) 
 	}
 	for _, c := range categories {
 		idx.categories[c.ID] = c.Name
+		if !c.Hidden && !c.Deleted {
+			idx.pickable[c.ID] = c.Name
+		}
 	}
 	return idx, nil
 }
@@ -516,6 +799,20 @@ func (s *statementService) ledgerWindow(
 			lt.CategoryName = names.categories[*t.CategoryID]
 		}
 		out = append(out, lt)
+	}
+	if s.sources != nil && len(out) > 0 {
+		ids := make([]uuid.UUID, len(out))
+		for i, t := range out {
+			ids[i] = t.ID
+		}
+		refs, err := s.sources.RefsByTransaction(ctx, budgetID, ids)
+		if err != nil {
+			// References only sharpen matching; without them it still works.
+			logger.Logger(ctx).Warn("transaction references not loaded", "error", err)
+		}
+		for i := range out {
+			out[i].Refs = refs[out[i].ID]
+		}
 	}
 	return out, nil
 }
@@ -617,6 +914,9 @@ func (s *statementService) CreateMissing(
 		default:
 			result.Failed = append(result.Failed, model.StatementCreateFailure{RowID: item.RowID, Error: err.Error()})
 		}
+	}
+	if len(result.Created) > 0 {
+		s.recordSources(ctx, id)
 	}
 	return result, nil
 }

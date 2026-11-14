@@ -335,8 +335,16 @@ func (r *transactionRepo) GetAllNormalized(
 		queryOrder = utils.ReverseSortOrder(sortOrder)
 	}
 
+	// occurred_at is looked up outside filtered so it only runs for the rows
+	// that survive the cursor and limit, not for every row the balance window
+	// has to read.
 	query := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
-		Select("*").
+		Select(
+			"t.*",
+			`(SELECT s.occurred_at FROM transaction_sources s
+			  WHERE s.transaction_id = t.id AND s.occurred_at IS NOT NULL
+			  ORDER BY s.created_at, s.id LIMIT 1) AS occurred_at`,
+		).
 		FromSelect(filtered, "t")
 	if !isFirstPage {
 		query = query.Where(
@@ -405,6 +413,7 @@ func (r *transactionRepo) GetAllNormalized(
 			&txn.Inflow,
 			&txn.Outflow,
 			&txn.Balance,
+			&txn.OccurredAt,
 		)
 		if err != nil {
 			return model.PaginatedResponse[model.Transaction]{}, err

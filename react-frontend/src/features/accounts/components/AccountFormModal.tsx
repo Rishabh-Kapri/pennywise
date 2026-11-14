@@ -1,9 +1,9 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { CreditCardIcon } from '@phosphor-icons/react';
 import { Modal } from '@/components/common/Modal/Modal';
 import { useAppDispatch } from '@/app/hooks';
 import { SearchSelect } from '@/features/transactions/components/popovers/SearchSelect';
-import { toast } from '@/utils';
+import { apiClient, errorMessage, toast } from '@/utils';
 import { createAccount, updateAccount } from '../store/accountSlice';
 import {
   BudgetAccountNames,
@@ -39,6 +39,22 @@ export function AccountFormModal({ isOpen, onClose, account, onSaved }: AccountF
   const [closed, setClosed] = useState(account?.closed ?? false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Statement PDF password: write-only. hasPassword says one is saved.
+  const [statementPassword, setStatementPassword] = useState('');
+  const [hasPassword, setHasPassword] = useState(false);
+  const [removePassword, setRemovePassword] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen || !account?.id) return;
+    let live = true;
+    apiClient
+      .get<{ accountIds: string[] }>('statements/passwords')
+      .then((res) => live && setHasPassword(res.accountIds.includes(account.id!)))
+      .catch(() => live && setHasPassword(false));
+    return () => {
+      live = false;
+    };
+  }, [isOpen, account?.id]);
 
   const bank = getBankBrand(null, bankId);
   const typeLabel = ALL_TYPE_NAMES.find((option) => option.value === type)?.name ?? '';
@@ -68,6 +84,8 @@ export function AccountFormModal({ isOpen, onClose, account, onSaved }: AccountF
     setName(account?.name ?? '');
     setNameEdited(isEdit);
     setClosed(account?.closed ?? false);
+    setStatementPassword('');
+    setRemovePassword(false);
     setError(null);
   };
 
@@ -87,6 +105,15 @@ export function AccountFormModal({ isOpen, onClose, account, onSaved }: AccountF
       const saved = account?.id
         ? await dispatch(updateAccount({ id: account.id, edits: { ...fields, closed } })).unwrap()
         : await dispatch(createAccount(fields)).unwrap();
+      if (saved?.id && (statementPassword || removePassword)) {
+        try {
+          await apiClient.put(`statements/passwords/${saved.id}`, {
+            password: removePassword ? '' : statementPassword,
+          });
+        } catch (err) {
+          toast.error("The statement password wasn't saved", { description: errorMessage(err, 'Try again.') });
+        }
+      }
       toast.success(isEdit ? 'Account updated' : 'Account created');
       onClose();
       if (!isEdit) reset();
@@ -168,6 +195,35 @@ export function AccountFormModal({ isOpen, onClose, account, onSaved }: AccountF
               onChange={(event) => setSuffix(event.target.value.replace(/\D/g, ''))}
             />
           </div>
+        </div>
+
+        <div className={styles.field}>
+          <label className={styles.label} htmlFor="account-form-statement-password">
+            Statement PDF password
+          </label>
+          <input
+            id="account-form-statement-password"
+            className={styles.input}
+            type="password"
+            autoComplete="new-password"
+            value={statementPassword}
+            disabled={removePassword}
+            placeholder={hasPassword ? 'Saved · type to replace' : 'Optional'}
+            onChange={(event) => setStatementPassword(event.target.value)}
+          />
+          <span className={styles.hint}>
+            Used to open statements emailed to you for this account. Stored encrypted and never shown again.
+          </span>
+          {hasPassword && (
+            <label className={styles.checkbox}>
+              <input
+                type="checkbox"
+                checked={removePassword}
+                onChange={(event) => setRemovePassword(event.target.checked)}
+              />
+              Remove the saved password
+            </label>
+          )}
         </div>
 
         {isEdit && (

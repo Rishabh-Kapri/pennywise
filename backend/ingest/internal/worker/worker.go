@@ -44,6 +44,7 @@ func Setup(ctx context.Context, deps Deps) error {
 	w.RegisterJobHandler(model.JobTypeMailboxChanged, mailboxChanged(deps))
 	w.RegisterJobHandler(model.JobTypeMailboxBackfill, mailboxBackfill(deps))
 	w.RegisterJobHandler(model.JobTypeMailboxStartWatch, mailboxRenewWatch(deps))
+	w.RegisterJobHandler(model.JobTypeStatementFetch, statementFetch(deps))
 
 	err = w.Run(ctx)
 	logger.Logger(ctx).Info("run returned")
@@ -62,6 +63,26 @@ func childOf(j *job.Job) []job.EnqueueOption {
 		rootID = *j.RootJobID
 	}
 	return []job.EnqueueOption{job.WithRootJobID(&rootID), job.WithParentID(&parentID)}
+}
+
+// statementFetch handles model.JobTypeStatementFetch: it downloads a statement
+// email's PDFs and queues a statement.import child per file.
+func statementFetch(deps Deps) jobrunner.HandlerFunc {
+	return func(ctx context.Context, j *job.Job) (json.RawMessage, error) {
+		ctx, budgetID, err := jobrunner.BudgetContext(ctx, j)
+		if err != nil {
+			return nil, err
+		}
+		p, err := jobrunner.DecodePayload[model.StatementFetchPayload](j)
+		if err != nil {
+			return nil, err
+		}
+		n, err := deps.Mailbox.FetchStatement(ctx, budgetID, p, childOf(j)...)
+		if err != nil {
+			return nil, err
+		}
+		return jobrunner.EncodeResult(map[string]int{"queued": n})
+	}
 }
 
 // mailboxChanged handles model.JobTypeMailboxChanged: it syncs the mailbox, and

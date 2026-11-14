@@ -252,12 +252,10 @@ func (a *adapter) Predict(
 		return ports.PredictionResult{}, err
 	}
 	names := make(map[string]bool, len(categories))
-	list := make([]string, 0, len(categories))
 	for _, category := range categories {
 		names[category.Name] = true
-		list = append(list, category.Name)
 	}
-	system := strings.ReplaceAll(prompts.PredictionPrompt, "{categories}", strings.Join(list, ", "))
+	system := strings.ReplaceAll(prompts.PredictionPrompt, "{categories}", prompts.FormatCategories(categories))
 	user := fmt.Sprintf("Merchant: %s\nAmount: %.2f\nAccount: %s\n\n%s",
 		entities.Merchant, entities.Amount, entities.Account, msg.Body)
 

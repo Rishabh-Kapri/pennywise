@@ -4,6 +4,8 @@ package ports
 import (
 	"context"
 	"time"
+
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 )
 
 type Source string
@@ -122,4 +124,12 @@ type MemoryLookup interface {
 // transaction; errors are for calls that failed and are worth retrying.
 type Predictor interface {
 	Predict(ctx context.Context, msg Message, entities ExtractedEntities) (PredictionResult, error)
+}
+
+// StatementImport reads a bank or card statement PDF.
+type StatementImport interface {
+	// Extract returns the statement's sections and rows. A locked PDF is
+	// opened with the first of passwords that works; the response says which
+	// (PasswordIndex), or -1 when it needed none.
+	Extract(ctx context.Context, pdf []byte, passwords []string) (model.StatementExtractResponse, error)
 }

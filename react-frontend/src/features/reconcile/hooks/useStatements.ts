@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useAppSelector } from '@/app/hooks';
+import type { JobUpdate } from '@/features/jobs/types/job.types';
 import { apiClient } from '@/utils';
 import type {
   StatementCreateItem,
@@ -8,9 +10,66 @@ import type {
   StatementUploadResponse,
 } from '../types/reconcile.types';
 
-// Extraction is a background job on the API (several LLM round-trips); while
-// anything is processing, the list and the open statement are polled.
-const POLL_MS = 3000;
+// A statement is read by a job in cipher (statement.extract), then saved onto
+// its import by the API (statement.save). Progress arrives as job updates on
+// the websocket, matched to an import by its jobId. When a statement job ends,
+// the screens reload. Updates can be dropped, so a slow poll backs them up.
+const FALLBACK_POLL_MS = 20000;
+
+/** The import with its job's latest progress, while it is processing. */
+export function withLiveProgress(imp: StatementImport, latest: Record<string, JobUpdate>): StatementImport {
+  if (imp.status !== 'processing' || !imp.jobId) return imp;
+  const progress = latest[imp.jobId]?.progress;
+  if (!progress?.message) return imp;
+  return {
+    ...imp,
+    stage: progress.message,
+    pagesProcessed: progress.current ?? 0,
+    pageCount: progress.total ?? 0,
+  };
+}
+
+/** "Reading pages 3/7", or what the job is doing when it has no count yet. */
+export function statementProgressLabel(imp: StatementImport): string {
+  const stage = imp.stage ? imp.stage.charAt(0).toUpperCase() + imp.stage.slice(1) : 'Waiting to start';
+  return imp.pageCount ? `${stage} ${imp.pagesProcessed}/${imp.pageCount}…` : `${stage}…`;
+}
+
+/** Reloads when a statement job ends, and every so often while processing. */
+function useStatementRefresh(processing: boolean, reload: () => unknown) {
+  const statementVersion = useAppSelector((state) => state.jobs.statementVersion);
+  const seen = useRef(statementVersion);
+  useEffect(() => {
+    if (seen.current === statementVersion) return;
+    seen.current = statementVersion;
+    if (processing) void reload();
+  }, [statementVersion, processing, reload]);
+
+  useEffect(() => {
+    if (!processing) return;
+    const timer = window.setInterval(() => void reload(), FALLBACK_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [processing, reload]);
+}
+
+/**
+ * Opens the uploaded PDF in a new tab. The file needs auth headers, so it is
+ * fetched as a blob first. The tab is opened before the fetch, while the click
+ * still counts as a user action, or the popup blocker would stop it.
+ */
+export async function openStatementPdf(id: string): Promise<void> {
+  const tab = window.open('', '_blank');
+  try {
+    const url = await apiClient.fetchBlobUrl(`statements/${id}/file`);
+    if (tab) tab.location.href = url;
+    else window.location.href = url;
+    // the tab has loaded it by then; the URL only holds the blob in memory
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  } catch (err) {
+    tab?.close();
+    throw err;
+  }
+}
 
 export interface UploadOutcome {
   fileName: string;
@@ -40,14 +99,12 @@ export function useStatementList() {
     void refresh();
   }, [refresh]);
 
+  const latest = useAppSelector((state) => state.jobs.latest);
+  const liveImports = useMemo(() => imports.map((imp) => withLiveProgress(imp, latest)), [imports, latest]);
   const anyProcessing = imports.some((imp) => imp.status === 'processing');
-  useEffect(() => {
-    if (!anyProcessing) return;
-    const timer = window.setInterval(() => void refresh(), POLL_MS);
-    return () => window.clearInterval(timer);
-  }, [anyProcessing, refresh]);
+  useStatementRefresh(anyProcessing, refresh);
 
-  /** Uploads one file at a time: the API queues extraction serially anyway. */
+  /** Uploads one file at a time, so a failure says which file it was. */
   const upload = useCallback(
     async (files: File[], accountId: string, password: string): Promise<UploadOutcome[]> => {
       const outcomes: UploadOutcome[] = [];
@@ -94,7 +151,7 @@ export function useStatementList() {
     [refresh],
   );
 
-  return { imports, isLoading, error, refresh, upload, remove, retry };
+  return { imports: liveImports, isLoading, error, refresh, upload, remove, retry };
 }
 
 export function useStatementReconciliation(id: string | null) {
@@ -128,11 +185,12 @@ export function useStatementReconciliation(id: string | null) {
   }, [id, load]);
 
   const processing = data?.import.status === 'processing';
-  useEffect(() => {
-    if (!processing) return;
-    const timer = window.setInterval(() => void load(), POLL_MS);
-    return () => window.clearInterval(timer);
-  }, [processing, load]);
+  useStatementRefresh(processing, load);
+  const latest = useAppSelector((state) => state.jobs.latest);
+  const liveData = useMemo(
+    () => (data ? { ...data, import: withLiveProgress(data.import, latest) } : null),
+    [data, latest],
+  );
 
   const setSectionAccount = useCallback(
     async (section: number, accountId: string | null) => {
@@ -159,5 +217,5 @@ export function useStatementReconciliation(id: string | null) {
     [id, load],
   );
 
-  return { data, isLoading, error, reload: load, setSectionAccount, createMissing };
+  return { data: liveData, isLoading, error, reload: load, setSectionAccount, createMissing };
 }

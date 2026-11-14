@@ -8,6 +8,7 @@ import (
 	// "io"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/ports"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/progress"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/jobrunner"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
@@ -67,6 +68,10 @@ func messageReceived(deps WorkerDeps) jobrunner.HandlerFunc {
 		if err != nil {
 			return nil, errs.Wrap(errs.CodeMessageCheckFailed, "check transaction", err)
 		}
+		// A statement isn't a transaction: its PDF is read on its own path.
+		if verdict.MessageType == ports.StatementMessageType {
+			return routeStatement(ctx, deps, j, budgetID, msg, verdict)
+		}
 		if deps.shouldPark(ctx, pipeline.StepCheck, verdict.Confidence) {
 			// Continuing is the person saying that it is a transaction.
 			resume, err := resumeJob(budgetID, j, msg, model.JobTypeMessageExtract, func(m model.ReceivedMessage) any {
@@ -90,6 +95,44 @@ func messageReceived(deps WorkerDeps) jobrunner.HandlerFunc {
 			Verdict: toModelVerdict(verdict),
 		}, verdict)
 	}
+}
+
+// routeStatement sends a statement email's PDFs to ingest (statement.fetch),
+// which downloads them and queues their import. The message itself ends here
+// as a statement. One without a PDF (a "your statement is ready" notice) ends
+// as not a transaction.
+func routeStatement(
+	ctx context.Context,
+	deps WorkerDeps,
+	j *job.Job,
+	budgetID uuid.UUID,
+	msg model.ReceivedMessage,
+	verdict ports.TxnVerdict,
+) (json.RawMessage, error) {
+	var pdfs []model.MessageAttachment
+	for _, a := range msg.Attachments {
+		if a.IsPDF() {
+			pdfs = append(pdfs, a)
+		}
+	}
+	if msg.Source != "email" || msg.MailAccount == "" || len(pdfs) == 0 {
+		return finish(ctx, deps, j, budgetID, msg, model.MessageOutcomeNotTransaction,
+			"a statement notice without a PDF", toModelVerdict(verdict))
+	}
+	if _, err := jobrunner.EnqueueNext(ctx, deps.Broker, j,
+		model.JobTypeStatementFetch, model.QueueIngest, msg.IdempotencyKey(budgetID),
+		model.StatementFetchPayload{
+			Provider:    msg.Provider,
+			MailAccount: msg.MailAccount,
+			MessageID:   msg.ExternalID,
+			Subject:     msg.Subject,
+			Attachments: pdfs,
+		},
+	); err != nil {
+		return nil, err
+	}
+	return finish(ctx, deps, j, budgetID, msg, model.MessageOutcomeStatement,
+		"a statement: its PDF is being read", toModelVerdict(verdict))
 }
 
 // messageExtract handles model.JobTypeMessageExtract. It pulls the account,
@@ -197,7 +240,16 @@ func messageLookup(deps WorkerDeps) jobrunner.HandlerFunc {
 			return next(ctx, deps, j, budgetID, p.Message, model.JobTypeMessagePredict, p, lookupOutput{})
 		}
 
-		return createTransaction(ctx, deps, j, budgetID, p, res, model.MessagePredictionMemory, lookupOutput{Found: true, Match: &res})
+		return createTransaction(
+			ctx,
+			deps,
+			j,
+			budgetID,
+			p,
+			res,
+			model.MessagePredictionMemory,
+			lookupOutput{Found: true, Match: &res},
+		)
 	}
 }
 
@@ -232,6 +284,70 @@ func messagePredict(deps WorkerDeps) jobrunner.HandlerFunc {
 
 		return createTransaction(ctx, deps, j, budgetID, p, res, model.MessagePredictionPredictor, res)
 	}
+}
+
+func statementExtract(deps WorkerDeps) jobrunner.HandlerFunc {
+	return func(ctx context.Context, j *job.Job) (json.RawMessage, error) {
+		ctx, budgetID, err := jobrunner.BudgetContext(ctx, j)
+		if err != nil {
+			return nil, err
+		}
+		p, err := jobrunner.DecodePayload[model.StatementInput](j)
+		if err != nil {
+			return nil, err
+		}
+		if p.ImportID == uuid.Nil {
+			return nil, errs.New(errs.CodeJobInvalidPayload, "statement.extract has no importId")
+		}
+
+		extractor, err := deps.StatementImport.Extract(ctx, budgetID)
+		if err != nil {
+			return nil, err
+		}
+
+		jobrunner.ReportProgress(ctx, job.Progress{Message: "starting extraction"})
+
+		// The typed password first, then each account's saved one.
+		passwords := []string{}
+		if p.Password != "" {
+			passwords = append(passwords, p.Password)
+		}
+		for _, c := range p.Candidates {
+			passwords = append(passwords, c.Password)
+		}
+		res, err := extractor.Extract(withJobProgress(ctx), p.Data, passwords)
+		if err != nil {
+			return nil, err
+		}
+		save := model.StatementSavePayload{ImportID: p.ImportID, Sections: res.Sections}
+		if i := res.PasswordIndex - len(passwords) + len(p.Candidates); res.PasswordIndex >= 0 && i >= 0 {
+			save.OpenedWith = &p.Candidates[i].AccountID
+		}
+
+		// The API saves the rows onto the import; the key is the import, so a
+		// retried extract gets back the save it already queued.
+		saveID, err := jobrunner.EnqueueNext(ctx, deps.Broker, j,
+			model.JobTypeStatementSave, model.QueuePennywise,
+			"statement:"+p.ImportID.String(), save,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		rows := 0
+		for _, s := range res.Sections {
+			rows += len(s.Rows)
+		}
+		return jobrunner.EncodeResult(map[string]any{"rows": rows, "nextJobId": saveID})
+	}
+}
+
+// withJobProgress forwards progress reports from services and adapters to the
+// running job's progress, so they don't need to know they run in a job.
+func withJobProgress(ctx context.Context) context.Context {
+	return progress.With(ctx, func(s progress.Step) {
+		jobrunner.ReportProgress(ctx, job.Progress{Message: s.Name, Current: s.Current, Total: s.Total})
+	})
 }
 
 // lookupOutput is what the lookup step stores as its result.
@@ -396,5 +512,7 @@ func enqueue(
 	if err != nil {
 		return nil, err
 	}
-	return jobrunner.EncodeResult(model.MessageStepResult{Output: output, NextJobType: jobType, NextJobID: &id, Outcome: outcome})
+	return jobrunner.EncodeResult(
+		model.MessageStepResult{Output: output, NextJobType: jobType, NextJobID: &id, Outcome: outcome},
+	)
 }

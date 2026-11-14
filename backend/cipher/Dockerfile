@@ -15,7 +15,9 @@ RUN go build -mod=vendor -o cipher ./cmd/api
 
 FROM alpine:latest
 
-RUN apk update --no-cache && apk add --no-cache ca-certificates tzdata
+# poppler-utils provides pdftoppm, which renders statement PDFs into page
+# images for the statement.extract job.
+RUN apk update --no-cache && apk add --no-cache ca-certificates tzdata poppler-utils
 
 WORKDIR /root/
 

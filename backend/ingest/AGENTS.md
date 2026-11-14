@@ -15,7 +15,7 @@ Status: mailboxes connect from the web app and sync into the job queue. The Pub/
 - `internal/service/`: `IngestService.Accept` sanitizes emails and queues one `model.JobTypeMessageReceived` job per budget. Queue messages only through `Accept`: it owns the dedupe key
 - `internal/factory/`: builds adapters from config. `NewMailProviders` returns a registry keyed by `Connection.Provider`; the only package outside `internal/adapters` that imports an adapter
 - `internal/pubsub/`: Gmail push receiver (moved from go-gmail). Each push → `mailbox.changed` job keyed `gmail:account:historyId`, then ack; malformed pushes are acked, enqueue failures nacked. Nothing handles `mailbox.changed` yet
-- `internal/worker/`: job worker (inbound adapter). `mailbox.changed` runs `MailboxService.Sync`, `mailbox.backfill` runs `Backfill`, `mailbox.watch.start` runs `RenewWatch`; each queued message is a child of the job, so the Jobs screen shows one run
+- `internal/worker/`: job worker (inbound adapter). `mailbox.changed` runs `MailboxService.Sync`, `mailbox.backfill` runs `Backfill`, `mailbox.watch.start` runs `RenewWatch`, `statement.fetch` runs `FetchStatement` (downloads a statement email's PDFs, queues one `statement.import` per file on the `pennywise` queue); each queued message is a child of the job, so the Jobs screen shows one run
 - `internal/sanitize/`: email HTML to visible text. `Accept` runs it on every email, so all paths into the pipeline agree
 - `cmd/seal/`: seals a refresh token (stdin) into `mail_connections.credentials` hex, for migrating connections by hand
 - `internal/ports/`: `InboundMessage` (the common message shape), `Connection`, `MailProvider`
@@ -29,6 +29,7 @@ Status: mailboxes connect from the web app and sync into the job queue. The Pub/
 - Pausing is per mailbox, so it covers every budget the mailbox feeds. It stops the watch, and resuming starts a new one from now: mail from the pause isn't fetched. `paused_at` is apart from `status` because sync rewrites `status`.
 - Each mailbox has one `job_schedules` row, `mailbox.watch:<connection id>`, that renews its watch daily at 03:00 UTC. Connecting or resuming turns it on (a failure fails the request); pausing or removing the last budget turns it off (best effort, because `RenewWatch` skips those anyway). `RunScheduler` runs in ingest's `main`. Renewal keeps the stored cursor so mail since the last sync isn't skipped.
 - Removing a mailbox's last budget soft-deletes the row and wipes its credentials. Google's grant stays until the user revokes it: revoking would end every grant for this client, login included.
+- Emails carry their attachments' names (`ReceivedMessage.Attachments`, `MailAccount`), never the bytes. `MailProvider.Attachment` looks the message up again by file name, because Gmail's attachment IDs change between fetches.
 - `FetchSince` returns no cursor on any error: keep the old one so nothing is skipped. `MAIL_CURSOR_EXPIRED` means call `Watch` for a fresh cursor (and `Search` to fill the gap); `MAIL_AUTH_FAILED` means the user must reconnect.
 
 ## Env

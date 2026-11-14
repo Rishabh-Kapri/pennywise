@@ -3,6 +3,7 @@ import styles from '../Transaction/Transaction.module.css';
 import { getLocaleDate } from '@/utils/date.utils';
 import { formatBudgetAmount } from '@/features/category/components/budgetFormat';
 import type { Transaction } from '../../types/transaction.types';
+import { formatSourceTime } from '../../utils/sourceTime';
 import { AccountLabel } from './AccountLabel';
 
 function renderAmount(txn: Transaction) {
@@ -13,6 +14,18 @@ function renderAmount(txn: Transaction) {
     return <span className={`${styles.amountCell} ${styles.amountOutflow}`}>-{formatBudgetAmount(txn.outflow ?? 0)}</span>;
   }
   return '–';
+}
+
+function renderDate(txn: Transaction) {
+  const time = formatSourceTime(txn.occurredAt);
+  const date = getLocaleDate(txn.date, { month: 'short', day: 'numeric', year: 'numeric' }, ['en-GB']);
+  if (!time) return date;
+  return (
+    <>
+      {date}
+      <span className={styles.dateTime}>{time}</span>
+    </>
+  );
 }
 
 function renderPayee(txn: Transaction) {
@@ -29,9 +42,9 @@ export const allAccountTxnCols: TransactionColumns[] = [
   {
     key: 'date',
     label: 'Date',
-    layout: { flex: '0 0 9rem', textAlign: 'left' },
+    layout: { flex: '0 0 12rem', textAlign: 'left' },
     className: ['dateCell'],
-    render: (txn) => getLocaleDate(txn.date, { month: 'short', day: 'numeric', year: 'numeric' }, ['en-GB']),
+    render: renderDate,
   },
   {
     key: 'payeeName',
@@ -68,9 +81,9 @@ export const specificAccountTxnCols: TransactionColumns[] = [
   {
     key: 'date',
     label: 'Date',
-    layout: { flex: '0 0 9rem', textAlign: 'left' },
+    layout: { flex: '0 0 12rem', textAlign: 'left' },
     className: ['dateCell'],
-    render: (txn) => getLocaleDate(txn.date, { month: 'short', day: 'numeric', year: 'numeric' }, ['en-GB']),
+    render: renderDate,
   },
   {
     key: 'payeeName',

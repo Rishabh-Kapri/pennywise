@@ -32,6 +32,15 @@ type fakeMailbox struct {
 	messages    map[string]*gmailv1.Message
 	watchRes    *gmailv1.WatchResponse
 	watchReq    *gmailv1.WatchRequest
+	attachments map[string]string // attachment ID -> base64url data
+}
+
+func (f *fakeMailbox) attachment(_ context.Context, _ string, attachmentID string) (*gmailv1.MessagePartBody, error) {
+	data, ok := f.attachments[attachmentID]
+	if !ok {
+		return nil, &googleapi.Error{Code: http.StatusNotFound}
+	}
+	return &gmailv1.MessagePartBody{Data: data}, nil
 }
 
 func (f *fakeMailbox) watch(_ context.Context, req *gmailv1.WatchRequest) (*gmailv1.WatchResponse, error) {
@@ -313,5 +322,36 @@ func TestFetchLoadsTheChosenMessagesInFull(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].ExternalID != "a" || mb.headerCalls.Load() != 0 {
 		t.Fatalf("%+v, header calls %d", got, mb.headerCalls.Load())
+	}
+}
+
+func TestAttachmentsListedAndDownloaded(t *testing.T) {
+	msg := &gmailv1.Message{Id: "m1", Payload: &gmailv1.MessagePart{
+		MimeType: "multipart/mixed",
+		Parts: []*gmailv1.MessagePart{
+			{MimeType: "text/html", Body: &gmailv1.MessagePartBody{Data: base64.URLEncoding.EncodeToString([]byte("<p>Your statement</p>"))}},
+			{MimeType: "application/pdf", Filename: "statement.pdf", Body: &gmailv1.MessagePartBody{AttachmentId: "att-1", Size: 9}},
+		},
+	}}
+	mb := &fakeMailbox{
+		messages:    map[string]*gmailv1.Message{"m1": msg},
+		attachments: map[string]string{"att-1": base64.URLEncoding.EncodeToString([]byte("%PDF-1.4\n"))},
+	}
+	a, conn := newAdapter(t, mb)
+
+	in := toInbound(conn, msg)
+	if len(in.Attachments) != 1 || !in.Attachments[0].IsPDF() || in.Attachments[0].FileName != "statement.pdf" {
+		t.Fatalf("attachments = %+v", in.Attachments)
+	}
+	if in.MailAccount != conn.Account {
+		t.Errorf("mail account = %q, want %q", in.MailAccount, conn.Account)
+	}
+
+	data, err := a.Attachment(context.Background(), conn, "m1", "statement.pdf")
+	if err != nil || string(data) != "%PDF-1.4\n" {
+		t.Fatalf("attachment = %q, %v", data, err)
+	}
+	if _, err := a.Attachment(context.Background(), conn, "m1", "other.pdf"); err == nil {
+		t.Error("a file the message doesn't have was found")
 	}
 }

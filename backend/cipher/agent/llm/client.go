@@ -50,20 +50,22 @@ func recordUsage(span trace.Span, usage sharedModel.Usage) {
 
 // LLM is the provider-neutral interface all LLM clients must satisfy.
 type LLM interface {
-	Chat(ctx context.Context, req sharedModel.ChatRequest) (*sharedModel.ChatResponse, error)
-	Stream(ctx context.Context, req sharedModel.ChatRequest) <-chan sharedModel.StreamChunk
+	Chat(ctx context.Context, req sharedModel.ChatRequest, conversationID *string) (*sharedModel.ChatResponse, error)
+	Stream(ctx context.Context, req sharedModel.ChatRequest, conversationID *string) <-chan sharedModel.StreamChunk
 }
 
 // ObservedLLM wraps any LLM with OpenTelemetry tracing.
 // It holds the TelemetryProvider interface so a no-op provider can be
 // substituted safely (avoids nil-dereference on zero-value Telemetry struct).
 type ObservedLLM struct {
+	Type      string // local | cloud
 	client    LLM
 	telemetry otelSDK.TelemetryProvider
 }
 
-func NewObservedLLM(client LLM, tel otelSDK.TelemetryProvider) *ObservedLLM {
+func NewObservedLLM(client LLM, tel otelSDK.TelemetryProvider, providerType string) *ObservedLLM {
 	return &ObservedLLM{
+		Type:      providerType,
 		client:    client,
 		telemetry: tel,
 	}
@@ -93,14 +95,17 @@ func (o *ObservedLLM) Chat(
 		attribute.String("langfuse.observation.input", serializedMessages),
 	)
 
-	res, err := o.client.Chat(ctx, req)
+	res, err := o.client.Chat(ctx, req, conversationID)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		return nil, err
 	}
 
-	serializedMessage, marshalErr := telemetry.JSON(observationOutput(contentText(res.Message.Content), res.Message.ToolCalls), spanContentLimit)
+	serializedMessage, marshalErr := telemetry.JSON(
+		observationOutput(contentText(res.Message.Content), res.Message.ToolCalls),
+		spanContentLimit,
+	)
 	if marshalErr != nil {
 		span.RecordError(marshalErr)
 	}
@@ -153,7 +158,7 @@ func (o *ObservedLLM) Stream(
 		attribute.String("langfuse.observation.input", serializedMessages),
 	)
 
-	upstream := o.client.Stream(ctx, req)
+	upstream := o.client.Stream(ctx, req, conversationID)
 	out := make(chan sharedModel.StreamChunk)
 
 	go func() {
@@ -166,7 +171,10 @@ func (o *ObservedLLM) Stream(
 		firstToken := false
 		defer func() {
 			if completed || output.Len() > 0 || len(toolCalls) > 0 {
-				serializedOutput, err := telemetry.JSON(observationOutput(output.String(), orderedStreamToolCalls(toolCalls)), spanContentLimit)
+				serializedOutput, err := telemetry.JSON(
+					observationOutput(output.String(), orderedStreamToolCalls(toolCalls)),
+					spanContentLimit,
+				)
 				if err != nil {
 					span.RecordError(err)
 				} else {
@@ -188,7 +196,12 @@ func (o *ObservedLLM) Stream(
 			case sharedModel.ChunkEventText:
 				if chunk.Text != "" {
 					if !firstToken {
-						span.SetAttributes(attribute.String("langfuse.observation.completion_start_time", time.Now().UTC().Format(time.RFC3339Nano)))
+						span.SetAttributes(
+							attribute.String(
+								"langfuse.observation.completion_start_time",
+								time.Now().UTC().Format(time.RFC3339Nano),
+							),
+						)
 						firstToken = true
 					}
 					writeBounded(&output, chunk.Text)

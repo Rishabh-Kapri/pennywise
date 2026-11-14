@@ -11,6 +11,8 @@ export interface JobProgress {
 /** A websocket notice that a job changed. */
 export interface JobUpdate {
   jobId: string;
+  /** The job type, e.g. statement.extract. */
+  type?: string;
   status: JobStatus;
   progress?: JobProgress;
 }
@@ -134,6 +136,10 @@ export interface JobsState {
   updatedAt: string | null;
   /** Goes up when a job changes, which prompts the open screen to reload. */
   liveVersion: number;
+  /** The last websocket update of each job, for screens that follow one job. */
+  latest: Record<string, JobUpdate>;
+  /** Goes up when a statement job finishes or fails, so statement screens reload. */
+  statementVersion: number;
   /** Jobs opened on this screen, by ID. */
   details: Record<string, JobDetail>;
   detailLoading: LoadingState;

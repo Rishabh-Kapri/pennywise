@@ -28,6 +28,9 @@ type WorkerDeps struct {
 	// ParkLowConfidence sends low-confidence check and verify answers to a
 	// person. Off, they're only logged. Details that don't match always park.
 	ParkLowConfidence bool
+
+	// Statement adapter
+	StatementImport factory.StatementImport
 }
 
 // Setup builds cipher's worker on the broker main already opened, registers
@@ -54,6 +57,7 @@ func Setup(ctx context.Context, deps WorkerDeps) error {
 	w.RegisterJobHandler(sharedModel.JobTypeMessageVerify, messageVerify(deps))
 	w.RegisterJobHandler(sharedModel.JobTypeMessageLookup, messageLookup(deps))
 	w.RegisterJobHandler(sharedModel.JobTypeMessagePredict, messagePredict(deps))
+	w.RegisterJobHandler(sharedModel.JobTypeStatementExtract, statementExtract(deps))
 
 	if err := w.Run(ctx); err != nil {
 		return errs.Wrap(errs.CodeWorkerRunError, "worker run failed", err)

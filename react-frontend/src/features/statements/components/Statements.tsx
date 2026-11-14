@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import StatementReconcile from '@/features/reconcile/components/StatementReconcile';
 import { sampleCharges, sampleEntries, sampleLoans, samplePrograms } from '../data/sampleStatement';
 import styles from './Statements.module.css';
 
@@ -6,43 +8,15 @@ const money = (value: number) => new Intl.NumberFormat('en-IN', { style: 'curren
 const tabs = ['Overview', 'Charges', 'Rewards', 'EMI', 'Review'] as const;
 type Tab = typeof tabs[number];
 
-export default function Statements({ accountName }: { accountName: string }) {
+export default function Statements({ accountId, accountName }: { accountId: string; accountName: string }) {
+  const [searchParams] = useSearchParams();
   const [sample, setSample] = useState(false);
   const [tab, setTab] = useState<Tab>('Overview');
-  const [file, setFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [error, setError] = useState('');
-  const [dragging, setDragging] = useState(false);
   const [query, setQuery] = useState('');
   const [evidence, setEvidence] = useState('All');
   const [reviewed, setReviewed] = useState<string[]>([]);
-  const fileInput = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    setPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
-
-  function selectFile(next?: File) {
-    if (!next) return;
-    if (!/\.pdf$/i.test(next.name) || (next.type && next.type !== 'application/pdf')) {
-      setError('Choose a PDF statement.');
-      return;
-    }
-    if (next.size > 20 * 1024 * 1024) {
-      setError('Choose a PDF smaller than 20 MB.');
-      return;
-    }
-    if (!next.size) {
-      setError('This file is empty. Choose another PDF.');
-      return;
-    }
-    setError('');
-    setPreviewUrl(null);
-    setFile(next);
-  }
+  // one statement is open: the sample analysis below would only be in the way
+  const statementOpen = searchParams.has('statement');
 
   const charges = sampleCharges.filter((charge) =>
     (evidence === 'All' || charge.evidence === evidence)
@@ -51,28 +25,14 @@ export default function Statements({ accountName }: { accountName: string }) {
   const reversed = sampleEntries.reduce((sum, row) => sum + Math.min(row.points ?? 0, 0), 0);
 
   return (
-    <section className={styles.root} aria-label={`Statements for ${accountName}`}>
-      <header className={styles.header}>
-        <div><p className={styles.eyebrow}>CARD INSIGHTS</p><h2>Statements</h2><p>Understand the charges behind your spending and the rewards you earned.</p></div>
-        <button className={styles.primary} type="button" onClick={() => fileInput.current?.click()}>Upload PDF</button>
-      </header>
-      <input ref={fileInput} type="file" accept=".pdf,application/pdf" className={styles.fileInput} aria-label="Choose credit card statement PDF" onChange={(event) => { selectFile(event.target.files?.[0]); event.target.value = ''; }} />
-      {error && <p className={styles.error} role="alert">{error}</p>}
-      {file && <div className={styles.notice} role="status">
-        <div><strong>{file.name}</strong><p>{(file.size / 1024).toFixed(0)} KB · Selected locally. Upload and extraction are not connected yet; this PDF has not been saved or analysed.</p></div>
-        <div className={styles.actions}>{previewUrl && <a href={previewUrl} target="_blank" rel="noreferrer">Open PDF</a>}<button type="button" onClick={() => { setFile(null); setPreviewUrl(null); }}>Remove</button></div>
-      </div>}
-      {!sample ? <div className={styles.empty}>
-        <div className={`${styles.dropZone} ${dragging ? styles.dragging : ''}`} onDragOver={(event) => { event.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); setDragging(false); selectFile(event.dataTransfer.files[0]); }}>
-          <span className={styles.documentIcon} aria-hidden="true">▤</span>
-          <h3>A clearer picture of your card</h3>
-          <p>Drop a PDF here or choose a file to preview it locally.</p>
-          <button className={styles.primary} type="button" onClick={() => fileInput.current?.click()}>Choose statement</button>
-          <small>PDF · up to 20 MB</small>
-        </div>
-        <div className={styles.samplePrompt}><div><strong>Explore the statement analysis</strong><p>See charges, rewards, and EMI details using made-up example data.</p></div><button type="button" onClick={() => setSample(true)}>View sample analysis →</button></div>
-        <p className={styles.muted}>Statement storage and extraction will be available when the backend is connected.</p>
-      </div> : <>
+    <div className={styles.stack}>
+      {/* Upload, the card's statements and reconciliation: the same screen as Settings → Reconcile. */}
+      <StatementReconcile accountId={accountId} />
+      {/* The old rules of .root (h3, p, button) must not reach the component above. */}
+      <section className={styles.root} aria-label={`Statement analysis for ${accountName}`}>
+      {statementOpen ? null : !sample ? (
+        <div className={styles.samplePrompt}><div><strong>Charges, rewards and EMI analysis</strong><p>Not connected to your statements yet. See it with made-up example data.</p></div><button type="button" onClick={() => setSample(true)}>View sample analysis →</button></div>
+      ) : <>
         <div className={styles.notice}><div><strong>Sample analysis · 3 Aug–3 Sep 2026 transaction range</strong><p>Made-up example data, not your selected PDF. Billing period and card variant are unconfirmed. Review changes last only while this view is open.</p></div><button type="button" onClick={() => setSample(false)}>Close sample</button></div>
         <nav className={styles.tabs} aria-label="Statement analysis sections">{tabs.map((item) => <button key={item} type="button" aria-current={tab === item ? 'page' : undefined} className={tab === item ? styles.active : ''} onClick={() => setTab(item)}>{item}{item === 'Review' && <span className={styles.count}>{3 - reviewed.length}</span>}</button>)}</nav>
         <div className={styles.panel}>
@@ -113,7 +73,8 @@ export default function Statements({ accountName }: { accountName: string }) {
           </>}
         </div>
       </>}
-    </section>
+      </section>
+    </div>
   );
 }
 

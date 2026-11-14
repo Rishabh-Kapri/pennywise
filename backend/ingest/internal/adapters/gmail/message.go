@@ -16,18 +16,49 @@ import (
 // message goes to every budget the connection feeds.
 func toInbound(conn model.MailConnection, msg *gmailv1.Message) ports.InboundMessage {
 	in := ports.InboundMessage{
-		Source:     ports.EmailSource,
-		Provider:   providerName,
-		BudgetID:   slices.Clone(conn.BudgetIDs),
-		ExternalID: msg.Id,
-		ReceivedAt: time.UnixMilli(msg.InternalDate),
+		Source:      ports.EmailSource,
+		Provider:    providerName,
+		BudgetID:    slices.Clone(conn.BudgetIDs),
+		ExternalID:  msg.Id,
+		ReceivedAt:  time.UnixMilli(msg.InternalDate),
+		MailAccount: conn.Account,
 	}
 	if msg.Payload != nil {
 		in.Sender = headerValue(msg.Payload.Headers, "From")
 		in.Subject = headerValue(msg.Payload.Headers, "Subject")
 		in.Body = body(msg.Payload)
+		in.Attachments = attachments(msg.Payload)
 	}
 	return in
+}
+
+// attachments lists the message's files, depth first. Inline images without
+// a file name are left out.
+func attachments(part *gmailv1.MessagePart) []model.MessageAttachment {
+	if part == nil {
+		return nil
+	}
+	var out []model.MessageAttachment
+	if part.Filename != "" && part.Body != nil && part.Body.AttachmentId != "" {
+		out = append(out, model.MessageAttachment{
+			ID:       part.Body.AttachmentId,
+			FileName: part.Filename,
+			MimeType: part.MimeType,
+			Size:     part.Body.Size,
+		})
+	}
+	for _, child := range part.Parts {
+		out = append(out, attachments(child)...)
+	}
+	return out
+}
+
+// decodeBytes reads Gmail's URL-safe base64 into bytes.
+func decodeBytes(data string) ([]byte, error) {
+	if raw, err := base64.URLEncoding.DecodeString(data); err == nil {
+		return raw, nil
+	}
+	return base64.RawURLEncoding.DecodeString(data)
 }
 
 // body returns the message's HTML, or its plain text when it has no HTML.

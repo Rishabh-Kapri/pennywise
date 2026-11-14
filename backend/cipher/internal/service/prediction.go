@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	agentPrompts "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/context"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
@@ -960,11 +961,10 @@ func (s *predictionService) llmFallback(
 	log.Info("categories found", "userCategories", userCategories, "err", err)
 
 	userCategoriesMap := make(map[string]uuid.UUID, len(userCategories))
-	userCategoriesText := ""
 	for _, c := range userCategories {
-		userCategoriesText += c.Name + ", "
 		userCategoriesMap[c.Name] = c.ID
 	}
+	userCategoriesText := agentPrompts.FormatCategories(userCategories)
 
 	log.Info("categories map", "map", userCategoriesMap, "text", userCategoriesText, "prompt", promptV2)
 

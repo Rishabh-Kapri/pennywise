@@ -229,7 +229,7 @@ export default function Accounts() {
 
               <div className={styles.transactions}>
                 {selectedAccount.type === 'creditCard' && showStatements
-                  ? <Statements key={`${selectedBudget?.id}:${selectedAccount.id}`} accountName={selectedAccount.name} />
+                  ? <Statements key={`${selectedBudget?.id}:${selectedAccount.id}`} accountId={selectedAccount.id!} accountName={selectedAccount.name} />
                   : <Transaction key={`${selectedBudget?.id}:${selectedAccount.id}`} accountId={selectedAccount.id} embedded />}
               </div>
             </div>

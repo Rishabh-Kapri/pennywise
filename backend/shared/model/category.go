@@ -43,8 +43,9 @@ type CategoryDetailsUpdate struct {
 }
 
 type CategorySimplified struct {
-	ID   uuid.UUID `json:"id"`
-	Name string    `json:"name"`
+	ID          uuid.UUID `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"` // what belongs in the category; may be empty
 }
 
 // CategoryNameMatch is a category scored against a candidate name by trigram

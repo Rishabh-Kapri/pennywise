@@ -58,7 +58,26 @@ const (
 	// QueuePennywise; payload TransactionLearnPayload.
 	JobTypeTransactionLearn = "transaction.learn"
 
+	// JobTypeStatementFetch: download the PDF attachments of an email the
+	// check step called a statement. Queued by cipher on QueueIngest;
+	// payload StatementFetchPayload.
+	JobTypeStatementFetch = "statement.fetch"
+	// JobTypeStatementImport: create a statement import from a fetched PDF
+	// and queue its statement.extract with the budget's saved passwords.
+	// Queued by ingest on QueuePennywise; payload StatementImportPayload.
+	JobTypeStatementImport = "statement.import"
+
 	// JobTypePipelineReport: record how one message ended. Queued on
 	// QueuePennywise by whichever step ended it; payload PipelineReportPayload.
 	JobTypePipelineReport = "pipeline.report"
+
+	// JobTypeStatementExtract: read the rows out of an uploaded statement PDF.
+	// Queued on [QueueCipher] by the API's statement upload; payload
+	// StatementInput. Queues JobTypeStatementSave with what it read.
+	JobTypeStatementExtract = "statement.extract"
+
+	// JobTypeStatementSave: save extracted rows onto their statement import.
+	// Queued on [QueuePennywise] by statement.extract; payload
+	// StatementSavePayload.
+	JobTypeStatementSave = "statement.save"
 )

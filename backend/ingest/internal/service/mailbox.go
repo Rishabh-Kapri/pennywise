@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -145,6 +146,72 @@ type MailboxService interface {
 	// position where it is. A mailbox that's gone, paused or needs
 	// reconnecting is skipped with a nil error, so the job doesn't retry.
 	RenewWatch(ctx context.Context, connectionID uuid.UUID) (WatchRenewal, error)
+
+	// FetchStatement downloads the PDFs of an email cipher called a statement
+	// and queues a statement.import for budgetID per file. It returns how
+	// many were queued. A mailbox no longer feeding budgetID queues nothing.
+	FetchStatement(
+		ctx context.Context,
+		budgetID uuid.UUID,
+		p model.StatementFetchPayload,
+		opts ...job.EnqueueOption,
+	) (int, error)
+}
+
+// maxStatementBytes matches the API's upload limit.
+const maxStatementBytes = 20 << 20
+
+func (s *mailboxService) FetchStatement(
+	ctx context.Context,
+	budgetID uuid.UUID,
+	p model.StatementFetchPayload,
+	opts ...job.EnqueueOption,
+) (int, error) {
+	if s.broker == nil {
+		return 0, errs.New(errs.CodeJobEnqueueFailed, "no job queue configured")
+	}
+	conn, err := s.deps.Connections.GetByAccount(ctx, p.Provider, strings.ToLower(p.MailAccount))
+	if errs.HasCode(err, errs.CodeConnectionNotFound) || (err == nil && conn == nil) {
+		logger.Logger(ctx).Info("statement email's mailbox is gone", "provider", p.Provider)
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	if !slices.Contains(conn.BudgetIDs, budgetID) {
+		return 0, nil
+	}
+	provider, err := s.deps.Providers.For(conn.Provider)
+	if err != nil {
+		return 0, err
+	}
+
+	queued := 0
+	for i, att := range p.Attachments {
+		if !att.IsPDF() || att.Size > maxStatementBytes {
+			continue
+		}
+		jobrunner.ReportProgress(ctx, job.Progress{Message: "Downloading the statement", Current: i + 1, Total: len(p.Attachments)})
+		data, err := provider.Attachment(ctx, *conn, p.MessageID, att.FileName)
+		if err != nil {
+			return queued, err
+		}
+		key := fmt.Sprintf("statement:%s:%s:%d", conn.Provider, p.MessageID, i)
+		payload, err := json.Marshal(model.StatementImportPayload{Key: key, FileName: att.FileName, Data: data})
+		if err != nil {
+			return queued, errs.Wrap(errs.CodeInternalError, "encode statement", err)
+		}
+		enqueueOpts := append([]job.EnqueueOption{
+			job.WithQueue(model.QueuePennywise),
+			job.WithBudgetID(&budgetID),
+			job.WithIdempotencyKey(key),
+		}, opts...)
+		if _, err := s.broker.Enqueue(ctx, model.JobTypeStatementImport, payload, enqueueOpts...); err != nil {
+			return queued, errs.Wrap(errs.CodeJobEnqueueFailed, "queue statement.import", err)
+		}
+		queued++
+	}
+	return queued, nil
 }
 
 type mailboxService struct {

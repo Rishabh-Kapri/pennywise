@@ -26,6 +26,10 @@ type InboundMessage struct {
 	Subject    string
 	Body       string
 	ReceivedAt time.Time
+	// MailAccount and Attachments are set for email: the mailbox it came
+	// from and its files (names only), so a statement's PDF can be fetched.
+	MailAccount string
+	Attachments []model.MessageAttachment
 }
 
 // Query narrows a mailbox search.
@@ -56,4 +60,7 @@ type MailProvider interface {
 	Search(ctx context.Context, conn model.MailConnection, q Query) ([]InboundMessage, error)
 	// Fetch loads messages in full. A message that's gone is left out.
 	Fetch(ctx context.Context, conn model.MailConnection, ids []string) ([]InboundMessage, error)
+	// Attachment downloads one file of a message. Look the message up again
+	// first: a provider's attachment handle can change between fetches.
+	Attachment(ctx context.Context, conn model.MailConnection, messageID, fileName string) ([]byte, error)
 }

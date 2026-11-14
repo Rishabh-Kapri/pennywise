@@ -472,6 +472,15 @@
   color: var(--color-text-secondary);
 }
 
+/* the bank's time of day, after the date */
+.dateTime {
+  margin-left: 0.5rem;
+  font-size: 0.85em;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
 /* ── Cell styles ─────────────────────────────────────────────── */
 
 /* hugs the value, so clicking the empty rest of the cell selects the row

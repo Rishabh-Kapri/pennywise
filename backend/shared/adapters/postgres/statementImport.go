@@ -21,8 +21,8 @@ func NewStatementImportRepository(pool *pgxpool.Pool) repository.StatementImport
 }
 
 const statementImportColumns = `
-	id, budget_id, file_name, file_hash, status, error, page_count, pages_processed,
-	default_account_id, sections, dropped_rows, source_text, created_at, updated_at`
+	id, budget_id, file_name, file_hash, status, error, job_id, page_count, pages_processed,
+	default_account_id, sections, dropped_rows, source_text, file_path, created_at, updated_at`
 
 func scanStatementImport(row pgx.Row) (*model.StatementImport, error) {
 	var imp model.StatementImport
@@ -34,12 +34,14 @@ func scanStatementImport(row pgx.Row) (*model.StatementImport, error) {
 		&imp.FileHash,
 		&imp.Status,
 		&imp.Error,
+		&imp.JobID,
 		&imp.PageCount,
 		&imp.PagesProcessed,
 		&imp.DefaultAccountID,
 		&sections,
 		&imp.DroppedRows,
 		&imp.SourceText,
+		&imp.FilePath,
 		&imp.CreatedAt,
 		&imp.UpdatedAt,
 	)
@@ -55,6 +57,7 @@ func scanStatementImport(row pgx.Row) (*model.StatementImport, error) {
 	for _, s := range imp.Sections {
 		imp.RowCount += len(s.Rows)
 	}
+	imp.HasFile = imp.FilePath != ""
 	return &imp, nil
 }
 
@@ -63,11 +66,17 @@ func (r *statementImportRepo) Create(ctx context.Context, imp model.StatementImp
 	if err != nil {
 		return nil, err
 	}
+	// The caller may pick the ID, so a job queued first can already name it.
+	if imp.ID == uuid.Nil {
+		imp.ID = uuid.New()
+	}
 	return scanStatementImport(r.Executor(ctx).QueryRow(ctx, `
 		INSERT INTO statement_imports (
-			budget_id, file_name, file_hash, status, page_count, default_account_id, sections, source_text
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			id, budget_id, file_name, file_hash, status, page_count, default_account_id, sections, source_text,
+			job_id, file_path
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		RETURNING `+statementImportColumns,
+		imp.ID,
 		imp.BudgetID,
 		imp.FileName,
 		imp.FileHash,
@@ -76,6 +85,8 @@ func (r *statementImportRepo) Create(ctx context.Context, imp model.StatementImp
 		imp.DefaultAccountID,
 		sections,
 		imp.SourceText,
+		imp.JobID,
+		imp.FilePath,
 	))
 }
 
@@ -106,12 +117,17 @@ func (r *statementImportRepo) FindByHash(ctx context.Context, budgetId uuid.UUID
 func (r *statementImportRepo) List(ctx context.Context, budgetId uuid.UUID, limit int) ([]model.StatementImport, error) {
 	rows, err := r.Executor(ctx).Query(ctx, `
 		SELECT
-			id, budget_id, file_name, status, error, page_count, pages_processed,
-			default_account_id, dropped_rows, created_at, updated_at,
+			id, budget_id, file_name, status, error, job_id, page_count, pages_processed,
+			default_account_id, dropped_rows, file_path, created_at, updated_at,
 			COALESCE((
 				SELECT SUM(jsonb_array_length(COALESCE(s->'rows', '[]'::jsonb)))
 				FROM jsonb_array_elements(sections) s
-			), 0)::int AS row_count
+			), 0)::int AS row_count,
+			ARRAY(
+				SELECT DISTINCT (s->>'accountId')::uuid
+				FROM jsonb_array_elements(sections) s
+				WHERE COALESCE(s->>'accountId', '') <> ''
+			) AS account_ids
 		FROM statement_imports
 		WHERE budget_id = $1 AND deleted = FALSE
 		ORDER BY created_at DESC
@@ -132,16 +148,20 @@ func (r *statementImportRepo) List(ctx context.Context, budgetId uuid.UUID, limi
 			&imp.FileName,
 			&imp.Status,
 			&imp.Error,
+			&imp.JobID,
 			&imp.PageCount,
 			&imp.PagesProcessed,
 			&imp.DefaultAccountID,
 			&imp.DroppedRows,
+			&imp.FilePath,
 			&imp.CreatedAt,
 			&imp.UpdatedAt,
 			&imp.RowCount,
+			&imp.AccountIDs,
 		); err != nil {
 			return nil, err
 		}
+		imp.HasFile = imp.FilePath != ""
 		imp.Sections = []model.StatementSection{}
 		imports = append(imports, imp)
 	}
@@ -171,7 +191,7 @@ func (r *statementImportRepo) Complete(
 		UPDATE statement_imports
 		SET status = 'ready', error = NULL, sections = $2, dropped_rows = $3,
 			pages_processed = page_count, updated_at = NOW()
-		WHERE id = $1`,
+		WHERE id = $1 AND status = 'processing' AND deleted = FALSE`,
 		id, body, droppedRows,
 	)
 	return err
@@ -180,7 +200,7 @@ func (r *statementImportRepo) Complete(
 func (r *statementImportRepo) Fail(ctx context.Context, id uuid.UUID, message string) error {
 	_, err := r.Executor(ctx).Exec(ctx, `
 		UPDATE statement_imports SET status = 'failed', error = $2, updated_at = NOW()
-		WHERE id = $1`,
+		WHERE id = $1 AND status = 'processing'`,
 		id, message,
 	)
 	return err
@@ -227,10 +247,11 @@ func (r *statementImportRepo) UpdateSections(
 }
 
 func (r *statementImportRepo) Delete(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error {
-	// Clearing the text with the soft delete: it is a full account history.
+	// Clearing the text and the file's key with the soft delete: they are a
+	// full account history. The caller deletes the file itself.
 	tag, err := r.Executor(ctx).Exec(ctx, `
 		UPDATE statement_imports
-		SET deleted = TRUE, source_text = '', sections = '[]'::jsonb, updated_at = NOW()
+		SET deleted = TRUE, source_text = '', file_path = '', sections = '[]'::jsonb, updated_at = NOW()
 		WHERE budget_id = $1 AND id = $2 AND deleted = FALSE`,
 		budgetId, id,
 	)
@@ -246,7 +267,7 @@ func (r *statementImportRepo) Delete(ctx context.Context, budgetId uuid.UUID, id
 func (r *statementImportRepo) FailInterrupted(ctx context.Context, message string) (int64, error) {
 	tag, err := r.Executor(ctx).Exec(ctx, `
 		UPDATE statement_imports SET status = 'failed', error = $1, updated_at = NOW()
-		WHERE status = 'processing' AND deleted = FALSE`,
+		WHERE status = 'processing' AND deleted = FALSE AND job_id IS NULL`,
 		message,
 	)
 	if err != nil {

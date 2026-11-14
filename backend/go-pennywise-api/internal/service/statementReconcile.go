@@ -9,6 +9,7 @@ import (
 	"unicode"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils/narration"
 
 	"github.com/google/uuid"
 )
@@ -27,84 +28,13 @@ const (
 	statementNearAmountRatio   = 0.05
 	statementNearMinSimilarity = 0.5
 	amountEpsilon              = 0.005
+	// statementValueDateSlackDays: a value date this far from the row's date
+	// is normal (a cheque clearing, a weekend); further is flagged.
+	statementValueDateSlackDays = 2
+	// statementRefWindowDays: a reference both sides state is the same
+	// payment, so the dates may be further apart than an amount-only match.
+	statementRefWindowDays = 15
 )
-
-// mergeExtractedSections folds the per-chunk sections into one list per
-// account. Sections are keyed by the account number's last four digits, or by
-// label when there is no number; a section with neither continues the previous
-// one (a page that does not repeat its header). Opening balance and period
-// start come from the first chunk that reports them, closing balance and
-// period end from the last.
-func mergeExtractedSections(chunks [][]model.StatementSection) []model.StatementSection {
-	merged := make([]model.StatementSection, 0)
-	index := map[string]int{}
-	last := -1
-
-	for _, sections := range chunks {
-		for _, s := range sections {
-			key := statementSectionKey(s)
-			target := -1
-			switch {
-			case key != "":
-				if i, ok := index[key]; ok {
-					target = i
-				}
-			case last >= 0:
-				target = last
-			}
-
-			if target < 0 {
-				s.Rows = append([]model.StatementRow(nil), s.Rows...)
-				merged = append(merged, s)
-				target = len(merged) - 1
-				if key != "" {
-					index[key] = target
-				}
-				last = target
-				continue
-			}
-
-			m := &merged[target]
-			if m.AccountLabel == "" {
-				m.AccountLabel = s.AccountLabel
-			}
-			if m.AccountNumber == "" && s.AccountNumber != "" {
-				m.AccountNumber = s.AccountNumber
-				if k := statementSectionKey(*m); k != "" {
-					index[k] = target
-				}
-			}
-			if m.Currency == "" {
-				m.Currency = s.Currency
-			}
-			if m.PeriodStart == nil {
-				m.PeriodStart = s.PeriodStart
-			}
-			if s.PeriodEnd != nil {
-				m.PeriodEnd = s.PeriodEnd
-			}
-			if m.OpeningBalance == nil {
-				m.OpeningBalance = s.OpeningBalance
-			}
-			if s.ClosingBalance != nil {
-				m.ClosingBalance = s.ClosingBalance
-			}
-			m.Rows = append(m.Rows, s.Rows...)
-			last = target
-		}
-	}
-	return merged
-}
-
-func statementSectionKey(s model.StatementSection) string {
-	if suffix := accountNumberSuffix(s.AccountNumber); suffix != "" {
-		return "n:" + suffix
-	}
-	if label := strings.ToLower(strings.TrimSpace(s.AccountLabel)); label != "" {
-		return "l:" + label
-	}
-	return ""
-}
 
 // accountNumberSuffix is the last four digits of a printed (often masked)
 // account number — the same thing accounts.suffix stores.
@@ -149,6 +79,8 @@ func cleanStatementSections(sections []model.StatementSection) ([]model.Statemen
 				dropped++
 				continue
 			}
+			readNarration(&r, s.Kind == model.StatementKindCard)
+			classifyStatementRow(&r, s.Kind == model.StatementKindCard)
 			rows = append(rows, r)
 		}
 		s.Rows = rows
@@ -164,6 +96,42 @@ func cleanStatementSections(sections []model.StatementSection) ([]model.Statemen
 		}
 	}
 	return out, dropped
+}
+
+// readNarration cleans a row's narration and keeps what it states: channel,
+// merchant, UPI address, reference and value date. Running it twice is
+// harmless: the second pass finds nothing more to trim.
+func readNarration(r *model.StatementRow, card bool) {
+	line := narration.ParseStatementRow(r.Description, narration.Hint{CardAccount: card})
+	if line.Clean != r.Description {
+		if r.RawDescription == "" {
+			r.RawDescription = r.Description
+		}
+		r.Description = line.Clean
+	}
+	r.Channel, r.Merchant, r.VPA = line.Channel, line.Merchant, line.VPA
+	if r.Reference == "" {
+		r.Reference = line.Ref
+	}
+	if line.ValueDate != "" {
+		r.ValueDate = line.ValueDate
+		if d := absDayDiff(r.Date, line.ValueDate); d > statementValueDateSlackDays {
+			r.ValueDateMismatch = true
+		}
+	}
+	if r.Payee == "" && line.Channel != "" && line.Merchant != "" {
+		r.Payee = titleCase(line.Merchant)
+	}
+}
+
+// titleCase turns a key-form merchant ("BLUE TOKAI COFFEE") into a payee
+// name ("Blue Tokai Coffee").
+func titleCase(s string) string {
+	words := strings.Fields(strings.ToLower(s))
+	for i, w := range words {
+		words[i] = strings.ToUpper(w[:1]) + w[1:]
+	}
+	return strings.Join(words, " ")
 }
 
 func validDatePtr(d *string) *string {
@@ -275,7 +243,8 @@ func statementPeriod(s model.StatementSection) (string, string) {
 }
 
 // reconcileStatementRows pairs statement rows with ledger transactions one to
-// one. Exact pairs (same signed amount, dates within the window) are taken
+// one. A row whose reference one of a transaction's messages also stated is
+// paired with it first (exact when the amounts agree). Then exact pairs (same signed amount, dates within the window) are taken
 // first, closest date and most similar text winning; then near pairs (amount
 // within 5%, close date, similar text) among what is left. used carries ledger
 // IDs already claimed by another section mapped to the same account.
@@ -320,8 +289,37 @@ func reconcileStatementRows(
 		}
 	}
 
+	// Same reference: the same payment, whatever the text says.
+	var byRef, byRefDiffers []candidate
+	for i, r := range rows {
+		ref := strings.ToUpper(strings.TrimSpace(r.Reference))
+		if ref == "" {
+			continue
+		}
+		for j, t := range txns {
+			if txnTaken[j] || !hasRef(t.Refs, ref) {
+				continue
+			}
+			dd := absDayDiff(r.Date, t.Date)
+			if dd < 0 || dd > statementRefWindowDays {
+				continue
+			}
+			c := candidate{i, j, dd, 1}
+			if math.Abs(r.SignedAmount()-t.Amount) < amountEpsilon {
+				byRef = append(byRef, c)
+			} else {
+				byRefDiffers = append(byRefDiffers, c)
+			}
+		}
+	}
+	assign(byRef, model.StatementMatchExact)
+	assign(byRefDiffers, model.StatementMatchAmountDiffers)
+
 	var exact, near []candidate
 	for i, r := range rows {
+		if rowTaken[i] {
+			continue
+		}
 		signed := r.SignedAmount()
 		for j, t := range txns {
 			if txnTaken[j] {
@@ -389,6 +387,15 @@ func reconcileStatementRows(
 		ledgerOnly = []model.StatementLedgerTxn{}
 	}
 	return matched, missing, ledgerOnly
+}
+
+func hasRef(refs []string, ref string) bool {
+	for _, r := range refs {
+		if strings.EqualFold(strings.TrimSpace(r), ref) {
+			return true
+		}
+	}
+	return false
 }
 
 // ledgerDate normalises a scanned DATE to YYYY-MM-DD.

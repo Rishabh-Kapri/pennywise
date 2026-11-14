@@ -119,6 +119,7 @@ type Repositories struct {
 	RecurringTransaction repository.RecurringTransactionRepository
 	Report               repository.ReportRepository
 	StatementImport      repository.StatementImportRepository
+	StatementPassword    repository.StatementPasswordRepository
 	Tag                  repository.TagRepository
 	Transaction          repository.TransactionRepository
 	TransactionDocument  repository.TransactionDocumentRepository
@@ -161,6 +162,7 @@ func newPostgresRepositories(pool *pgxpool.Pool) *Repositories {
 		RecurringTransaction: postgres.NewRecurringTransactionRepository(pool),
 		Report:               postgres.NewReportRepository(pool),
 		StatementImport:      postgres.NewStatementImportRepository(pool),
+		StatementPassword:    postgres.NewStatementPasswordRepository(pool),
 		Tag:                  postgres.NewTagRepository(pool),
 		Transaction:          postgres.NewTransactionRepository(pool),
 		TransactionDocument:  postgres.NewTransactionDocumentRepository(pool),

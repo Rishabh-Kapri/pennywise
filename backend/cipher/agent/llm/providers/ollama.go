@@ -33,6 +33,7 @@ type ollamaChatReq struct {
 type ollamaMessage struct {
 	Role      string           `json:"role"`
 	Content   string           `json:"content"`
+	Images    []string         `json:"images,omitempty"`
 	ToolCalls []ollamaToolCall `json:"tool_calls,omitempty"`
 }
 
@@ -95,6 +96,9 @@ func (c *ollamaClient) toOllamaReq(req sharedModel.ChatRequest) ollamaChatReq {
 	if req.MaxTokens != 0 {
 		options["num_predict"] = req.MaxTokens
 	}
+	if req.ContextWindow != 0 {
+		options["num_ctx"] = req.ContextWindow
+	}
 	if len(options) == 0 {
 		options = nil
 	}
@@ -130,6 +134,7 @@ func toOllamaMessages(messages []sharedModel.AgentMessage) []ollamaMessage {
 		ollamaMsg := ollamaMessage{
 			Role:    string(msg.Role),
 			Content: contentBlocksText(msg.Content),
+			Images:  msg.Images,
 		}
 		for _, call := range msg.ToolCalls {
 			ollamaMsg.ToolCalls = append(ollamaMsg.ToolCalls, toOllamaToolCall(call))
@@ -214,11 +219,15 @@ func toOllamaStopReason(res ollamaChatRes) sharedModel.StopReason {
 	return sharedModel.StopReasonError
 }
 
-func (c *ollamaClient) Chat(ctx context.Context, req sharedModel.ChatRequest) (*sharedModel.ChatResponse, error) {
+func (c *ollamaClient) Chat(
+	ctx context.Context,
+	req sharedModel.ChatRequest,
+	conversationID *string,
+) (*sharedModel.ChatResponse, error) {
 	log := logger.Logger(ctx)
 
-	reqJson, err := json.Marshal(c.toOllamaReq(req))
-	log.Info("ollama", "req", string(reqJson))
+	// reqJson, err := json.Marshal(c.toOllamaReq(req))
+	// log.Debug("ollama", "req", string(reqJson))
 
 	res, err := transport.Post[ollamaChatRes](ctx, c.httpClient, ollamaChatPath, nil, c.toOllamaReq(req))
 	if err != nil {
@@ -227,11 +236,15 @@ func (c *ollamaClient) Chat(ctx context.Context, req sharedModel.ChatRequest) (*
 	}
 
 	chatRes := c.fromOllamaRes(res)
-	log.Info("/api/chat", "res", chatRes)
+	// log.Info("/api/chat", "res", chatRes)
 	return &chatRes, nil
 }
 
-func (c *ollamaClient) Stream(ctx context.Context, req sharedModel.ChatRequest) <-chan sharedModel.StreamChunk {
+func (c *ollamaClient) Stream(
+	ctx context.Context,
+	req sharedModel.ChatRequest,
+	conversationID *string,
+) <-chan sharedModel.StreamChunk {
 	events := make(chan sharedModel.StreamChunk)
 	close(events)
 	return events

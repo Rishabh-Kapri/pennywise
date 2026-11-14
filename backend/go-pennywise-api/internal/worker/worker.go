@@ -21,6 +21,8 @@ type Deps struct {
 	Queues   []string
 	Broker   job.Broker
 	Messages service.MessageJobService
+	// Statements saves what cipher's statement.extract read.
+	Statements service.StatementService
 }
 
 // Setup builds the worker on the broker main already opened, registers its
@@ -45,6 +47,8 @@ func Setup(ctx context.Context, deps Deps) error {
 	w.RegisterJobHandler(model.JobTypeTransactionCreate, transactionCreate(deps))
 	w.RegisterJobHandler(model.JobTypePipelineReport, pipelineReport(deps))
 	w.RegisterJobHandler(model.JobTypeTransactionLearn, transactionLearn(deps))
+	w.RegisterJobHandler(model.JobTypeStatementSave, statementSave(deps))
+	w.RegisterJobHandler(model.JobTypeStatementImport, statementImport(deps))
 
 	if err := w.Run(ctx); err != nil {
 		return errs.Wrap(errs.CodeWorkerRunError, "worker run failed", err)
@@ -196,5 +200,47 @@ func transactionLearn(deps Deps) jobrunner.HandlerFunc {
 			return nil, err
 		}
 		return nil, deps.Messages.LearnTransaction(ctx, p)
+	}
+}
+
+// statementImport handles model.JobTypeStatementImport, queued by ingest for
+// a PDF fetched from a statement email: it creates the import and queues its
+// extract, like an upload.
+func statementImport(deps Deps) jobrunner.HandlerFunc {
+	return func(ctx context.Context, j *job.Job) (json.RawMessage, error) {
+		ctx, _, err := jobrunner.BudgetContext(ctx, j)
+		if err != nil {
+			return nil, err
+		}
+		p, err := jobrunner.DecodePayload[model.StatementImportPayload](j)
+		if err != nil {
+			return nil, err
+		}
+		imp, err := deps.Statements.ImportFromEmail(ctx, p)
+		if err != nil {
+			return nil, err
+		}
+		return jobrunner.EncodeResult(map[string]any{"importId": imp.ID})
+	}
+}
+
+// statementSave handles model.JobTypeStatementSave, queued by cipher's
+// statement.extract: it saves the rows onto their import, which turns it
+// ready (or failed, when nothing was found). Errors: CodeJobInvalidPayload,
+// and whatever StatementService.SaveExtraction returns.
+func statementSave(deps Deps) jobrunner.HandlerFunc {
+	return func(ctx context.Context, j *job.Job) (json.RawMessage, error) {
+		ctx, _, err := jobrunner.BudgetContext(ctx, j)
+		if err != nil {
+			return nil, err
+		}
+		p, err := jobrunner.DecodePayload[model.StatementSavePayload](j)
+		if err != nil {
+			return nil, err
+		}
+		if err := deps.Statements.SaveExtraction(ctx, p); err != nil {
+			return nil, err
+		}
+		return nil, nil
 	}
 }

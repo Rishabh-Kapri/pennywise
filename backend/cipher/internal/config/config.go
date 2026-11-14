@@ -69,6 +69,12 @@ type Config struct {
 	// MessageReviewPark is MESSAGE_REVIEW_PARK: send low-confidence messages to
 	// a person. Off, the pipeline only logs what it would have parked.
 	MessageReviewPark bool
+
+	// Statements
+	StatementImportDriver    string
+	StatementImportProvider  string
+	StatementImportModel     string
+	StatementImportMaxTokens int
 }
 
 // envInt reads a positive integer env var, returning 0 when unset or malformed
@@ -104,6 +110,13 @@ func Load() Config {
 			llmCallTimeout = parsed
 		}
 	}
+	maxTokens := 8192
+	if os.Getenv("STATEMENT_IMPORT_MAX_TOKENS") != "" {
+		num, err := strconv.Atoi(os.Getenv("STATEMENT_IMPORT_MAX_TOKENS"))
+		if err == nil {
+			maxTokens = num
+		}
+	}
 
 	return Config{
 		Environment:              env,
@@ -135,6 +148,11 @@ func Load() Config {
 		JobStoreURL:       os.Getenv("JOB_STORE_URL"),
 		JobQueues:         splitList(os.Getenv("JOB_QUEUES")),
 		MessageReviewPark: strings.EqualFold(strings.TrimSpace(os.Getenv("MESSAGE_REVIEW_PARK")), "true"),
+
+		StatementImportDriver:    os.Getenv("STATEMENT_IMPORT_DRIVER"),
+		StatementImportProvider:  os.Getenv("STATEMENT_IMPORT_PROVIDER"),
+		StatementImportModel:     os.Getenv("STATEMENT_IMPORT_MODEL"),
+		StatementImportMaxTokens: maxTokens,
 	}
 }
 

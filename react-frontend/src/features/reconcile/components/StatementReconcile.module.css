@@ -1,268 +1,442 @@
-.container {
+/*
+ * Every rule is prefixed with .page: index.css resets margin and padding at
+ * one class's specificity, so a single-class rule setting either can lose.
+ */
+
+.page {
+  --line: color-mix(in srgb, var(--color-text) 11%, transparent);
+  --line-strong: color-mix(in srgb, var(--color-text) 20%, transparent);
+  --tint: color-mix(in srgb, var(--color-text) 5%, transparent);
+  --tint-strong: color-mix(in srgb, var(--color-text) 9%, transparent);
+  --primary-tint: color-mix(in srgb, var(--color-primary) 14%, transparent);
+
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.75rem;
   min-height: 0;
+  color: var(--color-text);
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.page .muted {
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+}
+
+.page .error {
+  color: var(--color-error);
+  font-size: 0.95rem;
+}
+
+.page .hiddenInput {
+  display: none;
 }
 
 /* ── Header ───────────────────────────────────────────────────── */
 
-.header h2 {
-  margin: 0;
-  color: var(--color-text);
-  font-size: 1.05rem;
+.page .header h2,
+.page .detailTitle h2 {
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
 }
 
-.header p {
-  margin: 0.2rem 0 0;
+.page .header p {
+  max-width: 40rem;
+  margin-top: 0.5rem;
   color: var(--color-text-secondary);
-  font-size: 0.85rem;
-  max-width: 46rem;
+  font-size: 1.02rem;
 }
 
-/* ── Upload ───────────────────────────────────────────────────── */
+/* ── Buttons and fields ───────────────────────────────────────── */
 
-.uploadPanel {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-  padding: 0.9rem 1rem;
-  border: 1px dashed color-mix(in srgb, var(--color-text) 18%, transparent);
-  border-radius: 10px;
-  background: var(--color-surface);
-  transition: border-color 0.15s ease, background 0.15s ease;
-}
-
-.dragging {
-  border-color: var(--color-primary);
-  background: color-mix(in srgb, var(--color-primary) 6%, var(--color-surface));
-}
-
-.uploadFields {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 0.6rem;
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.75rem;
-  color: var(--color-text-secondary);
-}
-
-.field select,
-.field input,
-.cellInput {
-  background: var(--color-surface);
-  border: 1px solid color-mix(in srgb, var(--color-text) 12%, transparent);
-  border-radius: 8px;
-  padding: 0.4rem 0.6rem;
-  color: var(--color-text);
-  font-size: 0.85rem;
-  min-width: 12rem;
-}
-
-.field select:focus,
-.field input:focus,
-.cellInput:focus {
-  outline: none;
-  border-color: var(--color-primary);
-}
-
-.cellInput {
-  min-width: 9rem;
-  width: 100%;
-  padding: 0.3rem 0.5rem;
-  font-size: 0.8rem;
-}
-
-.primaryButton,
-.secondaryButton {
+.page .primaryButton,
+.page .secondaryButton,
+.page .ghostButton {
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
-  gap: 0.4rem;
-  height: 34px;
-  padding: 0 0.85rem;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  cursor: pointer;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 44px;
+  padding: 0 1.15rem;
+  border-radius: 10px;
+  font-size: 0.98rem;
+  font-weight: 600;
   white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    filter 0.12s ease;
 }
 
-.primaryButton {
+.page .primaryButton {
   border: 1px solid var(--color-primary);
   background: var(--color-primary);
   color: #fff;
 }
 
-.primaryButton:disabled {
-  opacity: 0.5;
+.page .primaryButton:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.page .secondaryButton {
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--color-text);
+}
+
+.page .ghostButton {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
+.page .secondaryButton:hover:not(:disabled),
+.page .ghostButton:hover:not(:disabled) {
+  background: var(--tint-strong);
+  color: var(--color-text);
+}
+
+.page .primaryButton:disabled,
+.page .secondaryButton:disabled,
+.page .ghostButton:disabled {
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
-.secondaryButton {
-  border: 1px solid color-mix(in srgb, var(--color-text) 12%, transparent);
-  background: var(--color-surface);
-  color: var(--color-text);
-}
-
-.hiddenInput {
-  display: none;
-}
-
-.fileList {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin: 0;
+.page .iconButton {
+  display: inline-grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 40px;
+  height: 40px;
   padding: 0;
-  list-style: none;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
 }
 
-.fileList li {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.2rem 0.5rem;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--color-text) 6%, transparent);
-  font-size: 0.8rem;
+.page .iconButton:hover {
+  background: var(--tint-strong);
   color: var(--color-text);
 }
 
-.fileList button {
+.page .textButton {
+  padding: 0.4rem 0.2rem;
   border: none;
   background: none;
-  color: var(--color-text-secondary);
+  color: var(--color-primary);
+  font-size: 0.98rem;
+  font-weight: 600;
   cursor: pointer;
-  font-size: 0.95rem;
-  line-height: 1;
 }
 
-/* ── Messages ─────────────────────────────────────────────────── */
-
-.hint,
-.error,
-.warning,
-.balanceOk {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  margin: 0;
-  font-size: 0.8rem;
+.page .textButton:hover {
+  text-decoration: underline;
 }
 
-.hint {
-  color: var(--color-text-secondary);
-}
-
-.error {
-  color: var(--color-error);
-}
-
-.warning {
-  color: var(--color-warning);
-}
-
-.balanceOk {
-  color: var(--color-success);
-}
-
-/* ── Layout ───────────────────────────────────────────────────── */
-
-.layout {
-  display: grid;
-  grid-template-columns: minmax(13rem, 16rem) minmax(0, 1fr);
-  gap: 1rem;
-  align-items: start;
-}
-
-@media (max-width: 900px) {
-  .layout {
-    grid-template-columns: 1fr;
-  }
-}
-
-.importList {
+.page .field,
+.page .inlineField {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  font-weight: 500;
 }
 
-.importItem {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  padding: 0.55rem 3.4rem 0.55rem 0.7rem;
-  border: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent);
-  border-radius: 8px;
-  background: var(--color-surface);
-  cursor: pointer;
+.page .inlineField {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.7rem;
 }
 
-.importItem:hover {
-  border-color: color-mix(in srgb, var(--color-text) 20%, transparent);
+.page .field select,
+.page .field input,
+.page .accountSelect,
+.page .cellInput {
+  height: 44px;
+  padding: 0 0.85rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--color-background);
+  color: var(--color-text);
+  font-size: 1rem;
 }
 
-.importItemActive {
+.page .field select,
+.page .field input {
+  width: 100%;
+}
+
+.page .accountSelect {
+  min-width: 15rem;
+  max-width: 100%;
+}
+
+.page .field select:focus,
+.page .field input:focus,
+.page .accountSelect:focus,
+.page .cellInput:focus {
+  outline: 2px solid var(--primary-tint);
   border-color: var(--color-primary);
 }
 
-.importName {
+/* ── Upload ───────────────────────────────────────────────────── */
+
+.page .dropzone {
+  border: 1.5px dashed var(--line-strong);
+  border-radius: 16px;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.page .dropzone:not(.dropzoneStaged):hover,
+.page .dragging {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+}
+
+.page .dropzoneStaged {
+  border-style: solid;
+  border-color: var(--line);
+}
+
+.page .dropTarget {
   display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 0.35rem;
+  width: 100%;
+  padding: 2.75rem 1.5rem;
+  border: none;
+  background: none;
+  color: var(--color-text-secondary);
+  font-size: 0.98rem;
+  text-align: center;
+  cursor: pointer;
+}
+
+.page .dropTarget strong {
+  color: var(--color-text);
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.page .dropTarget u {
+  color: var(--color-primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.page .dropIcon {
+  display: grid;
+  place-items: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  margin-bottom: 0.6rem;
+  border-radius: 50%;
+  background: var(--primary-tint);
+  color: var(--color-primary);
+}
+
+.page .staged {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.5rem;
+}
+
+.page .fileList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  list-style: none;
+}
+
+.page .fileList li {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.7rem 0.7rem 0.7rem 0.9rem;
+  border-radius: 12px;
+  background: var(--tint);
+}
+
+.page .stagedFields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.page .stagedFieldsSingle {
+  grid-template-columns: minmax(0, 24rem);
+}
+
+.page .stagedActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.page .spacer {
+  flex: 1;
+}
+
+/* ── File icon + two-line text (staged files and the list) ────── */
+
+.page .fileIcon {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 12px;
+  background: var(--primary-tint);
+  color: var(--color-primary);
+}
+
+.page .fileIconFailed {
+  background: color-mix(in srgb, var(--color-error) 14%, transparent);
+  color: var(--color-error);
+}
+
+.page .fileText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.15rem;
   min-width: 0;
 }
 
-.importName strong {
+.page .fileText strong {
   overflow: hidden;
-  color: var(--color-text);
-  font-size: 0.85rem;
-  font-weight: 500;
+  font-size: 1.05rem;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.importMeta {
+.page .fileText span {
   color: var(--color-text-secondary);
-  font-size: 0.75rem;
+  font-size: 0.92rem;
 }
 
-.importActions {
-  position: absolute;
-  top: 50%;
-  right: 0.4rem;
-  display: flex;
-  gap: 0.15rem;
-  transform: translateY(-50%);
-}
-
-.importActions button {
-  display: inline-flex;
-  padding: 0.3rem;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-}
-
-.importActions button:hover {
-  background: color-mix(in srgb, var(--color-text) 8%, transparent);
-  color: var(--color-text);
-}
-
-.failedIcon {
-  flex-shrink: 0;
+.page .fileText .failedText {
   color: var(--color-error);
 }
 
-.spin {
+/* ── Statement list ───────────────────────────────────────────── */
+
+.page .listSection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.page .listSection h3 {
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.page .importList {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  list-style: none;
+}
+
+.page .importList li + li {
+  border-top: 1px solid var(--line);
+}
+
+.page .importRow {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.05rem 1.1rem 1.05rem 1.25rem;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.page .importRow:hover {
+  background: var(--tint);
+}
+
+.page .importRow:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+.page .rowActions {
+  display: flex;
+  gap: 0.15rem;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.page .importRow:hover .rowActions,
+.page .importRow:focus-within .rowActions {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .page .rowActions {
+    opacity: 1;
+  }
+}
+
+.page .chevron {
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+}
+
+/* ── Progress ─────────────────────────────────────────────────── */
+
+.page .progressTrack {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  max-width: 26rem;
+  height: 6px;
+  margin-top: 0.4rem;
+  border-radius: 999px;
+  background: var(--tint-strong);
+}
+
+.page .progressFill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-primary);
+  transition: width 0.4s ease;
+}
+
+.page .progressIndeterminate {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 35%;
+  border-radius: inherit;
+  background: var(--color-primary);
+  animation: slide 1.3s ease-in-out infinite;
+}
+
+@keyframes slide {
+  from {
+    left: -35%;
+  }
+  to {
+    left: 100%;
+  }
+}
+
+.page .spin {
   flex-shrink: 0;
   animation: spin 0.9s linear infinite;
 }
@@ -273,185 +447,497 @@
   }
 }
 
-.detail {
-  min-width: 0;
+/* ── One statement ────────────────────────────────────────────── */
+
+.page .back {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 0.45rem;
+  margin-bottom: -0.75rem;
+  padding: 0.4rem 0.6rem 0.4rem 0.3rem;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--color-text-secondary);
+  font-size: 0.98rem;
+  font-weight: 500;
+  cursor: pointer;
 }
 
-.processing,
-.failed {
-  display: flex;
-  gap: 0.6rem;
-  padding: 1rem;
-  border-radius: 10px;
-  background: var(--color-surface);
+.page .back:hover {
+  background: var(--tint);
   color: var(--color-text);
 }
 
-.failed {
+.page .detailHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.page .detailTitle {
+  min-width: 0;
+}
+
+.page .detailTitle h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page .detailTitle p {
+  margin-top: 0.2rem;
+  color: var(--color-text-secondary);
+  font-size: 0.98rem;
+}
+
+.page .detailActions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* Centered card: reading, failed, and "which account?" */
+.page .stateCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 3rem 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  text-align: center;
+}
+
+.page .stateCard h3 {
+  font-size: 1.3rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.page .stateCard p {
+  max-width: 34rem;
+}
+
+.page .stateCard .progressTrack {
+  height: 8px;
+  margin: 0.4rem 0;
+}
+
+.page .stateCard .accountSelect {
+  width: 22rem;
+  height: 48px;
+  margin: 0.5rem 0;
+}
+
+.page .stateIcon {
+  margin-bottom: 0.25rem;
+  color: var(--color-primary);
+}
+
+.page .stateIconFailed {
   color: var(--color-error);
 }
 
-.failed p {
-  margin: 0.2rem 0 0;
-  color: var(--color-text-secondary);
-  font-size: 0.85rem;
+.page .errorDetail {
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-error) 10%, transparent);
+  font-size: 0.98rem;
+  word-break: break-word;
 }
 
-.sections {
+.page .stateActions {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
+
+.page .sections {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+}
+
+.page .warningBanner,
+.page .okBanner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  padding: 0.85rem 1.1rem;
+  border-radius: 12px;
+  font-size: 0.98rem;
+}
+
+.page .warningBanner svg,
+.page .okBanner svg {
+  flex-shrink: 0;
+  margin-top: 0.2rem;
+}
+
+.page .warningBanner {
+  background: color-mix(in srgb, var(--color-warning) 13%, transparent);
+}
+
+.page .warningBanner svg {
+  color: var(--color-warning);
+}
+
+.page .okBanner {
+  background: color-mix(in srgb, var(--color-success) 11%, transparent);
+}
+
+.page .okBanner svg,
+.page .okIcon {
+  color: var(--color-success);
+}
+
+/* ── Section ──────────────────────────────────────────────────── */
+
+.page .section {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.page .sectionHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+}
+
+.page .tabs {
+  display: flex;
+  gap: 1.75rem;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+}
+
+.page .tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: -1px;
+  padding: 0.8rem 0.1rem;
+  border: none;
+  border-bottom: 2.5px solid transparent;
+  border-radius: 0;
+  background: none;
+  color: var(--color-text-secondary);
+  font-size: 1.05rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.page .tab:hover {
+  color: var(--color-text);
+}
+
+.page .tabActive {
+  border-bottom-color: var(--color-primary);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.page .count {
+  min-width: 1.6rem;
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  background: var(--tint-strong);
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.page .countAttention {
+  background: color-mix(in srgb, var(--color-warning) 22%, transparent);
+  color: var(--color-warning);
+}
+
+.page .emptyTab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 3rem 1.5rem;
+  color: var(--color-text-secondary);
+  font-size: 0.98rem;
+  text-align: center;
+}
+
+.page .emptyTab strong {
+  color: var(--color-text);
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+/* ── Tables ───────────────────────────────────────────────────── */
+
+.page .tableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+
+.page .table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.98rem;
+}
+
+.page .table th {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.page .table td {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+
+.page .table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.page .table tbody tr:hover {
+  background: var(--tint);
+}
+
+.page .table .rowSelected,
+.page .table .rowSelected:hover {
+  background: color-mix(in srgb, var(--color-primary) 9%, transparent);
+}
+
+.page .table a {
+  color: var(--color-text);
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+}
+
+.page .table a:hover {
+  text-decoration-color: currentColor;
+}
+
+.page .table .checkCell {
+  width: 1%;
+  padding-right: 0.25rem;
+}
+
+.page .table input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+.page .table .dateCell {
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Bank narrations are long; two lines, the rest on hover. */
+.page .description {
+  display: -webkit-box;
+  overflow: hidden;
+  max-width: 26rem;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  word-break: break-word;
+}
+
+.page .table .num {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.page .table .cellInput {
+  width: 100%;
+  min-width: 10rem;
+  height: 40px;
+  padding: 0 0.7rem;
+  font-size: 0.95rem;
+}
+
+.page .inflow {
+  color: var(--color-success);
+}
+
+.page .outflow {
+  color: var(--color-text);
+}
+
+.page .badge,
+.page .badgeMuted {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.page .badge {
+  background: color-mix(in srgb, var(--color-warning) 20%, transparent);
+  color: var(--color-warning);
+}
+
+.page .badgeMuted {
+  background: var(--tint-strong);
+  color: var(--color-text-secondary);
+}
+
+/* Stays in view while a long list of missing rows scrolls. */
+.page .createBar {
+  position: sticky;
+  bottom: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0.75rem 0.75rem 1.25rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  background: var(--color-popover, var(--color-background));
+  box-shadow: var(--shadow-popover, 0 8px 24px rgb(0 0 0 / 0.2));
+  color: var(--color-text-secondary);
+  font-size: 0.98rem;
+}
+
+@media (max-width: 700px) {
+  .page .stagedFields {
+    grid-template-columns: 1fr;
+  }
+
+  .page .stateCard .accountSelect {
+    width: 100%;
+  }
+}
+
+/* ── Card summary ─────────────────────────────────────────────── */
+
+.page .cardSummary {
   display: flex;
   flex-direction: column;
   gap: 1rem;
 }
 
-/* ── Section card ─────────────────────────────────────────────── */
-
-.sectionCard {
-  display: flex;
-  flex-direction: column;
-  gap: 0.7rem;
-  padding: 1rem;
-  border: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent);
-  border-radius: 10px;
-  background: var(--color-surface);
-}
-
-.sectionHeader {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
+.page .statTiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
   gap: 0.75rem;
 }
 
-.sectionHeader h3 {
-  margin: 0;
-  color: var(--color-text);
-  font-size: 0.95rem;
-}
-
-.tabs {
-  display: flex;
-  gap: 0.25rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent);
-}
-
-.tab,
-.tabActive {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  margin-bottom: -1px;
-  padding: 0.45rem 0.7rem;
-  border: none;
-  border-bottom: 2px solid transparent;
-  background: none;
-  color: var(--color-text-secondary);
-  font-size: 0.85rem;
-  cursor: pointer;
-}
-
-.tabActive {
-  border-bottom-color: var(--color-primary);
-  color: var(--color-text);
-}
-
-.count {
-  padding: 0 0.4rem;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--color-text) 8%, transparent);
-  font-size: 0.72rem;
-}
-
-/* ── Tables ───────────────────────────────────────────────────── */
-
-.tableWrap {
+.page .statTile {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  overflow-x: auto;
+  gap: 0.2rem;
+  padding: 0.9rem 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
 }
 
-.table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.82rem;
-  color: var(--color-text);
-}
-
-.table th {
-  padding: 0.4rem 0.5rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-text) 10%, transparent);
+.page .statTile span {
   color: var(--color-text-secondary);
-  font-weight: 500;
-  text-align: left;
+  font-size: 0.88rem;
 }
 
-.table td {
-  padding: 0.4rem 0.5rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-text) 5%, transparent);
-  vertical-align: middle;
-}
-
-.table a {
-  color: inherit;
-  text-decoration: none;
-}
-
-.table a:hover {
-  text-decoration: underline;
-}
-
-.rowSelected {
-  background: color-mix(in srgb, var(--color-primary) 6%, transparent);
-}
-
-.num {
-  text-align: right !important;
-  white-space: nowrap;
+.page .statTile strong {
+  font-size: 1.2rem;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
-.nowrap {
-  white-space: nowrap;
+.page .cardPanels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  gap: 0.75rem;
 }
 
-.description {
-  max-width: 22rem;
-  word-break: break-word;
-}
-
-.inflow {
-  color: var(--color-success);
-}
-
-.outflow {
-  color: var(--color-text);
-}
-
-.badge,
-.badgeMuted {
-  display: inline-block;
-  margin-left: 0.4rem;
-  padding: 0.05rem 0.4rem;
-  border-radius: 999px;
-  font-size: 0.7rem;
-  white-space: nowrap;
-}
-
-.badge {
-  background: var(--color-budget-upcoming-bg);
-  color: var(--color-budget-upcoming-fg);
-}
-
-.badgeMuted {
-  background: color-mix(in srgb, var(--color-text) 7%, transparent);
-  color: var(--color-text-secondary);
-}
-
-.createBar {
+.page .cardPanel {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.page .cardPanelWide {
+  grid-column: 1 / -1;
+}
+
+.page .cardPanel header {
+  display: flex;
+  align-items: baseline;
   justify-content: space-between;
   gap: 0.75rem;
+}
+
+.page .cardPanel h4 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.page .cardPanel header strong {
+  font-size: 1.1rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.page .cardPanel header small {
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.page .cardPanel ul {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+}
+
+.page .cardPanel li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--line);
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.page .cardPanel li > span:first-child {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.page .cardPanel li small {
+  color: var(--color-text-secondary);
+  font-size: 0.82rem;
 }

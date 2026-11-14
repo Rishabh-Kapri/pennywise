@@ -19,6 +19,7 @@ import {
   type Transaction,
   type TransactionPrediction,
   type TransactionPredictionDetails,
+  type TransactionSource,
   type TransactionStatus as TransactionStatusType,
 } from '../../types/transaction.types';
 import { AccountDropdown } from '../popovers/AccountPopover';
@@ -28,6 +29,9 @@ import { DateDropdown } from '../popovers/DatePopover';
 import { BankLogo } from '@/features/accounts/components/BankLogo/BankLogo';
 import { TransactionLocationSection } from './TransactionLocationSection';
 import { TransactionDocumentsSection } from './TransactionDocumentsSection';
+import { TransactionSources } from './TransactionSources';
+import { formatSourceTime, transactionTime } from '../../utils/sourceTime';
+import { useTransactionSources } from '../../hooks/useTransactionSources';
 import styles from './TransactionDetailPanel.module.css';
 
 type TransactionStatusAction = Extract<
@@ -530,11 +534,17 @@ function AdvancedDetails({
   predictionDetails,
   isPredictionLoading,
   predictionError,
+  sources,
+  isSourcesLoading,
+  sourcesError,
 }: {
   txn: Transaction;
   predictionDetails: TransactionPredictionDetails | null;
   isPredictionLoading: boolean;
   predictionError: string | null;
+  sources: TransactionSource[];
+  isSourcesLoading: boolean;
+  sourcesError: string | null;
 }) {
   return (
     <details className={styles.advancedSection}>
@@ -545,6 +555,12 @@ function AdvancedDetails({
 
       <div className={styles.advancedContent}>
         <section className={styles.advancedGroup}>
+          <span className={styles.sectionTitle}>Sources</span>
+          <TransactionSources sources={sources} isLoading={isSourcesLoading} error={sourcesError} />
+        </section>
+
+        <section className={styles.advancedGroup}>
+          <span className={styles.sectionTitle}>Prediction</span>
           <PredictionDetails details={predictionDetails} isLoading={isPredictionLoading} error={predictionError} />
         </section>
 
@@ -578,6 +594,9 @@ function TransactionView({
   const [predictionDetails, setPredictionDetails] = useState<TransactionPredictionDetails | null>(null);
   const [isPredictionLoading, setIsPredictionLoading] = useState(false);
   const [predictionError, setPredictionError] = useState<string | null>(null);
+  const { sources, isLoading: isSourcesLoading, error: sourcesError } = useTransactionSources(txn.id);
+  // the list already carries it; the sources cover a row opened before it did
+  const time = formatSourceTime(txn.occurredAt) || transactionTime(sources);
 
   const selectedTags = useMemo(
     () => allTags.filter((tag) => (txn.tagIds ?? []).includes(tag.id)),
@@ -656,6 +675,11 @@ function TransactionView({
         <div className={styles.fact}>
           <dt>Date</dt>
           <dd className={styles.factEditable}>
+            {time && (
+              <span className={styles.timeHint} title="Time from the bank's message">
+                {time}
+              </span>
+            )}
             <DateDropdown value={txn.date} onClick={onSelectChange('date', 'date')} variant="ghost" />
           </dd>
         </div>
@@ -714,6 +738,9 @@ function TransactionView({
         predictionDetails={predictionDetails}
         isPredictionLoading={isPredictionLoading}
         predictionError={predictionError}
+        sources={sources}
+        isSourcesLoading={isSourcesLoading}
+        sourcesError={sourcesError}
       />
     </div>
   );

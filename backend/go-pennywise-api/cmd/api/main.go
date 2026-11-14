@@ -240,6 +240,9 @@ func main() {
 		documentStore,
 	)
 	documentHandler := handler.NewDocumentHandler(documentService)
+	transactionSourceHandler := handler.NewTransactionSourceHandler(
+		service.NewTransactionSourceService(database.TransactionSource),
+	)
 
 	pushNotificationService := service.NewPushNotificationService(
 		database.DevicePushToken,
@@ -327,13 +330,17 @@ func main() {
 	pipelineStepHandler := handler.NewPipelineStepHandler(
 		service.NewPipelineStepService(pipelines, database.PipelineStep, database.UserLLMModel),
 	)
-	jobHandler := handler.NewJobHandler(service.NewJobService(jobStore, broker, database.MailConnection, database.InboundMessage))
+	jobHandler := handler.NewJobHandler(
+		service.NewJobService(jobStore, broker, database.MailConnection, database.InboundMessage),
+	)
 	inboundMessageHandler := handler.NewInboundMessageHandler(service.NewInboundMessageService(database.InboundMessage))
 	var scheduleStore job.ScheduleStore
 	if jobs != nil {
 		scheduleStore = jobs.Schedules
 	}
-	jobScheduleHandler := handler.NewJobScheduleHandler(service.NewJobScheduleService(scheduleStore, database.MailConnection))
+	jobScheduleHandler := handler.NewJobScheduleHandler(
+		service.NewJobScheduleService(scheduleStore, database.MailConnection),
+	)
 
 	var ingestClient *transport.Client
 	if config.IngestServiceURL != "" {
@@ -372,10 +379,15 @@ func main() {
 		database.Payee,
 		database.Category,
 		transactionService,
-		cipherClient,
 		database.DBTxn,
+		broker,
+		jobStore,
+		documentStore,
+		database.TransactionSource,
+		database.StatementPassword,
+		llmCredentialsBox,
 	)
-	// Extraction runs in-process; anything still "processing" was cut off.
+	// Imports read in-process before jobs were cut off by the restart.
 	statementService.FailInterrupted(appCtx)
 	statementHandler := handler.NewStatementHandler(statementService)
 
@@ -702,6 +714,11 @@ func main() {
 				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
 				documentHandler.ListByTransaction,
 			)
+			transactionGroup.GET(
+				":id/sources",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				transactionSourceHandler.ListByTransaction,
+			)
 		}
 		{
 			documentGroup := router.Group("/api/documents")
@@ -727,7 +744,18 @@ func main() {
 			statementGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
 			statementGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), statementHandler.List)
 			statementGroup.POST("", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), statementHandler.Upload)
+			statementGroup.GET(
+				"passwords",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				statementHandler.ListPasswords,
+			)
+			statementGroup.PUT(
+				"passwords/:accountId",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				statementHandler.SetPassword,
+			)
 			statementGroup.GET(":id", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), statementHandler.Get)
+			statementGroup.GET(":id/file", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), statementHandler.File)
 			statementGroup.PATCH(
 				":id/sections/:section",
 				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
@@ -946,7 +974,11 @@ func main() {
 		{
 			mailConnectionGroup := router.Group("/api/mail-connections")
 			mailConnectionGroup.Use(authMiddleware, rateLimitMiddleware, budgetMiddleware)
-			mailConnectionGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), mailConnectionHandler.List)
+			mailConnectionGroup.GET(
+				"",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				mailConnectionHandler.List,
+			)
 			mailConnectionGroup.POST(
 				"",
 				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
@@ -978,7 +1010,11 @@ func main() {
 			jobGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), jobHandler.List)
 			jobGroup.GET("/schedules", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), jobScheduleHandler.List)
 			jobGroup.GET("/:id", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), jobHandler.Get)
-			jobGroup.POST("/retry-failed", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), jobHandler.RetryFailed)
+			jobGroup.POST(
+				"/retry-failed",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				jobHandler.RetryFailed,
+			)
 			jobGroup.POST("/:id/run-again", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), jobHandler.RunAgain)
 			jobGroup.POST("/:id/continue", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), jobHandler.Continue)
 			jobGroup.POST("/:id/dismiss", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), jobHandler.Dismiss)
@@ -1066,9 +1102,10 @@ func main() {
 	go func() {
 		defer close(workerDone)
 		err := jobWorker.Setup(appCtx, jobWorker.Deps{
-			Queues:   config.JobQueues,
-			Broker:   broker,
-			Messages: messageJobService,
+			Queues:     config.JobQueues,
+			Broker:     broker,
+			Messages:   messageJobService,
+			Statements: statementService,
 		})
 		if err != nil {
 			workerErr <- err

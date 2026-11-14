@@ -655,3 +655,58 @@ func TestModelNamesReachThePrediction(t *testing.T) {
 		t.Fatalf("verdict %+v, prediction %+v", verdict, prediction)
 	}
 }
+
+func TestStatementEmailGoesToFetch(t *testing.T) {
+	msg := testMessage
+	msg.Source = "email"
+	msg.Provider = "gmail"
+	msg.MailAccount = "someone@example.com"
+	msg.Attachments = []model.MessageAttachment{
+		{ID: "a", FileName: "logo.png", MimeType: "image/png"},
+		{ID: "b", FileName: "statement.pdf", MimeType: "application/pdf"},
+	}
+	broker := &fakeBroker{}
+	deps := WorkerDeps{
+		Broker:   broker,
+		Pipeline: fakePipeline{checker: &fakeChecker{verdict: ports.TxnVerdict{MessageType: ports.StatementMessageType}}},
+	}
+	j, _ := newJob(t, msg)
+	if _, err := messageReceived(deps)(context.Background(), j); err != nil {
+		t.Fatal(err)
+	}
+	if len(broker.got) != 2 {
+		t.Fatalf("enqueued %d jobs, want fetch + report: %+v", len(broker.got), broker.got)
+	}
+	fetch := broker.got[0]
+	if fetch.jobType != model.JobTypeStatementFetch || fetch.queue != model.QueueIngest {
+		t.Errorf("first job = %s on %s", fetch.jobType, fetch.queue)
+	}
+	var p model.StatementFetchPayload
+	if err := json.Unmarshal(fetch.payload, &p); err != nil {
+		t.Fatal(err)
+	}
+	if len(p.Attachments) != 1 || p.Attachments[0].FileName != "statement.pdf" || p.MailAccount != msg.MailAccount {
+		t.Errorf("fetch payload = %+v", p)
+	}
+	if got := decodeReport(t, broker.got[1].payload).Outcome; got != model.MessageOutcomeStatement {
+		t.Errorf("outcome = %s, want statement", got)
+	}
+}
+
+func TestStatementNoticeWithoutPDF(t *testing.T) {
+	msg := testMessage
+	msg.Source = "email"
+	msg.MailAccount = "someone@example.com"
+	broker := &fakeBroker{}
+	deps := WorkerDeps{
+		Broker:   broker,
+		Pipeline: fakePipeline{checker: &fakeChecker{verdict: ports.TxnVerdict{MessageType: ports.StatementMessageType}}},
+	}
+	j, _ := newJob(t, msg)
+	if _, err := messageReceived(deps)(context.Background(), j); err != nil {
+		t.Fatal(err)
+	}
+	if len(broker.got) != 1 || decodeReport(t, broker.got[0].payload).Outcome != model.MessageOutcomeNotTransaction {
+		t.Errorf("got %+v", broker.got)
+	}
+}

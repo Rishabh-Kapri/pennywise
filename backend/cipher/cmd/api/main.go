@@ -304,7 +304,22 @@ func main() {
 		broker = jobs.Broker
 	}
 
-	messagePipeline, err := factory.NewMessagePipeline(database.PipelineStep, database.UserLLMModel, database.Category, userModelsResolver)
+	messagePipeline, err := factory.NewMessagePipeline(
+		database.PipelineStep,
+		database.UserLLMModel,
+		database.Category,
+		userModelsResolver,
+	)
+	statementImport := factory.NewStatementFactory(
+		factory.OCRConfig{
+			Driver:    cfg.StatementImportDriver,
+			Provider:  cfg.StatementImportProvider,
+			Model:     cfg.StatementImportModel,
+			MaxTokens: cfg.StatementImportMaxTokens,
+		},
+		userModelsResolver,
+		database.UserLLMModel,
+	)
 	if err != nil {
 		logger.Fatal("error building message pipeline", "err", err)
 	}
@@ -320,6 +335,7 @@ func main() {
 			Memory:   aliasAdapter.NewLookup(database.CounterpartyAlias),
 
 			ParkLowConfidence: cfg.MessageReviewPark,
+			StatementImport:   statementImport,
 		})
 		if err != nil {
 			workerErr <- err

@@ -33,21 +33,21 @@ func lumoChunkHasOutput(chunk sharedModel.StreamChunk) bool {
 	}
 }
 
-func (c *lumoClient) Chat(ctx context.Context, req sharedModel.ChatRequest) (*sharedModel.ChatResponse, error) {
-	res, err := c.responses.Chat(ctx, req)
+func (c *lumoClient) Chat(ctx context.Context, req sharedModel.ChatRequest, conversationID *string) (*sharedModel.ChatResponse, error) {
+	res, err := c.responses.Chat(ctx, req, conversationID)
 	if err == nil || ctx.Err() != nil || !shouldUseLumoLite(req.Model, err.Error()) {
 		return res, err
 	}
 	logger.Logger(ctx).Warn("Lumo premium quota reached; retrying with lumo-lite")
 	req.Model = "lumo-lite"
-	return c.responses.Chat(ctx, req)
+	return c.responses.Chat(ctx, req, nil)
 }
 
-func (c *lumoClient) Stream(ctx context.Context, req sharedModel.ChatRequest) <-chan sharedModel.StreamChunk {
+func (c *lumoClient) Stream(ctx context.Context, req sharedModel.ChatRequest, conversationID *string) <-chan sharedModel.StreamChunk {
 	out := make(chan sharedModel.StreamChunk)
 	go func() {
 		defer close(out)
-		upstream := c.responses.Stream(ctx, req)
+		upstream := c.responses.Stream(ctx, req, nil)
 		var quotaError *sharedModel.StreamChunk
 		hasOutput := false
 
@@ -82,7 +82,7 @@ func (c *lumoClient) Stream(ctx context.Context, req sharedModel.ChatRequest) <-
 		logger.Logger(ctx).Warn("Lumo premium quota reached; retrying stream with lumo-lite")
 		req.Model = "lumo-lite"
 
-		for chunk := range c.responses.Stream(ctx, req) {
+		for chunk := range c.responses.Stream(ctx, req, nil) {
 			select {
 			case out <- chunk:
 			case <-ctx.Done():

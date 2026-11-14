@@ -368,17 +368,6 @@ func (m *mockCipherClient) SuggestCategoryDescription(
 	return nil, args.Error(1)
 }
 
-func (m *mockCipherClient) ExtractStatement(
-	ctx context.Context,
-	req model.StatementExtractRequest,
-) (*model.StatementExtractResponse, error) {
-	args := m.Called(ctx, req)
-	if v := args.Get(0); v != nil {
-		return v.(*model.StatementExtractResponse), args.Error(1)
-	}
-	return nil, args.Error(1)
-}
-
 func (m *mockCipherClient) GenerateTransactionEmbedding(
 	ctx context.Context,
 	req TransactionEmbeddingRequest,

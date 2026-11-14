@@ -16,13 +16,14 @@ type StatementImportRepository interface {
 	// List omits sections and source text; RowCount is filled from the JSON.
 	List(ctx context.Context, budgetId uuid.UUID, limit int) ([]model.StatementImport, error)
 	UpdateProgress(ctx context.Context, id uuid.UUID, pagesProcessed int) error
+	// Complete and Fail change only an import that is still processing.
 	Complete(ctx context.Context, id uuid.UUID, sections []model.StatementSection, droppedRows int) error
 	Fail(ctx context.Context, id uuid.UUID, message string) error
 	Restart(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error
 	UpdateSections(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, sections []model.StatementSection) error
 	Delete(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error
-	// FailInterrupted marks every processing import failed. Extraction runs
-	// in-process, so at startup anything still "processing" was cut off by
-	// the restart; its stored text lets the user retry it.
+	// FailInterrupted marks every processing import without a job failed.
+	// Those were read in the API's process, so at startup they were cut off by
+	// the restart. An import with a job carries on in its job.
 	FailInterrupted(ctx context.Context, message string) (int64, error)
 }

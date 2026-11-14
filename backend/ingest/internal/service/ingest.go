@@ -56,13 +56,15 @@ func (s *ingestService) Accept(
 	}
 
 	payload, err := json.Marshal(model.ReceivedMessage{
-		Source:     string(msg.Source),
-		Provider:   msg.Provider,
-		ExternalID: msg.ExternalID,
-		Sender:     msg.Sender,
-		Subject:    msg.Subject,
-		Body:       msg.Body,
-		ReceivedAt: msg.ReceivedAt,
+		Source:      string(msg.Source),
+		Provider:    msg.Provider,
+		ExternalID:  msg.ExternalID,
+		Sender:      msg.Sender,
+		Subject:     msg.Subject,
+		Body:        msg.Body,
+		ReceivedAt:  msg.ReceivedAt,
+		MailAccount: msg.MailAccount,
+		Attachments: msg.Attachments,
 	})
 	if err != nil {
 		return nil, errs.Wrap(errs.CodeInternalError, "encode message", err)

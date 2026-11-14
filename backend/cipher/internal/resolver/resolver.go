@@ -65,6 +65,7 @@ func (r *resolver) ResolveLLM(m sharedModel.UserLLMModel) (*llm.ObservedLLM, err
 	if err != nil {
 		return nil, err
 	}
+	providerType := "cloud"
 
 	var client llm.LLM
 	switch m.Provider {
@@ -76,6 +77,7 @@ func (r *resolver) ResolveLLM(m sharedModel.UserLLMModel) (*llm.ObservedLLM, err
 		client, err = llmProviders.NewOpenRouterClientWithKey(apikey)
 	case sharedModel.LLMProviderOllama:
 		client, err = llmProviders.NewUserOllamaClient(m.BaseURL, apikey, r.httpClient)
+	  providerType = "local"
 	default:
 		err = errs.New(errs.CodeAIProviderNotConfigured, "unsupported provider %q", m.Provider)
 	}
@@ -83,7 +85,7 @@ func (r *resolver) ResolveLLM(m sharedModel.UserLLMModel) (*llm.ObservedLLM, err
 		return nil, err
 	}
 
-	observed := llm.NewObservedLLM(client, r.tel)
+	observed := llm.NewObservedLLM(client, r.tel, providerType)
 	r.llmRegistry[key] = observed
 	return observed, nil
 }

@@ -96,9 +96,13 @@ type Transaction struct {
 	LocationLng           *float64          `json:"locationLng,omitempty"`
 	LocationName          *string           `json:"locationName,omitempty"`
 	LocationSource        *LocationSource   `json:"locationSource,omitempty"`
-	Deleted               bool              `json:"deleted"`
-	CreatedAt             time.Time         `json:"createdAt"`
-	UpdatedAt             time.Time         `json:"updatedAt"`
+	// OccurredAt is the time of day the bank's message gave for the payment:
+	// the first source that stated one. Read only, and set by the normalized
+	// list; nil for a transaction made by hand. Date stays the day.
+	OccurredAt *time.Time `json:"occurredAt,omitempty"`
+	Deleted    bool       `json:"deleted"`
+	CreatedAt  time.Time  `json:"createdAt"`
+	UpdatedAt  time.Time  `json:"updatedAt"`
 }
 
 type LocationSource string

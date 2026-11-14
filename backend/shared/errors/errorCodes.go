@@ -214,3 +214,9 @@ const (
 const (
 	CodeCredentialsNotSet Code = "CREDENTIAL_KEY_NOT_SET"
 )
+
+// Statement Imports
+const (
+	CodeStatementExtractFailed    Code = "STATEMENT_EXTRACT_FAILED"
+	CodeStatementPasswordRequired Code = "STATEMENT_PASSWORD_REQUIRED"
+)

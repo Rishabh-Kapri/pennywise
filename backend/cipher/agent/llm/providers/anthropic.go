@@ -370,7 +370,7 @@ func toModelStopReason(stopReason string) sharedModel.StopReason {
 	}
 }
 
-func (c *anthropicClient) Chat(ctx context.Context, req sharedModel.ChatRequest) (*sharedModel.ChatResponse, error) {
+func (c *anthropicClient) Chat(ctx context.Context, req sharedModel.ChatRequest, conversationID *string) (*sharedModel.ChatResponse, error) {
 	log := logger.Logger(ctx)
 	log.Info("Chat", "client", c)
 	anthropicReq := c.toAnthropicReq(req)
@@ -390,7 +390,7 @@ func (c *anthropicClient) Chat(ctx context.Context, req sharedModel.ChatRequest)
 	return &chatRes, nil
 }
 
-func (c *anthropicClient) Stream(ctx context.Context, req sharedModel.ChatRequest) <-chan sharedModel.StreamChunk {
+func (c *anthropicClient) Stream(ctx context.Context, req sharedModel.ChatRequest, conversationID *string) <-chan sharedModel.StreamChunk {
 	log := logger.Logger(ctx)
 	anthropicReq := c.toAnthropicReq(req)
 	anthropicReq.Stream = true
