@@ -270,12 +270,6 @@ func main() {
 		broker = jobs.Broker
 	}
 
-	messagePipeline, err := factory.NewMessagePipeline(
-		database.PipelineStep,
-		database.UserLLMModel,
-		database.Category,
-		userModelsResolver,
-	)
 	statementImport := factory.NewStatementFactory(
 		factory.OCRConfig{
 			Driver:    cfg.StatementImportDriver,
@@ -283,7 +277,7 @@ func main() {
 			Model:     cfg.StatementImportModel,
 			MaxTokens: cfg.StatementImportMaxTokens,
 		},
-		userModelsResolver,
+		modelClients,
 		database.UserLLMModel,
 	)
 	messagePipeline, err := factory.NewMessagePipeline(factory.MessagePipelineDeps{
