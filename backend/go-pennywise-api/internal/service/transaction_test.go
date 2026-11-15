@@ -685,11 +685,6 @@ func (m *mockMonthlyBudgetRepo) UpdateCarryoverByCatIdAndMonth(
 	return args.Error(0)
 }
 
-// Mock transaction interface to expose private methods for testing
-type testableTransactionService struct {
-	service transactionService
-}
-
 // Test helpers
 func createTestUUIDs() (budgetId, txnId, accountId, payeeId, categoryId, predictionId, inflowCategoryID uuid.UUID) {
 	budgetId = uuid.New()
@@ -1041,117 +1036,6 @@ func TestUpdateWithCipherPredictionMappingChangeMarksCorrection(t *testing.T) {
 	payeeRepo.AssertExpectations(t)
 	cipherPredictionRepo.AssertExpectations(t)
 	cipherClient.AssertNotCalled(t, "GenerateTransactionEmbedding", mock.Anything, mock.Anything)
-}
-
-func TestUpdatePrediction(t *testing.T) {
-	budgetId, txnId, accountId, payeeId, categoryId, predictionId, _ := createTestUUIDs()
-	tests := []struct {
-		name              string
-		account           model.Account
-		payee             model.Payee
-		setupMocks        func(*mockPredictionRepo, *mockCategoryRepo)
-		expectError       bool
-		expectUpdate      bool
-		predictionExists  bool
-		userCorrectedData bool
-	}{
-		{
-			name:             "prediction_not_found_returns_nil",
-			account:          *createTestAccount(accountId, budgetId, "Test Account"),
-			payee:            *createTestPayee(payeeId, budgetId, "Test Payee"),
-			predictionExists: false,
-			expectError:      false,
-			expectUpdate:     false,
-			setupMocks: func(mp *mockPredictionRepo, mc *mockCategoryRepo) {
-				mp.On("GetByTxnId", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
-			},
-		},
-		{
-			name:             "prediction_found_no_changes_needed",
-			account:          *createTestAccount(accountId, budgetId, "Test Account"),
-			payee:            *createTestPayee(payeeId, budgetId, "Test Payee"),
-			predictionExists: true,
-			expectError:      false,
-			expectUpdate:     false,
-			setupMocks: func(mp *mockPredictionRepo, mc *mockCategoryRepo) {
-				prediction := createTestPrediction(predictionId, budgetId, txnId)
-				category := createTestCategory(categoryId, budgetId, "Test Category")
-
-				mp.On("GetByTxnId", mock.Anything, budgetId, txnId).Return(prediction, nil)
-				mc.On("GetByIdSimplified", mock.Anything, budgetId, categoryId).Return(category, nil)
-			},
-		},
-		{
-			name:              "prediction_found_user_correction_needed",
-			account:           *createTestAccount(accountId, budgetId, "Different Account"),
-			payee:             *createTestPayee(payeeId, budgetId, "Different Payee"),
-			predictionExists:  true,
-			expectError:       false,
-			expectUpdate:      true,
-			userCorrectedData: true,
-			setupMocks: func(mp *mockPredictionRepo, mc *mockCategoryRepo) {
-				prediction := createTestPrediction(predictionId, budgetId, txnId)
-				category := createTestCategory(categoryId, budgetId, "Different Category")
-
-				mp.On("GetByTxnId", mock.Anything, budgetId, txnId).Return(prediction, nil)
-				mc.On("GetByIdSimplified", mock.Anything, budgetId, categoryId).Return(category, nil)
-				mp.On("Update", mock.Anything, budgetId, predictionId, mock.MatchedBy(func(p model.Prediction) bool {
-					return p.HasUserCorrected != nil && *p.HasUserCorrected &&
-						p.UserCorrectedAccount != nil && *p.UserCorrectedAccount == "Different Account" &&
-						p.UserCorrectedPayee != nil && *p.UserCorrectedPayee == "Different Payee" &&
-						p.UserCorrectedCategory != nil && *p.UserCorrectedCategory == "Different Category"
-				})).
-					Return(nil)
-			},
-		},
-		{
-			name:             "prediction_repo_error",
-			account:          *createTestAccount(accountId, budgetId, "Test Account"),
-			payee:            *createTestPayee(payeeId, budgetId, "Test Payee"),
-			predictionExists: false,
-			expectError:      true,
-			expectUpdate:     false,
-			setupMocks: func(mp *mockPredictionRepo, mc *mockCategoryRepo) {
-				mp.On("GetByTxnId", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-					Return(nil, assert.AnError)
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Arrange
-			mockPrediction := &mockPredictionRepo{}
-			mockCategory := &mockCategoryRepo{}
-			mockMonthlyBudget := &mockMonthlyBudgetRepo{}
-
-			service := setupTransactionTestableService(mockPrediction, nil, nil, mockCategory, mockMonthlyBudget)
-
-			txn := model.Transaction{
-				AccountID:  &accountId,
-				PayeeID:    &payeeId,
-				CategoryID: &categoryId,
-			}
-
-			ctx := context.Background()
-
-			tt.setupMocks(mockPrediction, mockCategory)
-
-			// Act
-			err := service.updatePrediction(ctx, budgetId, txnId, txn, tt.account, tt.payee)
-
-			// Assert
-			if tt.expectError {
-				assert.Error(t, err)
-			} else {
-				assert.NoError(t, err)
-			}
-
-			// Verify all expectations were met
-			mockPrediction.AssertExpectations(t)
-			mockCategory.AssertExpectations(t)
-		})
-	}
 }
 
 func TestUpdateCarryovers(t *testing.T) {

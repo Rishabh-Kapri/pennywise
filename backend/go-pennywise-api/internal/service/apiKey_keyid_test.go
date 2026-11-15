@@ -19,25 +19,10 @@ import (
 
 var keyIDPattern = regexp.MustCompile(`^k_[0-9a-f]{12}$`)
 
-func TestAPIKeyService_GenerateReturnsAPublicKeyID(t *testing.T) {
-	svc := NewApiKeyService(nil)
-	seen := map[string]bool{}
-	for i := 0; i < 1000; i++ {
-		fullKey, keyID, err := svc.Generate()
-		require.NoError(t, err)
-		require.Regexp(t, keyIDPattern, keyID)
-		require.False(t, seen[keyID], "key ids are unique")
-		seen[keyID] = true
-
-		_, _, secret, err := svc.ParseKey(fullKey)
-		require.NoError(t, err)
-		assert.NotContains(t, secret, strings.TrimPrefix(keyID, "k_"), "the id is not a piece of the secret")
-	}
-}
-
 // Every key used to be stored with key_id = "", so the second key ever created
-// violated UNIQUE (key_id).
-func TestAPIKeyService_CreateStoresDistinctKeyIDs(t *testing.T) {
+// violated UNIQUE (key_id). A key must also pass the format check the auth
+// adapter runs, and its public id must not be a piece of the secret.
+func TestAPIKeyService_CreateIssuesUsableDistinctKeys(t *testing.T) {
 	repo := &svcAPIKeyRepo{}
 	svc := NewApiKeyService(repo)
 	ctx := utils.WithUserID(context.Background(), uuid.New())
@@ -46,17 +31,21 @@ func TestAPIKeyService_CreateStoresDistinctKeyIDs(t *testing.T) {
 		stored = append(stored, args.Get(1).(*model.APIKey))
 	})
 
-	key1, err := svc.Create(ctx, &model.APIKey{Name: "insomnia-local"})
-	require.NoError(t, err)
-	key2, err := svc.Create(ctx, &model.APIKey{Name: "insomnia-local"})
-	require.NoError(t, err)
+	seen := map[string]bool{}
+	for i := 0; i < 200; i++ {
+		fullKey, err := svc.Create(ctx, &model.APIKey{Name: "insomnia-local"})
+		require.NoError(t, err)
+		require.True(t, model.ValidAPIKeyFormat(fullKey))
 
-	require.Len(t, stored, 2)
-	assert.Regexp(t, keyIDPattern, stored[0].KeyID)
-	assert.Regexp(t, keyIDPattern, stored[1].KeyID)
-	assert.NotEqual(t, stored[0].KeyID, stored[1].KeyID)
-	assert.Equal(t, utils.Hash(key1), stored[0].HashedKey)
-	assert.Equal(t, utils.Hash(key2), stored[1].HashedKey)
+		saved := stored[len(stored)-1]
+		require.Regexp(t, keyIDPattern, saved.KeyID)
+		require.False(t, seen[saved.KeyID], "key ids are unique")
+		seen[saved.KeyID] = true
+		assert.Equal(t, utils.Hash(fullKey), saved.HashedKey)
+
+		_, _, secret, _ := model.ParseAPIKey(fullKey)
+		assert.NotContains(t, secret, strings.TrimPrefix(saved.KeyID, "k_"))
+	}
 }
 
 // The random part of a key is the secret; it must not reach the logs, at any level.
@@ -68,14 +57,12 @@ func TestAPIKeyService_NeverLogsTheSecret(t *testing.T) {
 
 	repo := &svcAPIKeyRepo{}
 	svc := NewApiKeyService(repo)
-	repo.On("GetByHash", mock.Anything, mock.Anything).Return(&model.APIKey{}, nil)
-	fullKey, _, err := svc.Generate()
-	require.NoError(t, err)
-	_, _, secret, _ := svc.ParseKey(fullKey)
+	repo.On("Create", mock.Anything, mock.Anything).Return(nil)
+	ctx := utils.WithUserID(context.Background(), uuid.New())
 
-	assert.True(t, svc.ValidateFormat(fullKey))
-	_, err = svc.GetByHash(context.Background(), fullKey)
+	fullKey, err := svc.Create(ctx, &model.APIKey{Name: "k"})
 	require.NoError(t, err)
+	_, _, secret, _ := model.ParseAPIKey(fullKey)
 
 	assert.NotContains(t, buf.String(), secret)
 	assert.NotContains(t, buf.String(), fullKey)

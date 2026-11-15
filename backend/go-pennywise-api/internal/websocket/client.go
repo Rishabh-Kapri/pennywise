@@ -16,7 +16,6 @@ type Client struct {
 	BudgetID uuid.UUID
 	Conn     *websocket.Conn
 	Send     chan sharedModel.Message
-	Done     chan any
 }
 
 const (

@@ -24,7 +24,6 @@ type TransactionService interface {
 		ctx context.Context,
 		filter *model.TransactionFilter,
 	) (model.PaginatedResponse[model.Transaction], error)
-	// GetById(ctx context.Context, id uuid.UUID) (*model.Transaction, error)
 	Update(ctx context.Context, id uuid.UUID, txn model.Transaction) error
 	UpdateLocation(ctx context.Context, id uuid.UUID, req model.TransactionLocationReq) (*model.Transaction, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status model.TransactionStatus) error
@@ -102,78 +101,6 @@ func NewTransactionService(
 
 		jobBroker: jobBroker,
 	}
-}
-
-// Deprecated: legacy MLP prediction corrections are no longer updated from transaction edits.
-func (s *transactionService) updatePrediction(
-	ctx context.Context,
-	budgetId uuid.UUID,
-	txnId uuid.UUID,
-	txn model.Transaction,
-	account model.Account,
-	payee model.Payee,
-) error {
-	prediction, err := s.predictionRepo.GetByTxnId(ctx, budgetId, txnId)
-	if err != nil {
-		return errs.Wrap(errs.CodePredictionLookupFailed, "error getting prediction", err)
-	}
-	if prediction == nil {
-		logger.Logger(ctx).Info("prediction not found for txn", "txnId", txnId)
-		return nil
-	}
-	logger.Logger(ctx).Debug("prediction", "prediction", prediction.String())
-
-	logger.Logger(ctx).Debug("transaction", "txn", txn.String())
-
-	var category *model.Category
-	if txn.CategoryID != nil {
-		category, err = s.categoryRepo.GetByIdSimplified(ctx, budgetId, *txn.CategoryID)
-		if err != nil {
-			return errs.Wrap(errs.CodeCategoryLookupFailed, "error getting category", err)
-		}
-	}
-
-	// if the prediction is not the same as the existing one, update it
-	trueVal := true
-	falseVal := false
-	needsUpdate := false
-
-	accountName := account.Name
-	payeeName := payee.Name
-
-	if prediction.Account != nil && *prediction.Account != accountName {
-		prediction.HasUserCorrected = &trueVal
-		corrected := account.Name
-		prediction.UserCorrectedAccount = &corrected
-		needsUpdate = true
-	}
-	if prediction.Payee != nil && *prediction.Payee != payeeName {
-		prediction.HasUserCorrected = &trueVal
-		corrected := payee.Name
-		prediction.UserCorrectedPayee = &corrected
-		needsUpdate = true
-	}
-	if prediction.Category != nil && category != nil && *prediction.Category != category.Name {
-		prediction.HasUserCorrected = &trueVal
-		corrected := category.Name
-		prediction.UserCorrectedCategory = &corrected
-		needsUpdate = true
-	}
-
-	// If no mismatch found but prediction was previously marked as corrected, clear it
-	if !needsUpdate && prediction.HasUserCorrected != nil && *prediction.HasUserCorrected {
-		prediction.HasUserCorrected = &falseVal
-		needsUpdate = true
-	}
-
-	if needsUpdate {
-		logger.Logger(ctx).Info("updating prediction", "txnId", txnId)
-		err = s.predictionRepo.Update(ctx, budgetId, prediction.ID, *prediction)
-		if err != nil {
-			return errs.Wrap(errs.CodePredictionUpdateFailed, "failed to update prediction", err)
-		}
-	}
-	return nil
 }
 
 // validateTransactionPayload validates the payload of a transaction

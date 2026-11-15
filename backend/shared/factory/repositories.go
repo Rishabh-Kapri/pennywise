@@ -114,7 +114,6 @@ type Repositories struct {
 	Tag                  repository.TagRepository
 	Transaction          repository.TransactionRepository
 	TransactionDocument  repository.TransactionDocumentRepository
-	Embedding            repository.EmbeddingRepository
 	TransactionEmbedding repository.TransactionEmbeddingRepository
 	DBTxn                repository.DBTxn
 	User                 repository.UserRepository
@@ -155,7 +154,6 @@ func newPostgresRepositories(pool *pgxpool.Pool) *Repositories {
 		Tag:                  postgres.NewTagRepository(pool),
 		Transaction:          postgres.NewTransactionRepository(pool),
 		TransactionDocument:  postgres.NewTransactionDocumentRepository(pool),
-		Embedding:            postgres.NewEmbeddingRepository(pool),
 		TransactionEmbedding: postgres.NewTransactionEmbeddingRepository(pool),
 		DBTxn:                postgres.NewDBTxn(pool),
 		User:                 postgres.NewUserRepository(pool),

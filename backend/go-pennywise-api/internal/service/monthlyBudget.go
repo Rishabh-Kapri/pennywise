@@ -4,11 +4,10 @@ import (
 	"context"
 	"errors"
 
-	utils "github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/pkg"
-
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
+	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
 )

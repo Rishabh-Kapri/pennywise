@@ -13,43 +13,20 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
-	"github.com/google/uuid"
-)
-
-// The key format lives in shared/model so the auth adapter checks exactly
-// what Generate produces.
-const (
-	KeyLength   = model.APIKeyLength
-	KeyPrefix   = model.APIKeyPrefix
-	KeyVersion  = model.APIKeyVersion
-	KeyIDPrefix = model.APIKeyIDPrefix
-	KeyIDLength = model.APIKeyIDLength
 )
 
 type APIKeyService interface {
-	Generate() (fullKey, keyID string, err error)
-	ParseKey(fullKey string) (prefix, version, base64String string, err error)
-	ValidateFormat(fullKey string) bool
-	// repository methods
 	Create(ctx context.Context, apiKey *model.APIKey) (string, error)
 	GetAll(ctx context.Context) ([]model.APIKey, error)
 	GetByKeyID(ctx context.Context, keyID string) (*model.APIKey, error)
-	GetByHash(ctx context.Context, fullKey string) (*model.APIKey, error)
-	UpdateLastUsed(ctx context.Context, id uuid.UUID) error
 }
 
 type apiKeyService struct {
-	prefix  string
-	version string
-	repo    repository.APIKeyRepository
+	repo repository.APIKeyRepository
 }
 
 func NewApiKeyService(r repository.APIKeyRepository) APIKeyService {
-	return &apiKeyService{
-		prefix:  KeyPrefix,
-		version: KeyVersion,
-		repo:    r,
-	}
+	return &apiKeyService{repo: r}
 }
 
 func (s *apiKeyService) setAPIKeyDefaults(apiKey *model.APIKey) {
@@ -61,40 +38,24 @@ func (s *apiKeyService) setAPIKeyDefaults(apiKey *model.APIKey) {
 	apiKey.ExpiresAt = &expiry
 }
 
-// Generate creates a new cryptographically secure API key
-func (s *apiKeyService) Generate() (fullKey string, keyID string, err error) {
-	// Generate random bytes
-	randomBytes := make([]byte, KeyLength)
+// generateAPIKey makes a new secret key in the format shared/model defines, so
+// the auth adapter accepts exactly what it produces, and a public key id from
+// separate random bytes.
+func generateAPIKey() (fullKey string, keyID string, err error) {
+	randomBytes := make([]byte, model.APIKeyLength)
 	if _, err := rand.Read(randomBytes); err != nil {
 		return "", "", errs.Wrap(errs.CodeInternalError, "failed to generate random bytes", err)
 	}
+	fullKey = fmt.Sprintf("%s_%s_%s", model.APIKeyPrefix, model.APIKeyVersion,
+		base64.RawURLEncoding.EncodeToString(randomBytes))
 
-	// Encode to URL-safe base64 for easy transmission
-	base64String := base64.RawURLEncoding.EncodeToString(randomBytes)
-
-	fullKey = fmt.Sprintf("%s_%s_%s", s.prefix, s.version, base64String)
-
-	// A short public id for lookup and display, independent of the secret.
-	idBytes := make([]byte, KeyIDLength)
+	idBytes := make([]byte, model.APIKeyIDLength)
 	if _, err := rand.Read(idBytes); err != nil {
 		return "", "", errs.Wrap(errs.CodeInternalError, "failed to generate key id", err)
 	}
-	keyID = KeyIDPrefix + hex.EncodeToString(idBytes)
+	keyID = model.APIKeyIDPrefix + hex.EncodeToString(idBytes)
 
 	return fullKey, keyID, nil
-}
-
-func (s *apiKeyService) ParseKey(fullKey string) (prefix, version, base64String string, err error) {
-	prefix, version, base64String, ok := model.ParseAPIKey(fullKey)
-	if !ok {
-		return "", "", "", errs.New(errs.CodeInvalidArgument, "invalid api key format")
-	}
-	return prefix, version, base64String, nil
-}
-
-// ValidateFormat never logs fullKey: it is the secret.
-func (s *apiKeyService) ValidateFormat(fullKey string) bool {
-	return model.ValidAPIKeyFormat(fullKey)
 }
 
 func (s *apiKeyService) Create(ctx context.Context, apiKey *model.APIKey) (string, error) {
@@ -109,7 +70,7 @@ func (s *apiKeyService) Create(ctx context.Context, apiKey *model.APIKey) (strin
 	s.setAPIKeyDefaults(apiKey)
 
 	// Generate a new API key
-	fullKey, keyID, err := s.Generate()
+	fullKey, keyID, err := generateAPIKey()
 	if err != nil {
 		return "", errs.Wrap(errs.CodeInternalError, "failed to generate api key", err)
 	}
@@ -134,14 +95,4 @@ func (s *apiKeyService) GetAll(ctx context.Context) ([]model.APIKey, error) {
 
 func (s *apiKeyService) GetByKeyID(ctx context.Context, keyID string) (*model.APIKey, error) {
 	return s.repo.GetByKeyID(ctx, keyID)
-}
-
-func (s *apiKeyService) GetByHash(ctx context.Context, fullKey string) (*model.APIKey, error) {
-	keyHash := utils.Hash(fullKey)
-	logger.Logger(ctx).Debug("looking up api key by hash", "keyHash", keyHash)
-	return s.repo.GetByHash(ctx, keyHash)
-}
-
-func (s *apiKeyService) UpdateLastUsed(ctx context.Context, id uuid.UUID) error {
-	return s.repo.UpdateLastUsed(ctx, id)
 }

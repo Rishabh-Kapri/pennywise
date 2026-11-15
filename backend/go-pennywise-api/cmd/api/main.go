@@ -260,9 +260,6 @@ func main() {
 		service.NewCategoryGoalService(database.CategoryGoal),
 	)
 
-	embeddingService := service.NewEmbeddingService(database.Embedding)
-	embeddingHandler := handler.NewEmbeddingHandler(embeddingService)
-
 	tagService := service.NewTagService(database.Tag)
 	tagHandler := handler.NewTagHandler(tagService)
 
@@ -830,16 +827,6 @@ func main() {
 				":id",
 				middleware.RouteAuthMiddleware(sharedModel.ScopeDelete),
 				predictionHandler.DeleteById,
-			)
-		}
-		{
-			embeddingGroup := router.Group("/api/embeddings")
-			embeddingGroup.Use(authMiddleware, rateLimitMiddleware)
-			embeddingGroup.POST("", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), embeddingHandler.Create)
-			embeddingGroup.GET(
-				"/search",
-				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
-				embeddingHandler.Search,
 			)
 		}
 		{

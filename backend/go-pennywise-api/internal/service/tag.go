@@ -13,7 +13,6 @@ import (
 type TagService interface {
 	GetAll(ctx context.Context) ([]model.Tag, error)
 	Search(ctx context.Context, query string) ([]model.Tag, error)
-	GetById(ctx context.Context, id uuid.UUID) (*model.Tag, error)
 	Create(ctx context.Context, tag model.Tag) (*model.Tag, error)
 	Update(ctx context.Context, id uuid.UUID, tag model.Tag) error
 	DeleteById(ctx context.Context, id uuid.UUID) error
@@ -35,11 +34,6 @@ func (s *tagService) GetAll(ctx context.Context) ([]model.Tag, error) {
 func (s *tagService) Search(ctx context.Context, query string) ([]model.Tag, error) {
 	budgetId := utils.MustBudgetID(ctx)
 	return s.repo.Search(ctx, budgetId, query)
-}
-
-func (s *tagService) GetById(ctx context.Context, id uuid.UUID) (*model.Tag, error) {
-	budgetId := utils.MustBudgetID(ctx)
-	return s.repo.GetById(ctx, budgetId, id)
 }
 
 func (s *tagService) Create(ctx context.Context, tag model.Tag) (*model.Tag, error) {

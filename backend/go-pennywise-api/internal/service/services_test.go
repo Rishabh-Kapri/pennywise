@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"strings"
 	"testing"
@@ -455,29 +454,6 @@ func TestTagService_Search(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Len(t, tags, 1)
 	repo.AssertExpectations(t)
-}
-
-func TestTagService_GetById(t *testing.T) {
-	budgetID := uuid.New()
-	tagID := uuid.New()
-	ctx := budgetCtxWith(budgetID)
-
-	t.Run("returns_tag", func(t *testing.T) {
-		repo := &svcTagRepo{}
-		repo.On("GetById", mock.Anything, budgetID, tagID).Return(&model.Tag{ID: tagID}, nil)
-		tag, err := NewTagService(repo).GetById(ctx, tagID)
-		assert.NoError(t, err)
-		assert.Equal(t, tagID, tag.ID)
-		repo.AssertExpectations(t)
-	})
-	t.Run("repo_error_propagates", func(t *testing.T) {
-		repo := &svcTagRepo{}
-		repo.On("GetById", mock.Anything, budgetID, tagID).Return(nil, assert.AnError)
-		tag, err := NewTagService(repo).GetById(ctx, tagID)
-		assert.Error(t, err)
-		assert.Nil(t, tag)
-		repo.AssertExpectations(t)
-	})
 }
 
 func TestTagService_Create(t *testing.T) {
@@ -1027,71 +1003,6 @@ func TestPayeeService_DeleteRule(t *testing.T) {
 // APIKeyService tests
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestAPIKeyService_Generate(t *testing.T) {
-	svc := NewApiKeyService(nil)
-
-	t.Run("generates_valid_key", func(t *testing.T) {
-		fullKey, _, err := svc.Generate()
-		assert.NoError(t, err)
-		assert.True(t, svc.ValidateFormat(fullKey))
-	})
-	t.Run("keys_are_unique", func(t *testing.T) {
-		k1, _, _ := svc.Generate()
-		k2, _, _ := svc.Generate()
-		assert.NotEqual(t, k1, k2)
-	})
-}
-
-func TestAPIKeyService_ParseKey(t *testing.T) {
-	svc := NewApiKeyService(nil)
-
-	t.Run("parses_valid_key", func(t *testing.T) {
-		// Use a handcrafted key with no underscores in the base64 part
-		expectedLen := base64.RawURLEncoding.EncodedLen(KeyLength)
-		b64Part := strings.Repeat("A", expectedLen)
-		key := "pwk_v1_" + b64Part
-		prefix, version, b64, err := svc.ParseKey(key)
-		assert.NoError(t, err)
-		assert.Equal(t, "pwk", prefix)
-		assert.Equal(t, "v1", version)
-		assert.NotEmpty(t, b64)
-	})
-	t.Run("invalid_format_returns_error", func(t *testing.T) {
-		_, _, _, err := svc.ParseKey("badkey")
-		assert.Error(t, err)
-	})
-}
-
-func TestAPIKeyService_ValidateFormat(t *testing.T) {
-	svc := NewApiKeyService(nil)
-
-	t.Run("valid_key_without_underscores_passes", func(t *testing.T) {
-		// Construct a key that has no underscores in the base64 part
-		b64 := strings.ReplaceAll("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklm", "_", "A")
-		// Use exactly the expected length
-		expectedLen := base64.RawURLEncoding.EncodedLen(KeyLength)
-		padded := b64
-		for len(padded) < expectedLen {
-			padded += "A"
-		}
-		key := "pwk_v1_" + padded[:expectedLen]
-		assert.True(t, svc.ValidateFormat(key))
-	})
-	t.Run("wrong_prefix_fails", func(t *testing.T) {
-		assert.False(t, svc.ValidateFormat("bad_v1_abcdefg"))
-	})
-	t.Run("wrong_version_fails", func(t *testing.T) {
-		assert.False(t, svc.ValidateFormat("pwk_v2_abcdefg"))
-	})
-	t.Run("short_random_part_fails", func(t *testing.T) {
-		assert.False(t, svc.ValidateFormat("pwk_v1_short"))
-	})
-	t.Run("extra_underscores_in_b64_fail_parse", func(t *testing.T) {
-		// base64 with underscore causes split to produce > 3 parts → invalid
-		assert.False(t, svc.ValidateFormat("pwk_v1_abc_def"))
-	})
-}
-
 func TestAPIKeyService_Create_NameRequired(t *testing.T) {
 	svc := NewApiKeyService(&svcAPIKeyRepo{})
 	ctx := utils.WithUserID(context.Background(), uuid.New())
@@ -1108,26 +1019,6 @@ func TestAPIKeyService_Create_Success(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotEmpty(t, fullKey)
 	assert.True(t, strings.HasPrefix(fullKey, "pwk_v1_"))
-	repo.AssertExpectations(t)
-}
-
-func TestAPIKeyService_GetByKeyID(t *testing.T) {
-	repo := &svcAPIKeyRepo{}
-	svc := NewApiKeyService(repo)
-	expected := &model.APIKey{Name: "key"}
-	repo.On("GetByKeyID", mock.Anything, "kid123").Return(expected, nil)
-	result, err := svc.GetByKeyID(context.Background(), "kid123")
-	assert.NoError(t, err)
-	assert.Equal(t, expected, result)
-	repo.AssertExpectations(t)
-}
-
-func TestAPIKeyService_UpdateLastUsed(t *testing.T) {
-	repo := &svcAPIKeyRepo{}
-	svc := NewApiKeyService(repo)
-	id := uuid.New()
-	repo.On("UpdateLastUsed", mock.Anything, id).Return(nil)
-	assert.NoError(t, svc.UpdateLastUsed(context.Background(), id))
 	repo.AssertExpectations(t)
 }
 
@@ -1735,37 +1626,6 @@ func TestBudgetService_UpdateById(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// APIKeyService.GetByHash test
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestAPIKeyService_GetByHash(t *testing.T) {
-	repo := &svcAPIKeyRepo{}
-	svc := NewApiKeyService(repo)
-	expected := &model.APIKey{Name: "hashed-key"}
-
-	// Generate a real key so we can exercise the hash path
-	fullKey, _, err := svc.Generate()
-	assert.NoError(t, err)
-
-	t.Run("success", func(t *testing.T) {
-		repo.On("GetByHash", mock.Anything, mock.AnythingOfType("string")).Return(expected, nil)
-		result, err := svc.GetByHash(context.Background(), fullKey)
-		assert.NoError(t, err)
-		assert.Equal(t, expected, result)
-		repo.AssertExpectations(t)
-	})
-	t.Run("repo_error_propagates", func(t *testing.T) {
-		repo2 := &svcAPIKeyRepo{}
-		repo2.On("GetByHash", mock.Anything, mock.AnythingOfType("string")).Return(nil, assert.AnError)
-		svc2 := NewApiKeyService(repo2)
-		result, err := svc2.GetByHash(context.Background(), fullKey)
-		assert.Error(t, err)
-		assert.Nil(t, result)
-		repo2.AssertExpectations(t)
-	})
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // UserService.Search / Update tests
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -2238,36 +2098,6 @@ func TestMonthlyBudgetService_ApplyCarryoverOps_DifferentCategory(t *testing.T) 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// APIKeyService — ValidateFormat missing branches
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestAPIKeyService_ValidateFormat_WrongPrefix(t *testing.T) {
-	svc := &apiKeyService{prefix: KeyPrefix, version: KeyVersion, repo: &svcAPIKeyRepo{}}
-	randomPart := strings.Repeat("a", base64.RawURLEncoding.EncodedLen(KeyLength))
-	key := "bad_" + KeyVersion + "_" + randomPart
-	assert.False(t, svc.ValidateFormat(key))
-}
-
-func TestAPIKeyService_ValidateFormat_WrongVersion(t *testing.T) {
-	svc := &apiKeyService{prefix: KeyPrefix, version: KeyVersion, repo: &svcAPIKeyRepo{}}
-	randomPart := strings.Repeat("a", base64.RawURLEncoding.EncodedLen(KeyLength))
-	key := KeyPrefix + "_v99_" + randomPart
-	assert.False(t, svc.ValidateFormat(key))
-}
-
-func TestAPIKeyService_ValidateFormat_WrongRandomLength(t *testing.T) {
-	svc := &apiKeyService{prefix: KeyPrefix, version: KeyVersion, repo: &svcAPIKeyRepo{}}
-	key := KeyPrefix + "_" + KeyVersion + "_tooshort"
-	assert.False(t, svc.ValidateFormat(key))
-}
-
-func TestAPIKeyService_ValidateFormat_ParseFails(t *testing.T) {
-	svc := &apiKeyService{prefix: KeyPrefix, version: KeyVersion, repo: &svcAPIKeyRepo{}}
-	key := "onlyone_segment"
-	assert.False(t, svc.ValidateFormat(key))
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // APIKeyService — Create missing branches
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -2347,20 +2177,6 @@ func TestAuthService_RefreshToken_NilUser(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, result)
 	repo.AssertExpectations(t)
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// EmbeddingService — constructor + Get + Create (all stubs)
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestEmbeddingService_GetAndCreate(t *testing.T) {
-	svc := NewEmbeddingService(nil)
-	assert.NotNil(t, svc)
-	docs, err := svc.Get(context.Background(), "journal_bullet", "query", 5)
-	assert.NoError(t, err)
-	assert.Nil(t, docs)
-	err = svc.Create(context.Background(), model.Embedding{})
-	assert.NoError(t, err)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

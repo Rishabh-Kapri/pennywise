@@ -44,10 +44,6 @@ All routes are under `/api` and wired in `cmd/api/main.go`.
 
 `DEMO_MODE=true` enables `POST /api/auth/demo`, which logs into a persistent demo user (`demo@pennywise.local`). On first login `internal/service/demo.go` + `demo_seed.go` seed — in a **single database transaction** (bulk `CopyFrom`, safe to interrupt, idempotent) — a full budget: categories, 3 accounts, payees, ~4 months of transactions (with linked credit-card transfer pairs and carryover balances), payee rules, and cipher predictions across all sources (RULE/VECTOR/LLM/UNCATEGORIZED, including user corrections).
 
-## Temporal
-
-`internal/temporal/activities` holds activities (e.g. create-prediction → create-transaction) executed by the [workflows worker](../workflows). Correlation metadata crosses workflow boundaries via `backend/shared/temporal/propagator.go`.
-
 ## Environment
 
-See `.env.example`. Key variables: `DATABASE_URL`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, `DOMAIN`, `INTERNAL_AUTH_TOKEN`, `REDIS_URL`, `CIPHER_SERVICE_URL`, `GMAIL_SERVICE_URL`, `DEMO_MODE`, `PORT`.
+See `.env.example`. Key variables: `DATABASE_URL`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, `DOMAIN`, `INTERNAL_AUTH_TOKEN`, `REDIS_URL`, `CIPHER_SERVICE_URL`, `INGEST_SERVICE_URL`, `DEMO_MODE`, `PORT`.

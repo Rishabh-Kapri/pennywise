@@ -154,18 +154,6 @@ func TestAccountHandler_Create(t *testing.T) {
 
 type mockAPIKeyService struct{ mock.Mock }
 
-func (m *mockAPIKeyService) Generate() (string, string, error) {
-	args := m.Called()
-	return args.String(0), args.String(1), args.Error(2)
-}
-func (m *mockAPIKeyService) ParseKey(fullKey string) (string, string, string, error) {
-	args := m.Called(fullKey)
-	return args.String(0), args.String(1), args.String(2), args.Error(3)
-}
-func (m *mockAPIKeyService) ValidateFormat(fullKey string) bool {
-	args := m.Called(fullKey)
-	return args.Bool(0)
-}
 func (m *mockAPIKeyService) Create(ctx context.Context, apiKey *model.APIKey) (string, error) {
 	args := m.Called(ctx, apiKey)
 	return args.String(0), args.Error(1)
@@ -183,16 +171,6 @@ func (m *mockAPIKeyService) GetByKeyID(ctx context.Context, keyID string) (*mode
 		return v.(*model.APIKey), args.Error(1)
 	}
 	return nil, args.Error(1)
-}
-func (m *mockAPIKeyService) GetByHash(ctx context.Context, fullKey string) (*model.APIKey, error) {
-	args := m.Called(ctx, fullKey)
-	if v := args.Get(0); v != nil {
-		return v.(*model.APIKey), args.Error(1)
-	}
-	return nil, args.Error(1)
-}
-func (m *mockAPIKeyService) UpdateLastUsed(ctx context.Context, id uuid.UUID) error {
-	return m.Called(ctx, id).Error(0)
 }
 
 func TestAPIKeyHandler_Create(t *testing.T) {
@@ -669,13 +647,6 @@ func (m *mockTagService) Search(ctx context.Context, query string) ([]model.Tag,
 	args := m.Called(ctx, query)
 	if v := args.Get(0); v != nil {
 		return v.([]model.Tag), args.Error(1)
-	}
-	return nil, args.Error(1)
-}
-func (m *mockTagService) GetById(ctx context.Context, id uuid.UUID) (*model.Tag, error) {
-	args := m.Called(ctx, id)
-	if v := args.Get(0); v != nil {
-		return v.(*model.Tag), args.Error(1)
 	}
 	return nil, args.Error(1)
 }
@@ -2033,81 +2004,6 @@ func TestPayeeHandler_Create(t *testing.T) {
 		svc.On("Create", mock.Anything, mock.Anything).Return(nil, assert.AnError)
 		w, c := makeReq("POST", "/payees", model.Payee{Name: "X"})
 		NewPayeeHandler(svc).Create(c)
-		assert.Equal(t, http.StatusBadRequest, w.Code)
-	})
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// EmbeddingHandler tests
-// ─────────────────────────────────────────────────────────────────────────────
-
-type mockEmbeddingService struct{ mock.Mock }
-
-func (m *mockEmbeddingService) Get(ctx context.Context, docType string, queryStr string, limit int64) ([]model.Embedding, error) {
-	args := m.Called(ctx, docType, queryStr, limit)
-	if v := args.Get(0); v != nil {
-		return v.([]model.Embedding), args.Error(1)
-	}
-	return nil, args.Error(1)
-}
-
-func (m *mockEmbeddingService) Create(ctx context.Context, data model.Embedding) error {
-	return m.Called(ctx, data).Error(0)
-}
-
-func TestEmbeddingHandler_Search(t *testing.T) {
-	t.Run("success_returns_200", func(t *testing.T) {
-		svc := &mockEmbeddingService{}
-		svc.On("Get", mock.Anything, "journal_bullet", "foo", int64(5)).Return([]model.Embedding{}, nil)
-		w, c := makeReq("GET", "/embeddings?query=foo", nil)
-		c.Request.URL.RawQuery = "query=foo"
-		NewEmbeddingHandler(svc).Search(c)
-		assert.Equal(t, http.StatusOK, w.Code)
-	})
-	t.Run("limit_parse_error_returns_400", func(t *testing.T) {
-		svc := &mockEmbeddingService{}
-		w, c := makeReq("GET", "/embeddings?limit=notanumber", nil)
-		c.Request.URL.RawQuery = "limit=notanumber"
-		NewEmbeddingHandler(svc).Search(c)
-		assert.Equal(t, http.StatusBadRequest, w.Code)
-	})
-	t.Run("service_error_returns_400", func(t *testing.T) {
-		svc := &mockEmbeddingService{}
-		svc.On("Get", mock.Anything, "journal_bullet", "q", int64(5)).Return(nil, assert.AnError)
-		w, c := makeReq("GET", "/embeddings?query=q", nil)
-		c.Request.URL.RawQuery = "query=q"
-		NewEmbeddingHandler(svc).Search(c)
-		assert.Equal(t, http.StatusBadRequest, w.Code)
-	})
-	t.Run("custom_doctype_returns_200", func(t *testing.T) {
-		svc := &mockEmbeddingService{}
-		svc.On("Get", mock.Anything, "custom", "x", int64(5)).Return([]model.Embedding{}, nil)
-		w, c := makeReq("GET", "/embeddings?query=x&type=custom", nil)
-		c.Request.URL.RawQuery = "query=x&type=custom"
-		NewEmbeddingHandler(svc).Search(c)
-		assert.Equal(t, http.StatusOK, w.Code)
-	})
-}
-
-func TestEmbeddingHandler_Create(t *testing.T) {
-	t.Run("success_returns_200", func(t *testing.T) {
-		svc := &mockEmbeddingService{}
-		svc.On("Create", mock.Anything, mock.Anything).Return(nil)
-		w, c := makeReq("POST", "/embeddings", model.Embedding{})
-		NewEmbeddingHandler(svc).Create(c)
-		assert.Equal(t, http.StatusOK, w.Code)
-	})
-	t.Run("bind_error_returns_400", func(t *testing.T) {
-		svc := &mockEmbeddingService{}
-		w, c := makeReq("POST", "/embeddings", "not-json")
-		NewEmbeddingHandler(svc).Create(c)
-		assert.Equal(t, http.StatusBadRequest, w.Code)
-	})
-	t.Run("service_error_returns_400", func(t *testing.T) {
-		svc := &mockEmbeddingService{}
-		svc.On("Create", mock.Anything, mock.Anything).Return(assert.AnError)
-		w, c := makeReq("POST", "/embeddings", model.Embedding{})
-		NewEmbeddingHandler(svc).Create(c)
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
 }

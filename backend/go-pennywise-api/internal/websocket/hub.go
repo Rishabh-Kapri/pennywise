@@ -16,54 +16,30 @@ import (
 type ConnectionHub interface {
 	Register(budgetId uuid.UUID, userId uuid.UUID, conn *websocket.Conn) *Client
 	UnregisterClient(client *Client)
-	UnregisterBudget(budgetId uuid.UUID)
 	GetSocketSessions(budgetId uuid.UUID) map[*Client]bool
 	// broadcast a budget event to all users
 	Broadcast(mesage sharedModel.Message, client *Client)
-	// handleBroadcastMessages()
 }
 
 type connectionHub struct {
 	mu sync.RWMutex
 	// connections are scoped by budgetId, multiple users can listen to same budgetId
-	connections      map[uuid.UUID]map[*Client]bool // [budgetId][Client]bool
-	rooms            map[string]map[*Client]bool
-	clientToRoom     map[*Client]string // for easier unregister
-	broadcastChannel chan (sharedModel.Message)
+	connections  map[uuid.UUID]map[*Client]bool // [budgetId][Client]bool
+	rooms        map[string]map[*Client]bool
+	clientToRoom map[*Client]string // for easier unregister
 }
 
 func NewConnectionHub() ConnectionHub {
 	return &connectionHub{
-		connections:      make(map[uuid.UUID]map[*Client]bool),
-		rooms:            make(map[string]map[*Client]bool),
-		clientToRoom:     make(map[*Client]string),
-		broadcastChannel: make(chan sharedModel.Message),
+		connections:  make(map[uuid.UUID]map[*Client]bool),
+		rooms:        make(map[string]map[*Client]bool),
+		clientToRoom: make(map[*Client]string),
 	}
 }
 
 func (r *connectionHub) agentRoomKey(budgetID string, userID string, streamID string, agentKey string) string {
 	return fmt.Sprintf("%s:%s:%s/%s", budgetID, userID, agentKey, streamID)
 }
-
-// main broadcast message loop
-// func (r *connectionHub) handleBroadcastMessages() {
-// 	for {
-//
-// 		message := <-r.broadcastChannel
-//
-// 		r.mu.RLock()
-// 		clients, ok := r.connections[message.BudgetID]
-// 		r.mu.RUnlock()
-// 		if ok {
-// 			for c := range clients {
-// 				// Don't echo message back to the sender
-// 				// if c.UserId != message {
-// 				c.Send <- message
-// 				// }
-// 			}
-// 		}
-// 	}
-// }
 
 func (r *connectionHub) Register(budgetId uuid.UUID, userId uuid.UUID, conn *websocket.Conn) *Client {
 	r.mu.Lock()
@@ -78,7 +54,6 @@ func (r *connectionHub) Register(budgetId uuid.UUID, userId uuid.UUID, conn *web
 		BudgetID: budgetId,
 		Conn:     conn,
 		Send:     make(chan sharedModel.Message),
-		Done:     make(chan any),
 	}
 	r.connections[budgetId][&client] = true
 	r.clientToRoom[&client] = ""
@@ -129,25 +104,6 @@ func (r *connectionHub) UnregisterClient(client *Client) {
 	// if no more clients, remove budgetId too
 	if len(clients) == 0 {
 		delete(r.connections, client.BudgetID)
-	}
-}
-
-func (r *connectionHub) UnregisterBudget(budgetId uuid.UUID) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if clients, ok := r.connections[budgetId]; ok {
-		for client, connected := range clients {
-			if connected {
-				r.removeClientFromRoomLocked(client)
-				delete(clients, client)
-				close(client.Send)
-				_ = client.Conn.Close()
-			}
-		}
-		if len(clients) == 0 {
-			delete(r.connections, budgetId)
-		}
 	}
 }
 
