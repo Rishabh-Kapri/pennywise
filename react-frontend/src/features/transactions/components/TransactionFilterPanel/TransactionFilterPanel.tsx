@@ -1,12 +1,11 @@
 import { useCallback } from 'react';
 import { XIcon } from '@phosphor-icons/react';
-import { useAppSelector } from '@/app/hooks';
-import { selectAllTags } from '@/features/tags/store/tagSlice';
 import { AccountDropdown } from '../popovers/AccountPopover';
 import { PayeeDropdown } from '../popovers/PayeePopover';
 import { CategoryDropdown } from '../popovers/CategoryPopover';
 import { DateDropdown } from '../popovers/DatePopover';
-import { TagDropdown } from '../popovers/TagPopover';
+import { TagFilterDropdown } from '../popovers/TagFilterDropdown';
+import type { TransactionFacets } from '../../hooks/useTransactionFacets';
 import {
   EMPTY_FILTERS,
   hasActiveFilters,
@@ -19,11 +18,17 @@ interface TransactionFilterPanelProps {
   filters: TransactionFilters;
   onChange: (filters: TransactionFilters) => void;
   hideAccountFilter?: boolean;
+  /** What the current results contain, listed first in the payee, account, category and tag menus. */
+  facets?: TransactionFacets | null;
 }
 
-export function TransactionFilterPanel({ filters, onChange, hideAccountFilter = false }: TransactionFilterPanelProps) {
+export function TransactionFilterPanel({
+  filters,
+  onChange,
+  hideAccountFilter = false,
+  facets,
+}: TransactionFilterPanelProps) {
   const isActive = hasActiveFilters(filters);
-  const allTags = useAppSelector(selectAllTags);
 
   const update = useCallback(
     (patch: Partial<TransactionFilters>) => onChange({ ...filters, ...patch }),
@@ -72,6 +77,7 @@ export function TransactionFilterPanel({ filters, onChange, hideAccountFilter = 
           onClick={() => { }}
           variant="form"
           placeholder="Any account"
+          counts={facets?.accounts}
         />
       </div>}
 
@@ -86,6 +92,7 @@ export function TransactionFilterPanel({ filters, onChange, hideAccountFilter = 
           onClick={() => { }}
           variant="form"
           placeholder="Any payee"
+          counts={facets?.payees}
         />
       </div>
 
@@ -100,23 +107,18 @@ export function TransactionFilterPanel({ filters, onChange, hideAccountFilter = 
           onClick={() => { }}
           variant="form"
           placeholder="Any category"
+          counts={facets?.categories}
         />
       </div>
 
       {/* Tags */}
       <div className={styles.filterGroup}>
         <label className={styles.filterLabel}>Tags</label>
-        <TagDropdown
-          selectedTagIds={filters.tagIds}
-          allowCreate={false}
-          variant="form"
-          placeholder={filters.tagNames.length > 0 ? filters.tagNames.join(', ') : 'Any tag'}
-          onChange={(tagIds) =>
-            update({
-              tagIds,
-              tagNames: allTags.filter((tag) => tagIds.includes(tag.id)).map((tag) => tag.name),
-            })
-          }
+        <TagFilterDropdown
+          selectedIds={filters.tagIds}
+          placeholder="Any tag"
+          counts={facets?.tags}
+          onChange={(tagIds, tagNames) => update({ tagIds, tagNames })}
         />
       </div>
 

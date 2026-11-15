@@ -28,20 +28,26 @@ func (d StatementDirection) Valid() bool {
 }
 
 // StatementInput is the statement.extract payload. ImportID is the
-// statement_imports row the rows are saved onto. Password is the one typed at
-// upload; Candidates are the budget's saved account passwords, tried in turn
-// when a statement fetched from email is locked.
+// statement_imports row the rows are saved onto. SealedPassword is the one
+// typed at upload, sealed with the LLM_CREDENTIALS_KEY SecretBox (cipher holds
+// the same key), so no plain password sits in the jobs table. The accounts'
+// saved passwords are not in it: cipher loads them when the job runs, so a
+// password saved after the upload counts on a retry.
 type StatementInput struct {
-	ImportID   uuid.UUID                    `json:"importId"`
-	Data       []byte                       `json:"data"`
-	Password   string                       `json:"password"`
-	Candidates []StatementPasswordCandidate `json:"candidates,omitempty"`
+	ImportID uuid.UUID `json:"importId"`
+	// FileName is the PDF's name, for the job list.
+	FileName       string `json:"fileName,omitempty"`
+	Data           []byte `json:"data"`
+	SealedPassword []byte `json:"sealedPassword,omitempty"`
+	// Password is the typed password in plain text, from jobs queued before
+	// it was sealed. Read only; nothing writes it.
+	Password string `json:"password,omitempty"`
 }
 
-// StatementPasswordCandidate is one account's saved statement password.
-type StatementPasswordCandidate struct {
-	AccountID uuid.UUID `json:"accountId"`
-	Password  string    `json:"password"`
+// StatementJobRef is the part of a statement.extract payload the job list
+// reads. Decoding into it skips the PDF bytes instead of copying them.
+type StatementJobRef struct {
+	FileName string `json:"fileName"`
 }
 
 // StatementSavePayload is the statement.save payload: what statement.extract
@@ -331,8 +337,11 @@ type StatementSectionReconciliation struct {
 	// no row printed any.
 	RewardPointsOnRows *int                   `json:"rewardPointsOnRows,omitempty"`
 	Charges            []StatementChargeTotal `json:"charges,omitempty"`
-	RowCount           int                    `json:"rowCount"`
-	Matched            []StatementMatch       `json:"matched"`
+	// Cashback is what the statement paid back (credits minus reversals);
+	// nil when no row is cashback.
+	Cashback *StatementChargeTotal `json:"cashback,omitempty"`
+	RowCount int                   `json:"rowCount"`
+	Matched  []StatementMatch      `json:"matched"`
 	// Missing are statement rows with no ledger transaction.
 	Missing []StatementRow `json:"missing"`
 	// LedgerOnly are ledger transactions inside the statement period that do

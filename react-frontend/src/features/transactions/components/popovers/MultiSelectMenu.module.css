@@ -1,0 +1,221 @@
+/* Rules that set margin or padding use two classes: index.css resets both at
+   one class's specificity, and the menu renders in a portal. */
+
+.trigger.trigger {
+  gap: 0.4rem;
+}
+
+.triggerName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.more.more {
+  flex-shrink: 0;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+  color: var(--color-text);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.searchWrap.searchWrap {
+  position: relative;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--color-border-muted);
+}
+
+.searchIcon {
+  position: absolute;
+  top: 50%;
+  left: 1.15rem;
+  color: var(--color-text-secondary);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.search.search {
+  width: 100%;
+  height: 2.25rem;
+  padding: 0 0.75rem 0 2.1rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.55rem;
+  outline: none;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.92rem;
+}
+
+.search:focus {
+  border-color: var(--color-primary);
+}
+
+.list.list {
+  max-height: 300px;
+  padding: 0.3rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-text) 22%, transparent) transparent;
+}
+
+.list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.list::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-text) 22%, transparent) padding-box;
+}
+
+.list::-webkit-scrollbar-button {
+  display: none;
+}
+
+.heading.heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.55rem 0.6rem 0.3rem;
+  color: var(--color-text-secondary);
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+section + section .heading.heading {
+  margin-top: 0.25rem;
+  border-top: 1px solid var(--color-border-muted);
+  padding-top: 0.6rem;
+}
+
+.subheading.subheading {
+  padding: 0.5rem 0.6rem 0.2rem;
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.clear.clear {
+  padding: 0.1rem 0.35rem;
+  border: none;
+  border-radius: 0.35rem;
+  background: none;
+  color: var(--color-primary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.clear:hover {
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+}
+
+.row.row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  min-width: 0;
+  padding: 0.5rem 0.6rem;
+  border: none;
+  border-radius: 0.45rem;
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.95rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row:hover,
+.row:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+}
+
+.rowSelected {
+  font-weight: 600;
+}
+
+.check {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid color-mix(in srgb, var(--color-text) 30%, transparent);
+  border-radius: 4px;
+  color: #fff;
+}
+
+.checkOn {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+}
+
+.leading {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail {
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.count.count {
+  flex-shrink: 0;
+  min-width: 1.5rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-text) 7%, transparent);
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.empty.empty {
+  padding: 0.75rem 0.6rem;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.tagDot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}

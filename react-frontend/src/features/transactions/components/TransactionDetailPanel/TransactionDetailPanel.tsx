@@ -33,6 +33,7 @@ import { TransactionSources } from './TransactionSources';
 import { formatSourceTime, transactionTime } from '../../utils/sourceTime';
 import { useTransactionSources } from '../../hooks/useTransactionSources';
 import styles from './TransactionDetailPanel.module.css';
+import { tagLabel, tagMatches } from '@/features/tags/utils';
 
 type TransactionStatusAction = Extract<
   TransactionStatusType,
@@ -287,9 +288,9 @@ function TagList({ tags }: { tags: DisplayTag[] }) {
 
 function TagChip({ tag }: { tag: DisplayTag }) {
   return (
-    <span className={styles.tagBadge}>
+    <span className={styles.tagBadge} title={tag.name}>
       <span className={styles.tagDot} style={{ backgroundColor: tag.color || '#6366f1' }} aria-hidden="true" />
-      {tag.name}
+      {tagLabel(tag.name)}
     </span>
   );
 }
@@ -312,7 +313,7 @@ function DetailTagPicker({
 
   const name = query.trim();
   const needle = name.toLowerCase();
-  const shownTags = allTags.filter((tag) => tag.name.trim().toLowerCase().includes(needle));
+  const shownTags = allTags.filter((tag) => tagMatches(tag.name, needle));
   const exactMatch = allTags.find((tag) => tag.name.trim().toLowerCase() === needle);
 
   const toggleTag = (tagId: string) => {
@@ -403,7 +404,7 @@ function DetailTagPicker({
               onClick={() => toggleTag(tag.id)}
               aria-pressed={selectedSet.has(tag.id)}>
               <span className={styles.tagDot} style={{ backgroundColor: tag.color || '#6366f1' }} aria-hidden="true" />
-              <span className={styles.tagPickerName}>{tag.name}</span>
+              <span className={styles.tagPickerName} title={tag.name}>{tagLabel(tag.name)}</span>
               {selectedSet.has(tag.id) && <CheckIcon size={14} weight="bold" className={styles.tagPickerCheck} />}
             </button>
           ))}

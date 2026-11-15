@@ -23,6 +23,15 @@ type PaginatedResponse[T any] struct {
 	Data       []T        `json:"data"`
 	Total      int        `json:"total"`
 	Pagination Pagination `json:"pagination"`
+	// Totals sums every row the filters match, not just this page. Only lists
+	// of money (transactions) set it.
+	Totals *AmountTotals `json:"totals,omitempty"`
+}
+
+// AmountTotals is money in and money out, both positive.
+type AmountTotals struct {
+	Inflow  float64 `json:"inflow"`
+	Outflow float64 `json:"outflow"`
 }
 
 // ptrToString returns "<nil>" if the pointer is nil

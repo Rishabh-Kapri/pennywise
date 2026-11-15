@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"strings"
 
 	// "io"
@@ -307,21 +308,24 @@ func statementExtract(deps WorkerDeps) jobrunner.HandlerFunc {
 
 		jobrunner.ReportProgress(ctx, job.Progress{Message: "starting extraction"})
 
-		// The typed password first, then each account's saved one.
+		// The typed password first, then each account's saved one, loaded
+		// now so one saved after the upload counts when the job is retried.
 		passwords := []string{}
-		if p.Password != "" {
-			passwords = append(passwords, p.Password)
+		if typedPassword := openTypedPassword(ctx, deps, p); typedPassword != "" {
+			passwords = append(passwords, typedPassword)
 		}
-		for _, c := range p.Candidates {
-			passwords = append(passwords, c.Password)
+		typed := len(passwords)
+		saved := savedStatementPasswords(ctx, deps, budgetID)
+		for _, c := range saved {
+			passwords = append(passwords, c.password)
 		}
 		res, err := extractor.Extract(withJobProgress(ctx), p.Data, passwords)
 		if err != nil {
 			return nil, err
 		}
 		save := model.StatementSavePayload{ImportID: p.ImportID, Sections: res.Sections}
-		if i := res.PasswordIndex - len(passwords) + len(p.Candidates); res.PasswordIndex >= 0 && i >= 0 {
-			save.OpenedWith = &p.Candidates[i].AccountID
+		if i := res.PasswordIndex - typed; res.PasswordIndex >= 0 && i >= 0 && i < len(saved) {
+			save.OpenedWith = &saved[i].accountID
 		}
 
 		// The API saves the rows onto the import; the key is the import, so a
@@ -515,4 +519,57 @@ func enqueue(
 	return jobrunner.EncodeResult(
 		model.MessageStepResult{Output: output, NextJobType: jobType, NextJobID: &id, Outcome: outcome},
 	)
+}
+
+type savedStatementPassword struct {
+	accountID uuid.UUID
+	password  string
+}
+
+// openTypedPassword returns the password typed at upload. The API seals it;
+// jobs queued before that carry it in plain text. One that can't be opened
+// (no key, or a different one) is logged and skipped, so the saved passwords
+// still get their turn.
+func openTypedPassword(ctx context.Context, deps WorkerDeps, p model.StatementInput) string {
+	if len(p.SealedPassword) == 0 {
+		return p.Password
+	}
+	log := logger.Logger(ctx)
+	if deps.SecretBox == nil {
+		log.Warn("statement has a typed password, but LLM_CREDENTIALS_KEY isn't set on cipher")
+		return ""
+	}
+	password, err := deps.SecretBox.Open(p.SealedPassword)
+	if err != nil {
+		log.Warn("couldn't open the typed statement password", "error", err)
+		return ""
+	}
+	return password
+}
+
+// savedStatementPasswords opens the budget's saved statement passwords, in
+// account order so retries try them the same way. One that won't open (the
+// key changed) is skipped: the PDF may not need it. Only counts are logged.
+func savedStatementPasswords(ctx context.Context, deps WorkerDeps, budgetID uuid.UUID) []savedStatementPassword {
+	if deps.StatementPasswords == nil || deps.SecretBox == nil {
+		logger.Logger(ctx).Warn("saved statement passwords unavailable (no repository or LLM_CREDENTIALS_KEY)")
+		return nil
+	}
+	sealed, err := deps.StatementPasswords.ListByBudget(ctx, budgetID)
+	if err != nil {
+		logger.Logger(ctx).Warn("saved statement passwords not loaded", "error", err)
+		return nil
+	}
+	out := make([]savedStatementPassword, 0, len(sealed))
+	for accountID, box := range sealed {
+		pw, err := deps.SecretBox.Open(box)
+		if err != nil {
+			logger.Logger(ctx).Warn("saved statement password not opened", "accountId", accountID, "error", err)
+			continue
+		}
+		out = append(out, savedStatementPassword{accountID, pw})
+	}
+	sort.Slice(out, func(a, b int) bool { return out[a].accountID.String() < out[b].accountID.String() })
+	logger.Logger(ctx).Info("saved statement passwords loaded", "saved", len(sealed), "opened", len(out))
+	return out
 }

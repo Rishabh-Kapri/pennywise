@@ -311,8 +311,14 @@ func (r *transactionRepo) GetAllNormalized(
 		Where(sq.Eq{"transactions.budget_id": budgetId}).
 		Where(sq.Eq{"transactions.deleted": false})
 
+	// The count query also sums the money in and out of every matching row, so
+	// a filtered list can show its totals without loading every page.
 	countQuery := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
-		Select("COUNT(*)").
+		Select(
+			"COUNT(*)",
+			"COALESCE(SUM(transactions.amount) FILTER (WHERE transactions.amount >= 0), 0)::float8",
+			"COALESCE(-SUM(transactions.amount) FILTER (WHERE transactions.amount < 0), 0)::float8",
+		).
 		From("transactions").
 		Where(sq.Eq{"transactions.budget_id": budgetId}).
 		Where(sq.Eq{"transactions.deleted": false})
@@ -326,7 +332,10 @@ func (r *transactionRepo) GetAllNormalized(
 	}
 
 	var total int
-	if err := r.Executor(ctx).QueryRow(ctx, countSQL, countArgs...).Scan(&total); err != nil {
+	var totals model.AmountTotals
+	if err := r.Executor(ctx).
+		QueryRow(ctx, countSQL, countArgs...).
+		Scan(&total, &totals.Inflow, &totals.Outflow); err != nil {
 		return model.PaginatedResponse[model.Transaction]{}, err
 	}
 
@@ -437,7 +446,89 @@ func (r *transactionRepo) GetAllNormalized(
 		Data:       txns,
 		Total:      total,
 		Pagination: utils.GenerateCursorPager(txns, isFirstPage, pointsNext, hasMore, transactionCursor),
+		Totals:     &totals,
 	}, nil
+}
+
+func (r *transactionRepo) GetFacets(
+	ctx context.Context,
+	budgetId uuid.UUID,
+	filter *model.TransactionFilter,
+) (model.TransactionFacets, error) {
+	base := model.TransactionFilter{}
+	if filter != nil {
+		base = *filter
+	}
+
+	withoutPayees, withoutAccounts, withoutCategories, withoutTags := base, base, base, base
+	withoutPayees.PayeeIDs = nil
+	withoutAccounts.AccountIDs = nil
+	withoutCategories.CategoryIDs = nil
+	withoutTags.TagIDs = nil
+
+	var facets model.TransactionFacets
+	var err error
+	if facets.Payees, err = r.facet(ctx, budgetId, withoutPayees, "transactions", "transactions.payee_id"); err != nil {
+		return model.TransactionFacets{}, err
+	}
+	if facets.Accounts, err = r.facet(ctx, budgetId, withoutAccounts, "transactions", "transactions.account_id"); err != nil {
+		return model.TransactionFacets{}, err
+	}
+	if facets.Categories, err = r.facet(
+		ctx, budgetId, withoutCategories, "transactions", "transactions.category_id",
+	); err != nil {
+		return model.TransactionFacets{}, err
+	}
+	// A transaction with two tags counts once under each.
+	if facets.Tags, err = r.facet(
+		ctx, budgetId, withoutTags,
+		"transactions CROSS JOIN LATERAL unnest(transactions.tag_ids) AS tag(id)",
+		"tag.id",
+	); err != nil {
+		return model.TransactionFacets{}, err
+	}
+	return facets, nil
+}
+
+// facet counts the live transactions matching filter per value of column,
+// most used first. Rows where the column is NULL are left out.
+func (r *transactionRepo) facet(
+	ctx context.Context,
+	budgetId uuid.UUID,
+	filter model.TransactionFilter,
+	from string,
+	column string,
+) ([]model.TransactionFacet, error) {
+	query := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
+		Select(column, "COUNT(*)").
+		From(from).
+		Where(sq.Eq{"transactions.budget_id": budgetId}).
+		Where(sq.Eq{"transactions.deleted": false}).
+		Where(sq.NotEq{column: nil})
+	query = applyTransactionFilters(query, &filter).
+		GroupBy(column).
+		OrderBy("COUNT(*) DESC", column)
+
+	sql, args, err := query.ToSql()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.Executor(ctx).Query(ctx, sql, args...)
+	if err != nil {
+		return nil, err
+	}
+	facets, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (model.TransactionFacet, error) {
+		var f model.TransactionFacet
+		err := row.Scan(&f.ID, &f.Count)
+		return f, err
+	})
+	if err != nil {
+		return nil, err
+	}
+	if facets == nil {
+		facets = []model.TransactionFacet{}
+	}
+	return facets, nil
 }
 
 func applyTransactionFilters(query sq.SelectBuilder, filter *model.TransactionFilter) sq.SelectBuilder {

@@ -21,7 +21,7 @@ const initialState: TransactionState = {
   error: null,
 };
 
-type FetchTransactionArgs = {
+export type FetchTransactionArgs = {
   accountIds?: string[];
   categoryIds?: string[];
   payeeIds?: string[];
@@ -47,46 +47,46 @@ function applyOptimisticTransaction(transaction: Transaction, optimisticTransact
   });
 }
 
+/** The query string of `transactions/normalized` for these filters. */
+export function transactionListQuery(args: FetchTransactionArgs = {}): string {
+  const params = new URLSearchParams();
+
+  if (args.accountIds && args.accountIds.length > 0) {
+    params.set('accountId[]', args.accountIds.join(','));
+  }
+  if (args.categoryIds && args.categoryIds.length > 0) {
+    params.set('categoryId[]', args.categoryIds.join(','));
+  }
+  if (args.payeeIds && args.payeeIds.length > 0) {
+    params.set('payeeId[]', args.payeeIds.join(','));
+  }
+  if (args.tagIds && args.tagIds.length > 0) {
+    params.set('tagId[]', args.tagIds.join(','));
+  }
+  if (args.note && args.note.trim()) {
+    params.set('note', args.note);
+  }
+  if (args.startDate && args.startDate.trim()) {
+    params.set('startDate', args.startDate);
+  }
+  if (args.endDate && args.endDate.trim()) {
+    params.set('endDate', args.endDate);
+  }
+  if (args.status) {
+    params.set('status', args.status);
+  }
+  if (args.cursor) {
+    params.set('cursor', args.cursor);
+  }
+  params.set('limit', String(args.limit ?? 30));
+  return params.toString();
+}
+
 export const fetchAllTransaction = createAsyncThunk<
   PaginationResponse<Transaction[]>,
   FetchTransactionArgs | undefined
 >('transactions/fetchAllTransactions', async (args = {}) => {
-  let url = `transactions/normalized`;
-  const params = new URLSearchParams();
-
-  if (args?.accountIds && args.accountIds.length > 0) {
-    params.set('accountId[]', args.accountIds.join(','));
-  }
-  if (args?.categoryIds && args.categoryIds.length > 0) {
-    params.set('categoryId[]', args.categoryIds.join(','));
-  }
-  if (args?.payeeIds && args.payeeIds.length > 0) {
-    params.set('payeeId[]', args.payeeIds.join(','));
-  }
-  if (args?.tagIds && args.tagIds.length > 0) {
-    params.set('tagId[]', args.tagIds.join(','));
-  }
-  if (args?.note && args.note.trim()) {
-    params.set('note', args.note);
-  }
-  if (args?.startDate && args.startDate.trim()) {
-    params.set('startDate', args.startDate);
-  }
-  if (args?.endDate && args.endDate.trim()) {
-    params.set('endDate', args.endDate);
-  }
-  if (args?.status) {
-    params.set('status', args.status);
-  }
-  if (args?.cursor) {
-    params.set('cursor', args.cursor);
-  }
-  params.set('limit', String(args?.limit ?? 30));
-
-  const queryParams = params.toString();
-  url = `${url}${queryParams ? `?${queryParams}` : ''}`;
-
-  return await apiClient.get<PaginationResponse<Transaction[]>>(url);
+  return await apiClient.get<PaginationResponse<Transaction[]>>(`transactions/normalized?${transactionListQuery(args)}`);
 });
 
 /** The server's count: the list is paginated, so the loaded rows can't give it. */

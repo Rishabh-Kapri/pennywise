@@ -2,6 +2,7 @@ package localocr
 
 import (
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -49,6 +50,84 @@ type tableParser struct {
 	rows   []sharedModel.StatementRow
 	header statementHeader
 	plans  []sharedModel.StatementEMIPlan
+	stats  parseStats
+	// textWithoutHeading reads dated lines as rows without first seeing a
+	// line that heads the list: the second, text-only pass.
+	textWithoutHeading bool
+	// textBalance is the balance after the last plain-text row, for telling
+	// the next one's direction.
+	textBalance *float64
+}
+
+// parseStats counts what happened to every table row, so a statement that
+// gives no rows can be diagnosed from the log without its text. Nothing in
+// it comes from the statement except column kinds the parser named itself.
+type parseStats struct {
+	HTMLTables     int      `json:"htmlTables"`
+	MarkdownTables int      `json:"markdownTables"`
+	TableRows      int      `json:"tableRows"`
+	Headers        int      `json:"headers"`
+	Layouts        []string `json:"layouts,omitempty"` // e.g. "date,description,debit,credit,balance"
+	BeforeHeader   int      `json:"beforeHeader"`      // rows with no header seen yet
+	WidthMismatch  int      `json:"widthMismatch"`     // cell count differs from the header's
+	// MismatchWidths counts the skipped rows by "cells/header cells", e.g.
+	// {"3/4": 5}: rows one short of the header.
+	MismatchWidths map[string]int `json:"mismatchWidths,omitempty"`
+	NoDate         int            `json:"noDate"`       // empty date cell (and not a wrapped narration)
+	BadDate        int            `json:"badDate"`      // date cell present but not read
+	YearlessDate   int            `json:"yearlessDate"` // looks like "05 Aug" but no period to give a year
+	NoAmount       int            `json:"noAmount"`     // date read, no amount above zero
+	Continuations  int            `json:"continuations"`
+	Rows           int            `json:"rows"`
+	EMIRows        int            `json:"emiRows"`
+	// BadDateShapes are the masked formats of unread dates (see dateShape).
+	BadDateShapes map[string]int `json:"badDateShapes,omitempty"`
+	TextRows      int            `json:"textRows"` // rows written as plain lines, not a table
+	// TextDirectionGuessed: plain rows with a balance whose direction came
+	// from the narration, not the balance (the first row, or a mismatch).
+	TextDirectionGuessed int `json:"textDirectionGuessed"`
+}
+
+var columnNames = map[column]string{
+	colNone: "-", colDate: "date", colDescription: "description", colDebit: "debit",
+	colCredit: "credit", colAmount: "amount", colBalance: "balance", colReference: "ref",
+	colDirection: "crdr", colPoints: "points",
+}
+
+func (l layout) String() string {
+	names := make([]string, len(l))
+	for i, c := range l {
+		names[i] = columnNames[c]
+	}
+	return strings.Join(names, ",")
+}
+
+func (s *parseStats) noteBadDate(l layout, cells []string) {
+	for i, c := range l {
+		if c != colDate {
+			continue
+		}
+		if s.BadDateShapes == nil {
+			s.BadDateShapes = map[string]int{}
+		}
+		shape := dateShape(cells[i])
+		if _, seen := s.BadDateShapes[shape]; seen || len(s.BadDateShapes) < 8 {
+			s.BadDateShapes[shape]++
+		}
+		return
+	}
+}
+
+func (s *parseStats) sawLayout(l layout) {
+	name := l.String()
+	for _, x := range s.Layouts {
+		if x == name {
+			return
+		}
+	}
+	if len(s.Layouts) < 8 {
+		s.Layouts = append(s.Layouts, name)
+	}
 }
 
 // rowContext is what reading a row needs from the statement as a whole.
@@ -67,54 +146,156 @@ func (p *tableParser) rowContext() rowContext {
 	}
 }
 
-// parsePage adds the transaction rows found in one page's OCR output.
+// parsePage adds the transaction rows found in one page's OCR output. The
+// model usually answers with HTML tables, sometimes with markdown ones.
 func (p *tableParser) parsePage(page int, text string) {
-	doc, err := html.Parse(strings.NewReader(text))
-	if err != nil {
-		return // html.Parse only fails on a reader error
-	}
-	for _, table := range findAll(doc, atom.Table) {
-		// A row only continues a narration within the same table.
-		last := -1
-		var emi emiLayout // set once this table turns out to list EMIs
-		for _, cells := range tableCells(table) {
-			if l, ok := emiHeaderLayout(cells); ok {
-				emi = l
-				continue
-			}
-			if emi != nil {
-				if len(cells) == len(emi) {
-					if plan, ok := emi.plan(cells); ok {
-						p.plans = append(p.plans, plan)
-					}
-				}
-				continue
-			}
-			if l, ok := headerLayout(cells); ok {
-				p.layout = l
-				last = -1
-				continue
-			}
-			if p.layout == nil || len(cells) != len(p.layout) {
-				continue // a summary or address table, not transactions
-			}
-			if p.layout.applySubHeader(cells) {
-				continue
-			}
-			row, ok := p.layout.row(cells, p.rowContext())
-			if !ok {
-				// A narration that wrapped onto its own row: no date or
-				// amount, only more text for the row above.
-				if extra := p.layout.continuation(cells); extra != "" && last >= 0 {
-					p.rows[last].Description = strings.TrimSpace(p.rows[last].Description + " " + extra)
-				}
-				continue
-			}
-			row.Page = page
-			p.rows = append(p.rows, row)
-			last = len(p.rows) - 1
+	var tables [][][]string
+	if doc, err := html.Parse(strings.NewReader(text)); err == nil {
+		for _, table := range findAll(doc, atom.Table) {
+			tables = append(tables, tableCells(table))
+			p.stats.HTMLTables++
 		}
 	}
+	for _, table := range markdownTables(text) {
+		tables = append(tables, table)
+		p.stats.MarkdownTables++
+	}
+	for _, table := range tables {
+		p.parseTable(page, table)
+	}
+	p.parseTextRows(page, text)
+}
+
+func (p *tableParser) parseTable(page int, table [][]string) {
+	// A row only continues a narration within the same table.
+	last := -1
+	var emi emiLayout // set once this table turns out to list EMIs
+	for _, cells := range table {
+		p.stats.TableRows++
+		if l, ok := emiHeaderLayout(cells); ok {
+			emi = l
+			continue
+		}
+		if emi != nil {
+			if len(cells) == len(emi) {
+				if plan, ok := emi.plan(cells); ok {
+					p.plans = append(p.plans, plan)
+					p.stats.EMIRows++
+				}
+			}
+			continue
+		}
+		if l, ok := headerLayout(cells); ok {
+			p.layout = l
+			p.stats.Headers++
+			p.stats.sawLayout(l)
+			last = -1
+			continue
+		}
+		if p.layout == nil {
+			p.stats.BeforeHeader++
+			continue
+		}
+		if fitted, ok := p.layout.fit(cells); ok {
+			cells = fitted
+		} else {
+			p.stats.WidthMismatch++
+			if p.stats.MismatchWidths == nil {
+				p.stats.MismatchWidths = map[string]int{}
+			}
+			p.stats.MismatchWidths[strconv.Itoa(len(cells))+"/"+strconv.Itoa(len(p.layout))]++
+			continue // a summary or address table, not transactions
+		}
+		if p.layout.applySubHeader(cells) {
+			p.stats.sawLayout(p.layout)
+			continue
+		}
+		row, why := p.layout.row(cells, p.rowContext())
+		if why != dropNone {
+			// A narration that wrapped onto its own row: no date or
+			// amount, only more text for the row above.
+			if extra := p.layout.continuation(cells); extra != "" && last >= 0 {
+				p.rows[last].Description = strings.TrimSpace(p.rows[last].Description + " " + extra)
+				p.stats.Continuations++
+				continue
+			}
+			switch why {
+			case dropNoDate:
+				p.stats.NoDate++
+			case dropBadDate:
+				p.stats.BadDate++
+				p.stats.noteBadDate(p.layout, cells)
+			case dropYearless:
+				p.stats.YearlessDate++
+			case dropNoAmount:
+				p.stats.NoAmount++
+			}
+			continue
+		}
+		row.Page = page
+		p.rows = append(p.rows, row)
+		p.stats.Rows++
+		last = len(p.rows) - 1
+	}
+}
+
+// fit lines a row up with the layout. The OCR model often leaves out an
+// empty cell at the end of a row, or adds one, so a row that is short or long
+// only by trailing columns the parser doesn't read (or empty cells) still
+// counts. Anything else is a different table.
+func (l layout) fit(cells []string) ([]string, bool) {
+	switch {
+	case len(cells) == len(l):
+		return cells, true
+	case len(cells) < len(l):
+		for _, c := range l[len(cells):] {
+			if c != colNone {
+				return nil, false
+			}
+		}
+		return append(append([]string{}, cells...), make([]string, len(l)-len(cells))...), true
+	default:
+		for _, c := range cells[len(l):] {
+			if strings.TrimSpace(c) != "" {
+				return nil, false
+			}
+		}
+		return cells[:len(l)], true
+	}
+}
+
+// markdownTables returns the pipe tables in text, each as rows of cells,
+// without their |---| rules.
+func markdownTables(text string) [][][]string {
+	var (
+		out   [][][]string
+		table [][]string
+	)
+	flush := func() {
+		if len(table) > 0 {
+			out = append(out, table)
+			table = nil
+		}
+	}
+	for _, raw := range strings.Split(text, "\n") {
+		trimmed := strings.TrimSpace(raw)
+		if !strings.HasPrefix(trimmed, "|") {
+			flush()
+			continue
+		}
+		// Only the edge pipes go: Trim would also eat an empty last cell ("| x ||").
+		inner := strings.TrimSuffix(strings.TrimPrefix(trimmed, "|"), "|")
+		cells := strings.Split(inner, "|")
+		if isMarkdownRule(cells) {
+			continue
+		}
+		for i := range cells {
+			cells[i] = strings.Join(strings.Fields(strings.NewReplacer("**", "", "<br>", " ", "<br/>", " ").Replace(cells[i])), " ")
+		}
+		table = append(table, cells)
+	}
+	flush()
+	return out
 }
 
 // result returns everything parsed so far as one section, with what the
@@ -219,9 +400,20 @@ func headerColumn(cell string) column {
 	return colNone
 }
 
+// dropReason is why a row wasn't read as a transaction.
+type dropReason int
+
+const (
+	dropNone dropReason = iota
+	dropNoDate
+	dropBadDate
+	dropYearless // a day and month, but no period to take the year from
+	dropNoAmount
+)
+
 // row reads cells as a transaction. It is one when it has a date and a
 // non-zero amount; opening balance and total lines fail that.
-func (l layout) row(cells []string, rc rowContext) (sharedModel.StatementRow, bool) {
+func (l layout) row(cells []string, rc rowContext) (sharedModel.StatementRow, dropReason) {
 	var (
 		r             sharedModel.StatementRow
 		date          string
@@ -258,12 +450,24 @@ func (l layout) row(cells []string, rc rowContext) (sharedModel.StatementRow, bo
 		}
 	}
 
+	// "02/09/2026 | 16:46" split by a markdown pipe leaves the time at the
+	// start of the description.
+	r.Description = leadingTimeRe.ReplaceAllString(r.Description, "")
+
 	d, ok := parseDate(date)
 	if !ok {
 		d, ok = parseDateNoYear(date, rc.ref)
 	}
 	if !ok {
-		return r, false
+		if strings.TrimSpace(date) == "" {
+			return r, dropNoDate
+		}
+		if rc.ref.IsZero() {
+			if _, yearless := parseDateNoYear(date, time.Date(2000, 12, 31, 0, 0, 0, 0, time.UTC)); yearless {
+				return r, dropYearless
+			}
+		}
+		return r, dropBadDate
 	}
 	r.Date = d
 
@@ -282,9 +486,9 @@ func (l layout) row(cells []string, rc rowContext) (sharedModel.StatementRow, bo
 			r.Direction = sharedModel.StatementCredit
 		}
 	default:
-		return r, false
+		return r, dropNoAmount
 	}
-	return r, true
+	return r, dropNone
 }
 
 // continuation returns the description text of a row that has nothing else.
@@ -449,7 +653,59 @@ func parseDate(cell string) (string, bool) {
 			}
 		}
 	}
+	return embeddedDate(cell)
+}
+
+var (
+	// The OCR model can glue a date to what follows it: "15/08/202609:45",
+	// "15/08/2026|09:45", "15 Aug 2026,09:45". These find the date inside.
+	// A four-digit year is tried before a two-digit one.
+	embeddedNumericDateRe = regexp.MustCompile(`(?:^|[^\d])(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{4}|\d{2})`)
+	embeddedTextDateRe    = regexp.MustCompile(`(?:^|[^\d])(\d{1,2})[\s\-]*([A-Za-z]{3,9})[\s,'\-]*(\d{4}|\d{2})`)
+)
+
+// embeddedDate finds a day-first date anywhere in the cell.
+func embeddedDate(cell string) (string, bool) {
+	if m := embeddedNumericDateRe.FindStringSubmatch(cell); m != nil {
+		layout := "2/1/2006"
+		if len(m[3]) == 2 {
+			layout = "2/1/06"
+		}
+		if t, err := time.Parse(layout, m[1]+"/"+m[2]+"/"+m[3]); err == nil {
+			return t.Format("2006-01-02"), true
+		}
+	}
+	if m := embeddedTextDateRe.FindStringSubmatch(cell); m != nil && len(m[2]) >= 3 {
+		month := strings.ToUpper(m[2][:1]) + strings.ToLower(m[2][1:3])
+		layout := "2 Jan 2006"
+		if len(m[3]) == 2 {
+			layout = "2 Jan 06"
+		}
+		if t, err := time.Parse(layout, m[1]+" "+month+" "+m[3]); err == nil {
+			return t.Format("2006-01-02"), true
+		}
+	}
 	return "", false
+}
+
+// dateShape masks a date cell for the log: digits become 9 and letters a,
+// so the format shows without the value ("15/08/202609:45" → "99/99/999999:99").
+func dateShape(cell string) string {
+	var b strings.Builder
+	for _, r := range cell {
+		if b.Len() >= 32 {
+			break
+		}
+		switch {
+		case r >= '0' && r <= '9':
+			b.WriteByte('9')
+		case (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z'):
+			b.WriteByte('a')
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 // findAll returns every element of type a under n, in document order.

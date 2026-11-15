@@ -331,7 +331,10 @@ func main() {
 		service.NewPipelineStepService(pipelines, database.PipelineStep, database.UserLLMModel),
 	)
 	jobHandler := handler.NewJobHandler(
-		service.NewJobService(jobStore, broker, database.MailConnection, database.InboundMessage),
+		service.NewJobService(
+			jobStore, broker, database.MailConnection, database.InboundMessage,
+			service.WithStatementImports(database.StatementImport),
+		),
 	)
 	inboundMessageHandler := handler.NewInboundMessageHandler(service.NewInboundMessageService(database.InboundMessage))
 	var scheduleStore job.ScheduleStore
@@ -672,6 +675,11 @@ func main() {
 				"/normalized",
 				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
 				transactionHandler.ListNormalized,
+			)
+			transactionGroup.GET(
+				"/facets",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				transactionHandler.Facets,
 			)
 			transactionGroup.POST("", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), transactionHandler.Create)
 			transactionGroup.PATCH(

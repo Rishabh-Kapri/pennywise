@@ -13,6 +13,8 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/job"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 )
 
 // WorkerDeps are the ports the handlers call.
@@ -31,6 +33,11 @@ type WorkerDeps struct {
 
 	// Statement adapter
 	StatementImport factory.StatementImport
+	// StatementPasswords are the accounts' saved PDF passwords, opened with
+	// SecretBox (LLM_CREDENTIALS_KEY, the key the API sealed them with).
+	// Either nil: only a typed password is tried.
+	StatementPasswords repository.StatementPasswordRepository
+	SecretBox          *utils.SecretBox
 }
 
 // Setup builds cipher's worker on the broker main already opened, registers

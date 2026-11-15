@@ -1,9 +1,8 @@
 import { TrashIcon } from '@phosphor-icons/react';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
-import { selectAllTags } from '@/features/tags/store/tagSlice';
 import { AccountDropdown } from '@/features/transactions/components/popovers/AccountPopover';
 import { CategoryDropdown } from '@/features/transactions/components/popovers/CategoryPopover';
-import { TagDropdown } from '@/features/transactions/components/popovers/TagPopover';
+import { TagFilterDropdown } from '@/features/transactions/components/popovers/TagFilterDropdown';
 import { selectReportFilters, setReportFilters } from '../store/reportSlice';
 import {
   EMPTY_REPORT_FILTERS,
@@ -15,7 +14,6 @@ import styles from './ReportFilterPanel.module.css';
 export default function ReportFilterPanel() {
   const dispatch = useAppDispatch();
   const filters = useAppSelector(selectReportFilters);
-  const allTags = useAppSelector(selectAllTags);
 
   const update = (patch: Partial<ReportFilters>) =>
     dispatch(setReportFilters({ ...filters, ...patch }));
@@ -48,16 +46,10 @@ export default function ReportFilterPanel() {
 
       <div className={styles.filterGroup}>
         <label className={styles.filterLabel}>Tags</label>
-        <TagDropdown
-          selectedTagIds={filters.tagIds}
-          allowCreate={false}
-          placeholder={filters.tagNames.length > 0 ? filters.tagNames.join(', ') : 'Search tags'}
-          onChange={(tagIds) =>
-            update({
-              tagIds,
-              tagNames: allTags.filter((tag) => tagIds.includes(tag.id)).map((tag) => tag.name),
-            })
-          }
+        <TagFilterDropdown
+          selectedIds={filters.tagIds}
+          placeholder="Any tag"
+          onChange={(tagIds, tagNames) => update({ tagIds, tagNames })}
         />
       </div>
 

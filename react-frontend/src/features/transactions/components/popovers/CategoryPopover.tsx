@@ -9,6 +9,7 @@ import { selectSelectedMonth } from '@/features/budget';
 import { getCurrencyLocaleString } from '@/utils/date.utils';
 import { selectInflowCategory } from '@/features/category/store/categorySlice';
 import type { TransactionDropdownProps } from './types';
+import { MultiSelectMenu } from './MultiSelectMenu';
 
 const transformGroups = (groups: CategoryGroup[]) => {
   return groups.filter((group) => !group.isSystem && group.name !== 'Hidden');
@@ -23,6 +24,7 @@ export function CategoryDropdown({
   selectedIds = [],
   onChangeMultiple,
   placeholder,
+  counts,
 }: TransactionDropdownProps) {
   const { allCategoryGroups } = useAppSelector(selectCategoryGroups);
   const inflowCategory = useAppSelector(selectInflowCategory);
@@ -47,6 +49,17 @@ export function CategoryDropdown({
   }, [inflowCategory, transformedGroups]);
 
   const selectedMonth = useAppSelector(selectSelectedMonth);
+
+  // The filter tray's list: categories under their group's name.
+  const multiItems = useMemo(
+    () =>
+      groupsWithInflow.flatMap((group) =>
+        (group.categories ?? [])
+          .filter((category) => category.id)
+          .map((category) => ({ id: category.id!, name: category.name, group: group.name })),
+      ),
+    [groupsWithInflow],
+  );
 
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -88,48 +101,15 @@ export function CategoryDropdown({
   }, [isOpen]);
 
   const handleOnClick = (category: Category) => {
-    if (multiple) {
-      if (!onChangeMultiple) return;
-      const catId = category.id!;
-      const isSelected = selectedIds.includes(catId);
-      let nextIds: string[];
-      let nextNames: string[];
-
-      // Gather all categories to find the names later
-      const allCategoriesList: Category[] = [];
-      for (const g of groupsWithInflow) {
-        allCategoriesList.push(...(g.categories ?? []));
-      }
-
-      if (isSelected) {
-        nextIds = selectedIds.filter((id) => id !== catId);
-        nextNames = allCategoriesList
-          .filter((cat) => nextIds.includes(cat.id!))
-          .map((cat) => cat.name);
-      } else {
-        nextIds = [...selectedIds, catId];
-        nextNames = allCategoriesList
-          .filter((cat) => nextIds.includes(cat.id!))
-          .map((cat) => cat.name);
-      }
-      onChangeMultiple(nextIds, nextNames);
-    } else {
-      setIsOpen(false);
-      setSearchQuery('');
-      onClick(category.id!, category.name);
-    }
+    setIsOpen(false);
+    setSearchQuery('');
+    onClick(category.id!, category.name);
   };
 
   const handleClearCategory = () => {
-    if (multiple) {
-      if (onChangeMultiple) {
-        onChangeMultiple([], []);
-      }
-    } else {
-      setIsOpen(false);
-      setSearchQuery('');
-      onClick('', '');
-    }
+    setIsOpen(false);
+    setSearchQuery('');
+    onClick('', '');
   };
 
   const handleSearchKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -141,6 +121,23 @@ export function CategoryDropdown({
     e.preventDefault();
     handleOnClick(firstCategory);
   };
+
+  if (multiple) {
+    return (
+      <MultiSelectMenu
+        id="category-filter-menu"
+        items={multiItems}
+        selectedIds={selectedIds}
+        onChange={(ids) =>
+          onChangeMultiple?.(ids, multiItems.filter((item) => ids.includes(item.id)).map((item) => item.name))
+        }
+        placeholder={placeholder || 'Select category'}
+        noun="categories"
+        counts={counts}
+        variant={variant}
+      />
+    );
+  }
 
   const triggerClassName = variant === 'form' ? styles.formTrigger : styles.categoryTrigger;
   const displayValue = value || placeholder || 'Select Category';
@@ -195,9 +192,7 @@ export function CategoryDropdown({
             <div key={group.id} role="option" className={styles.groupContainer}>
               <div className={styles.title}>{group.name}</div>
               {group.categories.map((category) => {
-                const isSelected = multiple
-                  ? selectedIds.includes(category.id!)
-                  : category.name === value;
+                const isSelected = category.name === value;
                 return (
                   <div
                     key={category.id}

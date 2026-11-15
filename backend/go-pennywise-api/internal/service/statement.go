@@ -153,8 +153,8 @@ func (s *statementService) ImportFromEmail(
 }
 
 // create stores the PDF, queues its statement.extract and creates the
-// import. The extract gets the typed password, if any, and every saved
-// account password, which cipher tries in turn on a locked PDF.
+// import. The extract gets the typed password, if any, sealed; cipher tries it
+// first on a locked PDF, then the accounts' saved passwords.
 func (s *statementService) create(
 	ctx context.Context,
 	fileName string,
@@ -187,12 +187,19 @@ func (s *statementService) create(
 	// The job is queued first so the row can name it. Its key is the new
 	// import, not the file: a failed import's file may be uploaded again.
 	importID := uuid.New()
-	payload, err := json.Marshal(model.StatementInput{
-		ImportID:   importID,
-		Data:       pdf,
-		Password:   password,
-		Candidates: s.passwordCandidates(ctx, budgetID),
-	})
+	input := model.StatementInput{ImportID: importID, FileName: fileName, Data: pdf}
+	if password != "" {
+		if s.box == nil {
+			return nil, false, errs.New(errs.CodeAdapterNotConfigured,
+				"reading a locked statement needs LLM_CREDENTIALS_KEY on the API")
+		}
+		sealed, err := s.box.Seal(password)
+		if err != nil {
+			return nil, false, errs.Wrap(errs.CodeInternalError, "error sealing password", err)
+		}
+		input.SealedPassword = sealed
+	}
+	payload, err := json.Marshal(input)
 	if err != nil {
 		return nil, false, errs.Wrap(errs.CodeInternalError, "error encoding statement", err)
 	}
@@ -202,7 +209,7 @@ func (s *statementService) create(
 		payload,
 		job.WithQueue(model.QueueCipher),
 		job.WithBudgetID(&budgetID),
-		job.WithIdempotencyKey("statement:"+hash),
+		job.WithIdempotencyKey("statement:"+importID.String()),
 	)
 	if err != nil {
 		return nil, false, errs.Wrap(errs.CodeJobEnqueueFailed, "error queueing "+model.JobTypeStatementExtract, err)
@@ -497,29 +504,6 @@ func (s *statementService) SaveExtraction(ctx context.Context, p model.Statement
 	return nil
 }
 
-// passwordCandidates opens the budget's saved statement passwords. One that
-// won't open (the key changed) is skipped: the PDF may not need it.
-func (s *statementService) passwordCandidates(ctx context.Context, budgetID uuid.UUID) []model.StatementPasswordCandidate {
-	if s.passwords == nil || s.box == nil {
-		return nil
-	}
-	sealed, err := s.passwords.ListByBudget(ctx, budgetID)
-	if err != nil {
-		logger.Logger(ctx).Warn("statement passwords not loaded", "error", err)
-		return nil
-	}
-	out := make([]model.StatementPasswordCandidate, 0, len(sealed))
-	for accountID, box := range sealed {
-		pw, err := s.box.Open(box)
-		if err != nil {
-			logger.Logger(ctx).Warn("statement password not opened", "accountId", accountID, "error", err)
-			continue
-		}
-		out = append(out, model.StatementPasswordCandidate{AccountID: accountID, Password: pw})
-	}
-	return out
-}
-
 func (s *statementService) SetStatementPassword(ctx context.Context, accountID uuid.UUID, password string) error {
 	budgetID := utils.MustBudgetID(ctx)
 	if _, err := s.accountRepo.GetById(ctx, budgetID, accountID); err != nil {
@@ -679,6 +663,7 @@ func (s *statementService) Reconcile(ctx context.Context, id uuid.UUID) (*model.
 			EMIPlans:           section.EMIPlans,
 			RewardPointsOnRows: rowRewardPoints(section.Rows),
 			Charges:            statementCharges(section.Rows),
+			Cashback:           statementCashback(section.Rows),
 			RowCount:           len(section.Rows),
 			Matched:            []model.StatementMatch{},
 			LedgerOnly:         []model.StatementLedgerTxn{},

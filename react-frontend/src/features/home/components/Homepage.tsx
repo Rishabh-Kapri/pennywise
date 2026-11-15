@@ -133,7 +133,7 @@ export default function Homepage() {
       </a>
       <header className={styles.header}>
         <Link to="/" className={styles.brand} aria-label="Pennywise home">
-          <img className={styles.logo} src="/favicon.svg" alt="" />Pennywise<span className={styles.brandDot}>.</span>
+          <img className={styles.logo} src="/logo-mark.svg" alt="" />Pennywise<span className={styles.brandDot}>.</span>
         </Link>
         <nav className={styles.navigation} aria-label="Main navigation">
           <a href="#features">Features</a>
@@ -325,7 +325,7 @@ export default function Homepage() {
       </section>
       <footer className={styles.footer}>
         <Link to="/" className={styles.brand}>
-          <img className={styles.logo} src="/favicon.svg" alt="" />Pennywise<span className={styles.brandDot}>.</span>
+          <img className={styles.logo} src="/logo-mark.svg" alt="" />Pennywise<span className={styles.brandDot}>.</span>
         </Link>
         <p>A little more intention. Every day.</p>
         <nav aria-label="Footer navigation">

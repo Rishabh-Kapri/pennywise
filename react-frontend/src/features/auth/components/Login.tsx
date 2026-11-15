@@ -105,7 +105,7 @@ export function Login() {
       <div className={styles.card}>
         {/* Logo */}
         <div className={styles.logoContainer}>
-          <img className={styles.logoMark} src="/favicon.svg" alt="" />
+          <img className={styles.logoMark} src="/logo-mark.svg" alt="" />
           <span className={styles.logoText}>Pennywise</span>
         </div>
 

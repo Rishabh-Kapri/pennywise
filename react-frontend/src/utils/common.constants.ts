@@ -5,6 +5,13 @@ export interface PaginationResponse<T> {
     prevCursor?: string;
     nextCursor?: string;
   };
+  /** Money in and out across every matching row, not just this page (transaction lists only). */
+  totals?: AmountTotals;
+}
+
+export interface AmountTotals {
+  inflow: number;
+  outflow: number;
 }
 
 export const LoadingState = {

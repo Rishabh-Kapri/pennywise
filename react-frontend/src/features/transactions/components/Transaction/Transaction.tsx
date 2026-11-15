@@ -42,7 +42,7 @@ import { TransactionRow } from '../TransactionRow';
 import { TransactionDetailPanel } from '../TransactionDetailPanel';
 import { fetchAllAccounts } from '@/features/accounts/store/accountSlice';
 import { runJobAction } from '@/features/jobs/store';
-import { TransactionFilterPanel } from '../TransactionFilterPanel';
+import { ActiveFilterChips, TransactionFilterPanel } from '../TransactionFilterPanel';
 import { selectSelectedBudget } from '@/features/budget';
 import { TransactionMobile } from '../TransactionMobile';
 import { TransactionHeader, type MobileFilter } from '../TransactionHeader';
@@ -57,6 +57,8 @@ import {
   groupTransactions,
 } from './transaction.helpers';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useFilteredTotals } from '../../hooks/useFilteredTotals';
+import { useTransactionFacets } from '../../hooks/useTransactionFacets';
 
 const accountTypeNames = new Map<string, string>(
   [...BudgetAccountNames, ...TrackingAccountNames, ...LoanAccountNames].map(({ value, name }) => [value, name]),
@@ -465,6 +467,12 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
     };
   }, [filters, paramId]);
 
+  const filtersActive = hasActiveFilters(filters);
+  const filteredTotals = useFilteredTotals(listArgs, filtersActive && !embedded, transactions);
+  // What the results hold, listed first in the tray's payee, account and tag menus.
+  const facets = useTransactionFacets(listArgs, filtersOpen, transactions);
+  const filteredNet = filteredTotals ? filteredTotals.inflow - filteredTotals.outflow : 0;
+
   const loadMoreTransactions = useCallback(() => {
     if (!nextCursor || loadingMore === LoadingState.PENDING || loading === LoadingState.PENDING) {
       return;
@@ -571,10 +579,41 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
             </div>
           </div>
           <dl className={styles.pageStats}>
-            <div>
-              <dt>{paramId ? 'Balance' : 'Net balance'}</dt>
-              <dd className={accountBal < 0 ? styles.negative : undefined}>{formatBudgetAmount(accountBal)}</dd>
-            </div>
+            {filtersActive ? (
+              <div
+                className={styles.filteredStat}
+                tabIndex={0}
+                aria-describedby="filtered-total-breakdown">
+                <dt>Filtered total</dt>
+                <dd className={filteredNet < 0 ? styles.negative : undefined}>
+                  {filteredTotals ? formatBudgetAmount(filteredNet) : '…'}
+                </dd>
+                {filteredTotals && (
+                  <div id="filtered-total-breakdown" role="tooltip" className={styles.totalsTooltip}>
+                    <div className={styles.totalsLine}>
+                      <span>Inflow</span>
+                      <span className={styles.inflow}>+{formatBudgetAmount(filteredTotals.inflow)}</span>
+                    </div>
+                    <div className={styles.totalsLine}>
+                      <span>Outflow</span>
+                      <span className={styles.outflow}>−{formatBudgetAmount(filteredTotals.outflow)}</span>
+                    </div>
+                    <div className={`${styles.totalsLine} ${styles.totalsNet}`}>
+                      <span>Net</span>
+                      <span>{formatBudgetAmount(filteredNet)}</span>
+                    </div>
+                    <p className={styles.totalsCount}>
+                      {filteredTotals.count} {filteredTotals.count === 1 ? 'transaction' : 'transactions'}
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div>
+                <dt>{paramId ? 'Balance' : 'Net balance'}</dt>
+                <dd className={accountBal < 0 ? styles.negative : undefined}>{formatBudgetAmount(accountBal)}</dd>
+              </div>
+            )}
           </dl>
         </header>
       )}
@@ -601,9 +640,15 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
         />
         {filtersOpen && (
           <div className={styles.filterCard}>
-            <TransactionFilterPanel filters={filters} onChange={setFilters} hideAccountFilter={Boolean(paramId)} />
+            <TransactionFilterPanel
+              filters={filters}
+              onChange={setFilters}
+              hideAccountFilter={Boolean(paramId)}
+              facets={facets}
+            />
           </div>
         )}
+        <ActiveFilterChips filters={filters} onChange={setFilters} hideAccounts={Boolean(paramId)} />
       </div>
       {loading === LoadingState.PENDING && transactions.length === 0 && <TransactionSkeleton />}
       {error && <div className={styles.errorBanner}>{error}</div>}

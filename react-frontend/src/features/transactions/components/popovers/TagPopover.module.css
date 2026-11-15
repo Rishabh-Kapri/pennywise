@@ -2,9 +2,11 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  min-width: 0;
 }
 
 .checkbox {
+  flex-shrink: 0;
   accent-color: var(--color-primary);
   width: 1rem;
   height: 1rem;
@@ -19,6 +21,10 @@
   font-size: 0.8rem;
   font-weight: 500;
   white-space: nowrap;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .createItem {

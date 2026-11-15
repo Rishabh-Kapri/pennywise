@@ -336,6 +336,9 @@ func main() {
 
 			ParkLowConfidence: cfg.MessageReviewPark,
 			StatementImport:   statementImport,
+
+			StatementPasswords: database.StatementPassword,
+			SecretBox:          llmCredentialsBox,
 		})
 		if err != nil {
 			workerErr <- err

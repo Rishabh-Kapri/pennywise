@@ -15,6 +15,9 @@ type TransactionRepository interface {
 		budgetId uuid.UUID,
 		filter *model.TransactionFilter,
 	) (model.PaginatedResponse[model.Transaction], error)
+	// GetFacets counts the payees, accounts, categories and tags of the transactions the
+	// filter matches, each ignoring its own part of the filter.
+	GetFacets(ctx context.Context, budgetId uuid.UUID, filter *model.TransactionFilter) (model.TransactionFacets, error)
 	Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, txn model.Transaction) error
 	UpdateLocation(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, lat *float64, lng *float64, name *string, source *model.LocationSource) error
 	// TransitionStatus moves a live transaction from status `from` to `to` and

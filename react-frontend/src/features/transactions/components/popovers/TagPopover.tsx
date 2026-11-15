@@ -8,6 +8,7 @@ import { createTag } from '@/features/tags/store/tagSlice';
 import { getAutoColor } from '@/features/tags/utils';
 import { useDropdown } from '../../hooks/useDropdown';
 import type { DropdownVariant } from './types';
+import { tagLabel, tagMatches } from '@/features/tags/utils';
 
 interface TagPopoverProps {
   selectedTagIds: string[];
@@ -16,6 +17,8 @@ interface TagPopoverProps {
   placeholder?: string;
   variant?: DropdownVariant;
 }
+
+const MIN_MENU_WIDTH = 260;
 
 export function TagDropdown({
   selectedTagIds,
@@ -27,8 +30,9 @@ export function TagDropdown({
   const { allTags } = useAppSelector((state) => state.tags);
   const dispatch = useAppDispatch();
   const [isCreating, setIsCreating] = useState(false);
+  const [menuWidth, setMenuWidth] = useState(MIN_MENU_WIDTH);
   const filterTags = useCallback(
-    (tags: Tag[], query: string) => tags.filter((tag) => tag.name.trim().toLowerCase().includes(query)),
+    (tags: Tag[], query: string) => tags.filter((tag) => tagMatches(tag.name, query)),
     [],
   );
 
@@ -77,7 +81,11 @@ export function TagDropdown({
     <div className={styles.popoverContainer}>
       <input
         ref={triggerRef}
-        onFocus={() => setIsOpen(true)}
+        onFocus={() => {
+          // Narrow filter inputs would clip labels like "Nagpur · Dec 2025".
+          setMenuWidth(Math.max(triggerRef.current?.offsetWidth ?? 0, MIN_MENU_WIDTH));
+          setIsOpen(true);
+        }}
         onBlur={() => setIsOpen(false)}
         className={`${variant === 'form' ? styles.formInput : styles.input} ${styles.trigger}`}
         onChange={(e) => filterValues(e.target.value)}
@@ -87,7 +95,7 @@ export function TagDropdown({
         aria-expanded={isOpen}
         aria-controls="tag-popover-content"
       />
-      <Popover id="tag-popover-content" isOpen={isOpen} triggerRef={triggerRef}>
+      <Popover id="tag-popover-content" isOpen={isOpen} triggerRef={triggerRef} width={menuWidth}>
         {filteredItems.map((tag) => (
           <div
             key={tag.id}
@@ -113,8 +121,9 @@ export function TagDropdown({
             />
             <span
               className={tagStyles.tagChip}
-              style={{ backgroundColor: tag.color || '#6366f1' }}>
-              {tag.name}
+              style={{ backgroundColor: tag.color || '#6366f1' }}
+              title={tag.name}>
+              {tagLabel(tag.name)}
             </span>
           </div>
         ))}

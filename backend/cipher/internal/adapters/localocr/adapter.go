@@ -267,7 +267,10 @@ func (a *adapter) Extract(
 	}
 
 	total := len(pages)
-	var parser tableParser
+	var (
+		parser    tableParser
+		firstText string // page 1 read as text, for the header and the fallback
+	)
 	progress.ReportCount(ctx, "reading pages", 0, total)
 	for i, path := range pages {
 		if err := ctx.Err(); err != nil {
@@ -282,35 +285,87 @@ func (a *adapter) Extract(
 		if i == 0 {
 			// The header decides how rows read (a minus sign, a date with no
 			// year), so it comes before page 1's rows.
-			parser.header = a.readHeader(ctx, path, tables)
+			parser.header, firstText = a.readHeader(ctx, path, tables)
 		}
 		parser.parsePage(i+1, tables)
 		progress.ReportCount(ctx, "reading pages", i+1, total)
 	}
 
-	res := parser.result()
-	res.PasswordIndex = opened
 	// Only counts and found/not-found are logged: the text is the user's
-	// statement.
+	// statement. stats are counts and the parser's own column names, never
+	// cell text: they say why rows were dropped (no header, cell count, date,
+	// amount).
 	h := parser.header
 	logger.Logger(ctx).Info("statement pages read",
 		"pages", total, "rows", len(parser.rows), "kind", h.kind,
 		"account_number_found", h.accountNumber != "", "period_found", h.periodStart != "",
-		"rewards_found", h.rewards != nil)
+		"rewards_found", h.rewards != nil, "parse", parser.stats)
+
+	// "Table Recognition:" sometimes finds no transaction table at all. Then
+	// every page is read again as text, and its lines are tried as rows.
+	if len(parser.rows) == 0 {
+		textParser, err := a.readAsText(ctx, pages, parser.header, firstText)
+		if err != nil {
+			return sharedModel.StatementExtractResponse{}, err
+		}
+		logger.Logger(ctx).Info("statement pages read again as text",
+			"pages", total, "rows", len(textParser.rows), "parse", textParser.stats)
+		if len(textParser.rows) > 0 {
+			parser = textParser
+		}
+	}
+
+	res := parser.result()
+	res.PasswordIndex = opened
 	return res, nil
+}
+
+// readAsText is the second pass: each page with "Text Recognition:". Page 1
+// was already read that way for the header, so its text is reused. With no
+// table heading to wait for, any line that starts with a date and ends with
+// one amount is a row.
+func (a *adapter) readAsText(
+	ctx context.Context,
+	pages []string,
+	header statementHeader,
+	firstText string,
+) (tableParser, error) {
+	p := tableParser{header: header, textWithoutHeading: true}
+	total := len(pages)
+	progress.ReportCount(ctx, "no table found, reading pages as text", 0, total)
+	for i, path := range pages {
+		if err := ctx.Err(); err != nil {
+			return p, err
+		}
+		text := firstText
+		if i > 0 || text == "" {
+			var err error
+			text, err = a.ocrPage(ctx, path, promptText)
+			if err != nil {
+				return p, errs.Wrap(
+					errs.CodeStatementExtractFailed, fmt.Sprintf("could not read page %d as text", i+1), err,
+				)
+			}
+		}
+		p.parsePage(i+1, text)
+		progress.ReportCount(ctx, "no table found, reading pages as text", i+1, total)
+	}
+	return p, nil
 }
 
 // readHeader reads page 1 as text as well as tables: the account number and
 // period are usually prose, the balances a summary box. A failed text read
 // costs only the header, not the statement.
-func (a *adapter) readHeader(ctx context.Context, path, tables string) statementHeader {
+// It also returns the text, "" when it wasn't read.
+func (a *adapter) readHeader(ctx context.Context, path, tables string) (statementHeader, string) {
 	progress.Report(ctx, "reading account details")
 	lines := headerLines(tables)
 	text, err := a.ocrPage(ctx, path, promptText)
 	if err != nil {
 		logger.Logger(ctx).Warn("statement first page not read as text", "error", err)
+		text = ""
 	} else {
 		lines = append(headerLines(text), lines...)
 	}
-	return parseHeader(lines)
+	return parseHeader(lines), text
 }

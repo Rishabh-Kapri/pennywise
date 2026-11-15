@@ -11,4 +11,6 @@ export interface TransactionDropdownProps {
   onChangeMultiple?: (ids: string[], names: string[]) => void;
   /** Text shown while nothing is picked. */
   placeholder?: string;
+  /** Multi-select only: how many filtered transactions carry each value (`/transactions/facets`). */
+  counts?: Record<string, number>;
 }

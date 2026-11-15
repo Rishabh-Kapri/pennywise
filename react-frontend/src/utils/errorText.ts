@@ -60,7 +60,8 @@ const NOISE = /^(exit status \d+|signal: \w+)$/i;
 
 function sentence(text: string): string {
   const trimmed = text.trim().replace(/[.:\s]+$/, '');
-  return trimmed ? trimmed[0].toUpperCase() + trimmed.slice(1) : '';
+  // A leading name such as "qwen3.5:9b" stays as written.
+  return /^[a-z]+(\s|$)/.test(trimmed) ? trimmed[0].toUpperCase() + trimmed.slice(1) : trimmed;
 }
 
 /** "MESSAGE_EXTRACT_FAILED" -> "Message extract failed", for codes with no entry. */

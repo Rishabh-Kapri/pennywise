@@ -8,6 +8,7 @@ import { TagDropdown } from '../popovers/TagPopover';
 import { useAppSelector } from '@/app/hooks';
 import styles from '../Transaction/Transaction.module.css';
 import tagStyles from '../popovers/TagPopover.module.css';
+import { tagLabel } from '@/features/tags/utils';
 
 type DropdownColKey = 'accountName' | 'payeeName' | 'categoryName' | 'date';
 
@@ -90,8 +91,9 @@ export function TransactionCell({
           <span
             key={tag.id}
             className={tagStyles.tagBadge}
-            style={{ backgroundColor: tag.color || '#6366f1' }}>
-            {tag.name}
+            style={{ backgroundColor: tag.color || '#6366f1' }}
+            title={tag.name}>
+            {tagLabel(tag.name)}
           </span>
         ))}
       </div>

@@ -18,6 +18,7 @@ import (
 type TransactionHandler interface {
 	List(c *gin.Context)
 	ListNormalized(c *gin.Context)
+	Facets(c *gin.Context)
 	Create(c *gin.Context)
 	Update(c *gin.Context)
 	UpdateLocation(c *gin.Context)
@@ -133,13 +134,13 @@ func stringToUUIDs(ids []string) ([]uuid.UUID, error) {
 	return filterIds, nil
 }
 
-func (h *transactionHandler) ListNormalized(c *gin.Context) {
-	ctx := c.Request.Context()
-
+// bindTransactionFilter reads the list filters from the query string, or
+// answers 400 and returns false.
+func bindTransactionFilter(c *gin.Context) (model.TransactionFilter, bool) {
 	var q listTransactionsQuery
 	if err := c.ShouldBindQuery(&q); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": bindingError(err)})
-		return
+		return model.TransactionFilter{}, false
 	}
 
 	accountIds := idParam(q.AccountIDs, q.AccountID)
@@ -158,7 +159,7 @@ func (h *transactionHandler) ListNormalized(c *gin.Context) {
 		ids, err := stringToUUIDs(accountIds)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing accountId"})
-			return
+			return model.TransactionFilter{}, false
 		}
 		txnFilter.AccountIDs = ids
 	}
@@ -167,7 +168,7 @@ func (h *transactionHandler) ListNormalized(c *gin.Context) {
 		ids, err := stringToUUIDs(categoryIds)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing categoryId"})
-			return
+			return model.TransactionFilter{}, false
 		}
 		txnFilter.CategoryIDs = ids
 	}
@@ -176,7 +177,7 @@ func (h *transactionHandler) ListNormalized(c *gin.Context) {
 		ids, err := stringToUUIDs(payeeIds)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing payeeId"})
-			return
+			return model.TransactionFilter{}, false
 		}
 		txnFilter.PayeeIDs = ids
 	}
@@ -185,7 +186,7 @@ func (h *transactionHandler) ListNormalized(c *gin.Context) {
 		ids, err := stringToUUIDs(tagIds)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing tagId"})
-			return
+			return model.TransactionFilter{}, false
 		}
 		txnFilter.TagIDs = ids
 	}
@@ -204,12 +205,35 @@ func (h *transactionHandler) ListNormalized(c *gin.Context) {
 		txnFilter.Status = &status
 	}
 
-	transactions, err := h.service.GetAllNormalized(ctx, &txnFilter)
+	return txnFilter, true
+}
+
+func (h *transactionHandler) ListNormalized(c *gin.Context) {
+	txnFilter, ok := bindTransactionFilter(c)
+	if !ok {
+		return
+	}
+	transactions, err := h.service.GetAllNormalized(c.Request.Context(), &txnFilter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, transactions)
+}
+
+// Facets is GET /transactions/facets: the payees, accounts, categories and tags found in
+// the transactions the same filters as ListNormalized match.
+func (h *transactionHandler) Facets(c *gin.Context) {
+	txnFilter, ok := bindTransactionFilter(c)
+	if !ok {
+		return
+	}
+	facets, err := h.service.GetFacets(c.Request.Context(), &txnFilter)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, facets)
 }
 
 func (h *transactionHandler) Create(c *gin.Context) {

@@ -24,6 +24,9 @@ type TransactionService interface {
 		ctx context.Context,
 		filter *model.TransactionFilter,
 	) (model.PaginatedResponse[model.Transaction], error)
+	// GetFacets lists the payees, accounts, categories and tags found in the transactions
+	// the filter matches. See model.TransactionFacets.
+	GetFacets(ctx context.Context, filter *model.TransactionFilter) (model.TransactionFacets, error)
 	// GetById(ctx context.Context, id uuid.UUID) (*model.Transaction, error)
 	Update(ctx context.Context, id uuid.UUID, txn model.Transaction) error
 	UpdateLocation(ctx context.Context, id uuid.UUID, req model.TransactionLocationReq) (*model.Transaction, error)
@@ -823,6 +826,13 @@ func (s *transactionService) GetAllNormalized(
 ) (model.PaginatedResponse[model.Transaction], error) {
 	budgetId := utils.MustBudgetID(ctx)
 	return s.repo.GetAllNormalized(ctx, budgetId, filter)
+}
+
+func (s *transactionService) GetFacets(
+	ctx context.Context,
+	filter *model.TransactionFilter,
+) (model.TransactionFacets, error) {
+	return s.repo.GetFacets(ctx, utils.MustBudgetID(ctx), filter)
 }
 
 func (s *transactionService) Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error) {

@@ -91,3 +91,19 @@ func TestChargeCategory(t *testing.T) {
 	assert.Equal(t, &fees, chargeCategory(model.StatementChargeInterest, cats))
 	assert.Nil(t, chargeCategory(model.StatementChargeFee, map[uuid.UUID]string{groceries: "Groceries"}))
 }
+
+func TestStatementCashback(t *testing.T) {
+	rows := []model.StatementRow{
+		{Description: "10% Example CashBack", Amount: 43.70, Direction: model.StatementCredit},
+		{Description: "EXAMPLE CASH BACK", Amount: 10, Direction: model.StatementCredit},
+		{Description: "CASHBACK REVERSAL", Amount: 3.70, Direction: model.StatementDebit},
+		{Description: "EXAMPLE SHOP", Amount: 500, Direction: model.StatementDebit},
+	}
+	got := statementCashback(rows)
+	if got == nil || got.Amount != 50 || got.Count != 3 {
+		t.Errorf("cashback = %+v, want 50 over 3 lines", got)
+	}
+	if statementCashback(rows[3:]) != nil {
+		t.Error("no cashback rows should give nil")
+	}
+}

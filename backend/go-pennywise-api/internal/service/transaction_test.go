@@ -83,6 +83,19 @@ func (m *mockTransactionRepo) GetAll(
 	return nil, args.Error(1)
 }
 
+// GetFacets implements repository.TransactionRepository.
+func (m *mockTransactionRepo) GetFacets(
+	ctx context.Context,
+	budgetId uuid.UUID,
+	filter *model.TransactionFilter,
+) (model.TransactionFacets, error) {
+	args := m.Called(ctx, budgetId, filter)
+	if obj := args.Get(0); obj != nil {
+		return obj.(model.TransactionFacets), args.Error(1)
+	}
+	return model.TransactionFacets{}, args.Error(1)
+}
+
 // GetAllNormalized implements repository.TransactionRepository.
 func (m *mockTransactionRepo) GetAllNormalized(
 	ctx context.Context,

@@ -38,21 +38,24 @@ type JobListInput struct {
 // JobSummary is one job in a tree, without its payload. Label is a short
 // description for the list: the message's subject or the mailbox address.
 type JobSummary struct {
-	ID          uuid.UUID       `json:"id"`
-	ParentID    *uuid.UUID      `json:"parentId,omitempty"`
-	Type        string          `json:"type"`
-	Queue       string          `json:"queue"`
-	Status      job.JobStatus   `json:"status"`
-	Attempt     int             `json:"attempt"`
-	MaxAttempts int             `json:"maxAttempts"`
-	Label       string          `json:"label,omitempty"`
-	Source      string          `json:"source,omitempty"` // message.received only: email, sms or api
-	Progress    json.RawMessage `json:"progress,omitempty"`
-	LastError   string          `json:"lastError,omitempty"`
-	RunAt       time.Time       `json:"runAt"`
-	StartedAt   *time.Time      `json:"startedAt,omitempty"`
-	CompletedAt *time.Time      `json:"completedAt,omitempty"`
-	CreatedAt   time.Time       `json:"createdAt"`
+	ID          uuid.UUID     `json:"id"`
+	ParentID    *uuid.UUID    `json:"parentId,omitempty"`
+	Type        string        `json:"type"`
+	Queue       string        `json:"queue"`
+	Status      job.JobStatus `json:"status"`
+	Attempt     int           `json:"attempt"`
+	MaxAttempts int           `json:"maxAttempts"`
+	Label       string        `json:"label,omitempty"`
+	Source      string        `json:"source,omitempty"` // message.received only: email, sms or api
+	// StatementRows is how many rows a finished statement.extract read; 0
+	// means it found no transactions. Nil for other jobs.
+	StatementRows *int            `json:"statementRows,omitempty"`
+	Progress      json.RawMessage `json:"progress,omitempty"`
+	LastError     string          `json:"lastError,omitempty"`
+	RunAt         time.Time       `json:"runAt"`
+	StartedAt     *time.Time      `json:"startedAt,omitempty"`
+	CompletedAt   *time.Time      `json:"completedAt,omitempty"`
+	CreatedAt     time.Time       `json:"createdAt"`
 }
 
 // JobTreeView is a top-level job and everything under it, oldest first.
@@ -141,6 +144,17 @@ type jobService struct {
 	// messages is where each message stands. Continue, RunAgain and Dismiss
 	// move it through model.InboundMessageStatus.CanMoveTo.
 	messages repository.InboundMessageRepository
+	// statements names statement jobs queued before their payload carried
+	// the file name. Optional.
+	statements repository.StatementImportRepository
+}
+
+type JobServiceOption func(*jobService)
+
+// WithStatementImports lets the job list name older statement jobs by their
+// import's file name.
+func WithStatementImports(repo repository.StatementImportRepository) JobServiceOption {
+	return func(s *jobService) { s.statements = repo }
 }
 
 // hiddenRootJobTypes are jobs that only add noise as their own entry in the
@@ -152,8 +166,59 @@ func NewJobService(
 	broker job.Broker,
 	connections repository.MailConnectionRepository,
 	messages repository.InboundMessageRepository,
+	opts ...JobServiceOption,
 ) JobService {
-	return &jobService{store: store, broker: broker, connections: connections, messages: messages}
+	s := &jobService{store: store, broker: broker, connections: connections, messages: messages}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
+}
+
+// statementNamesLimit is how many recent imports are read to name older
+// statement jobs.
+const statementNamesLimit = 200
+
+// nameStatements fills the label of statement.extract jobs that have none
+// (queued before the payload carried the file name) from their import. Best
+// effort: a job whose import is gone or too old keeps an empty label.
+func (s *jobService) nameStatements(ctx context.Context, trees []JobTreeView) {
+	if s.statements == nil {
+		return
+	}
+	missing := false
+	for _, tree := range trees {
+		for _, j := range tree.Jobs {
+			if j.Type == model.JobTypeStatementExtract && j.Label == "" {
+				missing = true
+			}
+		}
+	}
+	if !missing {
+		return
+	}
+	budgetID, err := utils.BudgetIDFromContext(ctx)
+	if err != nil {
+		return
+	}
+	imports, err := s.statements.List(ctx, budgetID, statementNamesLimit)
+	if err != nil {
+		logger.Logger(ctx).Warn("couldn't load statement names for the job list", "error", err)
+		return
+	}
+	names := map[uuid.UUID]string{}
+	for _, imp := range imports {
+		if imp.JobID != nil {
+			names[*imp.JobID] = imp.FileName
+		}
+	}
+	for _, tree := range trees {
+		for i := range tree.Jobs {
+			if j := &tree.Jobs[i]; j.Type == model.JobTypeStatementExtract && j.Label == "" {
+				j.Label = names[j.ID]
+			}
+		}
+	}
 }
 
 // scope reads the budget from ctx and finds the mailboxes feeding it.
@@ -231,6 +296,7 @@ func (s *jobService) List(ctx context.Context, input JobListInput) (JobList, err
 		}
 		list.Trees = append(list.Trees, view)
 	}
+	s.nameStatements(ctx, list.Trees)
 	return list, nil
 }
 
@@ -649,22 +715,38 @@ func mailboxAccount(j *job.Job) string {
 
 func summarizeJob(j *job.Job) JobSummary {
 	return JobSummary{
-		ID:          j.ID,
-		ParentID:    j.ParentID,
-		Type:        j.Type,
-		Queue:       j.Queue,
-		Status:      j.Status,
-		Attempt:     j.Attempt,
-		MaxAttempts: j.MaxAttempts,
-		Label:       jobLabel(j),
-		Source:      messageSource(j),
-		Progress:    j.Progress,
-		LastError:   j.LastError,
-		RunAt:       j.RunAt,
-		StartedAt:   j.StartedAt,
-		CompletedAt: j.CompletedAt,
-		CreatedAt:   j.CreatedAt,
+		ID:            j.ID,
+		ParentID:      j.ParentID,
+		Type:          j.Type,
+		Queue:         j.Queue,
+		Status:        j.Status,
+		Attempt:       j.Attempt,
+		MaxAttempts:   j.MaxAttempts,
+		Label:         jobLabel(j),
+		Source:        messageSource(j),
+		StatementRows: statementRows(j),
+		Progress:      j.Progress,
+		LastError:     j.LastError,
+		RunAt:         j.RunAt,
+		StartedAt:     j.StartedAt,
+		CompletedAt:   j.CompletedAt,
+		CreatedAt:     j.CreatedAt,
 	}
+}
+
+// statementRows reads how many rows a finished statement.extract found, from
+// its result.
+func statementRows(j *job.Job) *int {
+	if j.Type != model.JobTypeStatementExtract || j.Status != job.SucceededJobStatus || len(j.Result) == 0 {
+		return nil
+	}
+	var r struct {
+		Rows *int `json:"rows"`
+	}
+	if err := json.Unmarshal(j.Result, &r); err != nil {
+		return nil
+	}
+	return r.Rows
 }
 
 // messageSource says where a message.received job came from, or "".
@@ -679,8 +761,8 @@ func messageSource(j *job.Job) string {
 	return p.Source
 }
 
-// jobLabel names a job in the list: what a message or mailbox job is about, and
-// how a message ended. The other steps sit under their message's label.
+// jobLabel names a job in the list: what a message, mailbox or statement job is
+// about, and how a message ended. The other steps sit under their message's label.
 func jobLabel(j *job.Job) string {
 	switch j.Type {
 	case model.JobTypeMailboxChanged:
@@ -700,6 +782,11 @@ func jobLabel(j *job.Job) string {
 				return p.Subject
 			}
 			return p.Sender
+		}
+	case model.JobTypeStatementExtract:
+		var p model.StatementJobRef
+		if err := json.Unmarshal(j.Payload, &p); err == nil {
+			return p.FileName
 		}
 	case model.JobTypePipelineReport:
 		var p model.PipelineReportPayload

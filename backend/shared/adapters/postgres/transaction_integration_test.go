@@ -337,6 +337,21 @@ func TestTransactionRepo_GetAllNormalizedFiltersAndDerivedColumns(t *testing.T) 
 		assert.Zero(t, byID[coffee.ID].Balance, "balance is only computed for an account filter")
 	})
 
+	t.Run("totals cover every matching row, not just the page", func(t *testing.T) {
+		page := query(&model.TransactionFilter{Limit: 1})
+		require.Len(t, page.Data, 1)
+		require.NotNil(t, page.Totals)
+		assert.Equal(t, model.AmountTotals{Inflow: 50000, Outflow: 500}, *page.Totals)
+
+		page = query(&model.TransactionFilter{PayeeIDs: []uuid.UUID{s.payeeID}})
+		require.NotNil(t, page.Totals)
+		assert.Equal(t, model.AmountTotals{Inflow: 0, Outflow: 500}, *page.Totals)
+
+		page = query(&model.TransactionFilter{Note: strPtr("no such note")})
+		require.NotNil(t, page.Totals)
+		assert.Equal(t, model.AmountTotals{}, *page.Totals, "no match sums to zero, not null")
+	})
+
 	filters := map[string]struct {
 		filter *model.TransactionFilter
 		want   []uuid.UUID
@@ -355,6 +370,38 @@ func TestTransactionRepo_GetAllNormalizedFiltersAndDerivedColumns(t *testing.T) 
 			assert.Equal(t, len(tc.want), page.Total, "total uses the same filters as the page")
 		})
 	}
+
+	t.Run("facets count values, each ignoring its own filter", func(t *testing.T) {
+		counts := func(fs []model.TransactionFacet) map[uuid.UUID]int {
+			m := map[uuid.UUID]int{}
+			for _, f := range fs {
+				m[f.ID] = f.Count
+			}
+			return m
+		}
+
+		all, err := repo.GetFacets(ctx, s.budgetID, nil)
+		require.NoError(t, err)
+		assert.Equal(t, map[uuid.UUID]int{s.payeeID: 2, s.payee2ID: 1}, counts(all.Payees))
+		assert.Equal(t, map[uuid.UUID]int{s.accountID: 2, s.account2ID: 1}, counts(all.Accounts))
+		assert.Equal(t, 1, counts(all.Tags)[tag])
+		assert.Len(t, all.Tags, 2)
+
+		// Picking a payee narrows accounts and tags but keeps every payee on offer.
+		byPayee, err := repo.GetFacets(ctx, s.budgetID, &model.TransactionFilter{PayeeIDs: []uuid.UUID{s.payee2ID}})
+		require.NoError(t, err)
+		assert.Equal(t, map[uuid.UUID]int{s.payeeID: 2, s.payee2ID: 1}, counts(byPayee.Payees))
+		assert.Equal(t, map[uuid.UUID]int{s.accountID: 1}, counts(byPayee.Accounts))
+		assert.Equal(t, map[uuid.UUID]int{s.category2: 1}, counts(byPayee.Categories))
+		assert.Empty(t, byPayee.Tags)
+		assert.NotNil(t, byPayee.Tags, "an empty list, not null")
+
+		// Another filter narrows payees.
+		byCategory, err := repo.GetFacets(ctx, s.budgetID, &model.TransactionFilter{CategoryIDs: []uuid.UUID{s.category2}})
+		require.NoError(t, err)
+		assert.Equal(t, map[uuid.UUID]int{s.payee2ID: 1}, counts(byCategory.Payees))
+		assert.Len(t, byCategory.Categories, 2, "the category filter doesn't narrow categories")
+	})
 
 	t.Run("running balance per account", func(t *testing.T) {
 		page := query(&model.TransactionFilter{AccountIDs: []uuid.UUID{s.accountID}, SortOrder: "ASC"})

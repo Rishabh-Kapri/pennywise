@@ -120,6 +120,76 @@
   color: var(--color-error) !important;
 }
 
+/* Filtered total: hover or focus shows money in and out */
+.pageStats > .filteredStat {
+  position: relative;
+  cursor: help;
+  outline: none;
+}
+
+.filteredStat dt {
+  border-bottom: 1px dashed color-mix(in srgb, var(--color-text-secondary) 60%, transparent);
+}
+
+.filteredStat .totalsTooltip {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 15rem;
+  padding: 0.8rem 0.95rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 12px;
+  background: var(--color-popover);
+  box-shadow: var(--shadow-popover);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: opacity 0.12s, transform 0.12s, visibility 0.12s;
+}
+
+.filteredStat:hover .totalsTooltip,
+.filteredStat:focus-within .totalsTooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+}
+
+.totalsLine {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.totalsLine span:last-child {
+  color: var(--color-text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.totalsLine .inflow {
+  color: var(--color-success);
+}
+
+.totalsLine .outflow {
+  color: var(--color-error);
+}
+
+.totalsTooltip .totalsNet {
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--color-border-muted);
+}
+
+.totalsCount {
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+}
+
 .toolbar {
   display: flex;
   flex-direction: column;

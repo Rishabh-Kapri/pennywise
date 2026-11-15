@@ -1310,6 +1310,13 @@ func (m *mockTransactionService) GetAllNormalized(ctx context.Context, filter *m
 	}
 	return model.PaginatedResponse[model.Transaction]{}, args.Error(1)
 }
+func (m *mockTransactionService) GetFacets(ctx context.Context, filter *model.TransactionFilter) (model.TransactionFacets, error) {
+	args := m.Called(ctx, filter)
+	if v := args.Get(0); v != nil {
+		return v.(model.TransactionFacets), args.Error(1)
+	}
+	return model.TransactionFacets{}, args.Error(1)
+}
 func (m *mockTransactionService) Update(ctx context.Context, id uuid.UUID, txn model.Transaction) error {
 	return m.Called(ctx, id, txn).Error(0)
 }
@@ -1411,6 +1418,37 @@ func TestTransactionHandler_ListNormalized(t *testing.T) {
 		svc.On("GetAllNormalized", mock.Anything, mock.Anything).Return(model.PaginatedResponse[model.Transaction]{}, assert.AnError)
 		w, c := makeReq("GET", "/transactions/normalized", nil)
 		NewTransactionHandler(svc).ListNormalized(c)
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+	})
+}
+
+func TestTransactionHandler_Facets(t *testing.T) {
+	t.Run("passes_the_list_filters", func(t *testing.T) {
+		svc := &mockTransactionService{}
+		category := uuid.New()
+		want := model.TransactionFacets{Payees: []model.TransactionFacet{{ID: uuid.New(), Count: 3}}}
+		svc.On("GetFacets", mock.Anything, mock.MatchedBy(func(f *model.TransactionFilter) bool {
+			return len(f.CategoryIDs) == 1 && f.CategoryIDs[0] == category && f.StartDate != nil && *f.StartDate == "2026-01-01"
+		})).Return(want, nil)
+		w, c := makeReq("GET", "/transactions/facets", nil)
+		c.Request.URL.RawQuery = "categoryId=" + category.String() + "&startDate=2026-01-01"
+		NewTransactionHandler(svc).Facets(c)
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), `"count":3`)
+		svc.AssertExpectations(t)
+	})
+	t.Run("bad_id_returns_400", func(t *testing.T) {
+		svc := &mockTransactionService{}
+		w, c := makeReq("GET", "/transactions/facets", nil)
+		c.Request.URL.RawQuery = "payeeId=not-a-uuid"
+		NewTransactionHandler(svc).Facets(c)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+	t.Run("service_error_returns_500", func(t *testing.T) {
+		svc := &mockTransactionService{}
+		svc.On("GetFacets", mock.Anything, mock.Anything).Return(model.TransactionFacets{}, assert.AnError)
+		w, c := makeReq("GET", "/transactions/facets", nil)
+		NewTransactionHandler(svc).Facets(c)
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
 	})
 }

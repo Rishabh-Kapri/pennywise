@@ -503,3 +503,24 @@ type failingBroker struct{ job.Broker }
 func (failingBroker) Enqueue(context.Context, string, []byte, ...job.EnqueueOption) (job.EnqueueResult, error) {
 	return job.EnqueueResult{}, errs.New(errs.CodeJobEnqueueFailed, "queue down")
 }
+
+func TestSummarizeStatementJob(t *testing.T) {
+	read := &job.Job{
+		Type:    model.JobTypeStatementExtract,
+		Status:  job.SucceededJobStatus,
+		Payload: []byte(`{"importId":"fbf1793d-7739-4307-ac3c-ca83a39c7cbe","fileName":"aug.pdf","data":"JVBERi0="}`),
+		Result:  []byte(`{"rows":0,"nextJobId":"46d186b4-b73b-4ab0-81fb-a5584647ad57"}`),
+	}
+	got := summarizeJob(read)
+	if got.Label != "aug.pdf" {
+		t.Errorf("label = %q, want the file name", got.Label)
+	}
+	if got.StatementRows == nil || *got.StatementRows != 0 {
+		t.Errorf("statementRows = %v, want 0", got.StatementRows)
+	}
+
+	running := &job.Job{Type: model.JobTypeStatementExtract, Status: job.RunningJobStatus, Payload: []byte(`{}`)}
+	if got := summarizeJob(running); got.StatementRows != nil {
+		t.Errorf("a running job has no row count, got %d", *got.StatementRows)
+	}
+}
