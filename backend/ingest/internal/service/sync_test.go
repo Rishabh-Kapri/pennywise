@@ -65,21 +65,28 @@ type oneProvider struct{ p ports.MailProvider }
 func (o oneProvider) For(string) (ports.MailProvider, error) { return o.p, nil }
 
 type fakeIngest struct {
-	got []ports.InboundMessage
+	got []accepted
 	err error
 }
 
-func (f *fakeIngest) Accept(_ context.Context, msg ports.InboundMessage, _ ...job.EnqueueOption) ([]Queued, error) {
+type accepted struct {
+	budgets []uuid.UUID
+	msg     ports.InboundMessage
+}
+
+func (f *fakeIngest) Accept(
+	_ context.Context, budgets []uuid.UUID, msg ports.InboundMessage, _ ...job.EnqueueOption,
+) (Accepted, error) {
 	if f.err != nil {
-		return nil, f.err
+		return Accepted{}, f.err
 	}
 	if msg.Body == "" {
-		return nil, errs.New(errs.CodeIngestInvalidMessage, "no body")
+		return Accepted{}, errs.New(errs.CodeIngestInvalidMessage, "no body")
 	}
-	f.got = append(f.got, msg)
-	out := make([]Queued, len(msg.BudgetID))
-	for i, b := range msg.BudgetID {
-		out[i] = Queued{BudgetID: b, JobID: uuid.New()}
+	f.got = append(f.got, accepted{budgets: budgets, msg: msg})
+	out := Accepted{ExternalID: msg.ExternalID}
+	for _, b := range budgets {
+		out.Jobs = append(out.Jobs, Queued{BudgetID: b, JobID: uuid.New()})
 	}
 	return out, nil
 }
@@ -93,7 +100,7 @@ func setupSync(conn *model.MailConnection, p *fakeProvider, deleted ...uuid.UUID
 	for _, id := range deleted {
 		gone[id] = true
 	}
-	s := NewMailboxService(nil, MailboxDeps{
+	s := NewMailboxService(MailboxDeps{
 		Connections: conns, Budgets: &fakeBudgets{deleted: gone}, Providers: oneProvider{p}, Ingest: ing,
 	})
 	return s, conns, ing
@@ -103,8 +110,8 @@ func TestSyncQueuesForLiveBudgetsThenMovesCursor(t *testing.T) {
 	live, gone := uuid.New(), uuid.New()
 	conn := &model.MailConnection{ID: uuid.New(), Provider: "gmail", BudgetIDs: []uuid.UUID{live, gone}, Cursor: "100"}
 	p := &fakeProvider{cursor: "180", msgs: []ports.InboundMessage{
-		{ExternalID: "m1", Body: "Rs 499 debited", BudgetID: conn.BudgetIDs},
-		{ExternalID: "m2", Body: "", BudgetID: conn.BudgetIDs}, // can never be queued
+		{ExternalID: "m1", Body: "Rs 499 debited"},
+		{ExternalID: "m2", Body: ""}, // can never be queued
 	}}
 	s, conns, ing := setupSync(conn, p, gone)
 
@@ -115,7 +122,7 @@ func TestSyncQueuesForLiveBudgetsThenMovesCursor(t *testing.T) {
 	if res.Fetched != 2 || res.Queued != 1 || res.Dropped != 1 || res.Cursor != "180" || res.Skipped != "" {
 		t.Fatalf("result = %+v", res)
 	}
-	if len(ing.got) != 1 || len(ing.got[0].BudgetID) != 1 || ing.got[0].BudgetID[0] != live {
+	if len(ing.got) != 1 || len(ing.got[0].budgets) != 1 || ing.got[0].budgets[0] != live {
 		t.Fatalf("queued for %+v, want only the live budget", ing.got)
 	}
 	if conns.savedSync != "180" {

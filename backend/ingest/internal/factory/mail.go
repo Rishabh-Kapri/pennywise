@@ -14,26 +14,19 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 )
 
-const ProviderGmail = "gmail"
-
 type MailConfig struct {
-	// Providers is MAIL_PROVIDERS: which mail adapters to build, comma
-	// separated (e.g. "gmail"). Empty builds none.
-	Providers string
-	// CredentialsKey is MAIL_CREDENTIALS_KEY: the base64 32-byte key that
-	// seals Connection.Credentials. Changing it makes stored connections
-	// unreadable.
+	// Providers is MAIL_PROVIDERS: which mail adapters to build (e.g. "gmail").
+	// Empty builds none.
+	Providers []string
+	// CredentialsKey is CREDENTIALS_KEY: the base64 32-byte key that seals
+	// Connection.Credentials. Changing it makes stored connections unreadable.
 	CredentialsKey string
 	Gmail          GmailConfig
 }
 
-type GmailConfig struct {
-	WebClientID     string
-	WebClientSecret string
-	AndroidClientID string
-	ProjectID       string
-	PubsubTopic     string
-}
+// GmailConfig is the Gmail adapter's settings. Leave Box unset: the factory
+// makes it from CredentialsKey.
+type GmailConfig = gmail.Config
 
 // MailProviderRegistry is the registry of built mail adapters, keyed by Connection.Provider.
 type MailProviderRegistry map[string]ports.MailProvider
@@ -47,59 +40,39 @@ func (m MailProviderRegistry) For(provider string) (ports.MailProvider, error) {
 	return p, nil
 }
 
-// NewMailProviders builds every provider named in cfg.Providers. It checks
-// each one's settings now, so a misconfigured deploy fails at startup, not on
-// the first email.
+// NewMailProviders builds every provider named in cfg.Providers. Each one
+// checks its settings now, so a misconfigured deploy fails at startup.
 func NewMailProviders(ctx context.Context, cfg MailConfig) (MailProviderRegistry, error) {
-	names := parseNames(cfg.Providers)
 	providers := MailProviderRegistry{}
-	if len(names) == 0 {
+	if len(cfg.Providers) == 0 {
 		logger.Logger(ctx).Info("no mail providers configured (MAIL_PROVIDERS)")
 		return providers, nil
 	}
 
 	box, err := utils.NewSecretBox(cfg.CredentialsKey)
 	if err != nil {
-		return nil, errs.Wrap(errs.CodeMailNotConfigured, "MAIL_CREDENTIALS_KEY must be a base64 32-byte key", err)
+		return nil, errs.Wrap(errs.CodeMailNotConfigured, "CREDENTIALS_KEY must be a base64 32-byte key", err)
 	}
 
-	for _, name := range names {
-		switch name {
-		case ProviderGmail:
-			g := cfg.Gmail
-			hasWeb := g.WebClientID != "" && g.WebClientSecret != ""
-			if !hasWeb && g.AndroidClientID == "" {
-				return nil, errs.New(errs.CodeMailNotConfigured,
-					"gmail needs GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET, or GOOGLE_ANDROID_CLIENT_ID")
-			}
-			if g.ProjectID == "" || g.PubsubTopic == "" {
-				return nil, errs.New(errs.CodeMailNotConfigured, "gmail needs PROJECT_ID and PUBSUB_TOPIC")
-			}
-			providers[name] = gmail.New(gmail.Config{
-				WebClientID:     g.WebClientID,
-				WebClientSecret: g.WebClientSecret,
-				AndroidClientID: g.AndroidClientID,
-				ProjectID:       g.ProjectID,
-				PubsubTopic:     g.PubsubTopic,
-				Box:             box,
-			})
-		default:
-			return nil, errs.New(errs.CodeAdapterNotConfigured, "unknown mail provider %q in MAIL_PROVIDERS", name)
+	for _, name := range cfg.Providers {
+		name = strings.ToLower(name)
+		if _, built := providers[name]; built {
+			continue
 		}
+		var provider ports.MailProvider
+		switch name {
+		case ports.ProviderGmail:
+			gmailCfg := cfg.Gmail
+			gmailCfg.Box = box
+			provider, err = gmail.New(gmailCfg)
+		default:
+			err = errs.New(errs.CodeAdapterNotConfigured, "unknown mail provider %q in MAIL_PROVIDERS", name)
+		}
+		if err != nil {
+			return nil, err
+		}
+		providers[name] = provider
 		logger.Logger(ctx).Info("mail provider configured", "provider", name)
 	}
 	return providers, nil
-}
-
-func parseNames(raw string) []string {
-	var names []string
-	seen := map[string]bool{}
-	for _, n := range strings.Split(raw, ",") {
-		n = strings.ToLower(strings.TrimSpace(n))
-		if n != "" && !seen[n] {
-			seen[n] = true
-			names = append(names, n)
-		}
-	}
-	return names
 }

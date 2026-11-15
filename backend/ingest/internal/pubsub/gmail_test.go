@@ -7,19 +7,13 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/ingest/internal/service"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/job"
 )
 
 type fakeMailbox struct {
-	service.MailboxService
 	got []model.MailboxChanged
 	err error
-}
-
-func (f *fakeMailbox) Sync(context.Context, model.MailboxChanged, ...job.EnqueueOption) (service.SyncResult, error) {
-	return service.SyncResult{}, nil
 }
 
 func (f *fakeMailbox) Changed(_ context.Context, n model.MailboxChanged) (job.EnqueueResult, error) {

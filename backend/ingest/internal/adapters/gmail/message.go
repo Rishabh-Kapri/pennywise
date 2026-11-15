@@ -12,8 +12,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 )
 
-// toInbound turns a full Gmail message into the common message shape. The
-// message goes to every budget the connection feeds.
+// toInbound turns a Gmail message into the common message shape.
 func toInbound(conn model.MailConnection, msg *gmailv1.Message) ports.InboundMessage {
 	in := ports.InboundMessage{
 		Source:      ports.EmailSource,

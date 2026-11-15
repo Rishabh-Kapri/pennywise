@@ -9,6 +9,14 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 )
 
+// Provider names. A mail provider's name is also Connection.Provider and the
+// key it is built under (MAIL_PROVIDERS).
+const (
+	ProviderGmail   = "gmail"
+	ProviderAPI     = "api"     // posted to POST /api/ingest/messages
+	ProviderAndroid = "android" // SMS forwarded by the Android app
+)
+
 type Source string
 
 const (
@@ -17,6 +25,8 @@ const (
 	ApiSource   Source = "api"
 )
 
+// InboundMessage is a message from any source, before it is queued. Which
+// budgets it goes to is up to the caller of Accept.
 type InboundMessage struct {
 	Source     Source
 	Provider   string

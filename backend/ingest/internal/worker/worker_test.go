@@ -26,14 +26,14 @@ func (f *fakeMailbox) Sync(
 	_ context.Context, _ model.MailboxChanged, opts ...job.EnqueueOption,
 ) (service.SyncResult, error) {
 	f.opts = opts
-	return service.SyncResult{Queued: 2}, f.err
+	return service.SyncResult{Counts: service.Counts{Queued: 2}}, f.err
 }
 
 func (f *fakeMailbox) Backfill(
 	_ context.Context, budget, _ uuid.UUID, ids []string, opts ...job.EnqueueOption,
 ) (service.BackfillResult, error) {
 	f.budget, f.ids, f.opts = budget, ids, opts
-	return service.BackfillResult{Queued: len(ids)}, f.err
+	return service.BackfillResult{Counts: service.Counts{Queued: len(ids)}}, f.err
 }
 
 func payload(t *testing.T, v any) []byte {

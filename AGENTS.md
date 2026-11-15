@@ -8,7 +8,7 @@ Personal budgeting app (YNAB-style) with AI transaction classification from bank
 | `backend/go-pennywise-api` | Core REST API (Gin, pgx) | [AGENTS.md](backend/go-pennywise-api/AGENTS.md) |
 | `backend/cipher` | Email classification pipeline + chat agent | [AGENTS.md](backend/cipher/AGENTS.md) |
 | `backend/go-gmail` | Gmail Pub/Sub watcher → Temporal. Replaced by `ingest`; CI no longer builds or deploys it | [AGENTS.md](backend/go-gmail/AGENTS.md) |
-| `backend/ingest` | Message ingestion (email, SMS, API) → job queue. Skeleton | [AGENTS.md](backend/ingest/AGENTS.md) |
+| `backend/ingest` | Message ingestion (email, SMS, API) → job queue | [AGENTS.md](backend/ingest/AGENTS.md) |
 | `backend/workflows` | Temporal worker + workflows. Replaced by the job queue; CI no longer builds or deploys it | [AGENTS.md](backend/workflows/AGENTS.md) |
 | `backend/shared` | Shared Go module (repos, models, middleware, transport) | [AGENTS.md](backend/shared/AGENTS.md) |
 | `react-frontend` | Main web app (React 19, Redux Toolkit) | [AGENTS.md](react-frontend/AGENTS.md) |
