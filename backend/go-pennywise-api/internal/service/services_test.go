@@ -9,7 +9,6 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/config"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
@@ -1177,16 +1176,6 @@ func TestPredictionService_Create(t *testing.T) {
 	})
 }
 
-func TestPredictionService_Update(t *testing.T) {
-	budgetID := uuid.New()
-	ctx := budgetCtxWith(budgetID)
-	// Update is a no-op (commented out body) — should return nil
-	repo := &svcPredictionRepo{}
-	cipherRepo := &svcCipherPredictionRepo{}
-	err := NewPredictionService(repo, cipherRepo).Update(ctx, uuid.New(), model.Prediction{})
-	assert.NoError(t, err)
-}
-
 func TestPredictionService_DeleteById(t *testing.T) {
 	budgetID := uuid.New()
 	txnID := uuid.New()
@@ -1296,8 +1285,8 @@ func newAuthSvcForTest(repo *svcAuthRepo) *authService {
 	}
 }
 
-func authTestConfig() config.Config {
-	return config.Config{JWTSecret: "test-jwt-secret"}
+func authTestConfig() AuthConfig {
+	return AuthConfig{JWTSecret: "test-jwt-secret"}
 }
 
 func TestAuthService_GenerateAccessToken(t *testing.T) {
@@ -1305,12 +1294,12 @@ func TestAuthService_GenerateAccessToken(t *testing.T) {
 	svc := newAuthSvcForTest(&svcAuthRepo{})
 
 	t.Run("generates_valid_token", func(t *testing.T) {
-		tok, err := svc.GenerateAccessToken(context.Background(), userID, 1)
+		tok, err := svc.generateAccessToken(userID, 1)
 		assert.NoError(t, err)
 		assert.NotEmpty(t, tok)
 	})
 	t.Run("token_has_correct_subject", func(t *testing.T) {
-		tok, err := svc.GenerateAccessToken(context.Background(), userID, 2)
+		tok, err := svc.generateAccessToken(userID, 2)
 		assert.NoError(t, err)
 		parsed, err := jwt.Parse(tok, func(t *jwt.Token) (any, error) {
 			return []byte("test-jwt-secret"), nil
@@ -1325,7 +1314,7 @@ func TestAuthService_GenerateRefreshToken(t *testing.T) {
 	userID := uuid.New()
 	svc := newAuthSvcForTest(&svcAuthRepo{})
 
-	tok, err := svc.GenerateRefreshToken(context.Background(), userID)
+	tok, err := svc.generateRefreshToken(userID)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, tok)
 
@@ -1342,14 +1331,14 @@ func TestAuthService_ValidateToken(t *testing.T) {
 	svc := newAuthSvcForTest(&svcAuthRepo{})
 
 	t.Run("valid_token_returns_token", func(t *testing.T) {
-		tok, _ := svc.GenerateAccessToken(context.Background(), userID, 1)
-		result, err := svc.ValidateToken(context.Background(), tok)
+		tok, _ := svc.generateAccessToken(userID, 1)
+		result, err := svc.validateToken(context.Background(), tok)
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.True(t, result.Valid)
 	})
 	t.Run("invalid_token_returns_error", func(t *testing.T) {
-		result, err := svc.ValidateToken(context.Background(), "not.a.token")
+		result, err := svc.validateToken(context.Background(), "not.a.token")
 		assert.Error(t, err)
 		assert.Nil(t, result)
 	})
@@ -1362,7 +1351,7 @@ func TestAuthService_ValidateToken(t *testing.T) {
 			"iat": time.Now().Add(-2 * time.Hour).Unix(),
 		})
 		expiredTok, _ := t2.SignedString([]byte("test-jwt-secret"))
-		result, err := svc.ValidateToken(context.Background(), expiredTok)
+		result, err := svc.validateToken(context.Background(), expiredTok)
 		assert.Error(t, err)
 		assert.Nil(t, result)
 	})
@@ -1376,7 +1365,7 @@ func TestAuthService_GetUserById(t *testing.T) {
 		svc := newAuthSvcForTest(repo)
 		user := &model.AuthUser{ID: userID}
 		repo.On("FindByID", mock.Anything, userID).Return(user, nil)
-		result, err := svc.GetUserById(context.Background(), userID)
+		result, err := svc.getUserById(context.Background(), userID)
 		assert.NoError(t, err)
 		assert.Equal(t, userID, result.ID)
 		repo.AssertExpectations(t)
@@ -1385,7 +1374,7 @@ func TestAuthService_GetUserById(t *testing.T) {
 		repo := &svcAuthRepo{}
 		svc := newAuthSvcForTest(repo)
 		repo.On("FindByID", mock.Anything, userID).Return(nil, assert.AnError)
-		result, err := svc.GetUserById(context.Background(), userID)
+		result, err := svc.getUserById(context.Background(), userID)
 		assert.Error(t, err)
 		assert.Nil(t, result)
 		repo.AssertExpectations(t)
@@ -1398,7 +1387,7 @@ func TestAuthService_RefreshToken(t *testing.T) {
 	t.Run("success_returns_new_access_token", func(t *testing.T) {
 		repo := &svcAuthRepo{}
 		svc := newAuthSvcForTest(repo)
-		refreshTok, _ := svc.GenerateRefreshToken(context.Background(), userID)
+		refreshTok, _ := svc.generateRefreshToken(userID)
 		user := &model.AuthUser{ID: userID, TokenVersion: 1}
 		repo.On("FindByID", mock.Anything, userID).Return(user, nil)
 		repo.On("GetRefreshTokenHash", mock.Anything, userID).Return(refreshTok, nil)
@@ -1418,7 +1407,7 @@ func TestAuthService_RefreshToken(t *testing.T) {
 	t.Run("user_not_found_returns_error", func(t *testing.T) {
 		repo := &svcAuthRepo{}
 		svc := newAuthSvcForTest(repo)
-		refreshTok, _ := svc.GenerateRefreshToken(context.Background(), userID)
+		refreshTok, _ := svc.generateRefreshToken(userID)
 		repo.On("FindByID", mock.Anything, userID).Return(nil, assert.AnError)
 		result, err := svc.RefreshToken(context.Background(), refreshTok)
 		assert.Error(t, err)
@@ -1938,7 +1927,7 @@ func TestAuthService_RefreshToken_GetRefreshTokenHashError(t *testing.T) {
 	userID := uuid.New()
 	repo := &svcAuthRepo{}
 	svc := newAuthSvcForTest(repo)
-	refreshTok, _ := svc.GenerateRefreshToken(context.Background(), userID)
+	refreshTok, _ := svc.generateRefreshToken(userID)
 	user := &model.AuthUser{ID: userID, TokenVersion: 1}
 	repo.On("FindByID", mock.Anything, userID).Return(user, nil)
 	repo.On("GetRefreshTokenHash", mock.Anything, userID).Return("", assert.AnError)
@@ -2168,7 +2157,7 @@ func TestAuthService_RefreshToken_NilUser(t *testing.T) {
 	repo := &svcAuthRepo{}
 	svc := newAuthSvcForTest(repo)
 	userID := uuid.New()
-	refreshTok, err := svc.GenerateRefreshToken(context.Background(), userID)
+	refreshTok, err := svc.generateRefreshToken(userID)
 	assert.NoError(t, err)
 
 	repo.On("FindByID", mock.Anything, userID).Return((*model.AuthUser)(nil), nil)

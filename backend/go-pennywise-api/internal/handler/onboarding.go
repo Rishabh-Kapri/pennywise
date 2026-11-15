@@ -11,21 +11,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type OnboardingHandler interface {
-	Get(c *gin.Context)
-	Update(c *gin.Context)
-	BackfillEmails(c *gin.Context)
-}
-
-type onboardingHandler struct {
+type OnboardingHandler struct {
 	service service.OnboardingService
 }
 
-func NewOnboardingHandler(service service.OnboardingService) OnboardingHandler {
-	return &onboardingHandler{service: service}
+func NewOnboardingHandler(service service.OnboardingService) *OnboardingHandler {
+	return &OnboardingHandler{service: service}
 }
 
-func (h *onboardingHandler) Get(c *gin.Context) {
+func (h *OnboardingHandler) Get(c *gin.Context) {
 	onboarding, err := h.service.Get(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -34,7 +28,7 @@ func (h *onboardingHandler) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, onboarding)
 }
 
-func (h *onboardingHandler) Update(c *gin.Context) {
+func (h *OnboardingHandler) Update(c *gin.Context) {
 	var body model.UpdateBudgetOnboardingRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -52,7 +46,7 @@ func (h *onboardingHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, onboarding)
 }
 
-func (h *onboardingHandler) BackfillEmails(c *gin.Context) {
+func (h *OnboardingHandler) BackfillEmails(c *gin.Context) {
 	ctx := c.Request.Context()
 	userID, err := utils.UserIDFromContext(ctx)
 	if err != nil {
@@ -79,4 +73,10 @@ func (h *onboardingHandler) BackfillEmails(c *gin.Context) {
 	default:
 		c.JSON(http.StatusAccepted, res)
 	}
+}
+
+func (h *OnboardingHandler) Routes(r gin.IRouter) {
+	r.GET("/onboarding", h.Get)
+	r.PATCH("/onboarding", h.Update)
+	r.POST("/onboarding/email-backfill", h.BackfillEmails)
 }

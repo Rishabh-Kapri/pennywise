@@ -15,20 +15,15 @@ import (
 	"github.com/google/uuid"
 )
 
-type PredictionReviewHandler interface {
-	Queue(c *gin.Context)
-	Review(c *gin.Context)
-}
-
-type predictionReviewHandler struct {
+type PredictionReviewHandler struct {
 	service service.PredictionReviewService
 }
 
-func NewPredictionReviewHandler(service service.PredictionReviewService) PredictionReviewHandler {
-	return &predictionReviewHandler{service: service}
+func NewPredictionReviewHandler(service service.PredictionReviewService) *PredictionReviewHandler {
+	return &PredictionReviewHandler{service: service}
 }
 
-func (h *predictionReviewHandler) Queue(c *gin.Context) {
+func (h *PredictionReviewHandler) Queue(c *gin.Context) {
 	ctx := c.Request.Context()
 	utils.MustBudgetID(ctx)
 
@@ -51,7 +46,7 @@ func (h *predictionReviewHandler) Queue(c *gin.Context) {
 	c.JSON(http.StatusOK, items)
 }
 
-func (h *predictionReviewHandler) Review(c *gin.Context) {
+func (h *PredictionReviewHandler) Review(c *gin.Context) {
 	ctx := c.Request.Context()
 	utils.MustBudgetID(ctx)
 
@@ -77,4 +72,9 @@ func (h *predictionReviewHandler) Review(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, item)
+}
+
+func (h *PredictionReviewHandler) Routes(r gin.IRouter) {
+	r.GET("/predictions/review", h.Queue)
+	r.POST("/predictions/review/:id", h.Review)
 }

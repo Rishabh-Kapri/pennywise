@@ -11,23 +11,15 @@ import (
 	"github.com/google/uuid"
 )
 
-type TagHandler interface {
-	List(c *gin.Context)
-	Search(c *gin.Context)
-	Create(c *gin.Context)
-	Update(c *gin.Context)
-	DeleteById(c *gin.Context)
-}
-
-type tagHandler struct {
+type TagHandler struct {
 	service service.TagService
 }
 
-func NewTagHandler(service service.TagService) TagHandler {
-	return &tagHandler{service: service}
+func NewTagHandler(service service.TagService) *TagHandler {
+	return &TagHandler{service: service}
 }
 
-func (h *tagHandler) List(c *gin.Context) {
+func (h *TagHandler) List(c *gin.Context) {
 	ctx := c.Request.Context()
 	tags, err := h.service.GetAll(ctx)
 	if err != nil {
@@ -37,7 +29,7 @@ func (h *tagHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, tags)
 }
 
-func (h *tagHandler) Search(c *gin.Context) {
+func (h *TagHandler) Search(c *gin.Context) {
 	ctx := c.Request.Context()
 	name := strings.TrimSpace(c.Query("name"))
 	tags, err := h.service.Search(ctx, name)
@@ -48,7 +40,7 @@ func (h *tagHandler) Search(c *gin.Context) {
 	c.JSON(http.StatusOK, tags)
 }
 
-func (h *tagHandler) Create(c *gin.Context) {
+func (h *TagHandler) Create(c *gin.Context) {
 	ctx := c.Request.Context()
 	var body model.Tag
 	if err := c.ShouldBindJSON(&body); err != nil {
@@ -63,7 +55,7 @@ func (h *tagHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, createdTag)
 }
 
-func (h *tagHandler) Update(c *gin.Context) {
+func (h *TagHandler) Update(c *gin.Context) {
 	ctx := c.Request.Context()
 	id, ok := c.Params.Get("id")
 	if !ok {
@@ -88,7 +80,7 @@ func (h *tagHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Tag updated"})
 }
 
-func (h *tagHandler) DeleteById(c *gin.Context) {
+func (h *TagHandler) DeleteById(c *gin.Context) {
 	ctx := c.Request.Context()
 	id, ok := c.Params.Get("id")
 	if !ok {
@@ -106,4 +98,12 @@ func (h *tagHandler) DeleteById(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Tag deleted"})
+}
+
+func (h *TagHandler) Routes(r gin.IRouter) {
+	r.GET("/tags", h.List)
+	r.GET("/tags/search", h.Search)
+	r.POST("/tags", h.Create)
+	r.PATCH("/tags/:id", h.Update)
+	r.DELETE("/tags/:id", h.DeleteById)
 }

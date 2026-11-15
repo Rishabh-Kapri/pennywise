@@ -8,8 +8,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/config"
-
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
@@ -21,12 +19,26 @@ import (
 	"golang.org/x/oauth2/google"
 )
 
+// AccessTokenTTL and RefreshTokenTTL are how long the tokens a session hands
+// out stay valid.
+const (
+	AccessTokenTTL  = 15 * time.Minute
+	RefreshTokenTTL = 30 * 24 * time.Hour
+)
+
+// AuthConfig is what the auth service needs from the environment.
+type AuthConfig struct {
+	JWTSecret             string
+	GoogleClientID        string
+	GoogleClientSecret    string
+	GoogleAndroidClientID string
+}
+
 type AuthService interface {
 	LoginWithGoogle(ctx context.Context, req model.GoogleLoginRequest) (*model.AuthUserResponse, string, string, error)
-	GenerateAccessToken(ctx context.Context, userID uuid.UUID, version int) (string, error)
-	GenerateRefreshToken(ctx context.Context, userID uuid.UUID) (string, error)
-	ValidateToken(ctx context.Context, tokenString string) (*jwt.Token, error)
-	GetUserById(ctx context.Context, userID uuid.UUID) (*model.AuthUser, error)
+	// StartSession issues an access and a refresh token for a signed-in user
+	// and saves the refresh token. Every login ends here.
+	StartSession(ctx context.Context, user *model.UserWithCredentials) (*model.AuthUserResponse, string, string, error)
 	GetCurrentUser(ctx context.Context, userID uuid.UUID) (*model.CurrentAuthUserResponse, error)
 	GetGoogleUserByEmail(ctx context.Context, email string) (*model.GoogleUserInfo, error)
 	RefreshToken(ctx context.Context, refreshToken string) (*model.RefreshTokenResponse, error)
@@ -43,7 +55,7 @@ type googleUser struct {
 }
 
 type authService struct {
-	config         config.Config
+	config         AuthConfig
 	repo           repository.AuthRepository
 	googleProvider repository.GoogleProviderRepository
 	dbTxn          repository.DBTxn
@@ -61,10 +73,9 @@ func (s *authService) getOauth2Config() *oauth2.Config {
 	return &oauth2.Config{
 		ClientID:     s.config.GoogleClientID,
 		ClientSecret: s.config.GoogleClientSecret,
-		// RedirectURL:  s.config.CallbackURL,
-		RedirectURL: "postmessage",
-		Endpoint:    google.Endpoint,
-		Scopes:      googleWebLoginScopes,
+		RedirectURL:  "postmessage",
+		Endpoint:     google.Endpoint,
+		Scopes:       googleWebLoginScopes,
 	}
 }
 
@@ -104,11 +115,12 @@ func (s *authService) getOauth2ConfigForLogin(req model.GoogleLoginRequest) (*oa
 }
 
 func NewAuthService(
+	cfg AuthConfig,
 	r repository.AuthRepository,
 	googleProvider repository.GoogleProviderRepository,
 	dbTxn repository.DBTxn,
 ) AuthService {
-	return &authService{dbTxn: dbTxn, repo: r, googleProvider: googleProvider, config: config.Load()}
+	return &authService{dbTxn: dbTxn, repo: r, googleProvider: googleProvider, config: cfg}
 }
 
 func (s *authService) fetchGoogleUser(
@@ -216,26 +228,31 @@ func (s *authService) LoginWithGoogle(
 	}
 	logger.Info("user found", "authUser", *userWithCreds.AuthUser, "googleProvider", *userWithCreds.GoogleProvider)
 
-	accessToken, err := s.GenerateAccessToken(ctx, userWithCreds.AuthUser.ID, userWithCreds.AuthUser.TokenVersion)
+	return s.StartSession(ctx, userWithCreds)
+}
+
+func (s *authService) StartSession(
+	ctx context.Context,
+	user *model.UserWithCredentials,
+) (*model.AuthUserResponse, string, string, error) {
+	authUser := user.AuthUser
+	accessToken, err := s.generateAccessToken(authUser.ID, authUser.TokenVersion)
 	if err != nil {
 		return nil, "", "", errs.Wrap(errs.CodeAuthCreateFailed, "failed to generate access token", err)
 	}
-
-	refreshToken, err := s.GenerateRefreshToken(ctx, userWithCreds.AuthUser.ID)
+	refreshToken, err := s.generateRefreshToken(authUser.ID)
 	if err != nil {
 		return nil, "", "", errs.Wrap(errs.CodeAuthCreateFailed, "failed to generate refresh token", err)
 	}
-
-	tokenHash := refreshToken
-	if err := s.repo.SaveRefreshTokenHash(ctx, userWithCreds.AuthUser.ID, tokenHash); err != nil {
+	if err := s.repo.SaveRefreshTokenHash(ctx, authUser.ID, refreshToken); err != nil {
 		return nil, "", "", errs.Wrap(errs.CodeAuthCreateFailed, "failed to save refresh token", err)
 	}
 
 	resUser := model.AuthUserResponse{
-		ID:      userWithCreds.AuthUser.ID,
-		Email:   userWithCreds.GoogleProvider.Email,
-		Name:    userWithCreds.GoogleProvider.Name,
-		Picture: userWithCreds.GoogleProvider.Picture,
+		ID:      authUser.ID,
+		Email:   user.GoogleProvider.Email,
+		Name:    user.GoogleProvider.Name,
+		Picture: user.GoogleProvider.Picture,
 	}
 	return &resUser, accessToken, refreshToken, nil
 }
@@ -308,13 +325,13 @@ func (s *authService) createGoogleProviderForUser(
 	return result, nil
 }
 
-func (s *authService) GenerateAccessToken(ctx context.Context, userID uuid.UUID, version int) (string, error) {
+func (s *authService) generateAccessToken(userID uuid.UUID, version int) (string, error) {
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub":     userID.String(),                         // subject (user ID)
-		"iss":     "pennywise",                             // issuer
-		"exp":     time.Now().Add(time.Minute * 15).Unix(), // expire in 15 minutes
-		"version": version,                                 // token version for invalidation
-		"iat":     time.Now().Unix(),                       // issued at
+		"sub":     userID.String(), // subject (user ID)
+		"iss":     "pennywise",     // issuer
+		"exp":     time.Now().Add(AccessTokenTTL).Unix(),
+		"version": version,           // token version for invalidation
+		"iat":     time.Now().Unix(), // issued at
 	})
 
 	tokenString, err := t.SignedString([]byte(s.config.JWTSecret))
@@ -324,12 +341,12 @@ func (s *authService) GenerateAccessToken(ctx context.Context, userID uuid.UUID,
 	return tokenString, nil
 }
 
-func (s *authService) GenerateRefreshToken(ctx context.Context, userID uuid.UUID) (string, error) {
+func (s *authService) generateRefreshToken(userID uuid.UUID) (string, error) {
 	t := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub": userID.String(),                            // subject (user ID)
-		"iss": "pennywise",                                // issuer
-		"exp": time.Now().Add(time.Hour * 24 * 30).Unix(), // expire in 30 days
-		"iat": time.Now().Unix(),                          // issued at
+		"sub": userID.String(), // subject (user ID)
+		"iss": "pennywise",     // issuer
+		"exp": time.Now().Add(RefreshTokenTTL).Unix(),
+		"iat": time.Now().Unix(), // issued at
 	})
 
 	tokenString, err := t.SignedString([]byte(s.config.JWTSecret))
@@ -339,7 +356,7 @@ func (s *authService) GenerateRefreshToken(ctx context.Context, userID uuid.UUID
 	return tokenString, nil
 }
 
-func (s *authService) ValidateToken(ctx context.Context, tokenString string) (*jwt.Token, error) {
+func (s *authService) validateToken(ctx context.Context, tokenString string) (*jwt.Token, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (any, error) {
 		return []byte(s.config.JWTSecret), nil
 	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
@@ -355,7 +372,7 @@ func (s *authService) ValidateToken(ctx context.Context, tokenString string) (*j
 	return token, nil
 }
 
-func (s *authService) GetUserById(ctx context.Context, userID uuid.UUID) (*model.AuthUser, error) {
+func (s *authService) getUserById(ctx context.Context, userID uuid.UUID) (*model.AuthUser, error) {
 	user, err := s.repo.FindByID(ctx, userID)
 	if err != nil {
 		return nil, errs.Wrap(errs.CodeAuthLookupFailed, "failed to get user by ID", err)
@@ -404,7 +421,7 @@ func (s *authService) GetCurrentUser(ctx context.Context, userID uuid.UUID) (*mo
 
 func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*model.RefreshTokenResponse, error) {
 	// Validate the refresh token JWT
-	token, err := s.ValidateToken(ctx, refreshToken)
+	token, err := s.validateToken(ctx, refreshToken)
 	if err != nil {
 		return nil, errs.Wrap(errs.CodeAuthInvalidCredentials, "invalid refresh token", err)
 	}
@@ -421,7 +438,7 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*m
 	}
 
 	// Fetch the user and verify the refresh token hash matches
-	user, err := s.GetUserById(ctx, userUuid)
+	user, err := s.getUserById(ctx, userUuid)
 	logger.Logger(ctx).Debug("USER INFO", "user", user, "error", err)
 	if errors.Is(err, repository.ErrUserNotFound) {
 		return nil, errs.Wrap(errs.CodeAuthInvalidCredentials, "user not found", err)
@@ -446,13 +463,13 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*m
 	// }
 
 	// Generate new access token with the same version
-	newAccessToken, err := s.GenerateAccessToken(ctx, user.ID, user.TokenVersion)
+	newAccessToken, err := s.generateAccessToken(user.ID, user.TokenVersion)
 	if err != nil {
 		return nil, errs.Wrap(errs.CodeAuthCreateFailed, "failed to generate new access token", err)
 	}
 	return &model.RefreshTokenResponse{
 		AccessToken: newAccessToken,
-		ExpiresIn:   900, // 15 minutes
+		ExpiresIn:   int(AccessTokenTTL.Seconds()),
 	}, nil
 }
 

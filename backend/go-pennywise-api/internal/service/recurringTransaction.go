@@ -171,3 +171,39 @@ func (s *recurringTransactionService) materializeRule(
 	}
 	return created, nil
 }
+
+// RunRecurringSchedule materializes due recurring transactions for every
+// budget once an hour until ctx ends. Each rule's next_date drives it, so a
+// missed tick or a restart is caught up on the next pass.
+func RunRecurringSchedule(ctx context.Context, s RecurringTransactionService) {
+	run := func() {
+		result, err := s.RunDueAllBudgets(ctx)
+		if err != nil {
+			logger.Logger(ctx).Error("recurring transactions run failed", "error", err)
+			return
+		}
+		if result.Created > 0 || result.Skipped > 0 {
+			logger.Logger(ctx).Info("recurring transactions run complete",
+				"created", result.Created, "skipped", result.Skipped)
+		}
+	}
+
+	// let the server finish coming up before the first pass
+	select {
+	case <-time.After(30 * time.Second):
+		run()
+	case <-ctx.Done():
+		return
+	}
+
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			run()
+		case <-ctx.Done():
+			return
+		}
+	}
+}

@@ -29,24 +29,14 @@ func (m *mockDemoService) LoginAsDemo(ctx context.Context) (*model.AuthUserRespo
 }
 
 func TestDemoHandler_LoginAsDemo(t *testing.T) {
-	t.Run("returns_404_when_demo_mode_disabled", func(t *testing.T) {
-		t.Setenv("DEMO_MODE", "false")
-		svc := &mockDemoService{}
-		w, c := makeReq("POST", "/auth/demo", nil)
-		NewDemoHandler(svc).LoginAsDemo(c)
-		assert.Equal(t, http.StatusNotFound, w.Code)
-		svc.AssertNotCalled(t, "LoginAsDemo")
-	})
-
-	t.Run("returns_tokens_when_enabled", func(t *testing.T) {
-		t.Setenv("DEMO_MODE", "true")
+	t.Run("returns_tokens", func(t *testing.T) {
 		svc := &mockDemoService{}
 		svc.On("LoginAsDemo", mock.Anything).Return(
 			&model.AuthUserResponse{ID: uuid.New(), Email: "demo@pennywise.local", Name: "Demo User"},
 			"access-token", "refresh-token", nil,
 		)
 		w, c := makeReq("POST", "/auth/demo", nil)
-		NewDemoHandler(svc).LoginAsDemo(c)
+		NewDemoHandler(svc, "").LoginAsDemo(c)
 		assert.Equal(t, http.StatusOK, w.Code)
 
 		var resp model.LoginResponse
@@ -59,11 +49,10 @@ func TestDemoHandler_LoginAsDemo(t *testing.T) {
 	})
 
 	t.Run("service_error_returns_500", func(t *testing.T) {
-		t.Setenv("DEMO_MODE", "true")
 		svc := &mockDemoService{}
 		svc.On("LoginAsDemo", mock.Anything).Return(nil, "", "", assert.AnError)
 		w, c := makeReq("POST", "/auth/demo", nil)
-		NewDemoHandler(svc).LoginAsDemo(c)
+		NewDemoHandler(svc, "").LoginAsDemo(c)
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
 	})
 }

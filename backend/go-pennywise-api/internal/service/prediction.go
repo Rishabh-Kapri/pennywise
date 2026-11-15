@@ -16,7 +16,6 @@ type PredictionService interface {
 	GetAllCipherPredictions(ctx context.Context) ([]model.CipherPredictionRecord, error)
 	GetByTransactionID(ctx context.Context, transactionID uuid.UUID) (*model.TransactionPredictionDetails, error)
 	Create(ctx context.Context, prediction model.Prediction) ([]model.Prediction, error)
-	Update(ctx context.Context, id uuid.UUID, prediction model.Prediction) error
 	DeleteById(ctx context.Context, id uuid.UUID) error
 	CreateCipherPrediction(ctx context.Context, p model.CipherPredictionRecord) (*model.CipherPredictionRecord, error)
 }
@@ -67,13 +66,6 @@ func (s *predictionService) Create(ctx context.Context, prediction model.Predict
 	budgetId := utils.MustBudgetID(ctx)
 	prediction.BudgetID = budgetId
 	return s.repo.Create(ctx, prediction)
-}
-
-func (s *predictionService) Update(ctx context.Context, id uuid.UUID, prediction model.Prediction) error {
-	// budgetId := utils.MustBudgetID(ctx)
-	// INFO: prediction update for now will only be done through transactions update
-	// return s.repo.Update(ctx, budgetId, id, prediction)
-	return nil
 }
 
 func (s *predictionService) DeleteById(ctx context.Context, id uuid.UUID) error {

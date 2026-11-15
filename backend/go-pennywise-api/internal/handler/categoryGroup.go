@@ -11,22 +11,15 @@ import (
 	"github.com/google/uuid"
 )
 
-type CategoryGroupHandler interface {
-	List(c *gin.Context)
-	Create(c *gin.Context)
-	Update(c *gin.Context)
-	DeleteById(c *gin.Context)
-}
-
-type categoryGroupHandler struct {
+type CategoryGroupHandler struct {
 	service service.CategoryGroupService
 }
 
-func NewCategoryGroupHandler(service service.CategoryGroupService) CategoryGroupHandler {
-	return &categoryGroupHandler{service: service}
+func NewCategoryGroupHandler(service service.CategoryGroupService) *CategoryGroupHandler {
+	return &CategoryGroupHandler{service: service}
 }
 
-func (h *categoryGroupHandler) List(c *gin.Context) {
+func (h *CategoryGroupHandler) List(c *gin.Context) {
 	ctx := c.Request.Context()
 	month := strings.TrimSpace(c.Query("month"))
 	groups, err := h.service.GetAll(ctx, month)
@@ -37,7 +30,7 @@ func (h *categoryGroupHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, groups)
 }
 
-func (h *categoryGroupHandler) Create(c *gin.Context) {
+func (h *CategoryGroupHandler) Create(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	var body model.CategoryGroup
@@ -53,7 +46,7 @@ func (h *categoryGroupHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, createdGroup)
 }
 
-func (h *categoryGroupHandler) Update(c *gin.Context) {
+func (h *CategoryGroupHandler) Update(c *gin.Context) {
 	ctx := c.Request.Context()
 	id, ok := c.Params.Get("id")
 	if !ok {
@@ -78,7 +71,7 @@ func (h *categoryGroupHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, body)
 }
 
-func (h *categoryGroupHandler) DeleteById(c *gin.Context) {
+func (h *CategoryGroupHandler) DeleteById(c *gin.Context) {
 	ctx := c.Request.Context()
 	id, ok := c.Params.Get("id")
 	if !ok {
@@ -96,4 +89,11 @@ func (h *categoryGroupHandler) DeleteById(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
+}
+
+func (h *CategoryGroupHandler) Routes(r gin.IRouter) {
+	r.GET("/category-groups", h.List)
+	r.POST("/category-groups", h.Create)
+	r.PUT("/category-groups/:id", h.Update)
+	r.DELETE("/category-groups/:id", h.DeleteById)
 }

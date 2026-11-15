@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/middleware"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
@@ -14,30 +15,12 @@ import (
 	"github.com/google/uuid"
 )
 
-type TransactionHandler interface {
-	List(c *gin.Context)
-	ListNormalized(c *gin.Context)
-	Create(c *gin.Context)
-	Update(c *gin.Context)
-	UpdateLocation(c *gin.Context)
-	UpdateStatus(c *gin.Context)
-	BackfillLearning(c *gin.Context)
-	LearningStatus(c *gin.Context)
-	// DeleteById deletes a transaction by its ID.
-	// It retrieves the budget context and the transaction ID from the request parameters,
-	// parses the ID, and then calls the service to perform the deletion.
-	// Returns appropriate HTTP status and message based on the outcome.
-	DeleteById(c *gin.Context)
-	// BulkDelete is POST /transactions/bulk-delete.
-	BulkDelete(c *gin.Context)
-}
-
-type transactionHandler struct {
+type TransactionHandler struct {
 	service service.TransactionService
 }
 
-func NewTransactionHandler(service service.TransactionService) TransactionHandler {
-	return &transactionHandler{service: service}
+func NewTransactionHandler(service service.TransactionService) *TransactionHandler {
+	return &TransactionHandler{service: service}
 }
 
 // transactionIDURI is the :id path param of the transaction routes.
@@ -99,7 +82,7 @@ func bindingError(err error) string {
 	return err.Error()
 }
 
-func (h *transactionHandler) List(c *gin.Context) {
+func (h *TransactionHandler) List(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	transactions, err := h.service.GetAll(ctx)
@@ -132,7 +115,7 @@ func stringToUUIDs(ids []string) ([]uuid.UUID, error) {
 	return filterIds, nil
 }
 
-func (h *transactionHandler) ListNormalized(c *gin.Context) {
+func (h *TransactionHandler) ListNormalized(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	var q listTransactionsQuery
@@ -211,7 +194,7 @@ func (h *transactionHandler) ListNormalized(c *gin.Context) {
 	c.JSON(http.StatusOK, transactions)
 }
 
-func (h *transactionHandler) Create(c *gin.Context) {
+func (h *TransactionHandler) Create(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	var body model.Transaction
@@ -227,7 +210,7 @@ func (h *transactionHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, createdTxns)
 }
 
-func (h *transactionHandler) Update(c *gin.Context) {
+func (h *TransactionHandler) Update(c *gin.Context) {
 	ctx := c.Request.Context()
 	parsedId, ok := bindTransactionID(c)
 	if !ok {
@@ -248,7 +231,7 @@ func (h *transactionHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, body)
 }
 
-func (h *transactionHandler) UpdateLocation(c *gin.Context) {
+func (h *TransactionHandler) UpdateLocation(c *gin.Context) {
 	ctx := c.Request.Context()
 	parsedId, ok := bindTransactionID(c)
 	if !ok {
@@ -269,7 +252,7 @@ func (h *transactionHandler) UpdateLocation(c *gin.Context) {
 	c.JSON(http.StatusOK, updated)
 }
 
-func (h *transactionHandler) UpdateStatus(c *gin.Context) {
+func (h *TransactionHandler) UpdateStatus(c *gin.Context) {
 	ctx := c.Request.Context()
 	parsedId, ok := bindTransactionID(c)
 	if !ok {
@@ -291,7 +274,7 @@ func (h *transactionHandler) UpdateStatus(c *gin.Context) {
 
 // LearningStatus reports how many of the budget's predictions have taught the
 // pipeline, so the UI can show whether a backfill is worth running.
-func (h *transactionHandler) LearningStatus(c *gin.Context) {
+func (h *TransactionHandler) LearningStatus(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	stats, err := h.service.LearningStatus(ctx)
@@ -306,7 +289,7 @@ func (h *transactionHandler) LearningStatus(c *gin.Context) {
 // the pipeline. Returns as soon as the work is queued -- it runs in the
 // background because every item costs two LLM round-trips and a page of them
 // runs well past the proxy's request timeout. Poll LearningStatus for progress.
-func (h *transactionHandler) BackfillLearning(c *gin.Context) {
+func (h *TransactionHandler) BackfillLearning(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	var body model.LearningBackfillRequest
@@ -339,7 +322,7 @@ type bulkDeleteRequest struct {
 	IDs []uuid.UUID `json:"ids" binding:"required,min=1,dive,required"`
 }
 
-func (h *transactionHandler) BulkDelete(c *gin.Context) {
+func (h *TransactionHandler) BulkDelete(c *gin.Context) {
 	var body bulkDeleteRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": bindingError(err)})
@@ -358,7 +341,7 @@ func (h *transactionHandler) BulkDelete(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"deleted": deleted})
 }
 
-func (h *transactionHandler) DeleteById(c *gin.Context) {
+func (h *TransactionHandler) DeleteById(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	parsedId, ok := bindTransactionID(c)
@@ -373,4 +356,17 @@ func (h *transactionHandler) DeleteById(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, nil)
+}
+
+func (h *TransactionHandler) Routes(r gin.IRouter) {
+	r.GET("/transactions", h.List)
+	r.GET("/transactions/normalized", h.ListNormalized)
+	r.POST("/transactions", h.Create)
+	r.PATCH("/transactions/:id", h.Update)
+	r.PATCH("/transactions/:id/status", h.UpdateStatus)
+	r.PATCH("/transactions/:id/location", h.UpdateLocation)
+	r.DELETE("/transactions/:id", h.DeleteById)
+	r.POST("/transactions/bulk-delete", middleware.RequireScope(model.ScopeDelete), h.BulkDelete)
+	r.GET("/predictions/learning", h.LearningStatus)
+	r.POST("/predictions/learning/backfill", h.BackfillLearning)
 }

@@ -13,18 +13,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type AIProviderHandler interface {
-	List(c *gin.Context)
-	Upsert(c *gin.Context)
-	Delete(c *gin.Context)
-}
-
-type aiProviderHandler struct {
+type AIProviderHandler struct {
 	service service.AIProviderService
 }
 
-func NewAIProviderHandler(service service.AIProviderService) AIProviderHandler {
-	return &aiProviderHandler{service: service}
+func NewAIProviderHandler(service service.AIProviderService) *AIProviderHandler {
+	return &AIProviderHandler{service: service}
 }
 
 func aiProviderErrorStatus(err error) int {
@@ -41,7 +35,7 @@ func aiProviderErrorStatus(err error) int {
 	return http.StatusInternalServerError
 }
 
-func (h *aiProviderHandler) List(c *gin.Context) {
+func (h *AIProviderHandler) List(c *gin.Context) {
 	ctx := c.Request.Context()
 	userID, err := utils.UserIDFromContext(ctx)
 	if err != nil {
@@ -56,7 +50,7 @@ func (h *aiProviderHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, providers)
 }
 
-func (h *aiProviderHandler) Upsert(c *gin.Context) {
+func (h *AIProviderHandler) Upsert(c *gin.Context) {
 	ctx := c.Request.Context()
 	userID, err := utils.UserIDFromContext(ctx)
 	if err != nil {
@@ -76,7 +70,7 @@ func (h *aiProviderHandler) Upsert(c *gin.Context) {
 	c.JSON(http.StatusOK, provider)
 }
 
-func (h *aiProviderHandler) Delete(c *gin.Context) {
+func (h *AIProviderHandler) Delete(c *gin.Context) {
 	ctx := c.Request.Context()
 	userID, err := utils.UserIDFromContext(ctx)
 	if err != nil {
@@ -88,4 +82,10 @@ func (h *aiProviderHandler) Delete(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+func (h *AIProviderHandler) Routes(r gin.IRouter) {
+	r.GET("/ai-providers", h.List)
+	r.PUT("/ai-providers/:provider", h.Upsert)
+	r.DELETE("/ai-providers/:provider", h.Delete)
 }

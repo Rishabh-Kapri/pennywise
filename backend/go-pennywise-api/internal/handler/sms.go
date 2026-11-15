@@ -20,22 +20,18 @@ type SmsIngestReq struct {
 	Source string `json:"source" binding:"omitempty,oneof=live inbox"`
 }
 
-type SmsHandler interface {
-	Ingest(c *gin.Context)
-}
-
-type smsHandler struct {
+type SmsHandler struct {
 	service service.SmsService
 }
 
-func NewSmsHandler(service service.SmsService) SmsHandler {
-	return &smsHandler{service: service}
+func NewSmsHandler(service service.SmsService) *SmsHandler {
+	return &SmsHandler{service: service}
 }
 
 // Ingest runs the SMS through cipher's decisions endpoint and logs the
 // verdict and cost (see service.SmsService) until the SMS queue exists. A
 // non-2xx makes the app keep the message for retry and show the error.
-func (h *smsHandler) Ingest(c *gin.Context) {
+func (h *SmsHandler) Ingest(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	var body SmsIngestReq
@@ -55,4 +51,8 @@ func (h *smsHandler) Ingest(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, entry)
+}
+
+func (h *SmsHandler) Routes(r gin.IRouter) {
+	r.POST("/sms/ingest", h.Ingest)
 }

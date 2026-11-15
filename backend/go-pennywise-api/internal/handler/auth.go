@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/config"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
@@ -14,26 +13,37 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type AuthHandler interface {
-	LoginWithGoogle(c *gin.Context)
-	RefreshToken(c *gin.Context)
-	GetCurrentUser(c *gin.Context)
-	GetProviderUser(c *gin.Context)
-	// Logout(c *gin.Context)
-	// LogoutAll(c *gin.Context)
-}
-
-type authHandler struct {
+type AuthHandler struct {
 	service service.AuthService
-	config  config.Config
+	// cookieDomain is DOMAIN, the domain the session cookies are set for.
+	cookieDomain string
 }
 
-func NewAuthHandler(service service.AuthService) AuthHandler {
-	return &authHandler{service, config.Load()}
+func NewAuthHandler(service service.AuthService, cookieDomain string) *AuthHandler {
+	return &AuthHandler{service: service, cookieDomain: cookieDomain}
+}
+
+// setSessionCookies sets the access cookie, and the refresh cookie when
+// refreshToken isn't empty.
+func setSessionCookies(c *gin.Context, domain, accessToken, refreshToken string) {
+	c.SetCookie("access_token", accessToken, 3600, "/", domain, false, true)
+	if refreshToken != "" {
+		c.SetCookie("refresh_token", refreshToken, 3600*24*7, "/", domain, false, true)
+	}
+}
+
+// loginResponse is what every login answers with.
+func loginResponse(user model.AuthUserResponse, accessToken, refreshToken string) model.LoginResponse {
+	return model.LoginResponse{
+		User:         user,
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		ExpiresIn:    int(service.AccessTokenTTL.Seconds()),
+	}
 }
 
 // LoginWithGoogle handles POST /api/auth/google
-func (h *authHandler) LoginWithGoogle(c *gin.Context) {
+func (h *AuthHandler) LoginWithGoogle(c *gin.Context) {
 	var req model.GoogleLoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "code is required"})
@@ -46,23 +56,12 @@ func (h *authHandler) LoginWithGoogle(c *gin.Context) {
 		return
 	}
 
-	c.SetCookie("access_token", accessToken, 3600, "/", h.config.Domain, false, true)
-	c.SetCookie("refresh_token", refreshToken, 3600*24*7, "/", h.config.Domain, false, true)
-	c.JSON(http.StatusOK, model.LoginResponse{
-		User: model.AuthUserResponse{
-			ID:      user.ID,
-			Email:   user.Email,
-			Name:    user.Name,
-			Picture: user.Picture,
-		},
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		ExpiresIn:    900, // 15 minutes in seconds
-	})
+	setSessionCookies(c, h.cookieDomain, accessToken, refreshToken)
+	c.JSON(http.StatusOK, loginResponse(*user, accessToken, refreshToken))
 }
 
 // RefreshToken handles POST /api/auth/refresh
-func (h *authHandler) RefreshToken(c *gin.Context) {
+func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	var req model.RefreshTokenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "refreshToken is required"})
@@ -70,7 +69,6 @@ func (h *authHandler) RefreshToken(c *gin.Context) {
 	}
 
 	response, err := h.service.RefreshToken(c.Request.Context(), req.RefreshToken)
-	logger.Logger(c.Request.Context()).Debug("refresh token response", "response", response, "error", err)
 	// Clients sign the user out on a 401, so it's only for a token that's
 	// really no good, never for an outage.
 	if errs.HasCode(err, errs.CodeAuthInvalidCredentials) {
@@ -83,40 +81,12 @@ func (h *authHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	c.SetCookie("access_token", response.AccessToken, 3600, "/", h.config.Domain, false, true)
+	setSessionCookies(c, h.cookieDomain, response.AccessToken, "")
 	c.JSON(http.StatusOK, response)
-	// c.JSON(http.StatusOK, "ok")
 }
 
-// // Logout handles POST /api/auth/logout
-//
-//	func (h *authHandler) Logout(c *gin.Context) {
-//		// For stateless JWT, logout is handled client-side by clearing tokens
-//		// This endpoint is mainly for logging/audit purposes
-//		c.JSON(http.StatusOK, gin.H{"message": "logged out successfully"})
-//	}
-//
-// // LogoutAll handles POST /api/auth/logout-all
-//
-//	func (h *authHandler) LogoutAll(c *gin.Context) {
-//		// Get user from context (set by auth middleware)
-//		userID, exists := c.Get("userID")
-//		if !exists {
-//			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-//			return
-//		}
-//
-//		err := h.service.LogoutAllDevices(c.Request.Context(), userID.(model.AuthUserResponse).ID)
-//		if err != nil {
-//			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to logout"})
-//			return
-//		}
-//
-//		c.JSON(http.StatusOK, gin.H{"message": "logged out from all devices"})
-//	}
-//
 // GetCurrentUser handles GET /api/auth/users/me.
-func (h *authHandler) GetCurrentUser(c *gin.Context) {
+func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 	ctx := c.Request.Context()
 	userID, err := utils.UserIDFromContext(ctx)
 	if err != nil {
@@ -133,7 +103,7 @@ func (h *authHandler) GetCurrentUser(c *gin.Context) {
 }
 
 // GetProviderUser handles GET /api/auth/:provider/users?email=...
-func (h *authHandler) GetProviderUser(c *gin.Context) {
+func (h *AuthHandler) GetProviderUser(c *gin.Context) {
 	ctx := c.Request.Context()
 	provider := c.Param("provider")
 
@@ -154,4 +124,11 @@ func (h *authHandler) GetProviderUser(c *gin.Context) {
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported provider: " + provider})
 	}
+}
+
+func (h *AuthHandler) Routes(public, user gin.IRouter) {
+	public.POST("/auth/google", h.LoginWithGoogle)
+	public.POST("/auth/refresh", h.RefreshToken)
+	user.GET("/auth/users/me", h.GetCurrentUser)
+	user.GET("/auth/:provider/users", h.GetProviderUser)
 }

@@ -11,22 +11,15 @@ import (
 	"github.com/google/uuid"
 )
 
-type AccountHandler interface {
-	List(c *gin.Context)
-	Search(c *gin.Context)
-	Create(c *gin.Context)
-	Update(c *gin.Context)
-}
-
-type accountHandler struct {
+type AccountHandler struct {
 	service service.AccountService
 }
 
-func NewAccountHandler(service service.AccountService) AccountHandler {
-	return &accountHandler{service: service}
+func NewAccountHandler(service service.AccountService) *AccountHandler {
+	return &AccountHandler{service: service}
 }
 
-func (h *accountHandler) List(c *gin.Context) {
+func (h *AccountHandler) List(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	accounts, err := h.service.GetAll(ctx)
@@ -37,7 +30,7 @@ func (h *accountHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, accounts)
 }
 
-func (h *accountHandler) Search(c *gin.Context) {
+func (h *AccountHandler) Search(c *gin.Context) {
 	ctx := c.Request.Context()
 	name := strings.TrimSpace(c.Query("name"))
 	accounts, err := h.service.Search(ctx, name)
@@ -48,7 +41,7 @@ func (h *accountHandler) Search(c *gin.Context) {
 	c.JSON(http.StatusOK, accounts)
 }
 
-func (h *accountHandler) Create(c *gin.Context) {
+func (h *AccountHandler) Create(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	var body model.Account
@@ -64,7 +57,7 @@ func (h *accountHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, createdAcc)
 }
 
-func (h *accountHandler) Update(c *gin.Context) {
+func (h *AccountHandler) Update(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	id, err := uuid.Parse(c.Param("id"))
@@ -83,4 +76,11 @@ func (h *accountHandler) Update(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, updated)
+}
+
+func (h *AccountHandler) Routes(r gin.IRouter) {
+	r.GET("/accounts/search", h.Search)
+	r.GET("/accounts", h.List)
+	r.POST("/accounts", h.Create)
+	r.PATCH("/accounts/:id", h.Update)
 }

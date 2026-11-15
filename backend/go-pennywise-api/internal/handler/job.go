@@ -18,26 +18,15 @@ var jobStatuses = map[string]bool{
 	"succeeded": true, "dead": true, "cancelled": true,
 }
 
-type JobHandler interface {
-	List(c *gin.Context)
-	Get(c *gin.Context)
-	Retry(c *gin.Context)
-	Cancel(c *gin.Context)
-	RetryFailed(c *gin.Context)
-	RunAgain(c *gin.Context)
-	Continue(c *gin.Context)
-	Dismiss(c *gin.Context)
-}
-
-type jobHandler struct {
+type JobHandler struct {
 	service service.JobService
 }
 
-func NewJobHandler(service service.JobService) JobHandler {
-	return &jobHandler{service: service}
+func NewJobHandler(service service.JobService) *JobHandler {
+	return &JobHandler{service: service}
 }
 
-func (h *jobHandler) List(c *gin.Context) {
+func (h *JobHandler) List(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "0"))
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
 	input := service.JobListInput{
@@ -77,7 +66,7 @@ func (h *jobHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, list)
 }
 
-func (h *jobHandler) Get(c *gin.Context) {
+func (h *JobHandler) Get(c *gin.Context) {
 	id, ok := parseJobID(c)
 	if !ok {
 		return
@@ -90,7 +79,7 @@ func (h *jobHandler) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, detail)
 }
 
-func (h *jobHandler) Retry(c *gin.Context) {
+func (h *JobHandler) Retry(c *gin.Context) {
 	id, ok := parseJobID(c)
 	if !ok {
 		return
@@ -102,7 +91,7 @@ func (h *jobHandler) Retry(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "queued"})
 }
 
-func (h *jobHandler) Cancel(c *gin.Context) {
+func (h *JobHandler) Cancel(c *gin.Context) {
 	id, ok := parseJobID(c)
 	if !ok {
 		return
@@ -118,7 +107,7 @@ type retryFailedRequest struct {
 	ErrorCode string `json:"errorCode" binding:"required,max=100"`
 }
 
-func (h *jobHandler) RetryFailed(c *gin.Context) {
+func (h *JobHandler) RetryFailed(c *gin.Context) {
 	var body retryFailedRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid error code"})
@@ -132,7 +121,7 @@ func (h *jobHandler) RetryFailed(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"retried": retried})
 }
 
-func (h *jobHandler) RunAgain(c *gin.Context) {
+func (h *JobHandler) RunAgain(c *gin.Context) {
 	id, ok := parseJobID(c)
 	if !ok {
 		return
@@ -144,7 +133,7 @@ func (h *jobHandler) RunAgain(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "queued"})
 }
 
-func (h *jobHandler) Continue(c *gin.Context) {
+func (h *JobHandler) Continue(c *gin.Context) {
 	id, ok := parseJobID(c)
 	if !ok {
 		return
@@ -156,7 +145,7 @@ func (h *jobHandler) Continue(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "queued"})
 }
 
-func (h *jobHandler) Dismiss(c *gin.Context) {
+func (h *JobHandler) Dismiss(c *gin.Context) {
 	id, ok := parseJobID(c)
 	if !ok {
 		return
@@ -186,4 +175,15 @@ func writeJobError(c *gin.Context, err error) {
 	default:
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 	}
+}
+
+func (h *JobHandler) Routes(r gin.IRouter) {
+	r.GET("/jobs", h.List)
+	r.GET("/jobs/:id", h.Get)
+	r.POST("/jobs/retry-failed", h.RetryFailed)
+	r.POST("/jobs/:id/run-again", h.RunAgain)
+	r.POST("/jobs/:id/continue", h.Continue)
+	r.POST("/jobs/:id/dismiss", h.Dismiss)
+	r.POST("/jobs/:id/retry", h.Retry)
+	r.POST("/jobs/:id/cancel", h.Cancel)
 }

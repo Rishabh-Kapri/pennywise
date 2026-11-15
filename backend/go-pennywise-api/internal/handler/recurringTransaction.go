@@ -14,23 +14,15 @@ import (
 	"github.com/google/uuid"
 )
 
-type RecurringTransactionHandler interface {
-	List(c *gin.Context)
-	Create(c *gin.Context)
-	Update(c *gin.Context)
-	DeleteById(c *gin.Context)
-	Run(c *gin.Context)
-}
-
-type recurringTransactionHandler struct {
+type RecurringTransactionHandler struct {
 	service service.RecurringTransactionService
 }
 
-func NewRecurringTransactionHandler(service service.RecurringTransactionService) RecurringTransactionHandler {
-	return &recurringTransactionHandler{service: service}
+func NewRecurringTransactionHandler(service service.RecurringTransactionService) *RecurringTransactionHandler {
+	return &RecurringTransactionHandler{service: service}
 }
 
-func (h *recurringTransactionHandler) List(c *gin.Context) {
+func (h *RecurringTransactionHandler) List(c *gin.Context) {
 	ctx := c.Request.Context()
 	utils.MustBudgetID(ctx)
 
@@ -42,7 +34,7 @@ func (h *recurringTransactionHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, rules)
 }
 
-func (h *recurringTransactionHandler) Create(c *gin.Context) {
+func (h *RecurringTransactionHandler) Create(c *gin.Context) {
 	ctx := c.Request.Context()
 	utils.MustBudgetID(ctx)
 
@@ -60,7 +52,7 @@ func (h *recurringTransactionHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, created)
 }
 
-func (h *recurringTransactionHandler) Update(c *gin.Context) {
+func (h *RecurringTransactionHandler) Update(c *gin.Context) {
 	ctx := c.Request.Context()
 	utils.MustBudgetID(ctx)
 
@@ -88,7 +80,7 @@ func (h *recurringTransactionHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, updated)
 }
 
-func (h *recurringTransactionHandler) DeleteById(c *gin.Context) {
+func (h *RecurringTransactionHandler) DeleteById(c *gin.Context) {
 	ctx := c.Request.Context()
 	utils.MustBudgetID(ctx)
 
@@ -111,7 +103,7 @@ func (h *recurringTransactionHandler) DeleteById(c *gin.Context) {
 
 // Run materializes everything currently due for this budget, so the user
 // doesn't have to wait for the next scheduler tick.
-func (h *recurringTransactionHandler) Run(c *gin.Context) {
+func (h *RecurringTransactionHandler) Run(c *gin.Context) {
 	ctx := c.Request.Context()
 	utils.MustBudgetID(ctx)
 
@@ -121,4 +113,12 @@ func (h *recurringTransactionHandler) Run(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, result)
+}
+
+func (h *RecurringTransactionHandler) Routes(r gin.IRouter) {
+	r.GET("/recurring-transactions", h.List)
+	r.POST("/recurring-transactions", h.Create)
+	r.POST("/recurring-transactions/run", h.Run)
+	r.PATCH("/recurring-transactions/:id", h.Update)
+	r.DELETE("/recurring-transactions/:id", h.DeleteById)
 }

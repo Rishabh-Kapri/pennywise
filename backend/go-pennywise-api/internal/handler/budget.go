@@ -11,21 +11,15 @@ import (
 	"github.com/google/uuid"
 )
 
-type BudgetHandler interface {
-	List(c *gin.Context)
-	Create(c *gin.Context)
-	UpdateById(c *gin.Context)
-}
-
-type budgetHandler struct {
+type BudgetHandler struct {
 	service service.BudgetService
 }
 
-func NewBudgetHandler(service service.BudgetService) BudgetHandler {
-	return &budgetHandler{service: service}
+func NewBudgetHandler(service service.BudgetService) *BudgetHandler {
+	return &BudgetHandler{service: service}
 }
 
-func (h *budgetHandler) List(c *gin.Context) {
+func (h *BudgetHandler) List(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	userID, err := utils.UserIDFromContext(ctx)
@@ -45,7 +39,7 @@ func (h *budgetHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, budgets)
 }
 
-func (h *budgetHandler) Create(c *gin.Context) {
+func (h *BudgetHandler) Create(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	userID, err := utils.UserIDFromContext(ctx)
@@ -69,7 +63,7 @@ func (h *budgetHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, budget)
 }
 
-func (h *budgetHandler) UpdateById(c *gin.Context) {
+func (h *BudgetHandler) UpdateById(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	id, ok := c.Params.Get("id")
@@ -93,4 +87,10 @@ func (h *budgetHandler) UpdateById(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, nil)
+}
+
+func (h *BudgetHandler) Routes(r gin.IRouter) {
+	r.GET("/budgets", h.List)
+	r.POST("/budgets", h.Create)
+	r.PATCH("/budgets/:id", h.UpdateById)
 }

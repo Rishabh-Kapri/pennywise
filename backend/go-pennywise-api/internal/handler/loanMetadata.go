@@ -11,23 +11,15 @@ import (
 	"github.com/google/uuid"
 )
 
-type LoanMetadataHandler interface {
-	List(c *gin.Context)
-	GetByAccountId(c *gin.Context)
-	Create(c *gin.Context)
-	Update(c *gin.Context)
-	Delete(c *gin.Context)
-}
-
-type loanMetadataHandler struct {
+type LoanMetadataHandler struct {
 	service service.LoanMetadataService
 }
 
-func NewLoanMetadataHandler(service service.LoanMetadataService) LoanMetadataHandler {
-	return &loanMetadataHandler{service: service}
+func NewLoanMetadataHandler(service service.LoanMetadataService) *LoanMetadataHandler {
+	return &LoanMetadataHandler{service: service}
 }
 
-func (h *loanMetadataHandler) List(c *gin.Context) {
+func (h *LoanMetadataHandler) List(c *gin.Context) {
 	ctx := c.Request.Context()
 	utils.MustBudgetID(ctx)
 
@@ -39,7 +31,7 @@ func (h *loanMetadataHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, loans)
 }
 
-func (h *loanMetadataHandler) GetByAccountId(c *gin.Context) {
+func (h *LoanMetadataHandler) GetByAccountId(c *gin.Context) {
 	ctx := c.Request.Context()
 	utils.MustBudgetID(ctx)
 
@@ -57,7 +49,7 @@ func (h *loanMetadataHandler) GetByAccountId(c *gin.Context) {
 	c.JSON(http.StatusOK, loan)
 }
 
-func (h *loanMetadataHandler) Create(c *gin.Context) {
+func (h *LoanMetadataHandler) Create(c *gin.Context) {
 	ctx := c.Request.Context()
 	utils.MustBudgetID(ctx)
 
@@ -75,7 +67,7 @@ func (h *loanMetadataHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, created)
 }
 
-func (h *loanMetadataHandler) Update(c *gin.Context) {
+func (h *LoanMetadataHandler) Update(c *gin.Context) {
 	ctx := c.Request.Context()
 	utils.MustBudgetID(ctx)
 
@@ -107,7 +99,7 @@ func (h *loanMetadataHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, updated)
 }
 
-func (h *loanMetadataHandler) Delete(c *gin.Context) {
+func (h *LoanMetadataHandler) Delete(c *gin.Context) {
 	ctx := c.Request.Context()
 	utils.MustBudgetID(ctx)
 
@@ -122,4 +114,12 @@ func (h *loanMetadataHandler) Delete(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "loan metadata deleted"})
+}
+
+func (h *LoanMetadataHandler) Routes(r gin.IRouter) {
+	r.GET("/loan-metadata", h.List)
+	r.GET("/loan-metadata/:accountId", h.GetByAccountId)
+	r.POST("/loan-metadata", h.Create)
+	r.PATCH("/loan-metadata/:accountId", h.Update)
+	r.DELETE("/loan-metadata/:accountId", h.Delete)
 }

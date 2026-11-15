@@ -16,11 +16,11 @@ import (
 // 500), so DELETE /transactions/not-a-uuid reached the service. It must stop
 // at a 400 now.
 func TestTransactionHandler_InvalidIDNeverReachesService(t *testing.T) {
-	routes := map[string]func(TransactionHandler, *gin.Context){
-		"Update":         TransactionHandler.Update,
-		"UpdateLocation": TransactionHandler.UpdateLocation,
-		"UpdateStatus":   TransactionHandler.UpdateStatus,
-		"DeleteById":     TransactionHandler.DeleteById,
+	routes := map[string]func(*TransactionHandler, *gin.Context){
+		"Update":         (*TransactionHandler).Update,
+		"UpdateLocation": (*TransactionHandler).UpdateLocation,
+		"UpdateStatus":   (*TransactionHandler).UpdateStatus,
+		"DeleteById":     (*TransactionHandler).DeleteById,
 	}
 	for name, call := range routes {
 		t.Run(name, func(t *testing.T) {

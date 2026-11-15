@@ -18,11 +18,11 @@ go test -run TestName ./internal/service
 
 ## Layout
 
-- `cmd/api/main.go` — wiring: config, DB, Redis, all routes, background jobs.
+- `cmd/api/main.go` — wiring: config, DB, Redis, services, background jobs. It builds `handler.Handlers` and calls `handler.Register`.
 - `cmd/migrations/` — goose runner (`up|down|status|version|redo|create|baseline`). The SQL lives in `backend/shared/migrations/sql`, embedded via that package.
-- `internal/handler/` — Gin handlers; parse request, call service, map errors to JSON.
+- `internal/handler/` — Gin handlers; parse request, call service, map errors to JSON. Each handler's `Routes` method lists its own routes (paths under `/api`); `router.go` `Register` decides which middleware group each handler gets: public, user (signed in) or budget (signed in + `X-Budget-ID`). A new endpoint is a handler method plus one line in its `Routes`.
 - `internal/service/` — business logic, background jobs, Cipher clients.
-- `internal/middleware/` — `RouteAuthMiddleware` (API key scopes), rate limit. User auth (JWT, API keys) is shared `middleware.Authenticate` built from `factory.NewAuthenticators`; it, `BudgetIdMiddleware` and internal-request auth live in `backend/shared/middleware`.
+- `internal/middleware/` — API key scopes and rate limit. `ScopeByMethod` runs on every signed-in route: GET needs read, DELETE needs delete, anything else write. A route that needs more adds `middleware.RequireScope` in its `Routes` (`POST /keys` is admin). User auth (JWT, API keys) is shared `middleware.Authenticate` built from `factory.NewAuthenticators`; it, `BudgetIdMiddleware` and internal-request auth live in `backend/shared/middleware`.
 - `internal/storage/` — document blob `Store`: `postgres.go` (default) and `local.go` (`DOCUMENT_STORAGE=local`, `UPLOADS_DIR`).
 - `internal/client/` — outbound HTTP (Expo push).
 - `internal/worker/` — job worker for the message pipeline's last steps (`transaction.create`, `transaction.learn`, `pipeline.report`). Off without `JOB_DRIVER`. The logic is in `internal/service/messageJob.go`. `pipeline.report` only queues learning now; the Jobs screen reads the outcome from that job, and nothing writes `pipeline_runs` any more (the table and its old rows remain); `CreateTransaction` is still a `NOT_IMPLEMENTED` stub. `/api/jobs` (`service/job.go`) serves the Jobs screen, and needs a job store, so it reports `enabled: false` on the memory driver. It is budget-scoped: `mailbox.changed` jobs have no budget, so they're visible through the budget's mail connections or a job of the budget under them. Keep `ListTrees` and `jobService.visibleJob` agreeing on that rule.
@@ -48,7 +48,7 @@ go test -run TestName ./internal/service
 
 - **Migration versions must be sequential and unique.** goose panics on duplicates and blocks all pending migrations. When rebasing onto a branch that added migrations, renumber yours to the end. `cd backend/shared && go test ./migrations/sql` guards this. Changing the migrations means changing `shared`, so re-vendor (below). Authoring rules: `backend/shared/migrations/sql/README.md`.
 - **Shared module changes:** `go.mod` uses `replace ... => ../shared` and `go.work` puts local builds in workspace mode. After any change under `backend/shared`, re-vendor (`make vendor` here, and in every consumer service) and verify with `GOWORK=off go build -mod=vendor ./cmd/api`. Docker only sees `shared` through `vendor/`.
-- **Recurring transactions** materialize from an hourly `time.Ticker` in `cmd/api/main.go` (`RunDueAllBudgets`), not Temporal.
+- **Recurring transactions** materialize hourly from `service.RunRecurringSchedule` (`RunDueAllBudgets`), started in `cmd/api/main.go`.
 - **Statement PDFs need `pdftotext`** (poppler). It is installed in the Docker image; a local run without it fails statement uploads. Binary path is the `pdftotextBinary` var in `statementText.go`.
 - **Long-running work is async and single-flighted.** Returns `202`, clients poll:
   - Statement extraction: serialised per process via `extractSlot`; any import still `processing` at startup is marked failed (`FailInterrupted`). Retry via `POST /api/statements/:id/retry` (text is stored, not the PDF).
@@ -63,7 +63,8 @@ go test -run TestName ./internal/service
 
 | Purpose | Path |
 |---|---|
-| Routes and wiring | `cmd/api/main.go` |
+| Wiring | `cmd/api/main.go` |
+| Route groups | `internal/handler/router.go` |
 | Config / env | `internal/config/config.go` |
 | Budget context helpers | `backend/shared/utils/context.go` (`MustBudgetID`) |
 | Budget middleware | `backend/shared/middleware/budget.go` |

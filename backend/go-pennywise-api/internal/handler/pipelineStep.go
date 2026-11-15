@@ -14,20 +14,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// PipelineStepHandler serves the budget's pipeline settings
-// (GET /pipelines, PUT and DELETE /pipelines/:pipeline/steps/:step).
-type PipelineStepHandler interface {
-	List(c *gin.Context)
-	Update(c *gin.Context)
-	Reset(c *gin.Context)
-}
-
-type pipelineStepHandler struct {
+type PipelineStepHandler struct {
 	service service.PipelineStepService
 }
 
-func NewPipelineStepHandler(service service.PipelineStepService) PipelineStepHandler {
-	return &pipelineStepHandler{service: service}
+func NewPipelineStepHandler(service service.PipelineStepService) *PipelineStepHandler {
+	return &PipelineStepHandler{service: service}
 }
 
 func writePipelineStepError(c *gin.Context, err error) {
@@ -43,7 +35,7 @@ func writePipelineStepError(c *gin.Context, err error) {
 	}
 }
 
-func (h *pipelineStepHandler) List(c *gin.Context) {
+func (h *PipelineStepHandler) List(c *gin.Context) {
 	ctx := c.Request.Context()
 	budgetID, err := utils.BudgetIDFromContext(ctx)
 	if err != nil {
@@ -58,7 +50,7 @@ func (h *pipelineStepHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, view)
 }
 
-func (h *pipelineStepHandler) Update(c *gin.Context) {
+func (h *PipelineStepHandler) Update(c *gin.Context) {
 	ctx := c.Request.Context()
 	budgetID, err := utils.BudgetIDFromContext(ctx)
 	if err != nil {
@@ -79,7 +71,7 @@ func (h *pipelineStepHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, step)
 }
 
-func (h *pipelineStepHandler) Reset(c *gin.Context) {
+func (h *PipelineStepHandler) Reset(c *gin.Context) {
 	ctx := c.Request.Context()
 	budgetID, err := utils.BudgetIDFromContext(ctx)
 	if err != nil {
@@ -98,4 +90,10 @@ func trimInPlace(s *string) {
 	if s != nil {
 		*s = strings.TrimSpace(*s)
 	}
+}
+
+func (h *PipelineStepHandler) Routes(r gin.IRouter) {
+	r.GET("/pipelines", h.List)
+	r.PUT("/pipelines/:pipeline/steps/:step", h.Update)
+	r.DELETE("/pipelines/:pipeline/steps/:step", h.Reset)
 }

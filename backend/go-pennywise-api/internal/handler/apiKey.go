@@ -3,27 +3,22 @@ package handler
 import (
 	"net/http"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/middleware"
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	"github.com/gin-gonic/gin"
 )
 
-type APIKeyHandler interface {
-	Create(c *gin.Context)
-	GetAll(c *gin.Context)
-	GetByKeyID(c *gin.Context)
-}
-
-type apiKeyHandler struct {
+type APIKeyHandler struct {
 	service service.APIKeyService
 }
 
-func NewAPIKeyHandler(service service.APIKeyService) APIKeyHandler {
-	return &apiKeyHandler{service: service}
+func NewAPIKeyHandler(service service.APIKeyService) *APIKeyHandler {
+	return &APIKeyHandler{service: service}
 }
 
-func (h *apiKeyHandler) Create(c *gin.Context) {
+func (h *APIKeyHandler) Create(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	var body model.APIKey
@@ -41,7 +36,7 @@ func (h *apiKeyHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, createdKey)
 }
 
-func (h *apiKeyHandler) GetAll(c *gin.Context) {
+func (h *APIKeyHandler) GetAll(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	keys, err := h.service.GetAll(ctx)
@@ -53,7 +48,7 @@ func (h *apiKeyHandler) GetAll(c *gin.Context) {
 	c.JSON(http.StatusOK, keys)
 }
 
-func (h *apiKeyHandler) GetByKeyID(c *gin.Context) {
+func (h *APIKeyHandler) GetByKeyID(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	keyID := c.Param("keyID")
@@ -69,4 +64,10 @@ func (h *apiKeyHandler) GetByKeyID(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, key)
+}
+
+func (h *APIKeyHandler) Routes(r gin.IRouter) {
+	r.GET("/keys", h.GetAll)
+	r.GET("/keys/:keyID", h.GetByKeyID)
+	r.POST("/keys", middleware.RequireScope(model.ScopeAdmin), h.Create)
 }

@@ -29,7 +29,7 @@ func setupRouteAuthRouter(requiredScopes ...model.Scope) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	r.Use(sharedMiddleware.RequestMetadata("pennywise-api"))
-	r.Use(RouteAuthMiddleware(requiredScopes...))
+	r.Use(RequireScope(requiredScopes...))
 	r.GET("/", func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})
@@ -41,7 +41,7 @@ func TestRouteAuthMiddleware_InternalRequestSkipsScopes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	r.Use(sharedMiddleware.RequestMetadata("pennywise-api"))
 	r.Use(internalAuth())
-	r.Use(RouteAuthMiddleware(model.ScopeWrite))
+	r.Use(RequireScope(model.ScopeWrite))
 	r.GET("/", func(c *gin.Context) { c.Status(http.StatusOK) })
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -77,7 +77,7 @@ func TestRouteAuthMiddleware_APIKeyWithSufficientScope(t *testing.T) {
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()
 	})
-	r.Use(RouteAuthMiddleware(model.ScopeWrite))
+	r.Use(RequireScope(model.ScopeWrite))
 	r.GET("/", func(c *gin.Context) { c.Status(http.StatusOK) })
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -100,11 +100,41 @@ func TestRouteAuthMiddleware_APIKeyWithInsufficientScope(t *testing.T) {
 		c.Request = c.Request.WithContext(ctx)
 		c.Next()
 	})
-	r.Use(RouteAuthMiddleware(model.ScopeWrite))
+	r.Use(RequireScope(model.ScopeWrite))
 	r.GET("/", func(c *gin.Context) { c.Status(http.StatusOK) })
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestScopeByMethod(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	serve := func(scopes []model.Scope, method string) int {
+		r := gin.New()
+		r.Use(sharedMiddleware.RequestMetadata("pennywise-api"))
+		r.Use(func(c *gin.Context) {
+			key := &model.APIKey{ID: uuid.New(), Scopes: scopes}
+			c.Request = c.Request.WithContext(utils.WithAPIKey(c.Request.Context(), key))
+			c.Next()
+		})
+		r.Use(ScopeByMethod())
+		r.Handle(method, "/", func(c *gin.Context) { c.Status(http.StatusOK) })
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest(method, "/", nil))
+		return w.Code
+	}
+
+	readOnly := []model.Scope{model.ScopeRead}
+	assert.Equal(t, http.StatusOK, serve(readOnly, http.MethodGet))
+	assert.Equal(t, http.StatusForbidden, serve(readOnly, http.MethodPost))
+	assert.Equal(t, http.StatusForbidden, serve(readOnly, http.MethodPatch))
+	assert.Equal(t, http.StatusForbidden, serve(readOnly, http.MethodDelete))
+
+	write := []model.Scope{model.ScopeWrite}
+	assert.Equal(t, http.StatusOK, serve(write, http.MethodPut))
+	assert.Equal(t, http.StatusForbidden, serve(write, http.MethodDelete))
+	assert.Equal(t, http.StatusOK, serve([]model.Scope{model.ScopeDelete}, http.MethodDelete))
+	assert.Equal(t, http.StatusOK, serve([]model.Scope{model.ScopeAdmin}, http.MethodDelete))
 }

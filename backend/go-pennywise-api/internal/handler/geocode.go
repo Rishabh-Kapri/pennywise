@@ -9,22 +9,18 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type GeocodeHandler interface {
-	Search(c *gin.Context)
-}
-
-type geocodeHandler struct {
+type GeocodeHandler struct {
 	service service.GeocodeService
 }
 
-func NewGeocodeHandler(service service.GeocodeService) GeocodeHandler {
-	return &geocodeHandler{service: service}
+func NewGeocodeHandler(service service.GeocodeService) *GeocodeHandler {
+	return &GeocodeHandler{service: service}
 }
 
 // Search proxies forward geocoding so clients never call Nominatim directly.
 // Going through the API keeps the 1 req/s usage policy enforced in one place
 // and keeps the identifying User-Agent correct, which a browser cannot set.
-func (h *geocodeHandler) Search(c *gin.Context) {
+func (h *GeocodeHandler) Search(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	query := c.Query("q")
@@ -52,4 +48,8 @@ func (h *geocodeHandler) Search(c *gin.Context) {
 		results = []service.PlaceResult{}
 	}
 	c.JSON(http.StatusOK, results)
+}
+
+func (h *GeocodeHandler) Routes(r gin.IRouter) {
+	r.GET("/geocode/search", h.Search)
 }

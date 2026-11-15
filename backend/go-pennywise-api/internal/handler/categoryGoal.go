@@ -11,22 +11,16 @@ import (
 	"github.com/google/uuid"
 )
 
-// CategoryGoalHandler serves a category's target at /api/categories/:id/goal.
-type CategoryGoalHandler interface {
-	Upsert(c *gin.Context)
-	Delete(c *gin.Context)
-}
-
-type categoryGoalHandler struct {
+type CategoryGoalHandler struct {
 	service service.CategoryGoalService
 }
 
-func NewCategoryGoalHandler(service service.CategoryGoalService) CategoryGoalHandler {
-	return &categoryGoalHandler{service: service}
+func NewCategoryGoalHandler(service service.CategoryGoalService) *CategoryGoalHandler {
+	return &CategoryGoalHandler{service: service}
 }
 
 // Upsert sets (or replaces) a category's target.
-func (h *categoryGoalHandler) Upsert(c *gin.Context) {
+func (h *CategoryGoalHandler) Upsert(c *gin.Context) {
 	ctx := c.Request.Context()
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -48,7 +42,7 @@ func (h *categoryGoalHandler) Upsert(c *gin.Context) {
 }
 
 // Delete removes a category's target.
-func (h *categoryGoalHandler) Delete(c *gin.Context) {
+func (h *CategoryGoalHandler) Delete(c *gin.Context) {
 	ctx := c.Request.Context()
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -71,4 +65,9 @@ func goalError(c *gin.Context, err error) {
 	default:
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 	}
+}
+
+func (h *CategoryGoalHandler) Routes(r gin.IRouter) {
+	r.PUT("/categories/:id/goal", h.Upsert)
+	r.DELETE("/categories/:id/goal", h.Delete)
 }

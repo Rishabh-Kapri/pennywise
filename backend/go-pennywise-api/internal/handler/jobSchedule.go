@@ -8,23 +8,23 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type JobScheduleHandler interface {
-	List(c *gin.Context)
-}
-
-type jobScheduleHandler struct {
+type JobScheduleHandler struct {
 	service service.JobScheduleService
 }
 
-func NewJobScheduleHandler(service service.JobScheduleService) JobScheduleHandler {
-	return &jobScheduleHandler{service: service}
+func NewJobScheduleHandler(service service.JobScheduleService) *JobScheduleHandler {
+	return &JobScheduleHandler{service: service}
 }
 
-func (h *jobScheduleHandler) List(c *gin.Context) {
+func (h *JobScheduleHandler) List(c *gin.Context) {
 	list, err := h.service.List(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, list)
+}
+
+func (h *JobScheduleHandler) Routes(r gin.IRouter) {
+	r.GET("/jobs/schedules", h.List)
 }

@@ -10,20 +10,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type UserHandler interface {
-	Search(c *gin.Context)
-	Update(c *gin.Context)
-}
-
-type userHandler struct {
+type UserHandler struct {
 	service service.UserService
 }
 
-func NewUserHandler(service service.UserService) UserHandler {
-	return &userHandler{service}
+func NewUserHandler(service service.UserService) *UserHandler {
+	return &UserHandler{service}
 }
 
-func (h *userHandler) Search(c *gin.Context) {
+func (h *UserHandler) Search(c *gin.Context) {
 	ctx := c.Request.Context()
 	email := strings.TrimSpace(c.Query("email"))
 	users, err := h.service.Search(ctx, email)
@@ -34,7 +29,7 @@ func (h *userHandler) Search(c *gin.Context) {
 	c.JSON(http.StatusOK, users)
 }
 
-func (h *userHandler) Update(c *gin.Context) {
+func (h *UserHandler) Update(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	var user model.User
@@ -48,4 +43,9 @@ func (h *userHandler) Update(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, updatedUser)
+}
+
+func (h *UserHandler) Routes(r gin.IRouter) {
+	r.GET("/users/search", h.Search)
+	r.PATCH("/users", h.Update)
 }

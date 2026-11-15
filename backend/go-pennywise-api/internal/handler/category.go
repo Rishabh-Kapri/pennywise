@@ -13,28 +13,15 @@ import (
 	"github.com/google/uuid"
 )
 
-type CategoryHandler interface {
-	List(c *gin.Context)
-	GetInflowBalance(c *gin.Context)
-	Search(c *gin.Context)
-	Create(c *gin.Context)
-	Update(c *gin.Context)
-	UpdateBudget(c *gin.Context)
-	UpdateDetails(c *gin.Context)
-	SuggestDescription(c *gin.Context)
-	GetById(c *gin.Context)
-	DeleteById(c *gin.Context)
-}
-
-type categoryHandler struct {
+type CategoryHandler struct {
 	service service.CategoryService
 }
 
-func NewCategoryHandler(service service.CategoryService) CategoryHandler {
-	return &categoryHandler{service: service}
+func NewCategoryHandler(service service.CategoryService) *CategoryHandler {
+	return &CategoryHandler{service: service}
 }
 
-func (h *categoryHandler) List(c *gin.Context) {
+func (h *CategoryHandler) List(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	categories, err := h.service.GetAll(ctx)
@@ -45,7 +32,7 @@ func (h *categoryHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, categories)
 }
 
-func (h *categoryHandler) GetInflowBalance(c *gin.Context) {
+func (h *CategoryHandler) GetInflowBalance(c *gin.Context) {
 	ctx := c.Request.Context()
 	balance, err := h.service.GetInflowBalance(ctx)
 	if err != nil {
@@ -55,7 +42,7 @@ func (h *categoryHandler) GetInflowBalance(c *gin.Context) {
 	c.JSON(http.StatusOK, balance)
 }
 
-func (h *categoryHandler) Create(c *gin.Context) {
+func (h *CategoryHandler) Create(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	var body model.Category
@@ -71,7 +58,7 @@ func (h *categoryHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, createdCat)
 }
 
-func (h *categoryHandler) Search(c *gin.Context) {
+func (h *CategoryHandler) Search(c *gin.Context) {
 	ctx := c.Request.Context()
 	name := strings.TrimSpace(c.Query("name"))
 	logger.Logger(ctx).Debug("category search", "name", c.Query("name"))
@@ -88,7 +75,7 @@ func (h *categoryHandler) Search(c *gin.Context) {
 	c.JSON(http.StatusOK, categories)
 }
 
-func (h *categoryHandler) GetById(c *gin.Context) {
+func (h *CategoryHandler) GetById(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	id, ok := c.Params.Get("id")
@@ -108,7 +95,7 @@ func (h *categoryHandler) GetById(c *gin.Context) {
 	c.JSON(http.StatusOK, category)
 }
 
-func (h *categoryHandler) Update(c *gin.Context) {
+func (h *CategoryHandler) Update(c *gin.Context) {
 	ctx := c.Request.Context()
 	id, ok := c.Params.Get("id")
 	if !ok {
@@ -132,7 +119,7 @@ func (h *categoryHandler) Update(c *gin.Context) {
 	}
 }
 
-func (h *categoryHandler) UpdateBudget(c *gin.Context) {
+func (h *CategoryHandler) UpdateBudget(c *gin.Context) {
 	ctx := c.Request.Context()
 	logger.Logger(ctx).Info("updating monthly budget")
 	id, ok := c.Params.Get("id")
@@ -160,7 +147,7 @@ func (h *categoryHandler) UpdateBudget(c *gin.Context) {
 	err = h.service.UpdateMonthlyBudget(ctx, categoryId, body.Budgeted, month)
 }
 
-func (h *categoryHandler) DeleteById(c *gin.Context) {
+func (h *CategoryHandler) DeleteById(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	id, ok := c.Params.Get("id")
@@ -184,7 +171,7 @@ func (h *categoryHandler) DeleteById(c *gin.Context) {
 // free text, and an unbounded body is an easy way to bloat every budget fetch.
 const maxCategoryTextLength = 2000
 
-func (h *categoryHandler) UpdateDetails(c *gin.Context) {
+func (h *CategoryHandler) UpdateDetails(c *gin.Context) {
 	ctx := c.Request.Context()
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -222,7 +209,7 @@ func (h *categoryHandler) UpdateDetails(c *gin.Context) {
 	c.JSON(http.StatusOK, body)
 }
 
-func (h *categoryHandler) SuggestDescription(c *gin.Context) {
+func (h *CategoryHandler) SuggestDescription(c *gin.Context) {
 	ctx := c.Request.Context()
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -243,4 +230,17 @@ func (h *categoryHandler) SuggestDescription(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"description": description})
+}
+
+func (h *CategoryHandler) Routes(r gin.IRouter) {
+	r.POST("/categories", h.Create)
+	r.GET("/categories", h.List)
+	r.GET("/categories/inflow", h.GetInflowBalance)
+	r.PATCH("/categories/:id/:month", h.UpdateBudget)
+	r.GET("/categories/search", h.Search)
+	r.GET("/categories/:id", h.GetById)
+	r.PUT("/categories/:id", h.Update)
+	r.PUT("/categories/:id/details", h.UpdateDetails)
+	r.POST("/categories/:id/description/suggest", h.SuggestDescription)
+	r.DELETE("/categories/:id", h.DeleteById)
 }

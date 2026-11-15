@@ -7,27 +7,21 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type WebsocketHandler interface {
-	Connect(c *gin.Context)
-	GetSessions(c *gin.Context)
-	SendTestEvent(c *gin.Context)
-}
-
 type websocketTestEventRequest struct {
 	EventName string  `json:"eventName" binding:"required"`
 	Data      any     `json:"data"`
 	RoomID    *string `json:"roomId,omitempty"`
 }
 
-type websocketHandler struct {
+type WebsocketHandler struct {
 	service service.WebsocketService
 }
 
-func NewWebsocketHandler(service service.WebsocketService) WebsocketHandler {
-	return &websocketHandler{service: service}
+func NewWebsocketHandler(service service.WebsocketService) *WebsocketHandler {
+	return &WebsocketHandler{service: service}
 }
 
-func (h *websocketHandler) Connect(c *gin.Context) {
+func (h *WebsocketHandler) Connect(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	w := c.Writer
@@ -35,12 +29,12 @@ func (h *websocketHandler) Connect(c *gin.Context) {
 	h.service.Connect(ctx, w, r)
 }
 
-func (h *websocketHandler) GetSessions(c *gin.Context) {
+func (h *WebsocketHandler) GetSessions(c *gin.Context) {
 	ctx := c.Request.Context()
 	c.JSON(http.StatusOK, h.service.GetSessions(ctx))
 }
 
-func (h *websocketHandler) SendTestEvent(c *gin.Context) {
+func (h *WebsocketHandler) SendTestEvent(c *gin.Context) {
 	ctx := c.Request.Context()
 	var req websocketTestEventRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -54,4 +48,10 @@ func (h *websocketHandler) SendTestEvent(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusAccepted, gin.H{"status": "sent"})
+}
+
+func (h *WebsocketHandler) Routes(r gin.IRouter) {
+	r.GET("", h.Connect)
+	r.GET("/sessions", h.GetSessions)
+	r.POST("/test-event", h.SendTestEvent)
 }

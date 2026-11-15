@@ -14,25 +14,12 @@ import (
 	"github.com/google/uuid"
 )
 
-// AIModelHandler serves /api/ai-models: the models a user runs with their
-// saved keys.
-type AIModelHandler interface {
-	List(c *gin.Context)
-	Create(c *gin.Context)
-	Update(c *gin.Context)
-	SetDefault(c *gin.Context)
-	Delete(c *gin.Context)
-	Test(c *gin.Context)
-	SetEnabled(c *gin.Context)
-	Reorder(c *gin.Context)
-}
-
-type aiModelHandler struct {
+type AIModelHandler struct {
 	service service.AIModelService
 }
 
-func NewAIModelHandler(service service.AIModelService) AIModelHandler {
-	return &aiModelHandler{service: service}
+func NewAIModelHandler(service service.AIModelService) *AIModelHandler {
+	return &AIModelHandler{service: service}
 }
 
 func aiModelErrorStatus(err error) int {
@@ -67,7 +54,7 @@ func userAndID(c *gin.Context) (uuid.UUID, uuid.UUID, bool) {
 	return userID, id, true
 }
 
-func (h *aiModelHandler) List(c *gin.Context) {
+func (h *AIModelHandler) List(c *gin.Context) {
 	ctx := c.Request.Context()
 	userID, err := utils.UserIDFromContext(ctx)
 	if err != nil {
@@ -82,7 +69,7 @@ func (h *aiModelHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, models)
 }
 
-func (h *aiModelHandler) Create(c *gin.Context) {
+func (h *AIModelHandler) Create(c *gin.Context) {
 	ctx := c.Request.Context()
 	userID, err := utils.UserIDFromContext(ctx)
 	if err != nil {
@@ -102,7 +89,7 @@ func (h *aiModelHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, m)
 }
 
-func (h *aiModelHandler) Update(c *gin.Context) {
+func (h *AIModelHandler) Update(c *gin.Context) {
 	userID, id, ok := userAndID(c)
 	if !ok {
 		return
@@ -120,7 +107,7 @@ func (h *aiModelHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, m)
 }
 
-func (h *aiModelHandler) SetDefault(c *gin.Context) {
+func (h *AIModelHandler) SetDefault(c *gin.Context) {
 	userID, id, ok := userAndID(c)
 	if !ok {
 		return
@@ -133,7 +120,7 @@ func (h *aiModelHandler) SetDefault(c *gin.Context) {
 	c.JSON(http.StatusOK, m)
 }
 
-func (h *aiModelHandler) SetEnabled(c *gin.Context) {
+func (h *AIModelHandler) SetEnabled(c *gin.Context) {
 	userID, id, ok := userAndID(c)
 	if !ok {
 		return
@@ -151,7 +138,7 @@ func (h *aiModelHandler) SetEnabled(c *gin.Context) {
 	c.JSON(http.StatusOK, m)
 }
 
-func (h *aiModelHandler) Reorder(c *gin.Context) {
+func (h *AIModelHandler) Reorder(c *gin.Context) {
 	ctx := c.Request.Context()
 	userID, err := utils.UserIDFromContext(ctx)
 	if err != nil {
@@ -170,7 +157,7 @@ func (h *aiModelHandler) Reorder(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func (h *aiModelHandler) Delete(c *gin.Context) {
+func (h *AIModelHandler) Delete(c *gin.Context) {
 	userID, id, ok := userAndID(c)
 	if !ok {
 		return
@@ -182,7 +169,7 @@ func (h *aiModelHandler) Delete(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func (h *aiModelHandler) Test(c *gin.Context) {
+func (h *AIModelHandler) Test(c *gin.Context) {
 	userID, id, ok := userAndID(c)
 	if !ok {
 		return
@@ -197,4 +184,15 @@ func (h *aiModelHandler) Test(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, res)
+}
+
+func (h *AIModelHandler) Routes(r gin.IRouter) {
+	r.GET("/ai-models", h.List)
+	r.POST("/ai-models", h.Create)
+	r.PUT("/ai-models/order", h.Reorder)
+	r.PUT("/ai-models/:id", h.Update)
+	r.PUT("/ai-models/:id/enabled", h.SetEnabled)
+	r.POST("/ai-models/:id/default", h.SetDefault)
+	r.POST("/ai-models/:id/test", h.Test)
+	r.DELETE("/ai-models/:id", h.Delete)
 }

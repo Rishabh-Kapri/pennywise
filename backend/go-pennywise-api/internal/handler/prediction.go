@@ -11,24 +11,15 @@ import (
 	"github.com/google/uuid"
 )
 
-type PredictionHandler interface {
-	List(c *gin.Context)
-	ListCipherPredictions(c *gin.Context)
-	GetByTransactionID(c *gin.Context)
-	Create(c *gin.Context)
-	Update(c *gin.Context)
-	DeleteById(c *gin.Context)
-}
-
-type predictionHandler struct {
+type PredictionHandler struct {
 	service service.PredictionService
 }
 
-func NewPredictionHandler(service service.PredictionService) PredictionHandler {
-	return &predictionHandler{service: service}
+func NewPredictionHandler(service service.PredictionService) *PredictionHandler {
+	return &PredictionHandler{service: service}
 }
 
-func (h *predictionHandler) List(c *gin.Context) {
+func (h *PredictionHandler) List(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	predictions, err := h.service.GetAll(ctx)
@@ -39,7 +30,7 @@ func (h *predictionHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, predictions)
 }
 
-func (h *predictionHandler) ListCipherPredictions(c *gin.Context) {
+func (h *PredictionHandler) ListCipherPredictions(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	predictions, err := h.service.GetAllCipherPredictions(ctx)
@@ -53,7 +44,7 @@ func (h *predictionHandler) ListCipherPredictions(c *gin.Context) {
 	c.JSON(http.StatusOK, predictions)
 }
 
-func (h *predictionHandler) GetByTransactionID(c *gin.Context) {
+func (h *PredictionHandler) GetByTransactionID(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	id, ok := c.Params.Get("transactionId")
@@ -75,7 +66,7 @@ func (h *predictionHandler) GetByTransactionID(c *gin.Context) {
 	c.JSON(http.StatusOK, details)
 }
 
-func (h *predictionHandler) Create(c *gin.Context) {
+func (h *PredictionHandler) Create(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	var body model.Prediction
@@ -92,33 +83,7 @@ func (h *predictionHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, createdPredictions)
 }
 
-func (h *predictionHandler) Update(c *gin.Context) {
-	ctx := c.Request.Context()
-	id, ok := c.Params.Get("id")
-	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})
-		return
-	}
-	parsedId, err := uuid.Parse(id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error while parsing id"})
-		return
-	}
-
-	var body model.Prediction
-	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	err = h.service.Update(ctx, parsedId, body) // update to parsedId if needed
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, body)
-}
-
-func (h *predictionHandler) DeleteById(c *gin.Context) {
+func (h *PredictionHandler) DeleteById(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	id, ok := c.Params.Get("id")
@@ -136,4 +101,12 @@ func (h *predictionHandler) DeleteById(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, nil)
+}
+
+func (h *PredictionHandler) Routes(r gin.IRouter) {
+	r.GET("/predictions", h.List)
+	r.GET("/predictions/cipher", h.ListCipherPredictions)
+	r.GET("/predictions/transactions/:transactionId", h.GetByTransactionID)
+	r.POST("/predictions", h.Create)
+	r.DELETE("/predictions/:id", h.DeleteById)
 }

@@ -16,23 +16,15 @@ import (
 
 var monthKeyRegex = regexp.MustCompile(`^\d{4}-\d{2}$`)
 
-type ReportHandler interface {
-	GetSpending(c *gin.Context)
-	GetIncomeExpense(c *gin.Context)
-	GetNetWorth(c *gin.Context)
-	GetCashFlow(c *gin.Context)
-	GetLoanHistories(c *gin.Context)
-}
-
-type reportHandler struct {
+type ReportHandler struct {
 	service service.ReportService
 }
 
-func NewReportHandler(service service.ReportService) ReportHandler {
-	return &reportHandler{service: service}
+func NewReportHandler(service service.ReportService) *ReportHandler {
+	return &ReportHandler{service: service}
 }
 
-func (h *reportHandler) GetSpending(c *gin.Context) {
+func (h *ReportHandler) GetSpending(c *gin.Context) {
 	params, ok := parseReportParams(c)
 	if !ok {
 		return
@@ -45,7 +37,7 @@ func (h *reportHandler) GetSpending(c *gin.Context) {
 	c.JSON(http.StatusOK, report)
 }
 
-func (h *reportHandler) GetIncomeExpense(c *gin.Context) {
+func (h *ReportHandler) GetIncomeExpense(c *gin.Context) {
 	params, ok := parseReportParams(c)
 	if !ok {
 		return
@@ -58,7 +50,7 @@ func (h *reportHandler) GetIncomeExpense(c *gin.Context) {
 	c.JSON(http.StatusOK, report)
 }
 
-func (h *reportHandler) GetNetWorth(c *gin.Context) {
+func (h *ReportHandler) GetNetWorth(c *gin.Context) {
 	params, ok := parseReportParams(c)
 	if !ok {
 		return
@@ -71,7 +63,7 @@ func (h *reportHandler) GetNetWorth(c *gin.Context) {
 	c.JSON(http.StatusOK, report)
 }
 
-func (h *reportHandler) GetCashFlow(c *gin.Context) {
+func (h *ReportHandler) GetCashFlow(c *gin.Context) {
 	params, ok := parseReportParams(c)
 	if !ok {
 		return
@@ -84,7 +76,7 @@ func (h *reportHandler) GetCashFlow(c *gin.Context) {
 	c.JSON(http.StatusOK, report)
 }
 
-func (h *reportHandler) GetLoanHistories(c *gin.Context) {
+func (h *ReportHandler) GetLoanHistories(c *gin.Context) {
 	params, ok := parseReportParams(c)
 	if !ok {
 		return
@@ -152,4 +144,12 @@ func respondReportError(c *gin.Context, err error) {
 		return
 	}
 	c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+}
+
+func (h *ReportHandler) Routes(r gin.IRouter) {
+	r.GET("/reports/spending", h.GetSpending)
+	r.GET("/reports/income-expense", h.GetIncomeExpense)
+	r.GET("/reports/networth", h.GetNetWorth)
+	r.GET("/reports/cashflow", h.GetCashFlow)
+	r.GET("/reports/loans", h.GetLoanHistories)
 }

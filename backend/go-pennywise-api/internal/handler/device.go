@@ -9,20 +9,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type DeviceHandler interface {
-	RegisterPushToken(c *gin.Context)
-	UnregisterPushToken(c *gin.Context)
-}
-
-type deviceHandler struct {
+type DeviceHandler struct {
 	service service.PushNotificationService
 }
 
-func NewDeviceHandler(service service.PushNotificationService) DeviceHandler {
-	return &deviceHandler{service: service}
+func NewDeviceHandler(service service.PushNotificationService) *DeviceHandler {
+	return &DeviceHandler{service: service}
 }
 
-func (h *deviceHandler) RegisterPushToken(c *gin.Context) {
+func (h *DeviceHandler) RegisterPushToken(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	var body model.DevicePushTokenReq
@@ -39,7 +34,7 @@ func (h *deviceHandler) RegisterPushToken(c *gin.Context) {
 	c.JSON(http.StatusOK, token)
 }
 
-func (h *deviceHandler) UnregisterPushToken(c *gin.Context) {
+func (h *DeviceHandler) UnregisterPushToken(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	// token comes as a query param (DELETEs don't reliably carry bodies) with a
@@ -57,4 +52,9 @@ func (h *deviceHandler) UnregisterPushToken(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, nil)
+}
+
+func (h *DeviceHandler) Routes(r gin.IRouter) {
+	r.POST("/devices/push-token", h.RegisterPushToken)
+	r.DELETE("/devices/push-token", h.UnregisterPushToken)
 }

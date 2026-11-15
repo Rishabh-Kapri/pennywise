@@ -8,8 +8,8 @@ import (
 )
 
 type Config struct {
-	Environment string
 	ServiceName string
+	Port        string
 	// DatabaseDriver picks the adapter behind the repositories (default postgres).
 	DatabaseDriver        string
 	DatabaseURL           string
@@ -18,10 +18,7 @@ type Config struct {
 	GoogleClientID        string
 	GoogleClientSecret    string
 	GoogleAndroidClientID string
-	CallbackURL           string
 	RedisURL              string
-	GmailServiceURL       string
-	GmailServiceName      string
 	CipherServiceURL      string
 	CipherServiceName     string
 	IngestServiceURL      string // INGEST_SERVICE_URL; unset turns email sync setup off
@@ -50,13 +47,9 @@ type Config struct {
 
 func Load() Config {
 	_ = godotenv.Load(".env")
-	env := os.Getenv("RAILWAY_ENVIRONMENT_NAME")
-	if env == "" {
-		env = "local"
-	}
 	return Config{
-		Environment:           env,
 		ServiceName:           "pennywise-api",
+		Port:                  envOr("PORT", "5151"),
 		DatabaseDriver:        os.Getenv("DATABASE_DRIVER"),
 		DatabaseURL:           os.Getenv("DATABASE_URL"),
 		JWTSecret:             os.Getenv("JWT_SECRET"),
@@ -64,11 +57,7 @@ func Load() Config {
 		GoogleClientID:        os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret:    os.Getenv("GOOGLE_CLIENT_SECRET"),
 		GoogleAndroidClientID: os.Getenv("GOOGLE_ANDROID_CLIENT_ID"),
-		CallbackURL:           os.Getenv("CALLBACK_URL"),
 		RedisURL:              os.Getenv("REDIS_URL"),
-
-		GmailServiceURL:  os.Getenv("GMAIL_SERVICE_URL"),
-		GmailServiceName: "gmail-watch",
 
 		CipherServiceURL:  os.Getenv("CIPHER_SERVICE_URL"),
 		CipherServiceName: "cipher",
@@ -92,7 +81,7 @@ func Load() Config {
 		// "local" keeps the old on-disk behaviour; anything else uses Postgres.
 		DocumentStorage: os.Getenv("DOCUMENT_STORAGE"),
 
-		UploadsDir: uploadsDir(),
+		UploadsDir: envOr("UPLOADS_DIR", "./data/uploads"),
 
 		SmsDecisionsLog: envOr("SMS_DECISIONS_LOG", "./data/sms-decisions.jsonl"),
 
@@ -120,12 +109,4 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
-}
-
-func uploadsDir() string {
-	dir := os.Getenv("UPLOADS_DIR")
-	if dir == "" {
-		dir = "./data/uploads"
-	}
-	return dir
 }

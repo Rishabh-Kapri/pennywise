@@ -13,24 +13,15 @@ import (
 	"github.com/google/uuid"
 )
 
-type DocumentHandler interface {
-	Upload(c *gin.Context)
-	UploadScan(c *gin.Context)
-	ListByTransaction(c *gin.Context)
-	List(c *gin.Context)
-	Content(c *gin.Context)
-	Delete(c *gin.Context)
-}
-
-type documentHandler struct {
+type DocumentHandler struct {
 	service service.DocumentService
 }
 
-func NewDocumentHandler(service service.DocumentService) DocumentHandler {
-	return &documentHandler{service: service}
+func NewDocumentHandler(service service.DocumentService) *DocumentHandler {
+	return &DocumentHandler{service: service}
 }
 
-func (h *documentHandler) Upload(c *gin.Context) {
+func (h *DocumentHandler) Upload(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	transactionId, err := uuid.Parse(c.Param("id"))
@@ -65,7 +56,7 @@ func (h *documentHandler) Upload(c *gin.Context) {
 
 // UploadScan takes the pages of a multi-page capture (repeated `pages` parts,
 // in order) and stores them as one PDF.
-func (h *documentHandler) UploadScan(c *gin.Context) {
+func (h *DocumentHandler) UploadScan(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	transactionId, err := uuid.Parse(c.Param("id"))
@@ -124,7 +115,7 @@ func (h *documentHandler) UploadScan(c *gin.Context) {
 	c.JSON(http.StatusCreated, doc)
 }
 
-func (h *documentHandler) ListByTransaction(c *gin.Context) {
+func (h *DocumentHandler) ListByTransaction(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	transactionId, err := uuid.Parse(c.Param("id"))
@@ -143,7 +134,7 @@ func (h *documentHandler) ListByTransaction(c *gin.Context) {
 
 // List serves the budget-wide document library:
 // GET /api/documents?search=&type=image|pdf&startDate=&endDate=&limit=&offset=
-func (h *documentHandler) List(c *gin.Context) {
+func (h *DocumentHandler) List(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	filter := model.DocumentFilter{
@@ -170,7 +161,7 @@ func (h *documentHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
-func (h *documentHandler) Content(c *gin.Context) {
+func (h *DocumentHandler) Content(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	id, err := uuid.Parse(c.Param("docId"))
@@ -198,7 +189,7 @@ func (h *documentHandler) Content(c *gin.Context) {
 	http.ServeContent(c.Writer, c.Request, doc.FileName, doc.UpdatedAt, reader)
 }
 
-func (h *documentHandler) Delete(c *gin.Context) {
+func (h *DocumentHandler) Delete(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	id, err := uuid.Parse(c.Param("docId"))
@@ -212,4 +203,13 @@ func (h *documentHandler) Delete(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, nil)
+}
+
+func (h *DocumentHandler) Routes(r gin.IRouter) {
+	r.POST("/transactions/:id/documents", h.Upload)
+	r.POST("/transactions/:id/documents/scan", h.UploadScan)
+	r.GET("/transactions/:id/documents", h.ListByTransaction)
+	r.GET("/documents", h.List)
+	r.GET("/documents/:docId/content", h.Content)
+	r.DELETE("/documents/:docId", h.Delete)
 }

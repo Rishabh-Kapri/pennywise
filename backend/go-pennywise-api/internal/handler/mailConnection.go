@@ -11,24 +11,15 @@ import (
 	"github.com/google/uuid"
 )
 
-type MailConnectionHandler interface {
-	List(c *gin.Context)
-	Connect(c *gin.Context)
-	Update(c *gin.Context)
-	Disconnect(c *gin.Context)
-	BackfillCandidates(c *gin.Context)
-	Backfill(c *gin.Context)
-}
-
-type mailConnectionHandler struct {
+type MailConnectionHandler struct {
 	service service.MailConnectionService
 }
 
-func NewMailConnectionHandler(service service.MailConnectionService) MailConnectionHandler {
-	return &mailConnectionHandler{service: service}
+func NewMailConnectionHandler(service service.MailConnectionService) *MailConnectionHandler {
+	return &MailConnectionHandler{service: service}
 }
 
-func (h *mailConnectionHandler) List(c *gin.Context) {
+func (h *MailConnectionHandler) List(c *gin.Context) {
 	connections, err := h.service.List(c.Request.Context())
 	if err != nil {
 		writeMailConnectionError(c, err)
@@ -41,7 +32,7 @@ type connectMailRequest struct {
 	Code string `json:"code" binding:"required,max=4096"`
 }
 
-func (h *mailConnectionHandler) Connect(c *gin.Context) {
+func (h *MailConnectionHandler) Connect(c *gin.Context) {
 	var req connectMailRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "code is required"})
@@ -59,7 +50,7 @@ type updateMailRequest struct {
 	Paused *bool `json:"paused" binding:"required"`
 }
 
-func (h *mailConnectionHandler) Update(c *gin.Context) {
+func (h *MailConnectionHandler) Update(c *gin.Context) {
 	connectionID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid connection id"})
@@ -78,7 +69,7 @@ func (h *mailConnectionHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, connection)
 }
 
-func (h *mailConnectionHandler) Disconnect(c *gin.Context) {
+func (h *MailConnectionHandler) Disconnect(c *gin.Context) {
 	connectionID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid connection id"})
@@ -95,7 +86,7 @@ type backfillRequest struct {
 	ExternalIDs []string `json:"externalIds" binding:"required,min=1,max=2000"`
 }
 
-func (h *mailConnectionHandler) BackfillCandidates(c *gin.Context) {
+func (h *MailConnectionHandler) BackfillCandidates(c *gin.Context) {
 	connectionID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid connection id"})
@@ -112,7 +103,7 @@ func (h *mailConnectionHandler) BackfillCandidates(c *gin.Context) {
 	c.JSON(http.StatusOK, candidates)
 }
 
-func (h *mailConnectionHandler) Backfill(c *gin.Context) {
+func (h *MailConnectionHandler) Backfill(c *gin.Context) {
 	connectionID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid connection id"})
@@ -154,4 +145,13 @@ func writeMailConnectionError(c *gin.Context, err error) {
 		logger.Logger(c.Request.Context()).Error("mail connection failed", "error", err)
 		c.JSON(http.StatusBadGateway, gin.H{"error": "Couldn't reach the mail service. Please try again."})
 	}
+}
+
+func (h *MailConnectionHandler) Routes(r gin.IRouter) {
+	r.GET("/mail-connections", h.List)
+	r.POST("/mail-connections", h.Connect)
+	r.PATCH("/mail-connections/:id", h.Update)
+	r.DELETE("/mail-connections/:id", h.Disconnect)
+	r.GET("/mail-connections/:id/backfill", h.BackfillCandidates)
+	r.POST("/mail-connections/:id/backfill", h.Backfill)
 }

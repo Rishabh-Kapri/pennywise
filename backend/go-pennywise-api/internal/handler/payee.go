@@ -12,31 +12,15 @@ import (
 	"github.com/google/uuid"
 )
 
-type PayeeHandler interface {
-	List(c *gin.Context)
-	Search(c *gin.Context)
-	GetById(c *gin.Context)
-	GetRules(c *gin.Context)
-	CreateRule(c *gin.Context)
-	UpdateRule(c *gin.Context)
-	DeleteRule(c *gin.Context)
-	Create(c *gin.Context)
-	Update(c *gin.Context)
-	DeleteById(c *gin.Context)
-	Stats(c *gin.Context)
-	ListRules(c *gin.Context)
-	Merge(c *gin.Context)
-}
-
-type payeeHandler struct {
+type PayeeHandler struct {
 	service service.PayeeService
 }
 
-func NewPayeeHandler(service service.PayeeService) PayeeHandler {
-	return &payeeHandler{service: service}
+func NewPayeeHandler(service service.PayeeService) *PayeeHandler {
+	return &PayeeHandler{service: service}
 }
 
-func (h *payeeHandler) List(c *gin.Context) {
+func (h *PayeeHandler) List(c *gin.Context) {
 	ctx := c.Request.Context()
 	payees, err := h.service.GetAll(ctx)
 	if err != nil {
@@ -46,7 +30,7 @@ func (h *payeeHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, payees)
 }
 
-func (h *payeeHandler) Search(c *gin.Context) {
+func (h *PayeeHandler) Search(c *gin.Context) {
 	ctx := c.Request.Context()
 	name := strings.TrimSpace(c.Query("name"))
 	payees, err := h.service.Search(ctx, name)
@@ -57,7 +41,7 @@ func (h *payeeHandler) Search(c *gin.Context) {
 	c.JSON(http.StatusOK, payees)
 }
 
-func (h *payeeHandler) Create(c *gin.Context) {
+func (h *PayeeHandler) Create(c *gin.Context) {
 	ctx := c.Request.Context()
 	var body model.Payee
 	if err := c.ShouldBindJSON(&body); err != nil {
@@ -72,7 +56,7 @@ func (h *payeeHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, createdPayee)
 }
 
-func (h *payeeHandler) GetById(c *gin.Context) {
+func (h *PayeeHandler) GetById(c *gin.Context) {
 	ctx := c.Request.Context()
 	id, ok := c.Params.Get("id")
 	if !ok {
@@ -92,7 +76,7 @@ func (h *payeeHandler) GetById(c *gin.Context) {
 	c.JSON(http.StatusOK, payee)
 }
 
-func (h *payeeHandler) GetRules(c *gin.Context) {
+func (h *PayeeHandler) GetRules(c *gin.Context) {
 	ctx := c.Request.Context()
 	id, ok := c.Params.Get("id")
 	if !ok {
@@ -112,7 +96,7 @@ func (h *payeeHandler) GetRules(c *gin.Context) {
 	c.JSON(http.StatusOK, rules)
 }
 
-func (h *payeeHandler) CreateRule(c *gin.Context) {
+func (h *PayeeHandler) CreateRule(c *gin.Context) {
 	ctx := c.Request.Context()
 	id, ok := c.Params.Get("id")
 	if !ok {
@@ -136,7 +120,7 @@ func (h *payeeHandler) CreateRule(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"message": "Payee rule created"})
 }
 
-func (h *payeeHandler) UpdateRule(c *gin.Context) {
+func (h *PayeeHandler) UpdateRule(c *gin.Context) {
 	ctx := c.Request.Context()
 	id, ok := c.Params.Get("id")
 	if !ok {
@@ -170,7 +154,7 @@ func (h *payeeHandler) UpdateRule(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Payee rule updated"})
 }
 
-func (h *payeeHandler) DeleteRule(c *gin.Context) {
+func (h *PayeeHandler) DeleteRule(c *gin.Context) {
 	ctx := c.Request.Context()
 	ruleId, ok := c.Params.Get("ruleId")
 	if !ok {
@@ -189,7 +173,7 @@ func (h *payeeHandler) DeleteRule(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Payee rule deleted"})
 }
 
-func (h *payeeHandler) Update(c *gin.Context) {
+func (h *PayeeHandler) Update(c *gin.Context) {
 	ctx := c.Request.Context()
 	id, ok := c.Params.Get("id")
 	if !ok {
@@ -216,7 +200,7 @@ func (h *payeeHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Payee updated"})
 }
 
-func (h *payeeHandler) DeleteById(c *gin.Context) {
+func (h *PayeeHandler) DeleteById(c *gin.Context) {
 	ctx := c.Request.Context()
 	id, ok := c.Params.Get("id")
 	if !ok {
@@ -236,7 +220,7 @@ func (h *payeeHandler) DeleteById(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Payee deleted"})
 }
 
-func (h *payeeHandler) Stats(c *gin.Context) {
+func (h *PayeeHandler) Stats(c *gin.Context) {
 	stats, err := h.service.GetStats(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -245,7 +229,7 @@ func (h *payeeHandler) Stats(c *gin.Context) {
 	c.JSON(http.StatusOK, stats)
 }
 
-func (h *payeeHandler) ListRules(c *gin.Context) {
+func (h *PayeeHandler) ListRules(c *gin.Context) {
 	rules, err := h.service.GetAllRules(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -254,7 +238,7 @@ func (h *payeeHandler) ListRules(c *gin.Context) {
 	c.JSON(http.StatusOK, rules)
 }
 
-func (h *payeeHandler) Merge(c *gin.Context) {
+func (h *PayeeHandler) Merge(c *gin.Context) {
 	var body model.PayeeMergeRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -277,4 +261,20 @@ func payeeErrorStatus(err error) int {
 	default:
 		return http.StatusInternalServerError
 	}
+}
+
+func (h *PayeeHandler) Routes(r gin.IRouter) {
+	r.GET("/payees", h.List)
+	r.GET("/payees/search", h.Search)
+	r.GET("/payees/stats", h.Stats)
+	r.GET("/payees/rules", h.ListRules)
+	r.POST("/payees/merge", h.Merge)
+	r.GET("/payees/:id", h.GetById)
+	r.GET("/payees/:id/rules", h.GetRules)
+	r.POST("/payees/:id/rules", h.CreateRule)
+	r.PATCH("/payees/:id/rules/:ruleId", h.UpdateRule)
+	r.DELETE("/payees/:id/rules/:ruleId", h.DeleteRule)
+	r.POST("/payees", h.Create)
+	r.PATCH("/payees/:id", h.Update)
+	r.DELETE("/payees/:id", h.DeleteById)
 }

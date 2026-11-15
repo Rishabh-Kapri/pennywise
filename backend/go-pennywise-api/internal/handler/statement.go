@@ -17,28 +17,18 @@ import (
 	"github.com/google/uuid"
 )
 
-type StatementHandler interface {
-	Upload(c *gin.Context)
-	List(c *gin.Context)
-	Get(c *gin.Context)
-	SetSectionAccount(c *gin.Context)
-	CreateMissing(c *gin.Context)
-	Retry(c *gin.Context)
-	Delete(c *gin.Context)
-}
-
-type statementHandler struct {
+type StatementHandler struct {
 	service service.StatementService
 }
 
-func NewStatementHandler(service service.StatementService) StatementHandler {
-	return &statementHandler{service: service}
+func NewStatementHandler(service service.StatementService) *StatementHandler {
+	return &StatementHandler{service: service}
 }
 
 // Upload takes one PDF (`file`), an optional default `accountId` and an
 // optional `password`, and answers 202 while extraction runs. A file already
 // uploaded answers 200 with the existing import.
-func (h *statementHandler) Upload(c *gin.Context) {
+func (h *StatementHandler) Upload(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	// headroom over the file cap for the other form fields and multipart framing
@@ -99,7 +89,7 @@ func (h *statementHandler) Upload(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{"import": imp, "duplicate": false})
 }
 
-func (h *statementHandler) List(c *gin.Context) {
+func (h *StatementHandler) List(c *gin.Context) {
 	imports, err := h.service.List(c.Request.Context())
 	if err != nil {
 		writeStatementError(c, err)
@@ -108,7 +98,7 @@ func (h *statementHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, imports)
 }
 
-func (h *statementHandler) Get(c *gin.Context) {
+func (h *StatementHandler) Get(c *gin.Context) {
 	id, ok := statementID(c)
 	if !ok {
 		return
@@ -121,7 +111,7 @@ func (h *statementHandler) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, rec)
 }
 
-func (h *statementHandler) SetSectionAccount(c *gin.Context) {
+func (h *StatementHandler) SetSectionAccount(c *gin.Context) {
 	id, ok := statementID(c)
 	if !ok {
 		return
@@ -144,7 +134,7 @@ func (h *statementHandler) SetSectionAccount(c *gin.Context) {
 	c.JSON(http.StatusOK, rec)
 }
 
-func (h *statementHandler) CreateMissing(c *gin.Context) {
+func (h *StatementHandler) CreateMissing(c *gin.Context) {
 	id, ok := statementID(c)
 	if !ok {
 		return
@@ -162,7 +152,7 @@ func (h *statementHandler) CreateMissing(c *gin.Context) {
 	c.JSON(http.StatusOK, res)
 }
 
-func (h *statementHandler) Retry(c *gin.Context) {
+func (h *StatementHandler) Retry(c *gin.Context) {
 	id, ok := statementID(c)
 	if !ok {
 		return
@@ -175,7 +165,7 @@ func (h *statementHandler) Retry(c *gin.Context) {
 	c.JSON(http.StatusAccepted, imp)
 }
 
-func (h *statementHandler) Delete(c *gin.Context) {
+func (h *StatementHandler) Delete(c *gin.Context) {
 	id, ok := statementID(c)
 	if !ok {
 		return
@@ -207,4 +197,14 @@ func writeStatementError(c *gin.Context, err error) {
 		logger.Logger(c.Request.Context()).Error("statement request failed", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 	}
+}
+
+func (h *StatementHandler) Routes(r gin.IRouter) {
+	r.GET("/statements", h.List)
+	r.POST("/statements", h.Upload)
+	r.GET("/statements/:id", h.Get)
+	r.PATCH("/statements/:id/sections/:section", h.SetSectionAccount)
+	r.POST("/statements/:id/transactions", h.CreateMissing)
+	r.POST("/statements/:id/retry", h.Retry)
+	r.DELETE("/statements/:id", h.Delete)
 }

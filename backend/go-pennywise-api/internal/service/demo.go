@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
@@ -79,26 +78,7 @@ func (s *demoService) LoginAsDemo(ctx context.Context) (*model.AuthUserResponse,
 		return nil, "", "", err
 	}
 
-	authUser := userWithCreds.AuthUser
-	accessToken, err := s.authService.GenerateAccessToken(ctx, authUser.ID, authUser.TokenVersion)
-	if err != nil {
-		return nil, "", "", errs.Wrap(errs.CodeAuthCreateFailed, "failed to generate access token", err)
-	}
-	refreshToken, err := s.authService.GenerateRefreshToken(ctx, authUser.ID)
-	if err != nil {
-		return nil, "", "", errs.Wrap(errs.CodeAuthCreateFailed, "failed to generate refresh token", err)
-	}
-	if err := s.authRepo.SaveRefreshTokenHash(ctx, authUser.ID, refreshToken); err != nil {
-		return nil, "", "", errs.Wrap(errs.CodeAuthCreateFailed, "failed to save refresh token", err)
-	}
-
-	resUser := model.AuthUserResponse{
-		ID:      authUser.ID,
-		Email:   userWithCreds.GoogleProvider.Email,
-		Name:    userWithCreds.GoogleProvider.Name,
-		Picture: userWithCreds.GoogleProvider.Picture,
-	}
-	return &resUser, accessToken, refreshToken, nil
+	return s.authService.StartSession(ctx, userWithCreds)
 }
 
 // seedDemoUser creates the demo auth user with a fully populated budget in a

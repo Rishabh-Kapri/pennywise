@@ -11,27 +11,15 @@ import (
 	"github.com/google/uuid"
 )
 
-type AgentHandler interface {
-	GetConversations(c *gin.Context)
-	GetConversationMessages(c *gin.Context)
-	CreateRun(c *gin.Context)
-	GetRun(c *gin.Context)
-	CancelRun(c *gin.Context)
-	UpdateConversation(c *gin.Context)
-	DeleteConversation(c *gin.Context)
-	UpdateConversationMessageContent(c *gin.Context)
-	UpdateEntityMetadata(c *gin.Context)
-}
-
-type agentHandler struct {
+type AgentHandler struct {
 	service service.AgentService
 }
 
-func NewAgentHandler(service service.AgentService) AgentHandler {
-	return &agentHandler{service: service}
+func NewAgentHandler(service service.AgentService) *AgentHandler {
+	return &AgentHandler{service: service}
 }
 
-func (h *agentHandler) GetConversations(c *gin.Context) {
+func (h *AgentHandler) GetConversations(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	conversations, err := h.service.GetConversations(ctx)
@@ -43,7 +31,7 @@ func (h *agentHandler) GetConversations(c *gin.Context) {
 	c.JSON(http.StatusOK, conversations)
 }
 
-func (h *agentHandler) GetConversationMessages(c *gin.Context) {
+func (h *AgentHandler) GetConversationMessages(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	id, err := parseQueryID(c, "id")
@@ -61,7 +49,7 @@ func (h *agentHandler) GetConversationMessages(c *gin.Context) {
 	c.JSON(http.StatusOK, messages)
 }
 
-func (h *agentHandler) CreateRun(c *gin.Context) {
+func (h *AgentHandler) CreateRun(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	var body sharedModel.AgentRunCreateRequest
@@ -79,7 +67,7 @@ func (h *agentHandler) CreateRun(c *gin.Context) {
 	c.JSON(http.StatusAccepted, run)
 }
 
-func (h *agentHandler) GetRun(c *gin.Context) {
+func (h *AgentHandler) GetRun(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	id, err := parseQueryID(c, "id")
@@ -97,7 +85,7 @@ func (h *agentHandler) GetRun(c *gin.Context) {
 	c.JSON(http.StatusOK, run)
 }
 
-func (h *agentHandler) CancelRun(c *gin.Context) {
+func (h *AgentHandler) CancelRun(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	id, err := parseQueryID(c, "id")
@@ -115,7 +103,7 @@ func (h *agentHandler) CancelRun(c *gin.Context) {
 	c.JSON(http.StatusOK, run)
 }
 
-func (h *agentHandler) UpdateConversation(c *gin.Context) {
+func (h *AgentHandler) UpdateConversation(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	conversationId, err := parseQueryID(c, "conversationId")
@@ -138,7 +126,7 @@ func (h *agentHandler) UpdateConversation(c *gin.Context) {
 	c.JSON(http.StatusOK, "updated")
 }
 
-func (h *agentHandler) DeleteConversation(c *gin.Context) {
+func (h *AgentHandler) DeleteConversation(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	conversationID, err := parseQueryID(c, "conversationId")
@@ -155,7 +143,7 @@ func (h *agentHandler) DeleteConversation(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "conversation deleted"})
 }
 
-func (h *agentHandler) UpdateConversationMessageContent(c *gin.Context) {
+func (h *AgentHandler) UpdateConversationMessageContent(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	// id is the conversation_message id
@@ -178,7 +166,7 @@ func (h *agentHandler) UpdateConversationMessageContent(c *gin.Context) {
 	}
 }
 
-func (h *agentHandler) UpdateEntityMetadata(c *gin.Context) {
+func (h *AgentHandler) UpdateEntityMetadata(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	entity := c.Param("entity")
@@ -239,4 +227,16 @@ func agentErrorStatus(err error) int {
 	}
 
 	return http.StatusBadGateway
+}
+
+func (h *AgentHandler) Routes(r gin.IRouter) {
+	r.GET("/agent/conversations", h.GetConversations)
+	r.GET("/agent/conversations/:id/messages", h.GetConversationMessages)
+	r.PATCH("/agent/conversations/:conversationId", h.UpdateConversation)
+	r.DELETE("/agent/conversations/:conversationId", h.DeleteConversation)
+	r.PATCH("/agent/conversations/:conversationId/message/:messageId", h.UpdateConversationMessageContent)
+	r.POST("/agent/runs", h.CreateRun)
+	r.GET("/agent/runs/:id", h.GetRun)
+	r.POST("/agent/runs/:id/cancel", h.CancelRun)
+	r.PATCH("/agent/:entity/:id/metadata", h.UpdateEntityMetadata)
 }
