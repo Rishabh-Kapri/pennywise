@@ -124,39 +124,16 @@ func (t GetSpendingSummaryTool) Definition() sharedModel.ToolDefiniton {
 }
 
 // Spending is stored as a negative amount, so totals are negated to read as
-// positive "money spent". Transfers carry a transfer_account_id and are excluded
-// because moving money between your own accounts is not spending.
-// spendingScope is everything that decides which transactions count. It is
-// applied identically to the grouping queries and to the total, because a total
-// computed over a wider set than the rows beneath it is worse than no total at
-// all — the model reports a filtered breakdown against an unfiltered
-// denominator and every percentage it derives is wrong.
-type spendingScope struct {
-	budgetID uuid.UUID
-	start    string
-	end      string
-	filters  entityFilters
-}
-
-// applySpendingScope adds the predicates common to every spending query.
-// Spending is stored as a negative amount; transfers carry a transfer_account_id
-// and are excluded because moving money between your own accounts is not
-// spending.
-func applySpendingScope(query sq.SelectBuilder, scope spendingScope) sq.SelectBuilder {
-	query = query.
-		Where(sq.Eq{"t.budget_id": scope.budgetID}).
-		Where(sq.Eq{"t.deleted": false}).
-		Where(sq.GtOrEq{"t.date": scope.start}).
-		Where(sq.LtOrEq{"t.date": scope.end}).
-		Where(sq.Lt{"t.amount": 0}).
-		Where(sq.Eq{"t.transfer_account_id": nil})
-
-	return scope.filters.apply(query)
+// positive "money spent". Every query here uses the same spending scope: a
+// total over a wider set than the rows beneath it is worse than no total at
+// all, because every percentage the model derives from it is wrong.
+func spendingScope(budgetID uuid.UUID, start, end string, filters entityFilters) transactionScope {
+	return transactionScope{budgetID: budgetID, start: start, end: end, direction: directionSpending, filters: filters}
 }
 
 // spendingSummaryGroupQuery builds the grouped breakdown. The grouping dimension
 // selects a fixed builder — it is never interpolated into SQL.
-func spendingSummaryGroupQuery(groupBy string, scope spendingScope, limit uint64) (sq.SelectBuilder, error) {
+func spendingSummaryGroupQuery(groupBy string, scope transactionScope, limit uint64) (sq.SelectBuilder, error) {
 	switch groupBy {
 	case groupByCategory:
 		query := psql.
@@ -168,8 +145,7 @@ func spendingSummaryGroupQuery(groupBy string, scope spendingScope, limit uint64
 			From("transactions t").
 			LeftJoin("categories c ON c.id = t.category_id AND c.budget_id = t.budget_id").
 			GroupBy("COALESCE(c.name, 'Uncategorized')")
-		return applySpendingScope(query, scope).
-			Where(sq.Expr("COALESCE(c.is_system, FALSE) = FALSE")).
+		return scope.apply(query).
 			OrderBy("total DESC").
 			Limit(limit), nil
 
@@ -183,7 +159,7 @@ func spendingSummaryGroupQuery(groupBy string, scope spendingScope, limit uint64
 			From("transactions t").
 			LeftJoin("payees p ON p.id = t.payee_id AND p.budget_id = t.budget_id").
 			GroupBy("COALESCE(p.name, 'Unknown payee')")
-		return applySpendingScope(query, scope).
+		return scope.apply(query).
 			OrderBy("total DESC").
 			Limit(limit), nil
 
@@ -198,7 +174,7 @@ func spendingSummaryGroupQuery(groupBy string, scope spendingScope, limit uint64
 			From("transactions t").
 			Join("tags tg ON tg.id = ANY(t.tag_ids) AND tg.budget_id = t.budget_id AND tg.deleted = FALSE").
 			GroupBy("tg.name")
-		return applySpendingScope(query, scope).
+		return scope.apply(query).
 			OrderBy("total DESC").
 			Limit(limit), nil
 
@@ -215,14 +191,8 @@ func spendingSummaryGroupQuery(groupBy string, scope spendingScope, limit uint64
 // computed separately from the grouped rows so a truncating limit cannot make
 // the reported total wrong, and so tag grouping (where one transaction can
 // appear under several tags) still has an unambiguous overall figure.
-func spendingSummaryTotalQuery(scope spendingScope) sq.SelectBuilder {
-	query := psql.
-		Select("COALESCE(-SUM(t.amount), 0)").
-		From("transactions t").
-		LeftJoin("categories c ON c.id = t.category_id AND c.budget_id = t.budget_id")
-
-	return applySpendingScope(query, scope).
-		Where(sq.Expr("COALESCE(c.is_system, FALSE) = FALSE"))
+func spendingSummaryTotalQuery(scope transactionScope) sq.SelectBuilder {
+	return scope.apply(psql.Select("COALESCE(-SUM(t.amount), 0)").From("transactions t"))
 }
 
 func (t GetSpendingSummaryTool) Execute(
@@ -247,12 +217,8 @@ func (t GetSpendingSummaryTool) Execute(
 	}
 
 	budgetID := utils.MustBudgetID(ctx)
-	scope := spendingScope{
-		budgetID: budgetID,
-		start:    args.DateRange.Start,
-		end:      args.DateRange.End,
-		filters:  newEntityFilters(args.CategoryName, args.PayeeName, args.TagName),
-	}
+	scope := spendingScope(budgetID, args.DateRange.Start, args.DateRange.End,
+		newEntityFilters(args.CategoryName, args.PayeeName, args.TagName))
 
 	groupQuery, err := spendingSummaryGroupQuery(args.GroupBy, scope, uint64(limit))
 	if err != nil {

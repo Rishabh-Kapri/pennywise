@@ -15,7 +15,6 @@ import (
 )
 
 const (
-	redisPubsubStream       = "pubsub"
 	redisStreamReadBlock    = 5 * time.Second
 	redisStreamReadCount    = 10
 	redisStreamRetryBackoff = time.Second
@@ -31,7 +30,7 @@ func NewRedisStreamListener(redisClient *redis.Client, hub ConnectionHub) *Redis
 	return &RedisStreamListener{
 		redisClient: redisClient,
 		hub:         hub,
-		stream:      redisPubsubStream,
+		stream:      sharedModel.AgentEventsRedisStream,
 	}
 }
 

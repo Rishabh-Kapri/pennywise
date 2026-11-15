@@ -5,17 +5,15 @@ BACKFILL_ARGS ?=
 
 .DEFAULT_GOAL := help
 
-.PHONY: help run run-api run-agent run-backfill run-backfill-sources run-eval-lookup run-embed-entities build build-api build-agent build-backfill build-embed-entities test fmt vet check tidy vendor clean
+.PHONY: help run run-api run-backfill run-backfill-sources run-eval-lookup build build-api build-backfill test fmt vet check tidy vendor clean
 
 help:
 	@echo "Cipher targets:"
 	@echo "  make run                   Run Cipher API server"
-	@echo "  make run-agent             Run local agent runtime"
 	@echo "  make run-backfill          Run backfill command; pass BACKFILL_ARGS=\"-data path\""
 	@echo "  make run-backfill-sources  Split transactions.raw_bank_text into transaction_sources + counterparty_aliases (one DB transaction); BACKFILL_ARGS=\"-dry-run -budget <id>\""
 	@echo "  make run-eval-lookup       Compare trigram and embedding matching on your aliases (read-only); pass EVAL_ARGS=\"-ollama http://host:11434\""
-	@echo "  make run-embed-entities    Embed all budget entities into pgvector; requires BUDGET_ID env var"
-	@echo "  make build                 Build API, agent and backfill binaries into ./bin"
+	@echo "  make build                 Build API and backfill binaries into ./bin"
 	@echo "  make test                  Run tests"
 	@echo "  make check                 Run fmt, vet, and tests"
 	@echo "  make vendor                Run vendor to add the shared modules"
@@ -24,9 +22,6 @@ run: run-api
 
 run-api:
 	$(GO) run ./cmd/api
-
-run-agent:
-	$(GO) run ./agent/runtime
 
 run-backfill:
 	$(GO) run ./cmd/backfill $(BACKFILL_ARGS)
@@ -37,15 +32,11 @@ run-backfill-sources:
 run-eval-lookup:
 	$(GO) run ./cmd/eval-lookup $(EVAL_ARGS)
 
-build: build-api build-agent build-backfill
+build: build-api build-backfill
 
 build-api:
 	mkdir -p $(BIN_DIR)
 	$(GO) build -o $(BIN_DIR)/cipher-api ./cmd/api
-
-build-agent:
-	mkdir -p $(BIN_DIR)
-	$(GO) build -o $(BIN_DIR)/cipher-agent ./agent/runtime
 
 build-backfill:
 	mkdir -p $(BIN_DIR)

@@ -161,12 +161,9 @@ services:
       PORT: 5160
       DATABASE_URL: postgres://${POSTGRES_USER:-pennywise}:${POSTGRES_PASSWORD:-pennywise}@postgres:5432/${POSTGRES_DB:-pennywise}?sslmode=disable
       REDIS_URL: redis://redis:6379/0
-      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
-      MLP_SERVICE_URL: ${MLP_SERVICE_URL:-}
       PENNYWISE_SERVICE_URL: http://pennywise-api:5151
       # Chat models run on each user's own AI providers (Settings -> AI), never
       # on server keys.
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       # Must match pennywise-api's.
       LLM_CREDENTIALS_KEY: ${LLM_CREDENTIALS_KEY:-ZGV2LWxsbS1rZXktY2hhbmdlLW1lLTMyLWJ5dGVzISE=}
       # Self-hosting: lets a user's Ollama URL reach private addresses such as

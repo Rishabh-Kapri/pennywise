@@ -16,6 +16,41 @@ import (
 // defaults to ?, which pgx would reject.
 var psql = sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 
+// transactionScope is which transactions a query tool counts. Defined once so
+// every query of get_spending_summary (grouped rows and total) and
+// get_top_transactions counts the same set.
+//
+// Transfers carry a transfer_account_id and are excluded: moving money between
+// your own accounts is neither spending nor income. Spending is a negative
+// amount outside the system inflow category; income a positive one.
+type transactionScope struct {
+	budgetID  uuid.UUID
+	start     string
+	end       string
+	direction string // directionSpending or directionIncome
+	filters   entityFilters
+}
+
+func (s transactionScope) apply(query sq.SelectBuilder) sq.SelectBuilder {
+	query = query.
+		Where(sq.Eq{"t.budget_id": s.budgetID}).
+		Where(sq.Eq{"t.deleted": false}).
+		Where(sq.GtOrEq{"t.date": s.start}).
+		Where(sq.LtOrEq{"t.date": s.end}).
+		Where(sq.Eq{"t.transfer_account_id": nil})
+	if s.direction == directionIncome {
+		query = query.Where(sq.Gt{"t.amount": 0})
+	} else {
+		query = query.
+			Where(sq.Lt{"t.amount": 0}).
+			Where(sq.Expr(`NOT EXISTS (
+				SELECT 1 FROM categories sc
+				WHERE sc.id = t.category_id AND sc.budget_id = t.budget_id AND sc.is_system
+			)`))
+	}
+	return s.filters.apply(query)
+}
+
 // entityFilters are the optional name filters the query tools accept.
 //
 // Defined once and shared, so get_spending_summary and get_top_transactions

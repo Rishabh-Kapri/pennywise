@@ -14,10 +14,6 @@ type StreamHandler struct {
 	OnTextDelta      func(textDelta string)
 	OnReasoningDelta func(textDelta string)
 	OnToolCallStart  func(ctx context.Context, tool sharedModel.ToolCall)
-	OnToolCall       func(ctx context.Context, tool sharedModel.ToolCall)
-	OnDone           func(usage sharedModel.Usage)
-	OnComplete       func()
-	OnError          func()
 }
 
 type eventToolCall struct {
@@ -28,8 +24,6 @@ type eventToolCall struct {
 
 func appendCompletedToolCall(
 	stepResult *sharedModel.StepResult,
-	callback StreamHandler,
-	ctx context.Context,
 	activeTool *eventToolCall,
 ) bool {
 	if activeTool == nil {
@@ -48,9 +42,6 @@ func appendCompletedToolCall(
 		ID:        activeTool.id,
 		Name:      activeTool.name,
 		Arguments: json.RawMessage(toolArgs),
-	}
-	if callback.OnToolCall != nil {
-		callback.OnToolCall(ctx, tool)
 	}
 	stepResult.ToolCalls = append(stepResult.ToolCalls, tool)
 	return true
@@ -79,7 +70,6 @@ func ProcessStream(
 	for {
 		select {
 		case event, ok := <-events:
-			// log.Info("received event from channel", "event", event)
 			if !ok {
 				if stepResult.StopReason == "" {
 					log.Error("llm stream closed without a completion or error event")
@@ -134,21 +124,22 @@ func ProcessStream(
 			case sharedModel.ChunkEventToolCall:
 				// tool call stream is done
 				activeTool := activeTools[event.OutputIndex]
-				if appendCompletedToolCall(&stepResult, handlerCallback, ctx, activeTool) {
+				if appendCompletedToolCall(&stepResult, activeTool) {
 					activeTool.args.Reset()
 					delete(activeTools, event.OutputIndex)
 				}
 
 			case sharedModel.ChunkEventCompleted:
 				for outputIndex, activeTool := range activeTools {
-					if appendCompletedToolCall(&stepResult, handlerCallback, ctx, activeTool) {
+					if appendCompletedToolCall(&stepResult, activeTool) {
 						activeTool.args.Reset()
 						delete(activeTools, outputIndex)
+					} else if activeTool != nil {
+						// The stream is over, so this call is lost. Say why, or the
+						// run only reports a tool-use stop with no tool calls.
+						log.Warn("dropping tool call with invalid JSON arguments",
+							"tool", activeTool.name, "id", activeTool.id)
 					}
-				}
-				// handle tool call here too
-				if handlerCallback.OnDone != nil {
-					handlerCallback.OnDone(event.Usage)
 				}
 				stepResult.Usage = event.Usage
 				stepResult.Model = event.Model
@@ -167,9 +158,6 @@ func ProcessStream(
 
 			case sharedModel.ChunkEventError:
 				log.Error("llm stream returned an error chunk", "error", event.Text)
-				if handlerCallback.OnError != nil {
-					handlerCallback.OnError()
-				}
 				stepResult.StopReason = sharedModel.StopReasonError
 				if event.Text != "" {
 					stepResult.Err = errs.New(errs.CodeInternalError, "llm stream error: %s", event.Text)

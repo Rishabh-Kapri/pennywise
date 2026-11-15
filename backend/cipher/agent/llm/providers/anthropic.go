@@ -15,7 +15,6 @@ import (
 )
 
 type anthropicClient struct {
-	name       string
 	httpClient *transport.Client
 }
 
@@ -134,7 +133,7 @@ type anthropicStreamErrorEvent struct {
 }
 
 // NewAnthropicClientWithKey builds a client on a user's own key.
-func NewAnthropicClientWithKey(name, apiKey string) (llm.LLM, error) {
+func NewAnthropicClientWithKey(apiKey string) (llm.LLM, error) {
 	if apiKey == "" {
 		return nil, errs.New(errs.CodeInternalError, "no api key found")
 	}
@@ -149,10 +148,7 @@ func NewAnthropicClientWithKey(name, apiKey string) (llm.LLM, error) {
 	httpTransport := httpclient.NewHttpTransport(
 		"https://api.anthropic.com",
 	)
-	logger.Logger(context.Background()).Info("anthropic client created")
-
 	return &anthropicClient{
-		name: name,
 		httpClient: transport.NewClient(
 			"anthropic",
 			httpTransport,

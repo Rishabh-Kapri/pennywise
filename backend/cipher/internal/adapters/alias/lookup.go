@@ -76,7 +76,7 @@ const (
 )
 
 func aliasConfidence(source string) float64 {
-	if source == "MANUAL" {
+	if source == model.AliasSourceManual {
 		return manualAliasConfidence
 	}
 	return learnedAliasConfidence

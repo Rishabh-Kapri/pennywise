@@ -15,7 +15,7 @@ import (
 func (d *BackfillDeps) extractAndParse(ctx context.Context, p resolvedPrediction) *parsedEmailText {
 	log := logger.Logger(ctx)
 
-	extracted, err := d.OllamaClient.ExtractEmailData(ctx, p.EmailText)
+	extracted, err := d.Ollama.extractEmailData(ctx, p.EmailText)
 	if err != nil {
 		log.Warn("phase 1 extraction failed, falling back to raw parse", "id", p.ID, "error", err)
 		return parseRawEmailText(p.EmailText)

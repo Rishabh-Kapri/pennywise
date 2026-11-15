@@ -1,10 +1,5 @@
-/*
- * Cipher: An auto prediction service for pennywise
- *
- * Handles all prediction logic, orchestrates calls to Ollama and MLP.
- * Serves as a proxy to Ollama and MLP, and stores transaction embeddings in PostgreSQL.
- * Updates transaction embeddings on user corrections.
- */
+// Cipher reads bank messages into transactions (the job worker), serves the
+// model calls go-pennywise-api asks for over HTTP, and runs the chat agent.
 package main
 
 import (
@@ -18,8 +13,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/memory"
 	agent "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/runtime"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/tools"
-	aliasAdapter "github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/adapters/alias"
-	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/client"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/agentrun"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/factory"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/handler"
@@ -46,17 +40,13 @@ import (
 
 const shutdownTimeout = 10 * time.Second
 
-func setupLogger(service string) {
-	logger.Setup(service)
-}
-
 func healthPage(c *gin.Context) {
 	c.String(http.StatusOK, "cipher Health OK!")
 }
 
 func main() {
 	cfg := config.Load()
-	setupLogger(cfg.ServiceName)
+	logger.Setup(cfg.ServiceName)
 
 	ctx, stop := signal.NotifyContext(utils.WithInternalAuthToken(
 		utils.WithLocalService(context.Background(), "cipher"),
@@ -97,16 +87,6 @@ func main() {
 	}
 	redisClient := redis.NewClient(redisOptions)
 	defer redisClient.Close()
-
-	// Clients
-	// currently we only have http transport
-	ollamaEngine := httpclient.NewHttpTransport(cfg.OllamaURL)
-	ollamaHttpTransport := transport.NewClient("ollama", ollamaEngine)
-	ollamaClient := client.NewOllamaClient(ollamaHttpTransport, tel.Tracer)
-
-	mlpEngine := httpclient.NewHttpTransport(cfg.MLPServiceURL)
-	mlpHttpTransport := transport.NewClient("mlp", mlpEngine)
-	mlpClient := client.NewMLPClient(mlpHttpTransport)
 
 	pennywiseEngine := httpclient.NewHttpTransport(cfg.PennywiseServiceURL)
 	pennywiseHttpTransport := transport.NewClient("pennywise", pennywiseEngine)
@@ -162,15 +142,10 @@ func main() {
 		logger.Logger(ctx).Warn("user AI provider keys can't be opened", "error", err)
 		llmCredentialsBox = nil
 	}
-	safeHTTPClient := transport.NewUserURLClient(cfg.AllowPrivateLLMURLs)
-	userModelsResolver := resolver.NewResolver(llmCredentialsBox, safeHTTPClient, tel)
-	llmResolver := userllm.New(
-		database.UserLLMModel,
-		database.UserLLMProvider,
-		llmCredentialsBox,
-		tel,
-		cfg.AllowPrivateLLMURLs,
-	)
+	// User URLs (Ollama, decision endpoints) are dialled through a client that
+	// refuses private addresses.
+	modelClients := resolver.NewResolver(llmCredentialsBox, transport.NewUserURLClient(cfg.AllowPrivateLLMURLs), tel)
+	llmResolver := userllm.New(database.UserLLMModel, database.UserLLMProvider, modelClients)
 	llmProviderHandler := handler.NewLLMProviderHandler(llmResolver)
 	memoryService := memory.NewMemoryService(database.AgentMemory, llmResolver, agentLocation)
 
@@ -189,22 +164,20 @@ func main() {
 		logger.Fatal("error while creating agent", "error", err)
 	}
 
-	predictionService := service.NewPredictionService(
-		agent,
-		llmResolver,
-		ollamaClient,
-		mlpClient,
-		database.TransactionEmbedding,
-		database.Account,
-		database.Payee,
-		database.PayeeRule,
-		database.Category,
-		tel.Tracer,
-		database.UserLLMModel,
-		userModelsResolver,
-	)
+	predictionService := service.NewPredictionService(service.PredictionDeps{
+		LLMResolver:    llmResolver,
+		EmbeddingRepo:  database.TransactionEmbedding,
+		AccountRepo:    database.Account,
+		PayeeRepo:      database.Payee,
+		PayeeRuleRepo:  database.PayeeRule,
+		CategoryRepo:   database.Category,
+		LLMModels:      database.UserLLMModel,
+		Embedders:      modelClients,
+		Tracer:         tel.Tracer,
+		LLMCallTimeout: cfg.LLMCallTimeout,
+	})
 
-	agentService := service.NewAgentService(redisClient, agent, pennywiseHttpTransport, memoryService, llmResolver)
+	agentService := agentrun.NewAgentService(agent, pennywiseHttpTransport, memoryService, llmResolver)
 
 	// Handler
 	predictionHandler := handler.NewPredictionHandler(predictionService)
@@ -251,11 +224,9 @@ func main() {
 
 		budgetApi := api.Group("")
 		budgetApi.Use(sharedMiddleware.BudgetIdMiddleware(database.Budget))
-		budgetApi.POST("/email/normalize", predictionHandler.NormalizeEmailText)
 		budgetApi.POST("/email/extract", predictionHandler.ExtractEmailData)
 		budgetApi.POST("/predict", predictionHandler.Predict)
 		budgetApi.POST("/embeddings/transaction", predictionHandler.GenerateTransactionEmbedding)
-		budgetApi.POST("/corrections", predictionHandler.HandleCorrection)
 		budgetApi.POST("/categories/describe", predictionHandler.SuggestCategoryDescription)
 		budgetApi.POST("/statements/extract", predictionHandler.ExtractStatement)
 		budgetApi.POST("/llm/models/test", llmProviderHandler.TestModel)
@@ -263,9 +234,7 @@ func main() {
 		{
 			agentApi := api.Group("/agent")
 			agentApi.Use(sharedMiddleware.BudgetIdMiddleware(database.Budget))
-			agentApi.GET("/runs", agentHandler.GetRun)
 			agentApi.POST("/runs", agentHandler.CreateRun)
-			agentApi.GET("/runs/cancel/:id", agentHandler.CancelRun)
 		}
 	}
 
@@ -317,6 +286,14 @@ func main() {
 		userModelsResolver,
 		database.UserLLMModel,
 	)
+	messagePipeline, err := factory.NewMessagePipeline(factory.MessagePipelineDeps{
+		PipelineSteps:  database.PipelineStep,
+		LLMModels:      database.UserLLMModel,
+		Categories:     database.Category,
+		Aliases:        database.CounterpartyAlias,
+		Clients:        modelClients,
+		LLMCallTimeout: cfg.LLMCallTimeout,
+	})
 	if err != nil {
 		logger.Fatal("error building message pipeline", "err", err)
 	}
@@ -329,7 +306,6 @@ func main() {
 			Queues:   cfg.JobQueues,
 			Broker:   broker,
 			Pipeline: messagePipeline,
-			Memory:   aliasAdapter.NewLookup(database.CounterpartyAlias),
 
 			ParkLowConfidence: cfg.MessageReviewPark,
 			StatementImport:   statementImport,

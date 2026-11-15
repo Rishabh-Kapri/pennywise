@@ -1,4 +1,4 @@
-package service
+package categorymatch
 
 import (
 	"context"
@@ -18,9 +18,6 @@ type stubCategoryRepo struct {
 	repository.CategoryRepository
 	matches []sharedModel.CategoryNameMatch
 	err     error
-	// gotName records the name the service asked about.
-	gotName  string
-	gotLimit int
 }
 
 func (s *stubCategoryRepo) FindClosestSimplified(
@@ -29,12 +26,10 @@ func (s *stubCategoryRepo) FindClosestSimplified(
 	name string,
 	limit int,
 ) ([]sharedModel.CategoryNameMatch, error) {
-	s.gotName = name
-	s.gotLimit = limit
 	return s.matches, s.err
 }
 
-func TestResolveCategoryFuzzy(t *testing.T) {
+func TestMatchFuzzy(t *testing.T) {
 	dining := uuid.New()
 	travelST := uuid.New()
 
@@ -94,30 +89,45 @@ func TestResolveCategoryFuzzy(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &stubCategoryRepo{matches: tc.matches}
-			svc := &predictionService{categoryRepo: repo}
 
-			match, err := svc.resolveCategoryFuzzy(context.Background(), uuid.New(), tc.suggested)
+			match, ok, err := Match(context.Background(), repo, uuid.New(), nil, tc.suggested)
 			require.NoError(t, err)
-			require.Equal(t, tc.suggested, repo.gotName)
-			// Two candidates are needed to judge ambiguity.
-			require.Equal(t, 2, repo.gotLimit)
-
 			if tc.wantID == nil {
-				require.Nil(t, match)
+				require.False(t, ok)
 				return
 			}
-			require.NotNil(t, match)
+			require.True(t, ok)
 			require.Equal(t, *tc.wantID, match.ID)
 			require.Equal(t, tc.wantName, match.Name)
+			require.Equal(t, Fuzzy, match.Kind)
 		})
 	}
 }
 
-func TestResolveCategoryFuzzyPropagatesRepoError(t *testing.T) {
+func TestMatchPropagatesRepoError(t *testing.T) {
 	repo := &stubCategoryRepo{err: errors.New("connection refused")}
-	svc := &predictionService{categoryRepo: repo}
 
-	match, err := svc.resolveCategoryFuzzy(context.Background(), uuid.New(), "Groceries")
+	_, ok, err := Match(context.Background(), repo, uuid.New(), nil, "Groceries")
 	require.Error(t, err)
-	require.Nil(t, match)
+	require.False(t, ok)
+}
+
+// An exact name never reaches the fuzzy lookup, which would fail here.
+func TestMatchExactNameSkipsTheFuzzyLookup(t *testing.T) {
+	groceries := uuid.New()
+	repo := &stubCategoryRepo{err: errors.New("should not be called")}
+
+	match, ok, err := Match(context.Background(), repo, uuid.New(),
+		[]sharedModel.CategorySimplified{{ID: groceries, Name: "🛒 Groceries"}}, "🛒 Groceries")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, Result{ID: groceries, Name: "🛒 Groceries", Kind: Exact, Score: 1}, match)
+}
+
+func TestMatchEmptySuggestionIsNoMatch(t *testing.T) {
+	repo := &stubCategoryRepo{err: errors.New("should not be called")}
+
+	_, ok, err := Match(context.Background(), repo, uuid.New(), nil, "")
+	require.NoError(t, err)
+	require.False(t, ok)
 }

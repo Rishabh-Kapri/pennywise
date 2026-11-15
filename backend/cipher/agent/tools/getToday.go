@@ -36,6 +36,12 @@ func (t GetTodayTool) Definition() sharedModel.ToolDefiniton {
 }
 
 func (t GetTodayTool) Execute(ctx context.Context, call sharedModel.ToolCall) (*sharedModel.ToolResult, error) {
+	if len(call.Arguments) > 0 {
+		var none struct{}
+		if err := decodeToolArgs(getTodayToolName, call.Arguments, &none); err != nil {
+			return nil, err
+		}
+	}
 	now := time.Now().In(t.Location)
 
 	return jsonToolResult(call, getTodayToolName, map[string]string{

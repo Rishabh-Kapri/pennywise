@@ -1,10 +1,9 @@
-package service
+package agentrun
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 
@@ -15,18 +14,14 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
 )
 
 type AgentService interface {
 	CreateRun(ctx context.Context, req sharedModel.AgentRunCreateRequest) (*sharedModel.AgentRun, error)
-	GetRun(ctx context.Context, id uuid.UUID) (*sharedModel.AgentRun, error)
-	CancelRun(ctx context.Context, id uuid.UUID) (*sharedModel.AgentRun, error)
 }
 
 // ClarifyError is returned by CreateRun when the router needs more information
@@ -35,27 +30,22 @@ type ClarifyError struct {
 	Prompt string
 }
 
-func (e *ClarifyError) Error() string   { return e.Prompt }
-func (e *ClarifyError) StatusCode() int { return http.StatusUnprocessableEntity }
+func (e *ClarifyError) Error() string { return e.Prompt }
 
 type agentService struct {
-	redis           *redis.Client
-	agent           *agent.Agent
-	agentMemoryRepo repository.AgentMemoryRepository
-	pennywiseAPI    *transport.Client
-	memoryService   memory.Memory
-	llmResolver     llm.LLMResolver
+	agent         *agent.Agent
+	pennywiseAPI  *transport.Client
+	memoryService memory.Memory
+	llmResolver   llm.LLMResolver
 }
 
 func NewAgentService(
-	redis *redis.Client,
 	a *agent.Agent,
 	pennywiseClient *transport.Client,
 	memoryService memory.Memory,
 	llmResolver llm.LLMResolver,
 ) AgentService {
 	return &agentService{
-		redis:         redis,
 		agent:         a,
 		pennywiseAPI:  pennywiseClient,
 		memoryService: memoryService,
@@ -140,18 +130,6 @@ func (s *agentService) generateTitle(ctx context.Context, message string) (strin
 	}
 
 	return strings.TrimSpace(messageText(titleRes.Message.Content)), nil
-}
-
-type runToolExchange struct {
-	Call   sharedModel.ToolCall
-	Result sharedModel.ToolResult
-}
-
-type storedRunToolCall struct {
-	ID     string          `json:"id"`
-	Name   string          `json:"name"`
-	Args   json.RawMessage `json:"args"`
-	Result json.RawMessage `json:"result"`
 }
 
 func toolResultFromRaw(raw json.RawMessage, call sharedModel.ToolCall) sharedModel.ToolResult {
@@ -308,10 +286,10 @@ func agentRunToChatRequest(req sharedModel.AgentRunCreateRequest) sharedModel.Ch
 					}
 				}
 
-				var storedRunToolCalls []storedRunToolCall
+				var storedRunToolCalls []agent.RunToolCall
 				if msg.RunID != nil {
-					if run, ok := runsByID[*msg.RunID]; ok && run.Metadata != nil && run.Metadata["toolCalls"] != nil {
-						rawAgentToolCalls := run.Metadata["toolCalls"]
+					if run, ok := runsByID[*msg.RunID]; ok && run.Metadata != nil && run.Metadata[agent.RunMetadataToolCalls] != nil {
+						rawAgentToolCalls := run.Metadata[agent.RunMetadataToolCalls]
 						payload, err := json.Marshal(rawAgentToolCalls)
 						if err == nil {
 							_ = json.Unmarshal(payload, &storedRunToolCalls)
@@ -324,9 +302,11 @@ func agentRunToChatRequest(req sharedModel.AgentRunCreateRequest) sharedModel.Ch
 
 				for _, rawToolCall := range storedRunToolCalls {
 					// for tool calls, we need to separate out the tool call and the tool result parts
-					args := rawToolCall.Args
-					if len(args) == 0 || strings.EqualFold(strings.TrimSpace(string(args)), "null") {
-						args = json.RawMessage("{}")
+					args := json.RawMessage("{}")
+					if len(rawToolCall.Args) > 0 {
+						if encoded, err := json.Marshal(rawToolCall.Args); err == nil {
+							args = encoded
+						}
 					}
 					toolCall := sharedModel.ToolCall{
 						ID:        rawToolCall.ID,
@@ -412,47 +392,6 @@ func agentRunToChatRequest(req sharedModel.AgentRunCreateRequest) sharedModel.Ch
 	}
 }
 
-func (s *agentService) publishTitleUpdate(
-	ctx context.Context,
-	budgetID uuid.UUID,
-	userID uuid.UUID,
-	conversationID uuid.UUID,
-	title string,
-) {
-	log := logger.Logger(ctx)
-
-	if s.redis == nil {
-		log.Warn("redis is not configured")
-		return
-	}
-
-	dataJSON, err := json.Marshal(map[string]any{
-		"message": title,
-		"type":    "title_update",
-	})
-	if err != nil {
-		log.Error("error while marshaling redis pubsub event data", "type", "title_update", "error", err)
-		return
-	}
-
-	values := map[string]any{
-		"eventName":      string(sharedModel.AgentEventChatStream),
-		"budgetId":       budgetID.String(),
-		"userId":         userID.String(),
-		"conversationId": conversationID.String(),
-		"data":           string(dataJSON),
-	}
-
-	pipe := s.redis.Pipeline()
-	pipe.XAdd(ctx, &redis.XAddArgs{
-		Stream: "pubsub",
-		Values: values,
-	})
-	if _, err := pipe.Exec(ctx); err != nil {
-		log.Error("error while sending redis pubsub event", "type", "title_update", "error", err)
-	}
-}
-
 func (s *agentService) CreateRun(
 	ctx context.Context,
 	req sharedModel.AgentRunCreateRequest,
@@ -534,11 +473,13 @@ func (s *agentService) CreateRun(
 				return
 			}
 
-			s.publishTitleUpdate(
+			s.agent.PublishChatEvent(
 				utils.DetachedRequestContext(ctxBackground),
 				budgetID,
 				userID,
-				*req.ConversationID,
+				req.ConversationID.String(),
+				"",
+				"title_update",
 				title,
 			)
 		}()
@@ -570,12 +511,4 @@ func (s *agentService) CreateRun(
 		}
 	}
 	return run, nil
-}
-
-func (s *agentService) GetRun(ctx context.Context, id uuid.UUID) (*sharedModel.AgentRun, error) {
-	return nil, nil
-}
-
-func (s *agentService) CancelRun(ctx context.Context, id uuid.UUID) (*sharedModel.AgentRun, error) {
-	return nil, nil
 }

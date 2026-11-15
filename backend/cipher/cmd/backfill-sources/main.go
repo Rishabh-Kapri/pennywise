@@ -238,7 +238,7 @@ func fillFromStatement(p *narration.Parsed, st statementRow) {
 		}
 	}
 	if p.OccurredOn == nil {
-		if d, err := time.ParseInLocation(time.DateOnly, st.Date, ist); err == nil {
+		if d, err := time.ParseInLocation(time.DateOnly, st.Date, narration.BankZone); err == nil {
 			p.OccurredOn = &d
 		}
 	}
@@ -246,14 +246,6 @@ func fillFromStatement(p *narration.Parsed, st statementRow) {
 		p.AccountHint = st.AccountNumber[len(st.AccountNumber)-4:]
 	}
 }
-
-var ist = func() *time.Location {
-	loc, err := time.LoadLocation("Asia/Kolkata")
-	if err != nil {
-		return time.FixedZone("IST", 5*3600+1800)
-	}
-	return loc
-}()
 
 func deref(s *string) string {
 	if s == nil {

@@ -8,14 +8,8 @@ import (
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 )
 
-func mustLoad(t *testing.T, name string) *time.Location {
-	t.Helper()
-	loc, err := time.LoadLocation(name)
-	if err != nil {
-		t.Skipf("timezone %s unavailable: %v", name, err)
-	}
-	return loc
-}
+// ist is a fixed +05:30 zone, so these tests run without the tz database.
+var ist = time.FixedZone("IST", 5*3600+1800)
 
 func timedMessage(seq int, role sharedModel.Role, text string, at time.Time) sharedModel.AgentMessage {
 	return sharedModel.AgentMessage{
@@ -30,7 +24,7 @@ func timedMessage(seq int, role sharedModel.Role, text string, at time.Time) sha
 // only possible source. Without one it invented the same clock time on every
 // run.
 func TestFormatMessagesForObserverCarriesRealTimestamps(t *testing.T) {
-	loc := mustLoad(t, "Asia/Kolkata")
+	loc := ist
 	// 03:30 UTC is 09:00 in Kolkata: proves the zone is applied, not just passed.
 	stored := time.Date(2026, 7, 14, 3, 30, 0, 0, time.UTC)
 	now := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
@@ -52,7 +46,7 @@ func TestFormatMessagesForObserverCarriesRealTimestamps(t *testing.T) {
 }
 
 func TestRepairObservationTimes(t *testing.T) {
-	loc := mustLoad(t, "Asia/Kolkata")
+	loc := ist
 	earliest := time.Date(2026, 8, 1, 17, 0, 0, 0, loc)
 	latest := time.Date(2026, 8, 1, 17, 30, 0, 0, loc)
 
@@ -107,7 +101,7 @@ func TestRepairObservationTimes(t *testing.T) {
 // Boundary values are legitimate: an observation about the first or last
 // message must not be rewritten.
 func TestRepairObservationTimesKeepsBoundaries(t *testing.T) {
-	loc := mustLoad(t, "Asia/Kolkata")
+	loc := ist
 	earliest := time.Date(2026, 8, 1, 17, 0, 30, 0, loc)
 	latest := time.Date(2026, 8, 1, 17, 30, 0, 0, loc)
 
@@ -121,7 +115,7 @@ func TestRepairObservationTimesKeepsBoundaries(t *testing.T) {
 }
 
 func TestObservedTimeBounds(t *testing.T) {
-	loc := mustLoad(t, "Asia/Kolkata")
+	loc := ist
 	now := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
 
 	messages := []sharedModel.AgentMessage{

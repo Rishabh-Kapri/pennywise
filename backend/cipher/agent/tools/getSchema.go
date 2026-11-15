@@ -7,7 +7,7 @@ import (
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 )
 
-const getSchemaToolName = "get_schema"
+const GetSchemaToolName = "get_schema"
 
 type GetSchemaTool struct{}
 
@@ -33,7 +33,7 @@ func NewGetSchemaTool() Tool {
 
 func (t GetSchemaTool) Definition() sharedModel.ToolDefiniton {
 	return sharedModel.ToolDefiniton{
-		Name:        getSchemaToolName,
+		Name:        GetSchemaToolName,
 		Description: "Return Pennywise database schema and SQL rules for read-only transaction, account, category, payee, and category balance queries. Call this before execute_sql unless the schema was already returned in the current conversation.",
 		InputSchema: sharedModel.ToolSchema{
 			Type: "object",
@@ -56,10 +56,11 @@ func (t GetSchemaTool) Execute(ctx context.Context, call sharedModel.ToolCall) (
 	requested := map[string]bool{}
 	if len(call.Arguments) > 0 {
 		var args getSchemaArgs
-		if err := json.Unmarshal(call.Arguments, &args); err == nil {
-			for _, table := range args.Tables {
-				requested[table] = true
-			}
+		if err := decodeToolArgs(GetSchemaToolName, call.Arguments, &args); err != nil {
+			return nil, err
+		}
+		for _, table := range args.Tables {
+			requested[table] = true
 		}
 	}
 
@@ -70,7 +71,7 @@ func (t GetSchemaTool) Execute(ctx context.Context, call sharedModel.ToolCall) (
 		}
 	}
 
-	return jsonToolResult(call, getSchemaToolName, schemaResult{
+	return jsonToolResult(call, GetSchemaToolName, schemaResult{
 		DomainContext: domainContext,
 		Tables:        tables,
 		QueryRules:    queryRules,

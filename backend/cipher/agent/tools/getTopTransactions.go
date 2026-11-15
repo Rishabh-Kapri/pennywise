@@ -130,10 +130,6 @@ const tagNamesColumn = `COALESCE(
 
 // topTransactionsQuery builds the row query. Amounts stay signed in the output
 // so the model can tell spend from income, but ordering is by magnitude.
-//
-// Direction is a real conditional rather than the "CASE WHEN $n = 'income'"
-// predicate a fixed query string forces — which the planner cannot use an index
-// against, since the comparison depends on a parameter rather than the column.
 func topTransactionsQuery(
 	budgetID uuid.UUID,
 	start string,
@@ -155,20 +151,10 @@ func topTransactionsQuery(
 		From("transactions t").
 		LeftJoin("payees p     ON p.id = t.payee_id     AND p.budget_id = t.budget_id").
 		LeftJoin("categories c ON c.id = t.category_id  AND c.budget_id = t.budget_id").
-		LeftJoin("accounts a   ON a.id = t.account_id   AND a.budget_id = t.budget_id").
-		Where(sq.Eq{"t.budget_id": budgetID}).
-		Where(sq.Eq{"t.deleted": false}).
-		Where(sq.GtOrEq{"t.date": start}).
-		Where(sq.LtOrEq{"t.date": end}).
-		Where(sq.Eq{"t.transfer_account_id": nil})
+		LeftJoin("accounts a   ON a.id = t.account_id   AND a.budget_id = t.budget_id")
 
-	if direction == directionIncome {
-		query = query.Where(sq.Gt{"t.amount": 0})
-	} else {
-		query = query.Where(sq.Lt{"t.amount": 0})
-	}
-
-	return filters.apply(query).
+	scope := transactionScope{budgetID: budgetID, start: start, end: end, direction: direction, filters: filters}
+	return scope.apply(query).
 		OrderBy("ABS(t.amount) DESC", "t.date DESC").
 		Limit(limit)
 }

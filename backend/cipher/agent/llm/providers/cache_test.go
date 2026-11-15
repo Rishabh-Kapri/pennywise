@@ -10,7 +10,7 @@ import (
 // dynamic half must not — a breakpoint after the volatile block would cache
 // content that changes daily, which never hits.
 func TestAnthropicSystemBlocksCarryCacheBreakpoint(t *testing.T) {
-	client := &anthropicClient{name: "chat"}
+	client := &anthropicClient{}
 
 	req := client.toAnthropicReq(sharedModel.ChatRequest{
 		Model: "claude-sonnet-4-6",

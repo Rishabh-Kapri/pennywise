@@ -16,11 +16,10 @@ var transactionPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)Spent Rs\.?\s*[\d,]+(?:\.\d{1,2})? On HDFC Bank Card \d{4} At`),
 }
 
-// CheckTransaction is a ports.CheckTransaction that matches known alert formats.
-// A match is a confident yes. No match means "unknown" (confidence 0), so a
-// chain falls through to the next adapter.
-type checkTransaction struct {}
-
+// checkTransaction is a ports.CheckTransaction that matches known alert
+// formats. A match is a confident yes. No match is a no with no score: the
+// rules can't say how sure they are of a format they don't know.
+type checkTransaction struct{}
 
 func NewCheckTransaction() ports.CheckTransaction {
 	return &checkTransaction{}
@@ -32,5 +31,5 @@ func (c *checkTransaction) Check(ctx context.Context, msg ports.Message) (ports.
 			return ports.TxnVerdict{IsTransaction: true, Confidence: new(1.0)}, nil
 		}
 	}
-	return ports.TxnVerdict{IsTransaction: false, Confidence: new(0.0)}, nil
+	return ports.TxnVerdict{IsTransaction: false}, nil
 }

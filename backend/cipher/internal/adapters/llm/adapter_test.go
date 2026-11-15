@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	prompts "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/context"
 	cipherModel "github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/ports"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
@@ -92,7 +91,7 @@ func TestToEntitiesRejectsAnUnreadableDate(t *testing.T) {
 func TestExtractionPromptExamplesAreValid(t *testing.T) {
 	want := []string{"account", "amount", "currency", "date", "merchant", "time"}
 	found := 0
-	for line := range strings.Lines(prompts.ExtractionPrompt) {
+	for line := range strings.Lines(extractionPrompt) {
 		_, output, ok := strings.Cut(line, "Output: ")
 		if !ok || !strings.HasPrefix(output, "{") {
 			continue
@@ -147,7 +146,7 @@ func TestToPrediction(t *testing.T) {
 
 func TestPredictionPromptAsksForBothScores(t *testing.T) {
 	for _, field := range []string{`"confidence"`, `"payeeConfidence"`, `"reasoning"`} {
-		if !strings.Contains(prompts.PredictionPrompt, field) {
+		if !strings.Contains(predictionPrompt, field) {
 			t.Errorf("prompt lacks %s", field)
 		}
 	}

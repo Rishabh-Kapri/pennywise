@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
@@ -65,11 +64,8 @@ func NewUserEmbedder(
 }
 
 // Embed implements [Embedder]. A vector of the wrong size is an error here,
-// because the database would refuse it later.
+// because the database would refuse it later. The caller bounds the call.
 func (e *userEmbedder) Embed(ctx context.Context, slug, text string) ([]float64, error) {
-	ctx, cancel := context.WithTimeout(ctx, config.DefaultLLMCallTimeout)
-	defer cancel()
-
 	path := openRouterEmbedPath
 	if e.provider == model.LLMProviderOllama {
 		path = ollamaEmbedPath
