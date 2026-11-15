@@ -50,7 +50,7 @@ func TestMetadataRoundTrip(t *testing.T) {
 }
 
 func TestMetadataWithoutRequestGetsCorrelationID(t *testing.T) {
-	ctx := utils.WithServiceName(context.Background(), "cipher")
+	ctx := utils.WithLocalService(context.Background(), "cipher")
 	m := MetadataFromContext(ctx)
 	if m.CorrelationID == "" {
 		t.Fatal("want a new correlation ID")

@@ -24,9 +24,13 @@ func InternalRequestAuth(ownToken string, services auth.Authenticator) gin.Handl
 		if metadata.InternalRequest {
 			var p *auth.Principal
 			if services != nil {
-				p, _ = services.Authenticate(ctx, auth.Credentials{
+				var err error
+				p, err = services.Authenticate(ctx, auth.Credentials{
 					ServiceToken: c.GetHeader(utils.HeaderInternalToken),
 				})
+				if err != nil {
+					logger.Logger(ctx).Error("service token check failed", "error", err)
+				}
 			}
 			metadata.VerifiedInternal = p != nil && p.Kind == auth.ServiceKind
 

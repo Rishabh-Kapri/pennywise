@@ -20,12 +20,6 @@ type Intent struct {
 	Criteria     map[string]*string `json:"criteria"`
 }
 
-type Question struct {
-	Type         IntentType
-	Instructions string
-	Criteria     map[string]string // noul: "truel/"false"; choice: label -> guidance
-}
-
 type AnswerType string
 
 type Answer struct {

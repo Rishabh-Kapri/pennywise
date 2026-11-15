@@ -12,7 +12,6 @@ type CategoryRepository interface {
 	GetAllSimplified(ctx context.Context, budgetId uuid.UUID) ([]model.CategorySimplified, error)
 	FindClosestSimplified(ctx context.Context, budgetId uuid.UUID, name string, limit int) ([]model.CategoryNameMatch, error)
 	GetInflowBalance(ctx context.Context, budgetId uuid.UUID) (float64, error)
-	GetByFilter(ctx context.Context, budgetId uuid.UUID, filter model.CategoryFilter) ([]model.Category, error)
 	Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.Category, error)
 	GetById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Category, error)
 	GetByIdSimplified(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) (*model.Category, error)

@@ -28,7 +28,7 @@ func (a *PipelineStatusActivity) StartPipelineRun(
 	ctx context.Context,
 	input sharedModel.StartPipelineRunInput,
 ) (uuid.UUID, error) {
-	ctx = utils.WithServiceName(ctx, "pennywise-api")
+	ctx = utils.WithLocalService(ctx, "pennywise-api")
 	log := pipelineActivityLogger(ctx)
 
 	if input.BudgetID == uuid.Nil {
@@ -53,7 +53,7 @@ func (a *PipelineStatusActivity) ReportPipelineStatus(
 	ctx context.Context,
 	input sharedModel.ReportPipelineStatusInput,
 ) error {
-	ctx = utils.WithServiceName(ctx, "pennywise-api")
+	ctx = utils.WithLocalService(ctx, "pennywise-api")
 	log := pipelineActivityLogger(ctx)
 
 	if input.RunID == uuid.Nil || input.BudgetID == uuid.Nil {

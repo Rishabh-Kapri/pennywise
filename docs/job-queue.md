@@ -115,8 +115,8 @@ write fails with `JOB_CLAIM_LOST`: the reaper took the job back, someone
 cancelled it, or a newer attempt holds it. The worker must stop and not retry
 the write.
 
-**`JobStore`**: reading and admin actions (`GetJobByID`, `ListJobs`,
-`ListByRoot`, `CancelJob`, `RetryDead`). Built and available, not yet used by
+**`JobStore`**: reading and admin actions (`GetJobByID`, `ListByRoot`, `ListTrees`,
+`Overview`, `CancelJob`, `RetryDead`). Built and available, not yet used by
 any service.
 
 **`JobLog`**: `Append(ctx, JobEvent)`, the history sink.
@@ -215,7 +215,7 @@ discussion under [Next steps](#next-steps)).
 
 ```go
 w, _ := jobrunner.NewWorker(broker,
-    jobrunner.WithQueue(model.QueueIngest),   // required
+    jobrunner.WithQueues([]string{model.QueueIngest}),   // required
     jobrunner.WithConcurrency(1),
     jobrunner.WithPrefix("ingest-worker"))
 w.RegisterJobHandler(model.JobTypeMailboxChanged, handler)
@@ -233,8 +233,11 @@ go w.Run(ctx)   // returns after ctx is cancelled and in-flight jobs finish
 - **Backoff:** exponential with full jitter:
   `wait = random(0, min(maxBackoff, baseBackoff × 2^(attempt−1)))`, defaults
   1 s and 5 min. Jitter spreads retries of jobs that failed together.
-- **Shutdown:** `Run` waits for `ctx` (or `Stop`), then gives in-flight jobs
-  up to `shutdownTimeout` (default 30 s).
+- **Shutdown:** `Run` waits for `ctx`, then gives in-flight jobs up to 30 s.
+  An interrupted job's outcome is still written (with its own context), so it
+  is retried instead of waiting for the reaper.
+- **Lost claim:** if a heartbeat finds the claim gone, the handler's context is
+  cancelled.
 
 Services wrap it in a `worker.Setup`: cipher in
 `backend/cipher/internal/worker`, ingest in `backend/ingest/internal/worker`.

@@ -42,9 +42,4 @@ type AgentMemoryRepository interface {
 		ctx context.Context,
 		data model.AgentObservationalMemory,
 	) (*model.AgentObservationalMemory, error)
-	UpdateObservationalMemory(
-		ctx context.Context,
-		id uuid.UUID,
-		data model.AgentObservationalMemory,
-	) (*model.AgentObservationalMemory, error)
 }

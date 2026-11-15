@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"errors"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
@@ -41,6 +40,9 @@ func (r *tagRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Tag, 
 		}
 		tags = append(tags, tag)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return tags, nil
 }
 
@@ -65,6 +67,9 @@ func (r *tagRepo) Search(ctx context.Context, budgetId uuid.UUID, query string) 
 			return nil, err
 		}
 		tags = append(tags, tag)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return tags, nil
 }
@@ -113,7 +118,7 @@ func (r *tagRepo) Update(ctx context.Context, budgetId uuid.UUID, id uuid.UUID, 
 		return err
 	}
 	if cmdTag.RowsAffected() == 0 {
-		return errors.New("Tag not found")
+		return notFoundError("Tag")
 	}
 	return nil
 }
@@ -131,7 +136,7 @@ func (r *tagRepo) DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UU
 		return err
 	}
 	if cmdTag.RowsAffected() == 0 {
-		return errors.New("Tag not found")
+		return notFoundError("Tag")
 	}
 	return nil
 }

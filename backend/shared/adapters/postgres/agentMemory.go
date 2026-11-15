@@ -121,6 +121,9 @@ func (r *agentMemoryRepo) GetObservationalMemory(
 		}
 		oms = append(oms, om)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	return oms, err
 }
@@ -163,14 +166,6 @@ func (r *agentMemoryRepo) CreateObservationalMemory(
 	}
 
 	return &om, nil
-}
-
-func (r *agentMemoryRepo) UpdateObservationalMemory(
-	ctx context.Context,
-	id uuid.UUID,
-	data model.AgentObservationalMemory,
-) (*model.AgentObservationalMemory, error) {
-	return nil, nil
 }
 
 func (r *agentMemoryRepo) PatchWorkingMemory(

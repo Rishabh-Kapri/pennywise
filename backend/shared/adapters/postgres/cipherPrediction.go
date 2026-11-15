@@ -165,6 +165,9 @@ func (r *cipherPredictionRepo) GetAll(
 		}
 		results = append(results, p)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return results, nil
 }
 

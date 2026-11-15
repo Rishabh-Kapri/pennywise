@@ -24,10 +24,6 @@ const (
 	MemoryChatType       ChatType = "MEMORY"
 )
 
-func (c ChatType) ToString() string {
-	return string(c)
-}
-
 type Usage struct {
 	// Available reports whether the provider supplied usage, including valid zero counts.
 	Available    bool

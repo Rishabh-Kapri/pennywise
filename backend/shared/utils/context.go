@@ -15,7 +15,6 @@ type contextKey string
 const (
 	budgetIDKey      contextKey = "budgetId"
 	userIDKey        contextKey = "userId"
-	userKey          contextKey = "user"
 	correlationIDKey contextKey = "correlationId"
 	serviceNameKey   contextKey = "serviceName"
 	requestMetaKey   contextKey = "requestMetadata"
@@ -152,10 +151,6 @@ func RequestMetadataFromHeaders(headers http.Header) RequestMetadata {
 	return metadata.normalized()
 }
 
-func RequestMetadataFromHeaderMap(headers map[string][]string) RequestMetadata {
-	return RequestMetadataFromHeaders(http.Header(headers))
-}
-
 func WithLocalService(ctx context.Context, name string) context.Context {
 	return updateRequestMetadata(ctx, func(metadata *RequestMetadata) {
 		metadata.LocalService = name
@@ -242,15 +237,6 @@ func APIKeyFromContext(ctx context.Context) *model.APIKey {
 	return nil
 }
 
-// WithServiceName returns a new context with the service name set.
-func WithServiceName(ctx context.Context, name string) context.Context {
-	return WithLocalService(ctx, name)
-}
-
-func ServiceNameFromContext(ctx context.Context) string {
-	return LocalServiceFromContext(ctx)
-}
-
 // WithBudgetID returns a new context with the budget ID set.
 func WithBudgetID(ctx context.Context, id uuid.UUID) context.Context {
 	return updateRequestMetadata(ctx, func(metadata *RequestMetadata) {
@@ -293,10 +279,6 @@ func UserIDFromContext(ctx context.Context) (uuid.UUID, error) {
 	}
 
 	return *metadata.UserID, nil
-}
-
-func WithUser(ctx context.Context, user *model.AuthUser) context.Context {
-	return context.WithValue(ctx, userKey, user)
 }
 
 func MustUserID(ctx context.Context) uuid.UUID {
@@ -362,12 +344,6 @@ func BuildInternalHeaders(ctx context.Context) map[string][]string {
 	}
 
 	return headers
-}
-
-// GetHeaders returns a map of headers to be used in the request for internal services.
-// Deprecated: prefer BuildInternalHeaders for new call sites.
-func GetHeaders(ctx context.Context) map[string][]string {
-	return BuildInternalHeaders(ctx)
 }
 
 // sensitiveLogHeaders lists headers (lowercase) whose values carry

@@ -96,7 +96,7 @@ func (c *Client) getMergedHeader(ctx context.Context, headers map[string][]strin
 
 	// passthrough internal headers
 	if c.propagateInternalHeaders == true {
-		for key, value := range utils.GetHeaders(ctx) {
+		for key, value := range utils.BuildInternalHeaders(ctx) {
 			if mergedHeaders[key] == nil {
 				mergedHeaders[key] = value
 			}

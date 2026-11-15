@@ -6,7 +6,6 @@ package factory
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/adapters/postgres"
@@ -23,11 +22,6 @@ type Config struct {
 	// Driver picks the adapter. Empty means DriverPostgres.
 	Driver string
 	URL    string
-}
-
-// ConfigFromEnv reads DATABASE_DRIVER and DATABASE_URL.
-func ConfigFromEnv() Config {
-	return Config{Driver: os.Getenv("DATABASE_DRIVER"), URL: os.Getenv("DATABASE_URL")}
 }
 
 func (c Config) driver() string {
@@ -102,7 +96,6 @@ type Repositories struct {
 	CategoryGroup        repository.CategoryGroupRepository
 	CipherPrediction     repository.CipherPredictionRepository
 	DevicePushToken      repository.DevicePushTokenRepository
-	Embedding            repository.EmbeddingRepository
 	GoogleProvider       repository.GoogleProviderRepository
 	InboundMessage       repository.InboundMessageRepository
 	LoanMetadata         repository.LoanMetadataRepository
@@ -123,6 +116,7 @@ type Repositories struct {
 	Tag                  repository.TagRepository
 	Transaction          repository.TransactionRepository
 	TransactionDocument  repository.TransactionDocumentRepository
+	Embedding            repository.EmbeddingRepository
 	TransactionEmbedding repository.TransactionEmbeddingRepository
 	DBTxn                repository.DBTxn
 	User                 repository.UserRepository
@@ -145,7 +139,6 @@ func newPostgresRepositories(pool *pgxpool.Pool) *Repositories {
 		CategoryGroup:        postgres.NewCategoryGroupRepository(pool),
 		CipherPrediction:     postgres.NewCipherPredictionRepository(pool),
 		DevicePushToken:      postgres.NewDevicePushTokenRepository(pool),
-		Embedding:            postgres.NewEmbeddingRepository(pool),
 		GoogleProvider:       postgres.NewGoogleProviderRepository(pool),
 		InboundMessage:       postgres.NewInboundMessageRepository(pool),
 		LoanMetadata:         postgres.NewLoanMetadataRepository(pool),
@@ -166,6 +159,7 @@ func newPostgresRepositories(pool *pgxpool.Pool) *Repositories {
 		Tag:                  postgres.NewTagRepository(pool),
 		Transaction:          postgres.NewTransactionRepository(pool),
 		TransactionDocument:  postgres.NewTransactionDocumentRepository(pool),
+		Embedding:            postgres.NewEmbeddingRepository(pool),
 		TransactionEmbedding: postgres.NewTransactionEmbeddingRepository(pool),
 		DBTxn:                postgres.NewDBTxn(pool),
 		User:                 postgres.NewUserRepository(pool),

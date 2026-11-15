@@ -8,6 +8,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/service"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -177,9 +178,9 @@ func (h *predictionHandler) ExtractStatement(c *gin.Context) {
 }
 
 func extractBudgetID(c *gin.Context) (uuid.UUID, error) {
-	budgetIDStr := c.GetHeader("X-Budget-ID")
+	budgetIDStr := c.GetHeader(utils.HeaderBudgetID)
 	if budgetIDStr == "" {
-		return uuid.Nil, fmt.Errorf("missing X-Budget-ID header")
+		return uuid.Nil, fmt.Errorf("missing %s header", utils.HeaderBudgetID)
 	}
 	return uuid.Parse(budgetIDStr)
 }

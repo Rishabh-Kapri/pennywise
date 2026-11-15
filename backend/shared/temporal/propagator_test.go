@@ -52,8 +52,6 @@ func TestRequestMetadataPropagatorRoundTripContext(t *testing.T) {
 	require.Equal(t, "gmail-pubsub", metadata.OriginService)
 	require.Empty(t, metadata.CallerService)
 	require.False(t, metadata.InternalRequest)
-	_, hasBudget := headers[utils.HeaderBudgetID]
-	require.False(t, hasBudget)
 }
 
 func TestRequestMetadataPropagatorFallsBackToLocalServiceForOrigin(t *testing.T) {
@@ -62,7 +60,7 @@ func TestRequestMetadataPropagatorFallsBackToLocalServiceForOrigin(t *testing.T)
 	propagator := NewRequestMetadataPropagator()
 	headers := testHeaders{}
 
-	ctx := utils.WithServiceName(context.Background(), "pennywise-api")
+	ctx := utils.WithLocalService(context.Background(), "pennywise-api")
 	ctx = utils.WithCorrelationID(ctx, "corr-456")
 
 	require.NoError(t, propagator.Inject(ctx, headers))

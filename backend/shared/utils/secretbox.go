@@ -10,13 +10,13 @@ import (
 )
 
 // SecretBox seals small secrets (user API keys) with AES-256-GCM. The API
-// seals and cipher opens, so both must load the same CREDENTIALS_KEY.
+// seals and cipher opens, so both must load the same key (each service names its own env var).
 type SecretBox struct {
 	aead cipher.AEAD
 }
 
-// ErrSecretBoxKeyMissing is returned when CREDENTIALS_KEY is unset.
-var ErrSecretBoxKeyMissing = errors.New("CREDENTIALS_KEY is not set")
+// ErrSecretBoxKeyMissing is returned when no key was given.
+var ErrSecretBoxKeyMissing = errors.New("credentials key is not set")
 
 // NewSecretBox takes a base64-encoded 32-byte key
 // (generate one with `openssl rand -base64 32`).
@@ -26,10 +26,10 @@ func NewSecretBox(base64Key string) (*SecretBox, error) {
 	}
 	key, err := base64.StdEncoding.DecodeString(base64Key)
 	if err != nil {
-		return nil, fmt.Errorf("decoding CREDENTIALS_KEY: %w", err)
+		return nil, fmt.Errorf("decoding credentials key: %w", err)
 	}
 	if len(key) != 32 {
-		return nil, fmt.Errorf("CREDENTIALS_KEY must decode to 32 bytes, got %d", len(key))
+		return nil, fmt.Errorf("credentials key must decode to 32 bytes, got %d", len(key))
 	}
 	block, err := aes.NewCipher(key)
 	if err != nil {

@@ -16,7 +16,7 @@ import (
 // ObservedBroker, history in job_events through the Postgres JobLog.
 func TestJobBrokerLifecycle(t *testing.T) {
 	pool := testPool(t)
-	ctx := utils.WithCorrelationID(utils.WithServiceName(context.Background(), "ingest"), "corr-1")
+	ctx := utils.WithCorrelationID(utils.WithLocalService(context.Background(), "ingest"), "corr-1")
 	broker := job.NewObservedBroker(NewPgJobBrokerAdapter(pool), NewPgJobLogAdapter(pool))
 	jobType := "test.lifecycle"
 	// A queue of its own keeps other tests' jobs out of the claim.

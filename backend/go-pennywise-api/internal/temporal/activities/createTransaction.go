@@ -28,7 +28,7 @@ func (a *CreateTransactionActivity) CreateTransaction(
 	ctx context.Context,
 	input sharedModel.PredictionResultInput,
 ) ([]sharedModel.Transaction, error) {
-	ctx = utils.WithServiceName(ctx, "pennywise-api")
+	ctx = utils.WithLocalService(ctx, "pennywise-api")
 	activityInfo := activity.GetInfo(ctx)
 	log := logger.Logger(ctx).With(
 		"workflow_id", activityInfo.WorkflowExecution.ID,
@@ -101,7 +101,7 @@ func (a *CreateTransactionActivity) CreateTransactionAndCipherPrediction(
 	ctx context.Context,
 	input sharedModel.PredictionResultInput,
 ) ([]sharedModel.Transaction, error) {
-	ctx = utils.WithServiceName(ctx, "pennywise-api")
+	ctx = utils.WithLocalService(ctx, "pennywise-api")
 	activityInfo := activity.GetInfo(ctx)
 	log := logger.Logger(ctx).With(
 		"workflow_id", activityInfo.WorkflowExecution.ID,

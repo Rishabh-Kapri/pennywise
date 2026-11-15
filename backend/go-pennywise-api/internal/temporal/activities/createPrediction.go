@@ -26,7 +26,7 @@ func (a *CreateCipherPredictionActivity) CreateCipherPrediction(
 	ctx context.Context,
 	input sharedModel.CreateCipherPredictionInput,
 ) error {
-	ctx = utils.WithServiceName(ctx, "pennywise-api")
+	ctx = utils.WithLocalService(ctx, "pennywise-api")
 	activityInfo := activity.GetInfo(ctx)
 	log := logger.Logger(ctx).With(
 		"workflow_id", activityInfo.WorkflowExecution.ID,

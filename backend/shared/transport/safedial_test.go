@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"strings"
 	"testing"
 )
 
@@ -34,8 +35,8 @@ func TestUserURLClientRefusesLoopback(t *testing.T) {
 	defer srv.Close()
 
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, nil)
-	if _, err := NewUserURLClient(false).Do(req); err == nil {
-		t.Fatal("expected loopback dial to be refused")
+	if _, err := NewUserURLClient(false).Do(req); err == nil || !strings.Contains(err.Error(), "non-public address") {
+		t.Fatalf("expected the dial to be refused as a non-public address, got %v", err)
 	}
 	res, err := NewUserURLClient(true).Do(req)
 	if err != nil {

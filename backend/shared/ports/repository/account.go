@@ -9,7 +9,6 @@ import (
 
 type AccountRepository interface {
 	GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.Account, error)
-	GetAllSimplified(ctx context.Context, budgetId uuid.UUID) ([]model.AccountSimplified, error)
 	GetById(ctx context.Context, budgetId uuid.UUID, accountId uuid.UUID) (*model.Account, error)
 	GetBySuffix(ctx context.Context, budgetId uuid.UUID, suffix string) (*model.Account, error)
 	Search(ctx context.Context, budgetId uuid.UUID, query string) ([]model.Account, error)

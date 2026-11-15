@@ -44,18 +44,12 @@ func (o *ObservedBroker) WithNotifier(n Notifier) *ObservedBroker {
 	return o
 }
 
-// Unwrap returns the adapter underneath.
-func (o *ObservedBroker) Unwrap() Broker {
-	return o.broker
-}
-
 func (o *ObservedBroker) Enqueue(
 	ctx context.Context,
 	jobType string,
 	payload []byte,
 	opts ...EnqueueOption,
 ) (EnqueueResult, error) {
-	logger.Logger(ctx).Info("enqueuing message", "payload", string(payload))
 	res, err := o.broker.Enqueue(ctx, jobType, payload, opts...)
 	if err == nil && !res.Duplicate {
 		o.record(ctx, JobEvent{
@@ -212,7 +206,7 @@ func claimEvent(c Claim, t JobEventType, s JobStatus, r string, durationMs *int6
 
 // enqueueActor names who enqueued a job: the service in ctx, if any.
 func enqueueActor(ctx context.Context) string {
-	if name := utils.ServiceNameFromContext(ctx); name != "" {
+	if name := utils.LocalServiceFromContext(ctx); name != "" {
 		return name
 	}
 	return "unknown"

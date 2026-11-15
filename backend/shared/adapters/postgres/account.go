@@ -70,28 +70,8 @@ func (r *accountRepo) GetAll(ctx context.Context, budgetId uuid.UUID) ([]model.A
 		}
 		accounts = append(accounts, a)
 	}
-	return accounts, nil
-}
-
-func (r *accountRepo) GetAllSimplified(ctx context.Context, budgetId uuid.UUID) ([]model.AccountSimplified, error) {
-	rows, err := r.Executor(ctx).Query(
-		ctx,
-		`SELECT id, name FROM accounts WHERE budget_id = $1 AND deleted = FALSE AND closed = FALSE`,
-		budgetId,
-	)
-	if err != nil {
+	if err := rows.Err(); err != nil {
 		return nil, err
-	}
-	defer rows.Close()
-
-	accounts := make([]model.AccountSimplified, 0)
-	for rows.Next() {
-		var a model.AccountSimplified
-		if err := rows.Scan(&a.ID, &a.Name); err != nil {
-			logger.Logger(ctx).Error("error scanning account", "error", err)
-			return nil, err
-		}
-		accounts = append(accounts, a)
 	}
 	return accounts, nil
 }
@@ -199,6 +179,9 @@ func (r *accountRepo) Search(ctx context.Context, budgetId uuid.UUID, query stri
 			return nil, err
 		}
 		accounts = append(accounts, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return accounts, nil

@@ -59,7 +59,7 @@ func main() {
 	setupLogger(cfg.ServiceName)
 
 	ctx, stop := signal.NotifyContext(utils.WithInternalAuthToken(
-		utils.WithServiceName(context.Background(), "cipher"),
+		utils.WithLocalService(context.Background(), "cipher"),
 		cfg.InternalAuthToken,
 	), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -227,9 +227,6 @@ func main() {
 	router.Use(sharedMiddleware.InternalUserIDMiddleware())
 	router.Use(sharedMiddleware.RequestLogger())
 	router.Use(otelgin.Middleware(otelConfig.ServiceName))
-	// router.Use(tel.LogRequest())
-	// router.Use(tel.MeterRequestDuration())
-	// router.Use(tel.MeterRequestsInFlight())
 
 	router.Use(cors.New(cors.Config{
 		AllowOrigins: []string{"http://localhost:5173"},

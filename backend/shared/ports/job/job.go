@@ -104,12 +104,6 @@ func WithQueue(q string) EnqueueOption {
 	}
 }
 
-func WithJobType(t string) EnqueueOption {
-	return func(opts *EnqueueOptions) {
-		opts.Type = t
-	}
-}
-
 func WithRootJobID(id *uuid.UUID) EnqueueOption {
 	return func(opts *EnqueueOptions) {
 		opts.RootJobID = id
@@ -267,7 +261,6 @@ type JobFailure struct {
 
 type JobStore interface {
 	GetJobByID(ctx context.Context, id uuid.UUID) (*Job, error)
-	ListJobs(ctx context.Context, filter JobFilter) (jobs []Job, total int, err error)
 	ListByRoot(ctx context.Context, rootID uuid.UUID) (jobs []Job, err error)
 	// ListTrees lists the scope's job trees, newest first. total counts every
 	// matching tree, not just this page.

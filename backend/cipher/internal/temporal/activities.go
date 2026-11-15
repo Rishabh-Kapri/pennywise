@@ -27,7 +27,7 @@ func (a *PredictionActivity) Predict(
 	ctx context.Context,
 	input sharedModel.ParsedEmailsInput,
 ) ([]sharedModel.CipherPredictionResult, error) {
-	ctx = utils.WithServiceName(ctx, "cipher")
+	ctx = utils.WithLocalService(ctx, "cipher")
 	activityInfo := activity.GetInfo(ctx)
 	log := logger.Logger(ctx).With(
 		"workflow_id", activityInfo.WorkflowExecution.ID,
@@ -107,7 +107,7 @@ func (a *PredictionActivity) ParseEmailData(
 	ctx context.Context,
 	input sharedModel.EmailDataInput,
 ) (result sharedModel.ParsedEmailsInput, err error) {
-	ctx = utils.WithServiceName(ctx, "cipher")
+	ctx = utils.WithLocalService(ctx, "cipher")
 
 	activityInfo := activity.GetInfo(ctx)
 	log := logger.Logger(ctx).With(
@@ -208,7 +208,7 @@ func (a *PredictionActivity) ParseEmail(
 	ctx context.Context,
 	input sharedModel.ParseEmailInput,
 ) (sharedModel.ParseEmailResult, error) {
-	ctx = utils.WithServiceName(ctx, "cipher")
+	ctx = utils.WithLocalService(ctx, "cipher")
 	log := activityLogger(ctx).With("step", sharedModel.PipelineStepParse, "messageId", input.Email.MessageId)
 
 	if input.BudgetID == uuid.Nil {
@@ -285,7 +285,7 @@ func (a *PredictionActivity) PredictEmail(
 	ctx context.Context,
 	input sharedModel.PredictEmailInput,
 ) (sharedModel.PredictEmailResult, error) {
-	ctx = utils.WithServiceName(ctx, "cipher")
+	ctx = utils.WithLocalService(ctx, "cipher")
 	log := activityLogger(ctx).With("step", sharedModel.PipelineStepPredict, "messageId", input.Email.MessageId)
 
 	if input.BudgetID == uuid.Nil {

@@ -11,29 +11,25 @@ import (
 	"github.com/google/uuid"
 )
 
-const budgetIDHeader = utils.HeaderBudgetID
-
 func BudgetIdMiddleware(budgetRepo repository.BudgetRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 
 		log := logger.Logger(ctx)
 
-		budgetId := c.GetHeader(budgetIDHeader)
+		budgetId := c.GetHeader(utils.HeaderBudgetID)
 		if budgetId == "" {
 			budgetId = c.Query("budgetId")
 		}
-		log.Debug("checking budget ownership", budgetIDHeader, budgetId)
+		log.Debug("checking budget ownership", utils.HeaderBudgetID, budgetId)
 		if budgetId == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "missing X-Budget-ID header"})
-			c.Abort()
+			abortJSON(c, http.StatusBadRequest, "missing X-Budget-ID header")
 			return
 		}
 
 		parsedBudgetId, err := uuid.Parse(budgetId)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid budget ID"})
-			c.Abort()
+			abortJSON(c, http.StatusBadRequest, "invalid budget ID")
 			return
 		}
 
@@ -47,21 +43,18 @@ func BudgetIdMiddleware(budgetRepo repository.BudgetRepository) gin.HandlerFunc 
 
 		userID, err := utils.UserIDFromContext(ctx)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
-			c.Abort()
+			abortJSON(c, http.StatusUnauthorized, "user not authenticated")
 			return
 		}
 
 		// Verify the budget belongs to the authenticated user
 		owned, err := budgetRepo.IsOwnedByUser(ctx, parsedBudgetId, userID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to verify budget ownership"})
-			c.Abort()
+			abortJSON(c, http.StatusInternalServerError, "failed to verify budget ownership")
 			return
 		}
 		if !owned {
-			c.JSON(http.StatusForbidden, gin.H{"error": "access denied to this budget"})
-			c.Abort()
+			abortJSON(c, http.StatusForbidden, "access denied to this budget")
 			return
 		}
 

@@ -1,17 +1,14 @@
 package utils
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 )
 
-// @TODO: add more validations
-// Returns the month key from date (YYYY-MM-DD) in the format YYYY-MM.
+// GetMonthKey returns the YYYY-MM key of a YYYY-MM-DD date.
 func GetMonthKey(date string) string {
 	key := strings.Split(date, "-")
-	monthKey := key[0] + "-" + key[1]
-	return monthKey
+	return key[0] + "-" + key[1]
 }
 
 func getSortedMonths(values []string) []string {
@@ -37,12 +34,4 @@ func FillCarryForward(values map[string]float64, month string) map[string]float6
 	values[month] = values[sortedMonths[len(sortedMonths)-1]]
 
 	return values
-}
-
-func Float64SliceToVectorString(vec []float64) string {
-	parts := make([]string, len(vec))
-	for i, v := range vec {
-		parts[i] = fmt.Sprintf("%.8f", v)
-	}
-	return "[" + strings.Join(parts, ", ") + "]"
 }

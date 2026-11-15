@@ -245,7 +245,7 @@ func TestAuthenticateAPIKey(t *testing.T) {
 	})
 }
 
-func TestAuthenticateInternalRequestPassesThrough(t *testing.T) {
+func TestInternalRequestWithAKnownTokenIsAServicePrincipal(t *testing.T) {
 	s := newSetup()
 	services, err := factory.NewServiceAuthenticator(context.Background(),
 		factory.ServiceAuthConfig{Tokens: "cipher:secret"})

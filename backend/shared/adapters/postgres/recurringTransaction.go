@@ -101,6 +101,9 @@ func (r *recurringTransactionRepo) GetById(
 	defer rows.Close()
 
 	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
 		return nil, errNoRows
 	}
 	rule, err := scanRecurring(rows)

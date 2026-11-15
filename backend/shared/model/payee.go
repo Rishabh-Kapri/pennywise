@@ -41,11 +41,6 @@ type PayeeRuleDetails struct {
 	UpdatedAt    time.Time  `json:"updatedAt"`
 }
 
-type PayeeSimplified struct {
-	ID   uuid.UUID `json:"id"`
-	Name string    `json:"name"`
-}
-
 // PayeeStats is per-payee usage across a budget's non-deleted transactions.
 type PayeeStats struct {
 	PayeeID          uuid.UUID  `json:"payeeId"`

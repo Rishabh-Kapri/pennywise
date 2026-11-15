@@ -120,9 +120,3 @@ type ReportPipelineStatusInput struct {
 	LLMUsage     map[string]LLMModelUsage `json:"llmUsage,omitempty"`
 	Events       []PipelineEventInput     `json:"events,omitempty"`
 }
-
-// PipelineRunDetail is the API response for a single run with its timeline.
-type PipelineRunDetail struct {
-	Run    PipelineRun        `json:"run"`
-	Events []PipelineRunEvent `json:"events"`
-}

@@ -14,9 +14,6 @@ type Config struct {
 	ServiceVersion      string // The version of the service (e.g., "1.0.0")
 	Environment         string // Deployment environment (e.g., "production", "development", "local")
 	OtelSdkDisabled     bool
-	OtelTracesExporter  string
-	OtelMetricsExporter string
-	OtelLogsExporter    string
 	LangfuseOtelEnabled bool
 	LangfuseSecretKey   string
 	LangfusePublicKey   string
@@ -65,12 +62,20 @@ func Load() *Config {
 		ServiceVersion:      serviceVersion,
 		Environment:         env,
 		OtelSdkDisabled:     disabled,
-		OtelTracesExporter:  os.Getenv("OTEL_TRACES_EXPORTER"),
-		OtelMetricsExporter: os.Getenv("OTEL_METRICS_EXPORTER"),
-		OtelLogsExporter:    os.Getenv("OTEL_LOGS_EXPORTER"),
 		LangfuseOtelEnabled: langfuseEnabledBool,
 		LangfuseSecretKey:   os.Getenv("LANGFUSE_SECRET_KEY"),
 		LangfusePublicKey:   os.Getenv("LANGFUSE_PUBLIC_KEY"),
 		LangfuseURL:         os.Getenv("LANGFUSE_URL"),
 	}
+}
+
+// redacted is the config with the Langfuse keys masked, for logging.
+func (c Config) redacted() Config {
+	if c.LangfuseSecretKey != "" {
+		c.LangfuseSecretKey = "***"
+	}
+	if c.LangfusePublicKey != "" {
+		c.LangfusePublicKey = "***"
+	}
+	return c
 }

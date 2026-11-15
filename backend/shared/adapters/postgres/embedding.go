@@ -18,7 +18,7 @@ func NewEmbeddingRepository(pool *pgxpool.Pool) repository.EmbeddingRepository {
 }
 
 func (er *embeddingRepository) Get(ctx context.Context, docType string, embedding []float64, limit int64) ([]model.Embedding, error) {
-	embeddingStr := vectorLiteral(embedding)
+	embeddingStr := model.FormatVector(embedding)
 	// rows, err := er.db.Query(
 	// 	ctx, `
 	// 		SELECT
@@ -83,7 +83,7 @@ func (er *embeddingRepository) Get(ctx context.Context, docType string, embeddin
 }
 
 func (er *embeddingRepository) Create(ctx context.Context, data model.Embedding, embedding []float64) error {
-	embeddingStr := vectorLiteral(embedding)
+	embeddingStr := model.FormatVector(embedding)
 	_, err := er.Executor(ctx).Exec(
 		ctx, `
 	  INSERT INTO embeddings (

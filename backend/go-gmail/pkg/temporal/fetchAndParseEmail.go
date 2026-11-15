@@ -28,7 +28,7 @@ func (a *GmailActivities) FetchEmailData(
 	ctx context.Context,
 	input sharedModel.FetchAndParseEmailsInput,
 ) (result sharedModel.EmailDataInput, err error) {
-	ctx = utils.WithServiceName(ctx, "gmail-pubsub")
+	ctx = utils.WithLocalService(ctx, "gmail-pubsub")
 
 	activityInfo := activity.GetInfo(ctx)
 

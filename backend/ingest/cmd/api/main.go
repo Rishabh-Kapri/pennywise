@@ -43,7 +43,7 @@ func main() {
 	// Cancelled on SIGINT/SIGTERM: everything started from it stops with it.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	ctx = utils.WithInternalAuthToken(utils.WithServiceName(ctx, serviceName), cfg.InternalAuthToken)
+	ctx = utils.WithInternalAuthToken(utils.WithLocalService(ctx, serviceName), cfg.InternalAuthToken)
 	log := logger.Logger(ctx)
 
 	// Repository ports; DATABASE_DRIVER picks the adapter behind them.
