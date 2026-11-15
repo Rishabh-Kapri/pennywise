@@ -13,7 +13,6 @@ Personal budgeting app (YNAB-style) with AI transaction classification from bank
 | `backend/shared` | Shared Go module (repos, models, middleware, transport) | [AGENTS.md](backend/shared/AGENTS.md) |
 | `react-frontend` | Main web app (React 19, Redux Toolkit) | [AGENTS.md](react-frontend/AGENTS.md) |
 | `android-frontend` | Expo React Native app | [AGENTS.md](android-frontend/AGENTS.md) |
-| `frontend` | Angular 17 app, legacy and maintenance only | [AGENTS.md](frontend/AGENTS.md) |
 
 `backend/file-parser` (experimental) is not run anywhere. Don't extend it. `docs/` holds architecture notes.
 

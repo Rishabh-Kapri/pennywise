@@ -1,6 +1,6 @@
 # AGENTS.md — react-frontend
 
-React 19 + Vite + Redux Toolkit web client for Pennywise. Actively developed (the Angular `frontend/` is legacy).
+React 19 + Vite + Redux Toolkit web client for Pennywise.
 
 ## Commands
 - `npm run dev` — Vite dev server

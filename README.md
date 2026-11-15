@@ -22,7 +22,7 @@ Indian banking produces chaotic transaction data: the same merchant shows up as 
 - **Four-phase classification cascade** — rules first, semantic memory second, LLM reasoning last. Most transactions never need the expensive path.
 - **It learns from you** — every correction you make becomes a payee rule or a vector embedding, so the same transaction is classified instantly next time.
 - **A budget agent you can talk to** — ask questions about your money in plain language; the agent inspects the schema, runs validated read-only SQL against your budget, and streams its answer live over websockets.
-- **Real envelope budgeting** — monthly category budgets with carryover, accounts, payees, tags, loans, reports, and a dashboard. Web (React 19), Android (Expo), and a legacy Angular client.
+- **Real envelope budgeting** — monthly category budgets with carryover, accounts, payees, tags, loans, reports, and a dashboard. Web (React 19) and Android (Expo).
 - **Self-hosted and private** — runs on your own box with Docker Compose. Extraction, embeddings, and classification all default to local models; cloud LLM providers (OpenAI/Anthropic/OpenRouter) are optional and bring-your-own-key.
 
 ## How a transaction is born
@@ -89,7 +89,6 @@ The agent's LLM provider is configurable per user in Settings → AI Configurati
 | Shared Go module | [`backend/shared`](backend/shared/README.md) | Active | Repositories, models, transport, internal auth, observability |
 | React frontend | [`react-frontend`](react-frontend/README.md) | Active development | Main web app |
 | Android app | [`android-frontend`](android-frontend/README.md) | Active development | Expo React Native client |
-| Angular frontend | [`frontend`](frontend/README.md) | Legacy/maintenance | Older web app |
 | File parser | [`backend/file-parser`](backend/file-parser/README.md) | Experimental | Clojure scaffold for bulk uploads |
 
 Architectural notes worth knowing: `cipher` and the API share a Go repository package instead of chattering over HTTP, so classification reads are sub-millisecond; service-to-service calls carry correlation/caller/origin headers plus a shared internal token, propagated through Temporal workflow hops. See [AGENTS.md](AGENTS.md) for the full map.
@@ -126,7 +125,6 @@ cd react-frontend && npm install && npm run dev   # web app on :5173
 | Workflows | `go build ./cmd/worker` | `go test ./...` |
 | Shared | — | `go test ./...` |
 | React frontend | `npm run build` | `npm run lint` (no test suite) |
-| Angular frontend | `npm run build` | `npm test` |
 
 All Go commands run from the respective `backend/<service>` directory; each has a `Makefile` with `run`/`build`/`test`/`check`/`vendor` aliases.
 
@@ -149,7 +147,6 @@ Migrations live in `backend/shared/migrations/sql` (see its `README.md`). A **fr
 | Go Gmail | `5170` |
 | Temporal UI | `8233` |
 | React dev | `5173` |
-| Angular dev | `5000` |
 
 ## Documentation
 
