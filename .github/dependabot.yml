@@ -1,0 +1,101 @@
+# Dependency update PRs. Version updates target `dev` (CI deploys from there).
+# Security-update PRs ignore `target-branch` and always open against the
+# default branch.
+#
+# Go services build with -mod=vendor from a vendor dir CI makes itself, so a
+# bumped go.mod/go.sum is all a PR needs. A bump in backend/shared also needs
+# the services re-vendored, which CI does.
+version: 2
+
+updates:
+  - package-ecosystem: gomod
+    directories:
+      - /backend/shared
+      - /backend/cipher
+      - /backend/go-pennywise-api
+      - /backend/ingest
+      - /backend/go-gmail
+      - /backend/go-gmail/authInit
+      - /backend/workflows
+    target-branch: dev
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      go-security:
+        applies-to: security-updates
+        patterns: ["*"]
+      go-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /react-frontend
+    target-branch: dev
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      react-security:
+        applies-to: security-updates
+        patterns: ["*"]
+      react-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+        patterns: ["*"]
+
+  # Expo pins its packages to the SDK; upgrade those with
+  # `npx expo install --fix` / an SDK bump, not one package at a time.
+  - package-ecosystem: npm
+    directory: /android-frontend
+    target-branch: dev
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "expo"
+      - dependency-name: "expo-*"
+      - dependency-name: "@expo/*"
+      - dependency-name: "react-native"
+      - dependency-name: "react-native-*"
+      - dependency-name: "@react-native/*"
+      - dependency-name: "@react-native-async-storage/*"
+      - dependency-name: "react"
+      - dependency-name: "react-dom"
+    groups:
+      android-security:
+        applies-to: security-updates
+        patterns: ["*"]
+      android-minor-patch:
+        applies-to: version-updates
+        update-types: [minor, patch]
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directories:
+      - /backend
+      - /backend/cipher
+      - /backend/go-pennywise-api
+      - /backend/ingest
+      - /backend/go-gmail
+      - /backend/workflows
+      - /react-frontend
+    target-branch: dev
+    schedule:
+      interval: monthly
+    groups:
+      docker-images:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]

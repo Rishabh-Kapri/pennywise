@@ -56,7 +56,7 @@ export default function Budget() {
     <section className={styles.page}>
       <header className={styles.top}>
         <h1>Budget</h1>
-        <DateSelector monthYearOnly />
+        <DateSelector />
       </header>
 
       <div className={styles.overview}>

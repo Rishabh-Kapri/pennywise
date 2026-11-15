@@ -1,4 +1,4 @@
-import { Parser } from 'expr-eval';
+import { parseAmount } from '@/utils/expression';
 import { getTodaysDate } from '@/utils/date.utils';
 import type { TransactionColumns } from '@/types/common.types';
 import { allAccountTxnCols, specificAccountTxnCols } from '../TransactionColumns';
@@ -10,8 +10,6 @@ import {
   type Transaction,
   type TransactionDTO,
 } from '../../types/transaction.types';
-
-const parser = new Parser();
 
 export const HEADER_ROW_HEIGHT = 64;
 export const TXN_ROW_HEIGHT = 60;
@@ -144,7 +142,7 @@ export function createEmptyTransaction({
 }
 
 export function applyParsedInputValue(txn: Transaction, key: keyof Transaction, value: string | number) {
-  const result = (parser.parse(value as string) as { evaluate(): number }).evaluate();
+  const result = parseAmount(value);
 
   if (key !== 'outflow') {
     return { ...txn, [key]: result };

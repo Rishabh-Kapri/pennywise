@@ -23,7 +23,7 @@ To provide users with a comprehensive, user-friendly tool for managing personal 
 - **Icons**: Lucide React 0.553.0
 - **Date Handling**: @internationalized/date 3.10.1
 - **Number Formatting**: react-number-format 5.4.4
-- **Expression Evaluation**: expr-eval 2.0.2
+- **Expression Evaluation**: built-in arithmetic parser (`src/utils/expression.ts`)
 - **Virtualization**: react-window 2.2.3
 
 ### Development Tools

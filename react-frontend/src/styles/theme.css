@@ -109,6 +109,27 @@
   --skeleton-highlight: rgba(255, 255, 255, 0.05);
   color-scheme: dark;
 }
+/* HeroUI v3 components read these tokens; point them at the app's palette so
+   popovers, tooltips and toasts match the rest of the app in both themes. */
+:root[data-theme] {
+  --background: var(--page-bg);
+  --foreground: var(--text);
+  --surface: var(--card-bg);
+  --surface-foreground: var(--text);
+  --overlay: var(--color-popover);
+  --overlay-foreground: var(--text);
+  --border: var(--line);
+  --separator: var(--line);
+  --focus: var(--accent);
+  --accent-foreground: var(--on-accent);
+  --danger: var(--color-error);
+  --success: var(--color-success);
+  --warning: var(--color-warning);
+}
+/* HeroUI's base turns the root view transition off; the theme fade needs it. */
+:root[data-theme-transition='fade'] {
+  view-transition-name: root;
+}
 :root[data-theme] body {
   background: var(--page-bg);
   color: var(--text);
