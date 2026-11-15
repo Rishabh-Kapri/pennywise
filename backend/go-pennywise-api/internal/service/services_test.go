@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
 
+	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/config"
@@ -249,9 +251,8 @@ func (m *svcBudgetRepo) Create(ctx context.Context, name string, userID uuid.UUI
 func (m *svcBudgetRepo) UpdateById(ctx context.Context, id uuid.UUID, budget model.Budget) error {
 	return m.Called(ctx, id, budget).Error(0)
 }
-func (m *svcBudgetRepo) IsOwnedByUser(ctx context.Context, budgetID, userID uuid.UUID) (bool, error) {
-	args := m.Called(ctx, budgetID, userID)
-	return args.Bool(0), args.Error(1)
+func (m *svcBudgetRepo) Rename(ctx context.Context, id uuid.UUID, name string) error {
+	return m.Called(ctx, id, name).Error(0)
 }
 func (m *svcBudgetRepo) UpdateOnboarding(ctx context.Context, id uuid.UUID, onboarding model.BudgetOnboarding) error {
 	return m.Called(ctx, id, onboarding).Error(0)
@@ -633,7 +634,7 @@ func TestBudgetService_GetAll(t *testing.T) {
 	t.Run("returns_budgets", func(t *testing.T) {
 		repo := &svcBudgetRepo{}
 		repo.On("GetAll", mock.Anything, userID).Return([]model.Budget{{ID: uuid.New(), Name: "Main"}}, nil)
-		svc := NewBudgetService(repo, &svcPayeeRepo{}, &svcCategoryRepo{}, &svcCategoryGroupRepo{}, fakeDBTxn{})
+		svc := NewBudgetService(repo, &svcBudgetMemberRepo{}, &svcPayeeRepo{}, &svcCategoryRepo{}, &svcCategoryGroupRepo{}, fakeDBTxn{})
 		budgets, err := svc.GetAll(ctx, userID)
 		assert.NoError(t, err)
 		assert.Len(t, budgets, 1)
@@ -642,7 +643,7 @@ func TestBudgetService_GetAll(t *testing.T) {
 	t.Run("repo_error_propagates", func(t *testing.T) {
 		repo := &svcBudgetRepo{}
 		repo.On("GetAll", mock.Anything, userID).Return(nil, assert.AnError)
-		svc := NewBudgetService(repo, &svcPayeeRepo{}, &svcCategoryRepo{}, &svcCategoryGroupRepo{}, fakeDBTxn{})
+		svc := NewBudgetService(repo, &svcBudgetMemberRepo{}, &svcPayeeRepo{}, &svcCategoryRepo{}, &svcCategoryGroupRepo{}, fakeDBTxn{})
 		budgets, err := svc.GetAll(ctx, userID)
 		assert.Error(t, err)
 		assert.Nil(t, budgets)
@@ -656,15 +657,15 @@ func TestBudgetService_Create_ValidationErrors(t *testing.T) {
 
 	t.Run("empty_name_returns_error", func(t *testing.T) {
 		repo := &svcBudgetRepo{}
-		svc := NewBudgetService(repo, &svcPayeeRepo{}, &svcCategoryRepo{}, &svcCategoryGroupRepo{}, fakeDBTxn{})
+		svc := NewBudgetService(repo, &svcBudgetMemberRepo{}, &svcPayeeRepo{}, &svcCategoryRepo{}, &svcCategoryGroupRepo{}, fakeDBTxn{})
 		result, err := svc.Create(ctx, model.CreateBudgetRequest{Name: "   "}, userID)
 		assert.Error(t, err)
 		assert.Nil(t, result)
 	})
-	t.Run("get_all_error_propagates", func(t *testing.T) {
+	t.Run("create_error_propagates", func(t *testing.T) {
 		repo := &svcBudgetRepo{}
-		repo.On("GetAll", mock.Anything, userID).Return(nil, assert.AnError)
-		svc := NewBudgetService(repo, &svcPayeeRepo{}, &svcCategoryRepo{}, &svcCategoryGroupRepo{}, fakeDBTxn{})
+		repo.On("Create", mock.Anything, "Budget", userID).Return(nil, assert.AnError)
+		svc := NewBudgetService(repo, &svcBudgetMemberRepo{}, &svcPayeeRepo{}, &svcCategoryRepo{}, &svcCategoryGroupRepo{}, fakeDBTxn{})
 		result, err := svc.Create(ctx, model.CreateBudgetRequest{Name: "Budget"}, userID)
 		assert.Error(t, err)
 		assert.Nil(t, result)
@@ -1711,26 +1712,50 @@ func TestPayeeService_UpdateRule(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BudgetService.UpdateById test
+// BudgetService.Update tests
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestBudgetService_UpdateById(t *testing.T) {
+func TestBudgetService_Update(t *testing.T) {
 	ctx := context.Background()
-	budgetID := uuid.New()
+	budgetID, userID := uuid.New(), uuid.New()
+	newSvc := func(repo *svcBudgetRepo, members *svcBudgetMemberRepo) BudgetService {
+		return NewBudgetService(repo, members, &svcPayeeRepo{}, &svcCategoryRepo{}, &svcCategoryGroupRepo{}, fakeDBTxn{})
+	}
+	name := func(s string) *string { return &s }
+	yes := true
 
-	t.Run("success", func(t *testing.T) {
-		repo := &svcBudgetRepo{}
-		repo.On("UpdateById", mock.Anything, budgetID, mock.Anything).Return(nil)
-		svc := NewBudgetService(repo, &svcPayeeRepo{}, &svcCategoryRepo{}, &svcCategoryGroupRepo{}, fakeDBTxn{})
-		assert.NoError(t, svc.UpdateById(ctx, budgetID, model.Budget{Name: "Updated"}))
+	t.Run("owner_renames", func(t *testing.T) {
+		repo, members := &svcBudgetRepo{}, &svcBudgetMemberRepo{}
+		members.On("Role", mock.Anything, budgetID, userID).Return(model.BudgetRoleOwner, nil)
+		repo.On("GetById", mock.Anything, budgetID).Return(&model.Budget{ID: budgetID, Name: "Old"}, nil)
+		repo.On("Rename", mock.Anything, budgetID, "New").Return(nil)
+		assert.NoError(t, newSvc(repo, members).Update(ctx, userID, budgetID, model.UpdateBudgetRequest{Name: name(" New ")}))
 		repo.AssertExpectations(t)
 	})
-	t.Run("repo_error_propagates", func(t *testing.T) {
-		repo := &svcBudgetRepo{}
-		repo.On("UpdateById", mock.Anything, budgetID, mock.Anything).Return(assert.AnError)
-		svc := NewBudgetService(repo, &svcPayeeRepo{}, &svcCategoryRepo{}, &svcCategoryGroupRepo{}, fakeDBTxn{})
-		assert.Error(t, svc.UpdateById(ctx, budgetID, model.Budget{}))
-		repo.AssertExpectations(t)
+	t.Run("editor_cannot_rename", func(t *testing.T) {
+		repo, members := &svcBudgetRepo{}, &svcBudgetMemberRepo{}
+		members.On("Role", mock.Anything, budgetID, userID).Return(model.BudgetRoleEditor, nil)
+		repo.On("GetById", mock.Anything, budgetID).Return(&model.Budget{ID: budgetID, Name: "Old"}, nil)
+		err := newSvc(repo, members).Update(ctx, userID, budgetID, model.UpdateBudgetRequest{Name: name("New")})
+		assert.Equal(t, http.StatusForbidden, errs.StatusOf(err))
+		repo.AssertNotCalled(t, "Rename", mock.Anything, mock.Anything, mock.Anything)
+	})
+	t.Run("viewer_selects_with_unchanged_name", func(t *testing.T) {
+		// Older clients send the whole budget when switching.
+		repo, members := &svcBudgetRepo{}, &svcBudgetMemberRepo{}
+		members.On("Role", mock.Anything, budgetID, userID).Return(model.BudgetRoleViewer, nil)
+		repo.On("GetById", mock.Anything, budgetID).Return(&model.Budget{ID: budgetID, Name: "Home"}, nil)
+		members.On("SetSelected", mock.Anything, userID, budgetID).Return(nil)
+		req := model.UpdateBudgetRequest{Name: name("Home"), IsSelected: &yes}
+		assert.NoError(t, newSvc(repo, members).Update(ctx, userID, budgetID, req))
+		members.AssertExpectations(t)
+	})
+	t.Run("non_member_is_not_found", func(t *testing.T) {
+		repo, members := &svcBudgetRepo{}, &svcBudgetMemberRepo{}
+		members.On("Role", mock.Anything, budgetID, userID).Return(model.BudgetRole(""), repository.ErrNotFound)
+		err := newSvc(repo, members).Update(ctx, userID, budgetID, model.UpdateBudgetRequest{IsSelected: &yes})
+		assert.Equal(t, http.StatusNotFound, errs.StatusOf(err))
+		members.AssertNotCalled(t, "SetSelected", mock.Anything, mock.Anything, mock.Anything)
 	})
 }
 

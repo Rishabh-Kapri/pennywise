@@ -147,7 +147,7 @@ func run(cfg config.Config) error {
 	// Callers are a user (API key or JWT) or a verified service, writing to
 	// the budget in X-Budget-ID.
 	handler.NewAPIHandler(ingestService, mailboxService).
-		Register(api.Group("/ingest", userAuth, sharedMiddleware.BudgetIdMiddleware(database.Budget)))
+		Register(api.Group("/ingest", userAuth, sharedMiddleware.BudgetIdMiddleware(database.BudgetMember)))
 	server := &http.Server{Addr: ":" + cfg.Port, Handler: router}
 
 	// The server, the job worker, the scheduler and the push receiver run

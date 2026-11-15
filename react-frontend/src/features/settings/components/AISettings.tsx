@@ -11,6 +11,8 @@ import {
 } from '@phosphor-icons/react';
 import { useAppSelector } from '@/app/hooks';
 import { selectIsDemoUser } from '@/features/auth/store';
+import { selectSelectedBudget } from '@/features/budget/store';
+import { isOwner } from '@/features/sharing/types';
 import { AIProvidersPanel, type AISetup } from '@/features/onboarding/components/AIProvidersPanel';
 import { usableModels } from '@/features/onboarding/types';
 import type { CipherPrediction } from '@/features/transactions/types/transaction.types';
@@ -701,6 +703,8 @@ function APIKeysCard() {
 /* ────────────────────────────────────────────────────────────── */
 
 export function AISettings() {
+  const budget = useAppSelector(selectSelectedBudget);
+  const owner = isOwner(budget?.role);
   const [predictions, setPredictions] = useState<CipherPrediction[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -714,7 +718,18 @@ export function AISettings() {
 
   return (
     <div className={styles.aiSection}>
-      <ProvidersCard />
+      {owner ? (
+        <ProvidersCard />
+      ) : (
+        // The API refuses AI settings to members: a shared budget runs on
+        // its owner's keys and models.
+        <div className={settingsStyles.card}>
+          <p>
+            {budget?.name ?? 'This budget'} is shared with you. Its AI runs on the owner's keys and models, so
+            only they can change them here. Your own AI setup applies to budgets you own.
+          </p>
+        </div>
+      )}
       {loading ? (
         <div className={`${settingsStyles.card} ${styles.skeleton}`} aria-busy="true">
           Loading predictions…

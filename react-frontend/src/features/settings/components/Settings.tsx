@@ -10,6 +10,7 @@ import {
   Sparkle,
   Tag,
   TreeStructure,
+  UsersThree,
   type IconProps,
 } from '@phosphor-icons/react';
 import {
@@ -26,6 +27,7 @@ import { apiClient } from '@/utils';
 import { GeneralSettings } from './GeneralSettings';
 import { AISettings } from './AISettings';
 import { TagSettings } from './TagSettings';
+import { SharingSettings } from '@/features/sharing/components/SharingSettings';
 
 // heavier, data-driven sections: keep them out of the settings entry chunk
 const Recurring = lazy(() => import('@/features/recurring/components/Recurring'));
@@ -61,6 +63,7 @@ interface CurrentUser {
 
 type SectionId =
   | 'general'
+  | 'sharing'
   | 'loans'
   | 'recurring'
   | 'documents'
@@ -99,6 +102,14 @@ const SECTIONS: SectionDef[] = [
     icon: GearSix,
     description: 'Your profile and the Google account you sign in with.',
     keywords: 'profile google gmail delete account',
+  },
+  {
+    id: 'sharing',
+    group: 'budget',
+    label: 'Sharing',
+    icon: UsersThree,
+    description: 'Who else can open this budget, and what they can change.',
+    keywords: 'share invite partner family member collaborate household access viewer editor leave',
   },
   {
     id: 'loans',
@@ -325,6 +336,7 @@ export default function Settings() {
         )}
 
         {activeSection === 'general' && <GeneralSettings user={user} />}
+        {activeSection === 'sharing' && <SharingSettings />}
         {activeSection === 'loans' && (
           <Suspense fallback={loading}>
             <LoanOverview />

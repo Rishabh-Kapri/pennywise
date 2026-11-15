@@ -278,3 +278,8 @@
     flex-direction: column-reverse;
   }
 }
+
+/* .hero prefix: index.css resets margins at one class's specificity */
+.hero .invites {
+  margin-top: 2rem;
+}

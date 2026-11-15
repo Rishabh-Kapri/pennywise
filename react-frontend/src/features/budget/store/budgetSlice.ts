@@ -54,15 +54,27 @@ export const updateBudgetSelection = createAsyncThunk<
   void,
   UpdateBudgetSelectionPayload
 >('budgets/updateBudgetSelection', async ({ budget, isSelected }) => {
-  if (!budget.id) {
+  // Selection is per member, and selecting one budget unselects the others,
+  // so only a select is sent. Sending the name too would read as a rename,
+  // which only the owner may do.
+  if (!budget.id || !isSelected) {
     return;
   }
 
-  await apiClient.patch<Budget>(`budgets/${budget.id}`, {
-    ...budget,
-    isSelected,
-  });
+  await apiClient.patch<Budget, { isSelected: boolean }>(`budgets/${budget.id}`, { isSelected });
 });
+
+/** Reloads the budget list and opens budgetId, e.g. one just joined. */
+export const openBudget = createAsyncThunk<void, string, { state: RootState }>(
+  'budgets/openBudget',
+  async (budgetId, { dispatch, getState }) => {
+    await dispatch(fetchAllBudgets()).unwrap();
+    const budget = getState().budgets.allBudgets.find((b) => b.id === budgetId);
+    if (!budget) return;
+    dispatch(setSelectedBudget(budget));
+    await dispatch(updateBudgetSelection({ budget, isSelected: true }));
+  },
+);
 
 const budgetSlice = createSlice({
   name: 'budgets',

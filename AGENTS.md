@@ -25,7 +25,7 @@ Gmail push → `go-gmail` → Temporal `EmailToTransactionWorkflow` → cipher `
 
 - **Changed `backend/shared`? Re-vendor every Go service.** Docker and CI build with `-mod=vendor`. See [backend/shared/AGENTS.md](backend/shared/AGENTS.md).
 - **Migration numbers must be sequential and unique.** goose panics on a duplicate. Renumber yours to the end after rebasing (`backend/shared/migrations/sql`, guide in its `README.md`). A change to an existing table is a new file with an `ALTER`; never edit an applied one.
-- Every API call is budget-scoped by the `X-Budget-ID` header. Service-to-service calls send the caller's own `INTERNAL_AUTH_TOKEN`; receivers accept the tokens listed in `SERVICE_TOKENS`.
+- Every API call is budget-scoped by the `X-Budget-ID` header, and the user must be in `budget_members` (roles owner/editor/viewer; viewers may only read). `budgets.user_id` is the owner, whose AI keys run the budget. Service-to-service calls send the caller's own `INTERNAL_AUTH_TOKEN`; receivers accept the tokens listed in `SERVICE_TOKENS`.
 - Keep `workflow.GetVersion` gates intact. In-flight workflows replay against them.
 
 ## Run

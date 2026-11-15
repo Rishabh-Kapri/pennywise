@@ -281,7 +281,7 @@ func main() {
 			database.Auth,
 		),
 	)
-	budgetMiddleware := sharedMiddleware.BudgetIdMiddleware(database.Budget)
+	budgetMiddleware := sharedMiddleware.BudgetIdMiddleware(database.BudgetMember)
 
 	router := gin.New()
 	router.Use(gin.Recovery())

@@ -264,8 +264,8 @@ func (m *mockBudgetService) Create(ctx context.Context, input model.CreateBudget
 	}
 	return nil, args.Error(1)
 }
-func (m *mockBudgetService) UpdateById(ctx context.Context, id uuid.UUID, budget model.Budget) error {
-	return m.Called(ctx, id, budget).Error(0)
+func (m *mockBudgetService) Update(ctx context.Context, userID, id uuid.UUID, req model.UpdateBudgetRequest) error {
+	return m.Called(ctx, userID, id, req).Error(0)
 }
 
 func TestBudgetHandler_List(t *testing.T) {
@@ -329,32 +329,53 @@ func TestBudgetHandler_Create(t *testing.T) {
 }
 
 func TestBudgetHandler_UpdateById(t *testing.T) {
-	id := uuid.New()
+	id, userID := uuid.New(), uuid.New()
 	t.Run("updates_budget", func(t *testing.T) {
 		svc := &mockBudgetService{}
-		svc.On("UpdateById", mock.Anything, id, mock.Anything).Return(nil)
+		svc.On("Update", mock.Anything, userID, id, mock.Anything).Return(nil)
 		w, c := makeReq("PATCH", "/budgets/"+id.String(), model.Budget{Name: "Updated"})
+		withUser(c, userID)
 		c.Params = gin.Params{{Key: "id", Value: id.String()}}
 		NewBudgetHandler(svc).UpdateById(c)
 		assert.Equal(t, http.StatusOK, w.Code)
 	})
+	t.Run("no_user_returns_401", func(t *testing.T) {
+		svc := &mockBudgetService{}
+		w, c := makeReq("PATCH", "/budgets/"+id.String(), model.Budget{})
+		c.Params = gin.Params{{Key: "id", Value: id.String()}}
+		NewBudgetHandler(svc).UpdateById(c)
+		assert.Equal(t, http.StatusUnauthorized, w.Code)
+	})
 	t.Run("missing_id_returns_400", func(t *testing.T) {
 		svc := &mockBudgetService{}
 		w, c := makeReq("PATCH", "/budgets/", model.Budget{})
+		withUser(c, userID)
 		NewBudgetHandler(svc).UpdateById(c)
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
 	t.Run("invalid_uuid_returns_400", func(t *testing.T) {
 		svc := &mockBudgetService{}
 		w, c := makeReq("PATCH", "/budgets/bad", model.Budget{})
+		withUser(c, userID)
 		c.Params = gin.Params{{Key: "id", Value: "bad-uuid"}}
 		NewBudgetHandler(svc).UpdateById(c)
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
+	t.Run("service_status_is_kept", func(t *testing.T) {
+		svc := &mockBudgetService{}
+		forbidden := errs.NewWith(errs.CodeBudgetForbidden, "only the owner", errs.WithStatus(http.StatusForbidden))
+		svc.On("Update", mock.Anything, userID, id, mock.Anything).Return(forbidden)
+		w, c := makeReq("PATCH", "/budgets/"+id.String(), model.Budget{Name: "X"})
+		withUser(c, userID)
+		c.Params = gin.Params{{Key: "id", Value: id.String()}}
+		NewBudgetHandler(svc).UpdateById(c)
+		assert.Equal(t, http.StatusForbidden, w.Code)
+	})
 	t.Run("service_error_returns_500", func(t *testing.T) {
 		svc := &mockBudgetService{}
-		svc.On("UpdateById", mock.Anything, id, mock.Anything).Return(assert.AnError)
+		svc.On("Update", mock.Anything, userID, id, mock.Anything).Return(assert.AnError)
 		w, c := makeReq("PATCH", "/budgets/"+id.String(), model.Budget{Name: "X"})
+		withUser(c, userID)
 		c.Params = gin.Params{{Key: "id", Value: id.String()}}
 		NewBudgetHandler(svc).UpdateById(c)
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
