@@ -23,22 +23,6 @@ func NewTransactionHandler(service service.TransactionService) *TransactionHandl
 	return &TransactionHandler{service: service}
 }
 
-// transactionIDURI is the :id path param of the transaction routes.
-type transactionIDURI struct {
-	ID string `uri:"id" binding:"required,uuid"`
-}
-
-// bindTransactionID reads :id, or answers 400 and returns false.
-func bindTransactionID(c *gin.Context) (uuid.UUID, bool) {
-	var uri transactionIDURI
-	if err := c.ShouldBindUri(&uri); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid transaction id"})
-		return uuid.Nil, false
-	}
-	// The uuid rule already checked the format.
-	return uuid.MustParse(uri.ID), true
-}
-
 // listTransactionsQuery is the query string of ListNormalized. Each ID
 // filter comes either repeated (accountId[]=a&accountId[]=b) or as one
 // comma-joined value (accountId=a,b).
@@ -93,28 +77,6 @@ func (h *TransactionHandler) List(c *gin.Context) {
 	c.JSON(http.StatusOK, transactions)
 }
 
-func stringToUUIDs(ids []string) ([]uuid.UUID, error) {
-	var filterIds []uuid.UUID
-
-	// clients send either repeated params or a single comma-joined value,
-	// so split every element before parsing
-	for _, joined := range ids {
-		for _, id := range strings.Split(joined, ",") {
-			id = strings.TrimSpace(id)
-			if id == "" {
-				continue
-			}
-			parsedId, err := uuid.Parse(id)
-			if err != nil {
-				return nil, err
-			}
-			filterIds = append(filterIds, parsedId)
-		}
-	}
-
-	return filterIds, nil
-}
-
 func (h *TransactionHandler) ListNormalized(c *gin.Context) {
 	ctx := c.Request.Context()
 
@@ -137,7 +99,7 @@ func (h *TransactionHandler) ListNormalized(c *gin.Context) {
 	}
 
 	if len(accountIds) > 0 {
-		ids, err := stringToUUIDs(accountIds)
+		ids, err := parseUUIDs(accountIds...)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing accountId"})
 			return
@@ -146,7 +108,7 @@ func (h *TransactionHandler) ListNormalized(c *gin.Context) {
 	}
 
 	if len(categoryIds) > 0 {
-		ids, err := stringToUUIDs(categoryIds)
+		ids, err := parseUUIDs(categoryIds...)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing categoryId"})
 			return
@@ -155,7 +117,7 @@ func (h *TransactionHandler) ListNormalized(c *gin.Context) {
 	}
 
 	if len(payeeIds) > 0 {
-		ids, err := stringToUUIDs(payeeIds)
+		ids, err := parseUUIDs(payeeIds...)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing payeeId"})
 			return
@@ -164,7 +126,7 @@ func (h *TransactionHandler) ListNormalized(c *gin.Context) {
 	}
 
 	if len(tagIds) > 0 {
-		ids, err := stringToUUIDs(tagIds)
+		ids, err := parseUUIDs(tagIds...)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing tagId"})
 			return
@@ -212,7 +174,7 @@ func (h *TransactionHandler) Create(c *gin.Context) {
 
 func (h *TransactionHandler) Update(c *gin.Context) {
 	ctx := c.Request.Context()
-	parsedId, ok := bindTransactionID(c)
+	parsedId, ok := pathID(c, "id")
 	if !ok {
 		return
 	}
@@ -233,7 +195,7 @@ func (h *TransactionHandler) Update(c *gin.Context) {
 
 func (h *TransactionHandler) UpdateLocation(c *gin.Context) {
 	ctx := c.Request.Context()
-	parsedId, ok := bindTransactionID(c)
+	parsedId, ok := pathID(c, "id")
 	if !ok {
 		return
 	}
@@ -254,7 +216,7 @@ func (h *TransactionHandler) UpdateLocation(c *gin.Context) {
 
 func (h *TransactionHandler) UpdateStatus(c *gin.Context) {
 	ctx := c.Request.Context()
-	parsedId, ok := bindTransactionID(c)
+	parsedId, ok := pathID(c, "id")
 	if !ok {
 		return
 	}
@@ -344,7 +306,7 @@ func (h *TransactionHandler) BulkDelete(c *gin.Context) {
 func (h *TransactionHandler) DeleteById(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	parsedId, ok := bindTransactionID(c)
+	parsedId, ok := pathID(c, "id")
 	if !ok {
 		return
 	}

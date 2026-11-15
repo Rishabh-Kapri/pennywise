@@ -1739,7 +1739,6 @@ func TestPredictionHandler_Create_BindError(t *testing.T) {
 	})
 }
 
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Additional coverage: Tag bind error
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1863,12 +1862,12 @@ func TestCategoryHandler_Update(t *testing.T) {
 		NewCategoryHandler(svc).Update(c)
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
-	t.Run("invalid_id_returns_500", func(t *testing.T) {
+	t.Run("invalid_id_returns_400", func(t *testing.T) {
 		svc := &mockCategoryService{}
 		w, c := makeReq("PUT", "/categories/bad-uuid", model.Category{Name: "X"})
 		c.Params = gin.Params{{Key: "id", Value: "not-a-uuid"}}
 		NewCategoryHandler(svc).Update(c)
-		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
 	t.Run("service_error_returns_500", func(t *testing.T) {
 		svc := &mockCategoryService{}

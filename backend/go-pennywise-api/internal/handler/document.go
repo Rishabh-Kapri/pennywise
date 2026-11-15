@@ -10,7 +10,6 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type DocumentHandler struct {
@@ -24,9 +23,8 @@ func NewDocumentHandler(service service.DocumentService) *DocumentHandler {
 func (h *DocumentHandler) Upload(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	transactionId, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing id"})
+	transactionId, ok := pathID(c, "id")
+	if !ok {
 		return
 	}
 
@@ -59,9 +57,8 @@ func (h *DocumentHandler) Upload(c *gin.Context) {
 func (h *DocumentHandler) UploadScan(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	transactionId, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing id"})
+	transactionId, ok := pathID(c, "id")
+	if !ok {
 		return
 	}
 
@@ -118,9 +115,8 @@ func (h *DocumentHandler) UploadScan(c *gin.Context) {
 func (h *DocumentHandler) ListByTransaction(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	transactionId, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing id"})
+	transactionId, ok := pathID(c, "id")
+	if !ok {
 		return
 	}
 
@@ -164,9 +160,8 @@ func (h *DocumentHandler) List(c *gin.Context) {
 func (h *DocumentHandler) Content(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	id, err := uuid.Parse(c.Param("docId"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing docId"})
+	id, ok := pathID(c, "docId")
+	if !ok {
 		return
 	}
 
@@ -192,9 +187,8 @@ func (h *DocumentHandler) Content(c *gin.Context) {
 func (h *DocumentHandler) Delete(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	id, err := uuid.Parse(c.Param("docId"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing docId"})
+	id, ok := pathID(c, "docId")
+	if !ok {
 		return
 	}
 

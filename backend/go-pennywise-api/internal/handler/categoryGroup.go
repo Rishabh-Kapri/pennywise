@@ -8,7 +8,6 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type CategoryGroupHandler struct {
@@ -48,14 +47,8 @@ func (h *CategoryGroupHandler) Create(c *gin.Context) {
 
 func (h *CategoryGroupHandler) Update(c *gin.Context) {
 	ctx := c.Request.Context()
-	id, ok := c.Params.Get("id")
+	parsedId, ok := pathID(c, "id")
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is required"})
-		return
-	}
-	parsedId, err := uuid.Parse(id)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	var body model.CategoryGroup
@@ -63,7 +56,7 @@ func (h *CategoryGroupHandler) Update(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	err = h.service.Update(ctx, parsedId, body)
+	err := h.service.Update(ctx, parsedId, body)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -73,17 +66,11 @@ func (h *CategoryGroupHandler) Update(c *gin.Context) {
 
 func (h *CategoryGroupHandler) DeleteById(c *gin.Context) {
 	ctx := c.Request.Context()
-	id, ok := c.Params.Get("id")
+	parsedId, ok := pathID(c, "id")
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "id is required"})
 		return
 	}
-	parsedId, err := uuid.Parse(id)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	err = h.service.DeleteById(ctx, parsedId)
+	err := h.service.DeleteById(ctx, parsedId)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return

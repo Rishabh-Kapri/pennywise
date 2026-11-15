@@ -5,10 +5,8 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
-	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type BudgetHandler struct {
@@ -22,9 +20,8 @@ func NewBudgetHandler(service service.BudgetService) *BudgetHandler {
 func (h *BudgetHandler) List(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	userID, err := utils.UserIDFromContext(ctx)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
 
@@ -42,9 +39,8 @@ func (h *BudgetHandler) List(c *gin.Context) {
 func (h *BudgetHandler) Create(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	userID, err := utils.UserIDFromContext(ctx)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
 
@@ -66,14 +62,8 @@ func (h *BudgetHandler) Create(c *gin.Context) {
 func (h *BudgetHandler) UpdateById(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	id, ok := c.Params.Get("id")
+	parsedId, ok := pathID(c, "id")
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})
-		return
-	}
-	parsedId, err := uuid.Parse(id)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "error while parsing ID"})
 		return
 	}
 	var body model.Budget
@@ -81,7 +71,7 @@ func (h *BudgetHandler) UpdateById(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	err = h.service.UpdateById(ctx, parsedId, body)
+	err := h.service.UpdateById(ctx, parsedId, body)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

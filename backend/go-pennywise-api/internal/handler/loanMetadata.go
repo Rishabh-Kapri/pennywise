@@ -8,7 +8,6 @@ import (
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type LoanMetadataHandler struct {
@@ -35,9 +34,8 @@ func (h *LoanMetadataHandler) GetByAccountId(c *gin.Context) {
 	ctx := c.Request.Context()
 	utils.MustBudgetID(ctx)
 
-	accountId, err := uuid.Parse(c.Param("accountId"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid account ID"})
+	accountId, ok := pathID(c, "accountId")
+	if !ok {
 		return
 	}
 
@@ -71,9 +69,8 @@ func (h *LoanMetadataHandler) Update(c *gin.Context) {
 	ctx := c.Request.Context()
 	utils.MustBudgetID(ctx)
 
-	accountId, err := uuid.Parse(c.Param("accountId"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid account ID"})
+	accountId, ok := pathID(c, "accountId")
+	if !ok {
 		return
 	}
 
@@ -103,9 +100,8 @@ func (h *LoanMetadataHandler) Delete(c *gin.Context) {
 	ctx := c.Request.Context()
 	utils.MustBudgetID(ctx)
 
-	accountId, err := uuid.Parse(c.Param("accountId"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid account ID"})
+	accountId, ok := pathID(c, "accountId")
+	if !ok {
 		return
 	}
 

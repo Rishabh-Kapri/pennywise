@@ -67,7 +67,7 @@ func (h *JobHandler) List(c *gin.Context) {
 }
 
 func (h *JobHandler) Get(c *gin.Context) {
-	id, ok := parseJobID(c)
+	id, ok := pathID(c, "id")
 	if !ok {
 		return
 	}
@@ -80,7 +80,7 @@ func (h *JobHandler) Get(c *gin.Context) {
 }
 
 func (h *JobHandler) Retry(c *gin.Context) {
-	id, ok := parseJobID(c)
+	id, ok := pathID(c, "id")
 	if !ok {
 		return
 	}
@@ -92,7 +92,7 @@ func (h *JobHandler) Retry(c *gin.Context) {
 }
 
 func (h *JobHandler) Cancel(c *gin.Context) {
-	id, ok := parseJobID(c)
+	id, ok := pathID(c, "id")
 	if !ok {
 		return
 	}
@@ -122,7 +122,7 @@ func (h *JobHandler) RetryFailed(c *gin.Context) {
 }
 
 func (h *JobHandler) RunAgain(c *gin.Context) {
-	id, ok := parseJobID(c)
+	id, ok := pathID(c, "id")
 	if !ok {
 		return
 	}
@@ -134,7 +134,7 @@ func (h *JobHandler) RunAgain(c *gin.Context) {
 }
 
 func (h *JobHandler) Continue(c *gin.Context) {
-	id, ok := parseJobID(c)
+	id, ok := pathID(c, "id")
 	if !ok {
 		return
 	}
@@ -146,7 +146,7 @@ func (h *JobHandler) Continue(c *gin.Context) {
 }
 
 func (h *JobHandler) Dismiss(c *gin.Context) {
-	id, ok := parseJobID(c)
+	id, ok := pathID(c, "id")
 	if !ok {
 		return
 	}
@@ -155,15 +155,6 @@ func (h *JobHandler) Dismiss(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "dismissed"})
-}
-
-func parseJobID(c *gin.Context) (uuid.UUID, bool) {
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid job id"})
-		return uuid.Nil, false
-	}
-	return id, true
 }
 
 func writeJobError(c *gin.Context, err error) {

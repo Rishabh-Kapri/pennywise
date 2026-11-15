@@ -8,7 +8,6 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
-	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -41,24 +40,18 @@ func aiModelErrorStatus(err error) int {
 // userAndID reads the user and the :id param, writing the error response
 // itself when either is missing.
 func userAndID(c *gin.Context) (uuid.UUID, uuid.UUID, bool) {
-	userID, err := utils.UserIDFromContext(c.Request.Context())
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return uuid.Nil, uuid.Nil, false
 	}
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid model id"})
-		return uuid.Nil, uuid.Nil, false
-	}
-	return userID, id, true
+	id, ok := pathID(c, "id")
+	return userID, id, ok
 }
 
 func (h *AIModelHandler) List(c *gin.Context) {
 	ctx := c.Request.Context()
-	userID, err := utils.UserIDFromContext(ctx)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
 	models, err := h.service.List(ctx, userID)
@@ -71,9 +64,8 @@ func (h *AIModelHandler) List(c *gin.Context) {
 
 func (h *AIModelHandler) Create(c *gin.Context) {
 	ctx := c.Request.Context()
-	userID, err := utils.UserIDFromContext(ctx)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
 	var body model.CreateUserLLMModelRequest
@@ -140,9 +132,8 @@ func (h *AIModelHandler) SetEnabled(c *gin.Context) {
 
 func (h *AIModelHandler) Reorder(c *gin.Context) {
 	ctx := c.Request.Context()
-	userID, err := utils.UserIDFromContext(ctx)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
 	var body model.ReorderUserLLMModelsRequest

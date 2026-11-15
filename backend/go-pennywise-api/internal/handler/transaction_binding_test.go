@@ -29,7 +29,6 @@ func TestTransactionHandler_InvalidIDNeverReachesService(t *testing.T) {
 			c.Params = gin.Params{{Key: "id", Value: "not-a-uuid"}}
 			call(NewTransactionHandler(svc), c)
 			assert.Equal(t, http.StatusBadRequest, w.Code)
-			assert.JSONEq(t, `{"error":"invalid transaction id"}`, w.Body.String())
 			svc.AssertNotCalled(t, "Update", mock.Anything, mock.Anything, mock.Anything)
 			svc.AssertNotCalled(t, "DeleteById", mock.Anything, mock.Anything)
 		})

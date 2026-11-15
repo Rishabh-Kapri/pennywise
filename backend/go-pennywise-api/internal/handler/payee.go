@@ -9,7 +9,6 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type PayeeHandler struct {
@@ -58,14 +57,8 @@ func (h *PayeeHandler) Create(c *gin.Context) {
 
 func (h *PayeeHandler) GetById(c *gin.Context) {
 	ctx := c.Request.Context()
-	id, ok := c.Params.Get("id")
+	parsedId, ok := pathID(c, "id")
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "id is required"})
-		return
-	}
-	parsedId, err := uuid.Parse(id)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing id"})
 		return
 	}
 	payee, err := h.service.GetById(ctx, parsedId)
@@ -78,14 +71,8 @@ func (h *PayeeHandler) GetById(c *gin.Context) {
 
 func (h *PayeeHandler) GetRules(c *gin.Context) {
 	ctx := c.Request.Context()
-	id, ok := c.Params.Get("id")
+	parsedId, ok := pathID(c, "id")
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "id is required"})
-		return
-	}
-	parsedId, err := uuid.Parse(id)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing id"})
 		return
 	}
 	rules, err := h.service.GetRules(ctx, parsedId)
@@ -98,14 +85,8 @@ func (h *PayeeHandler) GetRules(c *gin.Context) {
 
 func (h *PayeeHandler) CreateRule(c *gin.Context) {
 	ctx := c.Request.Context()
-	id, ok := c.Params.Get("id")
+	parsedId, ok := pathID(c, "id")
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "id is required"})
-		return
-	}
-	parsedId, err := uuid.Parse(id)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing id"})
 		return
 	}
 	var body model.PayeeRule
@@ -122,24 +103,12 @@ func (h *PayeeHandler) CreateRule(c *gin.Context) {
 
 func (h *PayeeHandler) UpdateRule(c *gin.Context) {
 	ctx := c.Request.Context()
-	id, ok := c.Params.Get("id")
+	parsedId, ok := pathID(c, "id")
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "id is required"})
 		return
 	}
-	ruleId, ok := c.Params.Get("ruleId")
+	parsedRuleId, ok := pathID(c, "ruleId")
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "rule id is required"})
-		return
-	}
-	parsedId, err := uuid.Parse(id)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing id"})
-		return
-	}
-	parsedRuleId, err := uuid.Parse(ruleId)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing rule id"})
 		return
 	}
 	var body model.PayeeRule
@@ -156,14 +125,8 @@ func (h *PayeeHandler) UpdateRule(c *gin.Context) {
 
 func (h *PayeeHandler) DeleteRule(c *gin.Context) {
 	ctx := c.Request.Context()
-	ruleId, ok := c.Params.Get("ruleId")
+	parsedRuleId, ok := pathID(c, "ruleId")
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "rule id is required"})
-		return
-	}
-	parsedRuleId, err := uuid.Parse(ruleId)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing rule id"})
 		return
 	}
 	if err := h.service.DeleteRule(ctx, parsedRuleId); err != nil {
@@ -175,15 +138,8 @@ func (h *PayeeHandler) DeleteRule(c *gin.Context) {
 
 func (h *PayeeHandler) Update(c *gin.Context) {
 	ctx := c.Request.Context()
-	id, ok := c.Params.Get("id")
+	parsedId, ok := pathID(c, "id")
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})
-		return
-	}
-	parsedId, err := uuid.Parse(id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError,
-			gin.H{"error": "Error while parsing id"})
 		return
 	}
 	var body model.Payee
@@ -191,7 +147,7 @@ func (h *PayeeHandler) Update(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	err = h.service.Update(ctx, parsedId, body)
+	err := h.service.Update(ctx, parsedId, body)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError,
 			gin.H{"error": "Error while updating payee"})
@@ -202,17 +158,11 @@ func (h *PayeeHandler) Update(c *gin.Context) {
 
 func (h *PayeeHandler) DeleteById(c *gin.Context) {
 	ctx := c.Request.Context()
-	id, ok := c.Params.Get("id")
+	parsedId, ok := pathID(c, "id")
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})
 		return
 	}
-	parsedId, err := uuid.Parse(id)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	err = h.service.DeleteById(ctx, parsedId)
+	err := h.service.DeleteById(ctx, parsedId)
 	if err != nil {
 		c.JSON(payeeErrorStatus(err), gin.H{"error": err.Error()})
 		return

@@ -8,7 +8,6 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type PredictionHandler struct {
@@ -47,14 +46,8 @@ func (h *PredictionHandler) ListCipherPredictions(c *gin.Context) {
 func (h *PredictionHandler) GetByTransactionID(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	id, ok := c.Params.Get("transactionId")
+	parsedID, ok := pathID(c, "transactionId")
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "transactionId is needed"})
-		return
-	}
-	parsedID, err := uuid.Parse(id)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing transactionId"})
 		return
 	}
 
@@ -86,16 +79,11 @@ func (h *PredictionHandler) Create(c *gin.Context) {
 func (h *PredictionHandler) DeleteById(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	id, ok := c.Params.Get("id")
+	parsedId, ok := pathID(c, "id")
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})
 		return
 	}
-	parsedId, err := uuid.Parse(id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error while parsing id"})
-	}
-	err = h.service.DeleteById(ctx, parsedId)
+	err := h.service.DeleteById(ctx, parsedId)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

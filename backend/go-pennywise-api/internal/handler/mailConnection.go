@@ -8,7 +8,6 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type MailConnectionHandler struct {
@@ -51,9 +50,8 @@ type updateMailRequest struct {
 }
 
 func (h *MailConnectionHandler) Update(c *gin.Context) {
-	connectionID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid connection id"})
+	connectionID, ok := pathID(c, "id")
+	if !ok {
 		return
 	}
 	var req updateMailRequest
@@ -70,9 +68,8 @@ func (h *MailConnectionHandler) Update(c *gin.Context) {
 }
 
 func (h *MailConnectionHandler) Disconnect(c *gin.Context) {
-	connectionID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid connection id"})
+	connectionID, ok := pathID(c, "id")
+	if !ok {
 		return
 	}
 	if err := h.service.Disconnect(c.Request.Context(), connectionID); err != nil {
@@ -87,9 +84,8 @@ type backfillRequest struct {
 }
 
 func (h *MailConnectionHandler) BackfillCandidates(c *gin.Context) {
-	connectionID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid connection id"})
+	connectionID, ok := pathID(c, "id")
+	if !ok {
 		return
 	}
 	candidates, err := h.service.BackfillCandidates(c.Request.Context(), connectionID)
@@ -104,9 +100,8 @@ func (h *MailConnectionHandler) BackfillCandidates(c *gin.Context) {
 }
 
 func (h *MailConnectionHandler) Backfill(c *gin.Context) {
-	connectionID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid connection id"})
+	connectionID, ok := pathID(c, "id")
+	if !ok {
 		return
 	}
 	var req backfillRequest

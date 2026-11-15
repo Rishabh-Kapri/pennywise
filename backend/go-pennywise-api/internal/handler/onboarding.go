@@ -6,7 +6,6 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
-	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -48,9 +47,8 @@ func (h *OnboardingHandler) Update(c *gin.Context) {
 
 func (h *OnboardingHandler) BackfillEmails(c *gin.Context) {
 	ctx := c.Request.Context()
-	userID, err := utils.UserIDFromContext(ctx)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
 	var body model.OnboardingEmailBackfillRequest

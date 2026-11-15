@@ -10,7 +10,6 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type CategoryHandler struct {
@@ -78,14 +77,9 @@ func (h *CategoryHandler) Search(c *gin.Context) {
 func (h *CategoryHandler) GetById(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	id, ok := c.Params.Get("id")
+	parsedId, ok := pathID(c, "id")
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})
 		return
-	}
-	parsedId, err := uuid.Parse(id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error while parsing id"})
 	}
 	category, err := h.service.GetById(ctx, parsedId)
 	if err != nil {
@@ -97,14 +91,8 @@ func (h *CategoryHandler) GetById(c *gin.Context) {
 
 func (h *CategoryHandler) Update(c *gin.Context) {
 	ctx := c.Request.Context()
-	id, ok := c.Params.Get("id")
+	parsedId, ok := pathID(c, "id")
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})
-		return
-	}
-	parsedId, err := uuid.Parse(id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error while parsing id"})
 		return
 	}
 	var body model.Category
@@ -112,7 +100,7 @@ func (h *CategoryHandler) Update(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	err = h.service.Update(ctx, parsedId, body)
+	err := h.service.Update(ctx, parsedId, body)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -122,14 +110,8 @@ func (h *CategoryHandler) Update(c *gin.Context) {
 func (h *CategoryHandler) UpdateBudget(c *gin.Context) {
 	ctx := c.Request.Context()
 	logger.Logger(ctx).Info("updating monthly budget")
-	id, ok := c.Params.Get("id")
+	categoryId, ok := pathID(c, "id")
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})
-		return
-	}
-	categoryId, err := uuid.Parse(id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error while parsing id"})
 		return
 	}
 	month, ok := c.Params.Get("month")
@@ -144,22 +126,21 @@ func (h *CategoryHandler) UpdateBudget(c *gin.Context) {
 		return
 	}
 
-	err = h.service.UpdateMonthlyBudget(ctx, categoryId, body.Budgeted, month)
+	if err := h.service.UpdateMonthlyBudget(ctx, categoryId, body.Budgeted, month); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.Status(http.StatusOK)
 }
 
 func (h *CategoryHandler) DeleteById(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	id, ok := c.Params.Get("id")
+	parsedId, ok := pathID(c, "id")
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})
 		return
 	}
-	parsedId, err := uuid.Parse(id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error while parsing id"})
-	}
-	err = h.service.DeleteById(ctx, parsedId)
+	err := h.service.DeleteById(ctx, parsedId)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -173,9 +154,8 @@ const maxCategoryTextLength = 2000
 
 func (h *CategoryHandler) UpdateDetails(c *gin.Context) {
 	ctx := c.Request.Context()
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid category id"})
+	id, ok := pathID(c, "id")
+	if !ok {
 		return
 	}
 	var body model.CategoryDetailsUpdate
@@ -211,9 +191,8 @@ func (h *CategoryHandler) UpdateDetails(c *gin.Context) {
 
 func (h *CategoryHandler) SuggestDescription(c *gin.Context) {
 	ctx := c.Request.Context()
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid category id"})
+	id, ok := pathID(c, "id")
+	if !ok {
 		return
 	}
 

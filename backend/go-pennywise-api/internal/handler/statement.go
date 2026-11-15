@@ -99,7 +99,7 @@ func (h *StatementHandler) List(c *gin.Context) {
 }
 
 func (h *StatementHandler) Get(c *gin.Context) {
-	id, ok := statementID(c)
+	id, ok := pathID(c, "id")
 	if !ok {
 		return
 	}
@@ -112,7 +112,7 @@ func (h *StatementHandler) Get(c *gin.Context) {
 }
 
 func (h *StatementHandler) SetSectionAccount(c *gin.Context) {
-	id, ok := statementID(c)
+	id, ok := pathID(c, "id")
 	if !ok {
 		return
 	}
@@ -135,7 +135,7 @@ func (h *StatementHandler) SetSectionAccount(c *gin.Context) {
 }
 
 func (h *StatementHandler) CreateMissing(c *gin.Context) {
-	id, ok := statementID(c)
+	id, ok := pathID(c, "id")
 	if !ok {
 		return
 	}
@@ -153,7 +153,7 @@ func (h *StatementHandler) CreateMissing(c *gin.Context) {
 }
 
 func (h *StatementHandler) Retry(c *gin.Context) {
-	id, ok := statementID(c)
+	id, ok := pathID(c, "id")
 	if !ok {
 		return
 	}
@@ -166,7 +166,7 @@ func (h *StatementHandler) Retry(c *gin.Context) {
 }
 
 func (h *StatementHandler) Delete(c *gin.Context) {
-	id, ok := statementID(c)
+	id, ok := pathID(c, "id")
 	if !ok {
 		return
 	}
@@ -175,15 +175,6 @@ func (h *StatementHandler) Delete(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
-}
-
-func statementID(c *gin.Context) (uuid.UUID, bool) {
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid statement id"})
-		return uuid.Nil, false
-	}
-	return id, true
 }
 
 func writeStatementError(c *gin.Context, err error) {

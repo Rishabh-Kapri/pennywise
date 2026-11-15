@@ -8,7 +8,6 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type AccountHandler struct {
@@ -60,9 +59,8 @@ func (h *AccountHandler) Create(c *gin.Context) {
 func (h *AccountHandler) Update(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid account id"})
+	id, ok := pathID(c, "id")
+	if !ok {
 		return
 	}
 	var body model.Account

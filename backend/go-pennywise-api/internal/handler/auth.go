@@ -8,7 +8,6 @@ import (
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
-	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -88,9 +87,8 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 // GetCurrentUser handles GET /api/auth/users/me.
 func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 	ctx := c.Request.Context()
-	userID, err := utils.UserIDFromContext(ctx)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
 

@@ -4,14 +4,12 @@ import (
 	"errors"
 	"net/http"
 	"regexp"
-	"strings"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 var monthKeyRegex = regexp.MustCompile(`^\d{4}-\d{2}$`)
@@ -107,35 +105,19 @@ func parseReportParams(c *gin.Context) (model.ReportParams, bool) {
 	}
 
 	var err error
-	if params.AccountIDs, err = parseUUIDList(c.Query("accountIds")); err != nil {
+	if params.AccountIDs, err = parseUUIDs(c.Query("accountIds")); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid accountIds"})
 		return params, false
 	}
-	if params.CategoryIDs, err = parseUUIDList(c.Query("categoryIds")); err != nil {
+	if params.CategoryIDs, err = parseUUIDs(c.Query("categoryIds")); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid categoryIds"})
 		return params, false
 	}
-	if params.TagIDs, err = parseUUIDList(c.Query("tagIds")); err != nil {
+	if params.TagIDs, err = parseUUIDs(c.Query("tagIds")); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid tagIds"})
 		return params, false
 	}
 	return params, true
-}
-
-func parseUUIDList(value string) ([]uuid.UUID, error) {
-	if value == "" {
-		return nil, nil
-	}
-	parts := strings.Split(value, ",")
-	ids := make([]uuid.UUID, 0, len(parts))
-	for _, part := range parts {
-		id, err := uuid.Parse(strings.TrimSpace(part))
-		if err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	return ids, nil
 }
 
 func respondReportError(c *gin.Context, err error) {

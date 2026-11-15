@@ -8,7 +8,6 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type TagHandler struct {
@@ -57,14 +56,8 @@ func (h *TagHandler) Create(c *gin.Context) {
 
 func (h *TagHandler) Update(c *gin.Context) {
 	ctx := c.Request.Context()
-	id, ok := c.Params.Get("id")
+	parsedId, ok := pathID(c, "id")
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})
-		return
-	}
-	parsedId, err := uuid.Parse(id)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing id"})
 		return
 	}
 	var body model.Tag
@@ -72,7 +65,7 @@ func (h *TagHandler) Update(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	err = h.service.Update(ctx, parsedId, body)
+	err := h.service.Update(ctx, parsedId, body)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -82,17 +75,11 @@ func (h *TagHandler) Update(c *gin.Context) {
 
 func (h *TagHandler) DeleteById(c *gin.Context) {
 	ctx := c.Request.Context()
-	id, ok := c.Params.Get("id")
+	parsedId, ok := pathID(c, "id")
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "ID is needed"})
 		return
 	}
-	parsedId, err := uuid.Parse(id)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	err = h.service.DeleteById(ctx, parsedId)
+	err := h.service.DeleteById(ctx, parsedId)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

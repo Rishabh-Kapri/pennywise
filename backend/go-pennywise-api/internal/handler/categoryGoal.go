@@ -8,7 +8,6 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type CategoryGoalHandler struct {
@@ -22,9 +21,8 @@ func NewCategoryGoalHandler(service service.CategoryGoalService) *CategoryGoalHa
 // Upsert sets (or replaces) a category's target.
 func (h *CategoryGoalHandler) Upsert(c *gin.Context) {
 	ctx := c.Request.Context()
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid category id"})
+	id, ok := pathID(c, "id")
+	if !ok {
 		return
 	}
 	var body model.CategoryGoal
@@ -44,9 +42,8 @@ func (h *CategoryGoalHandler) Upsert(c *gin.Context) {
 // Delete removes a category's target.
 func (h *CategoryGoalHandler) Delete(c *gin.Context) {
 	ctx := c.Request.Context()
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid category id"})
+	id, ok := pathID(c, "id")
+	if !ok {
 		return
 	}
 	if err := h.service.Delete(ctx, id); err != nil {

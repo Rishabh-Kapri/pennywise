@@ -12,7 +12,6 @@ import (
 	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type PredictionReviewHandler struct {
@@ -50,9 +49,8 @@ func (h *PredictionReviewHandler) Review(c *gin.Context) {
 	ctx := c.Request.Context()
 	utils.MustBudgetID(ctx)
 
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+	id, ok := pathID(c, "id")
+	if !ok {
 		return
 	}
 

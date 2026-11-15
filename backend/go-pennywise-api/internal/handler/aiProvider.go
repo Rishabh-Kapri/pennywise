@@ -8,7 +8,6 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
-	utils "github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
 	"github.com/gin-gonic/gin"
 )
@@ -37,9 +36,8 @@ func aiProviderErrorStatus(err error) int {
 
 func (h *AIProviderHandler) List(c *gin.Context) {
 	ctx := c.Request.Context()
-	userID, err := utils.UserIDFromContext(ctx)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
 	providers, err := h.service.List(ctx, userID)
@@ -52,9 +50,8 @@ func (h *AIProviderHandler) List(c *gin.Context) {
 
 func (h *AIProviderHandler) Upsert(c *gin.Context) {
 	ctx := c.Request.Context()
-	userID, err := utils.UserIDFromContext(ctx)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
 	var body model.UpsertUserLLMProviderRequest
@@ -72,9 +69,8 @@ func (h *AIProviderHandler) Upsert(c *gin.Context) {
 
 func (h *AIProviderHandler) Delete(c *gin.Context) {
 	ctx := c.Request.Context()
-	userID, err := utils.UserIDFromContext(ctx)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+	userID, ok := currentUser(c)
+	if !ok {
 		return
 	}
 	if err := h.service.Delete(ctx, userID, model.LLMProviderName(c.Param("provider"))); err != nil {
