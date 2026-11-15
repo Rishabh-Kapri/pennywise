@@ -90,6 +90,10 @@ func (f *fakeTransactionService) GetAllNormalized(context.Context, *model.Transa
 	return model.PaginatedResponse[model.Transaction]{}, nil
 }
 
+func (f *fakeTransactionService) GetFacets(context.Context, *model.TransactionFilter) (model.TransactionFacets, error) {
+	return model.TransactionFacets{}, nil
+}
+
 func (f *fakeTransactionService) Update(context.Context, uuid.UUID, model.Transaction) error {
 	return nil
 }
