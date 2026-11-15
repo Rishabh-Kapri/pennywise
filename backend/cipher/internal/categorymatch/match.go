@@ -1,5 +1,6 @@
-// Package categorymatch finds the budget category a model meant when it named
-// one. Both prediction flows (service and adapters/llm) resolve through it.
+// Package categorymatch is how a prediction prompt lists the budget's categories
+// (PromptList) and how the category a model named resolves to one of them
+// (Match). Both prediction flows (service and adapters/llm) use it.
 package categorymatch
 
 import (
