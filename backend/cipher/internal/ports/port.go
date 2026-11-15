@@ -22,6 +22,13 @@ type (
 	MessageType     string
 )
 
+// What the check step says a message is. A statement isn't a transaction: the
+// worker routes it to the statement path instead of extracting it.
+const (
+	TransactionMessageType MessageType = "transaction"
+	StatementMessageType   MessageType = "statement"
+)
+
 type TxnVerdict struct {
 	MessageType   MessageType     `json:"messageType"` //
 	IsTransaction bool            `json:"isTransaction"`
