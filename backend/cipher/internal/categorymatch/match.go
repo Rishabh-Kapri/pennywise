@@ -4,6 +4,7 @@ package categorymatch
 
 import (
 	"context"
+	"strings"
 
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
@@ -80,4 +81,21 @@ func Match(
 	}
 	best := matches[0]
 	return Result{ID: best.ID, Name: best.Name, Kind: Fuzzy, Score: best.Score}, true, nil
+}
+
+// PromptList renders a budget's categories for a prediction prompt's
+// {categories} placeholder: one per line, "- Name: what belongs in it", or just
+// "- Name" when it has no description. A description is guidance for choosing;
+// the model still answers with the name alone, which Match resolves.
+func PromptList(categories []sharedModel.CategorySimplified) string {
+	lines := make([]string, 0, len(categories))
+	for _, c := range categories {
+		desc := strings.Join(strings.Fields(c.Description), " ")
+		if desc == "" {
+			lines = append(lines, "- "+c.Name)
+			continue
+		}
+		lines = append(lines, "- "+c.Name+": "+desc)
+	}
+	return strings.Join(lines, "\n")
 }

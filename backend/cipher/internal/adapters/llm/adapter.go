@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	prompts "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/context"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/categorymatch"
 	cipherModel "github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/ports"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
@@ -216,13 +216,7 @@ func (a *adapter) Predict(
 	if err != nil {
 		return ports.PredictionResult{}, err
 	}
-	names := make(map[string]bool, len(categories))
-	list := make([]string, 0, len(categories))
-	for _, category := range categories {
-		names[category.Name] = true
-		list = append(list, category.Name)
-	}
-	system := strings.ReplaceAll(prompts.PredictionPrompt, "{categories}", prompts.FormatCategories(categories))
+	system := strings.ReplaceAll(predictionPrompt, "{categories}", categorymatch.PromptList(categories))
 	user := fmt.Sprintf("Merchant: %s\nAmount: %.2f\nAccount: %s\n\n%s",
 		entities.Merchant, entities.Amount, entities.Account, msg.Body)
 

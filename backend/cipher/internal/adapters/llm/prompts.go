@@ -65,7 +65,7 @@ isTransaction is true only for an alert about a completed debit, credit, purchas
 type is "debit" when money moved out, "credit" when money moved in, and "none" when no completed movement is reported.`
 
 // predictionPrompt asks a chat model for a payee and category. {categories} is
-// replaced with the budget's category names.
+// replaced with the budget's categories (categorymatch.PromptList).
 const predictionPrompt = `You are an expert financial data extraction API. Your job is to analyze raw bank transaction text and output strictly valid JSON.
 
 Extract the clean merchant brand name and categorize the transaction into exactly ONE of the allowed categories.
@@ -76,7 +76,7 @@ RULES:
 3. JSON ONLY: Do not wrap the response in markdown blocks. Return only the raw JSON object.
 4. Never output the data from the examples. Only process the provided input.
 
-ALLOWED CATEGORIES:
+ALLOWED CATEGORIES (one per line as "- name: what belongs in it"; the text after the colon only helps you choose, and suggestedTag must be the name alone):
 {categories}
 
 EXPECTED JSON SCHEMA:

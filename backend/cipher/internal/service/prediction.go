@@ -800,11 +800,7 @@ func (s *predictionService) llmFallback(
 	if err != nil {
 		return nil, uuid.Nil, nil, err
 	}
-	userCategoriesText := ""
-	for _, c := range userCategories {
-		userCategoriesText += c.Name + ", "
-	}
-	prompt := strings.ReplaceAll(predictionPrompt, "{categories}", userCategoriesText)
+	prompt := strings.ReplaceAll(predictionPrompt, "{categories}", categorymatch.PromptList(userCategories))
 
 	chatRes, err := s.chatWithFallback(ctx, "predict:llm_fallback", func(model string) sharedModel.ChatRequest {
 		return sharedModel.ChatRequest{

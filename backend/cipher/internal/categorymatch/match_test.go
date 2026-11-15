@@ -131,3 +131,17 @@ func TestMatchEmptySuggestionIsNoMatch(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, ok)
 }
+
+func TestPromptList(t *testing.T) {
+	got := PromptList([]sharedModel.CategorySimplified{
+		{Name: "Groceries", Description: "supermarket runs,\n  not restaurants "},
+		{Name: "Fuel"},
+	})
+	want := "- Groceries: supermarket runs, not restaurants\n- Fuel"
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	if PromptList(nil) != "" {
+		t.Fatal("no categories should format to an empty string")
+	}
+}
