@@ -191,6 +191,8 @@ const (
 	CodeMessageVerifyFailed  Code = "MESSAGE_VERIFY_FAILED"
 	CodeMessageLookupFailed  Code = "MESSAGE_LOOKUP_FAILED"
 	CodeMessagePredictFailed Code = "MESSAGE_PREDICT_FAILED"
+	// CodePipelineReportFailed: recording how a message ended failed.
+	CodePipelineReportFailed Code = "PIPELINE_REPORT_FAILED"
 )
 
 // Workers
