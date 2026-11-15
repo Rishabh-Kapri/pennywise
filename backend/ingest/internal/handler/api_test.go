@@ -72,7 +72,7 @@ func TestSms(t *testing.T) {
 			t.Fatalf("status = %d: %s", w.Code, w.Body)
 		}
 		m := f.got[0]
-		if m.Source != model.SourceSMS || m.Provider != ports.ProviderAndroid || m.ExternalID != "" ||
+		if m.Source != model.MessageSourceSMS || m.Provider != ports.ProviderAndroid || m.ExternalID != "" ||
 			m.ReceivedAt.Location() != time.UTC || m.ReceivedAt.IsZero() {
 			t.Fatalf("message = %+v", m)
 		}
@@ -123,7 +123,7 @@ func TestIngest(t *testing.T) {
 			t.Fatalf("response %s: %v", w.Body, err)
 		}
 		m := f.got[0]
-		if m.Source != model.SourceAPI || m.Provider != ports.ProviderAPI || m.ExternalID != "x1" || m.ReceivedAt.IsZero() {
+		if m.Source != model.MessageSourceAPI || m.Provider != ports.ProviderAPI || m.ExternalID != "x1" || m.ReceivedAt.IsZero() {
 			t.Fatalf("message = %+v", m)
 		}
 	})

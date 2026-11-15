@@ -38,7 +38,7 @@ func (f *fakeBroker) Enqueue(_ context.Context, jobType string, payload []byte, 
 
 func message() ports.InboundMessage {
 	return ports.InboundMessage{
-		Source: model.SourceSMS, Provider: "android", ExternalID: "abc",
+		Source: model.MessageSourceSMS, Provider: "android", ExternalID: "abc",
 		Sender: "HDFCBK", Body: "Rs 499 debited", ReceivedAt: time.Unix(1_700_000_000, 0).UTC(),
 	}
 }
@@ -105,7 +105,7 @@ func TestAcceptSanitizesEmailOnly(t *testing.T) {
 
 	budgets := []uuid.UUID{uuid.New()}
 	email := message()
-	email.Source, email.Body = model.SourceEmail, html
+	email.Source, email.Body = model.MessageSourceEmail, html
 	if _, err := s.Accept(context.Background(), budgets, email); err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestAcceptSanitizesEmailOnly(t *testing.T) {
 	}
 
 	api := message()
-	api.Source, api.Body = model.SourceAPI, html
+	api.Source, api.Body = model.MessageSourceAPI, html
 	if _, err := s.Accept(context.Background(), budgets, api); err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestAcceptSanitizesEmailOnly(t *testing.T) {
 	}
 
 	hidden := message()
-	hidden.Source, hidden.Body = model.SourceEmail, `<div style="display:none">only this</div>`
+	hidden.Source, hidden.Body = model.MessageSourceEmail, `<div style="display:none">only this</div>`
 	if _, err := s.Accept(context.Background(), budgets, hidden); !errs.HasCode(err, errs.CodeIngestInvalidMessage) {
 		t.Fatalf("hidden-only email: %v", err)
 	}

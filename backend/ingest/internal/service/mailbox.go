@@ -226,7 +226,7 @@ func (s *mailboxService) FetchStatement(
 
 type mailboxService struct {
 	broker job.Broker // nil when no job queue is configured
-	deps MailboxDeps
+	deps   MailboxDeps
 }
 
 func NewMailboxService(deps MailboxDeps) MailboxService {

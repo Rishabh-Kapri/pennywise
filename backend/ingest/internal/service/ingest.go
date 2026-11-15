@@ -80,7 +80,7 @@ func (s *ingestService) Accept(
 	if msg.ExternalID == "" && !msg.ReceivedAt.IsZero() {
 		msg.ExternalID = contentID(msg)
 	}
-	if msg.Source == model.SourceEmail {
+	if msg.Source == model.MessageSourceEmail {
 		msg.Body = sanitize.Text(msg.Body)
 	}
 	if err := validate(budgets, msg); err != nil {

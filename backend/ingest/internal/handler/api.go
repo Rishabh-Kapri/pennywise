@@ -143,7 +143,7 @@ func (h *APIHandler) Ingest(c *gin.Context) {
 		receivedAt = *req.ReceivedAt
 	}
 	h.accept(c, budgetID, ports.InboundMessage{
-		Source:     model.SourceAPI,
+		Source:     model.MessageSourceAPI,
 		Provider:   ports.ProviderAPI,
 		ExternalID: req.ExternalID,
 		Sender:     req.Sender,
@@ -161,7 +161,7 @@ func (h *APIHandler) Sms(c *gin.Context) {
 		return
 	}
 	h.accept(c, budgetID, ports.InboundMessage{
-		Source:     model.SourceSMS,
+		Source:     model.MessageSourceSMS,
 		Provider:   ports.ProviderAndroid,
 		Sender:     req.Sender,
 		Body:       req.Body,
