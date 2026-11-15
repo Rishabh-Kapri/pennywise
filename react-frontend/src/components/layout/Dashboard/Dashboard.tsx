@@ -117,7 +117,7 @@ export default function Dashboard() {
         </div>
         <div className={styles.topActions}>
           {inflowLoaded && <ReadyToAssign amount={inflowAmount} />}
-          <DateSelector monthYearOnly />
+          <DateSelector />
         </div>
       </header>
 

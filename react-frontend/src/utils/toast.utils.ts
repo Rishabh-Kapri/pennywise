@@ -1,6 +1,6 @@
 import { createElement } from 'react';
 import { errorText } from './errorText';
-import { addToast } from '@heroui/react';
+import { toast as heroToast } from '@heroui/react';
 import {
   CheckCircleIcon,
   InfoIcon,
@@ -8,51 +8,38 @@ import {
   WarningIcon,
   type Icon,
 } from '@phosphor-icons/react';
-import styles from './toast.module.css';
 
-type ToastColor = 'default' | 'primary' | 'success' | 'warning' | 'danger';
+/** HeroUI's toast variants; `ToastHost` styles each one. */
+export type ToastVariant = 'default' | 'accent' | 'success' | 'warning' | 'danger';
 
 interface ToastOptions {
   description?: string;
   timeout?: number;
 }
 
-const icons: Record<ToastColor, Icon> = {
+const icons: Record<ToastVariant, Icon> = {
   default: InfoIcon,
-  primary: InfoIcon,
+  accent: InfoIcon,
   success: CheckCircleIcon,
   warning: WarningIcon,
   danger: WarningCircleIcon,
 };
 
 // errors stay up longer so there's time to read what went wrong
-const timeouts: Record<ToastColor, number> = {
+const timeouts: Record<ToastVariant, number> = {
   default: 3500,
-  primary: 3500,
+  accent: 3500,
   success: 3000,
   warning: 5000,
   danger: 6000,
 };
 
-function showToast(title: string, color: ToastColor, options?: ToastOptions) {
-  addToast({
-    title,
-    color,
+function showToast(title: string, variant: ToastVariant, options?: ToastOptions) {
+  heroToast(title, {
+    variant,
     description: options?.description,
-    timeout: options?.timeout ?? timeouts[color],
-    variant: 'flat',
-    shouldShowTimeoutProgress: true,
-    // HeroUI clones this element and puts classNames.icon on it
-    icon: createElement('span', null, createElement(icons[color], { size: 18, weight: 'fill' })),
-    classNames: {
-      base: `${styles.toast} ${styles[color]}`,
-      icon: styles.icon,
-      title: styles.title,
-      description: styles.description,
-      progressIndicator: styles.progress,
-      motionDiv: styles.motion,
-      closeButton: styles.close,
-    },
+    timeout: options?.timeout ?? timeouts[variant],
+    indicator: createElement(icons[variant], { size: 18, weight: 'fill' }),
   });
 }
 
@@ -76,7 +63,7 @@ export const toast = {
 
   warning: (title: string, options?: ToastOptions) => showToast(title, 'warning', options),
 
-  info: (title: string, options?: ToastOptions) => showToast(title, 'primary', options),
+  info: (title: string, options?: ToastOptions) => showToast(title, 'accent', options),
 
   show: (title: string, options?: ToastOptions) => showToast(title, 'default', options),
 };

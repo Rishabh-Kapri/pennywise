@@ -13,8 +13,8 @@ import {
   type ReactElement,
 } from 'react';
 import { getCurrencyLocaleString } from '@/utils/date.utils';
-import { Tooltip } from '@heroui/tooltip';
-import { Popover, PopoverContent, PopoverTrigger } from '@heroui/popover';
+import { Popover, Tooltip } from '@heroui/react';
+import { Focusable } from 'react-aria-components';
 
 type IconElement = ReactElement<IconProps>;
 
@@ -279,28 +279,26 @@ export default function Sidebar({ isMobileOpen = false, onNavigate }: SidebarPro
 
       <nav className={styles.nav}>
         {navItems.map((item) => (
-          <Tooltip
-            key={item.key}
-            content={item.label}
-            placement="right"
-            isDisabled={!isEffectivelyCollapsed}
-            classNames={{
-              content: styles.tooltipContent,
-            }}>
-            <NavLink
-              to={item.path}
-              onClick={onNavigate}
-              className={
-                isPathActive(item.path)
-                  ? `${styles.active} ${styles.navItem}`
-                  : styles.navItem
-              }>
-              {renderIcon(item.icon, isPathActive(item.path))}
-              <span className={styles.label}>{item.label}</span>
-              {item.meta && (
-                <span className={styles.meta}>{item.meta.balance}</span>
-              )}
-            </NavLink>
+          <Tooltip key={item.key} delay={0} isDisabled={!isEffectivelyCollapsed}>
+            <Focusable>
+              <NavLink
+                to={item.path}
+                onClick={onNavigate}
+                className={
+                  isPathActive(item.path)
+                    ? `${styles.active} ${styles.navItem}`
+                    : styles.navItem
+                }>
+                {renderIcon(item.icon, isPathActive(item.path))}
+                <span className={styles.label}>{item.label}</span>
+                {item.meta && (
+                  <span className={styles.meta}>{item.meta.balance}</span>
+                )}
+              </NavLink>
+            </Focusable>
+            <Tooltip.Content placement="right" className={styles.tooltipContent}>
+              {item.label}
+            </Tooltip.Content>
           </Tooltip>
         ))}
         {dynamicNavItems.map((item) => {
@@ -310,55 +308,48 @@ export default function Sidebar({ isMobileOpen = false, onNavigate }: SidebarPro
             <Fragment key={item.key}>
             {isEffectivelyCollapsed && item.children ? (
               <Popover
-                placement="right"
                 isOpen={hoveredItemKey === item.key}
                 onOpenChange={(open) =>
                   setHoveredItemKey(open ? item.key : null)
                 }>
-                <PopoverTrigger>
-                  <div
-                    className={styles.dynamicItem}
-                    onMouseEnter={() => setHoveredItemKey(item.key)}
-                    onMouseLeave={() => setHoveredItemKey(null)}>
-                    {renderIcon(item.icon, isSelected)}
-                    <span>{item.label}</span>
-                  </div>
-                </PopoverTrigger>
-                <PopoverContent
-                  className={styles.popoverContent}
-                  onMouseEnter={() => setHoveredItemKey(item.key)}>
-                  <div className={styles.popoverHeader}>{item.label}</div>
-                  {item.children.map((child) => (
-                    <NavLink
-                      key={child.key}
-                      to={child.path}
-                      onClick={onNavigate}
-                      className={({ isActive }) =>
-                        isActive
-                          ? `${styles.navItem} ${styles.active}`
-                          : styles.navItem
-                      }>
-                      <span className={`${styles.label} ${styles.truncate}`}>
-                        {child.label}
-                      </span>
-                      {child.meta && (
-                        <span className={`${styles.meta} ${styles.truncate}`}>
-                          {child.meta.balance}
-                        </span>
-                      )}
-                    </NavLink>
-                  ))}
-                </PopoverContent>
+                <Popover.Trigger
+                  className={styles.dynamicItem}
+                  onMouseEnter={() => setHoveredItemKey(item.key)}
+                  onMouseLeave={() => setHoveredItemKey(null)}>
+                  {renderIcon(item.icon, isSelected)}
+                  <span>{item.label}</span>
+                </Popover.Trigger>
+                <Popover.Content placement="right" className={styles.popoverContent}>
+                  <Popover.Dialog aria-label={item.label}>
+                    <div onMouseEnter={() => setHoveredItemKey(item.key)}>
+                      <div className={styles.popoverHeader}>{item.label}</div>
+                      {item.children.map((child) => (
+                        <NavLink
+                          key={child.key}
+                          to={child.path}
+                          onClick={onNavigate}
+                          className={({ isActive }) =>
+                            isActive
+                              ? `${styles.navItem} ${styles.active}`
+                              : styles.navItem
+                          }>
+                          <span className={`${styles.label} ${styles.truncate}`}>
+                            {child.label}
+                          </span>
+                          {child.meta && (
+                            <span className={`${styles.meta} ${styles.truncate}`}>
+                              {child.meta.balance}
+                            </span>
+                          )}
+                        </NavLink>
+                      ))}
+                    </div>
+                  </Popover.Dialog>
+                </Popover.Content>
               </Popover>
             ) : (
-              <Tooltip
-                content={item.label}
-                placement="right"
-                isDisabled={!isEffectivelyCollapsed}
-                classNames={{
-                  content: styles.tooltipContent,
-                }}>
-                <div
+              <Tooltip delay={0} isDisabled={!isEffectivelyCollapsed}>
+                <Tooltip.Trigger
                   className={styles.dynamicItem}
                   onClick={() => handleCollapse(item.key)}>
                   {renderIcon(item.icon, isSelected)}
@@ -366,7 +357,10 @@ export default function Sidebar({ isMobileOpen = false, onNavigate }: SidebarPro
                   {item?.meta && (
                     <span className={styles.meta}>{item.meta.balance}</span>
                   )}
-                </div>
+                </Tooltip.Trigger>
+                <Tooltip.Content placement="right" className={styles.tooltipContent}>
+                  {item.label}
+                </Tooltip.Content>
               </Tooltip>
             )}
 
@@ -375,32 +369,30 @@ export default function Sidebar({ isMobileOpen = false, onNavigate }: SidebarPro
                 {item?.children?.map((child) => {
                   const childActive = isPathActive(child.path);
                   return (
-                    <Tooltip
-                      key={child.key}
-                      content={child.label}
-                      placement="right"
-                      isDisabled={!isEffectivelyCollapsed}
-                      classNames={{
-                        content: styles.tooltipContent,
-                      }}>
-                      <NavLink
-                        to={child.path}
-                        onClick={onNavigate}
-                        className={
-                          childActive
-                            ? `${styles.navItem} ${styles.active}`
-                            : styles.navItem
-                        }>
-                        {renderIcon(child.icon, childActive)}
-                        <span className={`${styles.label} ${styles.truncate}`}>
-                          {child.label}
-                        </span>
-                        {child.meta && (
-                          <span className={`${styles.meta} ${styles.truncate}`}>
-                            {child.meta.balance}
+                    <Tooltip key={child.key} delay={0} isDisabled={!isEffectivelyCollapsed}>
+                      <Focusable>
+                        <NavLink
+                          to={child.path}
+                          onClick={onNavigate}
+                          className={
+                            childActive
+                              ? `${styles.navItem} ${styles.active}`
+                              : styles.navItem
+                          }>
+                          {renderIcon(child.icon, childActive)}
+                          <span className={`${styles.label} ${styles.truncate}`}>
+                            {child.label}
                           </span>
-                        )}
-                      </NavLink>
+                          {child.meta && (
+                            <span className={`${styles.meta} ${styles.truncate}`}>
+                              {child.meta.balance}
+                            </span>
+                          )}
+                        </NavLink>
+                      </Focusable>
+                      <Tooltip.Content placement="right" className={styles.tooltipContent}>
+                        {child.label}
+                      </Tooltip.Content>
                     </Tooltip>
                   );
                 })}

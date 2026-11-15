@@ -1,5 +1,5 @@
 /* App toasts: a surface card with a tinted status icon, in place of HeroUI's
-   flat colours. Unlayered, so these win over HeroUI's layered utilities. */
+   default look. Unlayered, so these win over HeroUI's layered styles. */
 
 .toast {
   --toast-tone: var(--color-text-secondary);
@@ -8,12 +8,13 @@
   padding: 0.7rem 0.95rem 0.7rem 0.7rem;
   border: 1px solid var(--color-border-muted);
   border-radius: 0.85rem;
+  overflow: hidden;
   background: var(--color-popover, var(--color-surface-secondary));
   box-shadow: var(--shadow-popover, var(--shadow-lg));
   color: var(--color-text);
 }
 
-.primary {
+.accent {
   --toast-tone: var(--color-primary);
 }
 
@@ -54,23 +55,38 @@
   line-height: 1.4;
 }
 
-/* a thin bar along the bottom instead of a full-height fill */
+/* a thin bar along the bottom that runs out with the toast's timeout and
+   stops while the pointer is on it, as the timer does */
 .progress {
   position: absolute;
   bottom: 0;
   left: 0;
+  width: 100%;
   height: 2px;
   background: var(--toast-tone);
   opacity: 0.55;
+  transform-origin: left;
+  animation: toast-countdown var(--toast-timeout) linear forwards;
 }
 
-/* centred at the bottom, clear of Ask Penny and the side panel's buttons */
-.motion {
-  right: 0;
-  left: 0;
-  width: max-content;
-  max-width: calc(100vw - 1rem);
-  margin-inline: auto;
+.toast:hover .progress,
+.toast:focus-within .progress {
+  animation-play-state: paused;
+}
+
+@keyframes toast-countdown {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress {
+    display: none;
+  }
 }
 
 .close {

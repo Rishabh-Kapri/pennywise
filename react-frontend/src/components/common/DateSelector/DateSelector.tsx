@@ -1,25 +1,20 @@
 import { useState } from 'react';
 import { Calendar as CalendarIcon, CaretDown as ChevronDown, CaretLeft as ChevronLeft, CaretRight as ChevronRight, CircleNotch as LoaderCircle } from '@phosphor-icons/react';
-import { Popover, PopoverTrigger, PopoverContent } from '@heroui/popover';
-import { Calendar } from '@heroui/calendar';
-import { CalendarDate, type DateValue } from '@internationalized/date';
+import { Popover } from '@heroui/react';
+import { Button } from 'react-aria-components';
 import styles from './DateSelector.module.css';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { LoadingState } from '@/utils';
 import { selectMonthInHumanFormat, setSelectedMonth } from '@/features/budget';
 import { getMonthKey } from '@/utils/date.utils';
 
-interface DateSelectorProps {
-  /** When true, only shows month and year pickers without the day calendar grid */
-  monthYearOnly?: boolean;
-}
-
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 
-export default function DateSelector({ monthYearOnly = false }: DateSelectorProps) {
+/** Month switcher: arrows either side, and a popover with a year stepper and month grid. */
+export default function DateSelector() {
   const { loading } = useAppSelector((state) => state.budgets);
   const dispatch = useAppDispatch();
   const selectedMonth = useAppSelector(selectMonthInHumanFormat);
@@ -29,26 +24,6 @@ export default function DateSelector({ monthYearOnly = false }: DateSelectorProp
   // Parse current year and month from monthKey
   const [currentYear, currentMonthNum] = monthKey.split('-').map(Number);
 
-  // Convert monthKey (yyyy-mm) to CalendarDate
-  const getCalendarDate = (): DateValue | undefined => {
-    if (!monthKey) return undefined;
-    try {
-      const [year, month] = monthKey.split('-');
-      // Calendar expects first day of the month
-      return new CalendarDate(parseInt(year, 10), parseInt(month, 10), 1);
-    } catch {
-      return undefined;
-    }
-  };
-
-  // Get min and max dates for reasonable year range (current year ± 5 years)
-  const getMinMaxDates = () => {
-    return {
-      minValue: new CalendarDate(currentYear - 5, 1, 1),
-      maxValue: new CalendarDate(currentYear + 5, 12, 31),
-    };
-  };
-
   const handleMonthChange = (addMonth: number) => {
     const currentDate = new Date(currentYear, currentMonthNum - 1);
     currentDate.setMonth(currentDate.getMonth() + addMonth);
@@ -56,13 +31,6 @@ export default function DateSelector({ monthYearOnly = false }: DateSelectorProp
     const newMonth = currentDate.getMonth();
 
     dispatch(setSelectedMonth(getMonthKey(newYear, newMonth)));
-  };
-
-  const handleDateChange = (date: DateValue) => {
-    // Extract year and month from the selected date
-    const newMonthKey = getMonthKey(date.year, date.month - 1);
-    dispatch(setSelectedMonth(newMonthKey));
-    setIsOpen(false);
   };
 
   const handleMonthSelect = (monthIndex: number) => {
@@ -75,8 +43,6 @@ export default function DateSelector({ monthYearOnly = false }: DateSelectorProp
     dispatch(setSelectedMonth(getMonthKey(newYear, currentMonthNum - 1)));
   };
 
-  const { minValue, maxValue } = getMinMaxDates();
-
   return (
     <div className={styles.container}>
       <button
@@ -86,28 +52,22 @@ export default function DateSelector({ monthYearOnly = false }: DateSelectorProp
         onClick={() => handleMonthChange(-1)}>
         <ChevronLeft size="1rem" />
       </button>
-      <Popover
-        isOpen={isOpen}
-        onOpenChange={setIsOpen}
-        placement="bottom"
-        showArrow
-      >
-        <PopoverTrigger>
-          <button type="button" className={styles.dateContainer}>
-            {loading === LoadingState.PENDING ? (
-              <LoaderCircle size="1rem" className={`${styles.icon} ${styles.spinner}`} />
-            ) : (
-              <CalendarIcon className={styles.icon} size="1rem" />
-            )}
-            <span className={styles.label}>{selectedMonth}</span>
-            <ChevronDown
-              className={`${styles.icon} ${styles.chevron} ${isOpen ? styles.chevronOpen : ''}`}
-              size="0.85rem"
-            />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent className={styles.popoverContent}>
-          {monthYearOnly ? (
+      <Popover isOpen={isOpen} onOpenChange={setIsOpen}>
+        <Button className={styles.dateContainer}>
+          {loading === LoadingState.PENDING ? (
+            <LoaderCircle size="1rem" className={`${styles.icon} ${styles.spinner}`} />
+          ) : (
+            <CalendarIcon className={styles.icon} size="1rem" />
+          )}
+          <span className={styles.label}>{selectedMonth}</span>
+          <ChevronDown
+            className={`${styles.icon} ${styles.chevron} ${isOpen ? styles.chevronOpen : ''}`}
+            size="0.85rem"
+          />
+        </Button>
+        <Popover.Content placement="bottom" className={styles.popoverContent}>
+          <Popover.Arrow />
+          <Popover.Dialog aria-label="Choose month">
             <div className={styles.monthYearPicker}>
               {/* Year selector */}
               <div className={styles.yearSelector}>
@@ -136,19 +96,8 @@ export default function DateSelector({ monthYearOnly = false }: DateSelectorProp
                 ))}
               </div>
             </div>
-          ) : (
-            <div className={styles.calendarWrapper}>
-              <Calendar
-                aria-label="Select month and year"
-                value={getCalendarDate()}
-                onChange={handleDateChange}
-                showMonthAndYearPickers
-                minValue={minValue}
-                maxValue={maxValue}
-              />
-            </div>
-          )}
-        </PopoverContent>
+          </Popover.Dialog>
+        </Popover.Content>
       </Popover>
       <button
         type="button"

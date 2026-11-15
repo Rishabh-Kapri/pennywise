@@ -15,14 +15,14 @@ React 19 + Vite + Redux Toolkit web client for Pennywise.
 - `src/components/common/` — shared widgets (Modal, Popover, DateSelector, AgentChat, …)
 - `src/components/layout/` — `Layout`, `Navbar`, `Dashboard`, `Header`; `Sidebar` is exported but not mounted
 - `src/utils/api.ts` — `apiClient` singleton; `src/config/env.ts` — env flags
-- `src/styles/` — `index.css` (`@import 'tailwindcss'`), `theme.css`; HeroUI theme in `hero.ts`
+- `src/styles/` — `index.css` (`@import '@heroui/styles'`, which brings Tailwind v4), `theme.css` (app palette; also maps HeroUI v3's tokens such as `--overlay`, `--surface`, `--border` onto it)
 
 ## Conventions
 - Redux Toolkit slices per feature in `features/*/store/`, wired in `src/app/store.ts`.
 - Use `useAppDispatch` / `useAppSelector` from `src/app/hooks.ts`, not the raw react-redux hooks.
 - `apiClient` (`src/utils/api.ts`) injects `Authorization` and `x-budget-id` from store state. Don't pass the budget id by hand. Skips the header for endpoints containing `budgets`.
 - On 401, `apiClient` refreshes the token once and retries; a failed refresh resets auth and goes to `/login`.
-- UI: HeroUI components, `@phosphor-icons/react` icons, Tailwind v4 utilities, CSS Modules (`*.module.css`, the dominant styling pattern), Recharts for charts.
+- UI: HeroUI v3 (`@heroui/react`; compound API such as `Popover.Content`, no provider; only Popover, Tooltip and Toast are used), `@phosphor-icons/react` icons, Tailwind v4 utilities, CSS Modules (`*.module.css`, the dominant styling pattern), Recharts for charts.
 - Path alias `@/` → `src/`.
 - Explicit TypeScript interfaces; `strict` is on.
 
@@ -58,7 +58,8 @@ React 19 + Vite + Redux Toolkit web client for Pennywise.
 - Transaction time: `transactions.date` is a bare `YYYY-MM-DD`. A time of day exists only when a bank message stated one: the normalized list returns it as `occurredAt` (the first source with a time), shown beside the date in the list, the mobile cards and the detail panel through `utils/sourceTime.ts`, in `Asia/Kolkata` because that's the bank's clock. It's read only, and absent for a transaction made by hand: show nothing, never `createdAt`. The detail panel's "Sources" list is `GET /transactions/:id/sources` (`useTransactionSources`); `rawText` is bank text, rendered as text, never HTML.
 - Tag names are shown through `tagLabel` (`features/tags/utils.ts`): `<place>-<month>-<year>` names (`goa-dec-2025`) read "Goa · Dec 2025", and Settings → Tags groups them by year. The stored name never changes; search goes through `tagMatches` so both forms hit. Keep the ⓘ format help in `TagSettings` in step with `parseDatedTag`.
 - Sharing (`features/sharing`, Settings → Sharing): a budget's members and invites. `budget.role` (`owner`/`editor`/`viewer`) and `memberCount` come with `GET /budgets`; a budget without a role is the user's own (`isOwner`, `canWrite`). The API enforces roles; the UI only hides what it would refuse. Only the owner sees the setup wizard, AI keys and the invite form. `PendingInvites` (invites to the signed-in user) renders nothing when there are none and sits in Sharing and on `BudgetOnboarding`, so a new user can join instead of creating a budget; accepting opens the budget (`openBudget`). Selecting a budget sends only `{ isSelected: true }`: a name in the body reads as a rename, which members can't do.
-- Toasts: use `toast` from `@/utils` (styled in `utils/toast.module.css`); give a short title plus a `description`, and use `errorMessage(err, fallback)` for failures instead of putting raw server errors in the title.
+- HeroUI v3 overlay triggers: wrap a link or other element that must stay unwrapped in react-aria `Focusable` (a `Tooltip.Trigger`/`Popover.Trigger` adds a `div role="button"` around its children); use a react-aria `Button` as a popover trigger instead of nesting a `<button>`.
+- Toasts: use `toast` from `@/utils` (rendered and styled by `components/common/ToastHost`); give a short title plus a `description`, and use `errorMessage(err, fallback)` for failures instead of putting raw server errors in the title.
 
 ## Key files
 | Purpose | Path |

@@ -86,22 +86,6 @@
   box-shadow: var(--shadow-lg);
 }
 
-.calendarWrapper {
-  display: flex;
-  justify-content: center;
-}
-
-/* Calendar styles */
-.calendarBase {
-  background: transparent;
-  box-shadow: none;
-  --picker-height: 224px;
-}
-
-.calendarContent {
-  padding: 0;
-}
-
 /* Month/Year Picker Styles */
 .monthYearPicker {
   display: flex;

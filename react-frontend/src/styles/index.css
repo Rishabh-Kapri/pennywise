@@ -1,6 +1,6 @@
-@import 'tailwindcss';
-@plugin '../../hero.ts';
-@source '../../node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}';
+/* Tailwind v4 plus HeroUI v3's components and theme; theme.css points the
+   theme at the app's palette. */
+@import '@heroui/styles';
 /* @custom-variant dark (&:is(.dark *)); */
 
 *:not([data-slot='toast-region'], [data-slot='toast-region'] *) {
