@@ -1,10 +1,10 @@
 /**
  * Evaluates the arithmetic a user can type into an amount field ("1200+300",
  * "3×450", "(1000-120)/2"), so a budget or a split can be entered without
- * mental math. The web app does the same with expr-eval
- * (react-frontend `useAssignedEditor`); this is a dependency-free subset:
- * numbers, + − × ÷ (or + - * /), parentheses and unary minus. Commas and
- * spaces are ignored.
+ * mental math. The web apps carry a copy (react-frontend
+ * `src/utils/expression.ts`, frontend `src/app/utils/expression.ts`); keep
+ * them in step. Numbers, + − × ÷ (or + - * /), parentheses and unary minus.
+ * Commas and spaces are ignored.
  *
  * Returns null for anything that doesn't parse or doesn't end up finite.
  */

@@ -1,6 +1,6 @@
 import { AfterViewInit, ChangeDetectionStrategy, Component, EventEmitter, Input, Output, TemplateRef, ViewContainerRef } from '@angular/core';
 import { Store } from '@ngxs/store';
-import { Parser } from 'expr-eval';
+import { parseAmount } from '../../utils/expression';
 import { Dropdown, DropdownOptions } from 'flowbite';
 import { BehaviorSubject, Observable, map, take } from 'rxjs';
 import { Account, BudgetAccountType } from 'src/app/models/account.model';
@@ -61,7 +61,6 @@ export class CategoryItemComponent implements AfterViewInit {
   menuDropdown: Dropdown;
   moveDropdown: Dropdown;
   categoryDropdown: Dropdown;
-  parser = new Parser();
   moveData: {
     from: MoveData;
     to: MoveData;
@@ -153,8 +152,7 @@ export class CategoryItemComponent implements AfterViewInit {
           showBudgetInput: false,
         }),
       );
-      const expr = this.parser.parse(event.target.value);
-      budgeted = expr.evaluate();
+      budgeted = parseAmount(event.target.value);
       categoryCopy.budgeted[this.budgetKey] = budgeted;
     } catch (err) {
       // do nothing

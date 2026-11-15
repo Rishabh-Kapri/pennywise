@@ -1,12 +1,10 @@
 import { useCallback, useRef, useState } from 'react';
 import type React from 'react';
-import { Parser } from 'expr-eval';
 import { useAppDispatch } from '@/app/hooks';
 import { toast } from '@/utils';
+import { evaluateAmount } from '@/utils/expression';
 import { updateCategoryBudget } from '../store/categorySlice';
 import type { Category } from '../types/category.types';
-
-const parser = new Parser();
 
 /**
  * Inline editing for a category's assigned amount. Accepts arithmetic
@@ -50,14 +48,8 @@ export function useAssignedEditor(category: Category | null, month: string) {
     stop();
     if (!category?.id) return;
 
-    let next: number;
-    try {
-      next = Number(parser.evaluate(draft.trim() || '0'));
-    } catch {
-      toast.error('Enter an amount, or a sum like 1200+300');
-      return;
-    }
-    if (!Number.isFinite(next)) {
+    const next = evaluateAmount(draft.trim() || '0');
+    if (next === null) {
       toast.error('Enter an amount, or a sum like 1200+300');
       return;
     }

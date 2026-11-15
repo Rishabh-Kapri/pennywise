@@ -29,7 +29,7 @@ import { Payee } from '../models/payee.model';
 import { DatabaseService } from '../services/database.service';
 import { PopoverService } from '../services/popover.service';
 import { PopoverRef } from '../services/popover-ref';
-import { Parser } from 'expr-eval';
+import { parseAmount } from '../utils/expression';
 import { STARTING_BALANCE_PAYEE } from '../constants/general';
 import { Store } from '@ngxs/store';
 import { TransactionsState } from '../store/dashboard/states/transactions/transactions.state';
@@ -63,7 +63,6 @@ interface PayeesData {
 })
 export class TransactionsComponent implements OnChanges, OnDestroy {
   @Input() account: Account | null;
-  parser = new Parser();
   mode = Mode;
   totalCurrentFunds$: Observable<number>;
   categoryObj$: Observable<Record<string, Category>>;
@@ -489,9 +488,9 @@ export class TransactionsComponent implements OnChanges, OnDestroy {
   setAmount(field: 'inflow' | 'outflow', event: any) {
     // normalize calculations
     try {
-      const expr = this.parser.parse(event.target.value);
+      const amount = parseAmount(event.target.value);
       if (this.selectedTransaction) {
-        this.selectedTransaction[field] = expr.evaluate();
+        this.selectedTransaction[field] = amount;
       }
     } catch (err) { }
   }

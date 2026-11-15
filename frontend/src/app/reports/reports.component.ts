@@ -173,11 +173,6 @@ export class ReportsComponent implements AfterViewInit, OnDestroy {
           x: -100,
           y: -100,
         },
-        style: {
-          style: {
-            color: 'white',
-          },
-        },
         buttonTheme: {
           style: {
             color: 'rgb(44,175,254)',
