@@ -1,4 +1,4 @@
-FROM golang:1.25-alpine AS build-stage
+FROM golang:1.26-alpine AS build-stage
 
 RUN apk add --no-cache git tzdata
 
