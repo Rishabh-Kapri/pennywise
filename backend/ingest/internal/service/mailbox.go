@@ -174,9 +174,6 @@ func (s *mailboxService) FetchStatement(
 	p model.StatementFetchPayload,
 	opts ...job.EnqueueOption,
 ) (int, error) {
-	if s.broker == nil {
-		return 0, errs.New(errs.CodeJobEnqueueFailed, "no job queue configured")
-	}
 	conn, err := s.deps.Connections.GetByAccount(ctx, p.Provider, strings.ToLower(p.MailAccount))
 	if errs.HasCode(err, errs.CodeConnectionNotFound) || (err == nil && conn == nil) {
 		logger.Logger(ctx).Info("statement email's mailbox is gone", "provider", p.Provider)
@@ -216,7 +213,7 @@ func (s *mailboxService) FetchStatement(
 			job.WithBudgetID(&budgetID),
 			job.WithIdempotencyKey(key),
 		}, opts...)
-		if _, err := s.broker.Enqueue(ctx, model.JobTypeStatementImport, payload, enqueueOpts...); err != nil {
+		if _, err := s.deps.Queue.Enqueue(ctx, model.JobTypeStatementImport, payload, enqueueOpts...); err != nil {
 			return queued, errs.Wrap(errs.CodeJobEnqueueFailed, "queue statement.import", err)
 		}
 		queued++
@@ -225,8 +222,7 @@ func (s *mailboxService) FetchStatement(
 }
 
 type mailboxService struct {
-	broker job.Broker // nil when no job queue is configured
-	deps   MailboxDeps
+	deps MailboxDeps
 }
 
 func NewMailboxService(deps MailboxDeps) MailboxService {

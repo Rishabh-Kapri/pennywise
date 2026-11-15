@@ -15,10 +15,10 @@ Status: mailboxes connect from the web app and sync into the job queue. The Gmai
 - `internal/service/`: `IngestService.Accept(budgets, msg)` sanitizes emails, derives an `ExternalID` from sender + subject + body + `receivedAt` when there is none (so an SMS caught live and imported from the inbox dedupes), and queues one `model.JobTypeMessageReceived` job per budget. Queue messages only through `Accept`: it owns the dedupe key. `MailboxService` holds the mailbox use cases; `unusable` and `failure` decide when a connection is skipped and what a provider error means
 - `internal/factory/`: builds adapters from config. `NewMailProviders` returns a registry keyed by `Connection.Provider`. Each adapter's `New` checks its own settings
 - `internal/pubsub/`: Gmail push receiver. Each push → `mailbox.changed` job keyed `gmail:account:historyId`, then ack; malformed pushes are acked, enqueue failures nacked
-- `internal/worker/`: job worker (inbound adapter) on `model.QueueIngest`, where every ingest job is queued. `mailbox.changed` runs `MailboxService.Sync`, `mailbox.backfill` runs `Backfill`, `mailbox.watch.start` runs `RenewWatch`; each queued message is a child of the job, so the Jobs screen shows one run
+- `internal/worker/`: job worker (inbound adapter) on `model.QueueIngest`, where every ingest job is queued. `mailbox.changed` runs `MailboxService.Sync`, `mailbox.backfill` runs `Backfill`, `mailbox.watch.start` runs `RenewWatch`, `statement.fetch` runs `FetchStatement` (downloads a statement email's PDFs, queues one `statement.import` per file on the `pennywise` queue); each queued message is a child of the job, so the Jobs screen shows one run
 - `internal/sanitize/`: email HTML to visible text. `Accept` runs it on every email, so all paths into the pipeline agree
 - `cmd/seal/`: seals a refresh token (stdin) into `mail_connections.credentials` hex, for migrating connections by hand. A Gmail tool, so it imports the Gmail adapter directly
-- `internal/ports/`: `InboundMessage` (the common message shape; sources are `model.Source*` in shared, the contract cipher reads), provider names (`ProviderGmail`, ...), `MailProvider`
+- `internal/ports/`: `InboundMessage` (the common message shape; sources are `model.MessageSource*` in shared, the contract cipher reads), provider names (`ProviderGmail`, ...), `MailProvider`
 - `internal/adapters/gmail/`: `MailProvider` for Gmail, moved from go-gmail. `Connection.Credentials` is sealed JSON (`SealCredentials`, `utils.SecretBox`); the cursor is a Gmail history ID
 
 ## Rules

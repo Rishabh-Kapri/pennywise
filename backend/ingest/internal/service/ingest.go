@@ -88,7 +88,7 @@ func (s *ingestService) Accept(
 	}
 
 	payload, err := json.Marshal(model.ReceivedMessage{
-		Source:      string(msg.Source),
+		Source:      msg.Source,
 		Provider:    msg.Provider,
 		ExternalID:  msg.ExternalID,
 		Sender:      msg.Sender,
@@ -125,7 +125,7 @@ func (s *ingestService) Accept(
 // idempotencyKey is unique per budget and message. The jobs table enforces
 // (queue, type, key) across all budgets, so the budget must be part of it.
 func idempotencyKey(budgetID uuid.UUID, msg ports.InboundMessage) string {
-	return strings.Join([]string{budgetID.String(), string(msg.Source), msg.Provider, msg.ExternalID}, ":")
+	return strings.Join([]string{budgetID.String(), msg.Source, msg.Provider, msg.ExternalID}, ":")
 }
 
 // contentID derives a stable ID: the same message sent twice gets the same

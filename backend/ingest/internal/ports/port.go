@@ -4,8 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/google/uuid"
-
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 )
 
@@ -17,21 +15,12 @@ const (
 	ProviderAndroid = "android" // SMS forwarded by the Android app
 )
 
-type Source string
-
-const (
-	EmailSource Source = "email"
-	SmsSource   Source = "sms"
-	ApiSource   Source = "api"
-)
-
 // InboundMessage is a message from any source, before it is queued. Which
 // budgets it goes to is up to the caller of Accept.
 type InboundMessage struct {
-	Source     Source
+	Source     string // model.MessageSourceEmail, MessageSourceSMS or MessageSourceAPI
 	Provider   string
-	BudgetID   []uuid.UUID
-	ExternalID string // Gmail message ID, SMS hash
+	ExternalID string // Gmail message ID; derived from the content when empty
 	Sender     string
 	Subject    string
 	Body       string

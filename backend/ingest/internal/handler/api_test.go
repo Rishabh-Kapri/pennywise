@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"slices"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -82,13 +82,7 @@ func TestSms(t *testing.T) {
 		f := &fakeIngest{}
 		post(f, `{"sender":"AX-HDFCBK","body":"Rs 10","receivedAt":"2026-11-03T10:00:00Z","source":"live"}`)
 		post(f, `{"sender":"AX-HDFCBK","body":"Rs 10","receivedAt":"2026-11-03T15:30:00+05:30","source":"inbox"}`)
-		first, second := f.got[0], f.got[1]
-		if first.Source != second.Source || first.Provider != second.Provider ||
-			first.ExternalID != second.ExternalID || first.Sender != second.Sender ||
-			first.Subject != second.Subject || first.Body != second.Body ||
-			!first.ReceivedAt.Equal(second.ReceivedAt) || first.MailAccount != second.MailAccount ||
-			len(first.BudgetID) != len(second.BudgetID) ||
-			!slices.Equal(first.BudgetID, second.BudgetID) {
+		if !reflect.DeepEqual(f.got[0], f.got[1]) {
 			t.Fatalf("messages differ: %+v vs %+v", f.got[0], f.got[1])
 		}
 	})

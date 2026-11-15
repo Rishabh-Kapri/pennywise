@@ -27,7 +27,6 @@ import (
 )
 
 const (
-	providerName = "gmail"
 	// currentUser is Gmail's name for the account a token belongs to.
 	currentUser = "me"
 	// webRedirectURL is what Google's popup flow uses in place of a real URL.
