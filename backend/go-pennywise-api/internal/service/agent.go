@@ -281,13 +281,6 @@ func (s *agentService) CreateRun(
 	ctx context.Context,
 	req sharedModel.AgentRunCreateRequest,
 ) (*sharedModel.AgentRun, error) {
-	if s.client == nil {
-		return nil, errs.New(errs.CodeInternalError, "agent client is not configured")
-	}
-	if s.repo == nil {
-		return nil, errs.New(errs.CodeInternalError, "agent repository is not configured")
-	}
-
 	req.Message = strings.TrimSpace(req.Message)
 	if req.Message == "" {
 		return nil, errs.New(errs.CodeInvalidArgument, "message is required")
@@ -375,9 +368,6 @@ func (s *agentService) CreateRun(
 }
 
 func (s *agentService) GetRun(ctx context.Context, id uuid.UUID) (*sharedModel.AgentRun, error) {
-	if s.repo == nil {
-		return nil, errs.New(errs.CodeInternalError, "agent repository is not configured")
-	}
 	userID, budgetID, err := agentContext(ctx)
 	if err != nil {
 		return nil, err
@@ -386,12 +376,6 @@ func (s *agentService) GetRun(ctx context.Context, id uuid.UUID) (*sharedModel.A
 }
 
 func (s *agentService) CancelRun(ctx context.Context, id uuid.UUID) (*sharedModel.AgentRun, error) {
-	if s.client == nil {
-		return nil, errs.New(errs.CodeInternalError, "agent client is not configured")
-	}
-	if s.repo == nil {
-		return nil, errs.New(errs.CodeInternalError, "agent repository is not configured")
-	}
 	userID, budgetID, err := agentContext(ctx)
 	if err != nil {
 		return nil, err
@@ -421,10 +405,6 @@ func (s *agentService) UpdateConversation(
 }
 
 func (s *agentService) DeleteConversation(ctx context.Context, conversationID uuid.UUID) error {
-	if s.repo == nil {
-		return errs.New(errs.CodeInternalError, "agent repository is not configured")
-	}
-
 	userID, budgetID, err := agentContext(ctx)
 	if err != nil {
 		return err

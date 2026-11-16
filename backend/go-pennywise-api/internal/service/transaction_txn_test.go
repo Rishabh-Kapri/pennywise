@@ -948,11 +948,6 @@ func TestTxnEnrichLocation(t *testing.T) {
 			wantSource: ptr(model.LocationSourceManual),
 			wantCalls:  1,
 		},
-		{
-			name:       "no geocoder configured",
-			txn:        model.Transaction{LocationLat: &lat, LocationLng: &lng},
-			wantSource: ptr(model.LocationSourceManual),
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1008,18 +1003,13 @@ func TestTxnApplySideEffects_UpdatePredictionFeedback(t *testing.T) {
 		return sideEffectInput{budgetId: f.budgetID, oldTxn: &o, newTxn: &n, budget: f.budget, account: f.account, payee: f.payee}
 	}
 
-	t.Run("no prediction repository configured", func(t *testing.T) {
-		svc, _ := newTxnSvc()
-		svc.cipherPredictionRepo = nil
-
-		require.NoError(t, svc.applySideEffects(f.ctx, input()))
-	})
-
 	t.Run("prediction not found is not an error", func(t *testing.T) {
 		svc, d := newTxnSvc()
 		d.cipher.On("GetByTransactionID", mock.Anything, f.budgetID, f.txnID).Return(nil, repository.ErrNotFound).Once()
 
-		require.NoError(t, svc.applySideEffects(f.ctx, input()))
+		learn, err := svc.applySideEffects(f.ctx, input())
+		require.NoError(t, err)
+		assert.Nil(t, learn)
 		d.cipher.AssertNotCalled(t, "MarkUserCorrected", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 	})
 
@@ -1027,7 +1017,7 @@ func TestTxnApplySideEffects_UpdatePredictionFeedback(t *testing.T) {
 		svc, d := newTxnSvc()
 		d.cipher.On("GetByTransactionID", mock.Anything, f.budgetID, f.txnID).Return(nil, errors.New("boom")).Once()
 
-		err := svc.applySideEffects(f.ctx, input())
+		_, err := svc.applySideEffects(f.ctx, input())
 
 		assert.Equal(t, errs.CodeTransactionLookupFailed, appCode(t, err))
 	})
@@ -1037,13 +1027,12 @@ func TestTxnApplySideEffects_UpdatePredictionFeedback(t *testing.T) {
 		raw := "Rs 250 debited at BLUE TOKAI"
 		in := input()
 		in.oldTxn.RawBankText = &raw
-		var queued *model.Transaction
-		in.queueLearning = func(txn model.Transaction) { queued = &txn }
 		d.cipher.On("GetByTransactionID", mock.Anything, f.budgetID, f.txnID).
 			Return(&model.CipherPredictionRecord{TransactionID: f.txnID}, nil).Once()
 		d.cipher.On("MarkUserCorrected", mock.Anything, f.budgetID, f.txnID, &f.payeeID, &newCategory).Return(nil).Once()
 
-		require.NoError(t, svc.applySideEffects(f.ctx, in))
+		queued, err := svc.applySideEffects(f.ctx, in)
+		require.NoError(t, err)
 
 		require.NotNil(t, queued)
 		assert.Equal(t, &raw, queued.RawBankText)
@@ -1058,7 +1047,7 @@ func TestTxnApplySideEffects_UpdatePredictionFeedback(t *testing.T) {
 		d.cipher.On("MarkUserCorrected", mock.Anything, f.budgetID, f.txnID, mock.Anything, mock.Anything).
 			Return(errors.New("boom")).Once()
 
-		err := svc.applySideEffects(f.ctx, input())
+		_, err := svc.applySideEffects(f.ctx, input())
 
 		assert.Equal(t, errs.CodeTransactionUpdateFailed, appCode(t, err))
 	})

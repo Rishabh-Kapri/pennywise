@@ -185,6 +185,7 @@ func newCreateFixture(account *model.Account, created bool) createFixture {
 		Payees:              f.payees,
 		Predictions:         f.predictions,
 		Websocket:           f.notifier,
+		Push:                noPush{},
 		DBTxn:               fakeDBTxn{},
 		Accounts:            createAccounts{account: account},
 		Categories:          createCategories{id: uuid.New()},
@@ -562,3 +563,8 @@ func TestLearnTransactionConfirmedStampsLearned(t *testing.T) {
 		t.Fatalf("marked %v", f.predRepo.marked)
 	}
 }
+
+// noPush is a PushNotificationService that sends nothing.
+type noPush struct{ PushNotificationService }
+
+func (noPush) NotifyTransactionsCreated(context.Context, uuid.UUID, []model.Transaction) {}

@@ -76,10 +76,6 @@ func (s *categoryService) SuggestDescription(ctx context.Context, id uuid.UUID) 
 	if err != nil {
 		return "", err
 	}
-	if s.cipherClient == nil {
-		return "", ErrDescriptionUnavailable
-	}
-
 	res, err := s.cipherClient.SuggestCategoryDescription(ctx, *descCtx)
 	if err != nil {
 		logger.Logger(ctx).Error("category description suggestion failed", "categoryId", id, "error", err)

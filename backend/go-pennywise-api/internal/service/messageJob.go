@@ -61,10 +61,6 @@ func NewMessageJobService(deps MessageJobDeps) MessageJobService {
 	return &messageJobService{deps: deps}
 }
 
-// createTransactionTimeout limits the database work of creating a transaction,
-// the same as transactionService.Create.
-const createTransactionTimeout = 30 * time.Second
-
 // CreateTransaction implements [MessageJobService]. The transaction and its
 // cipher prediction are saved together. A retried job finds the transaction by
 // its dedupe hash and adds nothing.
@@ -109,7 +105,7 @@ func (s *messageJobService) CreateTransaction(
 		matched  bool // another channel's message already created it
 		possible *uuid.UUID
 	)
-	txCtx, cancel := context.WithTimeout(ctx, createTransactionTimeout)
+	txCtx, cancel := context.WithTimeout(ctx, writeTimeout)
 	defer cancel()
 	err = s.deps.DBTxn.Do(txCtx, func(ctx context.Context) error {
 		txn, created, matched, possible = nil, false, false, nil // the transaction may run again
@@ -514,7 +510,5 @@ func (s *messageJobService) notifyCreated(ctx context.Context, budgetID uuid.UUI
 	if err := s.deps.Websocket.SendNotification(ctx, budgetID, model.EventTransactionCreated, created); err != nil {
 		logger.Logger(ctx).Warn("failed to send transaction created notification", "transactionId", txn.ID, "error", err)
 	}
-	if s.deps.Push != nil {
-		s.deps.Push.NotifyTransactionsCreated(ctx, budgetID, created)
-	}
+	s.deps.Push.NotifyTransactionsCreated(ctx, budgetID, created)
 }

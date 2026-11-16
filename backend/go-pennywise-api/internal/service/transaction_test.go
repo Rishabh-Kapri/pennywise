@@ -809,7 +809,7 @@ func newTestTransactionService(
 		nil,
 		nil,
 		mockPrediction,
-		nil,
+		noPredictions{},
 		nil,
 		mockAccount,
 		mockPayees,
@@ -864,7 +864,9 @@ func TestUpdateStatusApprovedWithoutCipherPredictionOnlyUpdatesStatus(t *testing
 	cipherPredictionRepo.AssertExpectations(t)
 }
 
-func TestUpdateStatusApprovedWithNonLLMCipherPredictionDoesNotEmbed(t *testing.T) {
+// Approving through the status endpoint is a review, the same as approving
+// through Update.
+func TestUpdateStatusApprovingAPredictionMarksItReviewed(t *testing.T) {
 	budgetId, txnId, _, payeeId, categoryId, _, _ := createTestUUIDs()
 	ctx := utils.WithBudgetID(context.Background(), budgetId)
 	rawBankText := "paid to coffee shop"
@@ -875,19 +877,11 @@ func TestUpdateStatusApprovedWithNonLLMCipherPredictionDoesNotEmbed(t *testing.T
 		CategoryID:  &categoryId,
 		Amount:      -125,
 		RawBankText: &rawBankText,
+		Status:      model.TransactionStatusUnapproved,
 	}
 	txnRepo := &mockTransactionRepo{}
 	cipherPredictionRepo := &mockCipherPredictionRepo{}
-	cipherClient := &mockCipherClient{}
-	payeeRuleRepo := &mockPayeeRuleRepo{}
-	txnEmbeddingRepo := &mockTransactionEmbeddingRepo{}
-	svc := &transactionService{dbTxn: fakeDBTxn{},
-		repo:                 txnRepo,
-		cipherPredictionRepo: cipherPredictionRepo,
-		cipherClient:         cipherClient,
-		payeeRuleRepo:        payeeRuleRepo,
-		txnEmbeddingRepo:     txnEmbeddingRepo,
-	}
+	svc := &transactionService{dbTxn: fakeDBTxn{}, repo: txnRepo, cipherPredictionRepo: cipherPredictionRepo}
 
 	txnRepo.On("GetById", mock.Anything, budgetId, txnId).Return(txn, nil).Once()
 	cipherPredictionRepo.On("GetByTransactionID", mock.Anything, budgetId, txnId).Return(&model.CipherPredictionRecord{
@@ -901,51 +895,7 @@ func TestUpdateStatusApprovedWithNonLLMCipherPredictionDoesNotEmbed(t *testing.T
 
 	require.NoError(t, err)
 	txnRepo.AssertExpectations(t)
-	cipherPredictionRepo.AssertExpectations(t)
-	cipherClient.AssertNotCalled(t, "GenerateTransactionEmbedding", mock.Anything, mock.Anything)
-}
-
-func TestUpdateStatusApprovedWithLLMCipherPredictionDoesNotEmbed(t *testing.T) {
-	budgetId, txnId, _, payeeId, categoryId, _, _ := createTestUUIDs()
-	ctx := utils.WithBudgetID(context.Background(), budgetId)
-	rawBankText := "paid to amazon marketplace"
-	extractedMerchant := "amazon marketplace"
-	txn := &model.Transaction{
-		ID:          txnId,
-		BudgetID:    budgetId,
-		PayeeID:     &payeeId,
-		CategoryID:  &categoryId,
-		Amount:      -999.50,
-		RawBankText: &rawBankText,
-	}
-	txnRepo := &mockTransactionRepo{}
-	cipherPredictionRepo := &mockCipherPredictionRepo{}
-	cipherClient := &mockCipherClient{}
-	payeeRuleRepo := &mockPayeeRuleRepo{}
-	txnEmbeddingRepo := &mockTransactionEmbeddingRepo{}
-	svc := &transactionService{dbTxn: fakeDBTxn{},
-		repo:                 txnRepo,
-		cipherPredictionRepo: cipherPredictionRepo,
-		cipherClient:         cipherClient,
-		payeeRuleRepo:        payeeRuleRepo,
-		txnEmbeddingRepo:     txnEmbeddingRepo,
-	}
-
-	txnRepo.On("GetById", mock.Anything, budgetId, txnId).Return(txn, nil).Once()
-	cipherPredictionRepo.On("GetByTransactionID", mock.Anything, budgetId, txnId).Return(&model.CipherPredictionRecord{
-		BudgetID:       budgetId,
-		TransactionID:  txnId,
-		Source:         model.PredictionSourceLLM,
-		ExtractedPayee: &extractedMerchant,
-	}, nil).Once()
-	txnRepo.On("UpdateStatus", mock.Anything, budgetId, txnId, model.TransactionStatusApproved).Return(nil).Once()
-
-	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved)
-
-	require.NoError(t, err)
-	txnRepo.AssertExpectations(t)
-	cipherPredictionRepo.AssertExpectations(t)
-	cipherClient.AssertNotCalled(t, "GenerateTransactionEmbedding", mock.Anything, mock.Anything)
+	assert.Equal(t, []uuid.UUID{txnId}, cipherPredictionRepo.reviewed)
 }
 
 func TestUpdateWithCipherPredictionMappingChangeMarksCorrection(t *testing.T) {
@@ -1306,7 +1256,7 @@ func TestHandleCarryoversSkipsForNonCarryoverTransactions(t *testing.T) {
 			Date:   "2025-01-01",
 			Amount: 100,
 		}
-		err := service.applySideEffects(ctx, sideEffectInput{
+		_, err := service.applySideEffects(ctx, sideEffectInput{
 			budgetId: budgetId,
 			newTxn:   &newTxn,
 			budget:   &budget,
@@ -1321,7 +1271,7 @@ func TestHandleCarryoversSkipsForNonCarryoverTransactions(t *testing.T) {
 			Amount:     100,
 			CategoryID: &inflowCategoryID,
 		}
-		err := service.applySideEffects(ctx, sideEffectInput{
+		_, err := service.applySideEffects(ctx, sideEffectInput{
 			budgetId: budgetId,
 			newTxn:   &newTxn,
 			budget:   &budget,
@@ -1365,36 +1315,6 @@ func TestUpdateStatus_NotFoundNilTxn_ReturnsError(t *testing.T) {
 	var appErr *errs.Error
 	require.ErrorAs(t, err, &appErr)
 	assert.Equal(t, errs.CodeTransactionLookupFailed, appErr.Code)
-	txnRepo.AssertExpectations(t)
-}
-
-func TestUpdateStatus_NilCipherPredictionRepo_ReturnsError(t *testing.T) {
-	budgetId, txnId := uuid.New(), uuid.New()
-	ctx := utils.WithBudgetID(context.Background(), budgetId)
-	payeeId := uuid.New()
-	categoryId := uuid.New()
-	rawText := "some text"
-
-	txnRepo := &mockTransactionRepo{}
-	svc := &transactionService{dbTxn: fakeDBTxn{},
-		repo:                 txnRepo,
-		cipherPredictionRepo: nil, // explicitly nil
-	}
-
-	txn := &model.Transaction{
-		ID:          txnId,
-		BudgetID:    budgetId,
-		PayeeID:     &payeeId,
-		CategoryID:  &categoryId,
-		RawBankText: &rawText,
-	}
-	txnRepo.On("GetById", mock.Anything, budgetId, txnId).Return(txn, nil).Once()
-
-	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved)
-	require.Error(t, err)
-	var appErr *errs.Error
-	require.ErrorAs(t, err, &appErr)
-	assert.Equal(t, errs.CodeInternalError, appErr.Code)
 	txnRepo.AssertExpectations(t)
 }
 
@@ -1554,7 +1474,7 @@ func TestApplySideEffects_Delete_NilCategory_Skips(t *testing.T) {
 		Amount:     100,
 		CategoryID: nil, // nil → skip UpsertCarryover
 	}
-	err := service.applySideEffects(ctx, sideEffectInput{
+	_, err := service.applySideEffects(ctx, sideEffectInput{
 		budgetId: budgetId,
 		oldTxn:   &oldTxn,
 		budget:   &budget,
@@ -1579,7 +1499,7 @@ func TestApplySideEffects_Delete_InflowCategory_Skips(t *testing.T) {
 		Amount:     100,
 		CategoryID: &inflowCategoryID, // matches inflow → skip
 	}
-	err := service.applySideEffects(ctx, sideEffectInput{
+	_, err := service.applySideEffects(ctx, sideEffectInput{
 		budgetId: budgetId,
 		oldTxn:   &oldTxn,
 		budget:   &budget,
@@ -1842,3 +1762,15 @@ func (m *mockCipherPredictionRepo) DeleteByTransactionID(_ context.Context, _ uu
 func (m *mockTransactionRepo) LockForDedupe(context.Context, uuid.UUID, uuid.UUID, float64) error {
 	return nil
 }
+
+// noPredictions is a cipher prediction repository with no predictions in it:
+// every transaction looks entered by hand.
+type noPredictions struct {
+	repository.CipherPredictionRepository
+}
+
+func (noPredictions) GetByTransactionID(context.Context, uuid.UUID, uuid.UUID) (*model.CipherPredictionRecord, error) {
+	return nil, repository.ErrNotFound
+}
+
+func (noPredictions) DeleteByTransactionID(context.Context, uuid.UUID, uuid.UUID) error { return nil }

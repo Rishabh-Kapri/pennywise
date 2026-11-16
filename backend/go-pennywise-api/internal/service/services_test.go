@@ -2282,21 +2282,6 @@ func TestUpdateStatus_TxnNotFound(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestUpdateStatus_NilCipherPredRepo(t *testing.T) {
-	budgetID := uuid.New()
-	txnID := uuid.New()
-	txnRepo := &mockTransactionRepo{}
-	foundTxn := &model.Transaction{ID: txnID}
-	txnRepo.On("GetById", mock.Anything, budgetID, txnID).Return(foundTxn, nil)
-	svc := &transactionService{dbTxn: fakeDBTxn{},
-		repo:                 txnRepo,
-		cipherPredictionRepo: nil,
-	}
-	ctx := utils.WithBudgetID(context.Background(), budgetID)
-	err := svc.UpdateStatus(ctx, txnID, model.TransactionStatusApproved)
-	assert.Error(t, err)
-}
-
 func TestUpdateStatus_CipherPredRepoError(t *testing.T) {
 	budgetID := uuid.New()
 	txnID := uuid.New()

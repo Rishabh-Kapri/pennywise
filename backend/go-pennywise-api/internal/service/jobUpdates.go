@@ -41,7 +41,7 @@ func (f *JobUpdateForwarder) budgetsOf(ctx context.Context, update job.Update) [
 	if update.BudgetID != nil {
 		return []uuid.UUID{*update.BudgetID}
 	}
-	if update.Type != model.JobTypeMailboxChanged || f.Store == nil || f.Connections == nil {
+	if update.Type != model.JobTypeMailboxChanged || f.Store == nil {
 		return nil
 	}
 	j, err := f.Store.GetJobByID(ctx, update.JobID)

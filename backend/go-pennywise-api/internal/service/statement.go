@@ -138,7 +138,7 @@ func (s *statementService) Upload(
 		return nil, false, errs.Wrap(errs.CodeInternalError, "error saving statement", err)
 	}
 
-	s.startExtraction(ctx, budgetID, *imp)
+	s.startExtraction(ctx, *imp)
 	return imp, false, nil
 }
 
@@ -158,7 +158,7 @@ func (s *statementService) Retry(ctx context.Context, id uuid.UUID) (*model.Stat
 	if err != nil {
 		return nil, err
 	}
-	s.startExtraction(ctx, budgetID, *imp)
+	s.startExtraction(ctx, *imp)
 	return imp, nil
 }
 
@@ -195,11 +195,9 @@ func (s *statementService) load(ctx context.Context, budgetID, id uuid.UUID) (*m
 // startExtraction runs the model over the statement in the background: a
 // multi-page statement is several LLM round-trips, far past a proxy's request
 // timeout. Progress is written as each chunk finishes and clients poll.
-func (s *statementService) startExtraction(ctx context.Context, budgetID uuid.UUID, imp model.StatementImport) {
+func (s *statementService) startExtraction(ctx context.Context, imp model.StatementImport) {
 	// Detach from the request: this outlives the response by design.
-	bgCtx := utils.WithRequestMetadata(context.Background(), utils.RequestMetadataFromContext(ctx))
-	bgCtx = utils.WithInternalAuthToken(bgCtx, utils.InternalAuthTokenFromContext(ctx))
-	bgCtx = utils.WithBudgetID(bgCtx, budgetID)
+	bgCtx := utils.DetachedRequestContext(ctx)
 
 	go func() {
 		runCtx, cancel := context.WithTimeout(bgCtx, statementRunTimeout)

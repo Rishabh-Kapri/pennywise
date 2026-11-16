@@ -44,6 +44,10 @@ type TransactionService interface {
 	LearningStatus(ctx context.Context) (model.LearningStats, error)
 }
 
+// writeTimeout bounds the database work of one transaction write, here and in
+// the message pipeline's create step.
+const writeTimeout = 30 * time.Second
+
 type transactionService struct {
 	// learningBackfillRunning single-flights the backfill: a second call while
 	// one is in flight would re-read the same pending page and pay for the same
@@ -217,13 +221,12 @@ func (s *transactionService) createCounterpartTxn(
 // sideEffectInput holds the context for applying side effects to a transaction.
 // oldTxn == nil means create, newTxn == nil means delete, both non-nil means update.
 type sideEffectInput struct {
-	budgetId      uuid.UUID
-	oldTxn        *model.Transaction // nil for create
-	newTxn        *model.Transaction // nil for delete
-	budget        *model.Budget      // required for create (inflow category check)
-	account       *model.Account     // nil for delete
-	payee         *model.Payee       // nil for delete
-	queueLearning func(model.Transaction)
+	budgetId uuid.UUID
+	oldTxn   *model.Transaction // nil for create
+	newTxn   *model.Transaction // nil for delete
+	budget   *model.Budget      // required for create (inflow category check)
+	account  *model.Account     // nil for delete
+	payee    *model.Payee       // nil for delete
 }
 
 func transactionMappingChanged(oldTxn, newTxn *model.Transaction) bool {
@@ -288,10 +291,8 @@ func (s *transactionService) learnTransactionMapping(
 	if err == nil {
 		return nil
 	}
-	if s.cipherPredictionRepo != nil {
-		if markErr := s.cipherPredictionRepo.MarkLearnFailed(ctx, budgetId, txn.ID, err.Error()); markErr != nil {
-			logger.Logger(ctx).Warn("failed to record learning error", "txnId", txn.ID, "error", markErr)
-		}
+	if markErr := s.cipherPredictionRepo.MarkLearnFailed(ctx, budgetId, txn.ID, err.Error()); markErr != nil {
+		logger.Logger(ctx).Warn("failed to record learning error", "txnId", txn.ID, "error", markErr)
 	}
 	return err
 }
@@ -345,12 +346,10 @@ func (s *transactionService) doLearnTransactionMapping(
 			return errs.Wrap(errs.CodeInternalError, "error upserting transaction embedding", err)
 		}
 
-		if s.cipherPredictionRepo != nil {
-			// Absent for a transaction the pipeline did not create; the rule and
-			// embedding above are still worth keeping.
-			if err := s.cipherPredictionRepo.MarkLearned(ctx, budgetId, txn.ID); err != nil && !errors.Is(err, repository.ErrNotFound) {
-				return errs.Wrap(errs.CodeInternalError, "error marking prediction learned", err)
-			}
+		// Absent for a transaction the pipeline did not create; the rule and
+		// embedding above are still worth keeping.
+		if err := s.cipherPredictionRepo.MarkLearned(ctx, budgetId, txn.ID); err != nil && !errors.Is(err, repository.ErrNotFound) {
+			return errs.Wrap(errs.CodeInternalError, "error marking prediction learned", err)
 		}
 		return nil
 	}); err != nil {
@@ -380,9 +379,6 @@ const (
 // the pipeline, and whether a backfill is currently running.
 func (s *transactionService) LearningStatus(ctx context.Context) (model.LearningStats, error) {
 	budgetId := utils.MustBudgetID(ctx)
-	if s.cipherPredictionRepo == nil {
-		return model.LearningStats{}, errs.New(errs.CodeInternalError, "cipher prediction repository is not configured")
-	}
 	stats, err := s.cipherPredictionRepo.LearningStats(ctx, budgetId)
 	if err != nil {
 		return model.LearningStats{}, err
@@ -406,10 +402,6 @@ func (s *transactionService) BackfillLearning(
 ) (*model.LearningBackfillResult, error) {
 	budgetId := utils.MustBudgetID(ctx)
 	log := logger.Logger(ctx)
-
-	if s.cipherPredictionRepo == nil {
-		return nil, errs.New(errs.CodeInternalError, "cipher prediction repository is not configured")
-	}
 
 	limit := req.Limit
 	if limit <= 0 {
@@ -443,9 +435,7 @@ func (s *transactionService) BackfillLearning(
 	}
 
 	// Detach from the request: this outlives the response by design.
-	bgCtx := utils.WithRequestMetadata(context.Background(), utils.RequestMetadataFromContext(ctx))
-	bgCtx = utils.WithInternalAuthToken(bgCtx, utils.InternalAuthTokenFromContext(ctx))
-	bgCtx = utils.WithBudgetID(bgCtx, budgetId)
+	bgCtx := utils.DetachedRequestContext(ctx)
 
 	go func() {
 		defer s.learningBackfillRunning.Store(false)
@@ -502,7 +492,14 @@ func (s *transactionService) runLearningBackfill(
 	log.Info("learning backfill finished", "learned", learned, "failed", failed)
 }
 
-func (s *transactionService) applySideEffects(ctx context.Context, input sideEffectInput) error {
+// applySideEffects keeps the budget consistent with a create, update or
+// delete: carryovers, the transfer counterpart and the prediction's review.
+// For an update the user confirmed or corrected, it returns the transaction to
+// learn from; the caller queues that once the write has committed.
+func (s *transactionService) applySideEffects(
+	ctx context.Context,
+	input sideEffectInput,
+) (learn *model.Transaction, err error) {
 	isCreate := input.oldTxn == nil && input.newTxn != nil
 	isUpdate := input.oldTxn != nil && input.newTxn != nil
 	isDelete := input.oldTxn != nil && input.newTxn == nil
@@ -519,7 +516,7 @@ func (s *transactionService) applySideEffects(ctx context.Context, input sideEff
 				monthKey,
 				input.newTxn.Amount,
 			); err != nil {
-				return err
+				return nil, err
 			}
 		}
 	case isUpdate:
@@ -530,7 +527,7 @@ func (s *transactionService) applySideEffects(ctx context.Context, input sideEff
 			input.newTxn,
 			input.budget.Metadata.InflowCategoryID,
 		); err != nil {
-			return err
+			return nil, err
 		}
 	case isDelete:
 		if input.oldTxn.CategoryID != nil &&
@@ -543,7 +540,7 @@ func (s *transactionService) applySideEffects(ctx context.Context, input sideEff
 				monthKey,
 				-input.oldTxn.Amount,
 			); err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
@@ -561,12 +558,12 @@ func (s *transactionService) applySideEffects(ctx context.Context, input sideEff
 				*input.payee,
 			)
 			if err != nil {
-				return err
+				return nil, err
 			}
 			input.newTxn.TransferAccountID = input.payee.TransferAccountID
 			input.newTxn.TransferTransactionID = &createdId
 			if err = s.repo.Update(ctx, input.budgetId, input.newTxn.ID, *input.newTxn); err != nil {
-				return errs.Wrap(errs.CodeTransactionUpdateFailed, "error linking transfer transaction", err)
+				return nil, errs.Wrap(errs.CodeTransactionUpdateFailed, "error linking transfer transaction", err)
 			}
 		}
 	case isUpdate:
@@ -578,12 +575,12 @@ func (s *transactionService) applySideEffects(ctx context.Context, input sideEff
 			*input.account,
 			*input.payee,
 		); err != nil {
-			return err
+			return nil, err
 		}
 	case isDelete:
 		if input.oldTxn.TransferTransactionID != nil {
 			if err := s.repo.DeleteById(ctx, input.budgetId, *input.oldTxn.TransferTransactionID); err != nil {
-				return errs.Wrap(errs.CodeTransactionDeleteFailed, "error deleting transfer transaction", err)
+				return nil, errs.Wrap(errs.CodeTransactionDeleteFailed, "error deleting transfer transaction", err)
 			}
 		}
 	}
@@ -599,23 +596,19 @@ func (s *transactionService) applySideEffects(ctx context.Context, input sideEff
 		confirmed := predictionConfirmed(input.oldTxn, input.newTxn)
 
 		if mappingChanged || confirmed {
-			if s.cipherPredictionRepo == nil {
-				return nil
-			}
-
 			cipherPrediction, err := s.cipherPredictionRepo.GetByTransactionID(ctx, input.budgetId, input.oldTxn.ID)
 			if err != nil {
 				if errors.Is(err, repository.ErrNotFound) {
-					return nil
+					return nil, nil
 				}
-				return errs.Wrap(errs.CodeTransactionLookupFailed, "error getting cipher prediction", err)
+				return nil, errs.Wrap(errs.CodeTransactionLookupFailed, "error getting cipher prediction", err)
 			}
 			// No prediction means the transaction was not created by the
 			// pipeline, so there is nothing to correct and nothing worth
 			// learning from -- a manually entered row has no raw bank text to
 			// match future emails against.
 			if cipherPrediction == nil {
-				return nil
+				return nil, nil
 			}
 
 			// Only a real change is a correction. Approving an untouched
@@ -629,27 +622,25 @@ func (s *transactionService) applySideEffects(ctx context.Context, input sideEff
 					input.newTxn.PayeeID,
 					input.newTxn.CategoryID,
 				); err != nil {
-					return errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating cipher prediction correction", err)
+					return nil, errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating cipher prediction correction", err)
 				}
 			} else if err := s.cipherPredictionRepo.MarkReviewed(ctx, input.budgetId, input.oldTxn.ID); err != nil {
 				// Approving it as it stood is a review too.
-				return errs.Wrap(errs.CodeTransactionUpdateFailed, "error marking cipher prediction reviewed", err)
+				return nil, errs.Wrap(errs.CodeTransactionUpdateFailed, "error marking cipher prediction reviewed", err)
 			}
 
-			if input.queueLearning != nil {
-				learningTxn := *input.newTxn
-				// The update payload carries no raw bank text; the stored row
-				// does, and it is what the learned rule matches on.
-				learningTxn.RawBankText = input.oldTxn.RawBankText
-				input.queueLearning(learningTxn)
-			}
+			learn = new(model.Transaction)
+			*learn = *input.newTxn
+			// The update payload carries no raw bank text; the stored row
+			// does, and it is what the learned rule matches on.
+			learn.RawBankText = input.oldTxn.RawBankText
 
 			logger.Logger(ctx).Info("learning from cipher prediction",
 				"txnId", input.oldTxn.ID, "corrected", mappingChanged, "confirmed", confirmed)
 		}
 	}
 
-	return nil
+	return learn, nil
 }
 
 // predictionConfirmed reports whether this update is the user approving a
@@ -753,7 +744,7 @@ func (s *transactionService) GetAllNormalized(
 }
 
 func (s *transactionService) Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error) {
-	txCtx, txCancel := context.WithTimeout(ctx, 30*time.Second)
+	txCtx, txCancel := context.WithTimeout(ctx, writeTimeout)
 	defer txCancel()
 
 	budgetID := utils.MustBudgetID(txCtx)
@@ -771,86 +762,23 @@ func (s *transactionService) CreateInTx(
 	ctx context.Context,
 	txn model.Transaction,
 ) ([]model.Transaction, error) {
-	var createdTxn []model.Transaction
+	var created *model.Transaction
 	err := s.dbTxn.Do(ctx, func(ctx context.Context) error {
 		var err error
-		createdTxn, err = s.createInTx(ctx, txn)
+		created, _, err = s.create(ctx, txn, s.insert)
 		return err
 	})
-	return createdTxn, err
-}
-
-func (s *transactionService) createInTx(
-	ctx context.Context,
-	txn model.Transaction,
-) ([]model.Transaction, error) {
-	budgetID := utils.MustBudgetID(ctx)
-	txn.BudgetID = budgetID
-	if txn.Status == "" {
-		txn.Status = model.TransactionStatusManual
-	}
-
-	if err := s.validateTransactionPayload(txn, budgetID); err != nil {
-		return nil, err
-	}
-
-	var createdTxn []model.Transaction
-	budget, account, payee, transferAccount, err := s.loadDependencies(ctx, budgetID, txn)
 	if err != nil {
 		return nil, err
 	}
-
-	if err = s.validateCategory(
-		txn.CategoryID,
-		budget.Metadata.InflowCategoryID,
-		*account,
-		*payee,
-		transferAccount,
-		txn.Amount,
-	); err != nil {
-		return nil, err
-	}
-
-	// clear transfer fields in case they are set
-	txn.TransferAccountID = nil
-	txn.TransferTransactionID = nil
-
-	createdTxn, err = s.repo.Create(ctx, txn)
-	if err != nil {
-		return nil, errs.Wrap(errs.CodeTransactionCreateFailed, "failed to create transaction", err)
-	}
-	if len(createdTxn) == 0 {
-		return nil, errs.New(errs.CodeTransactionNotCreated, "no transaction was created")
-	}
-
-	txn.ID = createdTxn[0].ID
-
-	if err = s.applySideEffects(ctx, sideEffectInput{
-		budgetId: budgetID,
-		oldTxn:   nil,
-		newTxn:   &txn,
-		budget:   budget,
-		account:  account,
-		payee:    payee,
-	}); err != nil {
-		return nil, err
-	}
-
-	// Reload to pick up any mutations from side effects (e.g., transfer linking)
-	final, err := s.repo.GetById(ctx, budgetID, txn.ID)
-	if err != nil {
-		return nil, errs.Wrap(errs.CodeTransactionLookupFailed, "error reloading created transaction", err)
-	}
-	createdTxn[0] = *final
-
-	return createdTxn, nil
+	return []model.Transaction{*created}, nil
 }
 
 // CreateDeduped behaves like CreateInTx, but when a transaction with
 // the same (budget_id, dedupe_hash) already exists it returns the existing row
 // with created=false instead of failing — and skips budget side effects, which
-// already ran when the row was first created. Used by the email pipeline so
-// activity retries and duplicate Gmail pushes are idempotent.
+// already ran when the row was first created. The message pipeline uses it so
+// a retried job adds nothing.
 func (s *transactionService) CreateDeduped(
 	ctx context.Context,
 	txn model.Transaction,
@@ -861,15 +789,31 @@ func (s *transactionService) CreateDeduped(
 	)
 	err := s.dbTxn.Do(ctx, func(ctx context.Context) error {
 		var err error
-		final, created, err = s.createDeduped(ctx, txn)
+		final, created, err = s.create(ctx, txn, s.repo.CreateDeduped)
 		return err
 	})
 	return final, created, err
 }
 
-func (s *transactionService) createDeduped(
+// insert saves a new row; it's create's insert for a plain create.
+func (s *transactionService) insert(ctx context.Context, txn model.Transaction) (*model.Transaction, bool, error) {
+	rows, err := s.repo.Create(ctx, txn)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(rows) == 0 {
+		return nil, false, errs.New(errs.CodeTransactionNotCreated, "no transaction was created")
+	}
+	return &rows[0], true, nil
+}
+
+// create validates txn, saves it with insert and applies its side effects
+// (carryover, transfer counterpart). When insert reports the row already
+// existed, it returns that row and does nothing else.
+func (s *transactionService) create(
 	ctx context.Context,
 	txn model.Transaction,
+	insert func(context.Context, model.Transaction) (*model.Transaction, bool, error),
 ) (*model.Transaction, bool, error) {
 	budgetID := utils.MustBudgetID(ctx)
 	txn.BudgetID = budgetID
@@ -901,17 +845,20 @@ func (s *transactionService) createDeduped(
 	txn.TransferAccountID = nil
 	txn.TransferTransactionID = nil
 
-	createdTxn, created, err := s.repo.CreateDeduped(ctx, txn)
+	saved, created, err := insert(ctx, txn)
 	if err != nil {
+		if errs.HasCode(err, errs.CodeTransactionNotCreated) {
+			return nil, false, err
+		}
 		return nil, false, errs.Wrap(errs.CodeTransactionCreateFailed, "failed to create transaction", err)
 	}
 	if !created {
-		return createdTxn, false, nil
+		return saved, false, nil
 	}
 
-	txn.ID = createdTxn.ID
+	txn.ID = saved.ID
 
-	if err = s.applySideEffects(ctx, sideEffectInput{
+	if _, err = s.applySideEffects(ctx, sideEffectInput{
 		budgetId: budgetID,
 		oldTxn:   nil,
 		newTxn:   &txn,
@@ -933,7 +880,7 @@ func (s *transactionService) createDeduped(
 
 func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model.Transaction) error {
 	// Create a shorter context for each individual transaction attempt
-	txCtx, txCancel := context.WithTimeout(ctx, 30*time.Second)
+	txCtx, txCancel := context.WithTimeout(ctx, writeTimeout)
 	defer txCancel()
 
 	budgetId := utils.MustBudgetID(ctx)
@@ -990,16 +937,13 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 			return err
 		}
 
-		if err = s.applySideEffects(txCtx, sideEffectInput{
+		if learningTxn, err = s.applySideEffects(txCtx, sideEffectInput{
 			budgetId: budgetId,
 			oldTxn:   foundTxn,
 			newTxn:   &toUpdate,
 			budget:   budget,
 			account:  account,
 			payee:    payee,
-			queueLearning: func(txn model.Transaction) {
-				learningTxn = &txn
-			},
 		}); err != nil {
 			return err
 		}
@@ -1021,8 +965,7 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 }
 
 // enrichLocation fills in a missing place name via reverse geocoding and
-// defaults the source to manual. Best-effort: geocoding failures leave the
-// coordinates as-is and never fail the write.
+// defaults the source to manual.
 func (s *transactionService) enrichLocation(ctx context.Context, txn *model.Transaction) {
 	if txn.LocationLat == nil || txn.LocationLng == nil {
 		return
@@ -1031,20 +974,22 @@ func (s *transactionService) enrichLocation(ctx context.Context, txn *model.Tran
 		src := model.LocationSourceManual
 		txn.LocationSource = &src
 	}
-	if txn.LocationName != nil && *txn.LocationName != "" {
-		return
+	if txn.LocationName == nil || *txn.LocationName == "" {
+		txn.LocationName = s.placeName(ctx, *txn.LocationLat, *txn.LocationLng)
 	}
-	if s.geocodeService == nil {
-		return
-	}
+}
+
+// placeName names the place at lat/lng. Best-effort: when geocoding fails it
+// returns nil and the transaction keeps just its coordinates.
+func (s *transactionService) placeName(ctx context.Context, lat, lng float64) *string {
 	geoCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
-	name, err := s.geocodeService.Reverse(geoCtx, *txn.LocationLat, *txn.LocationLng)
+	name, err := s.geocodeService.Reverse(geoCtx, lat, lng)
 	if err != nil {
 		logger.Logger(ctx).Warn("reverse geocoding failed, keeping coordinates only", "err", err)
-		return
+		return nil
 	}
-	txn.LocationName = &name
+	return &name
 }
 
 // UpdateLocation sets or clears just the location of a transaction. Used by the
@@ -1054,7 +999,7 @@ func (s *transactionService) UpdateLocation(
 	id uuid.UUID,
 	req model.TransactionLocationReq,
 ) (*model.Transaction, error) {
-	txCtx, txCancel := context.WithTimeout(ctx, 30*time.Second)
+	txCtx, txCancel := context.WithTimeout(ctx, writeTimeout)
 	defer txCancel()
 	budgetId := utils.MustBudgetID(txCtx)
 
@@ -1077,15 +1022,8 @@ func (s *transactionService) UpdateLocation(
 		}
 		source = &src
 
-		if (name == nil || *name == "") && s.geocodeService != nil {
-			geoCtx, cancel := context.WithTimeout(txCtx, 8*time.Second)
-			resolved, err := s.geocodeService.Reverse(geoCtx, *lat, *lng)
-			cancel()
-			if err != nil {
-				logger.Logger(ctx).Warn("reverse geocoding failed, keeping coordinates only", "err", err)
-			} else {
-				name = &resolved
-			}
+		if name == nil || *name == "" {
+			name = s.placeName(txCtx, *lat, *lng)
 		}
 	}
 
@@ -1104,7 +1042,7 @@ func (s *transactionService) UpdateLocation(
 }
 
 func (s *transactionService) UpdateStatus(ctx context.Context, id uuid.UUID, status model.TransactionStatus) error {
-	txCtx, txCancel := context.WithTimeout(ctx, 30*time.Second)
+	txCtx, txCancel := context.WithTimeout(ctx, writeTimeout)
 	defer txCancel()
 	budgetId := utils.MustBudgetID(ctx)
 	logger.Logger(txCtx).Info("updating transaction status", "id", id, "status", status)
@@ -1122,9 +1060,6 @@ func (s *transactionService) UpdateStatus(ctx context.Context, id uuid.UUID, sta
 
 	if foundTxn == nil {
 		return errs.New(errs.CodeTransactionLookupFailed, "transaction not found for id %v", id)
-	}
-	if s.cipherPredictionRepo == nil {
-		return errs.New(errs.CodeInternalError, "cipher prediction repository is not configured")
 	}
 
 	cipherPrediction, err := s.cipherPredictionRepo.GetByTransactionID(txCtx, budgetId, foundTxn.ID)
@@ -1152,8 +1087,12 @@ func (s *transactionService) UpdateStatus(ctx context.Context, id uuid.UUID, sta
 		return errs.New(errs.CodeInvalidArgument, "raw bank text is required to approve transaction")
 	}
 
+	// Approving is a review, the same as approving through Update.
 	if err := s.dbTxn.Do(txCtx, func(txCtx context.Context) error {
-		return s.repo.UpdateStatus(txCtx, budgetId, id, status)
+		if err := s.repo.UpdateStatus(txCtx, budgetId, id, status); err != nil {
+			return err
+		}
+		return s.cipherPredictionRepo.MarkReviewed(txCtx, budgetId, id)
 	}); err != nil {
 		return errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating transaction status", err)
 	}
@@ -1164,7 +1103,7 @@ func (s *transactionService) UpdateStatus(ctx context.Context, id uuid.UUID, sta
 }
 
 func (s *transactionService) DeleteById(ctx context.Context, id uuid.UUID) error {
-	txCtx, txCancel := context.WithTimeout(ctx, 30*time.Second)
+	txCtx, txCancel := context.WithTimeout(ctx, writeTimeout)
 	defer txCancel()
 
 	budgetId := utils.MustBudgetID(ctx)
@@ -1196,7 +1135,7 @@ func (s *transactionService) deleteFound(
 	budget *model.Budget,
 	txn *model.Transaction,
 ) error {
-	if err := s.applySideEffects(ctx, sideEffectInput{
+	if _, err := s.applySideEffects(ctx, sideEffectInput{
 		budgetId: budgetId,
 		oldTxn:   txn,
 		newTxn:   nil,
@@ -1208,10 +1147,8 @@ func (s *transactionService) deleteFound(
 		return errs.Wrap(errs.CodeTransactionDeleteFailed, "error deleting transaction", err)
 	}
 	// Its prediction would otherwise stay live, pointing at a deleted row.
-	if s.cipherPredictionRepo != nil {
-		if err := s.cipherPredictionRepo.DeleteByTransactionID(ctx, budgetId, txn.ID); err != nil {
-			return errs.Wrap(errs.CodeTransactionDeleteFailed, "error deleting cipher prediction", err)
-		}
+	if err := s.cipherPredictionRepo.DeleteByTransactionID(ctx, budgetId, txn.ID); err != nil {
+		return errs.Wrap(errs.CodeTransactionDeleteFailed, "error deleting cipher prediction", err)
 	}
 	return nil
 }
