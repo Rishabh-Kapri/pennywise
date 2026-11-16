@@ -40,7 +40,10 @@ go test -run TestName ./internal/service
 
 - Budget scoping: `BudgetIdMiddleware` reads the `X-Budget-ID` header, checks ownership, and puts the id on the context. Services call `utils.MustBudgetID(ctx)` (`backend/shared/utils`). Handlers do not parse the header themselves.
 - Errors: `c.JSON(status, gin.H{"error": err.Error()})`. Extra machine-readable codes go in a sibling `"code"` field (e.g. statements `password_required`, `no_text`). Map sentinel errors with `errors.Is` in the handler (see `handler/categoryGoal.go`).
-- Repositories: use `*Tx` methods (e.g. `GetByIdTx(ctx, tx, budgetId, id)`) when a service operation must be atomic.
+- Atomic service work runs inside `s.dbTxn.Do(ctx, func(ctx context.Context) error {...})`; repositories pick the transaction up from that ctx. Helpers that must run inside one say so (`newBudget`, `createAccount`, `transactionService.create`).
+- Handlers read path ids with `pathID(c, "id")`, id filters with `parseUUIDs`, and the user with `currentUser(c)` (`handler/request.go`); each answers the 400/401 itself.
+- Services trust their dependencies: `cmd/api/main.go` passes every one, so don't nil-check them. The exceptions are optional by config and say so (`jobBroker` without `JOB_DRIVER`, the job store on the memory driver, `NewMailConnectionService` without `INGEST_SERVICE_URL`, the secret box without `LLM_CREDENTIALS_KEY`). Tests pass fakes.
+- Every budget's system groups, inflow category and starting balance payee come from `newBudget` (`service/budget.go`); account types and the transfer payee name live in `shared/model/account.go`. Demo seeding uses the same functions.
 - Internal service calls: `InternalRequestAuth` verifies `X-Internal-Token` against `SERVICE_TOKENS` (falls back to `INTERNAL_AUTH_TOKEN` when unset); only `VerifiedInternal` context may bypass user auth.
 - Imports: stdlib / third-party / local, separated by blank lines.
 
