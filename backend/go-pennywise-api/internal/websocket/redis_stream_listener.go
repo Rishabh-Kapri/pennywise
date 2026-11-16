@@ -130,7 +130,7 @@ func websocketMessageFromRedisValues(values map[string]any) (sharedModel.Message
 			err,
 		)
 	}
-	roomID := fmt.Sprintf("%s:%s:%s", budgetIDValue, userIDValue, "chat/"+convoIDValue)
+	roomID := chatRoomID(budgetIDValue, userIDValue, convoIDValue)
 	return sharedModel.Message{
 		EventName: eventName,
 		Data:      dataJSON,

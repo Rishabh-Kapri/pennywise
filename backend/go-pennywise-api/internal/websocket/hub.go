@@ -37,8 +37,10 @@ func NewConnectionHub() ConnectionHub {
 	}
 }
 
-func (r *connectionHub) agentRoomKey(budgetID string, userID string, streamID string, agentKey string) string {
-	return fmt.Sprintf("%s:%s:%s/%s", budgetID, userID, agentKey, streamID)
+// chatRoomID is the room a chat stream's events go to. Cipher publishes them
+// on Redis (see redis_stream_listener.go) and clients subscribe to the room.
+func chatRoomID(budgetID, userID, streamID string) string {
+	return fmt.Sprintf("%s:%s:chat/%s", budgetID, userID, streamID)
 }
 
 func (r *connectionHub) Register(budgetId uuid.UUID, userId uuid.UUID, conn *websocket.Conn) *Client {
@@ -162,7 +164,7 @@ func (r *connectionHub) broadcastToBudget(budgetID string, message sharedModel.M
 // broadcast a message to the users based on the message eventName
 func (r *connectionHub) Broadcast(message sharedModel.Message, client *Client) {
 	switch message.EventName {
-	case "pennywise::agent::chat::subscribe":
+	case string(sharedModel.AgentEventChatSubscribe):
 		// this is a chat subscription event, client is needed
 		if client == nil {
 			return
@@ -198,7 +200,7 @@ func (r *connectionHub) Broadcast(message sharedModel.Message, client *Client) {
 		}
 
 		// valid payload
-		roomID := r.agentRoomKey(message.BudgetID.String(), message.UserID.String(), roomData.StreamID, "chat")
+		roomID := chatRoomID(message.BudgetID.String(), message.UserID.String(), roomData.StreamID)
 
 		r.mu.Lock()
 		defer r.mu.Unlock()
@@ -220,7 +222,7 @@ func (r *connectionHub) Broadcast(message sharedModel.Message, client *Client) {
 		log.Info("subscribed", "roomID", roomID, "roomClients", roomClients, "clientToRooms", r.clientToRoom)
 
 		return
-	case "pennywise::agent::chat::stream":
+	case string(sharedModel.AgentEventChatStream):
 		if message.RoomID == nil {
 			return
 		}
