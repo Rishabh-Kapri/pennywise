@@ -54,24 +54,43 @@ type MailConnectionService interface {
 }
 
 type mailConnectionService struct {
-	ingest *transport.Client // nil when INGEST_SERVICE_URL is unset
+	ingest *transport.Client
 }
 
+// NewMailConnectionService forwards to ingest. With no ingest client
+// (INGEST_SERVICE_URL unset) email sync is off and every call says so.
 func NewMailConnectionService(ingest *transport.Client) MailConnectionService {
+	if ingest == nil {
+		return mailSyncOff{}
+	}
 	return &mailConnectionService{ingest: ingest}
 }
 
+// mailSyncOff answers every call with CodeMailNotConfigured.
+type mailSyncOff struct{}
+
+var errMailSyncOff = errs.New(errs.CodeMailNotConfigured, "INGEST_SERVICE_URL not set")
+
+func (mailSyncOff) List(context.Context) ([]MailConnection, error) { return nil, errMailSyncOff }
+func (mailSyncOff) Connect(context.Context, string) (MailConnection, error) {
+	return MailConnection{}, errMailSyncOff
+}
+func (mailSyncOff) SetPaused(context.Context, uuid.UUID, bool) (MailConnection, error) {
+	return MailConnection{}, errMailSyncOff
+}
+func (mailSyncOff) Disconnect(context.Context, uuid.UUID) error { return errMailSyncOff }
+func (mailSyncOff) BackfillCandidates(context.Context, uuid.UUID) ([]BackfillCandidate, error) {
+	return nil, errMailSyncOff
+}
+func (mailSyncOff) Backfill(context.Context, uuid.UUID, []string) (BackfillResult, error) {
+	return BackfillResult{}, errMailSyncOff
+}
+
 func (s *mailConnectionService) List(ctx context.Context) ([]MailConnection, error) {
-	if s.ingest == nil {
-		return nil, errs.New(errs.CodeMailNotConfigured, "INGEST_SERVICE_URL not set")
-	}
 	return transport.Get[[]MailConnection](ctx, s.ingest, ingestConnectionsPath)
 }
 
 func (s *mailConnectionService) Connect(ctx context.Context, code string) (MailConnection, error) {
-	if s.ingest == nil {
-		return MailConnection{}, errs.New(errs.CodeMailNotConfigured, "INGEST_SERVICE_URL not set")
-	}
 	return transport.Post[MailConnection](ctx, s.ingest, ingestConnectionsPath, nil, map[string]string{"code": code})
 }
 
@@ -88,17 +107,11 @@ func (s *mailConnectionService) SetPaused(
 	connectionID uuid.UUID,
 	paused bool,
 ) (MailConnection, error) {
-	if s.ingest == nil {
-		return MailConnection{}, errs.New(errs.CodeMailNotConfigured, "INGEST_SERVICE_URL not set")
-	}
 	return transport.Patch[MailConnection](ctx, s.ingest, connectionPath(connectionID), nil,
 		map[string]bool{"paused": paused})
 }
 
 func (s *mailConnectionService) Disconnect(ctx context.Context, connectionID uuid.UUID) error {
-	if s.ingest == nil {
-		return errs.New(errs.CodeMailNotConfigured, "INGEST_SERVICE_URL not set")
-	}
 	return transport.Delete(ctx, s.ingest, connectionPath(connectionID))
 }
 
@@ -106,9 +119,6 @@ func (s *mailConnectionService) BackfillCandidates(
 	ctx context.Context,
 	connectionID uuid.UUID,
 ) ([]BackfillCandidate, error) {
-	if s.ingest == nil {
-		return nil, errs.New(errs.CodeMailNotConfigured, "INGEST_SERVICE_URL not set")
-	}
 	return transport.Get[[]BackfillCandidate](ctx, s.ingest, backfillPath(connectionID))
 }
 
@@ -117,9 +127,6 @@ func (s *mailConnectionService) Backfill(
 	connectionID uuid.UUID,
 	externalIDs []string,
 ) (BackfillResult, error) {
-	if s.ingest == nil {
-		return BackfillResult{}, errs.New(errs.CodeMailNotConfigured, "INGEST_SERVICE_URL not set")
-	}
 	return transport.Post[BackfillResult](ctx, s.ingest, backfillPath(connectionID), nil,
 		map[string][]string{"externalIds": externalIDs})
 }

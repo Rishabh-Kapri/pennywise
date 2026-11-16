@@ -291,19 +291,61 @@ func (s *jobService) RetryFailed(ctx context.Context, errorCode string) (int, er
 	return s.store.RetryDeadByCode(ctx, scope, errorCode, jobActor(ctx), maxRetryFailed)
 }
 
-func (s *jobService) RunAgain(ctx context.Context, id uuid.UUID) error {
+// finishedMessage loads a received message the budget may see, with every job
+// that followed it, and the payload of the message's last report. report is
+// nil while any of its jobs hasn't succeeded.
+func (s *jobService) finishedMessage(
+	ctx context.Context,
+	id uuid.UUID,
+	action string,
+) (*job.Job, []job.Job, *job.Job, *model.PipelineReportPayload, error) {
 	j, err := s.visibleJob(ctx, id)
 	if err != nil {
-		return err
+		return nil, nil, nil, nil, err
 	}
 	if s.broker == nil || j.BudgetID == nil || j.Type != model.JobTypeMessageReceived {
-		return errs.New(errs.CodeJobInvalidState, "only a message can run again")
+		return nil, nil, nil, nil, errs.New(errs.CodeJobInvalidState, "only a message can %s", action)
 	}
 	chain, err := s.chain(ctx, j)
 	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	reportJob, report := lastReport(chain)
+	return j, chain, reportJob, report, nil
+}
+
+// lastReport is the message's last pipeline report and its payload, or nil
+// while any job in the chain hasn't succeeded.
+func lastReport(chain []job.Job) (*job.Job, *model.PipelineReportPayload) {
+	var (
+		last   *job.Job
+		report *model.PipelineReportPayload
+	)
+	for i := range chain {
+		if chain[i].Status != job.SucceededJobStatus {
+			return nil, nil
+		}
+		if chain[i].Type != model.JobTypePipelineReport {
+			continue
+		}
+		var p model.PipelineReportPayload
+		if err := json.Unmarshal(chain[i].Payload, &p); err != nil {
+			return nil, nil
+		}
+		last, report = &chain[i], &p
+	}
+	return last, report
+}
+
+func (s *jobService) RunAgain(ctx context.Context, id uuid.UUID) error {
+	j, chain, _, report, err := s.finishedMessage(ctx, id, "run again")
+	if err != nil {
 		return err
 	}
-	if !stoppedMessage(chain) {
+	// It stopped when the pipeline ended it without a transaction.
+	stopped := report != nil &&
+		(report.Outcome == model.MessageOutcomeUnverified || report.Outcome == model.MessageOutcomeNoPrediction)
+	if !stopped {
 		return errs.New(errs.CodeJobInvalidState, "the message didn't stop in the pipeline")
 	}
 
@@ -330,21 +372,15 @@ func (s *jobService) RunAgain(ctx context.Context, id uuid.UUID) error {
 }
 
 func (s *jobService) Continue(ctx context.Context, id uuid.UUID) error {
-	j, err := s.visibleJob(ctx, id)
+	j, _, report, payload, err := s.finishedMessage(ctx, id, "continue")
 	if err != nil {
 		return err
 	}
-	if s.broker == nil || j.BudgetID == nil || j.Type != model.JobTypeMessageReceived {
-		return errs.New(errs.CodeJobInvalidState, "only a message can continue")
-	}
-	chain, err := s.chain(ctx, j)
-	if err != nil {
-		return err
-	}
-	report, resume := parkedReport(chain)
-	if report == nil || resume == nil {
+	if payload == nil || payload.Outcome != model.MessageOutcomeNeedsReview ||
+		payload.Review == nil || payload.Review.Resume == nil {
 		return errs.New(errs.CodeJobInvalidState, "the message isn't waiting for review")
 	}
+	resume := payload.Review.Resume
 	if _, err := s.broker.Enqueue(ctx, resume.JobType, resume.Payload,
 		job.WithQueue(resume.Queue),
 		job.WithBudgetID(j.BudgetID),
@@ -356,31 +392,6 @@ func (s *jobService) Continue(ctx context.Context, id uuid.UUID) error {
 	}
 	// The run goes on from the step that parked, so its report is over.
 	return s.store.Dismiss(ctx, []uuid.UUID{report.ID})
-}
-
-// parkedReport finds the report of a message waiting for review, and the job
-// that carries it on (nil if it can't be continued). The report is nil when
-// the message isn't waiting: all its jobs must have finished.
-func parkedReport(chain []job.Job) (*job.Job, *model.MessageResume) {
-	var parked *job.Job
-	var resume *model.MessageResume
-	for i := range chain {
-		if chain[i].Status != job.SucceededJobStatus {
-			return nil, nil
-		}
-		if chain[i].Type != model.JobTypePipelineReport {
-			continue
-		}
-		var report model.PipelineReportPayload
-		if err := json.Unmarshal(chain[i].Payload, &report); err != nil {
-			return nil, nil
-		}
-		parked, resume = nil, nil
-		if report.Outcome == model.MessageOutcomeNeedsReview && report.Review != nil {
-			parked, resume = &chain[i], report.Review.Resume
-		}
-	}
-	return parked, resume
 }
 
 func (s *jobService) Dismiss(ctx context.Context, id uuid.UUID) error {
@@ -431,26 +442,6 @@ func jobIDs(jobs []job.Job) []uuid.UUID {
 		ids = append(ids, jobs[i].ID)
 	}
 	return ids
-}
-
-// stoppedMessage reports whether a message's jobs all finished and the pipeline
-// ended it without the transaction it should have had.
-func stoppedMessage(chain []job.Job) bool {
-	stopped := false
-	for i := range chain {
-		if chain[i].Status != job.SucceededJobStatus {
-			return false
-		}
-		if chain[i].Type != model.JobTypePipelineReport {
-			continue
-		}
-		var report model.PipelineReportPayload
-		if err := json.Unmarshal(chain[i].Payload, &report); err != nil {
-			return false
-		}
-		stopped = report.Outcome == model.MessageOutcomeUnverified || report.Outcome == model.MessageOutcomeNoPrediction
-	}
-	return stopped
 }
 
 // visibleJob loads a job the budget may see, applying the same rule as
