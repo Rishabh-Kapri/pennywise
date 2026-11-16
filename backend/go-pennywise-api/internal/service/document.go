@@ -186,22 +186,26 @@ func (s *documentService) Upload(
 		)
 	}
 
-	docId := uuid.New()
+	return s.saveDocument(ctx, budgetId, transactionId, txn, ext, mimeType, io.MultiReader(strings.NewReader(string(head)), body))
+}
+
+// saveDocument stores body as the transaction's next document and records it.
+// The file is named after the payee and date; the stored name is also what the
+// browser sees on download, so a client-supplied name is never used.
+func (s *documentService) saveDocument(
+	ctx context.Context,
+	budgetId, transactionId uuid.UUID,
+	txn *model.Transaction,
+	ext, mimeType string,
+	body io.Reader,
+) (*model.TransactionDocument, error) {
 	baseName := s.documentBaseName(ctx, budgetId, txn, s.nextDocumentIndex(ctx, budgetId, transactionId))
 	// Key is scoped per transaction so two transactions with the same payee on
 	// the same day cannot collide on "<Payee>_<date>-1".
-	relPath, err := s.store.Save(
-		path.Join(budgetId.String(), transactionId.String()),
-		baseName+ext,
-		io.MultiReader(strings.NewReader(string(head)), body),
-	)
+	relPath, err := s.store.Save(path.Join(budgetId.String(), transactionId.String()), baseName+ext, body)
 	if err != nil {
 		return nil, errs.Wrap(errs.CodeInternalError, "error storing file", err)
 	}
-
-	// The stored name is also what the browser sees on download, so the
-	// client-supplied name is deliberately discarded.
-	fileName = baseName + ext
 
 	sizeBytes, err := s.storedSize(relPath)
 	if err != nil {
@@ -210,10 +214,10 @@ func (s *documentService) Upload(
 	}
 
 	doc, err := s.repo.Create(ctx, model.TransactionDocument{
-		ID:            docId,
+		ID:            uuid.New(),
 		BudgetID:      budgetId,
 		TransactionID: transactionId,
-		FileName:      fileName,
+		FileName:      baseName + ext,
 		MimeType:      mimeType,
 		SizeBytes:     sizeBytes,
 		StoragePath:   relPath,
@@ -267,31 +271,7 @@ func (s *documentService) UploadScan(
 		return nil, errs.Wrap(errs.CodeInvalidArgument, "error assembling scan", err)
 	}
 
-	docId := uuid.New()
-	baseName := s.documentBaseName(ctx, budgetId, txn, s.nextDocumentIndex(ctx, budgetId, transactionId))
-	relPath, err := s.store.Save(
-		path.Join(budgetId.String(), transactionId.String()),
-		baseName+".pdf",
-		bytes.NewReader(pdfBytes),
-	)
-	if err != nil {
-		return nil, errs.Wrap(errs.CodeInternalError, "error storing scan", err)
-	}
-
-	doc, err := s.repo.Create(ctx, model.TransactionDocument{
-		ID:            docId,
-		BudgetID:      budgetId,
-		TransactionID: transactionId,
-		FileName:      baseName + ".pdf",
-		MimeType:      "application/pdf",
-		SizeBytes:     int64(len(pdfBytes)),
-		StoragePath:   relPath,
-	})
-	if err != nil {
-		s.cleanupStored(ctx, relPath)
-		return nil, errs.Wrap(errs.CodeInternalError, "error saving document record", err)
-	}
-	return doc, nil
+	return s.saveDocument(ctx, budgetId, transactionId, txn, ".pdf", "application/pdf", bytes.NewReader(pdfBytes))
 }
 
 func (s *documentService) storedSize(relPath string) (int64, error) {
