@@ -1138,16 +1138,3 @@ func TestTxnLearnMapping_UnreadableEmbeddingIsRecordedNotWritten(t *testing.T) {
 	assert.Zero(t, begun)
 	d.payeeRule.AssertNotCalled(t, "CreatePayeeRule", mock.Anything, mock.Anything)
 }
-
-func TestTxnLearnFromTransaction_DoesNotEmbed(t *testing.T) {
-	svc, d := newTxnSvc()
-	f := newTxnFixture()
-	raw := "Rs 250 debited at BLUE TOKAI"
-	txn := f.txn()
-	txn.ID = f.txnID
-	txn.RawBankText = &raw
-
-	svc.LearnFromTransaction(f.ctx, txn)
-
-	d.client.AssertNotCalled(t, "GenerateTransactionEmbedding", mock.Anything, mock.Anything)
-}

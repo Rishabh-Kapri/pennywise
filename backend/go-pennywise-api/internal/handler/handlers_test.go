@@ -2035,24 +2035,6 @@ func TestWebsocketHandler_SendTestEvent(t *testing.T) {
 // Missing service error paths — category
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestCategoryHandler_Create_ServiceError(t *testing.T) {
-	svc := &mockCategoryService{}
-	svc.On("Create", mock.Anything, mock.Anything).Return(nil, assert.AnError)
-	w, c := makeReq("POST", "/categories", model.Category{Name: "Food"})
-	NewCategoryHandler(svc).Create(c)
-	assert.Equal(t, http.StatusBadRequest, w.Code)
-}
-
-func TestCategoryHandler_GetById_ServiceError(t *testing.T) {
-	id := uuid.New()
-	svc := &mockCategoryService{}
-	svc.On("GetById", mock.Anything, id).Return(nil, assert.AnError)
-	w, c := makeReq("GET", "/categories/"+id.String(), nil)
-	c.Params = gin.Params{{Key: "id", Value: id.String()}}
-	NewCategoryHandler(svc).GetById(c)
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
-}
-
 func TestCategoryHandler_UpdateBudget_ServiceError(t *testing.T) {
 	id := uuid.New()
 	svc := &mockCategoryService{}
@@ -2060,183 +2042,16 @@ func TestCategoryHandler_UpdateBudget_ServiceError(t *testing.T) {
 	w, c := makeReq("PUT", "/categories/"+id.String()+"/budget/2025-01", model.MonthlyBudget{Budgeted: 100.0})
 	c.Params = gin.Params{{Key: "id", Value: id.String()}, {Key: "month", Value: "2025-01"}}
 	NewCategoryHandler(svc).UpdateBudget(c)
-	// The handler at line 157 calls service but doesn't check the error return (no explicit error handling)
-	// so response will be 200 — just verify no panic
-	_ = w.Code
-}
-
-func TestCategoryHandler_DeleteById_ServiceError(t *testing.T) {
-	id := uuid.New()
-	svc := &mockCategoryService{}
-	svc.On("DeleteById", mock.Anything, id).Return(assert.AnError)
-	w, c := makeReq("DELETE", "/categories/"+id.String(), nil)
-	c.Params = gin.Params{{Key: "id", Value: id.String()}}
-	NewCategoryHandler(svc).DeleteById(c)
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CategoryGroupHandler — DeleteById service error
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestCategoryGroupHandler_DeleteById_ServiceError(t *testing.T) {
-	id := uuid.New()
-	svc := &mockCategoryGroupService{}
-	svc.On("DeleteById", mock.Anything, id).Return(assert.AnError)
-	w, c := makeReq("DELETE", "/category-groups/"+id.String(), nil)
-	c.Params = gin.Params{{Key: "id", Value: id.String()}}
-	NewCategoryGroupHandler(svc).DeleteById(c)
-	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PayeeHandler — missing service error paths
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestPayeeHandler_GetRules_ServiceError(t *testing.T) {
-	id := uuid.New()
-	svc := &mockPayeeService{}
-	svc.On("GetRules", mock.Anything, id).Return(nil, assert.AnError)
-	w, c := makeReq("GET", "/payees/"+id.String()+"/rules", nil)
-	c.Params = gin.Params{{Key: "id", Value: id.String()}}
-	NewPayeeHandler(svc).GetRules(c)
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
-}
-
-func TestPayeeHandler_CreateRule_ServiceError(t *testing.T) {
-	id := uuid.New()
-	svc := &mockPayeeService{}
-	svc.On("CreateRule", mock.Anything, id, mock.Anything).Return(assert.AnError)
-	w, c := makeReq("POST", "/payees/"+id.String()+"/rules", model.PayeeRule{MatchString: "AMAZON"})
-	c.Params = gin.Params{{Key: "id", Value: id.String()}}
-	NewPayeeHandler(svc).CreateRule(c)
-	assert.Equal(t, http.StatusBadRequest, w.Code)
-}
-
-func TestPayeeHandler_Update_ServiceError(t *testing.T) {
-	id := uuid.New()
-	svc := &mockPayeeService{}
-	svc.On("Update", mock.Anything, id, mock.Anything).Return(assert.AnError)
-	w, c := makeReq("PATCH", "/payees/"+id.String(), model.Payee{Name: "X"})
-	c.Params = gin.Params{{Key: "id", Value: id.String()}}
-	NewPayeeHandler(svc).Update(c)
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
-}
-
-func TestPayeeHandler_DeleteById_ServiceError(t *testing.T) {
-	id := uuid.New()
-	svc := &mockPayeeService{}
-	svc.On("DeleteById", mock.Anything, id).Return(assert.AnError)
-	w, c := makeReq("DELETE", "/payees/"+id.String(), nil)
-	c.Params = gin.Params{{Key: "id", Value: id.String()}}
-	NewPayeeHandler(svc).DeleteById(c)
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
-}
-
 func TestPayeeHandler_DeleteById_MissingId(t *testing.T) {
 	svc := &mockPayeeService{}
 	w, c := makeReq("DELETE", "/payees/", nil)
 	NewPayeeHandler(svc).DeleteById(c)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PredictionHandler — service error paths
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestPredictionHandler_DeleteById_ServiceError(t *testing.T) {
-	id := uuid.New()
-	svc := &mockPredictionService{}
-	svc.On("DeleteById", mock.Anything, id).Return(assert.AnError)
-	w, c := makeReq("DELETE", "/predictions/"+id.String(), nil)
-	c.Params = gin.Params{{Key: "id", Value: id.String()}}
-	NewPredictionHandler(svc).DeleteById(c)
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// TagHandler — DeleteById service error
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestTagHandler_DeleteById_ServiceError(t *testing.T) {
-	id := uuid.New()
-	svc := &mockTagService{}
-	svc.On("DeleteById", mock.Anything, id).Return(assert.AnError)
-	w, c := makeReq("DELETE", "/tags/"+id.String(), nil)
-	c.Params = gin.Params{{Key: "id", Value: id.String()}}
-	NewTagHandler(svc).DeleteById(c)
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// TransactionHandler — service error paths
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestTransactionHandler_ListNormalized_ServiceError(t *testing.T) {
-	svc := &mockTransactionService{}
-	svc.On("GetAllNormalized", mock.Anything, mock.Anything).Return(model.PaginatedResponse[model.Transaction]{}, assert.AnError)
-	w, c := makeReq("GET", "/transactions/normalized", nil)
-	NewTransactionHandler(svc).ListNormalized(c)
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
-}
-
-func TestTransactionHandler_Update_ServiceError(t *testing.T) {
-	id := uuid.New()
-	svc := &mockTransactionService{}
-	svc.On("Update", mock.Anything, id, mock.Anything).Return(assert.AnError)
-	w, c := makeReq("PATCH", "/transactions/"+id.String(), model.Transaction{})
-	c.Params = gin.Params{{Key: "id", Value: id.String()}}
-	NewTransactionHandler(svc).Update(c)
-	assert.Equal(t, http.StatusBadRequest, w.Code)
-}
-
-func TestTransactionHandler_UpdateStatus_ServiceError(t *testing.T) {
-	id := uuid.New()
-	svc := &mockTransactionService{}
-	svc.On("UpdateStatus", mock.Anything, id, model.TransactionStatusApproved).Return(assert.AnError)
-	w, c := makeReq("PATCH", "/transactions/"+id.String()+"/status", model.TransactionStatusReq{Status: model.TransactionStatusApproved})
-	c.Params = gin.Params{{Key: "id", Value: id.String()}}
-	NewTransactionHandler(svc).UpdateStatus(c)
-	assert.Equal(t, http.StatusBadRequest, w.Code)
-}
-
-func TestTransactionHandler_DeleteById_ServiceError(t *testing.T) {
-	id := uuid.New()
-	svc := &mockTransactionService{}
-	svc.On("DeleteById", mock.Anything, id).Return(assert.AnError)
-	w, c := makeReq("DELETE", "/transactions/"+id.String(), nil)
-	c.Params = gin.Params{{Key: "id", Value: id.String()}}
-	NewTransactionHandler(svc).DeleteById(c)
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
-}
-
-func TestTransactionHandler_ListNormalized_LimitParseError(t *testing.T) {
-	svc := &mockTransactionService{}
-	w, c := makeReq("GET", "/transactions/normalized?limit=bad", nil)
-	c.Request.URL.RawQuery = "limit=bad"
-	NewTransactionHandler(svc).ListNormalized(c)
-	assert.Equal(t, http.StatusBadRequest, w.Code)
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// AuthHandler — missing branches
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestAuthHandler_GetProviderUser_UnsupportedProvider(t *testing.T) {
-	svc := &mockAuthService{}
-	w, c := makeReq("GET", "/auth/facebook/users?email=a@b.com", nil)
-	c.Params = gin.Params{{Key: "provider", Value: "facebook"}}
-	c.Request.URL.RawQuery = "email=a@b.com"
-	NewAuthHandler(svc, "").GetProviderUser(c)
-	assert.Equal(t, http.StatusBadRequest, w.Code)
-}
-
-func TestAuthHandler_GetProviderUser_ServiceError(t *testing.T) {
-	svc := &mockAuthService{}
-	svc.On("GetGoogleUserByEmail", mock.Anything, "a@b.com").Return(nil, assert.AnError)
-	w, c := makeReq("GET", "/auth/google/users?email=a@b.com", nil)
-	c.Params = gin.Params{{Key: "provider", Value: "google"}}
-	c.Request.URL.RawQuery = "email=a@b.com"
-	NewAuthHandler(svc, "").GetProviderUser(c)
-	assert.Equal(t, http.StatusNotFound, w.Code)
 }

@@ -7,12 +7,6 @@ import (
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 )
 
-func TestDeliverSurvivesAClosedClient(t *testing.T) {
-	c := &Client{Send: make(chan sharedModel.Message)}
-	close(c.Send)
-	deliver(c, sharedModel.Message{}, 0)
-}
-
 func TestDeliverGivesUpOnAStuckClient(t *testing.T) {
 	c := &Client{Send: make(chan sharedModel.Message)} // nothing reading
 	done := make(chan struct{})

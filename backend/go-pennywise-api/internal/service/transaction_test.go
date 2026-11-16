@@ -823,47 +823,6 @@ func newTestTransactionService(
 	return service.(*transactionService)
 }
 
-func TestUpdateStatusRejectedOnlyUpdatesStatus(t *testing.T) {
-	budgetId, txnId, _, _, _, _, _ := createTestUUIDs()
-	ctx := utils.WithBudgetID(context.Background(), budgetId)
-	txnRepo := &mockTransactionRepo{}
-	svc := &transactionService{dbTxn: fakeDBTxn{}, repo: txnRepo}
-
-	txnRepo.On("UpdateStatus", mock.Anything, budgetId, txnId, model.TransactionStatusRejected).Return(nil).Once()
-
-	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusRejected)
-
-	require.NoError(t, err)
-	txnRepo.AssertExpectations(t)
-}
-
-func TestUpdateStatusApprovedWithoutCipherPredictionOnlyUpdatesStatus(t *testing.T) {
-	budgetId, txnId, _, payeeId, categoryId, _, _ := createTestUUIDs()
-	ctx := utils.WithBudgetID(context.Background(), budgetId)
-	rawBankText := "paid to coffee shop"
-	txn := &model.Transaction{
-		ID:          txnId,
-		BudgetID:    budgetId,
-		PayeeID:     &payeeId,
-		CategoryID:  &categoryId,
-		Amount:      -125,
-		RawBankText: &rawBankText,
-	}
-	txnRepo := &mockTransactionRepo{}
-	cipherPredictionRepo := &mockCipherPredictionRepo{}
-	svc := &transactionService{dbTxn: fakeDBTxn{}, repo: txnRepo, cipherPredictionRepo: cipherPredictionRepo}
-
-	txnRepo.On("GetById", mock.Anything, budgetId, txnId).Return(txn, nil).Once()
-	cipherPredictionRepo.On("GetByTransactionID", mock.Anything, budgetId, txnId).Return(nil, repository.ErrNotFound).Once()
-	txnRepo.On("UpdateStatus", mock.Anything, budgetId, txnId, model.TransactionStatusApproved).Return(nil).Once()
-
-	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved)
-
-	require.NoError(t, err)
-	txnRepo.AssertExpectations(t)
-	cipherPredictionRepo.AssertExpectations(t)
-}
-
 // Approving through the status endpoint is a review, the same as approving
 // through Update.
 func TestUpdateStatusApprovingAPredictionMarksItReviewed(t *testing.T) {

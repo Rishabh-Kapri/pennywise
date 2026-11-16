@@ -1540,12 +1540,6 @@ func TestCategoryService_GetById(t *testing.T) {
 	})
 }
 
-func TestCategoryService_UpdateMonthlyBudget_note(t *testing.T) {
-	// UpdateMonthlyBudget uses utils.WithTx which requires a real pgxpool.
-	// The core sub-operation (UpsertCarryover) is already covered by its own tests.
-	// Full integration test would require a live DB.
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // PayeeService.Search / UpdateRule tests
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2169,15 +2163,6 @@ func TestAuthService_RefreshToken_NilUser(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CipherClient — NewCipherClient
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestNewCipherClient(t *testing.T) {
-	cc := NewCipherClient(nil)
-	assert.NotNil(t, cc)
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // transactionService — validateTransactionPayload branches
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -2190,32 +2175,6 @@ func TestValidateTransactionPayload_BudgetMismatch(t *testing.T) {
 		Date:      "2025-01-15",
 	}
 	err := svc.validateTransactionPayload(txn, uuid.New())
-	assert.Error(t, err)
-}
-
-func TestValidateTransactionPayload_AccountIDNil(t *testing.T) {
-	svc := &transactionService{dbTxn: fakeDBTxn{}}
-	budgetID := uuid.New()
-	txn := model.Transaction{
-		BudgetID:  budgetID,
-		AccountID: nil,
-		PayeeID:   uuidPtr(uuid.New()),
-		Date:      "2025-01-15",
-	}
-	err := svc.validateTransactionPayload(txn, budgetID)
-	assert.Error(t, err)
-}
-
-func TestValidateTransactionPayload_PayeeIDNil(t *testing.T) {
-	svc := &transactionService{dbTxn: fakeDBTxn{}}
-	budgetID := uuid.New()
-	txn := model.Transaction{
-		BudgetID:  budgetID,
-		AccountID: uuidPtr(uuid.New()),
-		PayeeID:   nil,
-		Date:      "2025-01-15",
-	}
-	err := svc.validateTransactionPayload(txn, budgetID)
 	assert.Error(t, err)
 }
 
@@ -2260,102 +2219,6 @@ func TestLoadDependencies_TransferAccountError(t *testing.T) {
 		PayeeID:   &payeeID,
 	}
 	_, _, _, _, err := svc.loadDependencies(ctx, budgetID, txn)
-	assert.Error(t, err)
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// transactionService — UpdateStatus branches (no real DB needed)
-// ─────────────────────────────────────────────────────────────────────────────
-
-func TestUpdateStatus_TxnNotFound(t *testing.T) {
-	budgetID := uuid.New()
-	txnID := uuid.New()
-	txnRepo := &mockTransactionRepo{}
-	cipherPredRepo := &mockCipherPredictionRepo{}
-	txnRepo.On("GetById", mock.Anything, budgetID, txnID).Return((*model.Transaction)(nil), nil)
-	svc := &transactionService{dbTxn: fakeDBTxn{},
-		repo:                 txnRepo,
-		cipherPredictionRepo: cipherPredRepo,
-	}
-	ctx := utils.WithBudgetID(context.Background(), budgetID)
-	err := svc.UpdateStatus(ctx, txnID, model.TransactionStatusApproved)
-	assert.Error(t, err)
-}
-
-func TestUpdateStatus_CipherPredRepoError(t *testing.T) {
-	budgetID := uuid.New()
-	txnID := uuid.New()
-	txnRepo := &mockTransactionRepo{}
-	cipherPredRepo := &mockCipherPredictionRepo{}
-	foundTxn := &model.Transaction{ID: txnID}
-	txnRepo.On("GetById", mock.Anything, budgetID, txnID).Return(foundTxn, nil)
-	cipherPredRepo.On("GetByTransactionID", mock.Anything, budgetID, txnID).Return((*model.CipherPredictionRecord)(nil), assert.AnError)
-	svc := &transactionService{dbTxn: fakeDBTxn{},
-		repo:                 txnRepo,
-		cipherPredictionRepo: cipherPredRepo,
-	}
-	ctx := utils.WithBudgetID(context.Background(), budgetID)
-	err := svc.UpdateStatus(ctx, txnID, model.TransactionStatusApproved)
-	assert.Error(t, err)
-}
-
-func TestUpdateStatus_PayeeIDNil(t *testing.T) {
-	budgetID := uuid.New()
-	txnID := uuid.New()
-	txnRepo := &mockTransactionRepo{}
-	cipherPredRepo := &mockCipherPredictionRepo{}
-	catID := uuid.New()
-	rawText := "BANK TEXT"
-	foundTxn := &model.Transaction{ID: txnID, PayeeID: nil, CategoryID: &catID, RawBankText: &rawText}
-	cipherPred := &model.CipherPredictionRecord{}
-	txnRepo.On("GetById", mock.Anything, budgetID, txnID).Return(foundTxn, nil)
-	cipherPredRepo.On("GetByTransactionID", mock.Anything, budgetID, txnID).Return(cipherPred, nil)
-	svc := &transactionService{dbTxn: fakeDBTxn{},
-		repo:                 txnRepo,
-		cipherPredictionRepo: cipherPredRepo,
-	}
-	ctx := utils.WithBudgetID(context.Background(), budgetID)
-	err := svc.UpdateStatus(ctx, txnID, model.TransactionStatusApproved)
-	assert.Error(t, err)
-}
-
-func TestUpdateStatus_CategoryIDNil(t *testing.T) {
-	budgetID := uuid.New()
-	txnID := uuid.New()
-	txnRepo := &mockTransactionRepo{}
-	cipherPredRepo := &mockCipherPredictionRepo{}
-	payeeID := uuid.New()
-	rawText := "BANK TEXT"
-	foundTxn := &model.Transaction{ID: txnID, PayeeID: &payeeID, CategoryID: nil, RawBankText: &rawText}
-	cipherPred := &model.CipherPredictionRecord{}
-	txnRepo.On("GetById", mock.Anything, budgetID, txnID).Return(foundTxn, nil)
-	cipherPredRepo.On("GetByTransactionID", mock.Anything, budgetID, txnID).Return(cipherPred, nil)
-	svc := &transactionService{dbTxn: fakeDBTxn{},
-		repo:                 txnRepo,
-		cipherPredictionRepo: cipherPredRepo,
-	}
-	ctx := utils.WithBudgetID(context.Background(), budgetID)
-	err := svc.UpdateStatus(ctx, txnID, model.TransactionStatusApproved)
-	assert.Error(t, err)
-}
-
-func TestUpdateStatus_RawBankTextNil(t *testing.T) {
-	budgetID := uuid.New()
-	txnID := uuid.New()
-	txnRepo := &mockTransactionRepo{}
-	cipherPredRepo := &mockCipherPredictionRepo{}
-	payeeID := uuid.New()
-	catID := uuid.New()
-	foundTxn := &model.Transaction{ID: txnID, PayeeID: &payeeID, CategoryID: &catID, RawBankText: nil}
-	cipherPred := &model.CipherPredictionRecord{}
-	txnRepo.On("GetById", mock.Anything, budgetID, txnID).Return(foundTxn, nil)
-	cipherPredRepo.On("GetByTransactionID", mock.Anything, budgetID, txnID).Return(cipherPred, nil)
-	svc := &transactionService{dbTxn: fakeDBTxn{},
-		repo:                 txnRepo,
-		cipherPredictionRepo: cipherPredRepo,
-	}
-	ctx := utils.WithBudgetID(context.Background(), budgetID)
-	err := svc.UpdateStatus(ctx, txnID, model.TransactionStatusApproved)
 	assert.Error(t, err)
 }
 

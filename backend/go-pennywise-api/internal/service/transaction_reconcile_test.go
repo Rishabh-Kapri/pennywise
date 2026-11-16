@@ -166,10 +166,8 @@ func TestReconcileTransfer(t *testing.T) {
 				if tt.wasTransfer && !tt.isTransfer {
 					assert.Nil(t, newTxn.TransferAccountID)
 					assert.Nil(t, newTxn.TransferTransactionID)
-					// assert.Nil(t, transferTxnId)
 				}
 				if tt.isTransfer {
-					// assert.NotNil(t, transferTxnId)
 					assert.Equal(t, transferAccountId, *newTxn.TransferAccountID)
 				}
 			}
