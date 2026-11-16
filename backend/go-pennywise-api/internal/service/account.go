@@ -41,20 +41,12 @@ func (s *accountService) Search(ctx context.Context, query string) ([]model.Acco
 	return s.repo.Search(ctx, budgetId, query)
 }
 
-// validAccountTypes mirrors the account types the clients offer.
-var validAccountTypes = map[string]bool{
-	"checking": true, "savings": true, "creditCard": true,
-	"asset": true, "liability": true,
-	"loan": true, "mortgage": true, "autoLoan": true,
-	"studentLoan": true, "personalLoan": true, "medicalDebt": true,
-}
-
 func (s *accountService) Create(ctx context.Context, account model.Account) (*model.Account, error) {
 	account.Name = strings.TrimSpace(account.Name)
 	if account.Name == "" {
 		return nil, errors.New("account name is required")
 	}
-	if !validAccountTypes[account.Type] {
+	if !model.ValidAccountType(account.Type) {
 		return nil, errors.New("invalid account type: " + account.Type)
 	}
 	account.Bank = strings.ToLower(strings.TrimSpace(account.Bank))
@@ -66,38 +58,42 @@ func (s *accountService) Create(ctx context.Context, account model.Account) (*mo
 		return nil, err
 	}
 
-	var createdAcc *model.Account
+	var created *model.Account
 	err := s.dbTxn.Do(ctx, func(ctx context.Context) error {
-		// 1. create account
-		acc, err := s.repo.Create(ctx, account)
-		if err != nil {
-			return errs.Wrap(errs.CodeAccountCreateFailed, "error creating account", err)
-		}
-		createdAcc = acc
-
-		// 2. create transfer payee for the account
-		transferPayee := model.Payee{
-			Name:              "Transfer : " + account.Name,
-			BudgetID:          budgetId,
-			TransferAccountID: &createdAcc.ID,
-		}
-		createdPayee, err := s.payeeRepo.Create(ctx, transferPayee)
-		if err != nil {
-			return errs.Wrap(errs.CodeAccountCreateFailed, "error creating transfer payee", err)
-		}
-
-		// 3. update account with transfer payee id
-		err = s.repo.UpdateTransferPayee(ctx, createdAcc.ID, createdPayee.ID)
-		if err != nil {
-			return errs.Wrap(errs.CodeAccountCreateFailed, "error updating transfer payee", err)
-		}
-
-		return nil
+		var err error
+		created, _, err = createAccount(ctx, s.repo, s.payeeRepo, account)
+		return err
 	})
 	if err != nil {
 		return nil, err
 	}
-	return createdAcc, nil
+	return created, nil
+}
+
+// createAccount creates an account and the transfer payee that moves money
+// into it. Run it inside a database transaction.
+func createAccount(
+	ctx context.Context,
+	accounts repository.AccountRepository,
+	payees repository.PayeesRepository,
+	account model.Account,
+) (*model.Account, *model.Payee, error) {
+	created, err := accounts.Create(ctx, account)
+	if err != nil {
+		return nil, nil, errs.Wrap(errs.CodeAccountCreateFailed, "error creating account", err)
+	}
+	transferPayee, err := payees.Create(ctx, model.Payee{
+		Name:              model.TransferPayeeName(account.Name),
+		BudgetID:          account.BudgetID,
+		TransferAccountID: &created.ID,
+	})
+	if err != nil {
+		return nil, nil, errs.Wrap(errs.CodeAccountCreateFailed, "error creating transfer payee", err)
+	}
+	if err := accounts.UpdateTransferPayee(ctx, created.ID, transferPayee.ID); err != nil {
+		return nil, nil, errs.Wrap(errs.CodeAccountCreateFailed, "error updating transfer payee", err)
+	}
+	return created, transferPayee, nil
 }
 
 // checkSuffix validates an account's last-digits suffix: 2-6 digits, and not
@@ -154,7 +150,7 @@ func (s *accountService) Update(ctx context.Context, id uuid.UUID, account model
 	}
 
 	if updated.TransferPayeeID != nil && renamedFrom != updated.Name {
-		err := s.payeeRepo.Update(ctx, budgetId, *updated.TransferPayeeID, model.Payee{Name: "Transfer : " + updated.Name})
+		err := s.payeeRepo.Update(ctx, budgetId, *updated.TransferPayeeID, model.Payee{Name: model.TransferPayeeName(updated.Name)})
 		if err != nil {
 			return nil, errs.Wrap(errs.CodeAccountCreateFailed, "account updated but its transfer payee could not be renamed", err)
 		}

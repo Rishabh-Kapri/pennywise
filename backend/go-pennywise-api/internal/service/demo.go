@@ -102,30 +102,22 @@ func (s *demoService) seedDemoUser(ctx context.Context) (*model.UserWithCredenti
 			return fmt.Errorf("error creating auth user: %w", err)
 		}
 
-		budget, err := s.budgetRepo.Create(ctx, demoBudgetName, authUser.ID)
+		budget, categoryIDs, err := newBudget(ctx, budgetRepos{
+			budgets:    s.budgetRepo,
+			catGroups:  s.catGroupRepo,
+			categories: s.categoryRepo,
+			payees:     s.payeeRepo,
+		}, demoBudgetName, authUser.ID, demoTemplateGroups(), true)
 		if err != nil {
 			return fmt.Errorf("error creating demo budget: %w", err)
 		}
-
-		categoryIDs, metadata, err := s.seedCategories(ctx, budget.ID)
+		payeeIDs, accountIDs, err := s.seedAccountsAndPayees(ctx, budget.ID)
 		if err != nil {
 			return err
 		}
-		payeeIDs, accountIDs, err := s.seedAccountsAndPayees(ctx, budget.ID, metadata)
-		if err != nil {
-			return err
-		}
+		payeeIDs[demoStartingBal] = budget.Metadata.StartingBalPayeeID
 		if err := s.seedPayeeRules(ctx, budget.ID, payeeIDs, categoryIDs); err != nil {
 			return err
-		}
-
-		err = s.budgetRepo.UpdateById(ctx, budget.ID, model.Budget{
-			Name:       demoBudgetName,
-			IsSelected: true, // first budget for this user
-			Metadata:   *metadata,
-		})
-		if err != nil {
-			return fmt.Errorf("error updating budget metadata: %w", err)
 		}
 
 		now := time.Now()
@@ -226,58 +218,6 @@ func (s *demoService) seedDemoUser(ctx context.Context) (*model.UserWithCredenti
 	return userWithCreds, nil
 }
 
-// seedCategories creates the system groups (internal master + inflow, credit
-// card payments) and the demo template groups, mirroring budgetService.Create.
-func (s *demoService) seedCategories(
-	ctx context.Context,
-	budgetID uuid.UUID,
-) (map[string]uuid.UUID, *model.BudgetMetadata, error) {
-	masterGroup, err := s.catGroupRepo.Create(ctx, model.CategoryGroup{
-		Name: "Internal Master Category", BudgetID: budgetID, IsSystem: true,
-	})
-	if err != nil {
-		return nil, nil, fmt.Errorf("error creating internal master category group: %w", err)
-	}
-	ccGroup, err := s.catGroupRepo.Create(ctx, model.CategoryGroup{
-		Name: "Credit Card Payments", BudgetID: budgetID, IsSystem: true,
-	})
-	if err != nil {
-		return nil, nil, fmt.Errorf("error creating credit card category group: %w", err)
-	}
-	inflowCat, err := s.categoryRepo.Create(ctx, model.Category{
-		Name: demoInflowCategory, BudgetID: budgetID, CategoryGroupID: masterGroup.ID, IsSystem: true,
-	})
-	if err != nil {
-		return nil, nil, fmt.Errorf("error creating inflow category: %w", err)
-	}
-
-	categoryIDs := map[string]uuid.UUID{demoInflowCategory: inflowCat.ID}
-	for _, templateGroup := range demoTemplateGroups() {
-		group, err := s.catGroupRepo.Create(ctx, model.CategoryGroup{
-			Name: templateGroup.Name, BudgetID: budgetID,
-		})
-		if err != nil {
-			return nil, nil, fmt.Errorf("error creating category group %q: %w", templateGroup.Name, err)
-		}
-		for _, templateCategory := range templateGroup.Categories {
-			category, err := s.categoryRepo.Create(ctx, model.Category{
-				Name: templateCategory.Name, BudgetID: budgetID, CategoryGroupID: group.ID,
-			})
-			if err != nil {
-				return nil, nil, fmt.Errorf("error creating category %q: %w", templateCategory.Name, err)
-			}
-			categoryIDs[category.Name] = category.ID
-		}
-	}
-
-	metadata := &model.BudgetMetadata{
-		InflowCategoryID: inflowCat.ID,
-		CCGroupID:        ccGroup.ID,
-		// StartingBalPayeeID is filled in by seedAccountsAndPayees
-	}
-	return categoryIDs, metadata, nil
-}
-
 // seedPayeeRules maps UPI handles / bank narration strings to seeded payees
 // and categories so the demo shows rule-based classification in action.
 func (s *demoService) seedPayeeRules(
@@ -308,40 +248,19 @@ func (s *demoService) seedPayeeRules(
 	return nil
 }
 
-// seedAccountsAndPayees creates the demo accounts with their transfer payees
-// (mirroring accountService.Create), the starting balance payee, and the
-// regular demo payees.
+// seedAccountsAndPayees creates the demo accounts, each with its transfer
+// payee, and the regular demo payees.
 func (s *demoService) seedAccountsAndPayees(
 	ctx context.Context,
 	budgetID uuid.UUID,
-	metadata *model.BudgetMetadata,
 ) (payeeIDs, accountIDs map[string]uuid.UUID, err error) {
-	startingPayee, err := s.payeeRepo.Create(ctx, model.Payee{
-		Name: demoStartingBal, BudgetID: budgetID,
-	})
-	if err != nil {
-		return nil, nil, fmt.Errorf("error creating starting balance payee: %w", err)
-	}
-	metadata.StartingBalPayeeID = startingPayee.ID
-	payeeIDs = map[string]uuid.UUID{demoStartingBal: startingPayee.ID}
-
+	payeeIDs = make(map[string]uuid.UUID)
 	accountIDs = make(map[string]uuid.UUID)
 	for _, account := range demoAccounts() {
 		account.BudgetID = budgetID
-		created, err := s.accountRepo.Create(ctx, account)
+		created, transferPayee, err := createAccount(ctx, s.accountRepo, s.payeeRepo, account)
 		if err != nil {
 			return nil, nil, fmt.Errorf("error creating account %q: %w", account.Name, err)
-		}
-		transferPayee, err := s.payeeRepo.Create(ctx, model.Payee{
-			Name:              "Transfer : " + account.Name,
-			BudgetID:          budgetID,
-			TransferAccountID: &created.ID,
-		})
-		if err != nil {
-			return nil, nil, fmt.Errorf("error creating transfer payee for %q: %w", account.Name, err)
-		}
-		if err := s.accountRepo.UpdateTransferPayee(ctx, created.ID, transferPayee.ID); err != nil {
-			return nil, nil, fmt.Errorf("error linking transfer payee for %q: %w", account.Name, err)
 		}
 		accountIDs[account.Name] = created.ID
 		payeeIDs[transferPayee.Name] = transferPayee.ID

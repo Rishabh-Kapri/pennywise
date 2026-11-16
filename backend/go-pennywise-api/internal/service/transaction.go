@@ -167,16 +167,8 @@ func (s *transactionService) validateCategory(
 	amount float64,
 ) error {
 	// budget -> budget transfers don't have a category
-	isBudgetAcount := account.Type == "savings" || account.Type == "checking" || account.Type == "creditCard"
-	isTransferBudget := false
-	if transferAccount != nil && isBudgetAcount {
-		isTransferBudget = transferAccount.Type == "savings" || transferAccount.Type == "checking" ||
-			transferAccount.Type == "creditCard"
-	}
-	if isBudgetAcount && isTransferBudget {
-		if categoryID != nil {
-			return errs.New(errs.CodeInvalidArgument, "category is not allowed for budget transfers")
-		}
+	if account.OnBudget() && transferAccount != nil && transferAccount.OnBudget() && categoryID != nil {
+		return errs.New(errs.CodeInvalidArgument, "category is not allowed for budget transfers")
 	}
 	if categoryID != nil && *categoryID == inflowCategoryID && amount < 0 {
 		return errs.New(errs.CodeInvalidArgument, "negative inflow category amounts are not allowed")

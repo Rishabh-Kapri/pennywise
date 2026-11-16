@@ -11,8 +11,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// budgetAccountTypes are the on-budget account types; everything else
-// (asset, liability and the loan types) is tracked off-budget.
+// budgetAccountTypes are the on-budget account types (model.Account.OnBudget);
+// everything else (asset, liability and the loan types) is tracked off-budget.
 const budgetAccountTypes = `('checking', 'savings', 'creditCard')`
 
 // netWorthDebtTypes are the account types whose transactions sum to their

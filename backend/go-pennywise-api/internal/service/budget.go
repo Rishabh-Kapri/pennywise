@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 
@@ -41,126 +40,127 @@ func (s *budgetService) GetAll(ctx context.Context, userID uuid.UUID) ([]model.B
 }
 
 func (s *budgetService) Create(ctx context.Context, input model.CreateBudgetRequest, userID uuid.UUID) (*model.Budget, error) {
-	var createdBudget *model.Budget
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
 		return nil, fmt.Errorf("budget name is required")
 	}
 	existingBudgets, err := s.repo.GetAll(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("budgetService.Create; error checking existing budgets: %v", err)
+		return nil, fmt.Errorf("error checking existing budgets: %w", err)
 	}
 	isFirstBudget := len(existingBudgets) == 0
 
+	var created *model.Budget
 	err = s.dbTxn.Do(ctx, func(ctx context.Context) error {
-		// 1. create budget
-		budget, err := s.repo.Create(ctx, name, userID)
-		if err != nil {
-			return fmt.Errorf("budgetService.Create; error creating budget: %v", err)
-		}
-		createdBudget = budget
-		// 2. create master interal category group for credit card and inflow category group
-		catGroup := model.CategoryGroup{
-			Name:     "Internal Master Category",
-			BudgetID: budget.ID,
-			Hidden:   false,
-			IsSystem: true,
-		}
-		createdGroup, err := s.catGroupRepo.Create(ctx, catGroup)
-		logger.Logger(ctx).Debug("created internal master category group", "group", createdGroup)
-		if err != nil {
-			return fmt.Errorf("budgetService.Create; error creating internal master category group: %v", err)
-		}
-		ccGroup := model.CategoryGroup{
-			Name:     "Credit Card Payments",
-			BudgetID: budget.ID,
-			Hidden:   false,
-			IsSystem: true,
-		}
-		createdCCGroup, err := s.catGroupRepo.Create(ctx, ccGroup)
-		if err != nil {
-			return fmt.Errorf("budgetService.Create; error creating internal cc category group: %v", err)
-		}
-		// 3. create starting balance payee
-		startingBalPayee := model.Payee{
-			Name:     "Starting Balance",
-			BudgetID: budget.ID,
-		}
-		createdPayee, err := s.payeeRepo.Create(ctx, startingBalPayee)
-		if err != nil {
-			return fmt.Errorf("budgetService.Create; error creating internal starting balance payee: %v", err)
-		}
-		// 4. create master internal category
-		cat := model.Category{
-			Name:            "Inflow: Ready to Assign",
-			BudgetID:        budget.ID,
-			CategoryGroupID: createdGroup.ID,
-			Hidden:          false,
-			IsSystem:        true,
-		}
-		logger.Logger(ctx).Debug("created inflow category", "category", cat)
-		createdCat, err := s.catRepo.Create(ctx, cat)
-		if err != nil {
-			return fmt.Errorf("budgetService.Create; error creating internal master category: %v", err)
-		}
-
-		for _, templateGroup := range input.TemplateGroups {
-			groupName := strings.TrimSpace(templateGroup.Name)
-			if groupName == "" {
-				continue
-			}
-
-			createdTemplateGroup, err := s.catGroupRepo.Create(ctx, model.CategoryGroup{
-				Name:     groupName,
-				BudgetID: budget.ID,
-				Hidden:   false,
-				IsSystem: false,
-			})
-			if err != nil {
-				return fmt.Errorf("budgetService.Create; error creating template category group: %v", err)
-			}
-
-			for _, templateCategory := range templateGroup.Categories {
-				categoryName := strings.TrimSpace(templateCategory.Name)
-				if categoryName == "" {
-					continue
-				}
-
-				_, err = s.catRepo.Create(ctx, model.Category{
-					Name:            categoryName,
-					BudgetID:        budget.ID,
-					CategoryGroupID: createdTemplateGroup.ID,
-					Hidden:          false,
-					IsSystem:        false,
-				})
-				if err != nil {
-					return fmt.Errorf("budgetService.Create; error creating template category: %v", err)
-				}
-			}
-		}
-
-		// 5. update budget with metadata
-		updatedBudget := model.Budget{
-			Name:       budget.Name,
-			IsSelected: isFirstBudget,
-			Metadata: model.BudgetMetadata{
-				InflowCategoryID:   createdCat.ID,
-				CCGroupID:          createdCCGroup.ID,
-				StartingBalPayeeID: createdPayee.ID,
-			},
-		}
-		err = s.repo.UpdateById(ctx, budget.ID, updatedBudget)
-		if err != nil {
-			return fmt.Errorf("budgetService.Create; error updating budget metadata: %v", err)
-		}
-		createdBudget.IsSelected = updatedBudget.IsSelected
-		createdBudget.Metadata = updatedBudget.Metadata
-		return nil
+		var err error
+		created, _, err = newBudget(ctx, budgetRepos{
+			budgets:    s.repo,
+			catGroups:  s.catGroupRepo,
+			categories: s.catRepo,
+			payees:     s.payeeRepo,
+		}, name, userID, input.TemplateGroups, isFirstBudget)
+		return err
 	})
 	if err != nil {
 		return nil, err
 	}
-	return createdBudget, nil
+	return created, nil
+}
+
+// Every budget has an inflow category and a starting balance payee with these names.
+const (
+	inflowCategoryName       = "Inflow: Ready to Assign"
+	startingBalancePayeeName = "Starting Balance"
+)
+
+// budgetRepos are what creating a budget writes to.
+type budgetRepos struct {
+	budgets    repository.BudgetRepository
+	catGroups  repository.CategoryGroupRepository
+	categories repository.CategoryRepository
+	payees     repository.PayeesRepository
+}
+
+// newBudget creates a budget with what every budget has: the internal master
+// and credit card payments groups, the inflow category and the starting
+// balance payee, plus the template groups and categories. Run it inside a
+// database transaction. It returns the budget and the id of every category it
+// made (the inflow one included) by name.
+func newBudget(
+	ctx context.Context,
+	r budgetRepos,
+	name string,
+	userID uuid.UUID,
+	templates []model.BudgetTemplateGroup,
+	selected bool,
+) (*model.Budget, map[string]uuid.UUID, error) {
+	budget, err := r.budgets.Create(ctx, name, userID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error creating budget: %w", err)
+	}
+	masterGroup, err := r.catGroups.Create(ctx, model.CategoryGroup{
+		Name: "Internal Master Category", BudgetID: budget.ID, IsSystem: true,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("error creating internal master category group: %w", err)
+	}
+	ccGroup, err := r.catGroups.Create(ctx, model.CategoryGroup{
+		Name: "Credit Card Payments", BudgetID: budget.ID, IsSystem: true,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("error creating credit card category group: %w", err)
+	}
+	startingBalPayee, err := r.payees.Create(ctx, model.Payee{Name: startingBalancePayeeName, BudgetID: budget.ID})
+	if err != nil {
+		return nil, nil, fmt.Errorf("error creating starting balance payee: %w", err)
+	}
+	inflow, err := r.categories.Create(ctx, model.Category{
+		Name: inflowCategoryName, BudgetID: budget.ID, CategoryGroupID: masterGroup.ID, IsSystem: true,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("error creating inflow category: %w", err)
+	}
+
+	categoryIDs := map[string]uuid.UUID{inflow.Name: inflow.ID}
+	for _, templateGroup := range templates {
+		groupName := strings.TrimSpace(templateGroup.Name)
+		if groupName == "" {
+			continue
+		}
+		group, err := r.catGroups.Create(ctx, model.CategoryGroup{Name: groupName, BudgetID: budget.ID})
+		if err != nil {
+			return nil, nil, fmt.Errorf("error creating category group %q: %w", groupName, err)
+		}
+		for _, templateCategory := range templateGroup.Categories {
+			categoryName := strings.TrimSpace(templateCategory.Name)
+			if categoryName == "" {
+				continue
+			}
+			category, err := r.categories.Create(ctx, model.Category{
+				Name: categoryName, BudgetID: budget.ID, CategoryGroupID: group.ID,
+			})
+			if err != nil {
+				return nil, nil, fmt.Errorf("error creating category %q: %w", categoryName, err)
+			}
+			categoryIDs[categoryName] = category.ID
+		}
+	}
+
+	updated := model.Budget{
+		Name:       budget.Name,
+		IsSelected: selected,
+		Metadata: model.BudgetMetadata{
+			InflowCategoryID:   inflow.ID,
+			CCGroupID:          ccGroup.ID,
+			StartingBalPayeeID: startingBalPayee.ID,
+		},
+	}
+	if err := r.budgets.UpdateById(ctx, budget.ID, updated); err != nil {
+		return nil, nil, fmt.Errorf("error updating budget metadata: %w", err)
+	}
+	budget.IsSelected = updated.IsSelected
+	budget.Metadata = updated.Metadata
+	return budget, categoryIDs, nil
 }
 
 func (s *budgetService) UpdateById(ctx context.Context, id uuid.UUID, budget model.Budget) error {

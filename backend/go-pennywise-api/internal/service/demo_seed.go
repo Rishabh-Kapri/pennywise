@@ -18,18 +18,19 @@ const (
 	demoUserName   = "Demo User"
 	demoBudgetName = "Demo Budget"
 
-	demoInflowCategory = "Inflow: Ready to Assign"
-	demoStartingBal    = "Starting Balance"
+	demoInflowCategory = inflowCategoryName
+	demoStartingBal    = startingBalancePayeeName
 
 	demoCheckingAccount   = "HDFC Checking"
 	demoSavingsAccount    = "SBI Savings"
 	demoCreditCardAccount = "ICICI Credit Card"
 
-	demoCCTransferPayee = "Transfer : " + demoCreditCardAccount
-
 	// number of past months to seed in addition to the current month
 	demoSeedMonths = 3
 )
+
+// demoCCTransferPayee pays the demo credit card.
+var demoCCTransferPayee = model.TransferPayeeName(demoCreditCardAccount)
 
 func demoTemplateGroups() []model.BudgetTemplateGroup {
 	return []model.BudgetTemplateGroup{
@@ -454,9 +455,9 @@ func buildDemoSeedRows(
 			if !ok {
 				return nil, nil, fmt.Errorf("demo seed; account %q not found", demoCreditCardAccount)
 			}
-			sourcePayeeID, ok := payeeIDs["Transfer : "+spec.account]
+			sourcePayeeID, ok := payeeIDs[model.TransferPayeeName(spec.account)]
 			if !ok {
-				return nil, nil, fmt.Errorf("demo seed; payee %q not found", "Transfer : "+spec.account)
+				return nil, nil, fmt.Errorf("demo seed; payee %q not found", model.TransferPayeeName(spec.account))
 			}
 			counterpart := seedTxnRow{
 				id:                    uuid.New(),
