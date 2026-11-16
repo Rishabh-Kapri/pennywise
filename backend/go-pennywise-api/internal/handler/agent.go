@@ -8,7 +8,6 @@ import (
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 type AgentHandler struct {
@@ -34,9 +33,8 @@ func (h *AgentHandler) GetConversations(c *gin.Context) {
 func (h *AgentHandler) GetConversationMessages(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	id, err := parseQueryID(c, "id")
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	id, ok := pathID(c, "id")
+	if !ok {
 		return
 	}
 
@@ -70,9 +68,8 @@ func (h *AgentHandler) CreateRun(c *gin.Context) {
 func (h *AgentHandler) GetRun(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	id, err := parseQueryID(c, "id")
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	id, ok := pathID(c, "id")
+	if !ok {
 		return
 	}
 
@@ -88,9 +85,8 @@ func (h *AgentHandler) GetRun(c *gin.Context) {
 func (h *AgentHandler) CancelRun(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	id, err := parseQueryID(c, "id")
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	id, ok := pathID(c, "id")
+	if !ok {
 		return
 	}
 
@@ -106,9 +102,8 @@ func (h *AgentHandler) CancelRun(c *gin.Context) {
 func (h *AgentHandler) UpdateConversation(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	conversationId, err := parseQueryID(c, "conversationId")
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	conversationId, ok := pathID(c, "conversationId")
+	if !ok {
 		return
 	}
 
@@ -118,7 +113,7 @@ func (h *AgentHandler) UpdateConversation(c *gin.Context) {
 		return
 	}
 
-	err = h.service.UpdateConversation(ctx, conversationId, data)
+	err := h.service.UpdateConversation(ctx, conversationId, data)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -129,9 +124,8 @@ func (h *AgentHandler) UpdateConversation(c *gin.Context) {
 func (h *AgentHandler) DeleteConversation(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	conversationID, err := parseQueryID(c, "conversationId")
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	conversationID, ok := pathID(c, "conversationId")
+	if !ok {
 		return
 	}
 
@@ -147,9 +141,8 @@ func (h *AgentHandler) UpdateConversationMessageContent(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	// id is the conversation_message id
-	id, err := parseQueryID(c, "messageId")
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	id, ok := pathID(c, "messageId")
+	if !ok {
 		return
 	}
 
@@ -159,7 +152,7 @@ func (h *AgentHandler) UpdateConversationMessageContent(c *gin.Context) {
 		return
 	}
 
-	err = h.service.UpdateConversationMessageContent(ctx, id, data)
+	err := h.service.UpdateConversationMessageContent(ctx, id, data)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -170,9 +163,8 @@ func (h *AgentHandler) UpdateEntityMetadata(c *gin.Context) {
 	ctx := c.Request.Context()
 
 	entity := c.Param("entity")
-	id, err := parseQueryID(c, "id")
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	id, ok := pathID(c, "id")
+	if !ok {
 		return
 	}
 
@@ -190,25 +182,11 @@ func (h *AgentHandler) UpdateEntityMetadata(c *gin.Context) {
 		return
 	}
 
-	err = h.service.UpdateEntityMetadata(ctx, entity, id, data)
+	err := h.service.UpdateEntityMetadata(ctx, entity, id, data)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-}
-
-func parseQueryID(c *gin.Context, fieldName string) (uuid.UUID, error) {
-	id := c.Param(fieldName)
-	if id == "" {
-		return uuid.Nil, errs.New(errs.CodeInvalidArgument, "invalid query %s", fieldName)
-	}
-
-	parsedID, err := uuid.Parse(id)
-	if err != nil {
-		return uuid.Nil, errs.New(errs.CodeInvalidArgument, "invalid query %s", fieldName)
-	}
-
-	return parsedID, nil
 }
 
 func agentErrorStatus(err error) int {

@@ -117,10 +117,7 @@ func websocketMessageFromRedisValues(values map[string]any) (sharedModel.Message
 		return sharedModel.Message{}, fmt.Errorf("invalid conversationId: %w", err)
 	}
 
-	data, ok := firstValue(values, "data", "Data")
-	if !ok {
-		data = nil
-	}
+	data, _ := firstValue(values, "data", "Data")
 
 	dataJSON, err := json.Marshal(data)
 	if err != nil {

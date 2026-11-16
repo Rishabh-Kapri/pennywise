@@ -61,10 +61,6 @@ func (h *CategoryHandler) Search(c *gin.Context) {
 	ctx := c.Request.Context()
 	name := strings.TrimSpace(c.Query("name"))
 	logger.Logger(ctx).Debug("category search", "name", c.Query("name"))
-	// if name == "" {
-	// 	c.JSON(http.StatusBadRequest, gin.H{"error": "Name is needed"})
-	// 	return
-	// }
 	categories, err := h.service.Search(ctx, name)
 	logger.Logger(ctx).Debug("category search result", "error", err)
 	if err != nil {
