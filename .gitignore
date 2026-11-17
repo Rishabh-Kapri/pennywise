@@ -84,6 +84,7 @@ google-creds.json
 mise.toml
 
 # Go build outputs (go build ./cmd/api drops a binary named "api" in the module root)
+backend/vendor/
 backend/*/vendor/
 backend/cipher/api
 backend/go-pennywise-api/api

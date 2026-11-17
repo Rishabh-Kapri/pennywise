@@ -1,5 +1,16 @@
-import { Bank, CheckCircle, CircleNotch, Plus, WarningCircle } from '@phosphor-icons/react';
-import { useMemo, useState } from 'react';
+import {
+  Bank,
+  CheckCircle,
+  CircleNotch,
+  FileMagnifyingGlass,
+  LinkBreak,
+  LinkSimple,
+  NotePencil,
+  PencilSimple,
+  Plus,
+  WarningCircle,
+} from '@phosphor-icons/react';
+import { Fragment, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAppSelector } from '@/app/hooks';
 import { errorMessage, errorText, toast } from '@/utils';
@@ -7,17 +18,23 @@ import {
   signedAmount,
   type StatementCreateItem,
   type StatementCreateResult,
+  type StatementDifferenceRequest,
   type StatementRow,
+  type StatementRowEdit,
   type StatementSectionReconciliation,
 } from '../types/reconcile.types';
+import { accountEnding, formatPeriod, money } from '../statementIdentity';
+import type { Account } from '@/features/accounts/types/account.types';
+import { CategoryDropdown } from '@/features/transactions/components/popovers/CategoryPopover';
+import { PayeeDropdown } from '@/features/transactions/components/popovers/PayeePopover';
+import { AccountPicker } from './AccountPicker';
 import { CardSummary } from './CardSummary';
+import { DifferenceForm, LinkCandidates, RowEditor, RowPicker } from './LinkControls';
 import styles from './StatementReconcile.module.css';
 
 type Tab = 'missing' | 'matched' | 'ledgerOnly' | 'covered';
 
-// paise matter here: a reconciliation that rounds hides the 0.76 it is about
-const money = (value: number) =>
-  new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+// money keeps paise: a reconciliation that rounds hides the 0.76 it is about
 
 function Amount({ value }: { value: number }) {
   return (
@@ -28,12 +45,6 @@ function Amount({ value }: { value: number }) {
   );
 }
 
-// last four digits of a printed, usually masked, account number
-function accountEnding(number: string): string {
-  const digits = number.replace(/\D/g, '');
-  return digits.length >= 4 ? digits.slice(-4) : '';
-}
-
 // "01 Oct" from the API's YYYY-MM-DD; anything else is shown as it came
 function shortDay(date: string): string {
   const d = new Date(`${date}T00:00:00`);
@@ -41,17 +52,85 @@ function shortDay(date: string): string {
   return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
 }
 
-const CHARGE_BADGES: Record<string, string> = { tax: 'tax', interest: 'interest', fee: 'fee' };
-
-function RowBadges({ row }: { row: StatementRow }) {
+/** The row's date, with the time under it when the statement printed one. */
+function RowDate({ row }: { row: StatementRow }) {
   return (
     <>
+      {shortDay(row.date)}
+      {row.time && <span className={styles.rowTime}>{row.time}</span>}
+    </>
+  );
+}
+
+const CHARGE_BADGES: Record<string, string> = { tax: 'tax', interest: 'interest', fee: 'fee' };
+
+/** "+12 pts", or "−40 pts" for points taken back (a refund, a redemption). */
+const pointsLabel = (n: number) => `${n > 0 ? '+' : '−'}${Math.abs(n).toLocaleString('en-IN')} pts`;
+
+function RowBadges({
+  row,
+  onShowPage,
+  onShowLine,
+  onSetEMI,
+}: {
+  row: StatementRow;
+  onShowPage?: (page: number) => void;
+  onShowLine?: (line: number) => void;
+  onSetEMI?: (rowId: string, emi: boolean | null) => Promise<void>;
+}) {
+  return (
+    <>
+      {row.edited && (
+        <span
+          className={styles.badgeEdited}
+          title={`Read as "${row.edited.description}", ${row.edited.direction === 'debit' ? '−' : '+'}${money(row.edited.amount)} on ${shortDay(row.edited.date)}`}
+        >
+          corrected
+        </span>
+      )}
+      {row.emiOverride === false && onSetEMI ? (
+        <button
+          type="button"
+          className={styles.pageButton}
+          title="You said this isn't an EMI instalment. Undo puts it back under Covered by EMI."
+          onClick={() => void onSetEMI(row.id, null)}
+        >
+          not an EMI · Undo
+        </button>
+      ) : null}
+      {onShowPage && row.page ? (
+        <button
+          type="button"
+          className={styles.pageButton}
+          title="Show this page of the PDF"
+          onClick={() => onShowPage(row.page!)}
+        >
+          <FileMagnifyingGlass size={13} />
+          p. {row.page}
+        </button>
+      ) : null}
+      {onShowLine && row.line ? (
+        <button
+          type="button"
+          className={styles.pageButton}
+          title="Show this line of the CSV"
+          onClick={() => onShowLine(row.line!)}
+        >
+          <FileMagnifyingGlass size={13} />
+          line {row.line}
+        </button>
+      ) : null}
       {row.valueDateMismatch && row.valueDate && (
         <span className={styles.badge} title="The value date printed in the narration is days away from the row's date">
           value date {shortDay(row.valueDate)}
         </span>
       )}
       {row.chargeKind && <span className={styles.badge}>{CHARGE_BADGES[row.chargeKind]}</span>}
+      {row.rewardPoints ? (
+        <span className={styles.badgeMuted} title="Reward points the statement printed for this row">
+          {pointsLabel(row.rewardPoints)}
+        </span>
+      ) : null}
       {row.reference && <span className={styles.badgeMuted}>Ref {row.reference}</span>}
     </>
   );
@@ -61,34 +140,54 @@ interface RowDraft {
   selected: boolean;
   payeeName: string;
   categoryId: string;
-}
-
-// "1 Oct – 31 Oct 2026"; the API sends YYYY-MM-DD, or nothing when the
-// statement didn't say
-function formatPeriod(start: string, end: string): string {
-  const parse = (d: string) => (d ? new Date(`${d}T00:00:00`) : null);
-  const from = parse(start);
-  const to = parse(end);
-  if (!from || !to || Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) return '';
-  const dayMonth = { day: 'numeric', month: 'short' } as const;
-  const sameYear = from.getFullYear() === to.getFullYear();
-  const left = from.toLocaleDateString(undefined, sameYear ? dayMonth : { ...dayMonth, year: 'numeric' });
-  const right = to.toLocaleDateString(undefined, { ...dayMonth, year: 'numeric' });
-  return `${left} – ${right}`;
+  note: string;
 }
 
 interface Props {
   section: StatementSectionReconciliation;
-  accounts: { id?: string; name: string }[];
+  accounts: Account[];
   onAccountChange: (accountId: string | null) => Promise<void>;
   onCreate: (items: StatementCreateItem[]) => Promise<StatementCreateResult>;
+  /** pair a row with some of the account's transactions by hand, and undo it */
+  onLink: (rowId: string, transactionIds: string[]) => Promise<void>;
+  /** link several rows and transactions together */
+  onLinkMany: (rowIds: string[], transactionIds: string[]) => Promise<void>;
+  onUnlink: (rowId: string) => Promise<void>;
+  /** correct a row read wrong, and put back what was read */
+  onEditRow: (rowId: string, edit: StatementRowEdit) => Promise<void>;
+  onRevertRow: (rowId: string) => Promise<void>;
+  /** book what a linked row's transactions are short of it */
+  onAddDifference: (rowId: string, body: StatementDifferenceRequest) => Promise<void>;
+  /** move a row in or out of Covered by EMI; null goes back to what its text says */
+  onSetEMI: (rowId: string, emi: boolean | null) => Promise<void>;
+  /** name the account and period in the section's header: the page header
+   * already does when the statement has one section */
+  showIdentity?: boolean;
+  /** set when the PDF is kept: rows open it at the page they were read from */
+  onShowPage?: (page: number) => void;
+  onShowLine?: (line: number) => void;
 }
 
-export function SectionReconcile({ section, accounts, onAccountChange, onCreate }: Props) {
-  const payees = useAppSelector((state) => state.payees.allPayees);
+export function SectionReconcile({
+  section,
+  accounts,
+  onAccountChange,
+  onCreate,
+  onLink,
+  onLinkMany,
+  onUnlink,
+  onEditRow,
+  onRevertRow,
+  onAddDifference,
+  onSetEMI,
+  showIdentity = true,
+  onShowPage,
+  onShowLine,
+}: Props) {
   const categories = useAppSelector((state) => state.categories.allCategories);
-  const visibleCategories = useMemo(
-    () => categories.filter((c) => !c.deleted && !c.hidden && c.id).sort((a, b) => a.name.localeCompare(b.name)),
+  // the picker shows a category by name; drafts hold its id
+  const categoryName = useMemo(
+    () => Object.fromEntries(categories.filter((c) => c.id).map((c) => [c.id!, c.name])) as Record<string, string>,
     [categories],
   );
 
@@ -96,20 +195,103 @@ export function SectionReconcile({ section, accounts, onAccountChange, onCreate 
   const [drafts, setDrafts] = useState<Record<string, RowDraft>>({});
   const [busy, setBusy] = useState(false);
   const [savingAccount, setSavingAccount] = useState(false);
+  // the row whose link list is open: a missing one, or a linked one short of its amount
+  const [linking, setLinking] = useState<string | null>(null);
+  const [unlinking, setUnlinking] = useState<string | null>(null);
+  // the row being corrected, the ledger transaction whose row list is open,
+  // and the EMI lines ticked to link together
+  const [editing, setEditing] = useState<string | null>(null);
+  // the missing row whose note field was just opened
+  const [noting, setNoting] = useState<string | null>(null);
+  const [pickingFor, setPickingFor] = useState<string | null>(null);
+  const [linkingSelected, setLinkingSelected] = useState(false);
+  const [coveredPicked, setCoveredPicked] = useState<string[]>([]);
+  const [linkingCovered, setLinkingCovered] = useState(false);
+
+  const linkMany = async (rowIds: string[], transactionIds: string[]) => {
+    await onLinkMany(rowIds, transactionIds);
+    setPickingFor(null);
+    setLinkingSelected(false);
+    setLinkingCovered(false);
+    setCoveredPicked([]);
+    // the linked rows leave Missing; the other rows keep what was typed
+    setTab('matched');
+  };
+
+  const editor = (row: StatementRow, colSpan: number) =>
+    editing === row.id ? (
+      <tr className={styles.linkRow}>
+        <td colSpan={colSpan}>
+          <RowEditor
+            row={row}
+            onSave={(edit) => onEditRow(row.id, edit)}
+            onRevert={() => onRevertRow(row.id)}
+            onCancel={() => setEditing(null)}
+          />
+        </td>
+      </tr>
+    ) : null;
+
+  const editButton = (row: StatementRow) => (
+    <button
+      type="button"
+      className={`${styles.iconButton} ${editing === row.id ? styles.iconButtonActive : ''}`}
+      title="Correct this row: it was read wrong"
+      aria-label={`Correct ${row.description}`}
+      aria-expanded={editing === row.id}
+      onClick={() => setEditing(editing === row.id ? null : row.id)}
+    >
+      <PencilSimple size={17} />
+    </button>
+  );
+
+  const link = async (rowId: string, transactionIds: string[]) => {
+    await onLink(rowId, transactionIds);
+    setLinking(null);
+    setTab('matched');
+  };
+
+  const unlink = async (rowId: string) => {
+    setUnlinking(rowId);
+    try {
+      await onUnlink(rowId);
+    } catch (err) {
+      toast.error("Couldn't unlink", { description: errorMessage(err, 'Try again.') });
+    } finally {
+      setUnlinking(null);
+    }
+  };
 
   // a charge row starts with the category the API suggested for it
+  // and the payee an earlier statement's same line was given
   const suggested = useMemo(
-    () => Object.fromEntries(section.missing.map((r) => [r.id, r.suggestedCategoryId ?? ''])),
+    () =>
+      Object.fromEntries(
+        section.missing.map((r) => [r.id, { categoryId: r.suggestedCategoryId ?? '', payee: r.suggestedPayeeName }]),
+      ),
     [section.missing],
   );
   const draftFor = (rowId: string, fallbackPayee: string): RowDraft =>
-    drafts[rowId] ?? { selected: false, payeeName: fallbackPayee, categoryId: suggested[rowId] ?? '' };
+    drafts[rowId] ?? {
+      selected: false,
+      payeeName: suggested[rowId]?.payee || fallbackPayee,
+      categoryId: suggested[rowId]?.categoryId ?? '',
+      note: '',
+    };
 
   const updateDraft = (rowId: string, fallbackPayee: string, patch: Partial<RowDraft>) =>
     setDrafts((prev) => ({ ...prev, [rowId]: { ...draftFor(rowId, fallbackPayee), ...patch } }));
 
   const selectedRows = section.missing.filter((r) => draftFor(r.id, r.payee).selected);
   const allSelected = section.missing.length > 0 && selectedRows.length === section.missing.length;
+
+  // The selection bar's pickers set a payee or category on every ticked row.
+  const applyToSelected = (patch: Partial<RowDraft>) =>
+    setDrafts((prev) => {
+      const out = { ...prev };
+      for (const r of selectedRows) out[r.id] = { ...draftFor(r.id, r.payee), ...patch };
+      return out;
+    });
 
   const toggleAll = () => {
     const next = !allSelected;
@@ -131,6 +313,7 @@ export function SectionReconcile({ section, accounts, onAccountChange, onCreate 
             rowId: r.id,
             payeeName: d.payeeName.trim() || undefined,
             categoryId: d.categoryId || undefined,
+            note: d.note.trim() || undefined,
           };
         }),
       );
@@ -164,21 +347,18 @@ export function SectionReconcile({ section, accounts, onAccountChange, onCreate 
   const label = [section.accountLabel, ending && `ending ${ending}`].filter(Boolean).join(' ');
   const period = formatPeriod(section.periodStart, section.periodEnd);
   const facts = [label, period, `${section.rowCount} rows`, section.currency].filter(Boolean).join(' · ');
+  const headerFacts = showIdentity ? facts : [`${section.rowCount} rows`, section.currency].filter(Boolean).join(' · ');
 
   const accountSelect = (
-    <select
-      className={styles.accountSelect}
-      aria-label="Account"
-      value={section.accountId ?? ''}
-      disabled={savingAccount}
-      onChange={(e) => void changeAccount(e.target.value)}>
-      <option value="">Choose an account…</option>
-      {accounts.map((acc) => (
-        <option key={acc.id} value={acc.id}>
-          {acc.name}
-        </option>
-      ))}
-    </select>
+    <div className={styles.accountSelect}>
+      <AccountPicker
+        accounts={accounts}
+        value={section.accountId ?? ''}
+        disabled={savingAccount}
+        noneLabel={section.accountId ? 'No account' : undefined}
+        onChange={(id) => void changeAccount(id)}
+      />
+    </div>
   );
 
   if (!section.accountId) {
@@ -189,8 +369,8 @@ export function SectionReconcile({ section, accounts, onAccountChange, onCreate 
         <p className={styles.muted}>{facts}</p>
         {ending && (
           <p className={styles.muted}>
-            No account ends in {ending}. Set an account's last digits to {ending} and future statements will be
-            matched to it automatically.
+            No account ends in {ending}. Set an account's last digits to {ending} and future statements will be matched
+            to it automatically.
           </p>
         )}
         {accountSelect}
@@ -211,7 +391,7 @@ export function SectionReconcile({ section, accounts, onAccountChange, onCreate 
   return (
     <section className={styles.section}>
       <header className={styles.sectionHeader}>
-        <p className={styles.muted}>{facts}</p>
+        <p className={styles.muted}>{headerFacts}</p>
         <label className={styles.inlineField}>
           <span>Account</span>
           {accountSelect}
@@ -231,8 +411,8 @@ export function SectionReconcile({ section, accounts, onAccountChange, onCreate 
             <WarningCircle size={18} />
             <span>
               The rows add up to {money(section.balanceCheck.computed)}, but the statement closes at{' '}
-              {money(section.balanceCheck.reported)} (off by {money(Math.abs(section.balanceCheck.difference))}). A
-              row may have been missed or misread.
+              {money(section.balanceCheck.reported)} (off by {money(Math.abs(section.balanceCheck.difference))}). A row
+              may have been missed or misread.
             </span>
           </p>
         ))}
@@ -245,7 +425,8 @@ export function SectionReconcile({ section, accounts, onAccountChange, onCreate 
             role="tab"
             aria-selected={tab === t.id}
             className={`${styles.tab} ${tab === t.id ? styles.tabActive : ''}`}
-            onClick={() => setTab(t.id)}>
+            onClick={() => setTab(t.id)}
+          >
             {t.label}
             <span className={`${styles.count} ${t.id === 'missing' && t.count > 0 ? styles.countAttention : ''}`}>
               {t.count}
@@ -267,13 +448,17 @@ export function SectionReconcile({ section, accounts, onAccountChange, onCreate 
               These are on the statement but not in Pennywise. Tick the ones to add; they're created unapproved so you
               can review them.
             </p>
-            <datalist id={`payees-${section.index}`}>
-              {payees.map((p) => (
-                <option key={p.id} value={p.name} />
-              ))}
-            </datalist>
             <div className={styles.tableWrap}>
-              <table className={styles.table}>
+              <table className={`${styles.table} ${styles.missingTable}`}>
+                <colgroup>
+                  <col className={styles.colCheck} />
+                  <col className={styles.colDate} />
+                  <col />
+                  <col className={styles.colPayee} />
+                  <col className={styles.colCategory} />
+                  <col className={styles.colAmount} />
+                  <col className={styles.colActions} />
+                </colgroup>
                 <thead>
                   <tr>
                     <th className={styles.checkCell}>
@@ -285,85 +470,223 @@ export function SectionReconcile({ section, accounts, onAccountChange, onCreate 
                       />
                     </th>
                     <th>Date</th>
-                    <th>Statement text</th>
+                    <th>On the statement</th>
                     <th>Payee</th>
                     <th>Category</th>
                     <th className={styles.num}>Amount</th>
+                    <th className={styles.actionCell}>
+                      <span className={styles.srOnly}>Note, correct or link</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {section.missing.map((row) => {
                     const d = draftFor(row.id, row.payee);
                     return (
-                      <tr key={row.id} className={d.selected ? styles.rowSelected : undefined}>
-                        <td className={styles.checkCell}>
-                          <input
-                            type="checkbox"
-                            aria-label={`Select ${row.description}`}
-                            checked={d.selected}
-                            onChange={(e) => updateDraft(row.id, row.payee, { selected: e.target.checked })}
-                          />
-                        </td>
-                        <td className={styles.dateCell}>{shortDay(row.date)}</td>
-                        <td>
-                          <span className={styles.description} title={row.rawDescription || row.description}>
-                            {row.description}
-                          </span>
-                          <RowBadges row={row} />
-                          {row.directionCorrected && (
-                            <span
-                              className={styles.badge}
-                              title="The running balance showed debit and credit were reversed">
-                              direction fixed
+                      <Fragment key={row.id}>
+                        <tr className={d.selected ? styles.rowSelected : undefined}>
+                          <td className={styles.checkCell}>
+                            <input
+                              type="checkbox"
+                              aria-label={`Select ${row.description}`}
+                              checked={d.selected}
+                              onChange={(e) => updateDraft(row.id, row.payee, { selected: e.target.checked })}
+                            />
+                          </td>
+                          <td className={styles.dateCell}>
+                            <RowDate row={row} />
+                          </td>
+                          <td className={styles.textCell}>
+                            <span className={styles.rowTitle} title={row.rawDescription || row.description}>
+                              {row.description}
                             </span>
-                          )}
-                        </td>
-                        <td>
-                          <input
-                            className={styles.cellInput}
-                            list={`payees-${section.index}`}
-                            value={d.payeeName}
-                            placeholder="Payee"
-                            onChange={(e) => updateDraft(row.id, row.payee, { payeeName: e.target.value })}
-                          />
-                        </td>
-                        <td>
-                          <select
-                            className={styles.cellInput}
-                            value={d.categoryId}
-                            onChange={(e) => updateDraft(row.id, row.payee, { categoryId: e.target.value })}>
-                            <option value="">Uncategorized</option>
-                            {visibleCategories.map((c) => (
-                              <option key={c.id} value={c.id}>
-                                {c.name}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className={styles.num}>
-                          <Amount value={signedAmount(row)} />
-                        </td>
-                      </tr>
+                            <div className={styles.rowMeta}>
+                              <RowBadges
+                                row={row}
+                                onShowPage={onShowPage}
+                                onShowLine={onShowLine}
+                                onSetEMI={onSetEMI}
+                              />
+                              {row.directionCorrected && (
+                                <span title="The running balance showed debit and credit were reversed">
+                                  direction fixed
+                                </span>
+                              )}
+                              {row.suggestedPayeeName && (
+                                <span title="The payee and category you chose for this line on an earlier statement">
+                                  filled from last time
+                                </span>
+                              )}
+                              {d.note && noting !== row.id && (
+                                <button type="button" className={styles.metaNote} onClick={() => setNoting(row.id)}>
+                                  “{d.note}”
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                          <td className={styles.payeeCell}>
+                            <PayeeDropdown
+                              variant="form"
+                              value={d.payeeName}
+                              placeholder="Choose a payee"
+                              onClick={(_, name) => updateDraft(row.id, row.payee, { payeeName: name })}
+                              onCreate={(name) => updateDraft(row.id, row.payee, { payeeName: name })}
+                            />
+                          </td>
+                          <td className={styles.categoryCell}>
+                            <CategoryDropdown
+                              variant="form"
+                              value={categoryName[d.categoryId] ?? ''}
+                              placeholder="Choose a category"
+                              onClick={(id) => updateDraft(row.id, row.payee, { categoryId: id })}
+                            />
+                          </td>
+                          <td className={`${styles.num} ${styles.amountCell}`}>
+                            <Amount value={signedAmount(row)} />
+                          </td>
+                          <td className={styles.actionCell}>
+                            <div className={styles.rowActionsQuiet}>
+                              <button
+                                type="button"
+                                className={`${styles.iconButton} ${noting === row.id || d.note ? styles.iconButtonActive : ''}`}
+                                title={d.note ? 'Change the note' : 'Add a note'}
+                                aria-label={`Note for ${row.description}`}
+                                aria-expanded={noting === row.id}
+                                onClick={() => setNoting(noting === row.id ? null : row.id)}
+                              >
+                                <NotePencil size={18} />
+                              </button>
+                              {editButton(row)}
+                              <button
+                                type="button"
+                                className={`${styles.iconButton} ${linking === row.id ? styles.iconButtonActive : ''}`}
+                                title="Link to a transaction already in Pennywise"
+                                aria-label={`Link ${row.description} to a transaction`}
+                                aria-expanded={linking === row.id}
+                                onClick={() => setLinking(linking === row.id ? null : row.id)}
+                              >
+                                <LinkSimple size={18} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                        {noting === row.id && (
+                          <tr className={styles.noteRow}>
+                            <td />
+                            <td />
+                            <td colSpan={5}>
+                              <input
+                                className={styles.noteField}
+                                value={d.note}
+                                placeholder="Add a note for this transaction, then press Enter"
+                                aria-label={`Note for ${row.description}`}
+                                autoFocus
+                                onChange={(e) => updateDraft(row.id, row.payee, { note: e.target.value })}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === 'Escape') setNoting(null);
+                                }}
+                              />
+                            </td>
+                          </tr>
+                        )}
+                        {editor(row, 7)}
+                        {linking === row.id && (
+                          <tr className={styles.linkRow}>
+                            <td colSpan={7}>
+                              <LinkCandidates
+                                rows={[row]}
+                                candidates={section.ledgerOnly}
+                                onLink={(ids) => link(row.id, ids)}
+                                onCancel={() => setLinking(null)}
+                              />
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
                     );
                   })}
                 </tbody>
               </table>
             </div>
             {selectedRows.length > 0 && (
-              <div className={styles.createBar}>
-                <span>
-                  {selectedRows.length} of {section.missing.length} selected
-                </span>
-                <button
-                  type="button"
-                  className={styles.primaryButton}
-                  disabled={busy}
-                  onClick={() => void createSelected()}>
-                  {busy ? <CircleNotch size={18} className={styles.spin} /> : <Plus size={18} />}
-                  {selectedRows.length > 1 ? `Add ${selectedRows.length} transactions` : 'Add transaction'}
-                </button>
+              <div className={`${styles.createBar} ${styles.selectionBar}`}>
+                <div className={styles.barCount}>
+                  <strong>{selectedRows.length}</strong>
+                  <span>of {section.missing.length} selected</span>
+                  <button
+                    type="button"
+                    className={styles.textButton}
+                    onClick={() => applyToSelected({ selected: false })}
+                  >
+                    Clear
+                  </button>
+                </div>
+                <div className={styles.bulkFields}>
+                  <div className={styles.payeeCell}>
+                    <PayeeDropdown
+                      variant="form"
+                      value=""
+                      placeholder="Payee for all"
+                      onClick={(_, name) => applyToSelected({ payeeName: name })}
+                      onCreate={(name) => applyToSelected({ payeeName: name })}
+                    />
+                  </div>
+                  <div className={styles.categoryCell}>
+                    <CategoryDropdown
+                      variant="form"
+                      value=""
+                      placeholder="Category for all"
+                      onClick={(id) => applyToSelected({ categoryId: id })}
+                    />
+                  </div>
+                  <input
+                    className={`${styles.cellInput} ${styles.bulkNote}`}
+                    placeholder="Note for all"
+                    aria-label="Note for every selected row"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') applyToSelected({ note: e.currentTarget.value });
+                    }}
+                    onBlur={(e) => e.currentTarget.value && applyToSelected({ note: e.currentTarget.value })}
+                  />
+                </div>
+                <div className={styles.barActions}>
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    title="They're one payment in Pennywise: link them to it"
+                    onClick={() => setLinkingSelected(!linkingSelected)}
+                  >
+                    <LinkSimple size={17} /> Link to one
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.primaryButton}
+                    disabled={busy}
+                    onClick={() => void createSelected()}
+                  >
+                    {busy ? <CircleNotch size={18} className={styles.spin} /> : <Plus size={18} />}
+                    {selectedRows.length > 1 ? `Add ${selectedRows.length} transactions` : 'Add transaction'}
+                  </button>
+                </div>
+                {linkingSelected && (
+                  <div className={styles.createBarPanel}>
+                    <LinkCandidates
+                      rows={selectedRows}
+                      candidates={section.ledgerOnly}
+                      onLink={(ids) =>
+                        linkMany(
+                          selectedRows.map((r) => r.id),
+                          ids,
+                        )
+                      }
+                      onCancel={() => setLinkingSelected(false)}
+                    />
+                  </div>
+                )}
               </div>
             )}
+            {/* room under the bar, so it never sits on the last row */}
+            {selectedRows.length > 0 && <div className={styles.createBarSpacer} aria-hidden />}
           </>
         ))}
 
@@ -382,38 +705,111 @@ export function SectionReconcile({ section, accounts, onAccountChange, onCreate 
                   <th>On the statement</th>
                   <th>In Pennywise</th>
                   <th className={styles.num}>Amount</th>
+                  <th className={styles.actionCell}>
+                    <span className={styles.srOnly}>Unlink</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {section.matched.map((m) => (
-                  <tr key={m.row.id}>
-                    <td className={styles.dateCell}>{shortDay(m.row.date)}</td>
-                    <td>
-                      <span className={styles.description} title={m.row.rawDescription || m.row.description}>
-                        {m.row.description}
-                      </span>
-                      <RowBadges row={m.row} />
-                    </td>
-                    <td>
-                      <Link to={`/transactions/${m.transaction.id}`}>
-                        {m.transaction.payeeName || m.transaction.note || 'Open transaction'}
-                      </Link>
-                      {m.dateDiffDays > 0 && (
-                        <span className={styles.badgeMuted}>
-                          {m.dateDiffDays} day{m.dateDiffDays === 1 ? '' : 's'} apart
+                  <Fragment key={m.row.id}>
+                    <tr>
+                      <td className={styles.dateCell}>
+                        <RowDate row={m.row} />
+                      </td>
+                      <td>
+                        <span className={styles.description} title={m.row.rawDescription || m.row.description}>
+                          {m.row.description}
                         </span>
-                      )}
-                      {m.transaction.status === 'UNAPPROVED' && <span className={styles.badgeMuted}>unapproved</span>}
-                    </td>
-                    <td className={styles.num}>
-                      <Amount value={signedAmount(m.row)} />
-                      {m.kind === 'amount_differs' && (
-                        <span className={styles.badge} title="Close date and matching text, different amount">
-                          Pennywise has {money(m.transaction.amount)}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
+                        <div className={styles.rowMeta}>
+                          <RowBadges row={m.row} onShowPage={onShowPage} onShowLine={onShowLine} onSetEMI={onSetEMI} />
+                        </div>
+                        {m.otherRows?.map((r) => (
+                          <span key={r.id} className={styles.linkedOther}>
+                            + {r.description} <Amount value={signedAmount(r)} />
+                          </span>
+                        ))}
+                      </td>
+                      <td>
+                        <Link to={`/transactions/${m.transaction.id}`}>
+                          {m.transaction.payeeName || m.transaction.note || 'Open transaction'}
+                        </Link>
+                        {m.dateDiffDays > 0 && (
+                          <span className={styles.badgeMuted}>
+                            {m.dateDiffDays} day{m.dateDiffDays === 1 ? '' : 's'} apart
+                          </span>
+                        )}
+                        {m.transaction.status === 'UNAPPROVED' && <span className={styles.badgeMuted}>unapproved</span>}
+                        {m.linked && <span className={styles.badgeMuted}>linked by you</span>}
+                        {m.others?.map((o) => (
+                          <span key={o.id} className={styles.linkedOther}>
+                            + <Link to={`/transactions/${o.id}`}>{o.payeeName || o.note || 'Transaction'}</Link>{' '}
+                            {money(o.amount)}
+                          </span>
+                        ))}
+                      </td>
+                      <td className={styles.num}>
+                        <Amount value={[m.row, ...(m.otherRows ?? [])].reduce((sum, r) => sum + signedAmount(r), 0)} />
+                        {m.kind === 'amount_differs' && !m.linked && (
+                          <span className={styles.badge} title="Close date and matching text, different amount">
+                            Pennywise has {money(m.transaction.amount)}
+                          </span>
+                        )}
+                      </td>
+                      <td className={styles.actionCell}>
+                        {!m.otherRows?.length && editButton(m.row)}
+                        {m.linked && m.difference ? (
+                          <button
+                            type="button"
+                            className={`${styles.iconButton} ${linking === m.row.id ? styles.iconButtonActive : ''}`}
+                            title="Link more transactions"
+                            aria-label={`Link more transactions to ${m.row.description}`}
+                            aria-expanded={linking === m.row.id}
+                            onClick={() => setLinking(linking === m.row.id ? null : m.row.id)}
+                          >
+                            <LinkSimple size={18} />
+                          </button>
+                        ) : null}
+                        {m.linked && (
+                          <button
+                            type="button"
+                            className={styles.iconButton}
+                            title="Unlink"
+                            aria-label={`Unlink ${m.row.description}`}
+                            disabled={unlinking === m.row.id}
+                            onClick={() => void unlink(m.row.id)}
+                          >
+                            {unlinking === m.row.id ? (
+                              <CircleNotch size={18} className={styles.spin} />
+                            ) : (
+                              <LinkBreak size={18} />
+                            )}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                    {editor(m.row, 5)}
+                    {linking === m.row.id && (
+                      <tr className={styles.linkRow}>
+                        <td colSpan={5}>
+                          <LinkCandidates
+                            rows={[m.row, ...(m.otherRows ?? [])]}
+                            candidates={section.ledgerOnly}
+                            linked={[m.transaction, ...(m.others ?? [])].reduce((sum, t) => sum + t.amount, 0)}
+                            onLink={(ids) => link(m.row.id, ids)}
+                            onCancel={() => setLinking(null)}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                    {m.linked && m.difference && linking !== m.row.id ? (
+                      <tr className={styles.linkRow}>
+                        <td colSpan={5}>
+                          <DifferenceForm difference={m.difference} onAdd={(body) => onAddDifference(m.row.id, body)} />
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -441,21 +837,50 @@ export function SectionReconcile({ section, accounts, onAccountChange, onCreate 
                     <th>Payee</th>
                     <th>Category</th>
                     <th className={styles.num}>Amount</th>
+                    <th className={styles.actionCell}>
+                      <span className={styles.srOnly}>Link</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {section.ledgerOnly.map((t) => (
-                    <tr key={t.id}>
-                      <td className={styles.dateCell}>{shortDay(t.date)}</td>
-                      <td>
-                        <Link to={`/transactions/${t.id}`}>{t.payeeName || t.note || 'Open transaction'}</Link>
-                        {t.status === 'UNAPPROVED' && <span className={styles.badgeMuted}>unapproved</span>}
-                      </td>
-                      <td>{t.categoryName ?? '—'}</td>
-                      <td className={styles.num}>
-                        <Amount value={t.amount} />
-                      </td>
-                    </tr>
+                    <Fragment key={t.id}>
+                      <tr>
+                        <td className={styles.dateCell}>{shortDay(t.date)}</td>
+                        <td>
+                          <Link to={`/transactions/${t.id}`}>{t.payeeName || t.note || 'Open transaction'}</Link>
+                          {t.status === 'UNAPPROVED' && <span className={styles.badgeMuted}>unapproved</span>}
+                        </td>
+                        <td>{t.categoryName ?? '—'}</td>
+                        <td className={styles.num}>
+                          <Amount value={t.amount} />
+                        </td>
+                        <td className={styles.actionCell}>
+                          <button
+                            type="button"
+                            className={`${styles.iconButton} ${pickingFor === t.id ? styles.iconButtonActive : ''}`}
+                            title="Link to rows on the statement"
+                            aria-label={`Link ${t.payeeName || 'this transaction'} to statement rows`}
+                            aria-expanded={pickingFor === t.id}
+                            onClick={() => setPickingFor(pickingFor === t.id ? null : t.id)}
+                          >
+                            <LinkSimple size={18} />
+                          </button>
+                        </td>
+                      </tr>
+                      {pickingFor === t.id && (
+                        <tr className={styles.linkRow}>
+                          <td colSpan={5}>
+                            <RowPicker
+                              txn={t}
+                              rows={[...section.missing, ...(section.covered ?? [])]}
+                              onLink={(rowIds) => linkMany(rowIds, [t.id])}
+                              onCancel={() => setPickingFor(null)}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
@@ -466,42 +891,124 @@ export function SectionReconcile({ section, accounts, onAccountChange, onCreate 
         <>
           <p className={styles.muted}>
             EMI instalments on this statement. They pay off purchases already in your budget, so they aren't missing.
-            EMI interest is listed under Missing as a charge.
+            EMI interest is listed under Missing as a charge. If a row isn't an instalment, choose Not an EMI and it
+            will be matched like any purchase. If you track an EMI as its own transaction, link the row to it.
           </p>
           <div className={styles.tableWrap}>
             <table className={styles.table}>
               <thead>
                 <tr>
+                  <th className={styles.checkCell}>
+                    <span className={styles.srOnly}>Select</span>
+                  </th>
                   <th>Date</th>
                   <th>Statement text</th>
                   <th>Instalment</th>
                   <th className={styles.num}>Amount</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
                 {(section.covered ?? []).map((r) => (
-                  <tr key={r.id}>
-                    <td className={styles.dateCell}>{shortDay(r.date)}</td>
-                    <td>
-                      <span className={styles.description} title={r.rawDescription || r.description}>
-                        {r.description}
-                      </span>
-                    </td>
-                    <td className={styles.dateCell}>
-                      {r.emi?.part === 'conversion'
-                        ? 'Converted to EMI'
-                        : r.emi?.number && r.emi.of
-                          ? `${r.emi.number} of ${r.emi.of}`
-                          : '—'}
-                    </td>
-                    <td className={styles.num}>
-                      <Amount value={signedAmount(r)} />
-                    </td>
-                  </tr>
+                  <Fragment key={r.id}>
+                    <tr className={coveredPicked.includes(r.id) ? styles.rowSelected : undefined}>
+                      <td className={styles.checkCell}>
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${r.description}`}
+                          checked={coveredPicked.includes(r.id)}
+                          onChange={(e) =>
+                            setCoveredPicked((p) => (e.target.checked ? [...p, r.id] : p.filter((x) => x !== r.id)))
+                          }
+                        />
+                      </td>
+                      <td className={styles.dateCell}>
+                        <RowDate row={r} />
+                      </td>
+                      <td>
+                        <span className={styles.description} title={r.rawDescription || r.description}>
+                          {r.description}
+                        </span>
+                      </td>
+                      <td className={styles.dateCell}>
+                        {r.emi?.part === 'conversion'
+                          ? 'Converted to EMI'
+                          : r.emi?.number && r.emi.of
+                            ? `${r.emi.number} of ${r.emi.of}`
+                            : '—'}
+                      </td>
+                      <td className={styles.num}>
+                        <Amount value={signedAmount(r)} />
+                      </td>
+                      <td className={styles.num}>
+                        <button
+                          type="button"
+                          className={styles.secondaryButton}
+                          title="Move it to matching: it's a purchase, not an EMI instalment"
+                          onClick={() => void onSetEMI(r.id, false)}
+                        >
+                          Not an EMI
+                        </button>
+                        <button
+                          type="button"
+                          className={`${styles.iconButton} ${linking === r.id ? styles.iconButtonActive : ''}`}
+                          title="Link to a transaction already in Pennywise"
+                          aria-label={`Link ${r.description} to a transaction`}
+                          aria-expanded={linking === r.id}
+                          onClick={() => setLinking(linking === r.id ? null : r.id)}
+                        >
+                          <LinkSimple size={18} />
+                        </button>
+                      </td>
+                    </tr>
+                    {linking === r.id && (
+                      <tr className={styles.linkRow}>
+                        <td colSpan={6}>
+                          <LinkCandidates
+                            rows={[r]}
+                            candidates={section.ledgerOnly}
+                            onLink={(ids) => link(r.id, ids)}
+                            onCancel={() => setLinking(null)}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
           </div>
+          {coveredPicked.length > 0 && (
+            <>
+              <div className={styles.createBar}>
+                <span>
+                  {coveredPicked.length} EMI line{coveredPicked.length === 1 ? '' : 's'} selected
+                </span>
+                <span className={styles.spacer} />
+                <button type="button" className={styles.ghostButton} onClick={() => setCoveredPicked([])}>
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  onClick={() => setLinkingCovered(!linkingCovered)}
+                >
+                  <LinkSimple size={18} /> Link to one transaction
+                </button>
+                {linkingCovered && (
+                  <div className={styles.createBarPanel}>
+                    <LinkCandidates
+                      rows={(section.covered ?? []).filter((r) => coveredPicked.includes(r.id))}
+                      candidates={section.ledgerOnly}
+                      onLink={(ids) => linkMany(coveredPicked, ids)}
+                      onCancel={() => setLinkingCovered(false)}
+                    />
+                  </div>
+                )}
+              </div>
+              <div className={styles.createBarSpacer} aria-hidden />
+            </>
+          )}
         </>
       )}
     </section>

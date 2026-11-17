@@ -1,6 +1,11 @@
 package model
 
 import (
+	"fmt"
+	"regexp"
+	"slices"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -81,8 +86,11 @@ type StatementImportPayload struct {
 type StatementRow struct {
 	// ID is assigned by the API once a row is accepted ("<section>-<n>") and is
 	// what the create-missing request refers to.
-	ID          string `json:"id"`
-	Date        string `json:"date"`
+	ID   string `json:"id"`
+	Date string `json:"date"`
+	// Time is the clock time printed with the date, "HH:MM" in 24 hours and
+	// the bank's zone (narration.BankZone); "" when the row printed none.
+	Time        string `json:"time,omitempty"`
 	Description string `json:"description"`
 	// Payee is the model's cleaned merchant/counterparty name, used as the
 	// default payee when the row is created as a transaction.
@@ -92,12 +100,21 @@ type StatementRow struct {
 	Balance   *float64           `json:"balance,omitempty"`
 	Reference string             `json:"reference,omitempty"`
 	Page      int                `json:"page,omitempty"`
+	// Line is the row's record in a CSV export, 1-based: the file's lines
+	// with empty ones skipped (as encoding/csv reads them), so a viewer can
+	// point at it. 0 for a PDF.
+	Line int `json:"line,omitempty"`
 	// DirectionCorrected is set when the running balance contradicted the
 	// model's debit/credit call and the API flipped it.
 	DirectionCorrected bool `json:"directionCorrected,omitempty"`
 	// RewardPoints is what a card statement printed for this row (negative
 	// for a reversal); nil when it printed nothing.
 	RewardPoints *int `json:"rewardPoints,omitempty"`
+	// LinkedTransactionIDs are ledger transactions the user paired with this
+	// row by hand, which matching then takes before anything else: the
+	// payment first, then any difference booked to make up the amount (a
+	// card credited 3,900 for a 3,882 transfer plus 18 of cashback).
+	LinkedTransactionIDs []uuid.UUID `json:"linkedTransactionIds,omitempty"`
 
 	// Read from the narration by the API when the rows are saved
 	// (narration.ParseStatementRow). Description is then the cleaned text and
@@ -117,9 +134,46 @@ type StatementRow struct {
 	// EMI is set for a card EMI line (an instalment, its principal or its
 	// interest).
 	EMI *StatementEMILine `json:"emi,omitempty"`
-	// SuggestedCategoryID is a category for a missing charge row, picked by
-	// name from the budget's categories. Filled on read, not stored.
+	// EMIOverride is the user's word on whether the row is part of an EMI the
+	// budget already paid for, over what the text suggested: false moves a
+	// row read as an instalment back to matching, true sets one aside.
+	EMIOverride *bool `json:"emiOverride,omitempty"`
+	// SuggestedCategoryID is a category for a missing row: what the budget
+	// used for this text on an earlier statement, else for a charge one
+	// picked by name from the budget's categories. Filled on read, not stored.
 	SuggestedCategoryID *uuid.UUID `json:"suggestedCategoryId,omitempty"`
+	// SuggestedPayeeName is the payee the budget used for this text on an
+	// earlier statement (StatementPastChoice). Filled on read, not stored.
+	SuggestedPayeeName string `json:"suggestedPayeeName,omitempty"`
+	// Edited holds what the statement printed before the user corrected the
+	// row (a misread amount or date); nil when it was never edited.
+	Edited *StatementRowOriginal `json:"edited,omitempty"`
+}
+
+// StatementRowOriginal is a row's values as read, kept when the user edits it.
+type StatementRowOriginal struct {
+	Date        string             `json:"date"`
+	Time        string             `json:"time,omitempty"`
+	Description string             `json:"description"`
+	Amount      float64            `json:"amount"`
+	Direction   StatementDirection `json:"direction"`
+}
+
+// StatementRowEditReq corrects a row read wrong. Omitted fields stay.
+type StatementRowEditReq struct {
+	Date *string `json:"date,omitempty"`
+	// Time is "HH:MM"; "" removes it.
+	Time        *string             `json:"time,omitempty"`
+	Description *string             `json:"description,omitempty"`
+	Amount      *float64            `json:"amount,omitempty"`
+	Direction   *StatementDirection `json:"direction,omitempty"`
+}
+
+// StatementPastChoice is the payee and category a budget gave a statement
+// line with the same text before, from its most recent such transaction.
+type StatementPastChoice struct {
+	PayeeName  string     `json:"payeeName,omitempty"`
+	CategoryID *uuid.UUID `json:"categoryId,omitempty"`
 }
 
 // Kinds of bank charges a statement row can be.
@@ -209,6 +263,23 @@ type StatementSection struct {
 	AccountID *uuid.UUID `json:"accountId,omitempty"`
 }
 
+// StatementSectionSummary is a StatementSection without its rows. Its JSON
+// names are the section's, so it decodes from a stored section.
+type StatementSectionSummary struct {
+	AccountLabel   string     `json:"accountLabel"`
+	AccountNumber  string     `json:"accountNumber"`
+	Kind           string     `json:"kind,omitempty"`
+	Currency       string     `json:"currency,omitempty"`
+	PeriodStart    *string    `json:"periodStart,omitempty"`
+	PeriodEnd      *string    `json:"periodEnd,omitempty"`
+	StatementDate  *string    `json:"statementDate,omitempty"`
+	ClosingBalance *float64   `json:"closingBalance,omitempty"`
+	DueDate        *string    `json:"dueDate,omitempty"`
+	TotalDue       *float64   `json:"totalDue,omitempty"`
+	MinimumDue     *float64   `json:"minimumDue,omitempty"`
+	AccountID      *uuid.UUID `json:"accountId,omitempty"`
+}
+
 // StatementExtractRequest is the API → cipher call for one chunk of pages.
 type StatementExtractRequest struct {
 	Text      string `json:"text"`
@@ -267,8 +338,25 @@ type StatementImport struct {
 	// AccountIDs are the accounts its sections are mapped to (List only), so
 	// a card's screen can show the statements read for it.
 	AccountIDs []uuid.UUID `json:"accountIds,omitempty"`
-	CreatedAt  time.Time   `json:"createdAt"`
-	UpdatedAt  time.Time   `json:"updatedAt"`
+	// Summary is each section without its rows (List only), so a list can say
+	// whose statement it is, for when, and what's due.
+	Summary []StatementSectionSummary `json:"summary,omitempty"`
+	// Progress is how far reconciling it has got (List only, ready imports).
+	Progress  *StatementProgress `json:"progress,omitempty"`
+	CreatedAt time.Time          `json:"createdAt"`
+	UpdatedAt time.Time          `json:"updatedAt"`
+}
+
+// StatementProgress counts a statement's rows and transactions by where they
+// stand. Reconciled: every section has an account and nothing is missing or
+// only in the ledger.
+type StatementProgress struct {
+	Missing    int  `json:"missing"`
+	Matched    int  `json:"matched"`
+	LedgerOnly int  `json:"ledgerOnly"`
+	Covered    int  `json:"covered"`
+	Unmapped   int  `json:"unmapped"`
+	Reconciled bool `json:"reconciled"`
 }
 
 // StatementLedgerTxn is the slice of a ledger transaction a reconciliation
@@ -301,6 +389,18 @@ type StatementMatch struct {
 	Transaction  StatementLedgerTxn `json:"transaction"`
 	Kind         StatementMatchKind `json:"kind"`
 	DateDiffDays int                `json:"dateDiffDays"`
+	// Linked: the user paired them (StatementRow.LinkedTransactionIDs).
+	// Others are the further transactions linked to the row, such as a
+	// booked difference; Kind compares the row with all of them together.
+	Linked bool                 `json:"linked,omitempty"`
+	Others []StatementLedgerTxn `json:"others,omitempty"`
+	// OtherRows are further rows linked to the same transactions: several
+	// EMI lines paid by one transaction. Kind and Difference compare all the
+	// rows with all the transactions.
+	OtherRows []StatementRow `json:"otherRows,omitempty"`
+	// Difference is the row's amount minus the linked transactions', for a
+	// linked match that doesn't add up yet; 0 otherwise.
+	Difference float64 `json:"difference,omitempty"`
 }
 
 // StatementBalanceCheck compares the statement's own opening/closing balance
@@ -370,10 +470,53 @@ type StatementCreateItem struct {
 	PayeeID    *uuid.UUID `json:"payeeId,omitempty"`
 	PayeeName  string     `json:"payeeName,omitempty"`
 	CategoryID *uuid.UUID `json:"categoryId,omitempty"`
+	// Note is the new transaction's memo; empty leaves it blank.
+	Note string `json:"note,omitempty"`
 }
 
 type StatementCreateReq struct {
 	Items []StatementCreateItem `json:"items"`
+}
+
+// StatementLinkReq adds ledger transactions to a statement row's links: one
+// payment split over several transactions, or several payments in one row.
+// TransactionID is the single-transaction form older clients send.
+type StatementLinkReq struct {
+	TransactionIDs []uuid.UUID `json:"transactionIds"`
+	TransactionID  uuid.UUID   `json:"transactionId"`
+}
+
+// IDs is the request's transactions, in order, without nil or repeats.
+func (r StatementLinkReq) IDs() []uuid.UUID {
+	var ids []uuid.UUID
+	for _, id := range append(r.TransactionIDs, r.TransactionID) {
+		if id != uuid.Nil && !slices.Contains(ids, id) {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// StatementLinksReq links rows and transactions together: every row gets
+// every transaction. One transaction paying several EMI lines, or one row
+// paid in parts.
+type StatementLinksReq struct {
+	RowIDs         []string    `json:"rowIds"`
+	TransactionIDs []uuid.UUID `json:"transactionIds"`
+}
+
+// StatementRowEMIReq says whether a row is part of an already-paid EMI; null
+// takes back the user's word and leaves it to the row's text.
+type StatementRowEMIReq struct {
+	EMI *bool `json:"emi"`
+}
+
+// StatementDifferenceReq books what a linked row's transactions are short of
+// the row as its own transaction on the section's account.
+type StatementDifferenceReq struct {
+	PayeeID    *uuid.UUID `json:"payeeId,omitempty"`
+	PayeeName  string     `json:"payeeName,omitempty"`
+	CategoryID *uuid.UUID `json:"categoryId,omitempty"`
 }
 
 type StatementCreateFailure struct {
@@ -385,4 +528,50 @@ type StatementCreateResult struct {
 	Created []uuid.UUID              `json:"created"`
 	Skipped []string                 `json:"skipped"`
 	Failed  []StatementCreateFailure `json:"failed"`
+}
+
+// StatementTextKey is a statement line's text reduced to its lower-case
+// letters, so the same line on another statement (other date, other
+// reference) has the same key. "" when too little is left to tell lines
+// apart. PastStatementChoices computes the same key in SQL.
+func StatementTextKey(text string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(text) {
+		if r >= 'a' && r <= 'z' {
+			b.WriteRune(r)
+		}
+	}
+	if b.Len() < 6 {
+		return ""
+	}
+	return b.String()
+}
+
+// statementTimeRe finds a clock time: "20:49", "20:49:05", "8:49 PM".
+var statementTimeRe = regexp.MustCompile(`(?i)\b(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([ap]\.?m\.?)?(?:\b|$)`)
+
+// ParseStatementTime reads the first clock time in s ("06/08/2026| 20:49",
+// "03/09/2026 04:45:49 PM") as "HH:MM" in 24 hours, or "" when s has none
+// or it isn't a real time.
+func ParseStatementTime(s string) string {
+	m := statementTimeRe.FindStringSubmatch(s)
+	if m == nil {
+		return ""
+	}
+	h, _ := strconv.Atoi(m[1])
+	min, _ := strconv.Atoi(m[2])
+	if ampm := strings.ToLower(strings.ReplaceAll(m[4], ".", "")); ampm != "" {
+		if h < 1 || h > 12 {
+			return ""
+		}
+		if ampm == "pm" && h != 12 {
+			h += 12
+		} else if ampm == "am" && h == 12 {
+			h = 0
+		}
+	}
+	if h > 23 || min > 59 {
+		return ""
+	}
+	return fmt.Sprintf("%02d:%02d", h, min)
 }

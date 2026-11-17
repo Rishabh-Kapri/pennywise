@@ -8,6 +8,7 @@ import (
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/jobrunner"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
+	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/pipeline"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/job"
 )
@@ -79,11 +80,11 @@ func (c checkChain) Check(ctx context.Context, msg ports.Message) (ports.TxnVerd
 }
 
 type extractChain struct {
-	links []chainLink[ports.Extract]
+	links []chainLink[ports.ExtractTxn]
 }
 
 func (c extractChain) Extract(ctx context.Context, msg ports.Message) (ports.ExtractedEntities, error) {
-	return firstSuccess(ctx, pipeline.StepExtract, c.links, func(link ports.Extract) (ports.ExtractedEntities, error) {
+	return firstSuccess(ctx, pipeline.StepExtract, c.links, func(link ports.ExtractTxn) (ports.ExtractedEntities, error) {
 		return link.Extract(ctx, msg)
 	})
 }
@@ -103,7 +104,7 @@ func (c verifyChain) Verify(
 }
 
 type predictChain struct {
-	links []chainLink[ports.Predictor]
+	links []chainLink[ports.PredictTxn]
 }
 
 func (c predictChain) Predict(
@@ -111,7 +112,25 @@ func (c predictChain) Predict(
 	msg ports.Message,
 	entities ports.ExtractedEntities,
 ) (ports.PredictionResult, error) {
-	return firstSuccess(ctx, pipeline.StepPredict, c.links, func(link ports.Predictor) (ports.PredictionResult, error) {
+	return firstSuccess(ctx, pipeline.StepPredict, c.links, func(link ports.PredictTxn) (ports.PredictionResult, error) {
 		return link.Predict(ctx, msg, entities)
 	})
+}
+
+// statementChain tries each statement reader in turn. step says which step of
+// the statement pipeline it runs, for logs.
+type statementChain struct {
+	step  pipeline.StepID
+	links []chainLink[ports.StatementImport]
+}
+
+func (c statementChain) ExtractStatement(
+	ctx context.Context,
+	pdf []byte,
+	passwords []string,
+) (sharedModel.StatementExtractResponse, error) {
+	return firstSuccess(ctx, c.step, c.links,
+		func(link ports.StatementImport) (sharedModel.StatementExtractResponse, error) {
+			return link.ExtractStatement(ctx, pdf, passwords)
+		})
 }

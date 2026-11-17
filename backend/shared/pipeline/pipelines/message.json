@@ -3,7 +3,7 @@
   "id": "message",
   "label": "Messages",
   "description": "Turns bank emails, SMS and text sent to the API into transactions.",
-  "version": 2,
+  "version": 3,
   "steps": [
     {
       "id": "check",
@@ -54,6 +54,8 @@
       "label": "Verify",
       "description": "Checks the extracted details against the email.",
       "defaultAdapter": "decisions",
+      "optional": true,
+      "whenOff": "Extracted details go straight to Lookup without being checked against the message.",
       "adapters": [
         {
           "id": "decisions",
@@ -69,6 +71,8 @@
       "label": "Look up",
       "description": "Finds the payee and category from merchants you've had before.",
       "defaultAdapter": "aliases",
+      "optional": true,
+      "whenOff": "Payee rules and past transactions aren't consulted; Predict picks every payee and category.",
       "adapters": [
         {
           "id": "aliases",
@@ -82,6 +86,8 @@
       "label": "Predict",
       "description": "Picks a payee and category when nothing matched.",
       "defaultAdapter": "llm",
+      "optional": true,
+      "whenOff": "When Lookup has no answer, the message waits in Review for you to pick the payee and category.",
       "adapters": [
         {
           "id": "llm",

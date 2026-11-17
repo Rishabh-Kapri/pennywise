@@ -10,11 +10,13 @@ import (
 // (shared/pipeline). A nil field follows the default: the step's adapter and
 // fallback setting, or the owner's default model of the kind the adapter needs.
 type PipelineStepOverride struct {
-	BudgetID  uuid.UUID  `json:"-"`
-	Pipeline  string     `json:"pipeline"`
-	Step      string     `json:"step"`
-	Adapter   *string    `json:"adapter"`
-	ModelID   *uuid.UUID `json:"modelId"`
-	Fallback  *bool      `json:"fallback"`
-	UpdatedAt time.Time  `json:"updatedAt"`
+	BudgetID uuid.UUID  `json:"-"`
+	Pipeline string     `json:"pipeline"`
+	Step     string     `json:"step"`
+	Adapter  *string    `json:"adapter"`
+	ModelID  *uuid.UUID `json:"modelId"`
+	Fallback *bool      `json:"fallback"`
+	// Enabled false turns off a step its pipeline file marks optional. Nil = on.
+	Enabled   *bool     `json:"enabled"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }

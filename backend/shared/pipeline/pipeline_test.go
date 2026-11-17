@@ -1,9 +1,10 @@
 package pipeline
 
 import (
-	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"strings"
 	"testing"
+
+	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/google/uuid"
@@ -30,7 +31,7 @@ func TestEmbeddedPipelinesLoad(t *testing.T) {
 	if !ok {
 		t.Fatal("no statement pipeline")
 	}
-	for _, id := range []StepID{StepOCR, StepExtract, StepFallback, StepSave} {
+	for _, id := range []StepID{StepStatementExtract, StepStatementFallback, StepStatementSave} {
 		if _, ok := stmt.Step(id); !ok {
 			t.Errorf("statement pipeline has no %q step", id)
 		}
@@ -62,17 +63,45 @@ func TestParse(t *testing.T) {
 		want string // part of the error; "" = valid
 	}{
 		{name: "valid", json: validPipeline},
-		{name: "unknown key", json: strings.Replace(validPipeline, `"version": 1`, `"version": 1, "stepz": []`, 1), want: "stepz"},
+		{
+			name: "unknown key",
+			json: strings.Replace(validPipeline, `"version": 1`, `"version": 1, "stepz": []`, 1),
+			want: "stepz",
+		},
 		{name: "bad id", json: strings.Replace(validPipeline, `"id": "one"`, `"id": "One Step"`, 1), want: "pattern"},
-		{name: "missing default", json: strings.Replace(validPipeline, `"defaultAdapter": "a"`, `"defaultAdapter": "b"`, 1), want: "isn't in its list"},
+		{
+			name: "missing default",
+			json: strings.Replace(validPipeline, `"defaultAdapter": "a"`, `"defaultAdapter": "b"`, 1),
+			want: "isn't in its list",
+		},
 		{
 			name: "maxTokens without usesModel",
 			json: strings.Replace(validPipeline, `"label": "A",`, `"label": "A", "maxTokens": 10,`, 1),
 			want: "usesModel",
 		},
 		{
+			name: "preferredModels without usesModel",
+			json: strings.Replace(
+				validPipeline,
+				`"label": "A",`,
+				`"label": "A", "preferredModels": [{"provider": "ollama", "slug": "glm-ocr"}],`,
+				1,
+			),
+			want: "usesModel",
+		},
+		{
+			name: "rerunOf a later step",
+			json: strings.Replace(validPipeline, `"defaultAdapter": "a",`, `"defaultAdapter": "a", "rerunOf": "two",`, 1),
+			want: "earlier step",
+		},
+		{
 			name: "duplicate step",
-			json: strings.Replace(validPipeline, `"steps": [{`, `"steps": [{"id": "one", "label": "Dup", "description": "", "defaultAdapter": "a", "adapters": [{"id": "a", "label": "A", "description": ""}]}, {`, 1),
+			json: strings.Replace(
+				validPipeline,
+				`"steps": [{`,
+				`"steps": [{"id": "one", "label": "Dup", "description": "", "defaultAdapter": "a", "adapters": [{"id": "a", "label": "A", "description": ""}]}, {`,
+				1,
+			),
 			want: "twice",
 		},
 	}
@@ -131,10 +160,22 @@ var check = Step{
 }
 
 var (
-	sonnet   = model.UserLLMModel{ID: uuid.New(), Kind: model.LLMModelChat, Provider: "anthropic", Slug: "claude-sonnet", IsDefault: true}
+	sonnet = model.UserLLMModel{
+		ID:        uuid.New(),
+		Kind:      model.LLMModelChat,
+		Provider:  "anthropic",
+		Slug:      "claude-sonnet",
+		IsDefault: true,
+	}
 	qwen     = model.UserLLMModel{ID: uuid.New(), Kind: model.LLMModelChat, Provider: "ollama", Slug: "qwen3:8b"}
-	decision = model.UserLLMModel{ID: uuid.New(), Kind: model.LLMModelDecision, Provider: "openrouter", Slug: "classify-v1", IsDefault: true}
-	models   = []model.UserLLMModel{sonnet, decision, qwen}
+	decision = model.UserLLMModel{
+		ID:        uuid.New(),
+		Kind:      model.LLMModelDecision,
+		Provider:  "openrouter",
+		Slug:      "classify-v1",
+		IsDefault: true,
+	}
+	models = []model.UserLLMModel{sonnet, decision, qwen}
 )
 
 func TestResolve(t *testing.T) {
@@ -263,7 +304,12 @@ func TestAttempts(t *testing.T) {
 		adapter  string
 		want     []string // model slugs in order
 	}{
-		{name: "fallback off runs the default alone", models: usable, adapter: "decisions", want: []string{"cloudflare/clef"}},
+		{
+			name:    "fallback off runs the default alone",
+			models:  usable,
+			adapter: "decisions",
+			want:    []string{"cloudflare/clef"},
+		},
 		{
 			name:     "fallback on adds the other models of the kind",
 			override: withFallback(model.PipelineStepOverride{}),
@@ -331,7 +377,12 @@ func TestValidateOverrideRejectsFallbackWithoutModel(t *testing.T) {
 }
 
 func TestValidateOverride(t *testing.T) {
-	locked := Step{ID: StepCreate, Label: "Create", DefaultAdapter: "api", Adapters: []Adapter{{ID: "api", Label: "API"}}}
+	locked := Step{
+		ID:             StepCreate,
+		Label:          "Create",
+		DefaultAdapter: "api",
+		Adapters:       []Adapter{{ID: "api", Label: "API"}},
+	}
 	tests := []struct {
 		name string
 		step Step
@@ -339,13 +390,31 @@ func TestValidateOverride(t *testing.T) {
 		ok   bool
 	}{
 		{name: "switch adapter", step: check, o: model.PipelineStepOverride{Adapter: ptr("llm")}, ok: true},
-		{name: "chat model for llm", step: check, o: model.PipelineStepOverride{Adapter: ptr("llm"), ModelID: &qwen.ID}, ok: true},
-		{name: "decision model for the default adapter", step: check, o: model.PipelineStepOverride{ModelID: &decision.ID}, ok: true},
+		{
+			name: "chat model for llm",
+			step: check,
+			o:    model.PipelineStepOverride{Adapter: ptr("llm"), ModelID: &qwen.ID},
+			ok:   true,
+		},
+		{
+			name: "decision model for the default adapter",
+			step: check,
+			o:    model.PipelineStepOverride{ModelID: &decision.ID},
+			ok:   true,
+		},
 		{name: "unknown adapter", step: check, o: model.PipelineStepOverride{Adapter: ptr("nope")}},
 		{name: "unavailable adapter", step: check, o: model.PipelineStepOverride{Adapter: ptr("future")}},
-		{name: "model on a non-model adapter", step: check, o: model.PipelineStepOverride{Adapter: ptr("regex"), ModelID: &qwen.ID}},
+		{
+			name: "model on a non-model adapter",
+			step: check,
+			o:    model.PipelineStepOverride{Adapter: ptr("regex"), ModelID: &qwen.ID},
+		},
 		{name: "chat model for decisions", step: check, o: model.PipelineStepOverride{ModelID: &sonnet.ID}},
-		{name: "unknown model", step: check, o: model.PipelineStepOverride{Adapter: ptr("llm"), ModelID: ptr(uuid.New())}},
+		{
+			name: "unknown model",
+			step: check,
+			o:    model.PipelineStepOverride{Adapter: ptr("llm"), ModelID: ptr(uuid.New())},
+		},
 		{name: "locked step", step: locked, o: model.PipelineStepOverride{Adapter: ptr("api")}},
 	}
 	for _, tt := range tests {
@@ -358,5 +427,112 @@ func TestValidateOverride(t *testing.T) {
 				t.Fatalf("want %s, got %v", errs.CodePipelineInvalidOverride, err)
 			}
 		})
+	}
+}
+
+// read is a step whose adapters are each written for one model, like the
+// statement pipeline's extract.
+var read = Step{
+	ID: "read", Label: "Read", DefaultAdapter: "ocr",
+	Adapters: []Adapter{
+		{
+			ID: "ocr", Label: "OCR", UsesModel: true, ModelKind: model.LLMModelChat,
+			PreferredModels: []PreferredModel{{Provider: "ollama", Slug: "glm-ocr"}, {Provider: "ollama", Slug: "qwen3:8b"}},
+		},
+		{ID: "llm", Label: "LLM", UsesModel: true, ModelKind: model.LLMModelChat},
+	},
+}
+
+func TestResolvePrefersTheAdaptersModel(t *testing.T) {
+	// glm-ocr isn't set up, so the second preferred model runs, not the
+	// owner's default (sonnet).
+	view := Resolve(read, nil, models)
+	if view.Effective.Model == nil || view.Effective.Model.ID != qwen.ID {
+		t.Fatalf("model = %+v, want qwen", view.Effective.Model)
+	}
+	if view.Warning != "" {
+		t.Fatalf("warning = %q, want none", view.Warning)
+	}
+
+	// A chosen model still wins.
+	view = Resolve(read, &model.PipelineStepOverride{ModelID: &sonnet.ID}, models)
+	if view.Effective.Model == nil || view.Effective.Model.ID != sonnet.ID {
+		t.Fatalf("model = %+v, want the chosen sonnet", view.Effective.Model)
+	}
+
+	// None of the preferred ones: the default runs, with a warning.
+	view = Resolve(read, nil, []model.UserLLMModel{sonnet})
+	if view.Effective.Model == nil || view.Effective.Model.ID != sonnet.ID || view.Warning == "" {
+		t.Fatalf("model = %+v warning = %q, want sonnet and a warning", view.Effective.Model, view.Warning)
+	}
+}
+
+func TestValidateRerun(t *testing.T) {
+	again := read
+	again.ID, again.Label, again.DefaultAdapter, again.RerunOf = "again", "Again", "llm", "read"
+	p := &Pipeline{ID: "demo", Steps: []Step{read, again}}
+
+	// Defaults differ: ocr+qwen, then llm+sonnet.
+	if err := ValidateRerun(p, "again", nil, nil, models); err != nil {
+		t.Fatalf("defaults: %v", err)
+	}
+	// Rerun switched to the first step's adapter: same adapter, same model.
+	same := &model.PipelineStepOverride{Pipeline: "demo", Step: "again", Adapter: ptr("ocr")}
+	if err := ValidateRerun(p, "again", same, nil, models); !errs.HasCode(err, errs.CodePipelineInvalidOverride) {
+		t.Fatalf("same reader: err = %v", err)
+	}
+	// Same adapter, another model is fine.
+	other := &model.PipelineStepOverride{Pipeline: "demo", Step: "again", Adapter: ptr("ocr"), ModelID: &sonnet.ID}
+	if err := ValidateRerun(p, "again", other, nil, models); err != nil {
+		t.Fatalf("other model: %v", err)
+	}
+	// Changing the first step to match the stored rerun is caught too.
+	stored := []model.PipelineStepOverride{{Pipeline: "demo", Step: "again", Adapter: ptr("ocr")}}
+	if err := ValidateRerun(p, "read", nil, stored, models); err == nil {
+		t.Fatal("first step matching the stored rerun: want an error")
+	}
+}
+
+func TestOptionalSteps(t *testing.T) {
+	opt := Step{
+		ID: "verify", Label: "Verify", DefaultAdapter: "a", Optional: true,
+		Adapters: []Adapter{{ID: "a", Label: "A"}},
+	}
+	off := model.PipelineStepOverride{Enabled: ptr(false)}
+
+	if !Enabled(opt, nil) || Enabled(opt, &off) {
+		t.Fatal("an optional step is on by default and off when turned off")
+	}
+	if !Resolve(opt, nil, models).Effective.Enabled || Resolve(opt, &off, models).Effective.Enabled {
+		t.Fatal("Resolve must carry Enabled")
+	}
+	if !opt.Editable() {
+		t.Fatal("an optional step with one plain adapter is still editable: it can be turned off")
+	}
+	if err := ValidateOverride(opt, off, models); err != nil {
+		t.Fatalf("turning off an optional step: %v", err)
+	}
+
+	required := opt
+	required.Optional = false
+	required.Adapters = []Adapter{{ID: "a", Label: "A"}, {ID: "b", Label: "B"}}
+	if Enabled(required, &off) == false {
+		t.Fatal("a required step ignores a stored off")
+	}
+	if err := ValidateOverride(required, off, models); !errs.HasCode(err, errs.CodePipelineInvalidOverride) {
+		t.Fatalf("turning off a required step: err = %v", err)
+	}
+}
+
+func TestValidateRerunIgnoresARerunThatsOff(t *testing.T) {
+	again := read
+	again.ID, again.Label, again.DefaultAdapter, again.RerunOf, again.Optional = "again", "Again", "ocr", "read", true
+	p := &Pipeline{ID: "demo", Steps: []Step{read, again}}
+	if err := ValidateRerun(p, "again", nil, nil, models); err == nil {
+		t.Fatal("same reader in both: want an error")
+	}
+	off := &model.PipelineStepOverride{Pipeline: "demo", Step: "again", Enabled: ptr(false)}
+	if err := ValidateRerun(p, "again", off, nil, models); err != nil {
+		t.Fatalf("rerun turned off: %v", err)
 	}
 }

@@ -36,6 +36,9 @@ export function Popover({
   const popoverRef = useRef<HTMLDivElement | null>(null); // Reference to the popover element
   const [elWidth, setElWidth] = useState(width ?? 0);
   const rafRef = useRef<number>(null);
+  // Which side of the trigger a bottom popover opened on. Kept while it's
+  // open so a list that shrinks as you type doesn't hop to the other side.
+  const sideRef = useRef<'below' | 'above' | null>(null);
 
   // Handle Escape key to close popover first (before parent handlers)
   useEffect(() => {
@@ -60,8 +63,16 @@ export function Popover({
       const target = e.target as Node;
       const isInsidePopover = popoverRef.current?.contains(target);
       const isInsideTrigger = triggerRef.current?.contains(target);
+      // A popover opened from inside this one (a picker in a form) is
+      // portaled after it: a click there is still inside.
+      const other = target instanceof Element ? target.closest('[data-popover]') : null;
+      const isInsideNested =
+        !!other &&
+        !!popoverRef.current &&
+        other !== popoverRef.current &&
+        !!(popoverRef.current.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING);
 
-      if (!isInsidePopover && !isInsideTrigger) {
+      if (!isInsidePopover && !isInsideTrigger && !isInsideNested) {
         onClose();
       }
     };
@@ -110,13 +121,16 @@ export function Popover({
             // Check space below
             const spaceBelow = viewportHeight - triggerRect.bottom - gap;
             const spaceAbove = triggerRect.top - gap;
-            if (spaceBelow >= popoverHeight || spaceBelow >= spaceAbove) {
-               top = triggerRect.bottom + gap;
-            } else {
-               top = triggerRect.top - popoverHeight - gap;
+            if (!sideRef.current) {
+              sideRef.current = spaceBelow >= popoverHeight || spaceBelow >= spaceAbove ? 'below' : 'above';
             }
+            // Above, its bottom edge stays at the trigger whatever its height.
+            top =
+              sideRef.current === 'below'
+                ? triggerRect.bottom + gap
+                : Math.max(gap, triggerRect.top - popoverHeight - gap);
             if (alignment === 'center') {
-              left = triggerRect.left + (triggerRect.width / 2) - (popoverWidth / 2);
+              left = triggerRect.left + triggerRect.width / 2 - popoverWidth / 2;
             } else if (alignment === 'end') {
               left = triggerRect.right - popoverWidth;
             } else {
@@ -125,10 +139,10 @@ export function Popover({
             break;
           }
         }
-        
+
         // Basic vertical overflow adjustment for side placements
         if ((placement === 'left' || placement === 'right') && top + popoverHeight > viewportHeight) {
-            top = Math.max(gap, viewportHeight - popoverHeight - gap);
+          top = Math.max(gap, viewportHeight - popoverHeight - gap);
         }
 
         // Keep the popover inside the viewport horizontally.
@@ -140,9 +154,9 @@ export function Popover({
           if (width) {
             return;
           }
-           // Only match width for top/bottom unless forced
+          // Only match width for top/bottom unless forced
           if (placement === 'top' || placement === 'bottom') {
-              setElWidth(triggerRef.current.offsetWidth);
+            setElWidth(triggerRef.current.offsetWidth);
           }
         }
       }
@@ -184,6 +198,19 @@ export function Popover({
     };
   }, [updatePosition]);
 
+  // The content can change size while open (a filtered list): place it again.
+  useEffect(() => {
+    if (!isOpen) {
+      sideRef.current = null;
+      return;
+    }
+    const el = popoverRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => updatePosition('scroll'));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [isOpen, updatePosition]);
+
   useEffect(() => {
     updateWidth();
 
@@ -202,6 +229,7 @@ export function Popover({
     <div
       ref={popoverRef}
       id={id}
+      data-popover=""
       role="dialog"
       aria-modal="true"
       className={`${styles.overlay} ${isOpen ? styles.open : styles.closed}`}
@@ -212,9 +240,13 @@ export function Popover({
         top: 0,
         left: 0,
         zIndex: zIndex ?? 1000,
-        width: typeof width === 'number' ? `${width}px` : undefined
-      }}>
-      <div className={`${styles.container} ${className ?? ''}`} style={{ width: width ? `${width}px` : (elWidth ? `${elWidth}px` : 'auto') }}>
+        width: typeof width === 'number' ? `${width}px` : undefined,
+      }}
+    >
+      <div
+        className={`${styles.container} ${className ?? ''}`}
+        style={{ width: width ? `${width}px` : elWidth ? `${elWidth}px` : 'auto' }}
+      >
         {children}
       </div>
     </div>,

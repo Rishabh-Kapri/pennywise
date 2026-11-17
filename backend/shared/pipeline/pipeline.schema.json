@@ -80,6 +80,20 @@
           "default": false,
           "description": "Whether a model adapter tries the owner's other models of the same kind, by priority, when its model fails. Budgets can override it."
         },
+        "optional": {
+          "type": "boolean",
+          "default": false,
+          "description": "A budget may turn this step off. The service running the pipeline decides what happens without it, so only mark steps it handles."
+        },
+        "whenOff": {
+          "type": "string",
+          "minLength": 1,
+          "description": "What happens to a message or document when a budget turns this optional step off. Shown in the UI."
+        },
+        "rerunOf": {
+          "$ref": "#/$defs/id",
+          "description": "An earlier step this one runs again another way when that step's result doesn't check out. A budget can't give the two the same adapter and model."
+        },
         "adapters": {
           "type": "array",
           "minItems": 1,
@@ -131,9 +145,40 @@
           "type": "integer",
           "minimum": 1,
           "description": "Caps the model's output. Only for adapters with usesModel."
+        },
+        "preferredModels": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Models this adapter is written for, best first. When a budget hasn't chosen a model, the first one the owner has set up runs instead of their default model. Only for adapters with usesModel.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["provider", "slug"],
+            "properties": {
+              "provider": { "type": "string", "minLength": 1 },
+              "slug": { "type": "string", "minLength": 1 }
+            }
+          }
         }
       },
       "allOf": [
+        {
+          "if": {
+            "required": [
+              "preferredModels"
+            ]
+          },
+          "then": {
+            "required": [
+              "usesModel"
+            ],
+            "properties": {
+              "usesModel": {
+                "const": true
+              }
+            }
+          }
+        },
         {
           "if": {
             "required": [

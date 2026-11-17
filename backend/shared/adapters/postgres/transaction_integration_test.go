@@ -20,6 +20,8 @@ import (
 
 func strPtr(s string) *string { return &s }
 
+func intPtr(n int) *int { return &n }
+
 func newTxn(s seed, date string, amount float64) model.Transaction {
 	return model.Transaction{
 		BudgetID:   s.budgetID,
@@ -296,7 +298,7 @@ func TestTransactionRepo_GetAllNormalizedCarriesTheSourceTime(t *testing.T) {
 }
 
 func TestTransactionRepo_GetAllNormalizedFiltersAndDerivedColumns(t *testing.T) {
-	_, repo, s := setup(t)
+	pool, repo, s := setup(t)
 	ctx := context.Background()
 	tag := uuid.New()
 
@@ -350,6 +352,25 @@ func TestTransactionRepo_GetAllNormalizedFiltersAndDerivedColumns(t *testing.T) 
 		page = query(&model.TransactionFilter{Note: strPtr("no such note")})
 		require.NotNil(t, page.Totals)
 		assert.Equal(t, model.AmountTotals{}, *page.Totals, "no match sums to zero, not null")
+	})
+
+	t.Run("reward points come from the matched statement lines", func(t *testing.T) {
+		// the card purchase earned 12 points; the salary's line printed none
+		for _, src := range []struct {
+			txn    uuid.UUID
+			points *int
+		}{{card.ID, intPtr(12)}, {salary.ID, nil}} {
+			_, err := pool.Exec(ctx, `INSERT INTO transaction_sources
+				(budget_id, transaction_id, kind, raw_text, rewards_points) VALUES ($1, $2, 'STATEMENT_LINE', 'x', $3)`,
+				s.budgetID, src.txn, src.points)
+			require.NoError(t, err)
+		}
+		page := query(&model.TransactionFilter{})
+		require.Equal(t, 3, page.Total, "the join doesn't repeat transactions")
+		assert.Equal(t, model.AmountTotals{Inflow: 50000, Outflow: 500, RewardPoints: intPtr(12), RewardPointsCount: 1}, *page.Totals)
+
+		page = query(&model.TransactionFilter{PayeeIDs: []uuid.UUID{s.payee2ID}})
+		assert.Nil(t, page.Totals.RewardPoints, "no points printed means none, not zero")
 	})
 
 	filters := map[string]struct {

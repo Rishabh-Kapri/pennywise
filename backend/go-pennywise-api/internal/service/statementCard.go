@@ -18,10 +18,16 @@ import (
 // a category for them, and keep EMI instalments out of "missing".
 
 var (
-	taxRe        = regexp.MustCompile(`(?i)\b(?:igst|cgst|sgst|utgst|gst|service\s+tax)\b`)
-	interestRe   = regexp.MustCompile(`(?i)\b(?:interest|finance\s+charges?|fin\.?\s*chg)\b`)
-	feeRe        = regexp.MustCompile(`(?i)\b(?:fees?|charges?|chg|chgs|mark-?up|surcharge|penalty|late\s+payment|over\s*limit|membership|renewal|joining)\b`)
-	emiRe        = regexp.MustCompile(`(?i)\b(?:emi|e\.m\.i\.?|instal+ments?|amorti[sz]ation|loan\s+on\s+card)\b`)
+	taxRe      = regexp.MustCompile(`(?i)\b(?:igst|cgst|sgst|utgst|gst|service\s+tax)\b`)
+	interestRe = regexp.MustCompile(`(?i)\b(?:interest|finance\s+charges?|fin\.?\s*chg)\b`)
+	feeRe      = regexp.MustCompile(`(?i)\b(?:fees?|charges?|chg|chgs|mark-?up|surcharge|penalty|late\s+payment|over\s*limit|membership|renewal|joining)\b`)
+	emiRe      = regexp.MustCompile(`(?i)\b(?:emi|e\.m\.i\.?|instal+ments?|amorti[sz]ation|loan\s+on\s+card)\b`)
+	// emiWordsRe are EMI words that only an EMI line prints; a bare "EMI"
+	// isn't enough (see emiOfferRe).
+	emiWordsRe = regexp.MustCompile(`(?i)\b(?:instal+ments?|amorti[sz]ation|loan\s+on\s+card)\b`)
+	// emiOfferRe is the "EMI" button HDFC prints before a purchase that can
+	// still be converted ("EMI ACME STORE"), which readers copy into the text.
+	emiOfferRe   = regexp.MustCompile(`(?i)^\s*emi\s+`)
 	emiNumRe     = regexp.MustCompile(`(?i)\b(\d{1,3})\s*(?:/|of|out\s+of)\s*(\d{1,3})\b`)
 	principalRe  = regexp.MustCompile(`(?i)\bprin(?:cipal|\.)?\b`)
 	conversionRe = regexp.MustCompile(`(?i)\bconver(?:t|ted|sion)\b`)
@@ -57,7 +63,7 @@ func classifyStatementRow(r *model.StatementRow, card bool) {
 		r.ChargeKind = model.StatementChargeTax
 		return
 	}
-	if card && emiRe.MatchString(text) {
+	if card && emiRe.MatchString(text) && !emiOffer(text) {
 		line := &model.StatementEMILine{Part: emiPartInstalment}
 		switch {
 		case interestRe.MatchString(text):
@@ -88,11 +94,51 @@ func classifyStatementRow(r *model.StatementRow, card bool) {
 	}
 }
 
+// emiOffer reports a purchase that merely offers conversion to EMI: a
+// leading "EMI" and nothing an instalment prints (a "3/6", principal,
+// interest, conversion, "instalment"). Its text loses the "EMI".
+func emiOffer(text string) bool {
+	if !emiOfferRe.MatchString(text) {
+		return false
+	}
+	rest := emiOfferRe.ReplaceAllString(text, "")
+	return !emiRe.MatchString(rest) && !emiWordsRe.MatchString(text) && !emiNumRe.MatchString(text) &&
+		!principalRe.MatchString(text) && !interestRe.MatchString(text) && !conversionRe.MatchString(text)
+}
+
+// stripEMIOffer drops the offer's "EMI" from what the row shows and is
+// created with; RawDescription keeps what was printed.
+func stripEMIOffer(r *model.StatementRow) {
+	text := r.Description
+	if r.RawDescription != "" {
+		text = r.RawDescription
+	}
+	if !emiOffer(text) {
+		return
+	}
+	if r.RawDescription == "" {
+		r.RawDescription = r.Description
+	}
+	r.Description = emiOfferRe.ReplaceAllString(r.Description, "")
+	r.Payee = emiOfferRe.ReplaceAllString(r.Payee, "")
+}
+
 // coveredByEMI reports whether a row is part of an EMI the budget already
 // paid in full when it was bought: its instalments, their principal, and the
-// conversion credit. EMI interest is a cost, so it isn't covered.
+// conversion credit. EMI interest is a cost, so it isn't covered. The user's
+// EMIOverride wins.
 func coveredByEMI(r model.StatementRow) bool {
+	if r.EMIOverride != nil {
+		return *r.EMIOverride
+	}
 	return r.EMI != nil && r.EMI.Part != emiPartInterest
+}
+
+// setAsideAsEMI reports a row that goes under Covered by EMI instead of
+// being matched: covered, and not linked by the user to a transaction (an
+// EMI they track as its own transaction).
+func setAsideAsEMI(r model.StatementRow) bool {
+	return coveredByEMI(r) && len(r.LinkedTransactionIDs) == 0
 }
 
 // statementCharges totals each kind of charge; a reversal (credit) counts

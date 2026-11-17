@@ -33,6 +33,8 @@ top to bottom with no ALTER history to replay.
 | `00024_statement_import_files` | `statement_imports.file_path`: the uploaded PDF's key in the document store |
 | `00025_account_statement_passwords` | `account_statement_passwords`: an account's statement PDF password, sealed; not granted to the agent role |
 | `00026_budget_members` | `budget_members` (who may open a budget: owner/editor/viewer, and each member's selected budget; backfilled with every owner) and `budget_invites` (by email, 14-day expiry); not granted to the agent role |
+| `00027_pipeline_step_enabled` | `budget_pipeline_steps.enabled`: a budget turning off a step its pipeline file marks optional |
+| `00028_statement_import_file_paths` | backfills `statement_imports.file_path` for uploads that stored their PDF without recording its key |
 
 ## Commands (from `backend/go-pennywise-api`)
 

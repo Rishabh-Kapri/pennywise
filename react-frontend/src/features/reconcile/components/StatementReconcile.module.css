@@ -156,9 +156,9 @@
   gap: 0.7rem;
 }
 
-.page .field select,
-.page .field input,
-.page .accountSelect,
+/* the PDF password and a row's payee; account and category use the app's
+   pickers (AccountPicker, CategoryDropdown), which bring their own field */
+.page .field > input,
 .page .cellInput {
   height: 44px;
   padding: 0 0.85rem;
@@ -169,19 +169,18 @@
   font-size: 1rem;
 }
 
-.page .field select,
-.page .field input {
+.page .field > input {
   width: 100%;
 }
 
 .page .accountSelect {
   min-width: 15rem;
   max-width: 100%;
+  color: var(--color-text);
+  font-weight: 400;
 }
 
-.page .field select:focus,
-.page .field input:focus,
-.page .accountSelect:focus,
+.page .field > input:focus,
 .page .cellInput:focus {
   outline: 2px solid var(--primary-tint);
   border-color: var(--color-primary);
@@ -529,8 +528,8 @@
 
 .page .stateCard .accountSelect {
   width: 22rem;
-  height: 48px;
   margin: 0.5rem 0;
+  text-align: left;
 }
 
 .page .stateIcon {
@@ -614,7 +613,11 @@
 .page .tabs {
   display: flex;
   gap: 1.75rem;
+  /* scrolls sideways on a narrow screen; the tabs' -1px overlap with the
+     border must not make it scroll up and down too */
   overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
   border-bottom: 1px solid var(--line);
 }
 
@@ -772,12 +775,20 @@
   white-space: nowrap;
 }
 
+/* sized like the category picker's form field beside it */
 .page .table .cellInput {
   width: 100%;
   min-width: 10rem;
-  height: 40px;
-  padding: 0 0.7rem;
-  font-size: 0.95rem;
+  height: 2.5rem;
+  padding: 0 0.8rem;
+  border-color: var(--color-border-muted);
+  border-radius: 0.6rem;
+  background: var(--color-surface);
+  font-size: 0.92rem;
+}
+
+.page .table .categoryCell {
+  min-width: 12rem;
 }
 
 .page .inflow {
@@ -839,109 +850,1104 @@
 
 /* ── Card summary ─────────────────────────────────────────────── */
 
+/* One surface. Type and space do the grouping: no boxes inside it, no icons,
+   one accent (money in is green). */
 .page .cardSummary {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.page .statTiles {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
-  gap: 0.75rem;
-}
-
-.page .statTile {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  padding: 0.9rem 1.1rem;
   border: 1px solid var(--line);
-  border-radius: 14px;
-}
-
-.page .statTile span {
-  color: var(--color-text-secondary);
-  font-size: 0.88rem;
-}
-
-.page .statTile strong {
-  font-size: 1.2rem;
-  font-weight: 600;
+  border-radius: 16px;
+  background: var(--color-surface);
   font-variant-numeric: tabular-nums;
 }
 
-.page .cardPanels {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
-  gap: 0.75rem;
+.page .cardSummary > * {
+  padding: 1.6rem 1.75rem;
 }
 
-.page .cardPanel {
+.page .cardSummary > * + * {
+  border-top: 1px solid var(--line);
+}
+
+.page .figureLabel {
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+}
+
+.page .figureNote {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+}
+
+/* what's due */
+.page .dues {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  align-items: end;
+  gap: 1.5rem 2.5rem;
+}
+
+.page .dues > div {
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
-  padding: 1rem 1.1rem;
-  border: 1px solid var(--line);
-  border-radius: 14px;
+  gap: 0.3rem;
 }
 
-.page .cardPanelWide {
-  grid-column: 1 / -1;
+.page .dues strong {
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
 }
 
-.page .cardPanel header {
+.page .duesLead strong {
+  font-size: 2.5rem;
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+}
+
+.page .paise {
+  color: var(--color-text-secondary);
+  font-size: 0.55em;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.page .meter {
+  display: block;
+  width: 5rem;
+  height: 4px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--tint-strong);
+  overflow: hidden;
+}
+
+.page .meter > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-text);
+}
+
+/* cashback, charges, points: columns of plain figures */
+.page .figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  align-items: start;
+  gap: 2rem 3.5rem;
+}
+
+.page .figures header,
+.page .emis header {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 0.75rem;
+  gap: 1rem;
 }
 
-.page .cardPanel h4 {
+.page .cardSummary h4 {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.page .figures header strong {
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+
+.page .figures p,
+.page .emis p {
+  margin-top: 0.6rem;
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+}
+
+.page .figures dl {
+  margin-top: 0.75rem;
+}
+
+.page .figures dl > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--line);
+  font-size: 1rem;
+}
+
+.page .figures dt {
+  color: var(--color-text-secondary);
+}
+
+.page .figures dt small {
+  margin-left: 0.5rem;
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
+.page .figures dd {
+  font-weight: 500;
+}
+
+/* running EMIs */
+.page .emis header span {
+  color: var(--color-text-secondary);
+  font-size: 0.95rem;
+}
+
+.page .emis header strong {
+  color: var(--color-text);
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+
+.page .emis table {
+  width: 100%;
+  margin-top: 0.9rem;
+  border-collapse: collapse;
+  font-size: 1rem;
+}
+
+.page .emis th {
+  padding: 0 0 0.5rem;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-align: left;
+}
+
+.page .emis td {
+  padding: 0.7rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.page .emis th + th,
+.page .emis td + td {
+  padding-left: 1.5rem;
+}
+
+.page .emis th.num,
+.page .emis td.num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.page .emis td:first-child,
+.page .emis td:last-child {
+  font-weight: 500;
+}
+
+.page .emiProgress {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.page .emis tr.emiDone td {
+  color: var(--color-text-secondary);
+  font-weight: 400;
+}
+
+@media (max-width: 700px) {
+  .page .cardSummary > * {
+    padding: 1.25rem 1.1rem;
+  }
+
+  .page .duesLead strong {
+    font-size: 2rem;
+  }
+
+  .page .emis {
+    overflow-x: auto;
+  }
+}
+
+/* ── Statement list: groups and progress ──────────────────────── */
+
+.page .importGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.page .importGroup + .importGroup {
+  margin-top: 1.25rem;
+}
+
+.page .importGroupTitle {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
   font-size: 1rem;
   font-weight: 600;
 }
 
-.page .cardPanel header strong {
-  font-size: 1.1rem;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.page .cardPanel header small {
+/* the statement count; the chips beside it keep their own colours */
+.page .importGroupTitle span:not([class]) {
   color: var(--color-text-secondary);
   font-size: 0.85rem;
   font-weight: 500;
 }
 
-.page .cardPanel ul {
-  display: flex;
-  flex-direction: column;
-  list-style: none;
+.page .importRowDone {
+  background: color-mix(in srgb, var(--color-success) 6%, transparent);
 }
 
-.page .cardPanel li {
+.page .importRowDone:hover {
+  background: color-mix(in srgb, var(--color-success) 11%, transparent);
+}
+
+.page .reconciledChip,
+.page .todoChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.page .reconciledChip {
+  color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 15%, transparent);
+}
+
+.page .todoChip {
+  color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+}
+
+.page .todoChip:empty {
+  display: none;
+}
+
+/* ── Statement identity: card, period and what's due ───────────── */
+
+.page .identity {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.9rem;
+  min-width: 0;
+}
+
+.page .identityLogo {
+  flex-shrink: 0;
+}
+
+.page .identityText {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.page .identityName {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.page .identityName strong,
+.page .identityName h2 {
+  overflow: hidden;
+  font-size: 1.05rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page .identityLarge .identityName h2 {
+  font-size: 1.6rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+.page .identityEnding {
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+.page .identityLarge .identityEnding {
+  font-size: 1.15rem;
+}
+
+.page .identityFacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.1rem;
+  font-size: 0.95rem;
+}
+
+.page .identityLarge .identityFacts {
+  font-size: 1.05rem;
+}
+
+.page .identityDue {
+  color: var(--color-text-secondary);
+}
+
+.page .identityDue strong {
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.page .identityMeta {
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Linking a row by hand ─────────────────────────────────────── */
+
+.page .srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.page .table .actionCell {
+  width: 3rem;
+  text-align: right;
+}
+
+.page .iconButtonActive {
+  background: var(--primary-tint);
+  color: var(--color-primary);
+}
+
+.page .table .linkRow > td {
+  padding-top: 0;
+  background: var(--tint);
+}
+
+.page .linkPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.8rem 0.2rem 0.4rem;
+}
+
+.page .linkPanelHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.5rem 0;
-  border-top: 1px solid var(--line);
   font-size: 0.95rem;
-  font-variant-numeric: tabular-nums;
 }
 
-.page .cardPanel li.cashbackRow > span:last-child {
-  color: var(--color-success);
-}
-
-.page .cardPanel li > span:first-child {
+.page .linkList {
   display: flex;
   flex-direction: column;
+  gap: 0.35rem;
+  list-style: none;
+}
+
+.page .linkOption {
+  display: grid;
+  grid-template-columns: 1.25rem 4.5rem 1fr auto;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.6rem;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.page .linkOption:hover:not(:disabled) {
+  border-color: var(--color-primary);
+}
+
+.page .linkOptionOn {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface));
+}
+
+.page .linkFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+
+.page .linkOption:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.page .linkPayee,
+.page .linkAmount {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
   min-width: 0;
 }
 
-.page .cardPanel li small {
+.page .linkAmount {
+  align-items: flex-end;
+  font-variant-numeric: tabular-nums;
+}
+
+.page .linkPayee small,
+.page .linkAmount small {
   color: var(--color-text-secondary);
   font-size: 0.82rem;
+}
+
+.page .linkedOther {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.page .differenceForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 0.8rem;
+  padding: 0.7rem 0.2rem 0.5rem;
+  font-size: 0.95rem;
+}
+
+.page .differenceForm .cellInput {
+  width: 12rem;
+  height: 2.5rem;
+  padding: 0 0.8rem;
+  border-color: var(--color-border-muted);
+  border-radius: 0.6rem;
+  background: var(--color-surface);
+  font-size: 0.92rem;
+}
+
+.page .differenceForm .categoryCell {
+  width: 13rem;
+}
+
+/* ── PDF beside the rows ───────────────────────────────────────── */
+
+.page .secondaryButtonOn {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.page .compareLayout {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.page .compareRows {
+  min-width: 0;
+}
+
+/* side by side where there's room; the PDF stays in view while rows scroll */
+@media (min-width: 1200px) {
+  .page .compareLayout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+    align-items: start;
+  }
+}
+
+.page .pdfPanel {
+  position: sticky;
+  top: 1rem;
+  display: flex;
+  flex-direction: column;
+  height: min(78vh, 900px);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--color-surface);
+}
+
+.page .pdfBar {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.25rem 0.25rem 0.9rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.page .pdfFrame {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  background: var(--color-surface);
+}
+
+.page .pdfLoading {
+  display: grid;
+  flex: 1;
+  place-items: center;
+  color: var(--color-text-secondary);
+}
+
+.page .pageButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-right: 0.35rem;
+  padding: 0.1rem 0.5rem;
+  border: none;
+  border-radius: 999px;
+  background: var(--primary-tint);
+  color: var(--color-primary);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.page .pageButton:hover {
+  filter: brightness(1.15);
+}
+
+/* ── Bulk edit in the selection bar ────────────────────────────── */
+
+/* The Missing tab's selection bar: count, the three "for all" fields in
+   one row of equal width, then the actions. Narrow screens stack them. */
+.page .selectionBar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  padding: 0.7rem 0.75rem 0.7rem 1.1rem;
+}
+
+.page .barCount {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+.page .barCount strong {
+  color: var(--color-text);
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.page .barCount .textButton {
+  margin-left: 0.4rem;
+  font-size: 0.88rem;
+}
+
+.page .bulkFields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.page .bulkFields .payeeCell,
+.page .bulkFields .categoryCell {
+  min-width: 0;
+}
+
+.page .bulkFields .categoryCell button,
+.page .bulkFields .payeeCell button {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page .barActions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+
+.page .selectionBar .createBarPanel {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 1100px) {
+  .page .selectionBar {
+    grid-template-columns: 1fr auto;
+  }
+
+  .page .selectionBar .bulkFields {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
+@media (max-width: 640px) {
+  .page .selectionBar .bulkFields {
+    grid-template-columns: 1fr;
+  }
+}
+
+.page .table .payeeCell {
+  min-width: 12rem;
+}
+
+/* ── Corrections, notes, linking several rows ─────────────────── */
+
+.page .badgeEdited {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: help;
+  color: var(--color-info);
+  background: color-mix(in srgb, var(--color-info) 14%, transparent);
+}
+
+.page .bulkNote {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  font-size: 0.92rem;
+}
+
+.page .createBarPanel {
+  flex-basis: 100%;
+}
+
+.page .createBarSpacer {
+  height: 1.75rem;
+  flex-shrink: 0;
+}
+
+.page .rowEditor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: var(--tint);
+}
+
+.page .rowEditor .field {
+  min-width: 9rem;
+}
+
+.page .rowEditor .rowEditorText {
+  flex: 1 1 16rem;
+}
+
+.page .rowEditorActions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-basis: 100%;
+}
+
+.page .segmented {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+}
+
+.page .segmented > button {
+  padding: 0.45rem 0.8rem;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.page .segmented > button.segmentOn {
+  background: var(--primary-tint);
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.page .rowTime {
+  display: block;
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.page .groupTools {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: -0.5rem;
+}
+
+.page .groupToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.3rem 0.5rem 0.3rem 0.25rem;
+  margin-left: -0.25rem;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.page .groupToggle:hover {
+  background: var(--tint);
+}
+
+.page .groupToggle:focus-visible {
+  outline: 2px solid var(--color-primary);
+}
+
+.page .groupToggle > svg {
+  color: var(--color-text-secondary);
+  transition: transform 0.15s ease;
+}
+
+.page .groupToggle > svg.caretFolded {
+  transform: rotate(-90deg);
+}
+
+.page .groupToggle .reconciledChip,
+.page .groupToggle .todoChip,
+.page .groupToggle .badgeMuted {
+  margin-left: 0.25rem;
+}
+
+/* ── Rows: calm lists, not forms ──────────────────────────────── */
+
+/* sentence-case headers; the caps shouted over the rows */
+.page .table th {
+  padding-top: 0.9rem;
+  padding-bottom: 0.9rem;
+  font-size: 0.92rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.page .table.missingTable {
+  table-layout: fixed;
+  min-width: 48rem;
+  font-size: 1rem;
+}
+
+.page .missingTable .colCheck {
+  width: 3.25rem;
+}
+.page .missingTable .colDate {
+  width: 5.75rem;
+}
+.page .missingTable .colPayee {
+  width: 17%;
+}
+.page .missingTable .colCategory {
+  width: 21%;
+}
+.page .missingTable .colAmount {
+  width: 7.25rem;
+}
+.page .missingTable .colActions {
+  width: 7.75rem;
+}
+
+.page .missingTable th,
+.page .missingTable td {
+  padding: 0.8rem 0.6rem;
+}
+
+.page .missingTable .checkCell {
+  padding-left: 1.1rem;
+}
+
+.page .missingTable tbody tr {
+  transition: background 0.12s ease;
+}
+
+/* the statement's words on one line, the small print under it */
+.page .textCell {
+  min-width: 0;
+}
+
+.page .rowTitle {
+  display: block;
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page .rowMeta {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  margin-top: 0.15rem;
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-size: 0.86rem;
+  white-space: nowrap;
+}
+
+.page .rowMeta:empty {
+  display: none;
+}
+
+/* its badges become plain words with a dot between */
+.page .table .rowMeta > * {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 400;
+}
+
+.page .rowMeta > * + *::before {
+  content: '·';
+  margin: 0 0.5rem;
+  color: var(--color-text-secondary);
+  opacity: 0.6;
+}
+
+.page .table .rowMeta > .badge {
+  color: var(--color-warning);
+}
+
+.page .table .rowMeta > .badgeEdited {
+  color: var(--color-info);
+}
+
+.page .rowMeta > button {
+  cursor: pointer;
+}
+
+.page .rowMeta > button:hover {
+  color: var(--color-text);
+}
+
+.page .rowMeta > .metaNote {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-style: italic;
+  text-overflow: ellipsis;
+}
+
+/* Payee and category read as text; the field shows on hover and focus.
+   Pulled left by their padding so the text lines up with the header. */
+.page .missingTable .categoryCell,
+.page .missingTable .payeeCell {
+  min-width: 0;
+}
+
+.page .missingTable .payeeCell input,
+.page .missingTable .categoryCell button {
+  display: block;
+  width: calc(100% + 0.7rem);
+  max-width: none;
+  min-width: 0;
+  height: 2.5rem;
+  margin-left: -0.7rem;
+  padding: 0 0.7rem;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  box-shadow: none;
+  font-size: 1rem;
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.page .missingTable tr:hover .payeeCell input,
+.page .missingTable tr:hover .categoryCell button {
+  border-color: var(--line-strong);
+}
+
+.page .missingTable .payeeCell input:hover,
+.page .missingTable .categoryCell button:hover {
+  background: var(--tint-strong);
+}
+
+.page .missingTable .payeeCell input:focus,
+.page .missingTable .categoryCell button:focus-visible,
+.page .missingTable .categoryCell button[aria-expanded='true'] {
+  border-color: var(--color-primary);
+  background: var(--color-background);
+  outline: none;
+}
+
+.page .missingTable .amountCell {
+  font-size: 1.05rem;
+}
+
+/* actions wait quietly until the row is the one in hand */
+.page .missingTable .actionCell {
+  padding-right: 0.9rem;
+}
+
+.page .rowActionsQuiet {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.15rem;
+  opacity: 0.45;
+  transition: opacity 0.12s ease;
+}
+
+.page .table tr:hover .rowActionsQuiet,
+.page .rowActionsQuiet:focus-within,
+.page .rowActionsQuiet:has(.iconButtonActive) {
+  opacity: 1;
+}
+
+.page .rowActionsQuiet .iconButton {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+}
+
+@media (hover: none) {
+  .page .rowActionsQuiet {
+    opacity: 1;
+  }
+
+  .page .missingTable .payeeCell input,
+  .page .missingTable .categoryCell button {
+    border-color: var(--line-strong);
+  }
+}
+
+/* the note opens as a line of its own under the row */
+.page .table tr:has(+ .noteRow) td {
+  border-bottom: none;
+}
+
+.page .table .noteRow td {
+  padding-top: 0;
+  padding-bottom: 0.8rem;
+}
+
+.page .table .noteRow,
+.page .table .noteRow:hover {
+  background: none;
+}
+
+.page .noteField {
+  width: 100%;
+  height: 2.5rem;
+  padding: 0 0.8rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: var(--color-background);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.95rem;
+}
+
+.page .noteField:focus {
+  border-color: var(--color-primary);
+  outline: 2px solid var(--primary-tint);
+}
+
+/* ── The CSV beside the rows ───────────────────────────────────── */
+
+/* The export as the bank wrote it: line numbers in a gutter that stays put,
+   the reader's transactions in full ink, the bank's summary lines quieter. */
+.page .csvBody {
+  flex: 1;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.page .csvTable {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.page .csvTable th,
+.page .csvTable td {
+  padding: 0.3rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.page .csvTable td {
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.page .csvTable th {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 2.75rem;
+  padding-right: 0.6rem;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-weight: 400;
+  text-align: right;
+  user-select: none;
+}
+
+.page .csvTable td:empty {
+  padding: 0;
+}
+
+.page .csvAside td {
+  color: var(--color-text-secondary);
+}
+
+.page .csvTable tr:hover td {
+  background: color-mix(in srgb, var(--color-text) 4%, transparent);
+}
+
+.page .csvTable .csvHit td,
+.page .csvTable .csvHit th {
+  background: var(--primary-tint);
+  color: var(--color-text);
+}
+
+.page .csvTable .csvHit th {
+  color: var(--color-primary);
+  font-weight: 600;
 }

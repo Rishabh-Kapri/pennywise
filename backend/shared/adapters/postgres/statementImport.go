@@ -127,7 +127,11 @@ func (r *statementImportRepo) List(ctx context.Context, budgetId uuid.UUID, limi
 				SELECT DISTINCT (s->>'accountId')::uuid
 				FROM jsonb_array_elements(sections) s
 				WHERE COALESCE(s->>'accountId', '') <> ''
-			) AS account_ids
+			) AS account_ids,
+			COALESCE((
+				SELECT jsonb_agg(s - 'rows' - 'emiPlans' - 'rewards')
+				FROM jsonb_array_elements(sections) s
+			), '[]'::jsonb) AS summary
 		FROM statement_imports
 		WHERE budget_id = $1 AND deleted = FALSE
 		ORDER BY created_at DESC
@@ -142,6 +146,7 @@ func (r *statementImportRepo) List(ctx context.Context, budgetId uuid.UUID, limi
 	imports := make([]model.StatementImport, 0)
 	for rows.Next() {
 		var imp model.StatementImport
+		var summary []byte
 		if err := rows.Scan(
 			&imp.ID,
 			&imp.BudgetID,
@@ -158,7 +163,11 @@ func (r *statementImportRepo) List(ctx context.Context, budgetId uuid.UUID, limi
 			&imp.UpdatedAt,
 			&imp.RowCount,
 			&imp.AccountIDs,
+			&summary,
 		); err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(summary, &imp.Summary); err != nil {
 			return nil, err
 		}
 		imp.HasFile = imp.FilePath != ""

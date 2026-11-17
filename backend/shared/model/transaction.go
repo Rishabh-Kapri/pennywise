@@ -130,6 +130,8 @@ type TransactionStatusReq struct {
 }
 
 type TransactionFilter struct {
+	// IDs picks transactions by ID (a link to one transaction).
+	IDs          []uuid.UUID
 	AccountIDs   []uuid.UUID
 	CategoryIDs  []uuid.UUID
 	PayeeIDs     []uuid.UUID

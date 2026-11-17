@@ -22,7 +22,14 @@ interface SearchSelectProps {
   variant?: DropdownVariant;
   /** Popover width in px; defaults to the field's width. */
   menuWidth?: number;
+  /**
+   * Offers "Add “typed text”" when what's typed matches no item exactly; picking
+   * it calls this with the trimmed text. Leave unset to allow existing items only.
+   */
+  onCreate?: (name: string) => void;
 }
+
+const CREATE_ID = '__search_select_create__';
 
 const inputClass: Record<DropdownVariant, string> = {
   inline: styles.input,
@@ -45,6 +52,7 @@ export function SearchSelect({
   autoFocus,
   variant = 'inline',
   menuWidth,
+  onCreate,
 }: SearchSelectProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -59,10 +67,14 @@ export function SearchSelect({
   }, [value]);
 
   const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase();
+    const typed = query.trim();
+    const needle = typed.toLowerCase();
     if (!isFiltering || !needle) return items;
-    return items.filter((item) => item.name.toLowerCase().includes(needle));
-  }, [items, query, isFiltering]);
+    const matches = items.filter((item) => item.name.toLowerCase().includes(needle));
+    const exact = items.some((item) => item.name.trim().toLowerCase() === needle);
+    // last, so Enter on a partial name picks the match, not a new payee
+    return onCreate && !exact ? [...matches, { id: CREATE_ID, name: typed }] : matches;
+  }, [items, query, isFiltering, onCreate]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -78,7 +90,8 @@ export function SearchSelect({
     setQuery(item.name);
     setIsFiltering(false);
     setIsOpen(false);
-    onSelect(item);
+    if (item.id === CREATE_ID) onCreate?.(item.name);
+    else onSelect(item);
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -155,7 +168,9 @@ export function SearchSelect({
                 choose(item);
               }}>
               {item.leading && <span className={styles.optionLeading}>{item.leading}</span>}
-              <span className={styles.optionName}>{item.name}</span>
+              <span className={styles.optionName}>
+                {item.id === CREATE_ID ? `Add “${item.name}”` : item.name}
+              </span>
               {item.trailing && <span className={styles.optionTrailing}>{item.trailing}</span>}
             </div>
           ))}

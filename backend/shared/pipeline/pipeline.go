@@ -52,12 +52,16 @@ const (
 	StepCreate  StepID = "create"
 )
 
-// Steps of the statement pipeline. It shares StepExtract with the message
-// pipeline.
+// Steps of the statement pipeline. The values are statement.json's step IDs,
+// which budget overrides store, so they can't change; StepStatementExtract is
+// the same "extract" as the message pipeline's StepExtract.
 const (
-	StepOCR      StepID = "ocr"
-	StepFallback StepID = "fallback"
-	StepSave     StepID = "save"
+	// StepStatementEmail fetches a statement email's PDFs (cipher decides
+	// whether to queue the fetch; ingest downloads them).
+	StepStatementEmail    StepID = "email"
+	StepStatementExtract  StepID = "extract"
+	StepStatementFallback StepID = "fallback"
+	StepStatementSave     StepID = "save"
 )
 
 // Adapter is one way of running a step.
@@ -73,6 +77,22 @@ type Adapter struct {
 	Unavailable bool `json:"unavailable,omitempty"`
 	// MaxTokens caps the model's output for this adapter. Model adapters only.
 	MaxTokens int `json:"maxTokens,omitempty"`
+	// PreferredModels are the models this adapter is written for, best first
+	// (glm_ocr's prompt only suits glm-ocr). With no model chosen for the
+	// step, the first one the owner has set up runs instead of their default.
+	// Model adapters only.
+	PreferredModels []PreferredModel `json:"preferredModels,omitempty"`
+}
+
+// PreferredModel names a model by provider and slug, since the owner's model
+// IDs aren't known to the pipeline file.
+type PreferredModel struct {
+	Provider model.LLMProviderName `json:"provider"`
+	Slug     string                `json:"slug"`
+}
+
+func (p PreferredModel) String() string {
+	return string(p.Provider) + "/" + p.Slug
 }
 
 type Step struct {
@@ -82,7 +102,16 @@ type Step struct {
 	DefaultAdapter string `json:"defaultAdapter"`
 	// Fallback is the default for trying the owner's other models of the same
 	// kind when the step's model fails. Model adapters only.
-	Fallback bool      `json:"fallback,omitempty"`
+	Fallback bool `json:"fallback,omitempty"`
+	// RerunOf names an earlier step this one runs again another way, when that
+	// step's result doesn't check out (statement fallback reruns extract). A
+	// budget can't give the two the same adapter and model.
+	RerunOf StepID `json:"rerunOf,omitempty"`
+	// Optional: a budget may turn the step off. What the pipeline does
+	// without it is up to the service that runs the step.
+	Optional bool `json:"optional,omitempty"`
+	// WhenOff says what happens without the step, shown when it's off.
+	WhenOff  string    `json:"whenOff,omitempty"`
 	Adapters []Adapter `json:"adapters"`
 }
 
@@ -97,8 +126,11 @@ func (s Step) Adapter(id string) (Adapter, bool) {
 }
 
 // Editable reports whether a budget has anything to choose for this step:
-// more than one usable adapter, or one that runs on a model.
+// turning it off, more than one usable adapter, or one that runs on a model.
 func (s Step) Editable() bool {
+	if s.Optional {
+		return true
+	}
 	usable := 0
 	for _, a := range s.Adapters {
 		if a.Unavailable {
@@ -251,6 +283,12 @@ func (p *Pipeline) validate() error {
 			if a.UsesModel && !a.ModelKind.Valid() {
 				return invalid("step %q adapter %q: usesModel needs a modelKind", s.ID, a.ID)
 			}
+		}
+		if s.WhenOff != "" && !s.Optional {
+			return invalid("step %q: whenOff is only for optional steps", s.ID)
+		}
+		if s.RerunOf != "" && !steps[s.RerunOf] || s.RerunOf == s.ID {
+			return invalid("step %q: rerunOf %q isn't an earlier step", s.ID, s.RerunOf)
 		}
 		def, ok := s.Adapter(s.DefaultAdapter)
 		if !ok {

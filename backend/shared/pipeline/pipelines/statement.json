@@ -2,57 +2,93 @@
   "$schema": "../pipeline.schema.json",
   "id": "statement",
   "label": "Statements",
-  "description": "Turns bank and card statement PDFs into transactions to review.",
-  "version": 1,
+  "description": "Turns bank and card statements (PDFs, or CSVs exported from the bank) into transactions to review.",
+  "version": 4,
   "steps": [
     {
-      "id": "ocr",
-      "label": "Read scans",
-      "description": "Reads pages that are images. Pages with real text skip this step and use the PDF's own text.",
-      "defaultAdapter": "glm_ocr",
+      "id": "email",
+      "label": "From email",
+      "description": "Downloads the PDF from a statement email the Messages pipeline recognised, and reads it like an upload.",
+      "defaultAdapter": "mailbox",
+      "optional": true,
+      "whenOff": "Statement emails are recognised but their PDFs aren't downloaded or read. Uploads still are.",
       "adapters": [
         {
-          "id": "glm_ocr",
-          "label": "GLM-OCR",
-          "description": "A small vision model that reads each page as an image.",
-          "usesModel": true,
-          "modelKind": "chat",
-          "maxTokens": 8192
-        },
-        {
-          "id": "docling",
-          "label": "Docling",
-          "description": "Finds the table on each page and reads it with PaddleOCR. No AI provider needed.",
-          "unavailable": true
+          "id": "mailbox",
+          "label": "Your mailbox",
+          "description": "Fetches the attachment from the mailbox the email came from."
         }
       ]
     },
     {
       "id": "extract",
-      "label": "Extract",
-      "description": "Turns the page text into transactions using the statement's column layout.",
-      "defaultAdapter": "columns",
+      "label": "Read statement",
+      "description": "Reads the statement into rows: a PDF, or a CSV exported from your bank. Pick a reader for the files you upload.",
+      "defaultAdapter": "glm_ocr",
       "adapters": [
         {
-          "id": "columns",
-          "label": "Column layout",
-          "description": "Finds the header line and puts each word in the column it sits under. No AI."
+          "id": "glm_ocr",
+          "label": "GLM-OCR",
+          "description": "For PDFs. A small vision model reads each page's tables; the rows come from the statement's column layout. Runs on your local Ollama.",
+          "usesModel": true,
+          "modelKind": "chat",
+          "maxTokens": 8192,
+          "preferredModels": [{ "provider": "ollama", "slug": "glm-ocr" }]
+        },
+        {
+          "id": "docling",
+          "label": "Docling",
+          "description": "For PDFs. Finds the table on each page and reads it with PaddleOCR, RapidOCR or EasyOCR. No AI provider needed.",
+          "unavailable": true
+        },
+        {
+          "id": "llm",
+          "label": "Your AI",
+          "description": "For PDFs. Sends the statement text to your AI one page at a time; it returns the rows directly.",
+          "usesModel": true,
+          "modelKind": "chat",
+          "maxTokens": 8192,
+          "preferredModels": [{ "provider": "ollama", "slug": "qwen3.5:9b" }]
+        },
+        {
+          "id": "export",
+          "label": "Bank export",
+          "description": "Reads a CSV statement exported from your bank's website: HDFC's \"Delimited\" for accounts, or its card statement CSV. No AI, nothing guessed. It can't read PDFs, so turn off From email when you pick it: emailed statements are PDFs."
         }
       ]
     },
     {
       "id": "fallback",
       "label": "Fallback",
-      "description": "Runs when the rows don't add up to the statement's balances and totals, or when you ask. Keeps whichever result checks out better.",
+      "description": "Reads the statement again another way when the rows don't add up to its balances and totals, or when it prints none to check against. Keeps whichever result checks out better.",
       "defaultAdapter": "llm",
+      "optional": true,
+      "whenOff": "A statement is read once; rows that don't add up are kept as they are.",
+      "rerunOf": "extract",
       "adapters": [
+        {
+          "id": "glm_ocr",
+          "label": "GLM-OCR",
+          "description": "For PDFs. A small vision model reads each page's tables; the rows come from the statement's column layout. Runs on your local Ollama.",
+          "usesModel": true,
+          "modelKind": "chat",
+          "maxTokens": 8192,
+          "preferredModels": [{ "provider": "ollama", "slug": "glm-ocr" }]
+        },
+        {
+          "id": "docling",
+          "label": "Docling",
+          "description": "For PDFs. Finds the table on each page and reads it with PaddleOCR, RapidOCR or EasyOCR. No AI provider needed.",
+          "unavailable": true
+        },
         {
           "id": "llm",
           "label": "Your AI",
-          "description": "Sends the statement text to your own AI provider, one page at a time.",
+          "description": "For PDFs. Sends the statement text to your AI one page at a time; it returns the rows directly.",
           "usesModel": true,
           "modelKind": "chat",
-          "maxTokens": 8192
+          "maxTokens": 8192,
+          "preferredModels": [{ "provider": "ollama", "slug": "qwen3.5:9b" }]
         }
       ]
     },

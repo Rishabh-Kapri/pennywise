@@ -26,6 +26,8 @@ export type RootStackParamList = {
   Main: NavigatorScreenParams<AppTabParamList>;
   Settings: undefined;
   Documents: undefined;
+  Reconcile: undefined;
+  Statement: { id: string };
   Tags: undefined;
   Jobs: undefined;
   Pipelines: undefined;

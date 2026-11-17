@@ -124,7 +124,7 @@ export default function Sidebar({ isMobileOpen = false, onNavigate }: SidebarPro
         />,
       );
       navItem.children = budgetAccounts.map((acc) => ({
-        path: '/transactions/' + acc.id,
+        path: '/accounts?account=' + acc.id,
         key: 'budget-account-' + acc.id,
         label: acc.name,
         meta: {
@@ -133,7 +133,7 @@ export default function Sidebar({ isMobileOpen = false, onNavigate }: SidebarPro
       }));
       navItem.children = budgetAccounts.map((acc) =>
         getNavItem(
-          `/transactions/${acc.id}`,
+          `/accounts?account=${acc.id}`,
           `budget-account-${acc.id}`,
           acc.name,
           { balance: getCurrencyLocaleString(acc.balance ?? 0) },
@@ -160,7 +160,7 @@ export default function Sidebar({ isMobileOpen = false, onNavigate }: SidebarPro
       );
       navItem.children = trackingAccounts.map((acc) =>
         getNavItem(
-          '/transactions/' + acc.id,
+          '/accounts?account=' + acc.id,
           'tracking-account-' + acc.id,
           acc.name,
           { balance: getCurrencyLocaleString(acc.balance ?? 0) },
@@ -208,7 +208,7 @@ export default function Sidebar({ isMobileOpen = false, onNavigate }: SidebarPro
         .filter((acc) => acc.closed)
         .map((acc) =>
           getNavItem(
-            `/transactions/${acc.id}`,
+            `/accounts?account=${acc.id}`,
             `closed-account-${acc.id}`,
             acc.name,
             { balance: getCurrencyLocaleString(acc.balance ?? 0) },

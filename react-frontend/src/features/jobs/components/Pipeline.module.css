@@ -313,3 +313,72 @@
 .root .check .hint {
   display: block;
 }
+
+/* An optional step's on/off switch, and the step while it's off */
+
+.stepOff .stepTitle,
+.stepOff .stepDescription {
+  color: var(--color-text-secondary);
+}
+
+.toggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.25rem;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+.toggle input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.toggleTrack {
+  position: relative;
+  width: 2.25rem;
+  height: 1.25rem;
+  border-radius: 999px;
+  background: var(--color-surface-tertiary);
+  transition: background 0.15s ease;
+}
+
+.toggleThumb {
+  position: absolute;
+  top: 0.125rem;
+  left: 0.125rem;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 999px;
+  background: var(--color-text-secondary);
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease;
+}
+
+.toggle input:checked + .toggleTrack {
+  background: var(--color-primary);
+}
+
+.toggle input:checked + .toggleTrack .toggleThumb {
+  background: #fff;
+  transform: translateX(1rem);
+}
+
+.toggle input:focus-visible + .toggleTrack {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.toggle input:disabled + .toggleTrack {
+  opacity: 0.6;
+}
+
+.toggleText {
+  min-width: 1.6rem;
+}

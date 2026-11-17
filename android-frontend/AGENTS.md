@@ -26,12 +26,13 @@ Expo (SDK 54, RN 0.81) Android client mirroring `react-frontend`. Android only; 
 ## Architecture
 - Navigation: React Navigation (native-stack + bottom-tabs), not Expo Router. `src/App.tsx` owns the navigators. `src/app/` is the Redux store, not a route folder. `app.config.ts` `extra.router.root` is a leftover.
 - Bottom tabs (`AppTabParamList`): Dashboard, Budget, Transactions, Reports, Payees, Penny (AgentChat).
-- Root stack (`src/navigation/types.ts`, `RootStackParamList`): Main, Settings, Documents, Tags, Jobs, Pipelines, AI, Loans. Occasional screens are pushed here; there is no settings shell. Settings groups them under Library (Documents, Tags, Loans) and Automation (Jobs, Pipelines, AI). Stack screens use `components/StackHeader`.
+- Root stack (`src/navigation/types.ts`, `RootStackParamList`): Main, Settings, Documents, Reconcile, Statement (`{ id }`), Tags, Jobs, Pipelines, AI, Loans. Occasional screens are pushed here; there is no settings shell. Settings groups them under Library (Documents, Statements, Tags, Loans) and Automation (Jobs, Pipelines, AI). Stack screens use `components/StackHeader`.
 - State: feature slices in `src/features/*/store/`, registered in `src/app/store.ts`. Typed hooks in `src/app/hooks.ts`.
 - Transport: `src/utils/api.ts` (`apiClient`) is the only REST client. It injects `Authorization` and `x-budget-id`, and refreshes on 401. It is wired to the store at boot, so it is unusable headlessly.
 - Headless code (widget task handler, location snap task) must use `src/utils/headlessApi.ts`. It reads tokens from AsyncStorage and does not clear the session on failure.
 - Realtime: `src/features/websocket/WebSocketProvider.tsx` (agent stream, transaction created).
 - Entry: `index.js` registers the app and the widget task handler. `setupLocationSnap()` runs at module scope in `App.tsx`.
+- Launch: `expo-splash-screen` (`app.config.ts`) shows the icon's mark (`assets/splash-icon.png`, 112dp) on `#0B0B10`; `holdNativeSplash()` keeps it up until `components/BootSplash.tsx` draws the same mark at the same size and plays the short intro, then fades out once auth and the budget are loaded (4 s at most). Change colour, image or size in both places together. The adaptive icon's background is the same `#0B0B10`.
 
 ## UI conventions
 - Theme tokens in `src/theme.ts` mirror react-frontend's dark theme; `chartColors`/`chartSeries` are the web's `--rp-*` report colors. Don't hardcode colors in screens.
@@ -57,6 +58,11 @@ Expo (SDK 54, RN 0.81) Android client mirroring `react-frontend`. Android only; 
 - View: `ensureDocumentCached` (`src/features/documents/documentFile.ts`) downloads into the app cache. `DocumentViewer` renders from there, so nothing reaches the gallery.
 - Save: `saveDocumentToDevice` copies the cached bytes into a folder chosen via Storage Access Framework.
 - Scan: `TransactionAttachments.tsx` posts pages to `transactions/:id/documents/scan`.
+
+## Statements (reconcile)
+- `features/reconcile` ports the web's Settings → Reconcile: upload statement PDFs or bank CSV exports (`expo-document-picker`; the name decides, and a CSV gets no PDF view, account and password optional), list them with card, period and amount due (`statementIdentity.ts`, from the list's `summary`), and open one: card summary, balance check, Missing / Matched / Not on statement / Covered by EMI, add missing rows, link a row to a transaction by hand, unlink, and book a linked row's difference. `types.ts` mirrors the web's `reconcile.types.ts`; keep the two in step.
+- No job updates reach the app, so the list and a statement being read poll every 5 s while one is processing.
+- The PDF opens in `DocumentViewer` through `contentPath: statements/:id/file` (`documentFile.ts`).
 
 ## Location snap and push
 - Push: `registerDevicePushToken` (`src/features/notifications/push.ts`) posts the Expo token to `devices/push-token` on boot.

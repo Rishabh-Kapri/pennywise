@@ -2,6 +2,7 @@ package service
 
 import (
 	"testing"
+	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 
@@ -47,6 +48,68 @@ func TestReconcileStatementRows(t *testing.T) {
 		assert.Equal(t, "0-2", missing[0].ID)
 		require.Len(t, ledgerOnly, 1)
 		assert.Equal(t, cash.ID, ledgerOnly[0].ID)
+	})
+
+	t.Run("a row linked by hand takes its transactions first", func(t *testing.T) {
+		// A card credited 3,900 for a 3,882 transfer: the texts share nothing,
+		// so matching alone leaves them apart.
+		payment := row("0-0", "2026-10-15", "BPPY PYMT DP0162", 3900, model.StatementCredit)
+		transfer := ledger("2026-10-15", 3882, "Transfer : HDFC")
+		cashback := ledger("2026-10-15", 18, "CRED")
+
+		matched, missing, ledgerOnly := reconcileStatementRows(
+			[]model.StatementRow{payment}, []model.StatementLedgerTxn{transfer, cashback},
+			"2026-10-01", "2026-10-31", map[uuid.UUID]bool{},
+		)
+		require.Len(t, matched, 0)
+		require.Len(t, missing, 1)
+		require.Len(t, ledgerOnly, 2)
+
+		payment.LinkedTransactionIDs = []uuid.UUID{transfer.ID}
+		matched, missing, ledgerOnly = reconcileStatementRows(
+			[]model.StatementRow{payment}, []model.StatementLedgerTxn{transfer, cashback},
+			"2026-10-01", "2026-10-31", map[uuid.UUID]bool{},
+		)
+		require.Len(t, matched, 1)
+		assert.True(t, matched[0].Linked)
+		assert.Equal(t, model.StatementMatchAmountDiffers, matched[0].Kind)
+		assert.InDelta(t, 18, matched[0].Difference, 0.001)
+		assert.Empty(t, missing)
+		require.Len(t, ledgerOnly, 1)
+
+		// The booked difference linked too: the two together are the row.
+		payment.LinkedTransactionIDs = []uuid.UUID{transfer.ID, cashback.ID}
+		matched, _, ledgerOnly = reconcileStatementRows(
+			[]model.StatementRow{payment}, []model.StatementLedgerTxn{transfer, cashback},
+			"2026-10-01", "2026-10-31", map[uuid.UUID]bool{},
+		)
+		require.Len(t, matched, 1)
+		assert.Equal(t, model.StatementMatchExact, matched[0].Kind)
+		assert.Zero(t, matched[0].Difference)
+		require.Len(t, matched[0].Others, 1)
+		assert.Equal(t, cashback.ID, matched[0].Others[0].ID)
+		assert.Empty(t, ledgerOnly)
+	})
+
+	t.Run("rows linked to one transaction are matched together", func(t *testing.T) {
+		// One payment of 12,356.90 for two EMI lines on the statement.
+		emiA := row("0-0", "2026-10-03", "EMI 1 OF 9", 8649, model.StatementDebit)
+		emiB := row("0-1", "2026-10-03", "EMI 1 OF 6", 3707.90, model.StatementDebit)
+		payment := ledger("2026-10-03", -12356.90, "Amazon")
+		emiA.LinkedTransactionIDs = []uuid.UUID{payment.ID}
+		emiB.LinkedTransactionIDs = []uuid.UUID{payment.ID}
+
+		matched, missing, ledgerOnly := reconcileStatementRows(
+			[]model.StatementRow{emiA, emiB}, []model.StatementLedgerTxn{payment},
+			"2026-10-01", "2026-10-31", map[uuid.UUID]bool{},
+		)
+		require.Len(t, matched, 1)
+		assert.Equal(t, "0-0", matched[0].Row.ID)
+		require.Len(t, matched[0].OtherRows, 1)
+		assert.Equal(t, "0-1", matched[0].OtherRows[0].ID)
+		assert.Equal(t, model.StatementMatchExact, matched[0].Kind)
+		assert.Empty(t, missing)
+		assert.Empty(t, ledgerOnly)
 	})
 
 	t.Run("direction must agree", func(t *testing.T) {
@@ -238,4 +301,65 @@ func TestCleanStatementSectionsReadsNarration(t *testing.T) {
 	assert.Equal(t, "2026-10-09", got.ValueDate)
 	assert.True(t, got.ValueDateMismatch, "value date a week after the row's date")
 	assert.Equal(t, "Example Shop", got.Payee)
+}
+
+func TestLedgerPeriodStart(t *testing.T) {
+	card := model.StatementSection{Kind: model.StatementKindCard}
+	assert.Equal(t, "2025-04-04", ledgerPeriodStart(card, "2025-04-03", "2025-05-03"),
+		"the previous statement's date isn't listed again")
+	assert.Equal(t, "2025-04-03", ledgerPeriodStart(card, "2025-04-03", "2025-05-02"))
+
+	card.Rows = []model.StatementRow{{Date: "2025-04-03"}}
+	assert.Equal(t, "2025-04-03", ledgerPeriodStart(card, "2025-04-03", "2025-05-03"),
+		"a row on the first day keeps it")
+
+	bank := model.StatementSection{Kind: model.StatementKindBank}
+	assert.Equal(t, "2025-04-03", ledgerPeriodStart(bank, "2025-04-03", "2025-05-03"))
+}
+
+func TestStatementTextKey(t *testing.T) {
+	assert.Equal(t, "swiggycashback", model.StatementTextKey("10% Swiggy CashBack"))
+	assert.Equal(t, model.StatementTextKey("10% Swiggy CashBack"), model.StatementTextKey("10%  SWIGGY Cashback 0412"))
+	assert.Equal(t, "", model.StatementTextKey("GST 18%"))
+}
+
+func TestStatementRowTime(t *testing.T) {
+	assert.Nil(t, statementRowTime(model.StatementRow{Date: "2026-08-06"}))
+	got := statementRowTime(model.StatementRow{Date: "2026-08-06", Time: "20:49"})
+	require.NotNil(t, got)
+	assert.Equal(t, "2026-08-06T15:19:00Z", got.UTC().Format(time.RFC3339), "20:49 in India")
+}
+
+func TestStatementLinesRecordsHandLinks(t *testing.T) {
+	linked, other, guessed := uuid.New(), uuid.New(), uuid.New()
+	sections := []model.StatementSectionReconciliation{{
+		AccountNumber: "XXXX 1234",
+		Matched: []model.StatementMatch{
+			{
+				// linked by hand: recorded though the amounts differ
+				Row:         model.StatementRow{Date: "2026-05-02", Description: "EMI 1", Amount: 500, Direction: model.StatementDebit},
+				OtherRows:   []model.StatementRow{{Date: "2026-05-02", Description: "EMI 2", Amount: 300, Direction: model.StatementDebit}},
+				Transaction: model.StatementLedgerTxn{ID: linked},
+				Others:      []model.StatementLedgerTxn{{ID: other}},
+				Kind:        model.StatementMatchAmountDiffers,
+				Linked:      true,
+			},
+			{
+				// a near match nobody confirmed: not recorded
+				Row:         model.StatementRow{Date: "2026-05-03", Description: "CAFE", Amount: 120, Direction: model.StatementDebit},
+				Transaction: model.StatementLedgerTxn{ID: guessed},
+				Kind:        model.StatementMatchAmountDiffers,
+			},
+		},
+	}}
+	lines := statementLines(sections)
+	if len(lines) != 2 {
+		t.Fatalf("lines = %d, want 2: %+v", len(lines), lines)
+	}
+	if lines[0].TransactionID != linked || lines[1].TransactionID != other {
+		t.Fatalf("transactions = %v, %v", lines[0].TransactionID, lines[1].TransactionID)
+	}
+	if lines[0].RawText != "EMI 1\nEMI 2" || lines[0].Amount != 800 || lines[0].Direction != "DEBIT" {
+		t.Fatalf("line = %+v", lines[0])
+	}
 }

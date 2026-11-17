@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 
@@ -23,6 +24,13 @@ type StatementHandler interface {
 	Get(c *gin.Context)
 	SetSectionAccount(c *gin.Context)
 	CreateMissing(c *gin.Context)
+	LinkRow(c *gin.Context)
+	UnlinkRow(c *gin.Context)
+	Link(c *gin.Context)
+	EditRow(c *gin.Context)
+	RevertRow(c *gin.Context)
+	SetRowEMI(c *gin.Context)
+	AddDifference(c *gin.Context)
 	Retry(c *gin.Context)
 	Delete(c *gin.Context)
 	File(c *gin.Context)
@@ -38,7 +46,7 @@ func NewStatementHandler(service service.StatementService) StatementHandler {
 	return &statementHandler{service: service}
 }
 
-// Upload takes one PDF (`file`), an optional default `accountId` and an
+// Upload takes one PDF or bank-exported CSV (`file`), an optional default `accountId` and an
 // optional `password`, and answers 202 with the new import while cipher reads
 // it (the import's jobId). A file already uploaded answers 200 with the
 // existing import. A wrong password shows up later, as the import's error.
@@ -140,6 +148,126 @@ func (h *statementHandler) SetSectionAccount(c *gin.Context) {
 	c.JSON(http.StatusOK, rec)
 }
 
+func (h *statementHandler) LinkRow(c *gin.Context) {
+	id, ok := statementID(c)
+	if !ok {
+		return
+	}
+	var req model.StatementLinkReq
+	if err := c.ShouldBindJSON(&req); err != nil || len(req.IDs()) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "transactionIds is required"})
+		return
+	}
+	rec, err := h.service.LinkRow(c.Request.Context(), id, c.Param("rowId"), req.IDs())
+	if err != nil {
+		writeStatementError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, rec)
+}
+
+// Link links several rows and transactions at once: {rowIds, transactionIds}.
+func (h *statementHandler) Link(c *gin.Context) {
+	id, ok := statementID(c)
+	if !ok {
+		return
+	}
+	var req model.StatementLinksReq
+	if err := c.ShouldBindJSON(&req); err != nil || len(req.RowIDs) == 0 || len(req.TransactionIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "rowIds and transactionIds are required"})
+		return
+	}
+	rec, err := h.service.Link(c.Request.Context(), id, req.RowIDs, req.TransactionIDs)
+	if err != nil {
+		writeStatementError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, rec)
+}
+
+// EditRow corrects a row read wrong: any of date, description, amount,
+// direction.
+func (h *statementHandler) EditRow(c *gin.Context) {
+	id, ok := statementID(c)
+	if !ok {
+		return
+	}
+	var req model.StatementRowEditReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	rec, err := h.service.EditRow(c.Request.Context(), id, c.Param("rowId"), req)
+	if err != nil {
+		writeStatementError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, rec)
+}
+
+// RevertRow puts back what the statement was read as.
+func (h *statementHandler) RevertRow(c *gin.Context) {
+	id, ok := statementID(c)
+	if !ok {
+		return
+	}
+	rec, err := h.service.RevertRow(c.Request.Context(), id, c.Param("rowId"))
+	if err != nil {
+		writeStatementError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, rec)
+}
+
+func (h *statementHandler) UnlinkRow(c *gin.Context) {
+	id, ok := statementID(c)
+	if !ok {
+		return
+	}
+	rec, err := h.service.UnlinkRow(c.Request.Context(), id, c.Param("rowId"))
+	if err != nil {
+		writeStatementError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, rec)
+}
+
+func (h *statementHandler) SetRowEMI(c *gin.Context) {
+	id, ok := statementID(c)
+	if !ok {
+		return
+	}
+	var req model.StatementRowEMIReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	rec, err := h.service.SetRowEMI(c.Request.Context(), id, c.Param("rowId"), req.EMI)
+	if err != nil {
+		writeStatementError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, rec)
+}
+
+func (h *statementHandler) AddDifference(c *gin.Context) {
+	id, ok := statementID(c)
+	if !ok {
+		return
+	}
+	var req model.StatementDifferenceReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	rec, err := h.service.AddDifference(c.Request.Context(), id, c.Param("rowId"), req)
+	if err != nil {
+		writeStatementError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, rec)
+}
+
 func (h *statementHandler) CreateMissing(c *gin.Context) {
 	id, ok := statementID(c)
 	if !ok {
@@ -183,7 +311,7 @@ func (h *statementHandler) Delete(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// File serves the uploaded PDF, inline unless ?download=true. A locked PDF
+// File serves the uploaded PDF or CSV, inline unless ?download=true. A locked PDF
 // stays locked: the viewer asks for its password.
 func (h *statementHandler) File(c *gin.Context) {
 	id, ok := statementID(c)
@@ -201,7 +329,11 @@ func (h *statementHandler) File(c *gin.Context) {
 	if c.Query("download") == "true" {
 		disposition = "attachment"
 	}
-	c.Header("Content-Type", "application/pdf")
+	contentType := "application/pdf"
+	if strings.EqualFold(path.Ext(imp.FilePath), ".csv") {
+		contentType = "text/csv; charset=utf-8"
+	}
+	c.Header("Content-Type", contentType)
 	c.Header("Content-Disposition", fmt.Sprintf("%s; filename=%q", disposition, imp.FileName))
 	c.Header("Cache-Control", "private, max-age=3600")
 	http.ServeContent(c.Writer, c.Request, imp.FileName, imp.CreatedAt, f)

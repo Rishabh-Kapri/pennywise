@@ -1,5 +1,5 @@
 import 'react-native-gesture-handler';
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, StyleSheet, View } from 'react-native';
 import { Provider } from 'react-redux';
 import { DarkTheme, NavigationContainer } from '@react-navigation/native';
@@ -26,6 +26,9 @@ import { LoansScreen } from './features/loans/screens/LoansScreen';
 import { ReportsScreen } from './features/reports/screens/ReportsScreen';
 import { SettingsScreen } from './features/settings/screens/SettingsScreen';
 import { DocumentsScreen } from './features/documents/screens/DocumentsScreen';
+import { BootSplash, holdNativeSplash } from './components/BootSplash';
+import { ReconcileScreen } from './features/reconcile/screens/ReconcileScreen';
+import { StatementScreen } from './features/reconcile/screens/StatementScreen';
 import { TagsScreen } from './features/tags/screens/TagsScreen';
 import { JobsScreen } from './features/jobs/screens/JobsScreen';
 import { PipelinesScreen } from './features/jobs/screens/PipelinesScreen';
@@ -150,6 +153,8 @@ function AppNavigator() {
         <RootStack.Screen name="Main" component={AppTabs} />
         <RootStack.Screen name="Settings" component={SettingsScreen} />
         <RootStack.Screen name="Documents" component={DocumentsScreen} />
+        <RootStack.Screen name="Reconcile" component={ReconcileScreen} />
+        <RootStack.Screen name="Statement" component={StatementScreen} />
         <RootStack.Screen name="Tags" component={TagsScreen} />
         <RootStack.Screen name="Jobs" component={JobsScreen} />
         <RootStack.Screen name="Pipelines" component={PipelinesScreen} />
@@ -251,7 +256,22 @@ function RootContent() {
   return <AppNavigator />;
 }
 
+// Keep the native splash up until BootSplash has drawn its copy of the mark.
+holdNativeSplash();
+
 function AppShell() {
+  const [splashDone, setSplashDone] = useState(false);
+  // ready = RootContent is past its loading views
+  const ready = useAppSelector(
+    (state) =>
+      state.auth.hydrated &&
+      (!state.auth.isAuthenticated ||
+        Boolean(state.budgets.selectedBudget) ||
+        state.budgets.loading === 'success' ||
+        state.budgets.loading === 'error')
+  );
+  const finishSplash = useCallback(() => setSplashDone(true), []);
+
   useEffect(() => {
     apiClient
       .probeRoot()
@@ -269,6 +289,7 @@ function AppShell() {
       <NavigationContainer theme={navigationTheme}>
         <RootContent />
       </NavigationContainer>
+      {splashDone ? null : <BootSplash ready={ready} onDone={finishSplash} />}
     </SafeAreaProvider>
   );
 }

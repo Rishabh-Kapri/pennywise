@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Bot, Check, ChevronLeft, ChevronRight, Files, Landmark, ListChecks, LogOut, Tags, UserRound, Workflow } from 'lucide-react-native';
+import { Bot, Check, ChevronLeft, ChevronRight, FileCheck2, Files, Landmark, ListChecks, LogOut, Tags, UserRound, Workflow } from 'lucide-react-native';
 import Constants from 'expo-constants';
 import type { RootStackParamList } from '../../../navigation/types';
 import { useAppDispatch, useAppSelector } from '../../../app/hooks';
@@ -130,6 +130,13 @@ export function SettingsScreen() {
             label="Documents"
             description="Every receipt and scan in this budget"
             onPress={() => navigation.navigate('Documents')}
+          />
+          <NavRow
+            icon={<FileCheck2 color={colors.primary} size={18} />}
+            label="Statements"
+            description="Upload bank and card statements and reconcile them"
+            onPress={() => navigation.navigate('Reconcile')}
+            divider
           />
           <NavRow
             icon={<Tags color={colors.primary} size={18} />}

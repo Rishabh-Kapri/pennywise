@@ -843,6 +843,41 @@ func main() {
 				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
 				statementHandler.CreateMissing,
 			)
+			statementGroup.PUT(
+				":id/rows/:rowId/link",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				statementHandler.LinkRow,
+			)
+			statementGroup.DELETE(
+				":id/rows/:rowId/link",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				statementHandler.UnlinkRow,
+			)
+			statementGroup.POST(
+				":id/links",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				statementHandler.Link,
+			)
+			statementGroup.PATCH(
+				":id/rows/:rowId",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				statementHandler.EditRow,
+			)
+			statementGroup.DELETE(
+				":id/rows/:rowId/edit",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				statementHandler.RevertRow,
+			)
+			statementGroup.PUT(
+				":id/rows/:rowId/emi",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				statementHandler.SetRowEMI,
+			)
+			statementGroup.POST(
+				":id/rows/:rowId/difference",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				statementHandler.AddDifference,
+			)
 			statementGroup.POST(
 				":id/retry",
 				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),

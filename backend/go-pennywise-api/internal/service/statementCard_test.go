@@ -107,3 +107,39 @@ func TestStatementCashback(t *testing.T) {
 		t.Error("no cashback rows should give nil")
 	}
 }
+
+// HDFC prints an "EMI" button before a purchase that can still be converted;
+// the reader copies it into the text. That purchase is no instalment.
+func TestEMIOfferIsAPurchase(t *testing.T) {
+	r := classified("EMI ACME STORES PVT LIMINAGPUR", model.StatementDebit, true)
+	assert.Nil(t, r.EMI)
+	assert.False(t, coveredByEMI(r))
+	stripEMIOffer(&r)
+	assert.Equal(t, "ACME STORES PVT LIMINAGPUR", r.Description)
+	assert.Equal(t, "EMI ACME STORES PVT LIMINAGPUR", r.RawDescription)
+
+	// what instalments print still marks them
+	for _, desc := range []string{"EMI 2/12 ACME STORES", "EMI PRINCIPAL ACME", "EMI INTEREST ACME", "EMI INSTALMENT ACME"} {
+		assert.NotNil(t, classified(desc, model.StatementDebit, true).EMI, desc)
+	}
+}
+
+func TestEMIOverrideWins(t *testing.T) {
+	no, yes := false, true
+	r := classified("EMI 2/12 ACME STORES", model.StatementDebit, true)
+	require.True(t, coveredByEMI(r))
+	r.EMIOverride = &no
+	assert.False(t, coveredByEMI(r), "the user said it's not an EMI")
+
+	p := classified("ACME STORES", model.StatementDebit, true)
+	p.EMIOverride = &yes
+	assert.True(t, coveredByEMI(p), "the user set it aside as an EMI")
+}
+
+func TestLinkedEMIIsMatched(t *testing.T) {
+	r := classified("EMI 2/12 ACME STORES", model.StatementDebit, true)
+	require.True(t, setAsideAsEMI(r))
+	r.LinkedTransactionIDs = []uuid.UUID{uuid.New()}
+	assert.True(t, coveredByEMI(r), "still an EMI")
+	assert.False(t, setAsideAsEMI(r), "but matched to the transaction the user linked")
+}

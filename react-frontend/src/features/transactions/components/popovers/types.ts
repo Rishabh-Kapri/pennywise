@@ -13,4 +13,6 @@ export interface TransactionDropdownProps {
   placeholder?: string;
   /** Multi-select only: how many filtered transactions carry each value (`/transactions/facets`). */
   counts?: Record<string, number>;
+  /** Payee only: offer to add what was typed when no payee matches. */
+  onCreate?: (name: string) => void;
 }

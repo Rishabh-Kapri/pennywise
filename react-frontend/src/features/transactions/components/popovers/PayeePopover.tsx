@@ -14,6 +14,7 @@ export function PayeeDropdown({
   onChangeMultiple,
   placeholder,
   counts,
+  onCreate,
 }: TransactionDropdownProps) {
   const { allPayees } = useAppSelector((state) => state.payees);
 
@@ -44,8 +45,9 @@ export function PayeeDropdown({
       value={value}
       items={payeeItems}
       onSelect={(item) => onClick(item.id, item.name)}
-      placeholder="Select payee"
+      placeholder={placeholder || 'Select payee'}
       emptyText="No payees found"
+      onCreate={onCreate}
       autoFocus={autoFocus}
       variant={variant}
       menuWidth={variant === 'ghost' ? 260 : undefined}

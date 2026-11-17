@@ -315,14 +315,21 @@ func (r *transactionRepo) GetAllNormalized(
 		Where(sq.Eq{"transactions.deleted": false})
 
 	// The count query also sums the money in and out of every matching row, so
-	// a filtered list can show its totals without loading every page.
+	// a filtered list can show its totals without loading every page, and the
+	// reward points of the statement lines matched to them. A transaction has
+	// at most one statement line (UNIQUE (transaction_id, kind)), so the join
+	// doesn't repeat rows.
 	countQuery := sq.StatementBuilder.PlaceholderFormat(sq.Dollar).
 		Select(
 			"COUNT(*)",
 			"COALESCE(SUM(transactions.amount) FILTER (WHERE transactions.amount >= 0), 0)::float8",
 			"COALESCE(-SUM(transactions.amount) FILTER (WHERE transactions.amount < 0), 0)::float8",
+			"SUM(statement_line.rewards_points)::int",
+			"COUNT(statement_line.rewards_points)",
 		).
 		From("transactions").
+		LeftJoin("transaction_sources statement_line ON statement_line.transaction_id = transactions.id " +
+			"AND statement_line.kind = 'STATEMENT_LINE'").
 		Where(sq.Eq{"transactions.budget_id": budgetId}).
 		Where(sq.Eq{"transactions.deleted": false})
 
@@ -338,7 +345,7 @@ func (r *transactionRepo) GetAllNormalized(
 	var totals model.AmountTotals
 	if err := r.Executor(ctx).
 		QueryRow(ctx, countSQL, countArgs...).
-		Scan(&total, &totals.Inflow, &totals.Outflow); err != nil {
+		Scan(&total, &totals.Inflow, &totals.Outflow, &totals.RewardPoints, &totals.RewardPointsCount); err != nil {
 		return model.PaginatedResponse[model.Transaction]{}, err
 	}
 
@@ -537,6 +544,10 @@ func (r *transactionRepo) facet(
 func applyTransactionFilters(query sq.SelectBuilder, filter *model.TransactionFilter) sq.SelectBuilder {
 	if filter == nil {
 		return query
+	}
+
+	if len(filter.IDs) > 0 {
+		query = query.Where(sq.Eq{"transactions.id": filter.IDs})
 	}
 
 	if len(filter.AccountIDs) > 0 {

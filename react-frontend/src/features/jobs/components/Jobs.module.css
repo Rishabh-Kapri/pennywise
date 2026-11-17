@@ -1001,3 +1001,16 @@
   margin-top: 0.125rem;
   color: var(--color-text-secondary);
 }
+
+/* a finished message's "Open transaction" buttons */
+.page .openLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+
+.page .openLinks a {
+  color: var(--color-text);
+  text-decoration: none;
+}

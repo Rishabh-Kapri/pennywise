@@ -9,9 +9,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
+	"os"
 	"path"
+	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
@@ -57,6 +61,29 @@ type StatementService interface {
 		accountID *uuid.UUID,
 	) (*model.StatementReconciliation, error)
 	CreateMissing(ctx context.Context, id uuid.UUID, req model.StatementCreateReq) (*model.StatementCreateResult, error)
+	// LinkRow adds transactions of its section's account to a statement
+	// row's links, beside any it has; UnlinkRow removes them all.
+	LinkRow(ctx context.Context, id uuid.UUID, rowID string, txnIDs []uuid.UUID) (*model.StatementReconciliation, error)
+	UnlinkRow(ctx context.Context, id uuid.UUID, rowID string) (*model.StatementReconciliation, error)
+	// Link links every row to every transaction: one transaction paying
+	// several rows (EMI lines), or one row paid by several. The rows must
+	// be in one section.
+	Link(ctx context.Context, id uuid.UUID, rowIDs []string, txnIDs []uuid.UUID) (*model.StatementReconciliation, error)
+	// EditRow corrects a row read wrong, keeping what was read the first
+	// time; RevertRow puts that back.
+	EditRow(ctx context.Context, id uuid.UUID, rowID string, req model.StatementRowEditReq) (*model.StatementReconciliation, error)
+	RevertRow(ctx context.Context, id uuid.UUID, rowID string) (*model.StatementReconciliation, error)
+	// SetRowEMI records whether a row is part of an EMI the budget already
+	// paid for, over what its text suggested; nil goes back to the text.
+	SetRowEMI(ctx context.Context, id uuid.UUID, rowID string, emi *bool) (*model.StatementReconciliation, error)
+	// AddDifference books what a linked row's transactions are short of the
+	// row as a new unapproved transaction, linked to the row too.
+	AddDifference(
+		ctx context.Context,
+		id uuid.UUID,
+		rowID string,
+		req model.StatementDifferenceReq,
+	) (*model.StatementReconciliation, error)
 	// Retry queues a failed import's dead jobs again.
 	Retry(ctx context.Context, id uuid.UUID) (*model.StatementImport, error)
 	Delete(ctx context.Context, id uuid.UUID) error
@@ -152,7 +179,19 @@ func (s *statementService) ImportFromEmail(
 	return imp, err
 }
 
-// create stores the PDF, queues its statement.extract and creates the
+// statementFileExt is how a statement upload is stored: ".pdf", or ".csv" for
+// a bank's export (a .csv name and text content); false for anything else.
+func statementFileExt(fileName string, data []byte) (string, bool) {
+	switch {
+	case bytes.HasPrefix(bytes.TrimLeft(data, "\x00\t\r\n "), []byte("%PDF-")):
+		return ".pdf", true
+	case strings.EqualFold(path.Ext(fileName), ".csv") && utf8.Valid(data) && !bytes.ContainsRune(data, 0):
+		return ".csv", true
+	}
+	return "", false
+}
+
+// create stores the PDF or CSV, queues its statement.extract and creates the
 // import. The extract gets the typed password, if any, sealed; cipher tries it
 // first on a locked PDF, then the accounts' saved passwords.
 func (s *statementService) create(
@@ -164,8 +203,9 @@ func (s *statementService) create(
 ) (*model.StatementImport, bool, error) {
 	budgetID := utils.MustBudgetID(ctx)
 
-	if !bytes.HasPrefix(bytes.TrimLeft(pdf, "\x00\t\r\n "), []byte("%PDF-")) {
-		return nil, false, errs.New(errs.CodeInvalidArgument, "file is not a PDF")
+	ext, ok := statementFileExt(fileName, pdf)
+	if !ok {
+		return nil, false, errs.New(errs.CodeInvalidArgument, "file is not a PDF or a CSV")
 	}
 	if defaultAccountID != nil {
 		if _, err := s.accountRepo.GetById(ctx, budgetID, *defaultAccountID); err != nil {
@@ -219,7 +259,7 @@ func (s *statementService) create(
 	// not the file name, which the user chose and may repeat.
 	filePath, err := s.files.Save(
 		path.Join("statements", budgetID.String()),
-		importID.String()+".pdf",
+		importID.String()+ext,
 		bytes.NewReader(pdf),
 	)
 	if err != nil {
@@ -236,6 +276,7 @@ func (s *statementService) create(
 		Status:           model.StatementImportProcessing,
 		JobID:            &queued.JobID,
 		DefaultAccountID: defaultAccountID,
+		FilePath:         filePath,
 	})
 	if err != nil {
 		s.deleteFile(ctx, filePath)
@@ -252,7 +293,54 @@ func (s *statementService) List(ctx context.Context) ([]model.StatementImport, e
 	for i := range imports {
 		s.applyJobState(ctx, &imports[i])
 	}
+	s.fillProgress(ctx, imports)
 	return imports, nil
+}
+
+// fillProgress reconciles each ready import in the list to count where its
+// rows stand. List rows carry no sections, so each import is loaded again. A
+// failure leaves that import without progress; the list still loads.
+func (s *statementService) fillProgress(ctx context.Context, imports []model.StatementImport) {
+	budgetID := utils.MustBudgetID(ctx)
+	var names *ledgerNameIndex
+	for i := range imports {
+		if imports[i].Status != model.StatementImportReady {
+			continue
+		}
+		if names == nil {
+			var err error
+			if names, err = s.ledgerNames(ctx, budgetID); err != nil {
+				logger.Logger(ctx).Warn("statement progress not counted", "error", err)
+				return
+			}
+		}
+		imp, err := s.load(ctx, budgetID, imports[i].ID)
+		if err != nil {
+			logger.Logger(ctx).Warn("statement progress not counted", "statementId", imports[i].ID, "error", err)
+			continue
+		}
+		rec, err := s.reconcileImport(ctx, budgetID, imp, names)
+		if err != nil {
+			logger.Logger(ctx).Warn("statement progress not counted", "statementId", imports[i].ID, "error", err)
+			continue
+		}
+		imports[i].Progress = statementProgress(rec.Sections)
+	}
+}
+
+func statementProgress(sections []model.StatementSectionReconciliation) *model.StatementProgress {
+	p := &model.StatementProgress{}
+	for _, sec := range sections {
+		if sec.AccountID == nil {
+			p.Unmapped++
+		}
+		p.Missing += len(sec.Missing)
+		p.Matched += len(sec.Matched)
+		p.LedgerOnly += len(sec.LedgerOnly)
+		p.Covered += len(sec.Covered)
+	}
+	p.Reconciled = len(sections) > 0 && p.Unmapped == 0 && p.Missing == 0 && p.LedgerOnly == 0
+	return p
 }
 
 // applyJobState fills a processing import's progress from its jobs, and marks
@@ -385,9 +473,8 @@ func (s *statementService) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-// recordSources links each exactly matched statement row to its transaction
-// as a STATEMENT_LINE source, replacing what this statement recorded before.
-// Near matches (amount differs) aren't recorded: the pair may be wrong. A
+// recordSources links each matched statement row to its transaction as a
+// STATEMENT_LINE source, replacing what this statement recorded before. A
 // failure is logged, not returned: the statement itself is saved either way.
 func (s *statementService) recordSources(ctx context.Context, id uuid.UUID) {
 	if s.sources == nil {
@@ -400,16 +487,7 @@ func (s *statementService) recordSources(ctx context.Context, id uuid.UUID) {
 		}
 		return
 	}
-	var lines []model.StatementLineSource
-	for _, section := range rec.Sections {
-		hint := accountNumberSuffix(section.AccountNumber)
-		for _, m := range section.Matched {
-			if m.Kind != model.StatementMatchExact {
-				continue
-			}
-			lines = append(lines, statementLineSource(m, hint, section.Currency))
-		}
-	}
+	lines := statementLines(rec.Sections)
 	err = s.dbTxn.Do(ctx, func(ctx context.Context) error {
 		return s.sources.ReplaceStatementLines(ctx, rec.Import.BudgetID, id, lines)
 	})
@@ -420,14 +498,54 @@ func (s *statementService) recordSources(ctx context.Context, id uuid.UUID) {
 	logger.Logger(ctx).Info("statement sources recorded", "statementId", id, "lines", len(lines))
 }
 
+// statementLines are the sources a reconciled statement gives its
+// transactions. An exact match is recorded; so is any pair the user linked by
+// hand, even when the amounts differ: they said the row is that transaction.
+// A near match the matcher guessed isn't: the pair may be wrong.
+func statementLines(sections []model.StatementSectionReconciliation) []model.StatementLineSource {
+	var lines []model.StatementLineSource
+	for _, section := range sections {
+		hint := accountNumberSuffix(section.AccountNumber)
+		for _, m := range section.Matched {
+			if m.Kind != model.StatementMatchExact && !m.Linked {
+				continue
+			}
+			line := statementLineSource(m, hint, section.Currency)
+			lines = append(lines, line)
+			// Transactions linked to the row with it (a booked difference)
+			// come from the same statement line.
+			for _, other := range m.Others {
+				extra := line
+				extra.TransactionID = other.ID
+				lines = append(lines, extra)
+			}
+		}
+	}
+	return lines
+}
+
+// statementLineSource is the source m's rows give a transaction. A
+// transaction keeps one statement line, so rows linked to it together
+// (several EMI lines) are recorded as one: their text on a line each and
+// their amounts added up.
 func statementLineSource(m model.StatementMatch, accountHint, currency string) model.StatementLineSource {
 	r := m.Row
-	raw := r.RawDescription
-	if raw == "" {
-		raw = r.Description
+	raw := statementRawText(r)
+	amount := r.Amount
+	isCredit := r.Direction == model.StatementCredit
+	if len(m.OtherRows) > 0 {
+		total := r.SignedAmount()
+		for _, o := range m.OtherRows {
+			raw += "\n" + statementRawText(o)
+			total += o.SignedAmount()
+		}
+		amount = roundCents(math.Abs(total))
+		if total != 0 {
+			isCredit = total > 0
+		}
 	}
 	direction := narration.Debit
-	if r.Direction == model.StatementCredit {
+	if isCredit {
 		direction = narration.Credit
 	}
 	return model.StatementLineSource{
@@ -439,11 +557,33 @@ func statementLineSource(m model.StatementMatch, accountHint, currency string) m
 		Ref:           r.Reference,
 		AccountHint:   accountHint,
 		Direction:     direction,
-		Amount:        r.Amount,
+		Amount:        amount,
 		Currency:      currency,
 		OccurredOn:    r.Date,
+		OccurredAt:    statementRowTime(r),
 		RewardsPoints: r.RewardPoints,
 	}
+}
+
+func statementRawText(r model.StatementRow) string {
+	if r.RawDescription != "" {
+		return r.RawDescription
+	}
+	return r.Description
+}
+
+// statementRowTime is the row's date and printed time in the bank's zone, so
+// a transaction made or matched from it shows when it happened. nil when the
+// row printed no time.
+func statementRowTime(r model.StatementRow) *time.Time {
+	if r.Time == "" {
+		return nil
+	}
+	t, err := time.ParseInLocation("2006-01-02 15:04", r.Date+" "+r.Time, narration.BankZone)
+	if err != nil {
+		return nil
+	}
+	return &t
 }
 
 func (s *statementService) File(ctx context.Context, id uuid.UUID) (*model.StatementImport, io.ReadSeekCloser, error) {
@@ -455,6 +595,9 @@ func (s *statementService) File(ctx context.Context, id uuid.UUID) (*model.State
 		return nil, nil, ErrStatementNoFile
 	}
 	f, err := s.files.Open(imp.FilePath)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil, ErrStatementNoFile
+	}
 	if err != nil {
 		return nil, nil, errs.Wrap(errs.CodeInternalError, "error opening statement", err)
 	}
@@ -625,18 +768,32 @@ func (s *statementService) Reconcile(ctx context.Context, id uuid.UUID) (*model.
 		return nil, err
 	}
 	s.applyJobState(ctx, imp)
-
-	result := &model.StatementReconciliation{
-		Import:   *imp,
-		Sections: make([]model.StatementSectionReconciliation, 0, len(imp.Sections)),
-	}
 	if imp.Status != model.StatementImportReady {
-		return result, nil
+		return &model.StatementReconciliation{Import: *imp, Sections: []model.StatementSectionReconciliation{}}, nil
 	}
-
 	names, err := s.ledgerNames(ctx, budgetID)
 	if err != nil {
 		return nil, err
+	}
+	result, err := s.reconcileImport(ctx, budgetID, imp, names)
+	if err != nil {
+		return nil, err
+	}
+	s.suggestFromPast(ctx, budgetID, result, names)
+	return result, nil
+}
+
+// reconcileImport is Reconcile for a ready import, with the budget's names
+// already loaded.
+func (s *statementService) reconcileImport(
+	ctx context.Context,
+	budgetID uuid.UUID,
+	imp *model.StatementImport,
+	names *ledgerNameIndex,
+) (*model.StatementReconciliation, error) {
+	result := &model.StatementReconciliation{
+		Import:   *imp,
+		Sections: make([]model.StatementSectionReconciliation, 0, len(imp.Sections)),
 	}
 
 	usedByAccount := map[uuid.UUID]map[uuid.UUID]bool{}
@@ -670,10 +827,14 @@ func (s *statementService) Reconcile(ctx context.Context, id uuid.UUID) (*model.
 			Covered:            []model.StatementRow{},
 		}
 		// EMI instalments are set aside before matching: the purchase they
-		// pay off is already in the budget.
+		// pay off is already in the budget. One the user linked is matched.
 		matchable := make([]model.StatementRow, 0, len(section.Rows))
 		for _, r := range section.Rows {
-			if coveredByEMI(r) {
+			// Classified again so imports saved under older rules read the
+			// same as new ones; it's only text matching.
+			classifyStatementRow(&r, section.Kind == model.StatementKindCard)
+			stripEMIOffer(&r)
+			if setAsideAsEMI(r) {
 				rec.Covered = append(rec.Covered, r)
 			} else {
 				matchable = append(matchable, r)
@@ -692,7 +853,8 @@ func (s *statementService) Reconcile(ctx context.Context, id uuid.UUID) (*model.
 				used = map[uuid.UUID]bool{}
 				usedByAccount[*section.AccountID] = used
 			}
-			rec.Matched, rec.Missing, rec.LedgerOnly = reconcileStatementRows(matchable, txns, start, end, used)
+			ledgerStart := ledgerPeriodStart(section, start, end)
+			rec.Matched, rec.Missing, rec.LedgerOnly = reconcileStatementRows(matchable, txns, ledgerStart, end, used)
 		}
 		for j := range rec.Missing {
 			if kind := rec.Missing[j].ChargeKind; kind != "" {
@@ -702,6 +864,82 @@ func (s *statementService) Reconcile(ctx context.Context, id uuid.UUID) (*model.
 		result.Sections = append(result.Sections, rec)
 	}
 	return result, nil
+}
+
+// suggestFromPast fills each missing row's payee and category with what the
+// budget gave the same line on an earlier statement (a "10% Swiggy CashBack"
+// filed under Swiggy and Cashbacks last month). It only suggests: the user
+// still picks. A failure is logged and the rows keep their own guesses.
+func (s *statementService) suggestFromPast(
+	ctx context.Context,
+	budgetID uuid.UUID,
+	rec *model.StatementReconciliation,
+	names *ledgerNameIndex,
+) {
+	if s.sources == nil {
+		return
+	}
+	var keys []string
+	for _, section := range rec.Sections {
+		for _, r := range section.Missing {
+			if k := model.StatementTextKey(statementRowText(r)); k != "" {
+				keys = append(keys, k)
+			}
+		}
+	}
+	if len(keys) == 0 {
+		return
+	}
+	past, err := s.sources.PastStatementChoices(ctx, budgetID, keys)
+	if err != nil {
+		logger.Logger(ctx).Warn("past statement choices not loaded", "error", err)
+		return
+	}
+	for i := range rec.Sections {
+		for j := range rec.Sections[i].Missing {
+			r := &rec.Sections[i].Missing[j]
+			c, ok := past[model.StatementTextKey(statementRowText(*r))]
+			if !ok {
+				continue
+			}
+			r.SuggestedPayeeName = c.PayeeName
+			if c.CategoryID != nil {
+				if _, pickable := names.pickable[*c.CategoryID]; pickable {
+					r.SuggestedCategoryID = c.CategoryID
+				}
+			}
+		}
+	}
+}
+
+// statementRowText is the text a statement line source is recorded with.
+func statementRowText(r model.StatementRow) string {
+	if r.RawDescription != "" {
+		return r.RawDescription
+	}
+	return r.Description
+}
+
+// ledgerPeriodStart is where a section's "not on the statement" list starts.
+// A card's printed cycle often names the previous statement's date as its
+// first day ("3 Apr – 3 May"), a day that statement already billed: unless a
+// row of this one is dated that day, the list starts the day after, so a
+// monthly EMI on the 3rd isn't listed twice.
+func ledgerPeriodStart(section model.StatementSection, start, end string) string {
+	if section.Kind != model.StatementKindCard || start == "" || end == "" || start == end {
+		return start
+	}
+	from, err1 := time.Parse("2006-01-02", start)
+	to, err2 := time.Parse("2006-01-02", end)
+	if err1 != nil || err2 != nil || from.Day() != to.Day() {
+		return start
+	}
+	for _, r := range section.Rows {
+		if r.Date == start {
+			return start
+		}
+	}
+	return from.AddDate(0, 0, 1).Format("2006-01-02")
 }
 
 type ledgerNameIndex struct {
@@ -922,6 +1160,9 @@ func (s *statementService) createFromRow(
 			return err
 		}
 		newPayee = created
+		// The narration isn't the user's note: the statement line is kept as
+		// the transaction's source (recordSources) once it matches the row.
+		// raw_bank_text keeps it too, for learning when the user approves.
 		description := row.Description
 		txn := model.Transaction{
 			BudgetID:    budgetID,
@@ -929,8 +1170,8 @@ func (s *statementService) createFromRow(
 			AccountID:   &accountID,
 			PayeeID:     &payeeID,
 			CategoryID:  item.CategoryID,
-			Note:        description,
 			Amount:      row.SignedAmount(),
+			Note:        strings.TrimSpace(item.Note),
 			Status:      model.TransactionStatusUnapproved,
 			RawBankText: &description,
 			TagIDs:      []uuid.UUID{},
@@ -984,6 +1225,359 @@ func (s *statementService) resolvePayee(
 		return uuid.Nil, nil, errs.Wrap(errs.CodeInternalError, "error creating payee "+name, err)
 	}
 	return created.ID, created, nil
+}
+
+// findRow returns the section and index of the row with rowID.
+func findRow(imp *model.StatementImport, rowID string) (section, row int, ok bool) {
+	for i := range imp.Sections {
+		for j := range imp.Sections[i].Rows {
+			if imp.Sections[i].Rows[j].ID == rowID {
+				return i, j, true
+			}
+		}
+	}
+	return 0, 0, false
+}
+
+func (s *statementService) LinkRow(
+	ctx context.Context,
+	id uuid.UUID,
+	rowID string,
+	txnIDs []uuid.UUID,
+) (*model.StatementReconciliation, error) {
+	return s.Link(ctx, id, []string{rowID}, txnIDs)
+}
+
+func (s *statementService) Link(
+	ctx context.Context,
+	id uuid.UUID,
+	rowIDs []string,
+	txnIDs []uuid.UUID,
+) (*model.StatementReconciliation, error) {
+	budgetID := utils.MustBudgetID(ctx)
+	if len(rowIDs) == 0 || len(txnIDs) == 0 {
+		return nil, errs.New(errs.CodeInvalidArgument, "pick at least one row and one transaction")
+	}
+	rec, err := s.Reconcile(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if rec.Import.Status != model.StatementImportReady {
+		return nil, errs.New(errs.CodeInvalidArgument, "statement is not ready")
+	}
+	imp := &rec.Import
+	si := -1
+	rowIdx := make([]int, 0, len(rowIDs))
+	for _, rowID := range rowIDs {
+		sec, ri, ok := findRow(imp, rowID)
+		if !ok {
+			return nil, errs.New(errs.CodeInvalidArgument, "row %s is not on this statement", rowID)
+		}
+		if si >= 0 && sec != si {
+			return nil, errs.New(errs.CodeInvalidArgument, "the rows are on different accounts of the statement")
+		}
+		si = sec
+		rowIdx = append(rowIdx, ri)
+	}
+	if imp.Sections[si].AccountID == nil {
+		return nil, errs.New(errs.CodeInvalidArgument, "choose the account this section belongs to first")
+	}
+
+	// Only transactions the page shows: the section's account's in the
+	// statement's window. One matched to another row moves to these; one
+	// linked to another row joins its group.
+	section := rec.Sections[si]
+	offered := map[uuid.UUID]bool{}
+	for _, t := range section.LedgerOnly {
+		offered[t.ID] = true
+	}
+	for _, m := range section.Matched {
+		offered[m.Transaction.ID] = true
+		for _, o := range m.Others {
+			offered[o.ID] = true
+		}
+	}
+	for _, txnID := range txnIDs {
+		if !offered[txnID] {
+			return nil, errs.New(errs.CodeInvalidArgument,
+				"a transaction isn't one of this account's transactions for the statement's period")
+		}
+	}
+	for _, ri := range rowIdx {
+		row := &imp.Sections[si].Rows[ri]
+		for _, txnID := range txnIDs {
+			if !slices.Contains(row.LinkedTransactionIDs, txnID) {
+				row.LinkedTransactionIDs = append(row.LinkedTransactionIDs, txnID)
+			}
+		}
+	}
+	if err := s.repo.UpdateSections(ctx, budgetID, id, imp.Sections); err != nil {
+		return nil, err
+	}
+	s.recordSources(ctx, id)
+	return s.Reconcile(ctx, id)
+}
+
+func (s *statementService) EditRow(
+	ctx context.Context,
+	id uuid.UUID,
+	rowID string,
+	req model.StatementRowEditReq,
+) (*model.StatementReconciliation, error) {
+	budgetID := utils.MustBudgetID(ctx)
+	imp, err := s.load(ctx, budgetID, id)
+	if err != nil {
+		return nil, err
+	}
+	if imp.Status != model.StatementImportReady {
+		return nil, errs.New(errs.CodeInvalidArgument, "statement is not ready")
+	}
+	si, ri, ok := findRow(imp, rowID)
+	if !ok {
+		return nil, errs.New(errs.CodeInvalidArgument, "row %s is not on this statement", rowID)
+	}
+	row := &imp.Sections[si].Rows[ri]
+	original := model.StatementRowOriginal{
+		Date: row.Date, Time: row.Time, Description: row.Description, Amount: row.Amount, Direction: row.Direction,
+	}
+	if req.Time != nil {
+		t := strings.TrimSpace(*req.Time)
+		if t != "" && model.ParseStatementTime(t) == "" {
+			return nil, errs.New(errs.CodeInvalidArgument, "time must be HH:MM")
+		}
+		row.Time = model.ParseStatementTime(t)
+	}
+	if req.Date != nil {
+		d, err := time.Parse("2006-01-02", strings.TrimSpace(*req.Date))
+		if err != nil {
+			return nil, errs.New(errs.CodeInvalidArgument, "date must be YYYY-MM-DD")
+		}
+		row.Date = d.Format("2006-01-02")
+	}
+	if req.Description != nil {
+		desc := strings.TrimSpace(*req.Description)
+		if desc == "" {
+			return nil, errs.New(errs.CodeInvalidArgument, "the description can't be empty")
+		}
+		row.Description = desc
+	}
+	if req.Amount != nil {
+		if *req.Amount <= 0 || math.IsInf(*req.Amount, 0) || math.IsNaN(*req.Amount) {
+			return nil, errs.New(errs.CodeInvalidArgument, "the amount must be more than 0; set the direction for money in or out")
+		}
+		row.Amount = roundCents(*req.Amount)
+	}
+	if req.Direction != nil {
+		if *req.Direction != model.StatementDebit && *req.Direction != model.StatementCredit {
+			return nil, errs.New(errs.CodeInvalidArgument, "direction must be debit or credit")
+		}
+		row.Direction = *req.Direction
+	}
+	changed := row.Date != original.Date || row.Time != original.Time || row.Description != original.Description ||
+		row.Amount != original.Amount || row.Direction != original.Direction
+	if !changed {
+		return s.Reconcile(ctx, id)
+	}
+	// The first edit keeps what was read; later ones keep that too.
+	if row.Edited == nil {
+		row.Edited = &original
+	}
+	if err := s.repo.UpdateSections(ctx, budgetID, id, imp.Sections); err != nil {
+		return nil, err
+	}
+	s.recordSources(ctx, id)
+	return s.Reconcile(ctx, id)
+}
+
+func (s *statementService) RevertRow(
+	ctx context.Context,
+	id uuid.UUID,
+	rowID string,
+) (*model.StatementReconciliation, error) {
+	budgetID := utils.MustBudgetID(ctx)
+	imp, err := s.load(ctx, budgetID, id)
+	if err != nil {
+		return nil, err
+	}
+	si, ri, ok := findRow(imp, rowID)
+	if !ok {
+		return nil, errs.New(errs.CodeInvalidArgument, "row %s is not on this statement", rowID)
+	}
+	row := &imp.Sections[si].Rows[ri]
+	if row.Edited == nil {
+		return s.Reconcile(ctx, id)
+	}
+	row.Date, row.Time, row.Description = row.Edited.Date, row.Edited.Time, row.Edited.Description
+	row.Amount, row.Direction = row.Edited.Amount, row.Edited.Direction
+	row.Edited = nil
+	if err := s.repo.UpdateSections(ctx, budgetID, id, imp.Sections); err != nil {
+		return nil, err
+	}
+	s.recordSources(ctx, id)
+	return s.Reconcile(ctx, id)
+}
+
+func (s *statementService) SetRowEMI(
+	ctx context.Context,
+	id uuid.UUID,
+	rowID string,
+	emi *bool,
+) (*model.StatementReconciliation, error) {
+	budgetID := utils.MustBudgetID(ctx)
+	imp, err := s.load(ctx, budgetID, id)
+	if err != nil {
+		return nil, err
+	}
+	if imp.Status != model.StatementImportReady {
+		return nil, errs.New(errs.CodeInvalidArgument, "statement is not ready")
+	}
+	si, ri, ok := findRow(imp, rowID)
+	if !ok {
+		return nil, errs.New(errs.CodeInvalidArgument, "row %s is not on this statement", rowID)
+	}
+	row := &imp.Sections[si].Rows[ri]
+	row.EMIOverride = emi
+	if emi != nil && *emi {
+		// set aside: a link would pair it with something it doesn't pay for
+		row.LinkedTransactionIDs = nil
+	}
+	if err := s.repo.UpdateSections(ctx, budgetID, id, imp.Sections); err != nil {
+		return nil, err
+	}
+	s.recordSources(ctx, id)
+	return s.Reconcile(ctx, id)
+}
+
+func (s *statementService) UnlinkRow(
+	ctx context.Context,
+	id uuid.UUID,
+	rowID string,
+) (*model.StatementReconciliation, error) {
+	budgetID := utils.MustBudgetID(ctx)
+	imp, err := s.load(ctx, budgetID, id)
+	if err != nil {
+		return nil, err
+	}
+	si, ri, ok := findRow(imp, rowID)
+	if !ok {
+		return nil, errs.New(errs.CodeInvalidArgument, "row %s is not on this statement", rowID)
+	}
+	// The row's group goes with it: every row sharing one of its linked
+	// transactions, and the rows sharing theirs.
+	rows := imp.Sections[si].Rows
+	group := map[uuid.UUID]bool{}
+	for _, t := range rows[ri].LinkedTransactionIDs {
+		group[t] = true
+	}
+	cleared := false
+	for grew := true; grew; {
+		grew = false
+		for k := range rows {
+			if len(rows[k].LinkedTransactionIDs) == 0 {
+				continue
+			}
+			shares := k == ri
+			for _, t := range rows[k].LinkedTransactionIDs {
+				shares = shares || group[t]
+			}
+			if !shares {
+				continue
+			}
+			for _, t := range rows[k].LinkedTransactionIDs {
+				if !group[t] {
+					group[t] = true
+					grew = true
+				}
+			}
+			rows[k].LinkedTransactionIDs = nil
+			cleared = true
+		}
+	}
+	if cleared {
+		if err := s.repo.UpdateSections(ctx, budgetID, id, imp.Sections); err != nil {
+			return nil, err
+		}
+		s.recordSources(ctx, id)
+	}
+	return s.Reconcile(ctx, id)
+}
+
+func (s *statementService) AddDifference(
+	ctx context.Context,
+	id uuid.UUID,
+	rowID string,
+	req model.StatementDifferenceReq,
+) (*model.StatementReconciliation, error) {
+	budgetID := utils.MustBudgetID(ctx)
+	rec, err := s.Reconcile(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	imp := &rec.Import
+	si, ri, ok := findRow(imp, rowID)
+	if !ok {
+		return nil, errs.New(errs.CodeInvalidArgument, "row %s is not on this statement", rowID)
+	}
+	var match *model.StatementMatch
+	for i := range rec.Sections[si].Matched {
+		if m := &rec.Sections[si].Matched[i]; m.Row.ID == rowID && m.Linked {
+			match = m
+		}
+	}
+	if match == nil || match.Difference == 0 || imp.Sections[si].AccountID == nil {
+		return nil, errs.New(errs.CodeInvalidArgument, "that row is not linked to a transaction with a different amount")
+	}
+
+	row := imp.Sections[si].Rows[ri]
+	payees, err := s.payeeRepo.GetAll(ctx, budgetID)
+	if err != nil {
+		return nil, errs.Wrap(errs.CodePayeeLookupFailed, "error loading payees", err)
+	}
+	payeeByName := map[string]uuid.UUID{}
+	for _, p := range payees {
+		key := strings.ToLower(strings.TrimSpace(p.Name))
+		if _, exists := payeeByName[key]; !exists || p.TransferAccountID == nil {
+			payeeByName[key] = p.ID
+		}
+	}
+
+	// A second call finds no difference left and is refused above.
+	var createdID uuid.UUID
+	err = s.dbTxn.Do(ctx, func(ctx context.Context) error {
+		item := model.StatementCreateItem{RowID: rowID, PayeeID: req.PayeeID, PayeeName: req.PayeeName}
+		payeeID, _, err := s.resolvePayee(ctx, budgetID, row, item, payeeByName)
+		if err != nil {
+			return err
+		}
+		// No note: the statement line is recorded as its source once the row
+		// adds up (recordSources), like the transaction it tops up.
+		txns, err := s.transactionService.CreateInTx(ctx, model.Transaction{
+			BudgetID:   budgetID,
+			Date:       model.Date(row.Date),
+			AccountID:  imp.Sections[si].AccountID,
+			PayeeID:    &payeeID,
+			CategoryID: req.CategoryID,
+			Amount:     match.Difference,
+			Status:     model.TransactionStatusUnapproved,
+			TagIDs:     []uuid.UUID{},
+		})
+		if err != nil {
+			return err
+		}
+		createdID = txns[0].ID
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	linked := append([]uuid.UUID{}, row.LinkedTransactionIDs...)
+	imp.Sections[si].Rows[ri].LinkedTransactionIDs = append(linked, createdID)
+	if err := s.repo.UpdateSections(ctx, budgetID, id, imp.Sections); err != nil {
+		return nil, err
+	}
+	s.recordSources(ctx, id)
+	return s.Reconcile(ctx, id)
 }
 
 func statementRowKey(accountID uuid.UUID, row model.StatementRow) string {

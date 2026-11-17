@@ -1,38 +1,32 @@
+// Package localocr reads a statement with a local OCR model (glm-ocr on
+// Ollama). Each page comes back as JSON in a schema's shape (Ollama's
+// structured outputs), and the rules in rows.go turn it into rows. Page 1
+// decides bank or card, which picks the schema. The statement's header
+// (account number, period, balances, dues, points summary) isn't read yet.
 package localocr
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"sort"
-	"strconv"
+	"regexp"
 	"strings"
-	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/ports"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/progress"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/statementpdf"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 )
 
-const execTimeout = 60 * time.Second
-
-// ocrContextWindow fits a page and its table. A 200 dpi A4 page is about 4,000
+// ocrContextWindow fits a page and its rows. A 200 dpi A4 page is about 4,000
 // prompt tokens and a full page of rows about 5,000 more; Ollama's default
 // window (4096) leaves almost nothing for the answer.
 const ocrContextWindow = 16384
-
-// pdftotextBinary is a variable so tests can point it at a stub.
-var (
-	pdftotextBinary = "pdftotext"
-	pdftoppmBinary  = "pdftoppm"
-)
 
 type OCRConfig struct {
 	Provider  string
@@ -55,196 +49,8 @@ func NewOCRAdapter(client *llm.ObservedLLM, cfg OCRConfig) (ports.StatementImpor
 	return &adapter{client, cfg}, nil
 }
 
-func firstLine(s string) string {
-	s = strings.TrimSpace(s)
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		s = s[:i]
-	}
-	if s == "" {
-		return "unknown error"
-	}
-	return s
-}
-
-// runPoppler runs a poppler tool (pdftoppm, pdftotext, ...) on the PDF and
-// returns what it wrote to stdout. The PDF is staged in a temp file, removed
-// before return. The command line is: binary opts [password flags] <pdf file> trailing.
-// The password is passed on the command line for the life of the process; it
-// is never stored or logged.
-func runPoppler(
-	ctx context.Context,
-	binary string,
-	pdf []byte,
-	password string,
-	opts []string,
-	trailing ...string,
-) ([]byte, error) {
-	if _, err := exec.LookPath(binary); err != nil {
-		return nil, errs.Wrap(errs.CodeInternalError, binary+" is not installed (poppler-utils)", err)
-	}
-
-	f, err := os.CreateTemp("", "statement-*.pdf")
-	if err != nil {
-		return nil, errs.Wrap(errs.CodeInternalError, "could not stage statement", err)
-	}
-	// remove file after we are done
-	defer os.Remove(f.Name())
-
-	if _, err := f.Write(pdf); err != nil {
-		f.Close()
-		return nil, errs.Wrap(errs.CodeInternalError, "could not stage statement", err)
-	}
-	if err := f.Close(); err != nil {
-		return nil, errs.Wrap(errs.CodeInternalError, "could not stage statement", err)
-	}
-
-	runCtx, cancel := context.WithTimeout(ctx, execTimeout)
-	defer cancel()
-
-	args := append([]string{}, opts...)
-	if password != "" {
-		args = append(args, "-upw", password, "-opw", password)
-	}
-	args = append(args, f.Name())
-	args = append(args, trailing...)
-
-	var stdout, stderr bytes.Buffer
-	cmd := exec.CommandContext(runCtx, binary, args...)
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		msg := strings.ToLower(stderr.String())
-		if strings.Contains(msg, "password") || strings.Contains(msg, "encrypt") {
-			return nil, errs.Wrap(errs.CodeStatementPasswordRequired, "file is password protected", err)
-		}
-		if runCtx.Err() != nil {
-			return nil, errs.New(errs.CodeInternalError, "reading the PDF took too long")
-		}
-		return nil, errs.New(errs.CodeStatementExtractFailed, "could not read this PDF: %s", firstLine(stderr.String()))
-	}
-	return stdout.Bytes(), nil
-}
-
-// renderPages renders every page of the PDF as a PNG in dir and returns their
-// paths in page order. The caller owns dir and removes it.
-func renderPages(ctx context.Context, dir string, pdf []byte, password string) ([]string, error) {
-	// pdftoppm writes <prefix>-1.png, <prefix>-2.png, ... and pads the number
-	// once there are 10 or more pages (page-01.png), so order by the number.
-	prefix := filepath.Join(dir, "page")
-	if _, err := runPoppler(ctx, pdftoppmBinary, pdf, password, []string{"-png", "-r", "200"}, prefix); err != nil {
-		return nil, err
-	}
-	return listPages(dir)
-}
-
-// renderWithPasswords renders the PDF with no password, then with each of
-// passwords in turn, and returns which one opened it (-1: none was needed).
-// No password is tried first so an unlocked PDF isn't credited to an account.
-func renderWithPasswords(ctx context.Context, dir string, pdf []byte, passwords []string) ([]string, int, error) {
-	tries := append([]string{""}, passwords...)
-	var lastErr error
-	for i, pw := range tries {
-		if i > 0 && pw == "" {
-			continue
-		}
-		pages, err := renderPages(ctx, dir, pdf, pw)
-		if err == nil {
-			return pages, i - 1, nil
-		}
-		if !errs.HasCode(err, errs.CodeStatementPasswordRequired) {
-			return nil, -1, err
-		}
-		lastErr = err
-	}
-	if len(passwords) == 0 {
-		return nil, -1, lastErr
-	}
-	return nil, -1, errs.New(errs.CodeStatementPasswordRequired,
-		"the PDF is locked and none of the saved passwords opened it; save its password on the account")
-}
-
-func listPages(dir string) ([]string, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, errs.Wrap(errs.CodeInternalError, "could not list rendered pages", err)
-	}
-
-	type page struct {
-		num  int
-		path string
-	}
-	pages := make([]page, 0, len(entries))
-	for _, e := range entries {
-		name := e.Name()
-		if e.IsDir() || !strings.HasPrefix(name, "page-") || !strings.HasSuffix(name, ".png") {
-			continue
-		}
-		num, err := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(name, "page-"), ".png"))
-		if err != nil {
-			continue
-		}
-		pages = append(pages, page{num, filepath.Join(dir, name)})
-	}
-	if len(pages) == 0 {
-		return nil, errs.New(errs.CodeStatementExtractFailed, "the PDF has no pages")
-	}
-	sort.Slice(pages, func(i, j int) bool { return pages[i].num < pages[j].num })
-
-	paths := make([]string, len(pages))
-	for i, p := range pages {
-		paths[i] = p.path
-	}
-	return paths, nil
-}
-
-// ocrPage sends one page image to the OCR model and returns what it read
-// (GLM-OCR answers "Table Recognition:" with HTML tables).
-// OCR prompts GLM-OCR understands: tables come back as HTML, text as lines.
-const (
-	promptTables = "Table Recognition:"
-	promptText   = "Text Recognition:"
-)
-
-func (a *adapter) ocrPage(ctx context.Context, path, prompt string) (string, error) {
-	img, err := os.ReadFile(path)
-	if err != nil {
-		return "", errs.Wrap(errs.CodeInternalError, "could not read rendered page", err)
-	}
-
-	req := sharedModel.ChatRequest{
-		Provider: a.cfg.Provider,
-		Model:    a.cfg.Model,
-		Messages: []sharedModel.AgentMessage{
-			{
-				Role:    sharedModel.RoleUser,
-				Content: []sharedModel.ContentBlock{{Type: "text", Text: prompt}},
-				Images:  []string{base64.StdEncoding.EncodeToString(img)},
-			},
-		},
-		Temperature:   0,
-		Stream:        false,
-		MaxTokens:     a.cfg.MaxTokens,
-		ContextWindow: ocrContextWindow,
-	}
-	res, err := a.client.Chat(ctx, req, nil)
-	if err != nil {
-		return "", err
-	}
-	if res == nil || len(res.Message.Content) == 0 {
-		return "", errs.New(errs.CodeStatementExtractFailed, "the OCR model returned nothing")
-	}
-	// A cut-off answer is a table with no end, which parses to no rows. Fail
-	// loudly instead of reporting an empty statement.
-	if res.StopReason == sharedModel.StopReasonMaxTokens {
-		return "", errs.New(errs.CodeStatementExtractFailed,
-			"the OCR model's answer was cut off after %d tokens (prompt %d tokens)",
-			res.Usage.OutputTokens, res.Usage.InputTokens)
-	}
-	return res.Message.Content[0].Text, nil
-}
-
-// Extract impelements [ports.StatementImport]
-func (a *adapter) Extract(
+// ExtractStatement implements [ports.StatementImport].
+func (a *adapter) ExtractStatement(
 	ctx context.Context,
 	pdf []byte,
 	passwords []string,
@@ -252,120 +58,115 @@ func (a *adapter) Extract(
 	// The page images show the statement, so the folder goes even on failure.
 	dir, err := os.MkdirTemp("", "statement-pages-*")
 	if err != nil {
-		return sharedModel.StatementExtractResponse{}, errs.Wrap(
-			errs.CodeInternalError,
-			"could not stage statement",
-			err,
-		)
+		return sharedModel.StatementExtractResponse{}, errs.Wrap(errs.CodeInternalError, "could not stage statement", err)
 	}
 	defer os.RemoveAll(dir)
 
 	progress.Report(ctx, "rendering pages")
-	pages, opened, err := renderWithPasswords(ctx, dir, pdf, passwords)
+	pages, opened, err := statementpdf.Render(ctx, dir, pdf, passwords)
 	if err != nil {
 		return sharedModel.StatementExtractResponse{}, err
 	}
+	if len(pages) == 0 {
+		return sharedModel.StatementExtractResponse{}, errs.New(errs.CodeStatementExtractFailed, "the PDF has no pages")
+	}
 
-	total := len(pages)
-	var (
-		parser    tableParser
-		firstText string // page 1 read as text, for the header and the fallback
-	)
-	progress.ReportCount(ctx, "reading pages", 0, total)
+	kind := a.kind(ctx, pdf, passwords, pages[0])
+	layout := bankLayout
+	if kind == sharedModel.StatementKindCard {
+		layout = cardLayout
+	}
+
+	var read []pageRow
+	progress.ReportCount(ctx, "reading pages", 0, len(pages))
 	for i, path := range pages {
 		if err := ctx.Err(); err != nil {
 			return sharedModel.StatementExtractResponse{}, err
 		}
-		tables, err := a.ocrPage(ctx, path, promptTables)
+		answer, err := a.ocr(ctx, path, layout.prompt, layout.schema)
 		if err != nil {
 			return sharedModel.StatementExtractResponse{}, errs.Wrap(
-				errs.CodeStatementExtractFailed, fmt.Sprintf("could not read page %d", i+1), err,
-			)
+				errs.CodeStatementExtractFailed, fmt.Sprintf("could not read page %d", i+1), err)
 		}
-		if i == 0 {
-			// The header decides how rows read (a minus sign, a date with no
-			// year), so it comes before page 1's rows.
-			parser.header, firstText = a.readHeader(ctx, path, tables)
+		var got struct {
+			Transactions []pageRow `json:"transactions"`
 		}
-		parser.parsePage(i+1, tables)
-		progress.ReportCount(ctx, "reading pages", i+1, total)
+		if err := json.Unmarshal([]byte(answer), &got); err != nil {
+			return sharedModel.StatementExtractResponse{}, errs.Wrap(
+				errs.CodeStatementExtractFailed, fmt.Sprintf("page %d isn't the JSON asked for", i+1), err)
+		}
+		for _, r := range got.Transactions {
+			r.page = i + 1
+			read = append(read, r)
+		}
+		progress.ReportCount(ctx, "reading pages", i+1, len(pages))
 	}
 
-	// Only counts and found/not-found are logged: the text is the user's
-	// statement. stats are counts and the parser's own column names, never
-	// cell text: they say why rows were dropped (no header, cell count, date,
-	// amount).
-	h := parser.header
+	rows := layout.rows(read)
+	// Counts only: the rows are the user's statement.
 	logger.Logger(ctx).Info("statement pages read",
-		"pages", total, "rows", len(parser.rows), "kind", h.kind,
-		"account_number_found", h.accountNumber != "", "period_found", h.periodStart != "",
-		"rewards_found", h.rewards != nil, "parse", parser.stats)
+		"pages", len(pages), "kind", kind, "read", len(read), "rows", len(rows))
 
-	// "Table Recognition:" sometimes finds no transaction table at all. Then
-	// every page is read again as text, and its lines are tried as rows.
-	if len(parser.rows) == 0 {
-		textParser, err := a.readAsText(ctx, pages, parser.header, firstText)
-		if err != nil {
-			return sharedModel.StatementExtractResponse{}, err
-		}
-		logger.Logger(ctx).Info("statement pages read again as text",
-			"pages", total, "rows", len(textParser.rows), "parse", textParser.stats)
-		if len(textParser.rows) > 0 {
-			parser = textParser
-		}
+	res := sharedModel.StatementExtractResponse{Sections: []sharedModel.StatementSection{}, PasswordIndex: opened}
+	if len(rows) > 0 {
+		res.Sections = append(res.Sections, sharedModel.StatementSection{Kind: kind, Rows: rows})
 	}
-
-	res := parser.result()
-	res.PasswordIndex = opened
 	return res, nil
 }
 
-// readAsText is the second pass: each page with "Text Recognition:". Page 1
-// was already read that way for the header, so its text is reused. With no
-// table heading to wait for, any line that starts with a date and ends with
-// one amount is a row.
-func (a *adapter) readAsText(
-	ctx context.Context,
-	pages []string,
-	header statementHeader,
-	firstText string,
-) (tableParser, error) {
-	p := tableParser{header: header, textWithoutHeading: true}
-	total := len(pages)
-	progress.ReportCount(ctx, "no table found, reading pages as text", 0, total)
-	for i, path := range pages {
-		if err := ctx.Err(); err != nil {
-			return p, err
-		}
-		text := firstText
-		if i > 0 || text == "" {
-			var err error
-			text, err = a.ocrPage(ctx, path, promptText)
-			if err != nil {
-				return p, errs.Wrap(
-					errs.CodeStatementExtractFailed, fmt.Sprintf("could not read page %d as text", i+1), err,
-				)
-			}
-		}
-		p.parsePage(i+1, text)
-		progress.ReportCount(ctx, "no table found, reading pages as text", i+1, total)
+// cardRe is what only a card statement's first page says.
+var cardRe = regexp.MustCompile(`(?i)credit\s*card\s*(?:no|number|statement)|total\s+amount\s+due|minimum\s+(?:amount\s+)?dues?\b`)
+
+// kind reads page 1 for card or bank: the PDF's own text when it has some,
+// else the OCR model's reading of it. A page that says neither is a bank's.
+func (a *adapter) kind(ctx context.Context, pdf []byte, passwords []string, firstPage string) string {
+	text := ""
+	if pages, _, err := statementpdf.Text(ctx, pdf, passwords); err == nil {
+		text = pages[0]
 	}
-	return p, nil
+	if strings.TrimSpace(text) == "" {
+		var err error
+		if text, err = a.ocr(ctx, firstPage, "Text Recognition:", nil); err != nil {
+			logger.Logger(ctx).Warn("statement first page not read as text", "error", err)
+		}
+	}
+	if cardRe.MatchString(text) {
+		return sharedModel.StatementKindCard
+	}
+	return sharedModel.StatementKindBank
 }
 
-// readHeader reads page 1 as text as well as tables: the account number and
-// period are usually prose, the balances a summary box. A failed text read
-// costs only the header, not the statement.
-// It also returns the text, "" when it wasn't read.
-func (a *adapter) readHeader(ctx context.Context, path, tables string) (statementHeader, string) {
-	progress.Report(ctx, "reading account details")
-	lines := headerLines(tables)
-	text, err := a.ocrPage(ctx, path, promptText)
+// ocr sends one page image with prompt; format, when set, is the JSON schema
+// the answer must follow.
+func (a *adapter) ocr(ctx context.Context, path, prompt string, format any) (string, error) {
+	img, err := os.ReadFile(path)
 	if err != nil {
-		logger.Logger(ctx).Warn("statement first page not read as text", "error", err)
-		text = ""
-	} else {
-		lines = append(headerLines(text), lines...)
+		return "", errs.Wrap(errs.CodeInternalError, "could not read rendered page", err)
 	}
-	return parseHeader(lines), text
+	res, err := a.client.Chat(ctx, sharedModel.ChatRequest{
+		Provider: a.cfg.Provider,
+		Model:    a.cfg.Model,
+		Messages: []sharedModel.AgentMessage{{
+			Role:    sharedModel.RoleUser,
+			Content: []sharedModel.ContentBlock{{Type: "text", Text: prompt}},
+			Images:  []string{base64.StdEncoding.EncodeToString(img)},
+		}},
+		Format:        format,
+		MaxTokens:     a.cfg.MaxTokens,
+		ContextWindow: ocrContextWindow,
+	}, nil)
+	if err != nil {
+		return "", err
+	}
+	if res == nil || len(res.Message.Content) == 0 {
+		return "", errs.New(errs.CodeStatementExtractFailed, "the OCR model returned nothing")
+	}
+	// A cut-off answer is JSON with no end. Fail loudly instead of reporting
+	// a page short.
+	if res.StopReason == sharedModel.StopReasonMaxTokens {
+		return "", errs.New(errs.CodeStatementExtractFailed,
+			"the OCR model's answer was cut off after %d tokens (prompt %d tokens)",
+			res.Usage.OutputTokens, res.Usage.InputTokens)
+	}
+	return res.Message.Content[0].Text, nil
 }

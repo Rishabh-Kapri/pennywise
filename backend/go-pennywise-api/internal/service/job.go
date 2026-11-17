@@ -49,13 +49,16 @@ type JobSummary struct {
 	Source      string        `json:"source,omitempty"` // message.received only: email, sms or api
 	// StatementRows is how many rows a finished statement.extract read; 0
 	// means it found no transactions. Nil for other jobs.
-	StatementRows *int            `json:"statementRows,omitempty"`
-	Progress      json.RawMessage `json:"progress,omitempty"`
-	LastError     string          `json:"lastError,omitempty"`
-	RunAt         time.Time       `json:"runAt"`
-	StartedAt     *time.Time      `json:"startedAt,omitempty"`
-	CompletedAt   *time.Time      `json:"completedAt,omitempty"`
-	CreatedAt     time.Time       `json:"createdAt"`
+	StatementRows *int `json:"statementRows,omitempty"`
+	// TransactionIDs are what a finished transaction.create made (or found
+	// already there), so the client can open them. Nil for other jobs.
+	TransactionIDs []uuid.UUID     `json:"transactionIds,omitempty"`
+	Progress       json.RawMessage `json:"progress,omitempty"`
+	LastError      string          `json:"lastError,omitempty"`
+	RunAt          time.Time       `json:"runAt"`
+	StartedAt      *time.Time      `json:"startedAt,omitempty"`
+	CompletedAt    *time.Time      `json:"completedAt,omitempty"`
+	CreatedAt      time.Time       `json:"createdAt"`
 }
 
 // JobTreeView is a top-level job and everything under it, oldest first.
@@ -715,22 +718,23 @@ func mailboxAccount(j *job.Job) string {
 
 func summarizeJob(j *job.Job) JobSummary {
 	return JobSummary{
-		ID:            j.ID,
-		ParentID:      j.ParentID,
-		Type:          j.Type,
-		Queue:         j.Queue,
-		Status:        j.Status,
-		Attempt:       j.Attempt,
-		MaxAttempts:   j.MaxAttempts,
-		Label:         jobLabel(j),
-		Source:        messageSource(j),
-		StatementRows: statementRows(j),
-		Progress:      j.Progress,
-		LastError:     j.LastError,
-		RunAt:         j.RunAt,
-		StartedAt:     j.StartedAt,
-		CompletedAt:   j.CompletedAt,
-		CreatedAt:     j.CreatedAt,
+		ID:             j.ID,
+		ParentID:       j.ParentID,
+		Type:           j.Type,
+		Queue:          j.Queue,
+		Status:         j.Status,
+		Attempt:        j.Attempt,
+		MaxAttempts:    j.MaxAttempts,
+		Label:          jobLabel(j),
+		Source:         messageSource(j),
+		StatementRows:  statementRows(j),
+		TransactionIDs: createdTransactions(j),
+		Progress:       j.Progress,
+		LastError:      j.LastError,
+		RunAt:          j.RunAt,
+		StartedAt:      j.StartedAt,
+		CompletedAt:    j.CompletedAt,
+		CreatedAt:      j.CreatedAt,
 	}
 }
 
@@ -747,6 +751,19 @@ func statementRows(j *job.Job) *int {
 		return nil
 	}
 	return r.Rows
+}
+
+// createdTransactions reads the transactions a finished transaction.create
+// made or found, from its result.
+func createdTransactions(j *job.Job) []uuid.UUID {
+	if j.Type != model.JobTypeTransactionCreate || j.Status != job.SucceededJobStatus || len(j.Result) == 0 {
+		return nil
+	}
+	var r model.TransactionCreateResult
+	if err := json.Unmarshal(j.Result, &r); err != nil {
+		return nil
+	}
+	return r.TransactionIDs
 }
 
 // messageSource says where a message.received job came from, or "".

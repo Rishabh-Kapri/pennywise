@@ -5,11 +5,39 @@ const money = (value: number) =>
   new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
 const points = (value: number) => new Intl.NumberFormat('en-IN').format(value);
 
-function longDay(date: string): string {
+const parseDay = (date: string) => {
   const d = new Date(`${date}T00:00:00`);
-  return Number.isNaN(d.getTime())
-    ? date
-    : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+function longDay(date: string): string {
+  const d = parseDay(date);
+  return d ? d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : date;
+}
+
+/**
+ * "today" or "in 6 days" for a due date still ahead; '' once it has passed.
+ * A past date says nothing useful: an old statement was paid long ago.
+ */
+function dueIn(date: string): string {
+  const d = parseDay(date);
+  if (!d) return '';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = Math.round((d.getTime() - today.getTime()) / 86_400_000);
+  if (days < 0) return '';
+  return days === 0 ? 'Due today' : `In ${days} day${days === 1 ? '' : 's'}`;
+}
+
+/** Rupees large, paise small: the figure the eye lands on. */
+function BigMoney({ value }: { value: number }) {
+  const [whole, paise] = money(value).split('.');
+  return (
+    <>
+      {whole}
+      <span className={styles.paise}>.{paise}</span>
+    </>
+  );
 }
 
 const CHARGE_LABELS: Record<string, string> = {
@@ -19,153 +47,207 @@ const CHARGE_LABELS: Record<string, string> = {
 };
 
 /**
- * What a card statement says beyond its rows: what's due, the charges, reward
- * points and running EMIs. Shows only what the statement stated.
+ * What a card statement says beyond its rows: what's due, the charges,
+ * cashback, reward points and running EMIs. One surface, set like the
+ * statement's own summary: figures in columns, no boxes inside it. Shows
+ * only what the statement stated.
  */
 export function CardSummary({ section }: { section: StatementSectionReconciliation }) {
-  const tiles = [
-    section.totalDue !== undefined && { label: 'Total due', value: money(section.totalDue) },
-    section.minimumDue !== undefined && { label: 'Minimum due', value: money(section.minimumDue) },
-    section.dueDate && { label: 'Pay by', value: longDay(section.dueDate) },
-    section.creditLimit !== undefined && { label: 'Credit limit', value: money(section.creditLimit) },
-  ].filter(Boolean) as { label: string; value: string }[];
-
   const charges = section.charges ?? [];
   const chargesTotal = charges.reduce((sum, c) => sum + c.amount, 0);
   const cashback = section.cashback;
   const rewards = section.rewards;
   const rewardRows = rewards
     ? ([
-        ['Opening', rewards.opening],
-        ['Earned', rewards.earned],
-        ['Redeemed', rewards.redeemed],
-        ['Expired', rewards.expired],
-        ['Closing', rewards.closing],
-      ].filter(([, v]) => v !== undefined) as [string, number][])
+        ['Opening', rewards.opening, ''],
+        ['Earned', rewards.earned, '+'],
+        ['Redeemed', rewards.redeemed, '−'],
+        ['Expired', rewards.expired, '−'],
+      ].filter(([, v]) => v !== undefined) as [string, number, string][])
     : [];
+  const hasRewards =
+    rewardRows.length > 0 || rewards?.closing !== undefined || section.rewardPointsOnRows !== undefined;
   const plans = section.emiPlans ?? [];
+  const used =
+    section.totalDue !== undefined && section.creditLimit ? Math.min(1, section.totalDue / section.creditLimit) : null;
+  const hasDues =
+    section.totalDue !== undefined ||
+    section.minimumDue !== undefined ||
+    !!section.dueDate ||
+    section.creditLimit !== undefined;
+  const hasFigures = !!cashback || charges.length > 0 || hasRewards;
 
-  if (
-    !tiles.length &&
-    !charges.length &&
-    !cashback &&
-    !rewardRows.length &&
-    section.rewardPointsOnRows === undefined &&
-    !plans.length
-  ) {
-    return null;
-  }
+  if (!hasDues && !hasFigures && !plans.length) return null;
+
+  const countdown = section.dueDate ? dueIn(section.dueDate) : '';
 
   return (
     <div className={styles.cardSummary}>
-      {tiles.length > 0 && (
-        <div className={styles.statTiles}>
-          {tiles.map((t) => (
-            <div key={t.label} className={styles.statTile}>
-              <span>{t.label}</span>
-              <strong>{t.value}</strong>
+      {hasDues && (
+        <div className={styles.dues}>
+          {section.totalDue !== undefined && (
+            <div className={styles.duesLead}>
+              <span className={styles.figureLabel}>Total due</span>
+              <strong>
+                <BigMoney value={section.totalDue} />
+              </strong>
+              {section.minimumDue !== undefined && (
+                <span className={styles.figureNote}>Minimum due {money(section.minimumDue)}</span>
+              )}
             </div>
-          ))}
+          )}
+          {section.totalDue === undefined && section.minimumDue !== undefined && (
+            <div>
+              <span className={styles.figureLabel}>Minimum due</span>
+              <strong>{money(section.minimumDue)}</strong>
+            </div>
+          )}
+          {section.dueDate && (
+            <div>
+              <span className={styles.figureLabel}>Pay by</span>
+              <strong>{longDay(section.dueDate)}</strong>
+              {countdown && <span className={styles.figureNote}>{countdown}</span>}
+            </div>
+          )}
+          {section.creditLimit !== undefined && (
+            <div>
+              <span className={styles.figureLabel}>Credit limit</span>
+              <strong>{money(section.creditLimit)}</strong>
+              {used !== null && (
+                <span className={styles.figureNote}>
+                  <span className={styles.meter} aria-hidden>
+                    <span style={{ width: `${Math.max(used * 100, 2)}%` }} />
+                  </span>
+                  This bill is {Math.round(used * 100)}% of it
+                </span>
+              )}
+            </div>
+          )}
         </div>
       )}
 
-      <div className={styles.cardPanels}>
-        {(charges.length > 0 || cashback) && (
-          <section className={styles.cardPanel}>
-            <header>
-              <h4>{cashback && charges.length ? 'Charges and cashback' : cashback ? 'Cashback' : 'Charges'}</h4>
-              {charges.length > 0 && <strong>{money(chargesTotal)}</strong>}
-            </header>
-            <ul>
-              {charges.map((c) => (
-                <li key={c.kind}>
-                  <span>
-                    {CHARGE_LABELS[c.kind] ?? c.kind}
-                    <small>
-                      {c.count} line{c.count === 1 ? '' : 's'}
-                    </small>
-                  </span>
-                  <span>{money(c.amount)}</span>
-                </li>
-              ))}
-              {cashback && (
-                <li className={styles.cashbackRow}>
-                  <span>
-                    Cashback received
-                    <small>
-                      {cashback.count} line{cashback.count === 1 ? '' : 's'}
-                    </small>
-                  </span>
-                  <span>+ {money(cashback.amount)}</span>
-                </li>
-              )}
-            </ul>
-          </section>
-        )}
+      {hasFigures && (
+        <div className={styles.figures}>
+          {cashback && (
+            <section>
+              <header>
+                <h4>Cashback</h4>
+                <strong className={styles.inflow}>+{money(cashback.amount)}</strong>
+              </header>
+              <p>
+                From {cashback.count} line{cashback.count === 1 ? '' : 's'} on this statement, after reversals.
+              </p>
+            </section>
+          )}
 
-        {(rewardRows.length > 0 || section.rewardPointsOnRows !== undefined) && (
-          <section className={styles.cardPanel}>
-            <header>
-              <h4>Reward points</h4>
-              {rewards?.closing !== undefined && <strong>{points(rewards.closing)}</strong>}
-            </header>
-            <ul>
-              {rewardRows.map(([label, value]) => (
-                <li key={label}>
-                  <span>{label}</span>
-                  <span>{points(value)}</span>
-                </li>
-              ))}
-              {section.rewardPointsOnRows !== undefined && (
-                <li>
-                  <span>
-                    On this statement's rows
-                    <small>added up</small>
-                  </span>
-                  <span>{points(section.rewardPointsOnRows)}</span>
-                </li>
-              )}
-            </ul>
-          </section>
-        )}
+          {charges.length > 0 && (
+            <section>
+              <header>
+                <h4>Charges</h4>
+                <strong>{money(chargesTotal)}</strong>
+              </header>
+              <dl>
+                {charges.map((c) => (
+                  <div key={c.kind}>
+                    <dt>
+                      {CHARGE_LABELS[c.kind] ?? c.kind}
+                      <small>
+                        {c.count} line{c.count === 1 ? '' : 's'}
+                      </small>
+                    </dt>
+                    <dd>{money(c.amount)}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          )}
 
-        {plans.length > 0 && (
-          <section className={`${styles.cardPanel} ${styles.cardPanelWide}`}>
-            <header>
-              <h4>EMIs</h4>
-              <strong>
-                {money(plans.reduce((sum, p) => sum + (p.outstanding ?? 0), 0))}
-                <small> left</small>
-              </strong>
-            </header>
-            <ul>
-              {plans.map((p, i) => (
-                <li key={`${p.description}-${i}`}>
-                  <span>
-                    {p.description || `EMI ${i + 1}`}
-                    <small>
-                      {[
-                        p.monthlyAmount !== undefined && `${money(p.monthlyAmount)} a month`,
-                        p.remainingMonths !== undefined &&
-                          (p.tenureMonths !== undefined
-                            ? `${p.remainingMonths} of ${p.tenureMonths} months left`
-                            : `${p.remainingMonths} months left`),
-                        p.interestRate !== undefined && `${p.interestRate}% a year`,
-                      ]
-                        .filter(Boolean)
-                        .join(' · ')}
-                    </small>
-                  </span>
-                  <span>{p.outstanding !== undefined ? money(p.outstanding) : '—'}</span>
-                </li>
-              ))}
-            </ul>
-            <p className={styles.muted}>
-              Instalments are listed under "Covered by EMI", not as missing: the purchase is already in your budget.
-            </p>
-          </section>
-        )}
-      </div>
+          {hasRewards && (
+            <section>
+              <header>
+                <h4>Reward points</h4>
+                {rewards?.closing !== undefined && <strong>{points(rewards.closing)}</strong>}
+              </header>
+              <dl>
+                {rewardRows.map(([label, value, sign]) => (
+                  <div key={label}>
+                    <dt>{label}</dt>
+                    <dd className={sign === '+' ? styles.inflow : undefined}>
+                      {sign}
+                      {points(value)}
+                    </dd>
+                  </div>
+                ))}
+                {section.rewardPointsOnRows !== undefined && (
+                  <div>
+                    <dt>
+                      Printed on rows
+                      <small>added up</small>
+                    </dt>
+                    <dd>{points(section.rewardPointsOnRows)}</dd>
+                  </div>
+                )}
+              </dl>
+            </section>
+          )}
+        </div>
+      )}
+
+      {plans.length > 0 && (
+        <section className={styles.emis}>
+          <header>
+            <h4>EMIs</h4>
+            <span>
+              <strong>{money(plans.reduce((sum, p) => sum + (p.outstanding ?? 0), 0))}</strong> still to pay
+            </span>
+          </header>
+          <table>
+            <thead>
+              <tr>
+                <th>Plan</th>
+                <th>Paid so far</th>
+                <th className={styles.num}>Each month</th>
+                <th className={styles.num}>Interest</th>
+                <th className={styles.num}>Left to pay</th>
+              </tr>
+            </thead>
+            <tbody>
+              {plans.map((p, i) => {
+                const paidOff = p.outstanding === 0 || p.remainingMonths === 0;
+                const paidMonths =
+                  p.tenureMonths !== undefined && p.remainingMonths !== undefined
+                    ? p.tenureMonths - p.remainingMonths
+                    : null;
+                return (
+                  <tr key={`${p.description}-${i}`} className={paidOff ? styles.emiDone : undefined}>
+                    <td>{p.description || `EMI ${i + 1}`}</td>
+                    <td>
+                      {paidOff ? (
+                        'Paid off'
+                      ) : paidMonths !== null && p.tenureMonths ? (
+                        <span className={styles.emiProgress}>
+                          <span className={styles.meter} aria-hidden>
+                            <span style={{ width: `${Math.max((paidMonths / p.tenureMonths) * 100, 2)}%` }} />
+                          </span>
+                          {paidMonths} of {p.tenureMonths} months
+                        </span>
+                      ) : p.remainingMonths !== undefined ? (
+                        `${p.remainingMonths} months left`
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td className={styles.num}>{p.monthlyAmount !== undefined ? money(p.monthlyAmount) : '—'}</td>
+                    <td className={styles.num}>{p.interestRate !== undefined ? `${p.interestRate}%` : '—'}</td>
+                    <td className={styles.num}>{p.outstanding !== undefined ? money(p.outstanding) : '—'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <p>Instalments sit under "Covered by EMI", not Missing: the purchase is already in your budget.</p>
+        </section>
+      )}
     </div>
   );
 }

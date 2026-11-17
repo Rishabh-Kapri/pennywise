@@ -28,7 +28,7 @@ type WorkerDeps struct {
 	ParkLowConfidence bool
 
 	// Statement adapter
-	StatementImport factory.StatementImport
+	StatementImport factory.StatementImportPipeline
 	// StatementPasswords are the accounts' saved PDF passwords, opened with
 	// SecretBox (LLM_CREDENTIALS_KEY, the key the API sealed them with).
 	// Either nil: only a typed password is tried.

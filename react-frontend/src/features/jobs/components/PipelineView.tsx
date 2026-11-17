@@ -102,11 +102,14 @@ function StepRow({ index, step, pipelineId, defaults, models, editing, onEdit, o
       // A model of another kind can't carry over when the adapter changes.
       modelId: usesModel && choices.some((m) => m.id === form.modelId) ? form.modelId : null,
       fallback: usesModel && form.fallback !== (step.fallback ?? false) ? form.fallback : null,
+      // turning a step on or off is its own switch; editing keeps what it is
+      enabled: step.override?.enabled ?? null,
     };
     setSaving(true);
     try {
       // Choosing every default is the same as having no override.
-      const nothingChanged = payload.adapter === null && payload.modelId === null && payload.fallback === null;
+      const nothingChanged =
+        payload.adapter === null && payload.modelId === null && payload.fallback === null && payload.enabled === null;
       const updated = nothingChanged
         ? await resetPipelineStep(pipelineId, step.id)
         : await updatePipelineStep(pipelineId, step.id, payload);
@@ -133,6 +136,36 @@ function StepRow({ index, step, pipelineId, defaults, models, editing, onEdit, o
     }
   };
 
+  // An optional step's switch saves at once, keeping the step's other choices.
+  const setEnabled = async (on: boolean) => {
+    const payload = {
+      adapter: step.override?.adapter ?? null,
+      modelId: step.override?.modelId ?? null,
+      fallback: step.override?.fallback ?? null,
+      enabled: on ? null : false,
+    };
+    setSaving(true);
+    try {
+      const nothingChanged =
+        payload.adapter === null && payload.modelId === null && payload.fallback === null && payload.enabled === null;
+      onSaved(
+        nothingChanged
+          ? await resetPipelineStep(pipelineId, step.id)
+          : await updatePipelineStep(pipelineId, step.id, payload),
+      );
+      toast.success(on ? `${step.label} turned on` : `${step.label} turned off`, {
+        description: on ? 'It runs again from the next item.' : step.whenOff,
+      });
+    } catch (err) {
+      toast.error(`Could not turn ${step.label} ${on ? 'on' : 'off'}`, {
+        description: errorMessage(err, 'Try again.'),
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+  const on = step.effective.enabled !== false;
+
   const modelItems = [
     { id: '', name: 'Your default', trailing: kindDefault ? kindDefault.slug : 'none set up' },
     ...choices.map((m) => ({ id: m.id, name: m.slug, trailing: `${providerLabel(m)} key` })),
@@ -143,24 +176,44 @@ function StepRow({ index, step, pipelineId, defaults, models, editing, onEdit, o
     : 'Your default (none set up)';
 
   return (
-    <li className={styles.step}>
+    <li className={`${styles.step} ${on ? '' : styles.stepOff}`}>
       <div className={styles.stepHead}>
-        <span className={`${styles.number} ${locked ? styles.numberLocked : ''}`}>{index + 1}</span>
+        <span className={`${styles.number} ${locked || !on ? styles.numberLocked : ''}`}>{index + 1}</span>
         <div className={styles.stepText}>
           <span className={styles.stepTitle}>
             {step.label}
             {changed && <span className={styles.badge}>Changed</span>}
           </span>
           <span className={styles.stepDescription}>{step.description}</span>
-          <span className={styles.choice}>{describeChoice(step, step.effective)}</span>
-          {step.warning && (
+          {on ? (
+            <span className={styles.choice}>{describeChoice(step, step.effective)}</span>
+          ) : (
+            <span className={styles.choice}>Turned off. {step.whenOff}</span>
+          )}
+          {on && step.warning && (
             <span className={styles.warning}>
               <Warning size={14} weight="fill" />
               {step.warning}
             </span>
           )}
         </div>
-        {locked ? (
+        {step.optional && (
+          <label className={styles.toggle} title={on ? `Turn ${step.label} off` : `Turn ${step.label} on`}>
+            <input
+              type="checkbox"
+              role="switch"
+              checked={on}
+              disabled={saving}
+              aria-label={`Run ${step.label}`}
+              onChange={(event) => void setEnabled(event.target.checked)}
+            />
+            <span className={styles.toggleTrack} aria-hidden="true">
+              <span className={styles.toggleThumb} />
+            </span>
+            <span className={styles.toggleText}>{on ? 'On' : 'Off'}</span>
+          </label>
+        )}
+        {!on || (locked && step.optional) ? null : locked ? (
           <span className={styles.locked} title="This step has nothing to choose.">
             <Lock size={14} />
             Fixed

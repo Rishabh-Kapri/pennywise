@@ -35,8 +35,9 @@ type adapter struct {
 
 type LLM interface {
 	ports.CheckTransaction
-	ports.Extract
-	ports.Predictor
+	ports.ExtractTxn
+	ports.PredictTxn
+	ports.StatementImport
 }
 
 func NewLLMAdapter(cfg Config) LLM {
@@ -44,15 +45,17 @@ func NewLLMAdapter(cfg Config) LLM {
 }
 
 // ask sends one system + user message pair and returns the reply's text.
+// tune changes the request a call sends, beyond the adapter's defaults.
 func (a *adapter) ask(
 	ctx context.Context,
 	failCode errs.Code,
 	system, user string,
+	tune ...func(*sharedModel.ChatRequest),
 ) (string, *ports.Usage, error) {
 	ctx, cancel := context.WithTimeout(ctx, a.cfg.CallTimeout)
 	defer cancel()
 
-	res, err := a.cfg.Client.Chat(ctx, sharedModel.ChatRequest{
+	req := sharedModel.ChatRequest{
 		Model:     a.cfg.Model,
 		MaxTokens: a.cfg.MaxTokens,
 		Format:    "json",
@@ -60,7 +63,11 @@ func (a *adapter) ask(
 			{Role: sharedModel.RoleSystem, Content: []sharedModel.ContentBlock{{Type: "text", Text: system}}},
 			{Role: sharedModel.RoleUser, Content: []sharedModel.ContentBlock{{Type: "text", Text: user}}},
 		},
-	}, nil)
+	}
+	for _, t := range tune {
+		t(&req)
+	}
+	res, err := a.cfg.Client.Chat(ctx, req, nil)
 	if err != nil {
 		return "", nil, err
 	}
@@ -140,7 +147,15 @@ func (f *flexible) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-var extractionDateLayouts = []string{"2006-01-02", "02-01-2006", "02-01-06", "02/01/2006", "2 Jan, 2006", "2 Jan 2006", "2-Jan-2006"}
+var extractionDateLayouts = []string{
+	"2006-01-02",
+	"02-01-2006",
+	"02-01-06",
+	"02/01/2006",
+	"2 Jan, 2006",
+	"2 Jan 2006",
+	"2-Jan-2006",
+}
 
 // parseTimestamp reads the date and time the model extracted. A blank date is
 // a zero time. The bank's timezone isn't known, so the clock reading is stored
@@ -183,7 +198,7 @@ func toEntities(e extraction) (ports.ExtractedEntities, error) {
 	}, nil
 }
 
-// Extract implements [ports.Extract].
+// Extract implements [ports.ExtractTxn].
 func (a *adapter) Extract(ctx context.Context, msg ports.Message) (ports.ExtractedEntities, error) {
 	text, usage, err := a.ask(ctx, errs.CodeMessageExtractFailed, extractionPrompt, msg.Body)
 	if err != nil {
@@ -201,7 +216,7 @@ func (a *adapter) Extract(ctx context.Context, msg ports.Message) (ports.Extract
 	return entities, nil
 }
 
-// Predict implements [ports.Predictor].
+// Predict implements [ports.PredictTxn].
 func (a *adapter) Predict(
 	ctx context.Context,
 	msg ports.Message,

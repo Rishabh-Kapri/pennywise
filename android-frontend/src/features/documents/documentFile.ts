@@ -36,11 +36,15 @@ export interface DocumentFileRef {
   id: string;
   fileName: string;
   mimeType: string;
+  /** API path of the body; defaults to the document library's. A statement's
+   * PDF lives at statements/:id/file. */
+  contentPath?: string;
 }
 
 /** Cache path a document's body is read from; shared across every screen. */
 export function documentCacheUri(doc: DocumentFileRef): string {
-  return `${FileSystem.cacheDirectory}receipt-${doc.id}${extensionFor(doc.fileName, doc.mimeType)}`;
+  const prefix = doc.contentPath ? 'file' : 'receipt';
+  return `${FileSystem.cacheDirectory}${prefix}-${doc.id}${extensionFor(doc.fileName, doc.mimeType)}`;
 }
 
 /**
@@ -55,7 +59,7 @@ export async function ensureDocumentCached(doc: DocumentFileRef): Promise<string
     return target;
   }
 
-  const { url, headers } = apiClient.getAuthorizedRequest(`documents/${doc.id}/content`);
+  const { url, headers } = apiClient.getAuthorizedRequest(doc.contentPath ?? `documents/${doc.id}/content`);
   const result = await FileSystem.downloadAsync(url, target, { headers });
   if (result.status !== 200) {
     throw new Error(`Could not load this document (HTTP ${result.status})`);

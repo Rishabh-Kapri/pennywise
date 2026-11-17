@@ -32,6 +32,11 @@ type PaginatedResponse[T any] struct {
 type AmountTotals struct {
 	Inflow  float64 `json:"inflow"`
 	Outflow float64 `json:"outflow"`
+	// RewardPoints sums what card statements printed for the matching
+	// transactions (negative for points taken back); nil when none of them
+	// came from a statement row with points. RewardPointsCount is how many did.
+	RewardPoints      *int `json:"rewardPoints,omitempty"`
+	RewardPointsCount int  `json:"rewardPointsCount,omitempty"`
 }
 
 // ptrToString returns "<nil>" if the pointer is nil

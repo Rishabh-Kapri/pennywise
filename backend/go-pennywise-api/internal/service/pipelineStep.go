@@ -19,6 +19,8 @@ type UpdatePipelineStepRequest struct {
 	Adapter  *string    `json:"adapter"`
 	ModelID  *uuid.UUID `json:"modelId"`
 	Fallback *bool      `json:"fallback"`
+	// Enabled false turns off an optional step; true or nil leaves it on.
+	Enabled *bool `json:"enabled"`
 }
 
 // PipelineStepService serves the system pipelines with a budget's overrides
@@ -61,16 +63,33 @@ func (s *pipelineStepService) List(ctx context.Context, budgetID uuid.UUID) (pip
 	return pipeline.BuildCatalogView(s.catalog, overrides, models), nil
 }
 
-func (s *pipelineStepService) step(pipelineID string, stepID pipeline.StepID) (pipeline.Step, error) {
+func (s *pipelineStepService) step(pipelineID string, stepID pipeline.StepID) (*pipeline.Pipeline, pipeline.Step, error) {
 	p, ok := s.catalog.Pipeline(pipelineID)
 	if !ok {
-		return pipeline.Step{}, ErrUnknownPipelineStep
+		return nil, pipeline.Step{}, ErrUnknownPipelineStep
 	}
 	step, ok := p.Step(stepID)
 	if !ok {
-		return pipeline.Step{}, ErrUnknownPipelineStep
+		return nil, pipeline.Step{}, ErrUnknownPipelineStep
 	}
-	return step, nil
+	return p, step, nil
+}
+
+// validateRerun checks that o (nil: back to the defaults) doesn't leave stepID
+// and a step that reruns it, or that it reruns, reading the same way.
+func (s *pipelineStepService) validateRerun(
+	ctx context.Context,
+	budgetID uuid.UUID,
+	p *pipeline.Pipeline,
+	stepID pipeline.StepID,
+	o *model.PipelineStepOverride,
+	models []model.UserLLMModel,
+) error {
+	stored, err := s.overrides.ListByBudgetAndPipeline(ctx, budgetID, p.ID)
+	if err != nil {
+		return err
+	}
+	return pipeline.ValidateRerun(p, stepID, o, stored, models)
 }
 
 func (s *pipelineStepService) Update(
@@ -80,7 +99,7 @@ func (s *pipelineStepService) Update(
 	stepID pipeline.StepID,
 	req UpdatePipelineStepRequest,
 ) (pipeline.StepView, error) {
-	step, err := s.step(pipelineID, stepID)
+	p, step, err := s.step(pipelineID, stepID)
 	if err != nil {
 		return pipeline.StepView{}, err
 	}
@@ -91,6 +110,7 @@ func (s *pipelineStepService) Update(
 		Adapter:  blankToNil(req.Adapter),
 		ModelID:  req.ModelID,
 		Fallback: req.Fallback,
+		Enabled:  req.Enabled,
 	}
 	// Choosing the default adapter is the same as not choosing one, so the
 	// step keeps following the master if its default changes.
@@ -103,7 +123,11 @@ func (s *pipelineStepService) Update(
 	if in.Fallback != nil && *in.Fallback == step.Fallback {
 		in.Fallback = nil
 	}
-	if in.Adapter == nil && in.ModelID == nil && in.Fallback == nil {
+	// On is the default, so only off is stored.
+	if in.Enabled != nil && *in.Enabled {
+		in.Enabled = nil
+	}
+	if in.Adapter == nil && in.ModelID == nil && in.Fallback == nil && in.Enabled == nil {
 		return s.Reset(ctx, budgetID, pipelineID, stepID)
 	}
 
@@ -112,6 +136,9 @@ func (s *pipelineStepService) Update(
 		return pipeline.StepView{}, err
 	}
 	if err := pipeline.ValidateOverride(step, in, models); err != nil {
+		return pipeline.StepView{}, err
+	}
+	if err := s.validateRerun(ctx, budgetID, p, stepID, &in, models); err != nil {
 		return pipeline.StepView{}, err
 	}
 	saved, err := s.overrides.Upsert(ctx, in)
@@ -127,15 +154,18 @@ func (s *pipelineStepService) Reset(
 	pipelineID string,
 	stepID pipeline.StepID,
 ) (pipeline.StepView, error) {
-	step, err := s.step(pipelineID, stepID)
+	p, step, err := s.step(pipelineID, stepID)
 	if err != nil {
-		return pipeline.StepView{}, err
-	}
-	if err := s.overrides.Delete(ctx, budgetID, pipelineID, string(stepID)); err != nil {
 		return pipeline.StepView{}, err
 	}
 	models, err := s.models.ListUsableForBudget(ctx, budgetID)
 	if err != nil {
+		return pipeline.StepView{}, err
+	}
+	if err := s.validateRerun(ctx, budgetID, p, stepID, nil, models); err != nil {
+		return pipeline.StepView{}, err
+	}
+	if err := s.overrides.Delete(ctx, budgetID, pipelineID, string(stepID)); err != nil {
 		return pipeline.StepView{}, err
 	}
 	return pipeline.Resolve(step, nil, models), nil

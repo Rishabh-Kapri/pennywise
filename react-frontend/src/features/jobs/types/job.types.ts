@@ -31,6 +31,8 @@ export interface JobSummary {
   source?: string;
   /** Rows a finished statement.extract read; 0 = no transactions found. */
   statementRows?: number;
+  /** What a finished transaction.create made (or found already there). */
+  transactionIds?: string[];
   /** What it's doing while it runs. Empty until the job reports something. */
   progress?: JobProgress;
   lastError?: string;

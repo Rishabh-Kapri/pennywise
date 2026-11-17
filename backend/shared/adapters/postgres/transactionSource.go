@@ -166,6 +166,43 @@ func (r *transactionSourceRepo) RefsByTransaction(
 	return out, rows.Err()
 }
 
+// PastStatementChoices implements [repository.TransactionSourceRepository].
+// The key expression must stay in step with model.StatementTextKey.
+func (r *transactionSourceRepo) PastStatementChoices(
+	ctx context.Context,
+	budgetID uuid.UUID,
+	keys []string,
+) (map[string]model.StatementPastChoice, error) {
+	out := map[string]model.StatementPastChoice{}
+	if len(keys) == 0 {
+		return out, nil
+	}
+	rows, err := r.Executor(ctx).Query(ctx, `
+		SELECT DISTINCT ON (k.key) k.key, p.name, t.category_id
+		FROM transaction_sources ts
+		CROSS JOIN LATERAL (
+			SELECT regexp_replace(lower(ts.raw_text), '[^a-z]', '', 'g') AS key
+		) k
+		JOIN transactions t ON t.id = ts.transaction_id AND t.deleted = FALSE
+		JOIN payees p ON p.id = t.payee_id AND p.deleted = FALSE
+		WHERE ts.budget_id = $1 AND ts.kind = 'STATEMENT_LINE' AND k.key = ANY($2)
+		ORDER BY k.key, t.date DESC, t.created_at DESC
+	`, budgetID, keys)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var key string
+		var c model.StatementPastChoice
+		if err := rows.Scan(&key, &c.PayeeName, &c.CategoryID); err != nil {
+			return nil, err
+		}
+		out[key] = c
+	}
+	return out, rows.Err()
+}
+
 // ReplaceStatementLines implements [repository.TransactionSourceRepository].
 // Run it inside a transaction (DBTxn) so a failure leaves the old lines.
 func (r *transactionSourceRepo) ReplaceStatementLines(
@@ -185,11 +222,11 @@ func (r *transactionSourceRepo) ReplaceStatementLines(
 			INSERT INTO transaction_sources (
 				budget_id, transaction_id, kind, raw_text, origin,
 				channel, merchant, vpa, ref, account_hint, direction,
-				amount, currency, occurred_on, rewards_points, statement_import_id
+				amount, currency, occurred_on, rewards_points, statement_import_id, occurred_at
 			) VALUES (
 				$1, $2, 'STATEMENT_LINE', $3, 'PIPELINE',
 				NULLIF($4, ''), NULLIF($5, ''), NULLIF($6, ''), NULLIF($7, ''), NULLIF($8, ''), NULLIF($9, ''),
-				$10, NULLIF($11, ''), NULLIF($12, '')::date, $13, $14
+				$10, NULLIF($11, ''), NULLIF($12, '')::date, $13, $14, $15
 			)
 			ON CONFLICT (transaction_id, kind) DO UPDATE SET
 				raw_text = EXCLUDED.raw_text, origin = 'PIPELINE',
@@ -197,10 +234,11 @@ func (r *transactionSourceRepo) ReplaceStatementLines(
 				ref = EXCLUDED.ref, account_hint = EXCLUDED.account_hint, direction = EXCLUDED.direction,
 				amount = EXCLUDED.amount, currency = EXCLUDED.currency, occurred_on = EXCLUDED.occurred_on,
 				rewards_points = EXCLUDED.rewards_points, statement_import_id = EXCLUDED.statement_import_id,
+				occurred_at = EXCLUDED.occurred_at,
 				updated_at = now()
 		`, budgetID, l.TransactionID, l.RawText,
 			l.Channel, l.Merchant, l.VPA, l.Ref, l.AccountHint, l.Direction,
-			l.Amount, l.Currency, l.OccurredOn, l.RewardsPoints, importID); err != nil {
+			l.Amount, l.Currency, l.OccurredOn, l.RewardsPoints, importID, l.OccurredAt); err != nil {
 			return err
 		}
 	}

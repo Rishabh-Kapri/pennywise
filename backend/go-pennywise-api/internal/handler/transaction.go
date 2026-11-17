@@ -62,6 +62,8 @@ func bindTransactionID(c *gin.Context) (uuid.UUID, bool) {
 // filter comes either repeated (accountId[]=a&accountId[]=b) or as one
 // comma-joined value (accountId=a,b).
 type listTransactionsQuery struct {
+	ID          string   `form:"id"`
+	IDs         []string `form:"id[]"`
 	AccountID   string   `form:"accountId"`
 	AccountIDs  []string `form:"accountId[]"`
 	CategoryID  string   `form:"categoryId"`
@@ -143,6 +145,7 @@ func bindTransactionFilter(c *gin.Context) (model.TransactionFilter, bool) {
 		return model.TransactionFilter{}, false
 	}
 
+	txnIds := idParam(q.IDs, q.ID)
 	accountIds := idParam(q.AccountIDs, q.AccountID)
 	categoryIds := idParam(q.CategoryIDs, q.CategoryID)
 	payeeIds := idParam(q.PayeeIDs, q.PayeeID)
@@ -153,6 +156,15 @@ func bindTransactionFilter(c *gin.Context) (model.TransactionFilter, bool) {
 		GroupBy:      &q.GroupBy,
 		SortOrder:    q.SortOrder,
 		CursorString: q.Cursor,
+	}
+
+	if len(txnIds) > 0 {
+		ids, err := stringToUUIDs(txnIds)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Error while parsing id"})
+			return model.TransactionFilter{}, false
+		}
+		txnFilter.IDs = ids
 	}
 
 	if len(accountIds) > 0 {

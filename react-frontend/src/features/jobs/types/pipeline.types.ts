@@ -34,6 +34,8 @@ export interface PipelineStepChoice {
   model?: PipelineModelRef;
   /** When the model fails, try the user's other models of its kind, by priority. */
   fallback: boolean;
+  /** The step runs. Only an optional step can be off. */
+  enabled: boolean;
 }
 
 /** A budget's change to one step. A null field follows the default. */
@@ -41,6 +43,8 @@ export interface PipelineStepOverride {
   adapter: string | null;
   modelId: string | null;
   fallback: boolean | null;
+  /** false = turned off; null = on (the default) */
+  enabled: boolean | null;
   updatedAt: string;
 }
 
@@ -52,6 +56,10 @@ export interface PipelineStep {
   defaultAdapter: string;
   /** The system default for falling back to the user's other models. */
   fallback?: boolean;
+  /** The budget may turn this step off. */
+  optional?: boolean;
+  /** What happens without the step, for an optional one. */
+  whenOff?: string;
   /** null when the budget hasn't changed this step. */
   override: PipelineStepOverride | null;
   /** The default with the override applied: what the next message will use. */
@@ -85,4 +93,6 @@ export interface UpdatePipelineStepPayload {
   adapter: string | null;
   modelId: string | null;
   fallback: boolean | null;
+  /** false turns an optional step off; null leaves it on */
+  enabled: boolean | null;
 }

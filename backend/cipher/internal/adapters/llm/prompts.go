@@ -87,3 +87,38 @@ EXPECTED JSON SCHEMA:
   "payeeConfidence": integer (0-100, how sure you are of the merchant name),
   "reasoning": "string (Brief 1-sentence explanation of why you chose this category)"
 }`
+
+// statementExtractionPrompt reads one page of statement text into rows. The
+// "llm" reader of the statement pipeline sends it a page at a time.
+const statementExtractionPrompt = `You extract transactions from the text of a bank account or credit card statement. The text came from a PDF with its column layout preserved, so a table row is one line (occasionally wrapped onto the next).
+
+Return every transaction line on these pages, grouped by the account it belongs to.
+
+For each account section:
+- accountLabel: the account as the statement names it (bank, product, masked number), e.g. "HDFC Savings XX1234".
+- accountNumber: the account or card number exactly as printed, masked digits included (e.g. "XXXX1234"). Empty if not shown on these pages.
+- currency: ISO code if stated (e.g. "INR").
+- periodStart / periodEnd: the statement period as YYYY-MM-DD, only if printed. Otherwise null.
+- kind: "card" for a credit card statement, "bank" for a bank account statement, "" if unclear.
+- openingBalance / closingBalance: only if printed on these pages, as plain numbers. Otherwise null. On a card statement these are the previous statement's balance and this statement's total outstanding.
+- statementDate: the date the statement was generated, as YYYY-MM-DD, only if printed. Otherwise null.
+- Card statements only, each only if printed on these pages, otherwise null: dueDate (the payment due date, YYYY-MM-DD), totalDue (the total amount due), minimumDue (the minimum amount due), creditLimit (the total credit limit), all as plain numbers.
+- rewards: the reward points summary, card statements only, or null if these pages print none: {"opening", "earned", "redeemed", "expired", "closing"}, each a whole number of points, or null when not printed. Opening is the previous balance of points, closing the balance now.
+
+For each transaction row:
+- date: the transaction date as YYYY-MM-DD. Statements from India print DD/MM/YYYY or DD-MM-YY; convert them. Use the statement period to resolve a missing year.
+- time: the time printed with the date (e.g. "06/08/2026| 20:49" or "04:45 PM"), as HH:MM in 24 hours; "" if the row prints no time.
+- description: the narration exactly as printed, wrapped lines joined with a space.
+- payee: a short clean name of the merchant or counterparty ("Swiggy", "Amazon", "Rahul Sharma"): drop UPI ids, reference numbers, city names and payment-rail prefixes. For transfers between the holder's own accounts or a card bill payment, use what the statement says (e.g. "Credit Card Payment").
+- amount: a positive number, no currency symbol (₹, Rs, INR, or a "C" standing in for ₹) or thousands separators.
+- direction: "debit" if money left the account holder (purchase, withdrawal, fee, interest, tax, EMI), "credit" if money reached them (deposit, salary, refund, reversal, cashback, payment received on a card). Decide from separate Debit/Credit or Withdrawal/Deposit columns, "Dr"/"Cr" markers, or a leading "+"/"-"; never from the description alone when a marker is present. A lone "C" or "₹" right before an amount is the rupee sign (some PDFs turn ₹ into the letter C), not a credit marker: "C 1,196.52" is just 1,196.52, and on a card statement an unmarked amount is a purchase (debit) unless it carries "+", "Cr" or sits in a credit column.
+- balance: the running balance printed on that row, as a positive number, or null if the statement has no balance column.
+- reference: a cheque/reference number if printed in its own column, else "".
+- rewardPoints: the reward points printed on that row, as a whole number, negative when the statement marks them as reversed or deducted; null if the row prints none.
+
+Do not output: opening/closing balance lines, totals, subtotals, "brought/carried forward" lines, reward point summaries (they go in rewards, not rows), EMI/loan summary tables, GST summaries, or column headers. A row is a transaction only if it has a date and an amount.
+
+If a page continues an account from an earlier page without repeating its header, put its rows in a section with the same accountLabel and accountNumber as given under "Previous section". If there are no transactions, return {"sections": []}.
+
+Respond with JSON only:
+{"sections": [{"accountLabel": "", "accountNumber": "", "kind": "", "currency": "", "periodStart": null, "periodEnd": null, "statementDate": null, "openingBalance": null, "closingBalance": null, "dueDate": null, "totalDue": null, "minimumDue": null, "creditLimit": null, "rewards": null, "rows": [{"date": "", "time": "", "description": "", "payee": "", "amount": 0, "direction": "debit", "balance": null, "reference": "", "rewardPoints": null}]}]}`

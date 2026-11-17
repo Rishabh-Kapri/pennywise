@@ -49,4 +49,9 @@ type TransactionSourceRepository interface {
 	// the import's earlier ones are removed, and a transaction already linked
 	// to another statement's line is moved to this one.
 	ReplaceStatementLines(ctx context.Context, budgetID, importID uuid.UUID, lines []model.StatementLineSource) error
+	// PastStatementChoices returns, per key, the payee and category of the
+	// newest live transaction a statement line with that text was matched
+	// to. A key is the line's text lower-cased with everything but letters
+	// removed (StatementTextKey), so dates and reference numbers don't count.
+	PastStatementChoices(ctx context.Context, budgetID uuid.UUID, keys []string) (map[string]model.StatementPastChoice, error)
 }

@@ -12,7 +12,8 @@ import {
   fetchPendingApprovalCount,
 } from '../../store';
 import { LoadingState } from '@/utils';
-import { errorMessage, toast } from '@/utils';
+import { apiClient, errorMessage, toast } from '@/utils';
+import type { PaginationResponse } from '@/utils/common.constants';
 import styles from './Transaction.module.css';
 import { useHeader } from '@/context/HeaderContext';
 import { useSidePanel } from '@/context/SidePanelContext';
@@ -110,11 +111,18 @@ function StickyMonthHeader({ stickyHeader }: { stickyHeader: NonNullable<StickyH
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+/** "+1,234 pts", or "−40 pts" when more points were taken back than earned. */
+const formatPoints = (n: number) => `${n < 0 ? '−' : '+'}${Math.abs(n).toLocaleString('en-IN')} pts`;
+
 export function Transaction({ accountId, embedded = false }: { accountId?: string; embedded?: boolean } = {}) {
   const { setHeaderContent } = useHeader();
   const { setSidePanelContent } = useSidePanel();
-  const { id } = useParams();
-  const paramId = accountId ?? id ?? '';
+  // /transactions/:id is a transaction, whose details open; an account's list
+  // is embedded in Accounts with accountId.
+  const { id: routeId } = useParams();
+  const paramId = accountId ?? '';
+  // Only the Transactions page puts the open transaction in the URL.
+  const syncUrl = !embedded && !accountId;
   const dispatch = useAppDispatch();
   const { loading, transactions, loadingMore, nextCursor, error, pendingApprovalCount } = useAppSelector(
     (state) => state.transactions,
@@ -132,6 +140,7 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
   const [mobileFilter, setMobileFilter] = useState<MobileFilter>('all');
   const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(() => new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkApproving, setBulkApproving] = useState(false);
   // Other screens can open this one pre-filtered (Payees → "View transactions").
   // Built once: useDebounce re-applies its seed whenever the seed's identity changes.
   const location = useLocation();
@@ -210,6 +219,80 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
     },
     [isAddingNew],
   );
+
+  // ── The open transaction ↔ /transactions/:id ──────────────────────────────
+  // Each side remembers the last value it saw, so a change made by the other
+  // side (opening from a link, or the URL following a click) isn't acted on twice.
+  const allAccounts = useAppSelector((state) => state.accounts.allAccounts);
+  const accountsRef = useRef(allAccounts);
+  accountsRef.current = allAccounts;
+  const routeTxnId = syncUrl ? routeId : undefined;
+  const openTxnId = isDetailPanelOpen && !isAddingNew ? (selectedTxn?.id ?? undefined) : undefined;
+  const seenRoute = useRef<string | undefined>(undefined);
+  const seenOpen = useRef<string | undefined>(undefined);
+  const loadingRoute = useRef<string | undefined>(undefined);
+
+  // URL → panel: a link (or Back/Forward) names a transaction to open.
+  useEffect(() => {
+    if (!syncUrl || routeTxnId === seenRoute.current) return;
+    seenRoute.current = routeTxnId;
+    if (!routeTxnId) {
+      loadingRoute.current = undefined;
+      if (openTxnId) {
+        seenOpen.current = undefined;
+        setSelectedTxn(null);
+        setIsDetailPanelOpen(false);
+      }
+      return;
+    }
+    if (routeTxnId === openTxnId) return;
+
+    // An old link to an account's transactions: that list lives in Accounts now.
+    const toAccount = () => {
+      if (!accountsRef.current.some((a) => a.id === routeTxnId)) return false;
+      navigate(`/accounts?account=${routeTxnId}`, { replace: true });
+      return true;
+    };
+    if (toAccount()) return;
+
+    loadingRoute.current = routeTxnId;
+    apiClient
+      .get<PaginationResponse<Transaction[]>>(`transactions/normalized?id=${encodeURIComponent(routeTxnId)}&limit=1`)
+      .then((res) => {
+        if (loadingRoute.current !== routeTxnId) return; // the URL moved on
+        const txn = res.data?.[0];
+        if (!txn) {
+          if (toAccount()) return;
+          toast.error("Couldn't find that transaction", { description: 'It may have been deleted.' });
+          navigate('/transactions', { replace: true });
+          return;
+        }
+        loadingRoute.current = undefined;
+        seenOpen.current = txn.id;
+        setInlineEditingTxnId(null);
+        setIsAddingNew(false);
+        setSelectedTxn(txn);
+        setIsDetailPanelOpen(true);
+      })
+      .catch((err) => {
+        if (loadingRoute.current !== routeTxnId) return;
+        toast.error("Couldn't open that transaction", { description: errorMessage(err, 'Try again.') });
+      });
+  }, [syncUrl, routeTxnId, openTxnId, navigate]);
+
+  // Panel → URL: opening, switching and closing details update the address.
+  useEffect(() => {
+    if (!syncUrl || openTxnId === seenOpen.current) return;
+    seenOpen.current = openTxnId;
+    if (openTxnId && openTxnId !== routeTxnId) {
+      seenRoute.current = openTxnId;
+      // switching between transactions replaces, so Back leaves the page
+      navigate(`/transactions/${openTxnId}`, { replace: Boolean(routeTxnId) });
+    } else if (!openTxnId && routeTxnId && loadingRoute.current !== routeTxnId) {
+      seenRoute.current = undefined;
+      navigate('/transactions');
+    }
+  }, [syncUrl, openTxnId, routeTxnId, navigate]);
 
   const resetSelectedTxn = useCallback(() => {
     dismissJobIdRef.current = null;
@@ -401,6 +484,16 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
   );
   const bulkIds = useMemo(() => visibleIds.filter((id) => bulkSelectedIds.has(id)), [visibleIds, bulkSelectedIds]);
   const allBulkSelected = visibleIds.length > 0 && bulkIds.length === visibleIds.length;
+  // Only unapproved rows can be approved; the rest of a selection is left as it is.
+  const bulkApprovableIds = useMemo(
+    () =>
+      filteredTransactions.flatMap((transaction) =>
+        transaction.id && bulkSelectedIds.has(transaction.id) && transaction.status === TransactionStatus.UNAPPROVED
+          ? [transaction.id]
+          : [],
+      ),
+    [filteredTransactions, bulkSelectedIds],
+  );
 
   const handleBulkToggle = useCallback((id: string) => {
     setBulkSelectedIds((current) => {
@@ -499,6 +592,45 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
     }
   }, [bulkIds, dispatch, listArgs, resetSelectedTxn, selectedTxn?.id]);
 
+  const handleBulkApprove = useCallback(async () => {
+    const ids = bulkApprovableIds;
+    const label = `${ids.length} transaction${ids.length === 1 ? '' : 's'}`;
+    setBulkApproving(true);
+    // The status route learns from each approval and moves a transfer's other half,
+    // so approve through it, a few at a time, rather than around it.
+    const failed: string[] = [];
+    let lastError: unknown;
+    const queue = [...ids];
+    const worker = async () => {
+      for (let id = queue.shift(); id; id = queue.shift()) {
+        try {
+          await dispatch(updateTransactionStatus({ id, status: TransactionStatus.APPROVED })).unwrap();
+        } catch (err) {
+          failed.push(id);
+          lastError = err;
+        }
+      }
+    };
+    try {
+      await Promise.all(Array.from({ length: Math.min(4, ids.length) }, worker));
+      const approved = ids.length - failed.length;
+      if (failed.length === 0) {
+        toast.success(`${label} approved`);
+      } else {
+        toast.error(`Couldn't approve ${failed.length} of ${label}`, {
+          description: errorMessage(lastError, 'The rest were approved. Please try again.'),
+        });
+      }
+      if (approved > 0 && selectedTxn?.id && ids.includes(selectedTxn.id) && !failed.includes(selectedTxn.id)) {
+        resetSelectedTxn();
+      }
+      // Keep the rows that failed selected so a retry is one click.
+      setBulkSelectedIds(new Set(failed));
+    } finally {
+      setBulkApproving(false);
+    }
+  }, [bulkApprovableIds, dispatch, resetSelectedTxn, selectedTxn?.id]);
+
   const handleRowsRendered = useCallback(
     ({ startIndex, stopIndex }: { startIndex: number; stopIndex: number }) => {
       setStickyHeader(getStickyHeaderForStartIndex(listItems, startIndex));
@@ -588,6 +720,9 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
                 <dd className={filteredNet < 0 ? styles.negative : undefined}>
                   {filteredTotals ? formatBudgetAmount(filteredNet) : '…'}
                 </dd>
+                {filteredTotals?.rewardPoints !== undefined && (
+                  <dd className={styles.pointsStat}>{formatPoints(filteredTotals.rewardPoints)}</dd>
+                )}
                 {filteredTotals && (
                   <div id="filtered-total-breakdown" role="tooltip" className={styles.totalsTooltip}>
                     <div className={styles.totalsLine}>
@@ -602,8 +737,16 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
                       <span>Net</span>
                       <span>{formatBudgetAmount(filteredNet)}</span>
                     </div>
+                    {filteredTotals.rewardPoints !== undefined && (
+                      <div className={`${styles.totalsLine} ${styles.totalsPoints}`}>
+                        <span>Reward points</span>
+                        <span>{formatPoints(filteredTotals.rewardPoints)}</span>
+                      </div>
+                    )}
                     <p className={styles.totalsCount}>
                       {filteredTotals.count} {filteredTotals.count === 1 ? 'transaction' : 'transactions'}
+                      {filteredTotals.rewardPoints !== undefined &&
+                        ` · points from the ${filteredTotals.rewardPointsCount} on a card statement`}
                     </p>
                   </div>
                 )}
@@ -720,14 +863,22 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
                   <button
                     type="button"
                     className={styles.bulkButton}
-                    disabled={bulkDeleting}
+                    disabled={bulkDeleting || bulkApproving}
                     onClick={() => setBulkSelectedIds(new Set())}>
                     Clear
                   </button>
                   <button
                     type="button"
+                    className={`${styles.bulkButton} ${styles.bulkApprove}`}
+                    disabled={bulkDeleting || bulkApproving || bulkApprovableIds.length === 0}
+                    title={bulkApprovableIds.length === 0 ? 'None of the selected transactions need approval' : undefined}
+                    onClick={() => void handleBulkApprove()}>
+                    {bulkApproving ? 'Approving…' : `Approve${bulkApprovableIds.length > 0 ? ` (${bulkApprovableIds.length})` : ''}`}
+                  </button>
+                  <button
+                    type="button"
                     className={`${styles.bulkButton} ${styles.bulkDelete}`}
-                    disabled={bulkDeleting}
+                    disabled={bulkDeleting || bulkApproving}
                     onClick={() => void handleBulkDelete()}>
                     {bulkDeleting ? 'Deleting…' : 'Delete'}
                   </button>

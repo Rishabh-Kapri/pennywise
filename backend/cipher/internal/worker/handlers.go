@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"sort"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/ports"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/progress"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/statementcheck"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/jobrunner"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
@@ -95,7 +97,8 @@ func messageReceived(deps WorkerDeps) jobrunner.HandlerFunc {
 // routeStatement sends a statement email's PDFs to ingest (statement.fetch),
 // which downloads them and queues their import. The message itself ends here
 // as a statement. One without a PDF (a "your statement is ready" notice) ends
-// as not a transaction.
+// as not a transaction. With the statement pipeline's email step off, the
+// PDFs aren't fetched: the budget reads its statements from uploads only.
 func routeStatement(
 	ctx context.Context,
 	deps WorkerDeps,
@@ -113,6 +116,17 @@ func routeStatement(
 	if msg.Source != "email" || msg.MailAccount == "" || len(pdfs) == 0 {
 		return finish(ctx, deps, j, budgetID, msg, model.MessageOutcomeNotTransaction,
 			"a statement notice without a PDF", toModelVerdict(verdict))
+	}
+	if deps.StatementImport != nil {
+		on, err := deps.StatementImport.Enabled(ctx, budgetID, pipeline.StepStatementEmail)
+		if err != nil {
+			return nil, err
+		}
+		if !on {
+			return finish(ctx, deps, j, budgetID, msg, model.MessageOutcomeStatement,
+				"a statement: reading statements from email is turned off, so its PDF wasn't fetched",
+				toModelVerdict(verdict))
+		}
 	}
 	if _, err := jobrunner.EnqueueNext(ctx, deps.Broker, j,
 		model.JobTypeStatementFetch, model.QueueIngest, msg.IdempotencyKey(budgetID),
@@ -155,11 +169,11 @@ func messageExtract(deps WorkerDeps) jobrunner.HandlerFunc {
 			return nil, errs.Wrap(errs.CodeMessageExtractFailed, "extract entities", err)
 		}
 
-		return next(ctx, deps, j, budgetID, p.Message, model.JobTypeMessageVerify, model.MessageEntitiesPayload{
+		return sendEntities(ctx, deps, j, budgetID, model.MessageEntitiesPayload{
 			Message:  p.Message,
 			Verdict:  p.Verdict,
 			Entities: toModelEntities(entities),
-		}, entities)
+		}, entities, pipeline.StepVerify, pipeline.StepLookup, pipeline.StepPredict)
 	}
 }
 
@@ -179,6 +193,14 @@ func messageVerify(deps WorkerDeps) jobrunner.HandlerFunc {
 		p, err := jobrunner.DecodePayload[model.MessageEntitiesPayload](j)
 		if err != nil {
 			return nil, err
+		}
+
+		if on, err := deps.Pipeline.Enabled(ctx, budgetID, pipeline.StepVerify); err != nil || !on {
+			if err != nil {
+				return nil, err
+			}
+			return sendEntities(ctx, deps, j, budgetID, p, turnedOff(pipeline.StepVerify),
+				pipeline.StepLookup, pipeline.StepPredict)
 		}
 
 		jobrunner.ReportProgress(ctx, job.Progress{Message: "Checking the details"})
@@ -206,7 +228,7 @@ func messageVerify(deps WorkerDeps) jobrunner.HandlerFunc {
 			return parkVerify(ctx, deps, j, budgetID, p, reason, res)
 		}
 
-		return next(ctx, deps, j, budgetID, p.Message, model.JobTypeMessageLookup, p, res)
+		return sendEntities(ctx, deps, j, budgetID, p, res, pipeline.StepLookup, pipeline.StepPredict)
 	}
 }
 
@@ -227,6 +249,13 @@ func messageLookup(deps WorkerDeps) jobrunner.HandlerFunc {
 			return nil, err
 		}
 
+		if on, err := deps.Pipeline.Enabled(ctx, budgetID, pipeline.StepLookup); err != nil || !on {
+			if err != nil {
+				return nil, err
+			}
+			return sendEntities(ctx, deps, j, budgetID, p, turnedOff(pipeline.StepLookup), pipeline.StepPredict)
+		}
+
 		memory, err := deps.Pipeline.Lookup(ctx, budgetID)
 		if err != nil {
 			return nil, errs.Wrap(errs.CodeMessageLookupFailed, "pick lookup adapter", err)
@@ -236,7 +265,7 @@ func messageLookup(deps WorkerDeps) jobrunner.HandlerFunc {
 			return nil, errs.Wrap(errs.CodeMessageLookupFailed, "memory lookup", err)
 		}
 		if !found {
-			return next(ctx, deps, j, budgetID, p.Message, model.JobTypeMessagePredict, p, lookupOutput{})
+			return sendEntities(ctx, deps, j, budgetID, p, lookupOutput{}, pipeline.StepPredict)
 		}
 
 		return createTransaction(
@@ -266,6 +295,13 @@ func messagePredict(deps WorkerDeps) jobrunner.HandlerFunc {
 		p, err := jobrunner.DecodePayload[model.MessageEntitiesPayload](j)
 		if err != nil {
 			return nil, err
+		}
+
+		if on, err := deps.Pipeline.Enabled(ctx, budgetID, pipeline.StepPredict); err != nil || !on {
+			if err != nil {
+				return nil, err
+			}
+			return parkNoPrediction(ctx, deps, j, budgetID, p, turnedOff(pipeline.StepPredict))
 		}
 
 		jobrunner.ReportProgress(ctx, job.Progress{Message: "Choosing the payee and category"})
@@ -299,11 +335,6 @@ func statementExtract(deps WorkerDeps) jobrunner.HandlerFunc {
 			return nil, errs.New(errs.CodeJobInvalidPayload, "statement.extract has no importId")
 		}
 
-		extractor, err := deps.StatementImport.Extract(ctx, budgetID)
-		if err != nil {
-			return nil, err
-		}
-
 		jobrunner.ReportProgress(ctx, job.Progress{Message: "starting extraction"})
 
 		// The typed password first, then each account's saved one, loaded
@@ -317,7 +348,7 @@ func statementExtract(deps WorkerDeps) jobrunner.HandlerFunc {
 		for _, c := range saved {
 			passwords = append(passwords, c.password)
 		}
-		res, err := extractor.Extract(withJobProgress(ctx), p.Data, passwords)
+		res, err := readStatement(ctx, deps, budgetID, p.Data, passwords)
 		if err != nil {
 			return nil, err
 		}
@@ -342,6 +373,73 @@ func statementExtract(deps WorkerDeps) jobrunner.HandlerFunc {
 		}
 		return jobrunner.EncodeResult(map[string]any{"rows": rows, "nextJobId": saveID})
 	}
+}
+
+// readStatement reads the PDF with the budget's extract step and checks the
+// rows against the balances the statement printed. When they don't check out,
+// or it printed nothing to check against, the fallback step reads it again and
+// the better of the two reads is kept. A fallback that can't run or fails
+// leaves the first read. A file that isn't a PDF (a bank's CSV export) gets
+// no fallback.
+func readStatement(
+	ctx context.Context,
+	deps WorkerDeps,
+	budgetID uuid.UUID,
+	pdf []byte,
+	passwords []string,
+) (model.StatementExtractResponse, error) {
+	log := logger.Logger(ctx).With("budgetId", budgetID)
+
+	extractor, err := deps.StatementImport.Extract(ctx, budgetID)
+	if err != nil {
+		return model.StatementExtractResponse{}, err
+	}
+	res, err := extractor.ExtractStatement(withJobProgress(ctx), pdf, passwords)
+	if err != nil {
+		return model.StatementExtractResponse{}, err
+	}
+	check := statementcheck.Check(res)
+	// Counts and reasons only: the rows are the user's statement.
+	log.Info("statement read", "step", "extract", "ok", check.OK(), "rows", check.Rows,
+		"verified", check.Verified, "sections", check.Sections, "reasons", check.Reasons)
+	if check.OK() {
+		return res, nil
+	}
+	// The fallback readers read PDFs; a bank's CSV export is read exactly once.
+	if !bytes.HasPrefix(bytes.TrimLeft(pdf, "\x00\t\r\n "), []byte("%PDF-")) {
+		return res, nil
+	}
+	if on, err := deps.StatementImport.Enabled(ctx, budgetID, pipeline.StepStatementFallback); err != nil || !on {
+		if err != nil {
+			return model.StatementExtractResponse{}, err
+		}
+		log.Info("statement fallback is turned off, keeping the first read")
+		return res, nil
+	}
+
+	jobrunner.ReportProgress(ctx, job.Progress{Message: "rows don't check out, reading again"})
+	fallback, err := deps.StatementImport.Fallback(ctx, budgetID)
+	if err != nil {
+		log.Warn("statement fallback can't run, keeping the first read", "error", err)
+		return res, nil
+	}
+	again, err := fallback.ExtractStatement(withJobProgress(ctx), pdf, passwords)
+	if err != nil {
+		if ctx.Err() != nil {
+			return model.StatementExtractResponse{}, ctx.Err()
+		}
+		log.Warn("statement fallback failed, keeping the first read", "error", err)
+		return res, nil
+	}
+	againCheck := statementcheck.Check(again)
+	keep := statementcheck.Better(againCheck, check)
+	log.Info("statement read", "step", "fallback", "ok", againCheck.OK(), "rows", againCheck.Rows,
+		"verified", againCheck.Verified, "sections", againCheck.Sections, "reasons", againCheck.Reasons,
+		"kept", map[bool]string{true: "fallback", false: "extract"}[keep])
+	if keep {
+		return again, nil
+	}
+	return res, nil
 }
 
 // withJobProgress forwards progress reports from services and adapters to the

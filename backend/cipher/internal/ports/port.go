@@ -73,7 +73,7 @@ type ExtractedEntities struct {
 	Usage   *Usage `json:"usage"`
 }
 
-type Extract interface {
+type ExtractTxn interface {
 	Extract(ctx context.Context, msg Message) (ExtractedEntities, error)
 }
 
@@ -114,17 +114,17 @@ type MemoryLookup interface {
 	) (result PredictionResult, found bool, err error)
 }
 
-// Predictor picks a payee and category when memory has no answer. An empty
+// PredictTxn picks a payee and category when memory has no answer. An empty
 // CategoryName means it couldn't decide, which ends the message without a
 // transaction; errors are for calls that failed and are worth retrying.
-type Predictor interface {
+type PredictTxn interface {
 	Predict(ctx context.Context, msg Message, entities ExtractedEntities) (PredictionResult, error)
 }
 
 // StatementImport reads a bank or card statement PDF.
 type StatementImport interface {
-	// Extract returns the statement's sections and rows. A locked PDF is
+	// ExtractStatement returns the statement's sections and rows. A locked PDF is
 	// opened with the first of passwords that works; the response says which
 	// (PasswordIndex), or -1 when it needed none.
-	Extract(ctx context.Context, pdf []byte, passwords []string) (model.StatementExtractResponse, error)
+	ExtractStatement(ctx context.Context, pdf []byte, passwords []string) (model.StatementExtractResponse, error)
 }

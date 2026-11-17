@@ -31,6 +31,8 @@ type Choice struct {
 	// Fallback: when Model fails, try the owner's other models of its kind, by
 	// priority. Always false for adapters that don't use a model.
 	Fallback bool `json:"fallback"`
+	// Enabled: the step runs. Only an optional step can be off.
+	Enabled bool `json:"enabled"`
 }
 
 // OverrideView is a stored override as the UI sees it.
@@ -38,6 +40,7 @@ type OverrideView struct {
 	Adapter   *string    `json:"adapter"`
 	ModelID   *uuid.UUID `json:"modelId"`
 	Fallback  *bool      `json:"fallback"`
+	Enabled   *bool      `json:"enabled"`
 	UpdatedAt time.Time  `json:"updatedAt"`
 }
 
@@ -77,6 +80,36 @@ func warnNoModel(kind model.LLMModelKind) string {
 	return fmt.Sprintf("This step needs a %s model, and none is set up. Add one in Settings → AI.", kind)
 }
 
+func warnNoPreferred(a Adapter) string {
+	names := make([]string, len(a.PreferredModels))
+	for i, p := range a.PreferredModels {
+		names[i] = p.String()
+	}
+	return fmt.Sprintf(
+		"%s works best with %s, which isn't set up in Settings → AI, so it uses your default.",
+		a.Label, strings.Join(names, " or "),
+	)
+}
+
+// PreferredOf returns the first of adapter's preferred models the owner has
+// set up and can use.
+func PreferredOf(models []model.UserLLMModel, adapter Adapter) (model.UserLLMModel, bool) {
+	for _, want := range adapter.PreferredModels {
+		for _, m := range models {
+			if m.Kind == adapter.ModelKind && m.Provider == want.Provider && m.Slug == want.Slug {
+				return m, true
+			}
+		}
+	}
+	return model.UserLLMModel{}, false
+}
+
+// Enabled reports whether step runs for a budget with override (nil = none).
+// Only an optional step can be turned off.
+func Enabled(step Step, override *model.PipelineStepOverride) bool {
+	return !step.Optional || override == nil || override.Enabled == nil || *override.Enabled
+}
+
 // DefaultOf returns the owner's default model of kind. models come from
 // UserLLMModelRepository.ListUsableForBudget (usable keys only).
 func DefaultOf(models []model.UserLLMModel, kind model.LLMModelKind) (model.UserLLMModel, bool) {
@@ -104,7 +137,7 @@ func DefaultOf(models []model.UserLLMModel, kind model.LLMModelKind) (model.User
 // models. It never fails: anything in the override that no longer fits falls
 // back to the default, with a warning.
 func Resolve(step Step, override *model.PipelineStepOverride, models []model.UserLLMModel) StepView {
-	view := StepView{Step: step, Effective: Choice{Adapter: step.DefaultAdapter}}
+	view := StepView{Step: step, Effective: Choice{Adapter: step.DefaultAdapter, Enabled: Enabled(step, override)}}
 	var warnings []string
 
 	if override != nil {
@@ -112,6 +145,7 @@ func Resolve(step Step, override *model.PipelineStepOverride, models []model.Use
 			Adapter:   override.Adapter,
 			ModelID:   override.ModelID,
 			Fallback:  override.Fallback,
+			Enabled:   override.Enabled,
 			UpdatedAt: override.UpdatedAt,
 		}
 		if override.Adapter != nil {
@@ -134,6 +168,13 @@ func Resolve(step Step, override *model.PipelineStepOverride, models []model.Use
 				view.Effective.Model = refOf(m)
 			} else {
 				warnings = append(warnings, warnModelGone)
+			}
+		}
+		if view.Effective.Model == nil && len(adapter.PreferredModels) > 0 {
+			if m, ok := PreferredOf(models, adapter); ok {
+				view.Effective.Model = refOf(m)
+			} else {
+				warnings = append(warnings, warnNoPreferred(adapter))
 			}
 		}
 		if view.Effective.Model == nil {
@@ -269,6 +310,10 @@ func ValidateOverride(step Step, o model.PipelineStepOverride, models []model.Us
 	}
 	adapter, _ := step.Adapter(adapterID)
 
+	if o.Enabled != nil && !*o.Enabled && !step.Optional {
+		return invalid("%s can't be turned off", step.Label)
+	}
+
 	if o.Fallback != nil && !adapter.UsesModel {
 		return invalid("%s doesn't use a model, so it has nothing to fall back to", adapter.Label)
 	}
@@ -292,4 +337,64 @@ func ValidateOverride(step Step, o model.PipelineStepOverride, models []model.Us
 		}
 	}
 	return nil
+}
+
+// ValidateRerun rejects an override that would leave a step and the step it
+// reruns (RerunOf) with the same adapter and model: the rerun would read the
+// same way again. o is the change being made to stepID; overrides are the
+// budget's stored ones for p, whose row for stepID o replaces.
+func ValidateRerun(
+	p *Pipeline,
+	stepID StepID,
+	o *model.PipelineStepOverride,
+	overrides []model.PipelineStepOverride,
+	models []model.UserLLMModel,
+) error {
+	choice := func(id StepID) (Step, Choice, bool) {
+		step, ok := p.Step(id)
+		if !ok {
+			return Step{}, Choice{}, false
+		}
+		if id == stepID {
+			return step, Resolve(step, o, models).Effective, true
+		}
+		for i := range overrides {
+			if overrides[i].Pipeline == p.ID && overrides[i].Step == string(id) {
+				return step, Resolve(step, &overrides[i], models).Effective, true
+			}
+		}
+		return step, Resolve(step, nil, models).Effective, true
+	}
+
+	for _, s := range p.Steps {
+		if s.RerunOf == "" || (s.ID != stepID && s.RerunOf != stepID) {
+			continue
+		}
+		rerun, a, okA := choice(s.ID)
+		first, b, okB := choice(s.RerunOf)
+		// A rerun that's off never runs, so it can't read the same way again.
+		if !okA || !okB || !a.Enabled || !sameChoice(a, b) {
+			continue
+		}
+		with := a.Adapter
+		if a.Model != nil {
+			with += " with " + a.Model.Slug
+		}
+		return errs.New(
+			errs.CodePipelineInvalidOverride,
+			"%s runs %s again another way, so the two can't both use %s. Pick a different way or model for one of them.",
+			rerun.Label, first.Label, with,
+		)
+	}
+	return nil
+}
+
+func sameChoice(a, b Choice) bool {
+	if a.Adapter != b.Adapter {
+		return false
+	}
+	if a.Model == nil || b.Model == nil {
+		return a.Model == nil && b.Model == nil
+	}
+	return a.Model.ID == b.Model.ID
 }

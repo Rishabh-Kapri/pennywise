@@ -13,6 +13,7 @@ import (
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/jobrunner"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/pipeline"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/job"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 	"github.com/google/uuid"
@@ -59,18 +60,24 @@ func (f *fakeChecker) Check(ctx context.Context, _ ports.Message) (ports.TxnVerd
 type fakePipeline struct {
 	factory.MessagePipeline
 	checker   ports.CheckTransaction
-	extractor ports.Extract
+	extractor ports.ExtractTxn
 	verifier  ports.Verifier
 	memory    ports.MemoryLookup
-	predictor ports.Predictor
+	predictor ports.PredictTxn
 	err       error
+	// off are the steps the budget turned off
+	off map[pipeline.StepID]bool
+}
+
+func (f fakePipeline) Enabled(_ context.Context, _ uuid.UUID, step pipeline.StepID) (bool, error) {
+	return !f.off[step], nil
 }
 
 func (f fakePipeline) Check(context.Context, uuid.UUID) (ports.CheckTransaction, error) {
 	return f.checker, f.err
 }
 
-func (f fakePipeline) Extract(context.Context, uuid.UUID) (ports.Extract, error) {
+func (f fakePipeline) Extract(context.Context, uuid.UUID) (ports.ExtractTxn, error) {
 	return f.extractor, f.err
 }
 
@@ -82,7 +89,7 @@ func (f fakePipeline) Lookup(context.Context, uuid.UUID) (ports.MemoryLookup, er
 	return f.memory, f.err
 }
 
-func (f fakePipeline) Predict(context.Context, uuid.UUID) (ports.Predictor, error) {
+func (f fakePipeline) Predict(context.Context, uuid.UUID) (ports.PredictTxn, error) {
 	return f.predictor, f.err
 }
 
@@ -209,6 +216,59 @@ func TestRouting(t *testing.T) {
 			payload:   entities,
 			wantType:  model.JobTypeTransactionCreate,
 			wantQueue: model.QueuePennywise,
+		},
+		{
+			name:    "verify off: extract goes to lookup",
+			handler: messageExtract,
+			deps: WorkerDeps{Pipeline: fakePipeline{
+				extractor: fakeExtractor{}, off: map[pipeline.StepID]bool{pipeline.StepVerify: true},
+			}},
+			payload:   extract,
+			wantType:  model.JobTypeMessageLookup,
+			wantQueue: model.QueueCipher,
+		},
+		{
+			name:    "verify and lookup off: extract goes to predict",
+			handler: messageExtract,
+			deps: WorkerDeps{Pipeline: fakePipeline{
+				extractor: fakeExtractor{},
+				off:       map[pipeline.StepID]bool{pipeline.StepVerify: true, pipeline.StepLookup: true},
+			}},
+			payload:   extract,
+			wantType:  model.JobTypeMessagePredict,
+			wantQueue: model.QueueCipher,
+		},
+		{
+			name:    "a verify job queued before it was turned off passes on",
+			handler: messageVerify,
+			deps: WorkerDeps{Pipeline: fakePipeline{
+				verifier: fakeVerifier{}, off: map[pipeline.StepID]bool{pipeline.StepVerify: true},
+			}},
+			payload:   entities,
+			wantType:  model.JobTypeMessageLookup,
+			wantQueue: model.QueueCipher,
+		},
+		{
+			name:    "predict off: a memory miss is parked",
+			handler: messageLookup,
+			deps: WorkerDeps{Pipeline: fakePipeline{
+				memory: fakeMemory{}, off: map[pipeline.StepID]bool{pipeline.StepPredict: true},
+			}},
+			payload:   entities,
+			wantType:  model.JobTypePipelineReport,
+			wantQueue: model.QueuePennywise,
+			outcome:   model.MessageOutcomeNeedsReview,
+		},
+		{
+			name:    "predict off: a predict job is parked",
+			handler: messagePredict,
+			deps: WorkerDeps{Pipeline: fakePipeline{
+				predictor: fakePredictor{category: "Food"}, off: map[pipeline.StepID]bool{pipeline.StepPredict: true},
+			}},
+			payload:   entities,
+			wantType:  model.JobTypePipelineReport,
+			wantQueue: model.QueuePennywise,
+			outcome:   model.MessageOutcomeNeedsReview,
 		},
 		{
 			name:      "no prediction is reported",
@@ -678,6 +738,30 @@ func TestStatementEmailGoesToFetch(t *testing.T) {
 		t.Errorf("fetch payload = %+v", p)
 	}
 	if got := decodeReport(t, broker.got[1].payload).Outcome; got != model.MessageOutcomeStatement {
+		t.Errorf("outcome = %s, want statement", got)
+	}
+}
+
+func TestStatementEmailStepOff(t *testing.T) {
+	msg := testMessage
+	msg.Source = "email"
+	msg.Provider = "gmail"
+	msg.MailAccount = "someone@example.com"
+	msg.Attachments = []model.MessageAttachment{{ID: "b", FileName: "statement.pdf", MimeType: "application/pdf"}}
+	broker := &fakeBroker{}
+	deps := WorkerDeps{
+		Broker:          broker,
+		Pipeline:        fakePipeline{checker: &fakeChecker{verdict: ports.TxnVerdict{MessageType: ports.StatementMessageType}}},
+		StatementImport: fakeStatementPipeline{emailOff: true},
+	}
+	j, _ := newJob(t, msg)
+	if _, err := messageReceived(deps)(context.Background(), j); err != nil {
+		t.Fatal(err)
+	}
+	if len(broker.got) != 1 || broker.got[0].jobType == model.JobTypeStatementFetch {
+		t.Fatalf("want only the report, got %+v", broker.got)
+	}
+	if got := decodeReport(t, broker.got[0].payload).Outcome; got != model.MessageOutcomeStatement {
 		t.Errorf("outcome = %s, want statement", got)
 	}
 }

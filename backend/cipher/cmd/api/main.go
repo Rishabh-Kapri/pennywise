@@ -270,16 +270,15 @@ func main() {
 		broker = jobs.Broker
 	}
 
-	statementImport := factory.NewStatementFactory(
-		factory.OCRConfig{
-			Driver:    cfg.StatementImportDriver,
-			Provider:  cfg.StatementImportProvider,
-			Model:     cfg.StatementImportModel,
-			MaxTokens: cfg.StatementImportMaxTokens,
-		},
-		modelClients,
-		database.UserLLMModel,
-	)
+	statementImport, err := factory.NewStatementPipelineFactory(factory.StatementImportDeps{
+		PipelineSteps:  database.PipelineStep,
+		LLMModels:      database.UserLLMModel,
+		Clients:        modelClients,
+		LLMCallTimeout: cfg.LLMCallTimeout,
+	})
+	if err != nil {
+		logger.Fatal("error building statement pipeline", "err", err)
+	}
 	messagePipeline, err := factory.NewMessagePipeline(factory.MessagePipelineDeps{
 		PipelineSteps:  database.PipelineStep,
 		LLMModels:      database.UserLLMModel,

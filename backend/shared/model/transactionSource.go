@@ -42,5 +42,7 @@ type StatementLineSource struct {
 	Amount        float64
 	Currency      string
 	OccurredOn    string // YYYY-MM-DD
+	// OccurredAt is the date with the row's printed time, nil without one.
+	OccurredAt    *time.Time
 	RewardsPoints *int
 }

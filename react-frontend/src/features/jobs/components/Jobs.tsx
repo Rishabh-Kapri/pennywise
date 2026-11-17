@@ -4,6 +4,7 @@ import { selectIsDemoUser } from '@/features/auth/store/authSlice';
 import { LoadingState, errorMessage, explainError, toast } from '@/utils';
 import {
   ArrowRight,
+  ArrowSquareOut,
   ArrowsClockwise,
   CaretDown,
   CaretRight,
@@ -20,7 +21,7 @@ import {
 } from '@phosphor-icons/react';
 import { AnimatePresence, MotionConfig, motion } from 'framer-motion';
 import { useEffect, useRef, useMemo, useState, type ReactNode } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   JOBS_MAX_LIMIT,
   JOBS_PAGE_SIZE,
@@ -443,6 +444,8 @@ function RowDetails({ row }: { row: JobRow }) {
   const { sender, receivedAt, reason } = jobMessage(summary);
   const parked = isParked(row);
   const review = parked ? jobReview(summary) : undefined;
+  // the transactions this message became, newest run's last
+  const createdIds = jobs.flatMap((job) => (job.type === 'transaction.create' ? (job.transactionIds ?? []) : []));
 
   useEffect(() => {
     dispatch(fetchJobDetail(focus.id));
@@ -469,6 +472,16 @@ function RowDetails({ row }: { row: JobRow }) {
           <div>
             <h4 className={styles.detailHeading}>What happened</h4>
             <p>{rowReason(row, reason)}</p>
+            {createdIds.length > 0 && (
+              <div className={styles.openLinks}>
+                {createdIds.map((id, i) => (
+                  <Link key={id} to={`/transactions/${id}`} className={styles.button}>
+                    <ArrowSquareOut size={16} />
+                    {createdIds.length > 1 ? `Open transaction ${i + 1}` : 'Open transaction'}
+                  </Link>
+                ))}
+              </div>
+            )}
             {/* A job that recovered keeps its last error; that's history, in technical details. */}
             {/* In words here; the error as the server wrote it is in technical details. */}
             {['failed', 'retrying'].includes(jobState(focus)) && focus.lastError && (

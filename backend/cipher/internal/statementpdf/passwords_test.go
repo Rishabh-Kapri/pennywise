@@ -1,4 +1,4 @@
-package localocr
+package statementpdf
 
 import (
 	"context"
@@ -45,7 +45,7 @@ fi
 
 func TestRenderWithPasswordsPicksTheOneThatOpens(t *testing.T) {
 	fakePdftoppm(t, true)
-	pages, idx, err := renderWithPasswords(context.Background(), t.TempDir(), []byte("%PDF"), []string{"wrong", "right", "other"})
+	pages, idx, err := Render(context.Background(), t.TempDir(), []byte("%PDF"), []string{"wrong", "right", "other"})
 	if err != nil || idx != 1 || len(pages) != 1 {
 		t.Fatalf("pages=%v idx=%d err=%v", pages, idx, err)
 	}
@@ -53,7 +53,7 @@ func TestRenderWithPasswordsPicksTheOneThatOpens(t *testing.T) {
 
 func TestRenderWithPasswordsUnlockedCreditsNoOne(t *testing.T) {
 	fakePdftoppm(t, false)
-	_, idx, err := renderWithPasswords(context.Background(), t.TempDir(), []byte("%PDF"), []string{"right"})
+	_, idx, err := Render(context.Background(), t.TempDir(), []byte("%PDF"), []string{"right"})
 	if err != nil || idx != -1 {
 		t.Fatalf("idx=%d err=%v, want -1", idx, err)
 	}
@@ -61,8 +61,29 @@ func TestRenderWithPasswordsUnlockedCreditsNoOne(t *testing.T) {
 
 func TestRenderWithPasswordsNoneWork(t *testing.T) {
 	fakePdftoppm(t, true)
-	_, _, err := renderWithPasswords(context.Background(), t.TempDir(), []byte("%PDF"), []string{"a", "b"})
+	_, _, err := Render(context.Background(), t.TempDir(), []byte("%PDF"), []string{"a", "b"})
 	if !errs.HasCode(err, errs.CodeStatementPasswordRequired) {
 		t.Fatalf("err = %v, want password required", err)
+	}
+}
+
+// fakePdftotext prints two pages, each ended by a form feed like pdftotext.
+func fakePdftotext(t *testing.T) {
+	t.Helper()
+	script := filepath.Join(t.TempDir(), "pdftotext")
+	body := "#!/bin/sh\nprintf 'page one\\fpage two\\f'\n"
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := pdftotextBinary
+	pdftotextBinary = script
+	t.Cleanup(func() { pdftotextBinary = old })
+}
+
+func TestTextSplitsPages(t *testing.T) {
+	fakePdftotext(t)
+	pages, idx, err := Text(context.Background(), []byte("%PDF"), nil)
+	if err != nil || idx != -1 || len(pages) != 2 || pages[0] != "page one" || pages[1] != "page two" {
+		t.Fatalf("pages=%q idx=%d err=%v", pages, idx, err)
 	}
 }

@@ -6,17 +6,19 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/pipeline"
 )
 
-func TestCipherRunsEveryAdapterInTheMessagePipeline(t *testing.T) {
+func TestCipherRunsEveryAdapterInItsPipelines(t *testing.T) {
 	catalog, err := pipeline.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, ok := catalog.Pipeline(pipeline.MessagePipeline)
-	if !ok {
-		t.Fatal("no message pipeline")
-	}
-	if err := checkKnown(p); err != nil {
-		t.Fatal(err)
+	for _, id := range []string{pipeline.MessagePipeline, pipeline.StatementPipeline} {
+		p, ok := catalog.Pipeline(id)
+		if !ok {
+			t.Fatalf("no %s pipeline", id)
+		}
+		if err := checkKnown(p); err != nil {
+			t.Errorf("%s: %v", id, err)
+		}
 	}
 }
 

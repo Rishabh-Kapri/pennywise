@@ -12,6 +12,10 @@ export interface PaginationResponse<T> {
 export interface AmountTotals {
   inflow: number;
   outflow: number;
+  /** points card statements printed for the matching transactions; absent when none had any */
+  rewardPoints?: number;
+  /** how many of them came with points */
+  rewardPointsCount?: number;
 }
 
 export const LoadingState = {

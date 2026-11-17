@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -67,6 +68,8 @@ func cleanStatementSections(sections []model.StatementSection) ([]model.Statemen
 				dropped++
 				continue
 			}
+			// "HH:MM" or nothing: a reader's stray text isn't a time.
+			r.Time = model.ParseStatementTime(r.Time)
 			r.Amount = roundCents(r.Amount)
 			if r.Amount <= 0 || !r.Direction.Valid() {
 				dropped++
@@ -81,6 +84,7 @@ func cleanStatementSections(sections []model.StatementSection) ([]model.Statemen
 			}
 			readNarration(&r, s.Kind == model.StatementKindCard)
 			classifyStatementRow(&r, s.Kind == model.StatementKindCard)
+			stripEMIOffer(&r)
 			rows = append(rows, r)
 		}
 		s.Rows = rows
@@ -242,8 +246,9 @@ func statementPeriod(s model.StatementSection) (string, string) {
 	return start, end
 }
 
-// reconcileStatementRows pairs statement rows with ledger transactions one to
-// one. A row whose reference one of a transaction's messages also stated is
+// reconcileStatementRows pairs statement rows with ledger transactions. Rows
+// the user linked by hand (LinkedTransactionIDs) take their transactions
+// first, many to many (linkedMatches). Every other pairing is one to one. A row whose reference one of a transaction's messages also stated is
 // paired with it first (exact when the amounts agree). Then exact pairs (same signed amount, dates within the window) are taken
 // first, closest date and most similar text winning; then near pairs (amount
 // within 5%, close date, similar text) among what is left. used carries ledger
@@ -288,6 +293,13 @@ func reconcileStatementRows(
 			})
 		}
 	}
+
+	// Linked by hand: the user's word beats any guess. Rows that share a
+	// linked transaction form one group (three EMI lines one payment paid),
+	// matched as a whole. A linked transaction that's gone, outside the
+	// window or claimed by another section is left out; a row with none left
+	// is matched like any other.
+	matched = append(matched, linkedMatches(rows, txns, rowTaken, txnTaken, used)...)
 
 	// Same reference: the same payment, whatever the text says.
 	var byRef, byRefDiffers []candidate
@@ -387,6 +399,98 @@ func reconcileStatementRows(
 		ledgerOnly = []model.StatementLedgerTxn{}
 	}
 	return matched, missing, ledgerOnly
+}
+
+// linkedMatches pairs the rows the user linked with their transactions and
+// marks both taken. Rows sharing a transaction are one match: Row and
+// OtherRows, Transaction and Others, compared in total.
+func linkedMatches(
+	rows []model.StatementRow,
+	txns []model.StatementLedgerTxn,
+	rowTaken, txnTaken []bool,
+	used map[uuid.UUID]bool,
+) []model.StatementMatch {
+	txnIndex := make(map[uuid.UUID]int, len(txns))
+	for j, t := range txns {
+		txnIndex[t.ID] = j
+	}
+	picks := make([][]int, len(rows))
+	owner := map[int]int{} // transaction → first row naming it
+	parent := make([]int, len(rows))
+	for i := range parent {
+		parent[i] = i
+	}
+	var find func(int) int
+	find = func(i int) int {
+		if parent[i] != i {
+			parent[i] = find(parent[i])
+		}
+		return parent[i]
+	}
+	for i, r := range rows {
+		for _, id := range r.LinkedTransactionIDs {
+			j, ok := txnIndex[id]
+			if !ok || txnTaken[j] || slices.Contains(picks[i], j) {
+				continue
+			}
+			picks[i] = append(picks[i], j)
+			if o, seen := owner[j]; seen {
+				parent[find(i)] = find(o)
+			} else {
+				owner[j] = i
+			}
+		}
+	}
+
+	var out []model.StatementMatch
+	done := map[int]bool{}
+	for i := range rows {
+		if len(picks[i]) == 0 || done[find(i)] {
+			continue
+		}
+		root := find(i)
+		done[root] = true
+		var groupRows []int
+		var groupTxns []int
+		for k := i; k < len(rows); k++ {
+			if len(picks[k]) == 0 || find(k) != root {
+				continue
+			}
+			groupRows = append(groupRows, k)
+			for _, j := range picks[k] {
+				if !slices.Contains(groupTxns, j) {
+					groupTxns = append(groupTxns, j)
+				}
+			}
+		}
+		m := model.StatementMatch{Row: rows[i], Transaction: txns[groupTxns[0]], Linked: true}
+		rowTotal, txnTotal := 0.0, 0.0
+		for n, k := range groupRows {
+			rowTaken[k] = true
+			rowTotal += rows[k].SignedAmount()
+			if n > 0 {
+				m.OtherRows = append(m.OtherRows, rows[k])
+			}
+		}
+		for n, j := range groupTxns {
+			txnTaken[j] = true
+			used[txns[j].ID] = true
+			txnTotal += txns[j].Amount
+			if n > 0 {
+				m.Others = append(m.Others, txns[j])
+			}
+		}
+		if dd := absDayDiff(m.Row.Date, m.Transaction.Date); dd >= 0 {
+			m.DateDiffDays = dd
+		}
+		m.Kind = model.StatementMatchExact
+		if diff := roundCents(rowTotal - txnTotal); math.Abs(diff) >= amountEpsilon {
+			m.Kind = model.StatementMatchAmountDiffers
+			m.Difference = diff
+		}
+		out = append(out, m)
+	}
+	return out
 }
 
 func hasRef(refs []string, ref string) bool {

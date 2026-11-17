@@ -5,6 +5,8 @@ import { apiClient } from '@/utils';
 import type {
   StatementCreateItem,
   StatementCreateResult,
+  StatementDifferenceRequest,
+  StatementRowEdit,
   StatementImport,
   StatementReconciliation,
   StatementUploadResponse,
@@ -217,5 +219,109 @@ export function useStatementReconciliation(id: string | null) {
     [id, load],
   );
 
-  return { data: liveData, isLoading, error, reload: load, setSectionAccount, createMissing };
+  // add some of the account's transactions to a statement row's links
+  const linkRow = useCallback(
+    async (rowId: string, transactionIds: string[]) => {
+      if (!id) return;
+      setData(
+        await apiClient.put<StatementReconciliation, { transactionIds: string[] }>(
+          `statements/${id}/rows/${encodeURIComponent(rowId)}/link`,
+          { transactionIds },
+        ),
+      );
+    },
+    [id],
+  );
+
+  // link several rows and transactions together: EMI lines one payment paid
+  const link = useCallback(
+    async (rowIds: string[], transactionIds: string[]) => {
+      if (!id) return;
+      setData(
+        await apiClient.post<StatementReconciliation, { rowIds: string[]; transactionIds: string[] }>(
+          `statements/${id}/links`,
+          { rowIds, transactionIds },
+        ),
+      );
+    },
+    [id],
+  );
+
+  // correct a row read wrong; revertRow puts back what was read
+  const editRow = useCallback(
+    async (rowId: string, edit: StatementRowEdit) => {
+      if (!id) return;
+      setData(
+        await apiClient.patch<StatementReconciliation, StatementRowEdit>(
+          `statements/${id}/rows/${encodeURIComponent(rowId)}`,
+          edit,
+        ),
+      );
+    },
+    [id],
+  );
+
+  const revertRow = useCallback(
+    async (rowId: string) => {
+      if (!id) return;
+      setData(
+        await apiClient.delete<StatementReconciliation>(`statements/${id}/rows/${encodeURIComponent(rowId)}/edit`),
+      );
+    },
+    [id],
+  );
+
+  const unlinkRow = useCallback(
+    async (rowId: string) => {
+      if (!id) return;
+      setData(
+        await apiClient.delete<StatementReconciliation>(`statements/${id}/rows/${encodeURIComponent(rowId)}/link`),
+      );
+    },
+    [id],
+  );
+
+  // say whether a row is part of an EMI already in the budget; null goes back to the row's text
+  const setRowEMI = useCallback(
+    async (rowId: string, emi: boolean | null) => {
+      if (!id) return;
+      setData(
+        await apiClient.put<StatementReconciliation, { emi: boolean | null }>(
+          `statements/${id}/rows/${encodeURIComponent(rowId)}/emi`,
+          { emi },
+        ),
+      );
+    },
+    [id],
+  );
+
+  // book what a linked row's transactions are short of it (cashback used, a fee)
+  const addDifference = useCallback(
+    async (rowId: string, body: StatementDifferenceRequest) => {
+      if (!id) return;
+      setData(
+        await apiClient.post<StatementReconciliation, StatementDifferenceRequest>(
+          `statements/${id}/rows/${encodeURIComponent(rowId)}/difference`,
+          body,
+        ),
+      );
+    },
+    [id],
+  );
+
+  return {
+    data: liveData,
+    isLoading,
+    error,
+    reload: load,
+    setSectionAccount,
+    createMissing,
+    linkRow,
+    link,
+    editRow,
+    revertRow,
+    unlinkRow,
+    setRowEMI,
+    addDifference,
+  };
 }

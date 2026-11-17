@@ -19,11 +19,11 @@ func NewPipelineStepRepository(pool *pgxpool.Pool) repository.PipelineStepReposi
 	return &pipelineStepRepo{BaseRepository: NewBaseRepository(pool)}
 }
 
-const pipelineStepColumns = `budget_id, pipeline, step, adapter, model_id, fallback, updated_at`
+const pipelineStepColumns = `budget_id, pipeline, step, adapter, model_id, fallback, enabled, updated_at`
 
 func scanPipelineStep(row pgx.Row) (*model.PipelineStepOverride, error) {
 	var o model.PipelineStepOverride
-	if err := row.Scan(&o.BudgetID, &o.Pipeline, &o.Step, &o.Adapter, &o.ModelID, &o.Fallback, &o.UpdatedAt); err != nil {
+	if err := row.Scan(&o.BudgetID, &o.Pipeline, &o.Step, &o.Adapter, &o.ModelID, &o.Fallback, &o.Enabled, &o.UpdatedAt); err != nil {
 		return nil, err
 	}
 	return &o, nil
@@ -79,15 +79,16 @@ func (r *pipelineStepRepo) ListByBudgetAndPipeline(
 
 func (r *pipelineStepRepo) Upsert(ctx context.Context, in model.PipelineStepOverride) (*model.PipelineStepOverride, error) {
 	return scanPipelineStep(r.Executor(ctx).QueryRow(ctx, `
-		INSERT INTO budget_pipeline_steps (budget_id, pipeline, step, adapter, model_id, fallback)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO budget_pipeline_steps (budget_id, pipeline, step, adapter, model_id, fallback, enabled)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (budget_id, pipeline, step) DO UPDATE SET
 			adapter    = EXCLUDED.adapter,
 			model_id   = EXCLUDED.model_id,
 			fallback   = EXCLUDED.fallback,
+			enabled    = EXCLUDED.enabled,
 			updated_at = now()
 		RETURNING `+pipelineStepColumns,
-		in.BudgetID, in.Pipeline, in.Step, in.Adapter, in.ModelID, in.Fallback,
+		in.BudgetID, in.Pipeline, in.Step, in.Adapter, in.ModelID, in.Fallback, in.Enabled,
 	))
 }
 

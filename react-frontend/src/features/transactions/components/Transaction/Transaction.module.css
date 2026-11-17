@@ -185,6 +185,18 @@
   border-top: 1px solid var(--color-border-muted);
 }
 
+.pageStats .pointsStat {
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.totalsTooltip .totalsPoints {
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--color-border-muted);
+}
+
 .totalsCount {
   color: var(--color-text-secondary);
   font-size: 0.8rem;
@@ -1266,6 +1278,15 @@ input[type='date']::-webkit-calendar-picker-indicator {
 .bulkButton:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+.bulkApprove {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.bulkApprove:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-primary) 85%, black);
 }
 
 .bulkDelete {

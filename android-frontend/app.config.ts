@@ -14,7 +14,7 @@ const googleServicesFile = process.env.GOOGLE_SERVICES_JSON ?? './google-service
 const config: ExpoConfig = {
   name: 'Pennywise',
   slug: 'pennywise-android',
-  version: '0.1.3',
+  version: '0.2.0',
   orientation: 'portrait',
   scheme: 'dev.pennywise.cloud',
   userInterfaceStyle: 'automatic',
@@ -39,11 +39,11 @@ const config: ExpoConfig = {
     package: 'dev.pennywise.cloud',
     googleServicesFile,
     adaptiveIcon: {
-      // Foreground art sits inside the 66dp safe zone; the background colour is
-      // the app canvas, so the knocked-out "P" reads the same under every
-      // launcher mask.
+      // The drawer-stack mark (docs/logo) sits inside the 66dp safe zone on the
+      // icon's own near-black, so its cut-out drawer handle shows that colour
+      // under every launcher mask.
       foregroundImage: './assets/adaptive-icon.png',
-      backgroundColor: '#1F1F1E'
+      backgroundColor: '#0B0B10'
     },
     permissions: [
       'android.permission.ACCESS_COARSE_LOCATION',
@@ -58,6 +58,17 @@ const config: ExpoConfig = {
     ]
   },
   plugins: [
+    [
+      // The native launch screen: the icon's mark on its background. The JS
+      // BootSplash (src/components/BootSplash.tsx) draws the same mark at the
+      // same size and animates it, so keep colour, image and width in step.
+      'expo-splash-screen',
+      {
+        backgroundColor: '#0B0B10',
+        image: './assets/splash-icon.png',
+        imageWidth: 112
+      }
+    ],
     [
       'expo-location',
       {

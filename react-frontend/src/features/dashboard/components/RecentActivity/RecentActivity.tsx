@@ -110,7 +110,7 @@ export default function RecentActivity({ className = '' }: { className?: string 
                   const net = transactionNet(txn);
                   return (
                     <li key={txn.id}>
-                      <Link to={`/transactions/${txn.accountId}`} className={styles.row}>
+                      <Link to={`/transactions/${txn.id}`} className={styles.row}>
                         <span className={styles.rowIcon} data-kind={kind}>
                           {Icon ? (
                             <Icon size={17} aria-hidden="true" />
