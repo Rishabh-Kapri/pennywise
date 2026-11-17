@@ -325,6 +325,24 @@ type AgentRun struct {
 	Metadata       map[string]any        `json:"metadata,omitempty"`
 	Conversation   *AgentConversation    `json:"conversation,omitempty"`
 	Messages       []ConversationMessage `json:"messages,omitempty"`
+
+	// Metrics, filled when the run finishes; nil on runs from before they
+	// were columns (those keep their counts in Metadata). Rolled up from the
+	// run's llm_usage rows.
+	StopReason       *string `json:"stopReason,omitempty"`
+	InputTokens      *int    `json:"inputTokens,omitempty"`
+	OutputTokens     *int    `json:"outputTokens,omitempty"`
+	CacheReadTokens  *int    `json:"cacheReadTokens,omitempty"`
+	CacheWriteTokens *int    `json:"cacheWriteTokens,omitempty"`
+	CostMicros       *int64  `json:"costMicros,omitempty"`
+	PromptVersion    *string `json:"promptVersion,omitempty"`
+	ResolvedProvider *string `json:"resolvedProvider,omitempty"`
+	ResolvedModel    *string `json:"resolvedModel,omitempty"`
+	TurnCount        *int    `json:"turnCount,omitempty"`
+	ToolCallCount    *int    `json:"toolCallCount,omitempty"`
+	// ToolInvocations is filled only where a caller needs them (replaying a
+	// conversation's earlier runs).
+	ToolInvocations []ToolInvocation `json:"toolInvocations,omitempty"`
 }
 
 type AgentWorkingMemory struct {

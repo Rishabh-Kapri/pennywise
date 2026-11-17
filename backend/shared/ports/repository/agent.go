@@ -36,6 +36,17 @@ type CreateConversationMessageParams struct {
 	Metadata       map[string]any
 }
 
+// RecordAgentRunResult is what an agent run leaves behind when it finishes.
+// The token, cost, model and turn columns aren't in it: RecordRunResult rolls
+// them up from the run's llm_usage rows.
+type RecordAgentRunResult struct {
+	RunID           uuid.UUID
+	BudgetID        uuid.UUID
+	StopReason      string
+	PromptVersion   string
+	ToolInvocations []model.ToolInvocation
+}
+
 type AgentRepository interface {
 	CreateConversation(
 		ctx context.Context,
@@ -88,6 +99,11 @@ type AgentRepository interface {
 		messageID uuid.UUID,
 		data []model.MessagePart,
 	) error
+	// RecordRunResult saves a finished run's tool invocations and sets its
+	// metric columns (tokens, cost, resolved model, turn and tool-call counts
+	// rolled up from llm_usage and tool_invocations) in one transaction. It
+	// replaces the run's earlier invocations, so a retry doesn't add them twice.
+	RecordRunResult(ctx context.Context, result RecordAgentRunResult) error
 	UpdateEntityMetadata(
 		ctx context.Context,
 		entity string,
