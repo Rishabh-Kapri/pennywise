@@ -261,6 +261,10 @@ type StatementSection struct {
 	// AccountID is the Pennywise account this section reconciles against:
 	// auto-mapped from the account number's last digits, or chosen by the user.
 	AccountID *uuid.UUID `json:"accountId,omitempty"`
+	// SetAside are ledger transactions the user said aren't on this
+	// statement (another month's, or filed under the wrong account), so they
+	// stop showing as Not on statement.
+	SetAside []uuid.UUID `json:"setAside,omitempty"`
 }
 
 // StatementSectionSummary is a StatementSection without its rows. Its JSON
@@ -447,6 +451,9 @@ type StatementSectionReconciliation struct {
 	// LedgerOnly are ledger transactions inside the statement period that do
 	// not appear on it.
 	LedgerOnly []StatementLedgerTxn `json:"ledgerOnly"`
+	// SetAside are ledger transactions in the period the user said don't
+	// belong to this statement (StatementSection.SetAside).
+	SetAside []StatementLedgerTxn `json:"setAside"`
 	// Covered are EMI instalment rows on a card statement. An EMI bought on
 	// a card is usually budgeted as paid in full when it was bought, so its
 	// instalments aren't missing transactions.
@@ -456,6 +463,12 @@ type StatementSectionReconciliation struct {
 type StatementReconciliation struct {
 	Import   StatementImport                  `json:"import"`
 	Sections []StatementSectionReconciliation `json:"sections"`
+}
+
+// StatementSetAsideReq sets a ledger transaction aside from a section's Not
+// on statement list, or puts it back.
+type StatementSetAsideReq struct {
+	SetAside bool `json:"setAside"`
 }
 
 // StatementSectionAccountReq maps a section to a ledger account (nil clears).

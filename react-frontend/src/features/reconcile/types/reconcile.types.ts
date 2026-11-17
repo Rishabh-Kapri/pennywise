@@ -181,6 +181,8 @@ export interface StatementSectionReconciliation {
   matched: StatementMatch[];
   missing: StatementRow[];
   ledgerOnly: StatementLedgerTxn[];
+  /** in the period, but you said they aren't on this statement */
+  setAside?: StatementLedgerTxn[];
   /** EMI instalments: the purchase is already in the budget */
   covered: StatementRow[];
 }

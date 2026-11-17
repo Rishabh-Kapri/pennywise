@@ -363,3 +363,22 @@ func TestStatementLinesRecordsHandLinks(t *testing.T) {
 		t.Fatalf("line = %+v", lines[0])
 	}
 }
+
+func TestSplitSetAside(t *testing.T) {
+	a, b, c := uuid.New(), uuid.New(), uuid.New()
+	ledger := []model.StatementLedgerTxn{{ID: a}, {ID: b}, {ID: c}}
+
+	kept, aside := splitSetAside(ledger, nil)
+	if len(kept) != 3 || len(aside) != 0 {
+		t.Fatalf("nothing set aside: kept %d, aside %d", len(kept), len(aside))
+	}
+
+	// d isn't in the period any more (or matched now): it's ignored
+	kept, aside = splitSetAside(ledger, []uuid.UUID{b, uuid.New()})
+	if len(kept) != 2 || kept[0].ID != a || kept[1].ID != c {
+		t.Fatalf("kept = %+v", kept)
+	}
+	if len(aside) != 1 || aside[0].ID != b {
+		t.Fatalf("aside = %+v", aside)
+	}
+}

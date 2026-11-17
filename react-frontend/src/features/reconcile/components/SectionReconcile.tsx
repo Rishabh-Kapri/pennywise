@@ -1,5 +1,6 @@
 import {
   Bank,
+  CalendarX,
   CheckCircle,
   CircleNotch,
   FileMagnifyingGlass,
@@ -359,6 +360,8 @@ interface Props {
   onAddDifference: (rowId: string, body: StatementDifferenceRequest) => Promise<void>;
   /** move a row in or out of Covered by EMI; null goes back to what its text says */
   onSetEMI: (rowId: string, emi: boolean | null) => Promise<void>;
+  /** take a transaction off Not on statement: another month's, or the wrong account's */
+  onSetAside: (transactionId: string, aside: boolean) => Promise<void>;
   /** name the account and period in the section's header: the page header
    * already does when the statement has one section */
   showIdentity?: boolean;
@@ -379,6 +382,7 @@ export function SectionReconcile({
   onRevertRow,
   onAddDifference,
   onSetEMI,
+  onSetAside,
   showIdentity = true,
   onShowPage,
   onShowLine,
@@ -422,6 +426,21 @@ export function SectionReconcile({
   // the row whose link list is open: a missing one, or a linked one short of its amount
   const [linking, setLinking] = useState<string | null>(null);
   const [unlinking, setUnlinking] = useState<string | null>(null);
+  // the transaction being set aside or put back
+  const [asiding, setAsiding] = useState<string | null>(null);
+  const setAside = async (t: StatementLedgerTxn, aside: boolean) => {
+    setAsiding(t.id);
+    try {
+      await onSetAside(t.id, aside);
+      if (pickingFor === t.id) setPickingFor(null);
+    } catch (err) {
+      toast.error(aside ? "Couldn't set it aside" : "Couldn't put it back", {
+        description: errorMessage(err, 'Try again.'),
+      });
+    } finally {
+      setAsiding(null);
+    }
+  };
   // the row being corrected, the ledger transaction whose row list is open,
   // and the EMI lines ticked to link together
   const [editing, setEditing] = useState<string | null>(null);
@@ -950,77 +969,123 @@ export function SectionReconcile({
           </div>
         ))}
 
-      {tab === 'ledgerOnly' &&
-        (section.ledgerOnly.length === 0 ? (
-          <div className={styles.emptyTab}>
-            <CheckCircle size={32} weight="fill" className={styles.okIcon} />
-            <strong>Nothing extra</strong>
-            <span>Every transaction in this period appears on the statement.</span>
-          </div>
-        ) : (
-          <>
-            <p className={styles.muted}>
-              These are in {section.accountName ?? 'this account'} for the statement's period but not on the statement.
-              Each could be a duplicate, a pending charge, or filed under the wrong account.
-            </p>
-            <div className={styles.tableWrap}>
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Payee</th>
-                    <th>Category</th>
-                    <th className={styles.num}>Amount</th>
-                    <th className={styles.actionCell}>
-                      <span className={styles.srOnly}>Link</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {section.ledgerOnly.map((t) => (
-                    <Fragment key={t.id}>
-                      <tr>
-                        <td className={styles.dateCell}>{shortDay(t.date)}</td>
-                        <td>
-                          <Link to={`/transactions/${t.id}`}>{t.payeeName || t.note || 'Open transaction'}</Link>
-                          {t.status === 'UNAPPROVED' && <span className={styles.badgeMuted}>unapproved</span>}
-                        </td>
-                        <td>{t.categoryName ?? '—'}</td>
-                        <td className={styles.num}>
-                          <Amount value={t.amount} />
-                        </td>
-                        <td className={styles.actionCell}>
-                          <button
-                            type="button"
-                            className={`${styles.iconButton} ${pickingFor === t.id ? styles.iconButtonActive : ''}`}
-                            title="Link to rows on the statement"
-                            aria-label={`Link ${t.payeeName || 'this transaction'} to statement rows`}
-                            aria-expanded={pickingFor === t.id}
-                            onClick={() => setPickingFor(pickingFor === t.id ? null : t.id)}
-                          >
-                            <LinkSimple size={18} />
-                          </button>
-                        </td>
-                      </tr>
-                      {pickingFor === t.id && (
-                        <tr className={styles.linkRow}>
-                          <td colSpan={5}>
-                            <RowPicker
-                              txn={t}
-                              rows={[...section.missing, ...(section.covered ?? [])]}
-                              onLink={(rowIds) => linkMany(rowIds, [t.id])}
-                              onCancel={() => setPickingFor(null)}
-                            />
+      {tab === 'ledgerOnly' && (
+        <>
+          {section.ledgerOnly.length === 0 ? (
+            <div className={styles.emptyTab}>
+              <CheckCircle size={32} weight="fill" className={styles.okIcon} />
+              <strong>Nothing extra</strong>
+              <span>Every transaction in this period appears on the statement.</span>
+            </div>
+          ) : (
+            <>
+              <p className={styles.muted}>
+                These are in {section.accountName ?? 'this account'} for the statement's period but not on the
+                statement. Each could be a duplicate, a pending charge, or filed under the wrong account. If one belongs
+                to another month's statement, set it aside.
+              </p>
+              <div className={styles.tableWrap}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Payee</th>
+                      <th>Category</th>
+                      <th className={styles.num}>Amount</th>
+                      <th className={styles.actionCell}>
+                        <span className={styles.srOnly}>Link or set aside</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {section.ledgerOnly.map((t) => (
+                      <Fragment key={t.id}>
+                        <tr>
+                          <td className={styles.dateCell}>{shortDay(t.date)}</td>
+                          <td>
+                            <Link to={`/transactions/${t.id}`}>{t.payeeName || t.note || 'Open transaction'}</Link>
+                            {t.status === 'UNAPPROVED' && <span className={styles.badgeMuted}>unapproved</span>}
+                          </td>
+                          <td>{t.categoryName ?? '—'}</td>
+                          <td className={styles.num}>
+                            <Amount value={t.amount} />
+                          </td>
+                          <td className={styles.actionCell}>
+                            <div className={styles.rowActionsQuiet}>
+                              <button
+                                type="button"
+                                className={styles.iconButton}
+                                title="Not on this statement: it's another month's, or in the wrong account. Set it aside."
+                                aria-label={`Set ${t.payeeName || 'this transaction'} aside: not on this statement`}
+                                disabled={asiding === t.id}
+                                onClick={() => void setAside(t, true)}
+                              >
+                                {asiding === t.id ? (
+                                  <CircleNotch size={18} className={styles.spin} />
+                                ) : (
+                                  <CalendarX size={18} />
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                className={`${styles.iconButton} ${pickingFor === t.id ? styles.iconButtonActive : ''}`}
+                                title="Link to rows on the statement"
+                                aria-label={`Link ${t.payeeName || 'this transaction'} to statement rows`}
+                                aria-expanded={pickingFor === t.id}
+                                onClick={() => setPickingFor(pickingFor === t.id ? null : t.id)}
+                              >
+                                <LinkSimple size={18} />
+                              </button>
+                            </div>
                           </td>
                         </tr>
-                      )}
-                    </Fragment>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
-        ))}
+                        {pickingFor === t.id && (
+                          <tr className={styles.linkRow}>
+                            <td colSpan={5}>
+                              <RowPicker
+                                txn={t}
+                                rows={[...section.missing, ...(section.covered ?? [])]}
+                                onLink={(rowIds) => linkMany(rowIds, [t.id])}
+                                onCancel={() => setPickingFor(null)}
+                              />
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+          {section.setAside && section.setAside.length > 0 && (
+            <details className={styles.setAside}>
+              <summary>
+                Set aside <span className={styles.count}>{section.setAside.length}</span>
+                <span className={styles.muted}>not on this statement: another month's, or the wrong account</span>
+              </summary>
+              <ul>
+                {section.setAside.map((t) => (
+                  <li key={t.id}>
+                    <span className={styles.dateCell}>{shortDay(t.date)}</span>
+                    <Link to={`/transactions/${t.id}`}>{t.payeeName || t.note || 'Open transaction'}</Link>
+                    <span className={styles.spacer} />
+                    <Amount value={t.amount} />
+                    <button
+                      type="button"
+                      className={styles.textButton}
+                      disabled={asiding === t.id}
+                      onClick={() => void setAside(t, false)}
+                    >
+                      Put back
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </>
+      )}
       {tab === 'covered' && (
         <>
           <p className={styles.muted}>

@@ -73,6 +73,15 @@ type StatementService interface {
 	// time; RevertRow puts that back.
 	EditRow(ctx context.Context, id uuid.UUID, rowID string, req model.StatementRowEditReq) (*model.StatementReconciliation, error)
 	RevertRow(ctx context.Context, id uuid.UUID, rowID string) (*model.StatementReconciliation, error)
+	// SetAside takes a ledger transaction off a section's Not on statement
+	// list (another month's, or the wrong account's); false puts it back.
+	SetAside(
+		ctx context.Context,
+		id uuid.UUID,
+		section int,
+		txnID uuid.UUID,
+		aside bool,
+	) (*model.StatementReconciliation, error)
 	// SetRowEMI records whether a row is part of an EMI the budget already
 	// paid for, over what its text suggested; nil goes back to the text.
 	SetRowEMI(ctx context.Context, id uuid.UUID, rowID string, emi *bool) (*model.StatementReconciliation, error)
@@ -824,6 +833,7 @@ func (s *statementService) reconcileImport(
 			RowCount:           len(section.Rows),
 			Matched:            []model.StatementMatch{},
 			LedgerOnly:         []model.StatementLedgerTxn{},
+			SetAside:           []model.StatementLedgerTxn{},
 			Covered:            []model.StatementRow{},
 		}
 		// EMI instalments are set aside before matching: the purchase they
@@ -855,6 +865,7 @@ func (s *statementService) reconcileImport(
 			}
 			ledgerStart := ledgerPeriodStart(section, start, end)
 			rec.Matched, rec.Missing, rec.LedgerOnly = reconcileStatementRows(matchable, txns, ledgerStart, end, used)
+			rec.LedgerOnly, rec.SetAside = splitSetAside(rec.LedgerOnly, section.SetAside)
 		}
 		for j := range rec.Missing {
 			if kind := rec.Missing[j].ChargeKind; kind != "" {
@@ -1414,6 +1425,69 @@ func (s *statementService) RevertRow(
 		return nil, err
 	}
 	s.recordSources(ctx, id)
+	return s.Reconcile(ctx, id)
+}
+
+// splitSetAside moves the transactions the user set aside out of Not on
+// statement. One set aside that a row matches now stays matched.
+func splitSetAside(
+	ledgerOnly []model.StatementLedgerTxn,
+	aside []uuid.UUID,
+) (kept, setAside []model.StatementLedgerTxn) {
+	kept = []model.StatementLedgerTxn{}
+	setAside = []model.StatementLedgerTxn{}
+	if len(aside) == 0 {
+		return ledgerOnly, setAside
+	}
+	ids := make(map[uuid.UUID]bool, len(aside))
+	for _, id := range aside {
+		ids[id] = true
+	}
+	for _, t := range ledgerOnly {
+		if ids[t.ID] {
+			setAside = append(setAside, t)
+		} else {
+			kept = append(kept, t)
+		}
+	}
+	return kept, setAside
+}
+
+func (s *statementService) SetAside(
+	ctx context.Context,
+	id uuid.UUID,
+	section int,
+	txnID uuid.UUID,
+	aside bool,
+) (*model.StatementReconciliation, error) {
+	budgetID := utils.MustBudgetID(ctx)
+	imp, err := s.load(ctx, budgetID, id)
+	if err != nil {
+		return nil, err
+	}
+	if imp.Status != model.StatementImportReady {
+		return nil, errs.New(errs.CodeInvalidArgument, "statement is not ready")
+	}
+	if section < 0 || section >= len(imp.Sections) {
+		return nil, errs.New(errs.CodeInvalidArgument, "section %d does not exist", section)
+	}
+	sec := &imp.Sections[section]
+	kept := make([]uuid.UUID, 0, len(sec.SetAside)+1)
+	for _, t := range sec.SetAside {
+		if t != txnID {
+			kept = append(kept, t)
+		}
+	}
+	if aside {
+		kept = append(kept, txnID)
+	}
+	sec.SetAside = kept
+	if len(kept) == 0 {
+		sec.SetAside = nil
+	}
+	if err := s.repo.UpdateSections(ctx, budgetID, id, imp.Sections); err != nil {
+		return nil, err
+	}
 	return s.Reconcile(ctx, id)
 }
 

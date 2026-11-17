@@ -295,6 +295,20 @@ export function useStatementReconciliation(id: string | null) {
     [id],
   );
 
+  // take a transaction off Not on statement (another month's, the wrong account), or put it back
+  const setAside = useCallback(
+    async (section: number, transactionId: string, aside: boolean) => {
+      if (!id) return;
+      setData(
+        await apiClient.put<StatementReconciliation, { setAside: boolean }>(
+          `statements/${id}/sections/${section}/aside/${transactionId}`,
+          { setAside: aside },
+        ),
+      );
+    },
+    [id],
+  );
+
   // book what a linked row's transactions are short of it (cashback used, a fee)
   const addDifference = useCallback(
     async (rowId: string, body: StatementDifferenceRequest) => {
@@ -322,6 +336,7 @@ export function useStatementReconciliation(id: string | null) {
     revertRow,
     unlinkRow,
     setRowEMI,
+    setAside,
     addDifference,
   };
 }

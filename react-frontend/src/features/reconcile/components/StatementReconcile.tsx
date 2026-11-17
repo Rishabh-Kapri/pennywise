@@ -640,6 +640,7 @@ function StatementDetail({
   revertRow,
   unlinkRow,
   setRowEMI,
+  setAside,
   addDifference,
   accounts,
   onRetry,
@@ -723,6 +724,7 @@ function StatementDetail({
           onRevertRow={revertRow}
           onUnlink={unlinkRow}
           onSetEMI={setRowEMI}
+          onSetAside={(transactionId, aside) => setAside(section.index, transactionId, aside)}
           onAddDifference={addDifference}
           onShowPage={onShowPage}
           onShowLine={onShowLine}

@@ -30,6 +30,7 @@ type StatementHandler interface {
 	EditRow(c *gin.Context)
 	RevertRow(c *gin.Context)
 	SetRowEMI(c *gin.Context)
+	SetAside(c *gin.Context)
 	AddDifference(c *gin.Context)
 	Retry(c *gin.Context)
 	Delete(c *gin.Context)
@@ -225,6 +226,34 @@ func (h *statementHandler) UnlinkRow(c *gin.Context) {
 		return
 	}
 	rec, err := h.service.UnlinkRow(c.Request.Context(), id, c.Param("rowId"))
+	if err != nil {
+		writeStatementError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, rec)
+}
+
+func (h *statementHandler) SetAside(c *gin.Context) {
+	id, ok := statementID(c)
+	if !ok {
+		return
+	}
+	section, err := strconv.Atoi(c.Param("section"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid section"})
+		return
+	}
+	txnID, err := uuid.Parse(c.Param("transactionId"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid transaction id"})
+		return
+	}
+	var req model.StatementSetAsideReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	rec, err := h.service.SetAside(c.Request.Context(), id, section, txnID, req.SetAside)
 	if err != nil {
 		writeStatementError(c, err)
 		return

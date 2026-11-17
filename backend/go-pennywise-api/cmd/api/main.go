@@ -838,6 +838,11 @@ func main() {
 				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
 				statementHandler.SetSectionAccount,
 			)
+			statementGroup.PUT(
+				":id/sections/:section/aside/:transactionId",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
+				statementHandler.SetAside,
+			)
 			statementGroup.POST(
 				":id/transactions",
 				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
