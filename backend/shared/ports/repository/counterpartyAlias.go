@@ -35,6 +35,10 @@ type TransactionSourceRepository interface {
 	// FindCrossChannel lists transactions another channel's message may have
 	// created for the same payment, newest first.
 	FindCrossChannel(ctx context.Context, q model.SourceMatchQuery) ([]model.SourceMatchCandidate, error)
+	// FindUnsourced lists transactions on q's account for q's amount, dated
+	// within days of q.On, that no email or SMS created: added by hand or
+	// from a statement. Nearest date first.
+	FindUnsourced(ctx context.Context, q model.SourceMatchQuery, days int) ([]model.UnsourcedMatch, error)
 	// LookupKey returns the key of the transaction's oldest source that has
 	// one, or nil when none does.
 	LookupKey(ctx context.Context, budgetID, transactionID uuid.UUID) (*model.LookupKey, error)

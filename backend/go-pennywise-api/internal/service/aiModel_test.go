@@ -138,7 +138,7 @@ func TestAIModelCreate(t *testing.T) {
 			t.Fatalf("embedding with an endpoint: %v", err)
 		}
 		if _, err := svc.Create(ctx, userID, model.CreateUserLLMModelRequest{
-			Provider: "lumo", Kind: model.LLMModelChat, Slug: "m",
+			Provider: "gemini", Kind: model.LLMModelChat, Slug: "m",
 		}); !errors.Is(err, ErrInvalidAIProvider) {
 			t.Fatalf("provider: %v", err)
 		}

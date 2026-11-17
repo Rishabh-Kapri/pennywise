@@ -182,3 +182,42 @@ func TestCounterpartyAliasRepo_FindMatchSaysWhoMadeIt(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "MANUAL", m.Source)
 }
+
+func TestTransactionSourceRepo_FindUnsourced(t *testing.T) {
+	pool, repo, s := setup(t)
+	ctx := context.Background()
+	sources := NewTransactionSourceRepository(pool)
+	on := time.Date(2026, 10, 18, 0, 0, 0, 0, time.UTC)
+	query := func(amount float64) []model.UnsourcedMatch {
+		t.Helper()
+		found, err := sources.FindUnsourced(ctx, model.SourceMatchQuery{
+			BudgetID: s.budgetID, AccountID: s.accountID, Amount: amount, On: on,
+		}, 2)
+		require.NoError(t, err)
+		return found
+	}
+
+	byHand := mustCreate(t, repo, newTxn(s, "2026-10-20", -1426.76)) // two days later: in
+	nearer := mustCreate(t, repo, newTxn(s, "2026-10-17", -1426.76)) // one day earlier: in, first
+	mustCreate(t, repo, newTxn(s, "2026-10-21", -1426.76))           // three days later: out
+	mustCreate(t, repo, newTxn(s, "2026-10-18", -100))               // another amount: out
+	other := newTxn(s, "2026-10-18", -1426.76)
+	other.AccountID = &s.account2ID
+	mustCreate(t, repo, other) // another account: out
+	gone := mustCreate(t, repo, newTxn(s, "2026-10-18", -1426.76))
+	require.NoError(t, repo.DeleteById(ctx, s.budgetID, gone.ID)) // deleted: out
+	fromEmail := mustCreate(t, repo, newTxn(s, "2026-10-18", -1426.76))
+	_, err := sources.RecordFromPipeline(ctx, s.budgetID, fromEmail.ID, model.MessageSource{
+		Kind: "EMAIL", Text: "the email", Amount: "1426.76", OccurredOn: &on,
+	})
+	require.NoError(t, err) // an email made it: the email checks cover it
+
+	found := query(-1426.76)
+	require.Len(t, found, 2)
+	assert.Equal(t, nearer.ID, found[0].TransactionID)
+	assert.Equal(t, "2026-10-17", found[0].Date)
+	assert.Equal(t, byHand.ID, found[1].TransactionID)
+	assert.NotEmpty(t, found[0].PayeeName)
+
+	assert.Empty(t, query(-55))
+}

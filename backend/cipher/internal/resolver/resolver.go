@@ -91,6 +91,9 @@ func (r *resolver) ResolveLLM(m sharedModel.UserLLMModel) (*llm.ObservedLLM, err
 	case sharedModel.LLMProviderOllama:
 		client, err = llmProviders.NewUserOllamaClient(m.BaseURL, apikey, r.httpClient)
 		providerType = "local"
+	case sharedModel.LLMProviderLumo:
+		client, err = llmProviders.NewLumoClient(m.BaseURL, apikey, r.httpClient)
+		providerType = "local"
 	default:
 		err = errs.New(errs.CodeAIProviderNotConfigured, "unsupported provider %q", m.Provider)
 	}

@@ -169,6 +169,14 @@ type SourceMatchQuery struct {
 	Text      string
 }
 
+// UnsourcedMatch is a transaction FindUnsourced found: made by hand or from
+// a statement, with no email or SMS behind it.
+type UnsourcedMatch struct {
+	TransactionID uuid.UUID
+	Date          string // YYYY-MM-DD
+	PayeeName     string
+}
+
 // SourceMatchCandidate is a transaction SourceMatchQuery found, and when its
 // other-channel message says the payment happened (nil without a time).
 type SourceMatchCandidate struct {
@@ -274,6 +282,8 @@ type TransactionCreateResult struct {
 	// this payment, when the times needed to be sure are missing. Nothing was
 	// created; the message waits for a person.
 	PossibleDuplicateOf *uuid.UUID `json:"possibleDuplicateOf,omitempty"`
+	// PossibleDuplicateReason says why, for the person reviewing it.
+	PossibleDuplicateReason string `json:"possibleDuplicateReason,omitempty"`
 	// Learn is what to learn from it. Not stored with the job's result.
 	Learn *TransactionLearnPayload `json:"-"`
 }

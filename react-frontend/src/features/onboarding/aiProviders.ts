@@ -10,8 +10,10 @@ export interface ProviderInfo {
   decisionModel?: { slug: string; endpoint: string };
   keyPlaceholder: string;
   keyUrl?: string;
-  /** Ollama: the user's own server, key optional. */
+  /** Ollama and Lumo: the user's own server, key optional. */
   selfHosted?: boolean;
+  /** Example server URL shown in the key form. */
+  serverPlaceholder?: string;
 }
 
 export const AI_PROVIDERS: Record<AIProviderName, ProviderInfo> = {
@@ -40,6 +42,14 @@ export const AI_PROVIDERS: Record<AIProviderName, ProviderInfo> = {
     defaultEmbeddingModel: 'bge-m3',
     keyPlaceholder: 'Optional',
     selfHosted: true,
+    serverPlaceholder: 'https://ollama.example.com',
+  },
+  lumo: {
+    label: 'Lumo (lumo-tamer)',
+    defaultChatModel: 'lumo-max',
+    keyPlaceholder: 'Optional',
+    selfHosted: true,
+    serverPlaceholder: 'https://lumo.example.com',
   },
   typesafe: {
     label: 'TypeSafe (Jev)',

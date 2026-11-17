@@ -48,10 +48,8 @@ Chat models (email parsing, statements, the agent) run on each user's own AI pro
 
 ### Lumo provider
 
-> Not reachable at the moment: Lumo isn't one of the providers users can configure (`user_llm_providers`), and there is no server-key fallback.
+Lumo is a user provider like Ollama: in Settings → AI, add a Lumo key with the URL of your own [lumo-tamer](https://github.com/ZeroTricks/lumo-tamer) (a trailing `/v1` is accepted; the key is optional, for when lumo-tamer's authentication is on), then add chat models such as `lumo-max`. The URL must be reachable from Cipher and, unless `ALLOW_PRIVATE_LLM_URLS=true`, a public address. Lumo serves chat models only. The old `LUMO_BASE_URL` / `LUMO_API_KEY` / `AGENT_PROVIDER=lumo` env vars are no longer read.
 
-Set `LUMO_BASE_URL=http://localhost:3003` (a trailing `/v1` is also accepted) to register `lumo`, then set `AGENT_PROVIDER=lumo` to select it. Use a host reachable from Cipher when running in Docker. `LUMO_API_KEY` is optional; set it to the server API key if authentication is enabled. The default model is `lumo-max`.
-
-The provider uses the Responses API with `reasoning.effort: high` and forwards `response.reasoning_text.delta` to the agent chat. To display thinking text, set `server.reasoning.surfaceThinking: true` in [lumo-tamer](https://github.com/ZeroTricks/lumo-tamer) (under `server`, not at the YAML root). Enable `server.customTools.enabled: true` for agent tools; upstream describes custom tool support as experimental. Lumo can also be selected in `EMAIL_PIPELINE_PROVIDERS` (e.g. `lumo=lumo-max`) and `AGENT_TITLE_MODEL` (`lumo/lumo-max`).
+The provider uses the Responses API with `reasoning.effort: high` and forwards `response.reasoning_text.delta` to the agent chat. To display thinking text, set `server.reasoning.surfaceThinking: true` in [lumo-tamer](https://github.com/ZeroTricks/lumo-tamer) (under `server`, not at the YAML root). Enable `server.customTools.enabled: true` for agent tools; upstream describes custom tool support as experimental. `AGENT_TITLE_MODEL` can name it too (`lumo/lumo-max`).
 
 If lumo-tamer reports that the daily premium-model quota is exhausted, Cipher retries once with `lumo-lite`. For streamed requests, this happens only before any answer, reasoning, or tool output has been emitted. Agent runs keep using `lumo-lite` for subsequent tool turns after a successful fallback.

@@ -103,11 +103,11 @@ func NewOpenAIClientWithKey(apiKey string) (llm.LLM, error) {
 		return nil, errs.New(errs.CodeInternalError, "no openai api key found")
 	}
 
-	return newResponsesClient("openai", "https://api.openai.com", apiKey), nil
+	return newResponsesClient("openai", httpclient.NewHttpTransport("https://api.openai.com"), apiKey), nil
 }
 
 // newResponsesClient shares the Responses API adapter across compatible providers.
-func newResponsesClient(provider, baseURL, apiKey string) *openAIClient {
+func newResponsesClient(provider string, engine transport.Transport, apiKey string) *openAIClient {
 	headers := map[string][]string{"content-type": {"application/json"}}
 	if apiKey != "" {
 		headers["Authorization"] = []string{fmt.Sprintf("Bearer %s", apiKey)}
@@ -115,7 +115,7 @@ func newResponsesClient(provider, baseURL, apiKey string) *openAIClient {
 	return &openAIClient{
 		httpClient: transport.NewClient(
 			provider,
-			httpclient.NewHttpTransport(baseURL),
+			engine,
 			transport.WithDefaultHeaders(headers),
 			transport.WithPropagateInternalHeaders(false),
 		),

@@ -161,7 +161,7 @@ const SECTIONS: SectionDef[] = [
     label: 'AI & Predictions',
     icon: Sparkle,
     description: 'Your AI providers, how well predictions are doing, and API keys.',
-    keywords: 'openai anthropic openrouter ollama model key llm classifier',
+    keywords: 'openai anthropic openrouter ollama lumo proton model key llm classifier',
   },
   {
     id: 'review',

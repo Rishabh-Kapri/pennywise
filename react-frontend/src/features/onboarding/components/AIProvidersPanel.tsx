@@ -38,6 +38,7 @@ const PROVIDER_MARK: Record<AIProviderName, string> = {
   anthropic: 'An',
   openrouter: 'OR',
   ollama: 'Ol',
+  lumo: 'Lu',
   typesafe: 'TS',
 };
 
@@ -532,7 +533,7 @@ export function AIProvidersPanel({ onChange, readOnly }: AIProvidersPanelProps) 
                   <input
                     className={styles.input}
                     value={keyForm.baseUrl}
-                    placeholder="https://ollama.example.com"
+                    placeholder={AI_PROVIDERS[keyForm.provider].serverPlaceholder}
                     onChange={(event) => setKeyForm({ ...keyForm, baseUrl: event.target.value })}
                   />
                   <small>Must be reachable from the internet; private addresses are refused.</small>

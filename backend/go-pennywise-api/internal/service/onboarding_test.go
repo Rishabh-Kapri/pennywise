@@ -71,7 +71,7 @@ func TestNormalizeProviderURL(t *testing.T) {
 		"":                            false,
 		"not a url":                   false,
 	} {
-		_, err := normalizeProviderURL(raw)
+		_, err := normalizeProviderURL(model.LLMProviderOllama, raw)
 		if (err == nil) != ok {
 			t.Errorf("normalizeProviderURL(%q) err = %v, want ok=%v", raw, err, ok)
 		}

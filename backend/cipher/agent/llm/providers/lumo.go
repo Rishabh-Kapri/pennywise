@@ -2,11 +2,13 @@ package providers
 
 import (
 	"context"
+	"net/http"
 	"net/url"
 	"strings"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/httpclient"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 )
@@ -92,9 +94,10 @@ func (c *lumoClient) Stream(ctx context.Context, req sharedModel.ChatRequest, co
 	return out
 }
 
-// NewLumoClient connects to lumo-tamer at baseURL using the shared Responses
-// API adapter.
-func NewLumoClient(baseURL, apiKey string) (llm.LLM, error) {
+// NewLumoClient connects to a user's lumo-tamer at baseURL using the shared
+// Responses API adapter. httpClient must refuse private addresses
+// (internal/userllm), since the URL is user input; nil uses a plain client.
+func NewLumoClient(baseURL, apiKey string, httpClient *http.Client) (llm.LLM, error) {
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	parsed, err := url.Parse(baseURL)
 	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
@@ -107,5 +110,9 @@ func NewLumoClient(baseURL, apiKey string) (llm.LLM, error) {
 	}
 	// Accept server roots and conventional OpenAI-compatible /v1 base URLs.
 	baseURL = strings.TrimSuffix(baseURL, "/v1")
-	return &lumoClient{responses: newResponsesClient("lumo", baseURL, apiKey)}, nil
+	engine := httpclient.NewHttpTransport(baseURL)
+	if httpClient != nil {
+		engine = httpclient.NewHttpTransportWithClient(baseURL, httpClient)
+	}
+	return &lumoClient{responses: newResponsesClient("lumo", engine, apiKey)}, nil
 }
