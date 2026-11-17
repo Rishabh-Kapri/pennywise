@@ -82,8 +82,12 @@ func TestAnthropicUsageCarriesCacheCounters(t *testing.T) {
 	if usage.CacheWriteTokens != 20 {
 		t.Errorf("cacheWriteTokens = %d, want 20", usage.CacheWriteTokens)
 	}
-	if usage.TotalTokens != 150 {
-		t.Errorf("totalTokens = %d, want 150", usage.TotalTokens)
+	// Input counts cached tokens too, as the other providers do.
+	if usage.InputTokens != 1020 {
+		t.Errorf("inputTokens = %d, want 1020", usage.InputTokens)
+	}
+	if usage.TotalTokens != 1070 {
+		t.Errorf("totalTokens = %d, want 1070", usage.TotalTokens)
 	}
 }
 

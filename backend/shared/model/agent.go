@@ -26,7 +26,9 @@ const (
 
 type Usage struct {
 	// Available reports whether the provider supplied usage, including valid zero counts.
-	Available    bool
+	Available bool
+	// InputTokens is every prompt token, cached or not (providers that count
+	// cached tokens apart, like Anthropic, add them back).
 	InputTokens  int
 	OutputTokens int
 	TotalTokens  int
@@ -35,7 +37,9 @@ type Usage struct {
 	// turns means something volatile has crept into the prompt prefix.
 	CacheReadTokens  int
 	CacheWriteTokens int
-	Cost             *float64
+	// Cost is what the provider says the call cost, in US dollars; nil when
+	// it doesn't say.
+	Cost *float64
 }
 
 type ContentBlock struct {

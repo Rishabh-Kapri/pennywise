@@ -91,6 +91,9 @@ type openRouterUsage struct {
 	CompletionTokens    int                    `json:"completion_tokens"`
 	InputTokensDetails  openRouterTokenDetails `json:"input_tokens_details"`
 	PromptTokensDetails openRouterTokenDetails `json:"prompt_tokens_details"`
+	// Cost is what the call cost in OpenRouter credits (US dollars), when
+	// OpenRouter reports it.
+	Cost *float64 `json:"cost"`
 }
 
 // openRouterTokenDetails covers both spellings OpenRouter returns depending on
@@ -348,6 +351,7 @@ func toOpenRouterUsage(usage *openRouterUsage) sharedModel.Usage {
 		OutputTokens:    outputTokens,
 		TotalTokens:     totalTokens,
 		CacheReadTokens: cachedTokens,
+		Cost:            usage.Cost,
 	}
 }
 

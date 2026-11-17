@@ -11,6 +11,7 @@ import (
 	agentPrompts "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/context"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/tools"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/llmusage"
 
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
@@ -706,7 +707,7 @@ func (m *memory) OnRunPersisted(ctx context.Context, data AgentRunData) error {
 		ChatType:    sharedModel.MemoryChatType,
 	}
 	conversationID := data.ConversationID.String()
-	res, err := client.Chat(ctx, chatReq, &conversationID)
+	res, err := client.Chat(llmusage.WithPurpose(ctx, sharedModel.LLMPurposeMemoryObserve), chatReq, &conversationID)
 	if err != nil {
 		log.Error("error on observation chat request", "error", err)
 		return nil

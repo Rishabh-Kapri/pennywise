@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/llmusage"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/userllm"
 
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
@@ -39,7 +40,7 @@ func (h *llmProviderHandler) TestModel(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "a valid provider, kind and model are required"})
 		return
 	}
-	res, err := h.resolver.Test(c.Request.Context(), body)
+	res, err := h.resolver.Test(llmusage.WithPurpose(c.Request.Context(), sharedModel.LLMPurposeModelTest), body)
 	if errors.Is(err, repository.ErrLLMProviderNotFound) {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
