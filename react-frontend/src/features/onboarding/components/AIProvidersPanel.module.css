@@ -153,6 +153,10 @@
   --mark: #2f80ed;
 }
 
+.mark[data-provider='lumo'] {
+  --mark: #6d4aff;
+}
+
 .mark[data-provider='ollama'] {
   --mark: var(--color-text-secondary);
 }

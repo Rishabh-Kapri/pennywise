@@ -169,3 +169,59 @@ func toolResultMap(toolCallID, name, text string) map[string]any {
 		"IsError": false,
 	}
 }
+
+func TestRunToolCallsPrefersToolInvocations(t *testing.T) {
+	result, _ := json.Marshal(sharedModel.ToolResult{
+		ToolCallId: "call_1",
+		Name:       "execute_sql",
+		Content:    []sharedModel.ContentBlock{{Type: "text", Text: `[{"total":42}]`}},
+	})
+	run := sharedModel.AgentRun{
+		// An older copy in metadata must not win over the rows.
+		Metadata: map[string]any{"toolCalls": []map[string]any{{"id": "old", "name": "old"}}},
+		ToolInvocations: []sharedModel.ToolInvocation{{
+			Sequence: 1, Turn: 1, ToolCallID: "call_1", ToolName: "execute_sql",
+			Input: json.RawMessage(`{"query":"select 1"}`), Output: result,
+		}},
+	}
+
+	calls := runToolCalls(run)
+	if len(calls) != 1 || calls[0].ID != "call_1" || calls[0].Name != "execute_sql" {
+		t.Fatalf("calls = %+v, want the tool_invocations row", calls)
+	}
+	if calls[0].Args["query"] != "select 1" {
+		t.Fatalf("args = %v", calls[0].Args)
+	}
+	got := toolResultFromRaw(calls[0].Result, sharedModel.ToolCall{ID: "call_1", Name: "execute_sql"})
+	if messageText(got.Content) != `[{"total":42}]` {
+		t.Fatalf("replayed result = %q", messageText(got.Content))
+	}
+}
+
+func TestRunToolCallsReplaysTruncatedResultAsText(t *testing.T) {
+	run := sharedModel.AgentRun{ToolInvocations: []sharedModel.ToolInvocation{{
+		Sequence: 1, Turn: 1, ToolCallID: "call_1", ToolName: "execute_sql", Truncated: true,
+		Input:  json.RawMessage(`{}`),
+		Output: json.RawMessage(`{"truncated":true,"bytes":90000,"preview":"{\"rows\":[1,2,"}`),
+	}}}
+
+	calls := runToolCalls(run)
+	got := toolResultFromRaw(calls[0].Result, sharedModel.ToolCall{ID: "call_1", Name: "execute_sql"})
+	text := messageText(got.Content)
+	if text == "" || !json.Valid(calls[0].Result) {
+		t.Fatalf("truncated result replayed as %q", text)
+	}
+	if want := `{"rows":[1,2,`; len(text) < len(want) || text[len(text)-len(want):] != want {
+		t.Fatalf("replayed text %q should end with the preview", text)
+	}
+}
+
+func TestRunToolCallsFallsBackToMetadata(t *testing.T) {
+	run := sharedModel.AgentRun{Metadata: map[string]any{"toolCalls": []any{
+		map[string]any{"id": "call_9", "name": "get_today", "args": map[string]any{}, "result": map[string]any{}},
+	}}}
+	calls := runToolCalls(run)
+	if len(calls) != 1 || calls[0].ID != "call_9" {
+		t.Fatalf("calls = %+v, want the metadata copy for a run from before tool_invocations", calls)
+	}
+}

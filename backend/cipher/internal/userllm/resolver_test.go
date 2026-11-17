@@ -80,7 +80,7 @@ func newTestResolverWith(t *testing.T, repo *fakeRepo, keys *fakeKeys, allowPriv
 	if err != nil {
 		t.Fatal(err)
 	}
-	clients := resolver.NewResolver(box, transport.NewUserURLClient(allowPrivate), tel)
+	clients := resolver.NewResolver(box, transport.NewUserURLClient(allowPrivate), tel, nil)
 	return New(repo, keys, clients), box
 }
 

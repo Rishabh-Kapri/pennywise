@@ -94,26 +94,26 @@ func (s *aiProviderService) buildUpsert(
 		return nil, err
 	}
 
-	if provider == model.LLMProviderOllama {
-		baseURL, err := normalizeProviderURL(req.BaseURL)
+	if provider.SelfHosted() {
+		baseURL, err := normalizeProviderURL(provider, req.BaseURL)
 		if err != nil {
 			return nil, err
 		}
 		in.BaseURL = baseURL
 	} else if req.BaseURL != "" {
-		return nil, fmt.Errorf("%w: only ollama takes a base URL", ErrInvalidAIProvider)
+		return nil, fmt.Errorf("%w: only ollama and lumo take a base URL", ErrInvalidAIProvider)
 	}
 
 	switch {
 	case req.APIKey == nil:
 		in.KeepAPIKey = true
 		if existing == nil || !existing.HasAPIKey {
-			if provider != model.LLMProviderOllama {
+			if !provider.SelfHosted() {
 				return nil, ErrAIProviderKeyRequired
 			}
 		}
 	case strings.TrimSpace(*req.APIKey) == "":
-		if provider != model.LLMProviderOllama {
+		if !provider.SelfHosted() {
 			return nil, ErrAIProviderKeyRequired
 		}
 	default:
@@ -154,10 +154,10 @@ func (s *aiProviderService) Delete(ctx context.Context, userID uuid.UUID, provid
 
 // normalizeProviderURL accepts an http(s) origin with an optional path.
 // Cipher additionally refuses to dial private addresses (transport.NewUserURLClient).
-func normalizeProviderURL(raw string) (string, error) {
+func normalizeProviderURL(provider model.LLMProviderName, raw string) (string, error) {
 	raw = strings.TrimRight(strings.TrimSpace(raw), "/")
 	if raw == "" {
-		return "", fmt.Errorf("%w: a base URL is required for ollama", ErrInvalidAIProvider)
+		return "", fmt.Errorf("%w: a base URL is required for %s", ErrInvalidAIProvider, provider)
 	}
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {

@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/llmusage"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/ports"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/progress"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/statementcheck"
@@ -61,7 +62,7 @@ func messageReceived(deps WorkerDeps) jobrunner.HandlerFunc {
 		if err != nil {
 			return nil, errs.Wrap(errs.CodeMessageCheckFailed, "pick check adapter", err)
 		}
-		verdict, err := checker.Check(ctx, toPortMessage(msg))
+		verdict, err := checker.Check(llmusage.WithPurpose(ctx, model.LLMPurposePipelineCheck), toPortMessage(msg))
 		if err != nil {
 			return nil, errs.Wrap(errs.CodeMessageCheckFailed, "check transaction", err)
 		}
@@ -164,7 +165,10 @@ func messageExtract(deps WorkerDeps) jobrunner.HandlerFunc {
 		if err != nil {
 			return nil, errs.Wrap(errs.CodeMessageExtractFailed, "pick extract adapter", err)
 		}
-		entities, err := extractor.Extract(ctx, toPortMessage(p.Message))
+		entities, err := extractor.Extract(
+			llmusage.WithPurpose(ctx, model.LLMPurposePipelineExtract),
+			toPortMessage(p.Message),
+		)
 		if err != nil {
 			return nil, errs.Wrap(errs.CodeMessageExtractFailed, "extract entities", err)
 		}
@@ -208,7 +212,11 @@ func messageVerify(deps WorkerDeps) jobrunner.HandlerFunc {
 		if err != nil {
 			return nil, errs.Wrap(errs.CodeMessageVerifyFailed, "pick verify adapter", err)
 		}
-		res, err := verifier.Verify(ctx, toPortMessage(p.Message), toPortEntities(p.Entities))
+		res, err := verifier.Verify(
+			llmusage.WithPurpose(ctx, model.LLMPurposePipelineVerify),
+			toPortMessage(p.Message),
+			toPortEntities(p.Entities),
+		)
 		if err != nil {
 			return nil, errs.Wrap(errs.CodeMessageVerifyFailed, "verify entities", err)
 		}
@@ -309,7 +317,11 @@ func messagePredict(deps WorkerDeps) jobrunner.HandlerFunc {
 		if err != nil {
 			return nil, errs.Wrap(errs.CodeMessagePredictFailed, "pick predict adapter", err)
 		}
-		res, err := predictor.Predict(ctx, toPortMessage(p.Message), toPortEntities(p.Entities))
+		res, err := predictor.Predict(
+			llmusage.WithPurpose(ctx, model.LLMPurposePipelinePredict),
+			toPortMessage(p.Message),
+			toPortEntities(p.Entities),
+		)
 		if err != nil {
 			return nil, errs.Wrap(errs.CodeMessagePredictFailed, "predict", err)
 		}
@@ -394,7 +406,11 @@ func readStatement(
 	if err != nil {
 		return model.StatementExtractResponse{}, err
 	}
-	res, err := extractor.ExtractStatement(withJobProgress(ctx), pdf, passwords)
+	res, err := extractor.ExtractStatement(
+		llmusage.WithPurpose(withJobProgress(ctx), model.LLMPurposeStatementExtract),
+		pdf,
+		passwords,
+	)
 	if err != nil {
 		return model.StatementExtractResponse{}, err
 	}
@@ -423,7 +439,11 @@ func readStatement(
 		log.Warn("statement fallback can't run, keeping the first read", "error", err)
 		return res, nil
 	}
-	again, err := fallback.ExtractStatement(withJobProgress(ctx), pdf, passwords)
+	again, err := fallback.ExtractStatement(
+		llmusage.WithPurpose(withJobProgress(ctx), model.LLMPurposeStatementFallback),
+		pdf,
+		passwords,
+	)
 	if err != nil {
 		if ctx.Err() != nil {
 			return model.StatementExtractResponse{}, ctx.Err()

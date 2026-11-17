@@ -223,6 +223,8 @@ func (s *predictionService) chatWithFallback(
 	buildReq func(model string) sharedModel.ChatRequest,
 ) (*sharedModel.ChatResponse, error) {
 	log := logger.Logger(ctx)
+	// "parse:extract" is recorded in llm_usage as purpose "parse_extract".
+	ctx = llmusage.WithPurpose(ctx, sharedModel.LLMUsagePurpose(strings.ReplaceAll(step, ":", "_")))
 
 	// The chain is the budget owner's own providers, in their order.
 	targets, err := s.llmResolver.Targets(ctx)

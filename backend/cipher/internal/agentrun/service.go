@@ -11,6 +11,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/memory"
 	agent "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/runtime"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/llmusage"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
@@ -121,7 +122,7 @@ func (s *agentService) generateTitle(ctx context.Context, message string) (strin
 	}
 	titleReq.Model = model
 
-	titleRes, err := client.Chat(ctx, titleReq, nil)
+	titleRes, err := client.Chat(llmusage.WithPurpose(ctx, sharedModel.LLMPurposeTitle), titleReq, nil)
 	if err != nil {
 		return "", fmt.Errorf("title model call: %w", err)
 	}
@@ -158,6 +159,53 @@ func toolResultFromRaw(raw json.RawMessage, call sharedModel.ToolCall) sharedMod
 		result.Name = call.Name
 	}
 	return result
+}
+
+// runToolCalls returns an earlier run's tool calls for replay: its
+// tool_invocations rows, or for a run from before those, its metadata.
+func runToolCalls(run sharedModel.AgentRun) []agent.RunToolCall {
+	if len(run.ToolInvocations) > 0 {
+		calls := make([]agent.RunToolCall, 0, len(run.ToolInvocations))
+		for _, inv := range run.ToolInvocations {
+			var args map[string]any
+			if _, cut := agent.TruncatedPreview(inv.Input); !cut {
+				_ = json.Unmarshal(inv.Input, &args)
+			}
+			result := inv.Output
+			if preview, cut := agent.TruncatedPreview(inv.Output); cut {
+				// Only the start of a large result was kept: replay it as text.
+				encoded, err := json.Marshal(sharedModel.ToolResult{
+					ToolCallId: inv.ToolCallID,
+					Name:       inv.ToolName,
+					IsError:    inv.IsError,
+					Content: []sharedModel.ContentBlock{{
+						Type: "text",
+						Text: "[result too large to keep; it began:]\n" + preview,
+					}},
+				})
+				if err == nil {
+					result = encoded
+				}
+			}
+			calls = append(calls, agent.RunToolCall{
+				ID:     inv.ToolCallID,
+				Name:   inv.ToolName,
+				Args:   args,
+				Result: result,
+			})
+		}
+		return calls
+	}
+
+	if run.Metadata == nil || run.Metadata[agent.RunMetadataToolCalls] == nil {
+		return nil
+	}
+	var calls []agent.RunToolCall
+	payload, err := json.Marshal(run.Metadata[agent.RunMetadataToolCalls])
+	if err == nil {
+		_ = json.Unmarshal(payload, &calls)
+	}
+	return calls
 }
 
 func conversationMessageParts(raw json.RawMessage) []sharedModel.MessagePart {
@@ -288,12 +336,8 @@ func agentRunToChatRequest(req sharedModel.AgentRunCreateRequest) sharedModel.Ch
 
 				var storedRunToolCalls []agent.RunToolCall
 				if msg.RunID != nil {
-					if run, ok := runsByID[*msg.RunID]; ok && run.Metadata != nil && run.Metadata[agent.RunMetadataToolCalls] != nil {
-						rawAgentToolCalls := run.Metadata[agent.RunMetadataToolCalls]
-						payload, err := json.Marshal(rawAgentToolCalls)
-						if err == nil {
-							_ = json.Unmarshal(payload, &storedRunToolCalls)
-						}
+					if run, ok := runsByID[*msg.RunID]; ok {
+						storedRunToolCalls = runToolCalls(run)
 					}
 				}
 
@@ -406,6 +450,9 @@ func (s *agentService) CreateRun(
 	userID, _ := utils.UserIDFromContext(ctx)
 
 	chatReq := agentRunToChatRequest(req)
+	// Every model call made for this run (turns, embeddings, the title) is
+	// linked to it in llm_usage.
+	ctx = llmusage.WithAgentRun(ctx, *req.RunID)
 
 	context, err := s.memoryService.PrepareContext(ctx, memory.MemoryContextRequest{
 		Messages:       chatReq.Messages,
@@ -446,7 +493,7 @@ func (s *agentService) CreateRun(
 		req.ConversationMetadata != nil &&
 		req.ConversationMetadata["titleSource"] == "auto" {
 
-		ctxBackground := utils.DetachedRequestContext(ctx)
+		ctxBackground := llmusage.WithAgentRun(utils.DetachedRequestContext(ctx), *req.RunID)
 
 		go func() {
 			log := logger.Logger(ctxBackground)

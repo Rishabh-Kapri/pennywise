@@ -112,51 +112,95 @@ func (r *agentRepo) CreateConversation(
 
 func (r *agentRepo) GetAllConversationRuns(
 	ctx context.Context,
-	agentID uuid.UUID,
+	conversationID uuid.UUID,
 ) ([]model.AgentRun, error) {
-	var runs []model.AgentRun
-
 	rows, err := r.Executor(ctx).Query(
 		ctx,
-		`SELECT id, agent_key, user_id, budget_id, conversation_id, status, model_provider, model_name, temperature, max_tokens, error, metadata, started_at, completed_at, created_at, updated_at
+		`SELECT `+agentRunColumns+`
 		FROM agent_runs
 		WHERE conversation_id = $1
 		AND deleted IS NULL`,
-
-		agentID,
+		conversationID,
 	)
-	defer rows.Close()
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
+
+	var runs []model.AgentRun
 	for rows.Next() {
-		var run model.AgentRun
-		if err := rows.Scan(
-			&run.ID,
-			&run.AgentKey,
-			&run.UserID,
-			&run.BudgetID,
-			&run.ConversationID,
-			&run.Status,
-			&run.ModelProvider,
-			&run.ModelName,
-			&run.Temperature,
-			&run.MaxTokens,
-			&run.Error,
-			&run.Metadata,
-			&run.StartedAt,
-			&run.CompletedAt,
-			&run.CreatedAt,
-			&run.UpdatedAt,
-		); err != nil {
+		run, err := scanAgentRun(rows)
+		if err != nil {
 			return nil, err
 		}
-		runs = append(runs, run)
+		runs = append(runs, *run)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	if len(runs) == 0 {
+		return runs, nil
+	}
+
+	// Earlier runs are replayed to the model with their tool calls.
+	runIDs := make([]uuid.UUID, len(runs))
+	for i := range runs {
+		runIDs[i] = runs[i].ID
+	}
+	invocations, err := r.listToolInvocations(ctx, runIDs)
+	if err != nil {
+		return nil, err
+	}
+	for i := range runs {
+		runs[i].ToolInvocations = invocations[runs[i].ID]
+	}
 	return runs, nil
+}
+
+func (r *agentRepo) listToolInvocations(
+	ctx context.Context,
+	runIDs []uuid.UUID,
+) (map[uuid.UUID][]model.ToolInvocation, error) {
+	rows, err := r.Executor(ctx).Query(
+		ctx,
+		`SELECT id, run_id, sequence, turn, tool_call_id, tool_name, input, output,
+			is_error, input_bytes, output_bytes, truncated, duration_ms, created_at
+		FROM tool_invocations
+		WHERE run_id = ANY($1)
+		ORDER BY run_id, sequence`,
+		runIDs,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	byRun := make(map[uuid.UUID][]model.ToolInvocation)
+	for rows.Next() {
+		var inv model.ToolInvocation
+		var toolCallID *string
+		var input, output []byte
+		if err := rows.Scan(
+			&inv.ID, &inv.RunID, &inv.Sequence, &inv.Turn, &toolCallID, &inv.ToolName, &input, &output,
+			&inv.IsError, &inv.InputBytes, &inv.OutputBytes, &inv.Truncated, &inv.DurationMs, &inv.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		if toolCallID != nil {
+			inv.ToolCallID = *toolCallID
+		}
+		if len(input) > 0 {
+			inv.Input = json.RawMessage(input)
+		}
+		if len(output) > 0 {
+			inv.Output = json.RawMessage(output)
+		}
+		byRun[inv.RunID] = append(byRun[inv.RunID], inv)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return byRun, nil
 }
 
 func (r *agentRepo) GetConversationForUpdate(
@@ -247,11 +291,7 @@ func (r *agentRepo) CreateRun(ctx context.Context, params repository.CreateAgent
 		return nil, err
 	}
 
-	var rawMetadata []byte
-	var userID uuid.UUID
-	var budgetID uuid.UUID
-	var run model.AgentRun
-	err = r.Executor(ctx).QueryRow(
+	row := r.Executor(ctx).QueryRow(
 		ctx,
 		`INSERT INTO agent_runs (
 			agent_key,
@@ -265,10 +305,7 @@ func (r *agentRepo) CreateRun(ctx context.Context, params repository.CreateAgent
 			max_tokens,
 			metadata
 		) VALUES ($1::agent_key, $2, $3, $4, $5::agent_run_status, $6, $7, $8, $9, $10::jsonb)
-		RETURNING
-			id, agent_key, user_id, budget_id, conversation_id, status,
-			model_provider, model_name, temperature, max_tokens, error,
-			metadata, started_at, completed_at, created_at, updated_at`,
+		RETURNING `+agentRunColumns,
 		params.AgentKey,
 		params.UserID,
 		params.BudgetID,
@@ -279,31 +316,8 @@ func (r *agentRepo) CreateRun(ctx context.Context, params repository.CreateAgent
 		params.Temperature,
 		params.MaxTokens,
 		metadata,
-	).Scan(
-		&run.ID,
-		&run.AgentKey,
-		&userID,
-		&budgetID,
-		&run.ConversationID,
-		&run.Status,
-		&run.ModelProvider,
-		&run.ModelName,
-		&run.Temperature,
-		&run.MaxTokens,
-		&run.Error,
-		&rawMetadata,
-		&run.StartedAt,
-		&run.CompletedAt,
-		&run.CreatedAt,
-		&run.UpdatedAt,
 	)
-	if err != nil {
-		return nil, err
-	}
-	run.UserID = &userID
-	run.BudgetID = &budgetID
-	run.Metadata = unmarshalAgentMetadata(rawMetadata)
-	return &run, nil
+	return scanAgentRun(row)
 }
 
 func (r *agentRepo) GetRun(
@@ -527,6 +541,17 @@ func (r *agentRepo) DeleteConversation(
 		return err
 	}
 
+	// Tool input and output hold the user's data and are only kept to replay
+	// the conversation, so they go with it rather than being soft-deleted.
+	if _, err := r.Executor(ctx).Exec(
+		ctx,
+		`DELETE FROM tool_invocations
+		WHERE run_id IN (SELECT id FROM agent_runs WHERE conversation_id = $1)`,
+		conversationID,
+	); err != nil {
+		return err
+	}
+
 	_, err = r.Executor(ctx).Exec(
 		ctx,
 		`UPDATE agent_runs
@@ -584,6 +609,96 @@ func (r *agentRepo) UpdateConversationMessageContent(
 	return nil
 }
 
+func (r *agentRepo) RecordRunResult(ctx context.Context, result repository.RecordAgentRunResult) error {
+	return r.InTx(ctx, func(ctx context.Context) error {
+		exec := r.Executor(ctx)
+		if _, err := exec.Exec(ctx, `DELETE FROM tool_invocations WHERE run_id = $1`, result.RunID); err != nil {
+			return err
+		}
+		for i, inv := range result.ToolInvocations {
+			sequence := inv.Sequence
+			if sequence <= 0 {
+				sequence = i + 1
+			}
+			turn := inv.Turn
+			if turn <= 0 {
+				turn = 1
+			}
+			input := inv.Input
+			if len(input) == 0 {
+				input = json.RawMessage(`{}`)
+			}
+			var output any
+			if len(inv.Output) > 0 {
+				output = string(inv.Output)
+			}
+			var toolCallID *string
+			if inv.ToolCallID != "" {
+				toolCallID = &inv.ToolCallID
+			}
+			if _, err := exec.Exec(
+				ctx,
+				`INSERT INTO tool_invocations (
+					run_id, budget_id, sequence, turn, tool_call_id, tool_name, input, output,
+					is_error, input_bytes, output_bytes, truncated, duration_ms
+				) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $11, $12, $13)`,
+				result.RunID, result.BudgetID, sequence, turn, toolCallID, inv.ToolName, string(input), output,
+				inv.IsError, inv.InputBytes, inv.OutputBytes, inv.Truncated, inv.DurationMs,
+			); err != nil {
+				return err
+			}
+		}
+
+		var stopReason, promptVersion *string
+		if result.StopReason != "" {
+			stopReason = &result.StopReason
+		}
+		if result.PromptVersion != "" {
+			promptVersion = &result.PromptVersion
+		}
+		// llm_usage is the source of truth; these columns copy its totals for
+		// the run's own turns. A sum is NULL when no call reported the value.
+		tag, err := exec.Exec(
+			ctx,
+			`UPDATE agent_runs ar
+			SET stop_reason = $3,
+				prompt_version = $4,
+				input_tokens = u.input_tokens,
+				output_tokens = u.output_tokens,
+				cache_read_tokens = u.cache_read_tokens,
+				cache_write_tokens = u.cache_write_tokens,
+				cost_micros = u.cost_micros,
+				resolved_provider = u.provider,
+				resolved_model = u.model,
+				turn_count = u.turns,
+				tool_call_count = (SELECT count(*) FROM tool_invocations ti WHERE ti.run_id = ar.id),
+				updated_at = now()
+			FROM (
+				SELECT
+					count(*) AS turns,
+					sum(input_tokens) AS input_tokens,
+					sum(output_tokens) AS output_tokens,
+					sum(cache_read_tokens) AS cache_read_tokens,
+					sum(cache_write_tokens) AS cache_write_tokens,
+					sum(cost_micros) AS cost_micros,
+					(array_agg(provider ORDER BY created_at DESC, id DESC))[1] AS provider,
+					(array_agg(model ORDER BY created_at DESC, id DESC))[1] AS model
+				FROM llm_usage
+				WHERE agent_run_id = $1 AND purpose = 'agent_turn'
+			) u
+			WHERE ar.id = $1 AND ar.budget_id = $2`,
+			result.RunID, result.BudgetID, stopReason, promptVersion,
+		)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return notFoundError("Agent run")
+		}
+		return nil
+	})
+}
+
 func (r *agentRepo) UpdateEntityMetadata(
 	ctx context.Context,
 	entity string,
@@ -621,16 +736,9 @@ func (r *agentRepo) getRun(
 	budgetID uuid.UUID,
 	id uuid.UUID,
 ) (*model.AgentRun, error) {
-	var rawMetadata []byte
-	var runUserID uuid.UUID
-	var runBudgetID uuid.UUID
-	var run model.AgentRun
-	err := r.Executor(ctx).QueryRow(
+	run, err := scanAgentRun(r.Executor(ctx).QueryRow(
 		ctx,
-		`SELECT
-			id, agent_key, user_id, budget_id, conversation_id, status,
-			model_provider, model_name, temperature, max_tokens, error,
-			metadata, started_at, completed_at, created_at, updated_at
+		`SELECT `+agentRunColumns+`
 		FROM agent_runs
 		WHERE id = $1
 			AND user_id = $2
@@ -639,11 +747,29 @@ func (r *agentRepo) getRun(
 		id,
 		userID,
 		budgetID,
-	).Scan(
+	))
+	if stderrors.Is(err, pgx.ErrNoRows) {
+		return nil, errs.New(errs.CodeAgentRunNotFound, "agent run not found")
+	}
+	return run, err
+}
+
+// agentRunColumns is what every agent run read selects, in scanAgentRun's order.
+const agentRunColumns = `id, agent_key, user_id, budget_id, conversation_id, status,
+	model_provider, model_name, temperature, max_tokens, error,
+	metadata, started_at, completed_at, created_at, updated_at,
+	stop_reason, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+	cost_micros, prompt_version, resolved_provider, resolved_model, turn_count, tool_call_count`
+
+func scanAgentRun(row pgx.Row) (*model.AgentRun, error) {
+	var run model.AgentRun
+	var rawMetadata []byte
+	var userID, budgetID uuid.UUID
+	if err := row.Scan(
 		&run.ID,
 		&run.AgentKey,
-		&runUserID,
-		&runBudgetID,
+		&userID,
+		&budgetID,
 		&run.ConversationID,
 		&run.Status,
 		&run.ModelProvider,
@@ -656,15 +782,22 @@ func (r *agentRepo) getRun(
 		&run.CompletedAt,
 		&run.CreatedAt,
 		&run.UpdatedAt,
-	)
-	if stderrors.Is(err, pgx.ErrNoRows) {
-		return nil, errs.New(errs.CodeAgentRunNotFound, "agent run not found")
-	}
-	if err != nil {
+		&run.StopReason,
+		&run.InputTokens,
+		&run.OutputTokens,
+		&run.CacheReadTokens,
+		&run.CacheWriteTokens,
+		&run.CostMicros,
+		&run.PromptVersion,
+		&run.ResolvedProvider,
+		&run.ResolvedModel,
+		&run.TurnCount,
+		&run.ToolCallCount,
+	); err != nil {
 		return nil, err
 	}
-	run.UserID = &runUserID
-	run.BudgetID = &runBudgetID
+	run.UserID = &userID
+	run.BudgetID = &budgetID
 	run.Metadata = unmarshalAgentMetadata(rawMetadata)
 	return &run, nil
 }

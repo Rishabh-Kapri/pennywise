@@ -87,6 +87,7 @@ type Repositories struct {
 	Account              repository.AccountRepository
 	Agent                repository.AgentRepository
 	AgentMemory          repository.AgentMemoryRepository
+	LLMUsage             repository.LLMUsageRepository
 	APIKey               repository.APIKeyRepository
 	Auth                 repository.AuthRepository
 	Budget               repository.BudgetRepository
@@ -132,6 +133,7 @@ func newPostgresRepositories(pool *pgxpool.Pool) *Repositories {
 		Account:              postgres.NewAccountRepository(pool),
 		Agent:                postgres.NewAgentRepository(pool),
 		AgentMemory:          postgres.NewAgentMemoryRepository(pool),
+		LLMUsage:             postgres.NewLLMUsageRepository(pool),
 		APIKey:               postgres.NewAPIKeyRepository(pool),
 		Auth:                 postgres.NewAuthRepository(pool),
 		Budget:               postgres.NewBudgetRepository(pool),

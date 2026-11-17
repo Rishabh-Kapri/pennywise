@@ -14,6 +14,9 @@ const (
 	LLMProviderAnthropic  LLMProviderName = "anthropic"
 	LLMProviderOpenRouter LLMProviderName = "openrouter"
 	LLMProviderOllama     LLMProviderName = "ollama"
+	// LLMProviderLumo is a user's own lumo-tamer server, which fronts Proton's
+	// Lumo with a Responses API. Chat models only.
+	LLMProviderLumo LLMProviderName = "lumo"
 	// LLMProviderTypeSafe runs Jev. It has no chat API, only decisions.
 	LLMProviderTypeSafe LLMProviderName = "typesafe"
 )
@@ -21,7 +24,7 @@ const (
 // Valid reports whether p is a provider users may configure.
 func (p LLMProviderName) Valid() bool {
 	switch p {
-	case LLMProviderOpenAI, LLMProviderAnthropic, LLMProviderOpenRouter, LLMProviderOllama, LLMProviderTypeSafe:
+	case LLMProviderOpenAI, LLMProviderAnthropic, LLMProviderOpenRouter, LLMProviderOllama, LLMProviderLumo, LLMProviderTypeSafe:
 		return true
 	}
 	return false
@@ -68,6 +71,12 @@ const (
 
 func (k LLMModelKind) Valid() bool {
 	return k == LLMModelChat || k == LLMModelDecision || k == LLMModelEmbedding
+}
+
+// SelfHosted reports whether the provider is the user's own server: its key
+// carries a base URL and the API key is optional.
+func (p LLMProviderName) SelfHosted() bool {
+	return p == LLMProviderOllama || p == LLMProviderLumo
 }
 
 // ServesChat reports whether Pennywise can run chat models with this provider's keys.

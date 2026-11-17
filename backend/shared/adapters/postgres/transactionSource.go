@@ -136,6 +136,42 @@ func (r *transactionSourceRepo) FindCrossChannel(
 	return found, rows.Err()
 }
 
+// FindUnsourced implements [repository.TransactionSourceRepository].
+func (r *transactionSourceRepo) FindUnsourced(
+	ctx context.Context,
+	q model.SourceMatchQuery,
+	days int,
+) ([]model.UnsourcedMatch, error) {
+	rows, err := r.Executor(ctx).Query(ctx, `
+		SELECT t.id, t.date::date::text, COALESCE(p.name, '')
+		FROM transactions t
+		LEFT JOIN payees p ON p.id = t.payee_id
+		WHERE t.budget_id = $1 AND t.account_id = $2 AND t.deleted = FALSE
+		  AND t.amount = round($3::numeric, 2)
+		  AND t.date::date BETWEEN $4::date - $5::int AND $4::date + $5::int
+		  AND NOT EXISTS (
+			SELECT 1 FROM transaction_sources s
+			WHERE s.transaction_id = t.id AND s.kind IN ('EMAIL', 'SMS')
+		  )
+		ORDER BY abs(t.date::date - $4::date), t.created_at
+		LIMIT 10
+	`, q.BudgetID, q.AccountID, q.Amount, q.On.Format(time.DateOnly), days)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var found []model.UnsourcedMatch
+	for rows.Next() {
+		var m model.UnsourcedMatch
+		if err := rows.Scan(&m.TransactionID, &m.Date, &m.PayeeName); err != nil {
+			return nil, err
+		}
+		found = append(found, m)
+	}
+	return found, rows.Err()
+}
+
 // RefsByTransaction implements [repository.TransactionSourceRepository].
 func (r *transactionSourceRepo) RefsByTransaction(
 	ctx context.Context,

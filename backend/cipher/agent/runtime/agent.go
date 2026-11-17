@@ -14,6 +14,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/memory"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/tools"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/llmusage"
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/redis/go-redis/v9"
@@ -22,6 +23,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/logger"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/otelSDK"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/transport"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/utils"
 
@@ -57,9 +59,24 @@ type AgentConfig struct {
 	pennywiseAPI  *transport.Client
 	memoryEnabled bool
 	memory        memory.Memory
+	runStore      RunStore
+}
+
+// RunStore saves what a finished run leaves behind: its tool invocations and
+// metric columns. repository.AgentRepository satisfies it.
+type RunStore interface {
+	RecordRunResult(ctx context.Context, result repository.RecordAgentRunResult) error
 }
 
 type AgentOption func(*AgentConfig)
+
+// WithRunStore saves each run's tool invocations and metrics. Without it a
+// run's tool calls aren't kept, so later runs can't replay them.
+func WithRunStore(store RunStore) AgentOption {
+	return func(ac *AgentConfig) {
+		ac.runStore = store
+	}
+}
 
 func WithRedis(r *redis.Client) AgentOption {
 	return func(ac *AgentConfig) {
@@ -125,6 +142,7 @@ type Agent struct {
 	pennywiseAPI  *transport.Client
 	memoryEnabled bool
 	memory        memory.Memory
+	runStore      RunStore
 }
 
 func NewAgent(llmResolver llm.LLMResolver, toolRegistry *tools.ToolRegistry, opts ...AgentOption) (*Agent, error) {
@@ -148,6 +166,7 @@ func NewAgent(llmResolver llm.LLMResolver, toolRegistry *tools.ToolRegistry, opt
 		pennywiseAPI:  cfg.pennywiseAPI,
 		memoryEnabled: cfg.memoryEnabled,
 		memory:        cfg.memory,
+		runStore:      cfg.runStore,
 	}, nil
 }
 
@@ -391,13 +410,10 @@ func appendMessageToolCallPart(
 	tool tools.Tool,
 	toolCall sharedModel.ToolCall,
 	messageParts *[]sharedModel.MessagePart,
-	metaToolCalls *[]RunToolCall,
-	args map[string]any,
 	resultJSON json.RawMessage,
 ) *sharedModel.ToolResultNormalized {
 	// Normalizers assume a success payload, so a failed tool result makes this
-	// error out. That must not skip the metadata append below — a call that ran
-	// and failed still belongs in the run record.
+	// error out; the call is still recorded as a tool invocation by the caller.
 	normalizedResult, err := tool.Normalize(toolCall, resultJSON)
 	if err != nil {
 		normalizedResult = nil
@@ -415,37 +431,21 @@ func appendMessageToolCallPart(
 		}
 		*messageParts = append(*messageParts, part)
 	}
-	appendMetaToolCall(metaToolCalls, toolCall, args, resultJSON)
 	return normalizedResult
 }
 
-// RunMetadataToolCalls is the run metadata key that holds a run's
-// []RunToolCall. The agent service reads it back to replay earlier runs.
+// RunMetadataToolCalls is the run metadata key that held a run's
+// []RunToolCall before tool calls moved to tool_invocations. Only runs from
+// before then have it; the agent service still reads it to replay them.
 const RunMetadataToolCalls = "toolCalls"
 
-// RunToolCall is one tool call as a run's metadata stores it.
+// RunToolCall is one tool call as replay needs it: what was asked and what the
+// tool returned (the marshalled sharedModel.ToolResult).
 type RunToolCall struct {
 	ID     string          `json:"id,omitempty"`
 	Name   string          `json:"name,omitempty"`
 	Args   map[string]any  `json:"args"`
 	Result json.RawMessage `json:"result"`
-}
-
-// appendMetaToolCall records a tool call in the run metadata. Kept separate from
-// appendMessageToolCallPart so calls that never resolved to a tool are still
-// recorded.
-func appendMetaToolCall(
-	metaToolCalls *[]RunToolCall,
-	toolCall sharedModel.ToolCall,
-	args map[string]any,
-	resultJSON json.RawMessage,
-) {
-	*metaToolCalls = append(*metaToolCalls, RunToolCall{
-		ID:     toolCall.ID,
-		Name:   toolCall.Name,
-		Args:   args,
-		Result: resultJSON,
-	})
 }
 
 // PublishChatEvent sends one chat event to the budget's websocket clients
@@ -495,6 +495,7 @@ func (a *Agent) PublishChatEvent(
 }
 
 func (a *Agent) runLLMStep(ctx context.Context, req sharedModel.ChatRequest) (sharedModel.StepResult, error) {
+	ctx = llmusage.WithPurpose(ctx, sharedModel.LLMPurposeAgentTurn)
 	budgetId := utils.MustBudgetID(ctx)
 	userId := utils.MustUserID(ctx)
 
@@ -571,37 +572,37 @@ func (a *Agent) runLLMStep(ctx context.Context, req sharedModel.ChatRequest) (sh
 }
 
 type runFinishedContext struct {
-	runOpts        AgentRunOptions
-	runID          string
-	conversationID string
-	messageID      string
-	enabledTools   []string
-	tokenUsage     map[string]int
-	maxTokens      int
-	traceID        string
-	agentToolCalls []RunToolCall
-	messageParts   []sharedModel.MessagePart
-	allMessages    []sharedModel.AgentMessage
+	runOpts         AgentRunOptions
+	runID           string
+	conversationID  string
+	messageID       string
+	enabledTools    []string
+	maxTokens       int
+	traceID         string
+	stopReason      string
+	promptVersion   string
+	toolInvocations []sharedModel.ToolInvocation
+	messageParts    []sharedModel.MessagePart
+	allMessages     []sharedModel.AgentMessage
 }
 
 func (a *Agent) processRunFinish(ctx context.Context, payload runFinishedContext) {
 	log := logger.Logger(ctx)
 
 	if payload.runOpts.updateRunMetadata && payload.runID != "" {
+		// Tokens, cost, model and counts are columns now, rolled up from the
+		// run's llm_usage rows; tool calls are tool_invocations rows.
+		a.recordRunResult(ctx, payload)
+
 		runMetadata := map[string]any{
 			"enabledTools": payload.enabledTools,
-			"inputTokens":  payload.tokenUsage["input"],
-			// Cache counters make a broken prompt prefix visible: cacheReadTokens
-			// stuck at zero across turns means something volatile is in the prefix.
-			"cacheReadTokens":    payload.tokenUsage["cacheRead"],
-			"cacheWriteTokens":   payload.tokenUsage["cacheWrite"],
-			"outputTokens":       payload.tokenUsage["output"],
-			"totalTokens":        payload.tokenUsage["input"] + payload.tokenUsage["output"],
-			"maxTokens":          payload.maxTokens,
-			"traceId":            payload.traceID,
-			RunMetadataToolCalls: payload.agentToolCalls,
+			"maxTokens":    payload.maxTokens,
+			"traceId":      payload.traceID,
 		}
 		backgroundCtx := utils.DetachedRequestContext(ctx)
+		if a.pennywiseAPI == nil {
+			return
+		}
 		_, err := transport.Patch[any](
 			backgroundCtx,
 			a.pennywiseAPI,
@@ -690,16 +691,14 @@ func (a *Agent) Run(
 
 	// agent metadata
 	enabledTools := make([]string, 0)
-	tokenUsage := map[string]int{
-		"input":      0,
-		"output":     0,
-		"cacheRead":  0,
-		"cacheWrite": 0,
-	}
 	maxTokensUsed := req.MaxTokens
+	// Why the run ended (agent_runs.stop_reason); every return sets it, and a
+	// run that returns an error records "error".
+	var runStopReason sharedModel.StopReason
+	promptVersion := ""
 
 	messageParts := make([]sharedModel.MessagePart, 0)
-	agentMetaToolCalls := make([]RunToolCall, 0)
+	toolInvocations := make([]sharedModel.ToolInvocation, 0)
 
 	defer func() {
 		defer span.End()
@@ -729,18 +728,23 @@ func (a *Agent) Run(
 				)
 			}
 		}
+		stopReason := string(runStopReason)
+		if err != nil || stopReason == "" {
+			stopReason = string(sharedModel.StopReasonError)
+		}
 		go a.processRunFinish(ctx, runFinishedContext{
-			runOpts:        runOpts,
-			runID:          runID,
-			conversationID: conversationID,
-			messageID:      messageID,
-			enabledTools:   enabledTools,
-			tokenUsage:     tokenUsage,
-			maxTokens:      maxTokensUsed,
-			traceID:        span.SpanContext().TraceID().String(),
-			agentToolCalls: agentMetaToolCalls,
-			messageParts:   messageParts,
-			allMessages:    req.Messages,
+			runOpts:         runOpts,
+			runID:           runID,
+			conversationID:  conversationID,
+			messageID:       messageID,
+			enabledTools:    enabledTools,
+			maxTokens:       maxTokensUsed,
+			traceID:         span.SpanContext().TraceID().String(),
+			stopReason:      stopReason,
+			promptVersion:   promptVersion,
+			toolInvocations: toolInvocations,
+			messageParts:    messageParts,
+			allMessages:     req.Messages,
 		})
 	}()
 
@@ -786,22 +790,21 @@ func (a *Agent) Run(
 	req.Messages = messages
 	recordAgentRunStart(span, req, a.maxTurns, a.maxToolCalls)
 
+	promptVersion = PromptVersion(runOpts.systemPrompt, req.Tools)
+	ctx = llmusage.WithPromptVersion(ctx, promptVersion)
+
 	turnCount := 0
 	totalToolCalls := 0
 
 	// finishWithFinalAnswer takes one tools-disabled turn so that exhausting a
 	// budget degrades into a real reply instead of an error bubble in the UI.
-	finishWithFinalAnswer := func(nudge string) (*sharedModel.ChatResponse, error) {
+	finishWithFinalAnswer := func(nudge string, reason string) (*sharedModel.ChatResponse, error) {
+		runStopReason = sharedModel.StopReason(reason)
 		finalStep, stepErr := a.finalAnswerTurn(ctx, req, messages, nudge)
 		if stepErr != nil {
 			setSpanError(span, stepErr)
 			return nil, stepErr
 		}
-
-		tokenUsage["input"] += finalStep.Usage.InputTokens
-		tokenUsage["output"] += finalStep.Usage.OutputTokens
-		tokenUsage["cacheRead"] += finalStep.Usage.CacheReadTokens
-		tokenUsage["cacheWrite"] += finalStep.Usage.CacheWriteTokens
 
 		appendMessageReasoningPart(&messageParts, finalStep.Reasoning)
 		appendMessageTextPart(&messageParts, finalStep.Text)
@@ -835,10 +838,7 @@ func (a *Agent) Run(
 			req.Model = "lumo-lite"
 		}
 
-		tokenUsage["input"] += stepResult.Usage.InputTokens
-		tokenUsage["output"] += stepResult.Usage.OutputTokens
-		tokenUsage["cacheRead"] += stepResult.Usage.CacheReadTokens
-		tokenUsage["cacheWrite"] += stepResult.Usage.CacheWriteTokens
+		runStopReason = stepResult.StopReason
 		if stepResult.MaxTokens > 0 {
 			maxTokensUsed = stepResult.MaxTokens
 		}
@@ -876,14 +876,15 @@ func (a *Agent) Run(
 					assistantSequence,
 					refusedToolResults(stepResult.ToolCalls, toolBudgetExhaustedMessage),
 				)
-				return finishWithFinalAnswer(toolBudgetNudge)
+				return finishWithFinalAnswer(toolBudgetNudge, sharedModel.RunStopReasonMaxToolCalls)
 			}
 
 			// The model may request several tools in one turn; run them concurrently
 			// but keep results positional so they pair with stepResult.ToolCalls.
 			type toolExecution struct {
-				tool   *tools.Tool
-				result sharedModel.ToolResult
+				tool     *tools.Tool
+				result   sharedModel.ToolResult
+				duration time.Duration
 			}
 			executions := make([]toolExecution, len(stepResult.ToolCalls))
 
@@ -893,15 +894,18 @@ func (a *Agent) Run(
 				go func(index int, call sharedModel.ToolCall) {
 					defer toolWg.Done()
 
+					started := time.Now()
 					tool, toolResult, execErr := a.executeTool(ctx, call)
 					if execErr != nil {
 						// Hand the failure back to the model instead of dropping it, so it
 						// can correct a bad query rather than losing the whole run.
 						log.Error("tool execution failed", "tool", call.Name, "error", execErr)
-						executions[index] = toolExecution{tool: tool, result: toolErrorResult(call, execErr)}
+						executions[index] = toolExecution{
+							tool: tool, result: toolErrorResult(call, execErr), duration: time.Since(started),
+						}
 						return
 					}
-					executions[index] = toolExecution{tool: tool, result: *toolResult}
+					executions[index] = toolExecution{tool: tool, result: *toolResult, duration: time.Since(started)}
 				}(i, toolCall)
 			}
 			toolWg.Wait()
@@ -911,21 +915,18 @@ func (a *Agent) Run(
 				toolCall := stepResult.ToolCalls[i]
 				toolResults = append(toolResults, execution.result)
 
-				var toolArgs map[string]any
-				if err := json.Unmarshal(toolCall.Arguments, &toolArgs); err != nil {
-					log.Error("error parsing tool call arguments", "tool", toolCall.Name, "error", err)
-				}
-
 				resultJSON, err := json.Marshal(execution.result)
 				if err != nil {
 					log.Error("error marshaling tool result", "tool", toolCall.Name, "error", err)
 					continue
 				}
+				toolInvocations = append(toolInvocations, newToolInvocation(
+					len(toolInvocations)+1, turnCount, toolCall, execution.result.IsError, resultJSON, execution.duration,
+				))
 
 				// An unresolved tool has no normalizer. The error still reaches the model
-				// via toolResults above; record it for the run metadata and move on.
+				// via toolResults above; it's recorded as an invocation, so move on.
 				if execution.tool == nil {
-					appendMetaToolCall(&agentMetaToolCalls, toolCall, toolArgs, json.RawMessage(resultJSON))
 					continue
 				}
 
@@ -933,8 +934,6 @@ func (a *Agent) Run(
 					*execution.tool,
 					toolCall,
 					&messageParts,
-					&agentMetaToolCalls,
-					toolArgs,
 					json.RawMessage(resultJSON),
 				)
 
@@ -1072,7 +1071,7 @@ func (a *Agent) Run(
 	// tool_result pairing here, so one tools-disabled turn can still answer.
 	log.Warn("agent exceeded max turns, forcing final answer", "maxTurns", a.maxTurns)
 	if hasStepResult {
-		return finishWithFinalAnswer(maxTurnsNudge)
+		return finishWithFinalAnswer(maxTurnsNudge, sharedModel.RunStopReasonMaxTurns)
 	}
 
 	err = errs.New(errs.CodeInternalError, "agent exceeded max turns without producing a response")

@@ -200,14 +200,23 @@ func toModelUsage(usage *anthropicUsage) sharedModel.Usage {
 	if usage == nil {
 		return sharedModel.Usage{}
 	}
+	input := promptTokens(usage)
 	return sharedModel.Usage{
 		Available:        true,
-		InputTokens:      usage.InputTokens,
+		InputTokens:      input,
 		OutputTokens:     usage.OutputTokens,
-		TotalTokens:      usage.InputTokens + usage.OutputTokens,
+		TotalTokens:      input + usage.OutputTokens,
 		CacheReadTokens:  usage.CacheReadInputTokens,
 		CacheWriteTokens: usage.CacheCreationInputTokens,
 	}
+}
+
+// promptTokens is every prompt token of the call. Anthropic's input_tokens
+// leaves out the tokens read from or written to the cache, which the other
+// providers count as input, so they're added back: InputTokens means the same
+// whichever provider answered, and cache reads / input is a hit ratio.
+func promptTokens(usage *anthropicUsage) int {
+	return usage.InputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens
 }
 
 // toAnthropicTools converts the framework's provider-neutral tool schema into
@@ -432,7 +441,7 @@ func (c *anthropicClient) Stream(ctx context.Context, req sharedModel.ChatReques
 			case "message_start":
 				if ev.Message.Usage != nil {
 					usage.Available = true
-					usage.InputTokens = ev.Message.Usage.InputTokens
+					usage.InputTokens = promptTokens(ev.Message.Usage)
 					if ev.Message.Usage.OutputTokens > 0 {
 						usage.OutputTokens = ev.Message.Usage.OutputTokens
 					}

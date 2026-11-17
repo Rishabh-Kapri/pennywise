@@ -507,7 +507,7 @@ export function AIModelsPanel() {
               <Field
                 label="Server URL"
                 value={keyForm.baseUrl}
-                placeholder="http://192.168.1.20:11434"
+                placeholder={AI_PROVIDERS[keyForm.provider].serverPlaceholder}
                 keyboardType="url"
                 onChangeText={(baseUrl) => setKeyForm({ ...keyForm, baseUrl })}
               />

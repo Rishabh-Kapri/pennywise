@@ -50,7 +50,7 @@ func TestLumoResponses(t *testing.T) {
 				fmt.Fprint(w, `{"id":"resp_1","model":"lumo-max","status":"completed","output":[{"type":"reasoning","content":[{"type":"reasoning_text","text":"Checking the answer."}]},{"type":"message","content":[{"type":"output_text","text":"Hello"}]}]}`)
 			}))
 			defer server.Close()
-			client, err := NewLumoClient(server.URL+"/v1/", key)
+			client, err := NewLumoClient(server.URL+"/v1/", key, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -117,7 +117,7 @@ func TestLumoStreamReportsProviderErrors(t *testing.T) {
 				tc.response(w)
 			}))
 			defer server.Close()
-			client, err := NewLumoClient(server.URL, "")
+			client, err := NewLumoClient(server.URL, "", nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -153,7 +153,7 @@ func TestLumoStreamFallsBackToLiteAfterPremiumQuota(t *testing.T) {
 		fmt.Fprint(w, "event: response.completed\ndata: {\"response\":{\"model\":\"lumo-lite\",\"status\":\"completed\"}}\n\n")
 	}))
 	defer server.Close()
-	client, err := NewLumoClient(server.URL, "")
+	client, err := NewLumoClient(server.URL, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestLumoStreamDoesNotRetryAfterOutput(t *testing.T) {
 		fmt.Fprint(w, "event: error\ndata: {\"type\":\"error\",\"message\":\"You have reached your daily quota for premium models\"}\n\n")
 	}))
 	defer server.Close()
-	client, err := NewLumoClient(server.URL, "")
+	client, err := NewLumoClient(server.URL, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +206,7 @@ func TestLumoChatFallsBackToLiteAfterPremiumQuota(t *testing.T) {
 		fmt.Fprint(w, `{"model":"lumo-lite","status":"completed","output":[{"type":"message","content":[{"type":"output_text","text":"Lite answer"}]}]}`)
 	}))
 	defer server.Close()
-	client, err := NewLumoClient(server.URL, "")
+	client, err := NewLumoClient(server.URL, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func TestLumoChatFallsBackToLiteAfterPremiumQuota(t *testing.T) {
 
 func TestLumoRequiresValidBaseURL(t *testing.T) {
 	for _, base := range []string{"", "localhost:3003", "ftp://localhost:3003", "http://localhost:3003?key=value"} {
-		if _, err := NewLumoClient(base, ""); err == nil {
+		if _, err := NewLumoClient(base, "", nil); err == nil {
 			t.Errorf("accepted invalid base URL %q", base)
 		}
 	}

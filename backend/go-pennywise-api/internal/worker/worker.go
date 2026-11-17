@@ -106,8 +106,8 @@ func transactionCreate(deps Deps) jobrunner.HandlerFunc {
 	}
 }
 
-// parkPossibleDuplicate sends a message that may repeat another channel's to a
-// person. Continuing creates it anyway; its run gets a new RunID so its jobs
+// parkPossibleDuplicate sends a message that may repeat another channel's, or
+// a transaction added by hand or from a statement, to a person. Continuing creates it anyway; its run gets a new RunID so its jobs
 // don't share keys with this one's.
 func parkPossibleDuplicate(
 	ctx context.Context,
@@ -129,6 +129,10 @@ func parkPossibleDuplicate(
 		text = p.Source.Text
 	}
 	entities := p.Entities
+	reason := created.PossibleDuplicateReason
+	if reason == "" {
+		reason = "This may be the same payment as one already added from another message, but the times to be sure are missing."
+	}
 	review := model.MessageReview{
 		Step:     "create",
 		Text:     text,
@@ -144,7 +148,7 @@ func parkPossibleDuplicate(
 		p.Message.IdempotencyKey(budgetID), model.PipelineReportPayload{
 			Message: p.Message,
 			Outcome: model.MessageOutcomeNeedsReview,
-			Reason:  "This may be the same payment as one already added from another message, but the times to be sure are missing.",
+			Reason:  reason,
 			Review:  &review,
 		})
 	if err != nil {

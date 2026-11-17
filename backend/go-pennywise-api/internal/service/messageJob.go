@@ -115,11 +115,12 @@ func (s *messageJobService) CreateTransaction(
 		created  bool
 		matched  bool // another channel's message already created it
 		possible *uuid.UUID
+		reason   string // why possible may be this payment
 	)
 	txCtx, cancel := context.WithTimeout(ctx, createTransactionTimeout)
 	defer cancel()
 	err = s.deps.DBTxn.Do(txCtx, func(ctx context.Context) error {
-		txn, created, matched, possible = nil, false, false, nil // the transaction may run again
+		txn, created, matched, possible, reason = nil, false, false, nil, "" // the transaction may run again
 		// The email and SMS of one payment can arrive together, so only one
 		// of them looks for the other's transaction at a time.
 		if err := s.deps.TransactionRepo.LockForDedupe(ctx, budgetID, account.ID, amount); err != nil {
@@ -148,6 +149,16 @@ func (s *messageJobService) CreateTransaction(
 			}
 			if maybe != nil {
 				possible = maybe
+				return nil
+			}
+			// One added by hand or from a statement has no message to compare
+			// with, so it can't be sure either: a person decides.
+			hand, err := s.unsourcedMatch(ctx, budgetID, account.ID, amount, p)
+			if err != nil {
+				return err
+			}
+			if hand != nil {
+				possible, reason = &hand.TransactionID, unsourcedReason(*hand, amount)
 				return nil
 			}
 		}
@@ -182,6 +193,7 @@ func (s *messageJobService) CreateTransaction(
 	}
 	if possible != nil {
 		result.PossibleDuplicateOf = possible
+		result.PossibleDuplicateReason = reason
 		logger.Logger(ctx).Info("message may be a payment already added from another channel",
 			"transactionId", *possible, "messageId", p.Message.ExternalID)
 		return result, nil
@@ -231,6 +243,52 @@ func learnable(prediction model.MessagePrediction) bool {
 		return false
 	}
 	return prediction.Source == model.MessagePredictionMemory || prediction.Confidence >= minLearnConfidence
+}
+
+// unsourcedWindowDays is how far apart a message and a transaction added
+// without one can be dated and still be one payment: a payment made late at
+// night, or entered a day later.
+const unsourcedWindowDays = 2
+
+// unsourcedMatch finds a transaction on the account for the same amount,
+// within unsourcedWindowDays of the message's date, that no email or SMS
+// created: added by hand or from a statement. A mailbox backfill re-reading
+// old emails would otherwise add those payments again.
+func (s *messageJobService) unsourcedMatch(
+	ctx context.Context,
+	budgetID, accountID uuid.UUID,
+	amount float64,
+	p model.TransactionCreatePayload,
+) (*model.UnsourcedMatch, error) {
+	on := p.Entities.Date
+	if p.Source != nil && p.Source.OccurredOn != nil {
+		on = *p.Source.OccurredOn
+	}
+	if on.IsZero() {
+		return nil, nil
+	}
+	found, err := s.deps.TransactionSources.FindUnsourced(ctx, model.SourceMatchQuery{
+		BudgetID: budgetID, AccountID: accountID, Amount: amount, On: on,
+	}, unsourcedWindowDays)
+	if err != nil || len(found) == 0 {
+		return nil, err
+	}
+	return &found[0], nil
+}
+
+// unsourcedReason tells the reviewer which transaction this message may repeat.
+func unsourcedReason(m model.UnsourcedMatch, amount float64) string {
+	what := m.PayeeName
+	if what == "" {
+		what = "a transaction"
+	}
+	day := m.Date
+	if d, err := time.Parse(time.DateOnly, m.Date); err == nil {
+		day = d.Format("2 Jan 2006")
+	}
+	return fmt.Sprintf(
+		"This may be the same payment as %s, %.2f on %s, which was added by hand or from a statement. "+
+			"Continue adds it as a new transaction.", what, amount, day)
 }
 
 // otherChannelMatch finds the transaction another channel's message already

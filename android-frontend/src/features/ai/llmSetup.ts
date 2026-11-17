@@ -1,6 +1,6 @@
 import { apiClient } from '../../utils/api';
 
-export type AIProviderName = 'openai' | 'anthropic' | 'openrouter' | 'ollama' | 'typesafe';
+export type AIProviderName = 'openai' | 'anthropic' | 'openrouter' | 'ollama' | 'lumo' | 'typesafe';
 export type AIModelKind = 'chat' | 'decision' | 'embedding';
 
 /** A saved key. The key itself never comes back. */
@@ -42,6 +42,7 @@ export const AI_PROVIDERS: Record<
     defaultChatModel: string;
     defaultEmbeddingModel?: string;
     selfHosted?: boolean;
+    serverPlaceholder?: string;
     /** Set only for decision-only providers, which fill in the model form. */
     decisionModel?: { slug: string; endpoint: string };
   }
@@ -59,7 +60,15 @@ export const AI_PROVIDERS: Record<
     mark: 'Ol',
     defaultChatModel: 'gemma4:12b',
     defaultEmbeddingModel: 'bge-m3',
-    selfHosted: true
+    selfHosted: true,
+    serverPlaceholder: 'http://192.168.1.20:11434'
+  },
+  lumo: {
+    label: 'Lumo (lumo-tamer)',
+    mark: 'Lu',
+    defaultChatModel: 'lumo-max',
+    selfHosted: true,
+    serverPlaceholder: 'http://192.168.1.20:3003'
   },
   typesafe: {
     label: 'TypeSafe (Jev)',

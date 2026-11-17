@@ -17,6 +17,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/config"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/factory"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/handler"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/llmusage"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/resolver"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/service"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/userllm"
@@ -144,7 +145,14 @@ func main() {
 	}
 	// User URLs (Ollama, decision endpoints) are dialled through a client that
 	// refuses private addresses.
-	modelClients := resolver.NewResolver(llmCredentialsBox, transport.NewUserURLClient(cfg.AllowPrivateLLMURLs), tel)
+	// Every model call made through these clients is recorded in llm_usage.
+	usageRecorder := llmusage.NewStoreRecorder(database.LLMUsage)
+	modelClients := resolver.NewResolver(
+		llmCredentialsBox,
+		transport.NewUserURLClient(cfg.AllowPrivateLLMURLs),
+		tel,
+		usageRecorder,
+	)
 	llmResolver := userllm.New(database.UserLLMModel, database.UserLLMProvider, modelClients)
 	llmProviderHandler := handler.NewLLMProviderHandler(llmResolver)
 	memoryService := memory.NewMemoryService(database.AgentMemory, llmResolver, agentLocation)
@@ -159,6 +167,7 @@ func main() {
 		agent.WithTitleModel(cfg.AgentTitleModel),
 		agent.WithMaxTurns(cfg.AgentMaxTurns),
 		agent.WithMaxToolCalls(cfg.AgentMaxToolCalls),
+		agent.WithRunStore(database.Agent),
 	)
 	if err != nil {
 		logger.Fatal("error while creating agent", "error", err)

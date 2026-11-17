@@ -104,6 +104,21 @@ func TestAIProviderUpsert(t *testing.T) {
 		}
 	})
 
+	t.Run("lumo needs a URL but no key", func(t *testing.T) {
+		repo := &fakeLLMProviderRepo{}
+		svc, _ := newTestAIProviderService(t, repo, false)
+		_, err := svc.Upsert(ctx, userID, model.LLMProviderLumo, model.UpsertUserLLMProviderRequest{})
+		if !errors.Is(err, ErrInvalidAIProvider) {
+			t.Fatalf("missing URL err = %v", err)
+		}
+		_, err = svc.Upsert(ctx, userID, model.LLMProviderLumo, model.UpsertUserLLMProviderRequest{
+			BaseURL: "http://lumo.example.com:3003/",
+		})
+		if err != nil || repo.upserted.BaseURL != "http://lumo.example.com:3003" {
+			t.Fatalf("err = %v, upsert = %+v", err, repo.upserted)
+		}
+	})
+
 	t.Run("base URL only for ollama", func(t *testing.T) {
 		svc, _ := newTestAIProviderService(t, &fakeLLMProviderRepo{}, false)
 		_, err := svc.Upsert(ctx, userID, model.LLMProviderOpenAI, model.UpsertUserLLMProviderRequest{
@@ -116,7 +131,7 @@ func TestAIProviderUpsert(t *testing.T) {
 
 	t.Run("unknown provider and demo user are refused", func(t *testing.T) {
 		svc, _ := newTestAIProviderService(t, &fakeLLMProviderRepo{}, false)
-		if _, err := svc.Upsert(ctx, userID, "lumo", model.UpsertUserLLMProviderRequest{}); !errors.Is(err, ErrInvalidAIProvider) {
+		if _, err := svc.Upsert(ctx, userID, "gemini", model.UpsertUserLLMProviderRequest{}); !errors.Is(err, ErrInvalidAIProvider) {
 			t.Fatalf("err = %v", err)
 		}
 		demoSvc, _ := newTestAIProviderService(t, &fakeLLMProviderRepo{}, true)

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -139,6 +140,18 @@ type createSources struct {
 	key         *model.LookupKey
 	candidates  []model.SourceMatchCandidate
 	queries     []model.SourceMatchQuery
+	unsourced   []model.UnsourcedMatch
+	handQueries []model.SourceMatchQuery
+	handDays    int
+}
+
+func (f *createSources) FindUnsourced(
+	_ context.Context,
+	q model.SourceMatchQuery,
+	days int,
+) ([]model.UnsourcedMatch, error) {
+	f.handQueries, f.handDays = append(f.handQueries, q), days
+	return f.unsourced, nil
 }
 
 func (f *createSources) RecordFromPipeline(_ context.Context, _, txnID uuid.UUID, s model.MessageSource) (bool, error) {
@@ -560,5 +573,59 @@ func TestLearnTransactionConfirmedStampsLearned(t *testing.T) {
 	}
 	if len(f.predRepo.marked) != 1 || f.predRepo.marked[0] != p.TransactionID {
 		t.Fatalf("marked %v", f.predRepo.marked)
+	}
+}
+
+func TestCreateTransactionAsksAboutOneAddedByHand(t *testing.T) {
+	f := newCreateFixture(&model.Account{ID: uuid.New()}, true)
+	hand := uuid.New()
+	f.sources.unsourced = []model.UnsourcedMatch{{TransactionID: hand, Date: "2026-11-07", PayeeName: "Swiggy"}}
+
+	res, err := f.svc.CreateTransaction(createContext(), createPayload())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.PossibleDuplicateOf == nil || *res.PossibleDuplicateOf != hand || res.Created || len(res.TransactionIDs) != 0 {
+		t.Fatalf("result %+v", res)
+	}
+	if !strings.Contains(res.PossibleDuplicateReason, "Swiggy, -450.00 on 7 Nov 2026") {
+		t.Fatalf("reason %q", res.PossibleDuplicateReason)
+	}
+	if f.transactions.got.DedupeHash != nil || len(f.sources.recorded) != 0 {
+		t.Fatal("saved something for a message waiting for a person")
+	}
+	q := f.sources.handQueries[0]
+	if q.Amount != -450 || q.On.Format(time.DateOnly) != "2026-11-08" || f.sources.handDays != 2 {
+		t.Fatalf("query %+v, days %d", q, f.sources.handDays)
+	}
+}
+
+func TestCreateTransactionAllowDuplicateSkipsTheHandCheck(t *testing.T) {
+	f := newCreateFixture(&model.Account{ID: uuid.New()}, true)
+	f.sources.unsourced = []model.UnsourcedMatch{{TransactionID: uuid.New(), Date: "2026-11-08"}}
+	p := createPayload()
+	p.AllowDuplicate = true
+
+	res, err := f.svc.CreateTransaction(createContext(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Created || len(f.sources.handQueries) != 0 {
+		t.Fatalf("result %+v, hand queries %d", res, len(f.sources.handQueries))
+	}
+}
+
+func TestCreateTransactionWithoutADateSkipsTheHandCheck(t *testing.T) {
+	f := newCreateFixture(&model.Account{ID: uuid.New()}, true)
+	f.sources.unsourced = []model.UnsourcedMatch{{TransactionID: uuid.New()}}
+	p := createPayload()
+	p.Entities.Date = time.Time{}
+
+	res, err := f.svc.CreateTransaction(createContext(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.PossibleDuplicateOf != nil || len(f.sources.handQueries) != 0 {
+		t.Fatalf("result %+v", res)
 	}
 }

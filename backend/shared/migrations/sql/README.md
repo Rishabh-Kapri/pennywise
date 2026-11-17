@@ -35,6 +35,8 @@ top to bottom with no ALTER history to replay.
 | `00026_budget_members` | `budget_members` (who may open a budget: owner/editor/viewer, and each member's selected budget; backfilled with every owner) and `budget_invites` (by email, 14-day expiry); not granted to the agent role |
 | `00027_pipeline_step_enabled` | `budget_pipeline_steps.enabled`: a budget turning off a step its pipeline file marks optional |
 | `00028_statement_import_file_paths` | backfills `statement_imports.file_path` for uploads that stored their PDF without recording its key |
+| `00029_agent_run_metrics` | `agent_runs` metric columns (stop reason, tokens, cost, prompt version, resolved model, turn and tool-call counts; rolled up from `llm_usage`, no backfill) and `tool_invocations` (a run's tool calls, bounded input/output); not granted to the agent role |
+| `00030_llm_usage` | `llm_usage`: one row per model call (agent turns, pipeline steps, embeddings, titles, ...), no prompt or response text; not granted to the agent role |
 
 ## Commands (from `backend/go-pennywise-api`)
 

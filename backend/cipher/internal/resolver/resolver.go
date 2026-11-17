@@ -14,6 +14,7 @@ import (
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm"
 	llmProviders "github.com/Rishabh-Kapri/pennywise/backend/cipher/agent/llm/providers"
 	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/client"
+	"github.com/Rishabh-Kapri/pennywise/backend/cipher/internal/llmusage"
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	sharedModel "github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/otelSDK"
@@ -24,6 +25,7 @@ type resolver struct {
 	box               *utils.SecretBox
 	httpClient        *http.Client // SSRF-safe
 	tel               otelSDK.TelemetryProvider
+	usage             llmusage.Recorder // nil records nothing
 	mu                sync.Mutex
 	llmRegistry       map[string]*llm.ObservedLLM
 	decisionsRegistry map[string]decisions.Decisions
@@ -36,11 +38,19 @@ type Resolver interface {
 	ResolveDecisions(m sharedModel.UserLLMModel) (decisions.Decisions, error)
 }
 
-func NewResolver(box *utils.SecretBox, httpClient *http.Client, tel otelSDK.TelemetryProvider) Resolver {
+// NewResolver builds clients that record each call they make with usage
+// (llm_usage). A nil usage records nothing.
+func NewResolver(
+	box *utils.SecretBox,
+	httpClient *http.Client,
+	tel otelSDK.TelemetryProvider,
+	usage llmusage.Recorder,
+) Resolver {
 	return &resolver{
 		box:               box,
 		httpClient:        httpClient,
 		tel:               tel,
+		usage:             usage,
 		mu:                sync.Mutex{},
 		llmRegistry:       make(map[string]*llm.ObservedLLM),
 		decisionsRegistry: make(map[string]decisions.Decisions),
@@ -81,6 +91,9 @@ func (r *resolver) ResolveLLM(m sharedModel.UserLLMModel) (*llm.ObservedLLM, err
 	case sharedModel.LLMProviderOllama:
 		client, err = llmProviders.NewUserOllamaClient(m.BaseURL, apikey, r.httpClient)
 		providerType = "local"
+	case sharedModel.LLMProviderLumo:
+		client, err = llmProviders.NewLumoClient(m.BaseURL, apikey, r.httpClient)
+		providerType = "local"
 	default:
 		err = errs.New(errs.CodeAIProviderNotConfigured, "unsupported provider %q", m.Provider)
 	}
@@ -88,9 +101,14 @@ func (r *resolver) ResolveLLM(m sharedModel.UserLLMModel) (*llm.ObservedLLM, err
 		return nil, err
 	}
 
-	observed := llm.NewObservedLLM(client, r.tel, providerType)
+	observed := llm.NewObservedLLM(llmusage.WrapLLM(client, usageKey(m), r.usage), r.tel, providerType)
 	r.llmRegistry[key] = observed
 	return observed, nil
+}
+
+// usageKey says whose key a model runs on, for its llm_usage rows.
+func usageKey(m sharedModel.UserLLMModel) llmusage.Key {
+	return llmusage.Key{Provider: m.Provider, OwnerID: m.UserID}
 }
 
 // openKey decrypts the model's key. A self-hosted Ollama may have none.
@@ -126,6 +144,7 @@ func (r *resolver) ResolveEmbedder(m sharedModel.UserLLMModel) (client.Embedder,
 	if err != nil {
 		return nil, err
 	}
+	embedder = llmusage.WrapEmbedder(embedder, usageKey(m), r.usage)
 	r.embedderRegistry[key] = embedder
 	return embedder, nil
 }
@@ -150,6 +169,7 @@ func (r *resolver) ResolveDecisions(m sharedModel.UserLLMModel) (decisions.Decis
 	if err != nil {
 		return nil, err
 	}
+	client = llmusage.WrapDecisions(client, usageKey(m), r.usage)
 	r.decisionsRegistry[key] = client
 	return client, nil
 }
