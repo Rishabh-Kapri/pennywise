@@ -3,6 +3,8 @@ node_modules/
 dist/
 # Rooted: an unrooted `android/` also hid modules/*/android from EAS.
 /android/
+# Gradle output of a local module build (npx expo prebuild + gradlew)
+modules/*/android/build/
 /ios/
 *.log
 

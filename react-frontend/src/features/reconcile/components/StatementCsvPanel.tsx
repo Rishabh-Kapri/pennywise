@@ -32,16 +32,11 @@ export function StatementCsvPanel({
 
   useEffect(() => {
     let cancelled = false;
-    let blobUrl: string | null = null;
     apiClient
-      .fetchBlobUrl(`statements/${statementId}/file`)
-      .then(async (u) => {
-        blobUrl = u;
-        const body = await (await fetch(u)).text();
-        if (!cancelled) setText(body);
-      })
-      .catch((err) => !cancelled && setError(errorMessage(err, "Couldn't load the CSV")))
-      .finally(() => blobUrl && URL.revokeObjectURL(blobUrl));
+      .fetchBlob(`statements/${statementId}/file`)
+      .then((blob) => blob.text())
+      .then((body) => !cancelled && setText(body))
+      .catch((err) => !cancelled && setError(errorMessage(err, "Couldn't load the CSV")));
     return () => {
       cancelled = true;
     };

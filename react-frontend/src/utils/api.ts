@@ -229,6 +229,15 @@ class ApiClient {
    * Callers must URL.revokeObjectURL when done.
    */
   async fetchBlobUrl(endpoint: string): Promise<string> {
+    return URL.createObjectURL(await this.fetchBlob(endpoint));
+  }
+
+  /**
+   * Fetch a binary endpoint with auth headers. Read the file from the Blob
+   * (`blob.text()`), never by fetching an object URL: the CSP's connect-src
+   * doesn't allow blob: URLs.
+   */
+  async fetchBlob(endpoint: string): Promise<Blob> {
     const headers = this.getHeaders(endpoint) as Record<string, string>;
     delete headers['Content-Type'];
 
@@ -259,8 +268,7 @@ class ApiClient {
       throw new Error(message);
     }
 
-    const blob = await res.blob();
-    return URL.createObjectURL(blob);
+    return res.blob();
   }
 
   // B defaults to Partial<T> so existing call sites are unchanged; pass it
