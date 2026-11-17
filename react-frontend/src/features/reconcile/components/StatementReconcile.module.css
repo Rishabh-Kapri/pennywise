@@ -610,7 +610,19 @@
   gap: 0.75rem 1.5rem;
 }
 
+/* where the tabs sit before they stick; cancels the section's gap */
+.page .tabsAnchor {
+  height: 0;
+  margin-bottom: -1.25rem;
+}
+
+/* Stays at the top while a long list scrolls, so switching tabs never
+   needs a scroll back up. */
 .page .tabs {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--color-surface);
   display: flex;
   gap: 1.75rem;
   /* scrolls sideways on a narrow screen; the tabs' -1px overlap with the
@@ -1254,11 +1266,36 @@
   font-size: 0.95rem;
 }
 
+/* Scrolls inside itself: a long list would push the row being linked,
+   and the Link button, off screen. */
 .page .linkList {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+  max-height: min(40vh, 22rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.25rem;
   list-style: none;
+}
+
+.page .linkSearch {
+  width: 100%;
+  max-width: 22rem;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 0.6rem;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.95rem;
+}
+
+.page .linkGroupLabel {
+  padding: 0.35rem 0.2rem 0.1rem;
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 
 .page .linkOption {

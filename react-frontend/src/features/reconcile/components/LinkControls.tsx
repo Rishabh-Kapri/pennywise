@@ -7,7 +7,7 @@ import {
   Plus,
   Square,
 } from '@phosphor-icons/react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { CategoryDropdown } from '@/features/transactions/components/popovers/CategoryPopover';
 import { errorMessage, toast } from '@/utils';
 import { money } from '../statementIdentity';
@@ -27,9 +27,11 @@ function day(date: string): string {
 
 const signed = (v: number) => `${v < 0 ? '−' : '+'}${money(Math.abs(v))}`;
 
+const dayNumber = (date: string) => Date.parse(`${date.slice(0, 10)}T00:00:00Z`) / 86_400_000;
+
 /**
  * The account's transactions that aren't on the statement, to pair with
- * statement rows by hand, oldest first like the statement. Several can be
+ * statement rows by hand: the same amount first, then the nearest dates. Several can be
  * picked: one payment made in parts, or a row that bundles several. With
  * several rows (EMI lines one payment paid) they're compared in total. What's
  * left after them can be booked as a difference after linking.
@@ -50,12 +52,29 @@ export function LinkCandidates({
 }) {
   const [picked, setPicked] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
-  const sorted = [...candidates].sort((a, b) => a.date.slice(0, 10).localeCompare(b.date.slice(0, 10)));
+  const [query, setQuery] = useState('');
   const cents = (v: number) => Math.round(v * 100) / 100;
+  const total = rows.reduce((sum, r) => sum + signedAmount(r), 0);
+  // a long list is scanned top down: what most likely pays for the row first
+  const sorted = useMemo(() => {
+    const want = cents(total - linked);
+    const at = dayNumber(rows[0]?.date ?? '');
+    const score = (t: StatementLedgerTxn) => [cents(t.amount) === want ? 0 : 1, Math.abs(dayNumber(t.date) - at) || 0];
+    return [...candidates].sort((a, b) => {
+      const [x, y] = [score(a), score(b)];
+      return x[0] - y[0] || x[1] - y[1];
+    });
+  }, [candidates, rows, total, linked]);
+  const needle = query.trim().toLowerCase();
+  const shown = needle
+    ? sorted.filter((t) =>
+        [t.payeeName, t.note, t.categoryName, money(Math.abs(t.amount)), String(Math.abs(t.amount))]
+          .filter(Boolean)
+          .some((v) => v!.toLowerCase().includes(needle)),
+      )
+    : sorted;
   const left = cents(
-    rows.reduce((sum, r) => sum + signedAmount(r), 0) -
-      linked -
-      candidates.filter((t) => picked.includes(t.id)).reduce((sum, t) => sum + t.amount, 0),
+    total - linked - candidates.filter((t) => picked.includes(t.id)).reduce((sum, t) => sum + t.amount, 0),
   );
 
   const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
@@ -74,8 +93,8 @@ export function LinkCandidates({
       <div className={styles.linkPanelHeader}>
         <strong>
           {rows.length > 1
-            ? `Link ${rows.length} rows (${signed(rows.reduce((sum, r) => sum + signedAmount(r), 0))}) to transactions`
-            : "Link to transactions that aren't on the statement"}
+            ? `Link ${rows.length} rows (${signed(total)}) to transactions`
+            : `Link ${signed(total)} on ${day(rows[0].date)} to transactions that aren't on the statement`}
         </strong>
         <button type="button" className={styles.textButton} onClick={onCancel}>
           Cancel
@@ -85,8 +104,19 @@ export function LinkCandidates({
         <p className={styles.muted}>Every transaction in this account for the statement's period is already matched.</p>
       ) : (
         <>
+          {sorted.length > 6 && (
+            <input
+              className={styles.linkSearch}
+              type="search"
+              value={query}
+              placeholder="Search payee, category or amount"
+              aria-label="Search transactions to link"
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          )}
+          {shown.length === 0 && <p className={styles.muted}>Nothing matches “{query.trim()}”.</p>}
           <ul className={styles.linkList}>
-            {sorted.map((t) => {
+            {shown.map((t) => {
               const on = picked.includes(t.id);
               const apart = cents(left - t.amount);
               return (

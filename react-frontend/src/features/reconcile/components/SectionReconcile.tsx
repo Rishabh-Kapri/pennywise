@@ -10,7 +10,7 @@ import {
   Plus,
   WarningCircle,
 } from '@phosphor-icons/react';
-import { Fragment, useMemo, useState } from 'react';
+import { type Dispatch, Fragment, memo, type SetStateAction, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAppSelector } from '@/app/hooks';
 import { errorMessage, errorText, toast } from '@/utils';
@@ -21,6 +21,7 @@ import {
   type StatementDifferenceRequest,
   type StatementRow,
   type StatementRowEdit,
+  type StatementLedgerTxn,
   type StatementSectionReconciliation,
 } from '../types/reconcile.types';
 import { accountEnding, formatPeriod, money } from '../statementIdentity';
@@ -143,6 +144,204 @@ interface RowDraft {
   note: string;
 }
 
+/** Open one row's panel, or close it when it's the one already open; null closes any. */
+const toggler = (set: Dispatch<SetStateAction<string | null>>) => (id: string | null) =>
+  set((cur) => (id === null || cur === id ? null : id));
+
+/** The same function every render, calling the latest one: lets memoised rows skip re-rendering. */
+function useStable<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
+  const ref = useRef(fn);
+  useLayoutEffect(() => {
+    ref.current = fn;
+  });
+  return useCallback((...args: A) => ref.current(...args), []);
+}
+
+function EditButton({ row, editing, onToggle }: { row: StatementRow; editing: boolean; onToggle: (id: string) => void }) {
+  return (
+    <button
+      type="button"
+      className={`${styles.iconButton} ${editing ? styles.iconButtonActive : ''}`}
+      title="Correct this row: it was read wrong"
+      aria-label={`Correct ${row.description}`}
+      aria-expanded={editing}
+      onClick={() => onToggle(row.id)}
+    >
+      <PencilSimple size={17} />
+    </button>
+  );
+}
+
+/**
+ * One missing row with its pickers and the panels it opens. Memoised: a CSV
+ * can have hundreds of rows, and ticking one or typing a note shouldn't
+ * re-render every row's payee and category pickers.
+ */
+const MissingRow = memo(function MissingRow({
+  row,
+  draft: d,
+  categoryLabel,
+  noting,
+  editing,
+  linking,
+  candidates,
+  onUpdate,
+  onToggleNote,
+  onToggleEdit,
+  onToggleLink,
+  onEditRow,
+  onRevertRow,
+  onLink,
+  onShowPage,
+  onShowLine,
+  onSetEMI,
+}: {
+  row: StatementRow;
+  draft: RowDraft;
+  categoryLabel: string;
+  noting: boolean;
+  editing: boolean;
+  linking: boolean;
+  candidates: StatementLedgerTxn[];
+  onUpdate: (rowId: string, patch: Partial<RowDraft>) => void;
+  onToggleNote: (rowId: string | null) => void;
+  onToggleEdit: (rowId: string | null) => void;
+  onToggleLink: (rowId: string | null) => void;
+  onEditRow: (rowId: string, edit: StatementRowEdit) => Promise<void>;
+  onRevertRow: (rowId: string) => Promise<void>;
+  onLink: (rowId: string, transactionIds: string[]) => Promise<void>;
+  onShowPage?: (page: number) => void;
+  onShowLine?: (line: number) => void;
+  onSetEMI: (rowId: string, emi: boolean | null) => Promise<void>;
+}) {
+  return (
+    <>
+      <tr className={d.selected ? styles.rowSelected : undefined}>
+        <td className={styles.checkCell}>
+          <input
+            type="checkbox"
+            aria-label={`Select ${row.description}`}
+            checked={d.selected}
+            onChange={(e) => onUpdate(row.id, { selected: e.target.checked })}
+          />
+        </td>
+        <td className={styles.dateCell}>
+          <RowDate row={row} />
+        </td>
+        <td className={styles.textCell}>
+          <span className={styles.rowTitle} title={row.rawDescription || row.description}>
+            {row.description}
+          </span>
+          <div className={styles.rowMeta}>
+            <RowBadges row={row} onShowPage={onShowPage} onShowLine={onShowLine} onSetEMI={onSetEMI} />
+            {row.directionCorrected && (
+              <span title="The running balance showed debit and credit were reversed">direction fixed</span>
+            )}
+            {row.suggestedPayeeName && (
+              <span title="The payee and category you chose for this line on an earlier statement">
+                filled from last time
+              </span>
+            )}
+            {d.note && !noting && (
+              <button type="button" className={styles.metaNote} onClick={() => onToggleNote(row.id)}>
+                “{d.note}”
+              </button>
+            )}
+          </div>
+        </td>
+        <td className={styles.payeeCell}>
+          <PayeeDropdown
+            variant="form"
+            value={d.payeeName}
+            placeholder="Choose a payee"
+            onClick={(_, name) => onUpdate(row.id, { payeeName: name })}
+            onCreate={(name) => onUpdate(row.id, { payeeName: name })}
+          />
+        </td>
+        <td className={styles.categoryCell}>
+          <CategoryDropdown
+            variant="form"
+            value={categoryLabel}
+            placeholder="Choose a category"
+            onClick={(id) => onUpdate(row.id, { categoryId: id })}
+          />
+        </td>
+        <td className={`${styles.num} ${styles.amountCell}`}>
+          <Amount value={signedAmount(row)} />
+        </td>
+        <td className={styles.actionCell}>
+          <div className={styles.rowActionsQuiet}>
+            <button
+              type="button"
+              className={`${styles.iconButton} ${noting || d.note ? styles.iconButtonActive : ''}`}
+              title={d.note ? 'Change the note' : 'Add a note'}
+              aria-label={`Note for ${row.description}`}
+              aria-expanded={noting}
+              onClick={() => onToggleNote(row.id)}
+            >
+              <NotePencil size={18} />
+            </button>
+            <EditButton row={row} editing={editing} onToggle={onToggleEdit} />
+            <button
+              type="button"
+              className={`${styles.iconButton} ${linking ? styles.iconButtonActive : ''}`}
+              title="Link to a transaction already in Pennywise"
+              aria-label={`Link ${row.description} to a transaction`}
+              aria-expanded={linking}
+              onClick={() => onToggleLink(row.id)}
+            >
+              <LinkSimple size={18} />
+            </button>
+          </div>
+        </td>
+      </tr>
+      {noting && (
+        <tr className={styles.noteRow}>
+          <td />
+          <td />
+          <td colSpan={5}>
+            <input
+              className={styles.noteField}
+              value={d.note}
+              placeholder="Add a note for this transaction, then press Enter"
+              aria-label={`Note for ${row.description}`}
+              autoFocus
+              onChange={(e) => onUpdate(row.id, { note: e.target.value })}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === 'Escape') onToggleNote(null);
+              }}
+            />
+          </td>
+        </tr>
+      )}
+      {editing && (
+        <tr className={styles.linkRow}>
+          <td colSpan={7}>
+            <RowEditor
+              row={row}
+              onSave={(edit) => onEditRow(row.id, edit)}
+              onRevert={() => onRevertRow(row.id)}
+              onCancel={() => onToggleEdit(null)}
+            />
+          </td>
+        </tr>
+      )}
+      {linking && (
+        <tr className={styles.linkRow}>
+          <td colSpan={7}>
+            <LinkCandidates
+              rows={[row]}
+              candidates={candidates}
+              onLink={(ids) => onLink(row.id, ids)}
+              onCancel={() => onToggleLink(null)}
+            />
+          </td>
+        </tr>
+      )}
+    </>
+  );
+});
+
 interface Props {
   section: StatementSectionReconciliation;
   accounts: Account[];
@@ -192,6 +391,31 @@ export function SectionReconcile({
   );
 
   const [tab, setTab] = useState<Tab>(section.missing.length > 0 ? 'missing' : 'matched');
+  // where the tabs sit before they stick to the top
+  const tabsAnchor = useRef<HTMLDivElement>(null);
+  const tabsBar = useRef<HTMLDivElement>(null);
+  const scroller = useRef<HTMLElement | null>(null);
+  // Stick to the scroll panel's top edge, not below its padding, where rows
+  // would show through. The page sits in more than one panel, so ask it.
+  const hasAccount = !!section.accountId;
+  useLayoutEffect(() => {
+    const bar = tabsBar.current;
+    let el = bar?.parentElement ?? null;
+    while (el && !/(auto|scroll)/.test(getComputedStyle(el).overflowY)) el = el.parentElement;
+    scroller.current = el;
+    if (bar && el) bar.style.top = `-${getComputedStyle(el).paddingTop}`;
+  }, [hasAccount]);
+  // The tabs stay at the top while rows scroll. Switching from deep in a long
+  // list goes to the new tab's first row, not into the middle of it.
+  const showTab = (next: Tab) => {
+    setTab(next);
+    const anchor = tabsAnchor.current;
+    const bar = tabsBar.current;
+    const panel = scroller.current;
+    const gap = anchor && bar ? anchor.getBoundingClientRect().top - bar.getBoundingClientRect().top : 0;
+    // scroll the panel only: scrollIntoView moves the whole app too
+    if (panel && gap < -1) panel.scrollTop += gap;
+  };
   const [drafts, setDrafts] = useState<Record<string, RowDraft>>({});
   const [busy, setBusy] = useState(false);
   const [savingAccount, setSavingAccount] = useState(false);
@@ -214,8 +438,7 @@ export function SectionReconcile({
     setLinkingSelected(false);
     setLinkingCovered(false);
     setCoveredPicked([]);
-    // the linked rows leave Missing; the other rows keep what was typed
-    setTab('matched');
+    // stay on this tab: the linked rows leave it, the rest keep what was typed
   };
 
   const editor = (row: StatementRow, colSpan: number) =>
@@ -232,24 +455,26 @@ export function SectionReconcile({
       </tr>
     ) : null;
 
+  const toggleNote = useMemo(() => toggler(setNoting), []);
+  const toggleEdit = useMemo(() => toggler(setEditing), []);
+  const toggleLink = useMemo(() => toggler(setLinking), []);
+
   const editButton = (row: StatementRow) => (
-    <button
-      type="button"
-      className={`${styles.iconButton} ${editing === row.id ? styles.iconButtonActive : ''}`}
-      title="Correct this row: it was read wrong"
-      aria-label={`Correct ${row.description}`}
-      aria-expanded={editing === row.id}
-      onClick={() => setEditing(editing === row.id ? null : row.id)}
-    >
-      <PencilSimple size={17} />
-    </button>
+    <EditButton row={row} editing={editing === row.id} onToggle={toggleEdit} />
   );
 
-  const link = async (rowId: string, transactionIds: string[]) => {
+  // Stay on the tab: going to Matched lost your place in a long Missing list.
+  // The row leaves the list, so say it worked.
+  const link = useStable(async (rowId: string, transactionIds: string[]) => {
     await onLink(rowId, transactionIds);
     setLinking(null);
-    setTab('matched');
-  };
+    toast.success(transactionIds.length > 1 ? `Linked to ${transactionIds.length} transactions` : 'Linked');
+  });
+  const editRow = useStable(onEditRow);
+  const revertRow = useStable(onRevertRow);
+  const setEMI = useStable(onSetEMI);
+  const showPage = useStable((page: number) => onShowPage?.(page));
+  const showLine = useStable((line: number) => onShowLine?.(line));
 
   const unlink = async (rowId: string) => {
     setUnlinking(rowId);
@@ -271,25 +496,33 @@ export function SectionReconcile({
       ),
     [section.missing],
   );
-  const draftFor = (rowId: string, fallbackPayee: string): RowDraft =>
-    drafts[rowId] ?? {
-      selected: false,
-      payeeName: suggested[rowId]?.payee || fallbackPayee,
-      categoryId: suggested[rowId]?.categoryId ?? '',
-      note: '',
-    };
+  // what a row starts with before it's touched; kept so memoised rows see the same object
+  const defaults = useMemo(
+    () =>
+      Object.fromEntries(
+        section.missing.map((r) => [
+          r.id,
+          { selected: false, payeeName: suggested[r.id]?.payee || r.payee, categoryId: suggested[r.id]?.categoryId ?? '', note: '' },
+        ]),
+      ) as Record<string, RowDraft>,
+    [section.missing, suggested],
+  );
+  const draftFor = (rowId: string): RowDraft => drafts[rowId] ?? defaults[rowId];
 
-  const updateDraft = (rowId: string, fallbackPayee: string, patch: Partial<RowDraft>) =>
-    setDrafts((prev) => ({ ...prev, [rowId]: { ...draftFor(rowId, fallbackPayee), ...patch } }));
+  const updateDraft = useCallback(
+    (rowId: string, patch: Partial<RowDraft>) =>
+      setDrafts((prev) => ({ ...prev, [rowId]: { ...(prev[rowId] ?? defaults[rowId]), ...patch } })),
+    [defaults],
+  );
 
-  const selectedRows = section.missing.filter((r) => draftFor(r.id, r.payee).selected);
+  const selectedRows = section.missing.filter((r) => draftFor(r.id).selected);
   const allSelected = section.missing.length > 0 && selectedRows.length === section.missing.length;
 
   // The selection bar's pickers set a payee or category on every ticked row.
   const applyToSelected = (patch: Partial<RowDraft>) =>
     setDrafts((prev) => {
       const out = { ...prev };
-      for (const r of selectedRows) out[r.id] = { ...draftFor(r.id, r.payee), ...patch };
+      for (const r of selectedRows) out[r.id] = { ...draftFor(r.id), ...patch };
       return out;
     });
 
@@ -297,7 +530,7 @@ export function SectionReconcile({
     const next = !allSelected;
     setDrafts((prev) => {
       const out = { ...prev };
-      for (const r of section.missing) out[r.id] = { ...draftFor(r.id, r.payee), selected: next };
+      for (const r of section.missing) out[r.id] = { ...draftFor(r.id), selected: next };
       return out;
     });
   };
@@ -308,7 +541,7 @@ export function SectionReconcile({
     try {
       const res = await onCreate(
         selectedRows.map((r) => {
-          const d = draftFor(r.id, r.payee);
+          const d = draftFor(r.id);
           return {
             rowId: r.id,
             payeeName: d.payeeName.trim() || undefined,
@@ -417,7 +650,8 @@ export function SectionReconcile({
           </p>
         ))}
 
-      <div className={styles.tabs} role="tablist">
+      <div ref={tabsAnchor} className={styles.tabsAnchor} aria-hidden />
+      <div ref={tabsBar} className={styles.tabs} role="tablist">
         {tabs.map((t) => (
           <button
             key={t.id}
@@ -425,7 +659,7 @@ export function SectionReconcile({
             role="tab"
             aria-selected={tab === t.id}
             className={`${styles.tab} ${tab === t.id ? styles.tabActive : ''}`}
-            onClick={() => setTab(t.id)}
+            onClick={() => showTab(t.id)}
           >
             {t.label}
             <span className={`${styles.count} ${t.id === 'missing' && t.count > 0 ? styles.countAttention : ''}`}>
@@ -481,128 +715,28 @@ export function SectionReconcile({
                 </thead>
                 <tbody>
                   {section.missing.map((row) => {
-                    const d = draftFor(row.id, row.payee);
+                    const d = drafts[row.id] ?? defaults[row.id];
                     return (
-                      <Fragment key={row.id}>
-                        <tr className={d.selected ? styles.rowSelected : undefined}>
-                          <td className={styles.checkCell}>
-                            <input
-                              type="checkbox"
-                              aria-label={`Select ${row.description}`}
-                              checked={d.selected}
-                              onChange={(e) => updateDraft(row.id, row.payee, { selected: e.target.checked })}
-                            />
-                          </td>
-                          <td className={styles.dateCell}>
-                            <RowDate row={row} />
-                          </td>
-                          <td className={styles.textCell}>
-                            <span className={styles.rowTitle} title={row.rawDescription || row.description}>
-                              {row.description}
-                            </span>
-                            <div className={styles.rowMeta}>
-                              <RowBadges
-                                row={row}
-                                onShowPage={onShowPage}
-                                onShowLine={onShowLine}
-                                onSetEMI={onSetEMI}
-                              />
-                              {row.directionCorrected && (
-                                <span title="The running balance showed debit and credit were reversed">
-                                  direction fixed
-                                </span>
-                              )}
-                              {row.suggestedPayeeName && (
-                                <span title="The payee and category you chose for this line on an earlier statement">
-                                  filled from last time
-                                </span>
-                              )}
-                              {d.note && noting !== row.id && (
-                                <button type="button" className={styles.metaNote} onClick={() => setNoting(row.id)}>
-                                  “{d.note}”
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                          <td className={styles.payeeCell}>
-                            <PayeeDropdown
-                              variant="form"
-                              value={d.payeeName}
-                              placeholder="Choose a payee"
-                              onClick={(_, name) => updateDraft(row.id, row.payee, { payeeName: name })}
-                              onCreate={(name) => updateDraft(row.id, row.payee, { payeeName: name })}
-                            />
-                          </td>
-                          <td className={styles.categoryCell}>
-                            <CategoryDropdown
-                              variant="form"
-                              value={categoryName[d.categoryId] ?? ''}
-                              placeholder="Choose a category"
-                              onClick={(id) => updateDraft(row.id, row.payee, { categoryId: id })}
-                            />
-                          </td>
-                          <td className={`${styles.num} ${styles.amountCell}`}>
-                            <Amount value={signedAmount(row)} />
-                          </td>
-                          <td className={styles.actionCell}>
-                            <div className={styles.rowActionsQuiet}>
-                              <button
-                                type="button"
-                                className={`${styles.iconButton} ${noting === row.id || d.note ? styles.iconButtonActive : ''}`}
-                                title={d.note ? 'Change the note' : 'Add a note'}
-                                aria-label={`Note for ${row.description}`}
-                                aria-expanded={noting === row.id}
-                                onClick={() => setNoting(noting === row.id ? null : row.id)}
-                              >
-                                <NotePencil size={18} />
-                              </button>
-                              {editButton(row)}
-                              <button
-                                type="button"
-                                className={`${styles.iconButton} ${linking === row.id ? styles.iconButtonActive : ''}`}
-                                title="Link to a transaction already in Pennywise"
-                                aria-label={`Link ${row.description} to a transaction`}
-                                aria-expanded={linking === row.id}
-                                onClick={() => setLinking(linking === row.id ? null : row.id)}
-                              >
-                                <LinkSimple size={18} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                        {noting === row.id && (
-                          <tr className={styles.noteRow}>
-                            <td />
-                            <td />
-                            <td colSpan={5}>
-                              <input
-                                className={styles.noteField}
-                                value={d.note}
-                                placeholder="Add a note for this transaction, then press Enter"
-                                aria-label={`Note for ${row.description}`}
-                                autoFocus
-                                onChange={(e) => updateDraft(row.id, row.payee, { note: e.target.value })}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter' || e.key === 'Escape') setNoting(null);
-                                }}
-                              />
-                            </td>
-                          </tr>
-                        )}
-                        {editor(row, 7)}
-                        {linking === row.id && (
-                          <tr className={styles.linkRow}>
-                            <td colSpan={7}>
-                              <LinkCandidates
-                                rows={[row]}
-                                candidates={section.ledgerOnly}
-                                onLink={(ids) => link(row.id, ids)}
-                                onCancel={() => setLinking(null)}
-                              />
-                            </td>
-                          </tr>
-                        )}
-                      </Fragment>
+                      <MissingRow
+                        key={row.id}
+                        row={row}
+                        draft={d}
+                        categoryLabel={categoryName[d.categoryId] ?? ''}
+                        noting={noting === row.id}
+                        editing={editing === row.id}
+                        linking={linking === row.id}
+                        candidates={section.ledgerOnly}
+                        onUpdate={updateDraft}
+                        onToggleNote={toggleNote}
+                        onToggleEdit={toggleEdit}
+                        onToggleLink={toggleLink}
+                        onEditRow={editRow}
+                        onRevertRow={revertRow}
+                        onLink={link}
+                        onShowPage={onShowPage && showPage}
+                        onShowLine={onShowLine && showLine}
+                        onSetEMI={setEMI}
+                      />
                     );
                   })}
                 </tbody>

@@ -174,7 +174,10 @@ export function Popover({
     }
   }, [triggerRef, width, placement]);
 
+  // Listen only while open: a closed popover sits behind every picker in a
+  // long table, and hundreds of scroll listeners make scrolling lag.
   useEffect(() => {
+    if (!isOpen) return;
     updatePosition('scroll');
 
     const handleScroll = () => {
@@ -185,18 +188,19 @@ export function Popover({
 
       rafRef.current = requestAnimationFrame(() => updatePosition('scroll'));
     };
+    const handleResize = () => updatePosition('resize');
 
     window.addEventListener('scroll', handleScroll, true);
-    window.addEventListener('resize', () => updatePosition('resize'));
+    window.addEventListener('resize', handleResize);
 
     return () => {
       window.removeEventListener('scroll', handleScroll, true);
-      window.removeEventListener('resize', () => updatePosition('resize'));
+      window.removeEventListener('resize', handleResize);
       if (rafRef.current) {
         cancelAnimationFrame(rafRef.current);
       }
     };
-  }, [updatePosition]);
+  }, [isOpen, updatePosition]);
 
   // The content can change size while open (a filtered list): place it again.
   useEffect(() => {
