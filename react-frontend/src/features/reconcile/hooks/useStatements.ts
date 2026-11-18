@@ -54,23 +54,9 @@ function useStatementRefresh(processing: boolean, reload: () => unknown) {
   }, [processing, reload]);
 }
 
-/**
- * Opens the uploaded PDF in a new tab. The file needs auth headers, so it is
- * fetched as a blob first. The tab is opened before the fetch, while the click
- * still counts as a user action, or the popup blocker would stop it.
- */
-export async function openStatementPdf(id: string): Promise<void> {
-  const tab = window.open('', '_blank');
-  try {
-    const url = await apiClient.fetchBlobUrl(`statements/${id}/file`);
-    if (tab) tab.location.href = url;
-    else window.location.href = url;
-    // the tab has loaded it by then; the URL only holds the blob in memory
-    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-  } catch (err) {
-    tab?.close();
-    throw err;
-  }
+/** Opens the uploaded PDF in a new tab. */
+export function openStatementPdf(id: string): Promise<void> {
+  return apiClient.openFile(`statements/${id}/file`);
 }
 
 export interface UploadOutcome {

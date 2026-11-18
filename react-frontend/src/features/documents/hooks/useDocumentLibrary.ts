@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiClient } from '@/utils';
+import { openDocument, useImagePreviews } from './useImagePreviews';
 import type {
   DocumentFilters,
   DocumentLibraryResponse,
@@ -20,7 +21,6 @@ interface UseDocumentLibraryResult {
   loadMore: () => void;
   refresh: () => void;
   remove: (documentId: string) => Promise<void>;
-  /** opens a document in a new tab using a short-lived blob URL */
   open: (doc: DocumentListItem) => Promise<void>;
 }
 
@@ -35,50 +35,20 @@ function buildQuery(filters: DocumentFilters, offset: number): string {
   return params.toString();
 }
 
-/**
- * Loads the budget-wide receipt library, one page at a time.
- *
- * Thumbnails go through fetchBlobUrl because a plain <img src> can't carry the
- * Authorization header the content endpoint requires.
- */
+/** Loads the budget-wide receipt library, one page at a time. */
 export function useDocumentLibrary(filters: DocumentFilters): UseDocumentLibraryResult {
   const [documents, setDocuments] = useState<DocumentListItem[]>([]);
-  const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const urlsRef = useRef<Record<string, string>>({});
+  const { previews: thumbnails, load, forget, clear } = useImagePreviews();
   // Guards against a slow first page landing after a newer filter's response
   // and overwriting it with stale rows.
   const requestIdRef = useRef(0);
   const [reloadToken, setReloadToken] = useState(0);
-
-  const revokeAll = useCallback(() => {
-    for (const url of Object.values(urlsRef.current)) URL.revokeObjectURL(url);
-    urlsRef.current = {};
-  }, []);
-
-  const loadThumbnails = useCallback(async (docs: DocumentListItem[], requestId: number) => {
-    for (const doc of docs) {
-      if (!doc.mimeType.startsWith('image/') || urlsRef.current[doc.id]) continue;
-      try {
-        const url = await apiClient.fetchBlobUrl(`documents/${doc.id}/content`);
-        // the filter moved on while this was in flight; the URL belongs to a
-        // list that is no longer on screen
-        if (requestId !== requestIdRef.current) {
-          URL.revokeObjectURL(url);
-          return;
-        }
-        urlsRef.current[doc.id] = url;
-        setThumbnails({ ...urlsRef.current });
-      } catch {
-        // a missing thumbnail is non-fatal; the tile falls back to a file icon
-      }
-    }
-  }, []);
 
   const fetchPage = useCallback(
     async (offset: number) => {
@@ -100,7 +70,7 @@ export function useDocumentLibrary(filters: DocumentFilters): UseDocumentLibrary
         setDocuments((prev) => (offset === 0 ? page : [...prev, ...page]));
         setTotal(res?.total ?? 0);
         setHasMore(Boolean(res?.hasMore));
-        void loadThumbnails(page, requestId);
+        void load(page, () => requestId === requestIdRef.current);
       } catch (err: unknown) {
         if (requestId !== requestIdRef.current) return;
         setError(err instanceof Error ? err.message : 'Failed to load documents');
@@ -111,19 +81,16 @@ export function useDocumentLibrary(filters: DocumentFilters): UseDocumentLibrary
         }
       }
     },
-    [filters, loadThumbnails],
+    [filters, load],
   );
 
   // fetchPage changes identity when the filters do, so this doubles as the
   // "filters changed, start over" effect; reloadToken forces the same reset
   // when the filters are unchanged but the caller asked for a refresh.
   useEffect(() => {
-    revokeAll();
-    setThumbnails({});
+    clear();
     void fetchPage(0);
-  }, [fetchPage, reloadToken, revokeAll]);
-
-  useEffect(() => revokeAll, [revokeAll]);
+  }, [fetchPage, reloadToken, clear]);
 
   const loadMore = useCallback(() => {
     if (isLoading || isLoadingMore || !hasMore) return;
@@ -138,23 +105,15 @@ export function useDocumentLibrary(filters: DocumentFilters): UseDocumentLibrary
       await apiClient.delete(`documents/${documentId}`);
       setDocuments((docs) => docs.filter((doc) => doc.id !== documentId));
       setTotal((count) => Math.max(0, count - 1));
-      const url = urlsRef.current[documentId];
-      if (url) {
-        URL.revokeObjectURL(url);
-        delete urlsRef.current[documentId];
-        setThumbnails({ ...urlsRef.current });
-      }
+      forget(documentId);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to delete document');
     }
-  }, []);
+  }, [forget]);
 
   const open = useCallback(async (doc: DocumentListItem) => {
     try {
-      const url = await apiClient.fetchBlobUrl(`documents/${doc.id}/content`);
-      window.open(url, '_blank', 'noopener');
-      // give the new tab time to load before releasing the URL
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      await openDocument(doc);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to open document');
     }

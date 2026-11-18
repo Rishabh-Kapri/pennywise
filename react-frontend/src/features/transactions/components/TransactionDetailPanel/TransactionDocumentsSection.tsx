@@ -1,7 +1,8 @@
 import { useRef } from 'react';
 import { FilePdfIcon, PaperclipIcon, PlusIcon, TrashIcon } from '@phosphor-icons/react';
-import { useTransactionDocuments } from '../../hooks/useTransactionDocuments';
-import type { Transaction, TransactionDocument } from '../../types/transaction.types';
+import { useTransactionDocuments } from '@/features/documents/hooks/useTransactionDocuments';
+import type { DocumentFile } from '@/features/documents/types/document.types';
+import type { Transaction } from '../../types/transaction.types';
 import styles from './TransactionDetailPanel.module.css';
 
 function formatSize(bytes: number) {
@@ -16,7 +17,7 @@ function DocumentTile({
   onOpen,
   onRemove,
 }: {
-  doc: TransactionDocument;
+  doc: DocumentFile;
   previewUrl?: string;
   onOpen: () => void;
   onRemove: () => void;

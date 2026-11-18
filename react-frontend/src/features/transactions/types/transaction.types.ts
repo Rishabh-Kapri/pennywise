@@ -125,17 +125,6 @@ export interface TransactionLocationDTO {
 }
 
 /** Receipt/document attached to a transaction. */
-export interface TransactionDocument {
-  id: string;
-  budgetId: string;
-  transactionId: string;
-  fileName: string;
-  mimeType: string;
-  sizeBytes: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export type TransactionSourceKind = 'EMAIL' | 'SMS' | 'STATEMENT_LINE';
 
 /**

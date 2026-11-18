@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { apiClient } from '@/utils';
-import type { TransactionDocument } from '../types/transaction.types';
+import type { DocumentFile } from '../types/document.types';
+import { openDocument, useImagePreviews } from './useImagePreviews';
 
 interface UseTransactionDocumentsResult {
-  documents: TransactionDocument[];
+  documents: DocumentFile[];
   /** object URLs for image documents, keyed by document id */
   previewUrls: Record<string, string>;
   isLoading: boolean;
@@ -15,42 +16,17 @@ interface UseTransactionDocumentsResult {
   /** merges page images server-side into one PDF document */
   uploadAsPdf: (files: File[]) => Promise<void>;
   remove: (documentId: string) => Promise<void>;
-  /** fetch a fresh blob URL for opening/downloading any document */
-  openDocument: (doc: TransactionDocument) => Promise<void>;
+  openDocument: (doc: DocumentFile) => Promise<void>;
 }
 
-/**
- * Loads and manages the receipts/documents of a transaction. Image previews go
- * through fetchBlobUrl because plain <img src> can't carry the auth header.
- */
+/** Loads and manages the receipts/documents of a transaction. */
 export function useTransactionDocuments(transactionId: string | undefined): UseTransactionDocumentsResult {
-  const [documents, setDocuments] = useState<TransactionDocument[]>([]);
-  const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
+  const [documents, setDocuments] = useState<DocumentFile[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const urlsRef = useRef<Record<string, string>>({});
-
-  const revokeAll = () => {
-    for (const url of Object.values(urlsRef.current)) {
-      URL.revokeObjectURL(url);
-    }
-    urlsRef.current = {};
-  };
-
-  const loadPreviews = useCallback(async (docs: TransactionDocument[]) => {
-    for (const doc of docs) {
-      if (!doc.mimeType.startsWith('image/') || urlsRef.current[doc.id]) continue;
-      try {
-        const url = await apiClient.fetchBlobUrl(`documents/${doc.id}/content`);
-        urlsRef.current[doc.id] = url;
-        setPreviewUrls({ ...urlsRef.current });
-      } catch {
-        // preview failures are non-fatal; the row still shows a file chip
-      }
-    }
-  }, []);
+  const { previews: previewUrls, load: loadPreviews, forget, clear } = useImagePreviews();
 
   const refresh = useCallback(async () => {
     if (!transactionId) {
@@ -60,7 +36,7 @@ export function useTransactionDocuments(transactionId: string | undefined): UseT
     setIsLoading(true);
     setError(null);
     try {
-      const docs = await apiClient.get<TransactionDocument[]>(`transactions/${transactionId}/documents`);
+      const docs = await apiClient.get<DocumentFile[]>(`transactions/${transactionId}/documents`);
       setDocuments(docs ?? []);
       void loadPreviews(docs ?? []);
     } catch (err: unknown) {
@@ -71,11 +47,9 @@ export function useTransactionDocuments(transactionId: string | undefined): UseT
   }, [transactionId, loadPreviews]);
 
   useEffect(() => {
-    revokeAll();
-    setPreviewUrls({});
+    clear();
     void refresh();
-    return revokeAll;
-  }, [refresh]);
+  }, [refresh, clear]);
 
   /**
    * Uploads one file per request (the API takes a single `file` part), so a
@@ -93,7 +67,7 @@ export function useTransactionDocuments(transactionId: string | undefined): UseT
         try {
           const form = new FormData();
           form.append('file', file);
-          const doc = await apiClient.postForm<TransactionDocument>(`transactions/${transactionId}/documents`, form);
+          const doc = await apiClient.postForm<DocumentFile>(`transactions/${transactionId}/documents`, form);
           setDocuments((docs) => [...docs, doc]);
           void loadPreviews([doc]);
         } catch (err: unknown) {
@@ -125,7 +99,7 @@ export function useTransactionDocuments(transactionId: string | undefined): UseT
         const form = new FormData();
         // order matters — parts become pages in the order appended
         for (const file of files) form.append('pages', file);
-        const doc = await apiClient.postForm<TransactionDocument>(
+        const doc = await apiClient.postForm<DocumentFile>(
           `transactions/${transactionId}/documents/scan`,
           form,
         );
@@ -144,23 +118,15 @@ export function useTransactionDocuments(transactionId: string | undefined): UseT
     try {
       await apiClient.delete(`documents/${documentId}`);
       setDocuments((docs) => docs.filter((doc) => doc.id !== documentId));
-      const url = urlsRef.current[documentId];
-      if (url) {
-        URL.revokeObjectURL(url);
-        delete urlsRef.current[documentId];
-        setPreviewUrls({ ...urlsRef.current });
-      }
+      forget(documentId);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to delete document');
     }
-  }, []);
+  }, [forget]);
 
-  const openDocument = useCallback(async (doc: TransactionDocument) => {
+  const open = useCallback(async (doc: DocumentFile) => {
     try {
-      const url = await apiClient.fetchBlobUrl(`documents/${doc.id}/content`);
-      window.open(url, '_blank', 'noopener');
-      // give the new tab time to load before revoking
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      await openDocument(doc);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to open document');
     }
@@ -176,6 +142,6 @@ export function useTransactionDocuments(transactionId: string | undefined): UseT
     upload,
     uploadAsPdf,
     remove,
-    openDocument,
+    openDocument: open,
   };
 }
