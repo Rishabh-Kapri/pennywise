@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { BankLogo } from '@/features/accounts/components/BankLogo/BankLogo';
 import type { Account } from '@/features/accounts/types/account.types';
-import { SearchSelect, type SearchSelectItem } from '@/features/transactions/components/popovers/SearchSelect';
+import { SearchSelect, type SearchSelectItem } from '@/components/common/pickers/SearchSelect';
 
 /**
  * The account a statement (or one of its sections) belongs to: the app's

@@ -2,37 +2,16 @@ import { GearSix as Settings, SignOut, UserCircle } from '@phosphor-icons/react'
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppDispatch } from '@/app/hooks';
-import { logout } from '@/features/auth';
-import { apiClient } from '@/utils';
+import { logout } from '@/features/auth/store/authSlice';
+import { useAccountProfile } from '@/features/auth/hooks/useAccountProfile';
 import styles from './Navbar.module.css';
-
-interface CurrentAuthProvider {
-  providerType: string;
-  providerId: string;
-  picture?: string;
-}
-
-interface CurrentAuthUser {
-  id: string;
-  email: string;
-  name: string;
-  picture?: string;
-  providers: CurrentAuthProvider[];
-}
 
 export function UserMenu() {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
-  const [user, setUser] = useState<CurrentAuthUser | null>(null);
+  const user = useAccountProfile();
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    apiClient
-      .get<CurrentAuthUser>('auth/users/me')
-      .then(setUser)
-      .catch(() => setUser(null));
-  }, []);
 
   useEffect(() => {
     if (!isOpen) {

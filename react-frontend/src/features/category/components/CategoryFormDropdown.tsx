@@ -2,7 +2,7 @@ import type React from 'react';
 import type { Category } from '../types/category.types';
 import { useEffect, useRef, useState } from 'react';
 import { useAppSelector } from '@/app/hooks';
-import { selectSelectedBudget } from '@/features/budget';
+import { selectSelectedBudget } from '@/features/budget/store/budgetSlice';
 import { ArrowRight, PencilSimple as Edit, Plus } from '@phosphor-icons/react';
 import styles from './CategoryFormDropdown.module.css';
 import { Popover } from '@/components/common/Popover/Popover';

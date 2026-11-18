@@ -3,6 +3,11 @@ export const TAG_COLORS = [
   '#8b5cf6', '#ef4444', '#14b8a6', '#f97316', '#06b6d4',
 ];
 
+/** The colour a tag is drawn in: its own, else one picked from its name. */
+export function tagColor(tag: { name: string; color?: string | null }): string {
+  return tag.color || getAutoColor(tag.name);
+}
+
 export function getAutoColor(name: string): string {
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
@@ -62,9 +67,14 @@ export function tagLabel(name: string): string {
   return dated?.place ? `${dated.place} · ${dated.monthLabel} ${dated.year}` : name;
 }
 
-/** Search matches either the stored name or the label shown for it. */
+/**
+ * Search matches the stored name, the label shown for it, or its words
+ * ("goa dec" finds goa-dec-2025).
+ */
 export function tagMatches(name: string, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
-  return name.toLowerCase().includes(q) || tagLabel(name).toLowerCase().includes(q);
+  const dated = parseDatedTag(name);
+  const words = dated ? `${dated.place} ${dated.monthLabel} ${dated.year}` : '';
+  return `${name} ${tagLabel(name)} ${words}`.toLowerCase().includes(q);
 }

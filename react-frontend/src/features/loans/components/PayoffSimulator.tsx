@@ -16,6 +16,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import styles from './PayoffSimulator.module.css';
+import { formatCurrency } from '@/utils/format';
 
 interface PayoffSimulatorProps {
   isOpen: boolean;
@@ -23,14 +24,6 @@ interface PayoffSimulatorProps {
   currentBalance: number;
   interestRate: number;
   minimumPayment: number;
-}
-
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(value);
 }
 
 export default function PayoffSimulator({

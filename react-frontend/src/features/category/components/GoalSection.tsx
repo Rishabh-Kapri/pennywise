@@ -7,7 +7,7 @@ import type { Category, CategoryGoal, GoalCadence, GoalType } from '../types/cat
 import { deleteCategoryGoal, updateCategoryGoal } from '../store/categorySlice';
 import { getGoalProgress } from '../goals/goalProgress';
 import { describeGoal, describeProgress, describeRefill, GOAL_TYPE_LABELS, WEEKDAYS } from '../goals/goalText';
-import { formatBudgetAmount } from './budgetFormat';
+import { formatBudgetAmount } from '@/utils/format';
 import { getLocaleDate } from '@/utils/date.utils';
 import styles from './GoalSection.module.css';
 

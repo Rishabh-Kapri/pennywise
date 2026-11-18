@@ -8,9 +8,9 @@ import { CategoryInfo } from './CategoryInfo';
 import { MonthSummary } from './MonthSummary';
 import { GroupRenameButton } from './CategoryActions';
 import { useAppDispatch } from '@/app/hooks';
-import { createCategory, HIDDEN_GROUP_ID, toggleGroupCollapse } from '../store';
+import { createCategory, HIDDEN_GROUP_ID, isUserGroup, toggleGroupCollapse } from '@/features/category/store/categorySlice';
 import { toast } from '@/utils';
-import { formatBudgetAmount } from './budgetFormat';
+import { formatBudgetAmount } from '@/utils/format';
 
 interface CategoryGroupProps {
   groups: CategoryGroup[];
@@ -85,7 +85,7 @@ export default function CategoryGroup({ groups, month }: CategoryGroupProps) {
         <div className={styles.body}>
           {groups.map((group) => {
             const balance = group.balance?.[month] ?? 0;
-            const canAdd = group.name !== 'Hidden' && !group.isSystem;
+            const canAdd = isUserGroup(group);
             return (
               <section
                 key={group.id}

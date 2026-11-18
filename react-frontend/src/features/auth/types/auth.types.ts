@@ -17,14 +17,8 @@ export interface AuthTokens {
 export interface AuthState {
   user: User | null;
   tokens: AuthTokens | null;
-  isAuthenticated: boolean;
   loading: LoadingState;
   error: string | null;
-}
-
-export interface GoogleAuthResponse {
-  credential: string; // JWT ID token from Google
-  clientId: string;
 }
 
 export interface LoginResponse {
@@ -32,9 +26,4 @@ export interface LoginResponse {
   accessToken: string;
   refreshToken: string;
   expiresIn: number; // seconds
-}
-
-export interface RefreshTokenResponse {
-  accessToken: string;
-  expiresIn: number;
 }

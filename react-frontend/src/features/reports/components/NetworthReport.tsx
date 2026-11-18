@@ -3,8 +3,9 @@ import { Area, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip,
 import { TrendUp } from '@phosphor-icons/react';
 import { useAppSelector } from '@/app/hooks';
 import { LoadingState } from '@/utils';
-import { DashboardCard, Segmented } from '@/features/dashboard/components/DashboardCard';
-import { formatCurrency } from '@/features/dashboard/utils';
+import { Card } from '@/components/common/Card/Card';
+import { Segmented } from '@/components/common/Card/Segmented';
+import { formatCurrency } from '@/utils/format';
 import { monthLabel } from '../cashFlow';
 import { selectNetWorthLoading, selectNetWorthReport } from '../store/reportSlice';
 import { AXIS_TICK, COLORS, GRID_COLOR, SERIES, axisCurrency, formatMonthTick } from '../chartTheme';
@@ -109,7 +110,7 @@ export default function NetworthReport() {
         />
       </StatRow>
 
-      <DashboardCard
+      <Card
         title="Net worth over time"
         icon={<TrendUp size={18} />}
         actions={<Segmented label="View" options={VIEW_OPTIONS} value={view} onChange={setView} />}
@@ -196,7 +197,7 @@ export default function NetworthReport() {
             as an asset account.
           </p>
         )}
-      </DashboardCard>
+      </Card>
     </div>
   );
 }

@@ -1,24 +1,20 @@
 import { configureStore } from '@reduxjs/toolkit';
 import accounts from '../features/accounts/store/accountSlice';
 import budgets from '../features/budget/store/budgetSlice';
-import { categorySlice } from '@/features/category/store';
-import payees from '@/features/payees/store';
-import transactions from '@/features/transactions/store';
-import authSlice from '@/features/auth/store';
-import { dashboardSlice } from '@/features/dashboard/store';
+import categorySlice from '@/features/category/store/categorySlice';
+import payees from '@/features/payees/store/payeeSlice';
+import transactions from '@/features/transactions/store/transactionSlice';
+import authSlice, { saveSession, sessionEnded, tokenRefreshed } from '@/features/auth/store/authSlice';
+import dashboardSlice from '@/features/dashboard/store/dashboardSlice';
 import loans from '@/features/loans/store/loanSlice';
-import tags from '@/features/tags/store';
-import agent from '@/features/agent/store';
-import reports from '@/features/reports/store';
-import jobs from '@/features/jobs/store';
-import recurring from '@/features/recurring/store';
-import predictionReview from '@/features/predictionReview/store';
+import tags from '@/features/tags/store/tagSlice';
+import agent from '@/features/agent/store/agentSlice';
+import reports, { saveTreatments } from '@/features/reports/store/reportSlice';
+import jobs from '@/features/jobs/store/jobSlice';
+import recurring from '@/features/recurring/store/recurringSlice';
+import predictionReview from '@/features/predictionReview/store/predictionReviewSlice';
 import { apiClient } from '@/utils';
-import {
-  budgetUpdateMiddleware,
-  dataFetchMiddleware,
-  dateChangeMiddleware,
-} from './middlewares';
+import { appDataListener } from './middlewares';
 
 export const store = configureStore({
   reducer: {
@@ -37,21 +33,28 @@ export const store = configureStore({
     recurring: recurring,
     predictionReview: predictionReview,
   },
-  middleware: (getDefaultMiddleWare) =>
-    getDefaultMiddleWare({
-      // serializableCheck: {
-      //   ignoredActions: [''],
-      // },
-    }).concat([
-      dataFetchMiddleware,
-      dateChangeMiddleware,
-      budgetUpdateMiddleware,
-    ]),
-  devTools: true,
+  middleware: (getDefaultMiddleware) => getDefaultMiddleware().prepend(appDataListener.middleware),
 });
 
-apiClient.setGetState(store.getState);
-apiClient.setDispatch(store.dispatch);
+apiClient.connect({
+  accessToken: () => store.getState().auth.tokens?.accessToken,
+  refreshToken: () => store.getState().auth.tokens?.refreshToken,
+  budgetId: () => store.getState().budgets.selectedBudget?.id,
+  tokenRefreshed: (token) => store.dispatch(tokenRefreshed(token)),
+  expired: () => {
+    store.dispatch(sessionEnded());
+    window.location.href = '/login';
+  },
+});
+
+// What outlives a reload is saved here, so reducers stay free of storage.
+let saved = store.getState();
+store.subscribe(() => {
+  const state = store.getState();
+  if (state.auth.user !== saved.auth.user || state.auth.tokens !== saved.auth.tokens) saveSession(state.auth);
+  if (state.reports.groupTreatments !== saved.reports.groupTreatments) saveTreatments(state.reports.groupTreatments);
+  saved = state;
+});
 
 export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;

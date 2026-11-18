@@ -81,5 +81,3 @@ export default tagSlice.reducer;
 
 // Selectors
 export const selectAllTags = (state: { tags: TagState }) => state.tags.allTags;
-export const selectTagsLoading = (state: { tags: TagState }) => state.tags.loading;
-export const selectTagsError = (state: { tags: TagState }) => state.tags.error;

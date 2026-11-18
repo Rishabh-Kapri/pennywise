@@ -1,8 +1,8 @@
 import { parseAmount } from '@/utils/expression';
 import { getTodaysDate } from '@/utils/date.utils';
-import type { TransactionColumns } from '@/types/common.types';
-import { allAccountTxnCols, specificAccountTxnCols } from '../TransactionColumns';
-import type { MobileFilter } from '../TransactionHeader';
+import type { TransactionColumns } from '@/features/transactions/types/transaction.types';
+import { allAccountTxnCols, specificAccountTxnCols } from '@/features/transactions/components/TransactionColumns/TransactionColumns';
+import type { MobileFilter } from '@/features/transactions/components/TransactionHeader/TransactionHeader';
 import {
   TransactionStatus,
   type ListItem,
@@ -141,18 +141,28 @@ export function createEmptyTransaction({
   };
 }
 
-export function applyParsedInputValue(txn: Transaction, key: keyof Transaction, value: string | number) {
+/**
+ * The change an inline text field makes. The amount fields take arithmetic
+ * ("1200+300") and throw when it doesn't parse; an outflow below zero turns
+ * into an inflow.
+ */
+export function parseInputValue(key: keyof Transaction, value: string | number): Partial<Transaction> {
+  if (key !== 'outflow' && key !== 'inflow') {
+    return { [key]: value };
+  }
   const result = parseAmount(value);
-
-  if (key !== 'outflow') {
-    return { ...txn, [key]: result };
+  if (key === 'inflow') {
+    return { inflow: result };
   }
-
   if (result >= 0) {
-    return { ...txn, inflow: result || null, outflow: null };
+    return { inflow: result || null, outflow: null };
   }
+  return { outflow: Math.abs(result), inflow: null };
+}
 
-  return { ...txn, outflow: Math.abs(result), inflow: null };
+/** Editing a transaction the pipeline left unapproved approves it. */
+export function approvedByEdit(txn: Transaction): Transaction {
+  return txn.status === TransactionStatus.UNAPPROVED ? { ...txn, status: TransactionStatus.APPROVED } : txn;
 }
 
 export function getStickyHeaderForStartIndex(listItems: ListItem[], startIndex: number) {

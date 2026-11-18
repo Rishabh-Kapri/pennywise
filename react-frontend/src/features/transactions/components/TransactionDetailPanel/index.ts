@@ -1,1 +1,0 @@
-export { TransactionDetailPanel } from './TransactionDetailPanel';

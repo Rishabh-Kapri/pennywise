@@ -1,5 +1,5 @@
 import { Moon, Sun } from '@phosphor-icons/react';
-import { useTheme } from '@/context/ThemeContext';
+import { useTheme } from '@/components/theme/ThemeContext';
 import styles from './ThemeToggle.module.css';
 
 export function ThemeToggle() {

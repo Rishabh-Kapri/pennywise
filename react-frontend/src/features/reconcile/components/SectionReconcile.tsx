@@ -25,14 +25,16 @@ import {
   type StatementLedgerTxn,
   type StatementSectionReconciliation,
 } from '../types/reconcile.types';
-import { accountEnding, formatPeriod, money } from '../statementIdentity';
+import { accountEnding, formatPeriod } from '../statementIdentity';
+import { formatDecimal } from '@/utils/format';
 import type { Account } from '@/features/accounts/types/account.types';
-import { CategoryDropdown } from '@/features/transactions/components/popovers/CategoryPopover';
-import { PayeeDropdown } from '@/features/transactions/components/popovers/PayeePopover';
+import { CategoryDropdown } from '@/features/category/components/CategoryDropdown';
+import { PayeeDropdown } from '@/features/payees/components/PayeeDropdown';
 import { AccountPicker } from './AccountPicker';
 import { CardSummary } from './CardSummary';
 import { DifferenceForm, LinkCandidates, RowEditor, RowPicker } from './LinkControls';
 import styles from './StatementReconcile.module.css';
+import { formatPoints } from '@/utils/format';
 
 type Tab = 'missing' | 'matched' | 'ledgerOnly' | 'covered';
 
@@ -42,7 +44,7 @@ function Amount({ value }: { value: number }) {
   return (
     <span className={value < 0 ? styles.outflow : styles.inflow}>
       {value < 0 ? '−' : '+'}
-      {money(Math.abs(value))}
+      {formatDecimal(Math.abs(value))}
     </span>
   );
 }
@@ -67,7 +69,6 @@ function RowDate({ row }: { row: StatementRow }) {
 const CHARGE_BADGES: Record<string, string> = { tax: 'tax', interest: 'interest', fee: 'fee' };
 
 /** "+12 pts", or "−40 pts" for points taken back (a refund, a redemption). */
-const pointsLabel = (n: number) => `${n > 0 ? '+' : '−'}${Math.abs(n).toLocaleString('en-IN')} pts`;
 
 function RowBadges({
   row,
@@ -85,7 +86,7 @@ function RowBadges({
       {row.edited && (
         <span
           className={styles.badgeEdited}
-          title={`Read as "${row.edited.description}", ${row.edited.direction === 'debit' ? '−' : '+'}${money(row.edited.amount)} on ${shortDay(row.edited.date)}`}
+          title={`Read as "${row.edited.description}", ${row.edited.direction === 'debit' ? '−' : '+'}${formatDecimal(row.edited.amount)} on ${shortDay(row.edited.date)}`}
         >
           corrected
         </span>
@@ -130,7 +131,7 @@ function RowBadges({
       {row.chargeKind && <span className={styles.badge}>{CHARGE_BADGES[row.chargeKind]}</span>}
       {row.rewardPoints ? (
         <span className={styles.badgeMuted} title="Reward points the statement printed for this row">
-          {pointsLabel(row.rewardPoints)}
+          {formatPoints(row.rewardPoints)}
         </span>
       ) : null}
       {row.reference && <span className={styles.badgeMuted}>Ref {row.reference}</span>}
@@ -656,14 +657,14 @@ export function SectionReconcile({
         (section.balanceCheck.ok ? (
           <p className={styles.okBanner}>
             <CheckCircle size={18} weight="fill" />
-            <span>The rows add up to the statement's closing balance of {money(section.balanceCheck.reported)}.</span>
+            <span>The rows add up to the statement's closing balance of {formatDecimal(section.balanceCheck.reported)}.</span>
           </p>
         ) : (
           <p className={styles.warningBanner}>
             <WarningCircle size={18} />
             <span>
-              The rows add up to {money(section.balanceCheck.computed)}, but the statement closes at{' '}
-              {money(section.balanceCheck.reported)} (off by {money(Math.abs(section.balanceCheck.difference))}). A row
+              The rows add up to {formatDecimal(section.balanceCheck.computed)}, but the statement closes at{' '}
+              {formatDecimal(section.balanceCheck.reported)} (off by {formatDecimal(Math.abs(section.balanceCheck.difference))}). A row
               may have been missed or misread.
             </span>
           </p>
@@ -897,7 +898,7 @@ export function SectionReconcile({
                         {m.others?.map((o) => (
                           <span key={o.id} className={styles.linkedOther}>
                             + <Link to={`/transactions/${o.id}`}>{o.payeeName || o.note || 'Transaction'}</Link>{' '}
-                            {money(o.amount)}
+                            {formatDecimal(o.amount)}
                           </span>
                         ))}
                       </td>
@@ -905,7 +906,7 @@ export function SectionReconcile({
                         <Amount value={[m.row, ...(m.otherRows ?? [])].reduce((sum, r) => sum + signedAmount(r), 0)} />
                         {m.kind === 'amount_differs' && !m.linked && (
                           <span className={styles.badge} title="Close date and matching text, different amount">
-                            Pennywise has {money(m.transaction.amount)}
+                            Pennywise has {formatDecimal(m.transaction.amount)}
                           </span>
                         )}
                       </td>

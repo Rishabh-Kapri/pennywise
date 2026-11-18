@@ -4,10 +4,11 @@ import { ArrowRight, ChartDonut, Warning, WarningCircle } from '@phosphor-icons/
 import { useAppSelector } from '@/app/hooks';
 import type { RootState } from '@/app/store';
 import { selectCashFlowRefreshing, selectSpendingSummary, selectUncategorizedCount } from '../../store/dashboardSlice';
-import type { SpendingCategory } from '../../types';
-import { formatCurrency, formatMonthName } from '../../utils';
-import { Amount } from '../Amount';
-import { DashboardCard } from '../DashboardCard';
+import type { SpendingCategory } from '../../types/dashboard.types';
+import { formatMonthName } from '../../utils';
+import { formatCurrency } from '@/utils/format';
+import { Amount } from '@/components/common/Amount/Amount';
+import { Card } from '@/components/common/Card/Card';
 import styles from './SpendingCard.module.css';
 
 const RING_RADIUS = 27;
@@ -72,7 +73,7 @@ export default function SpendingCard({ className = '' }: { className?: string })
   const monthName = month ? formatMonthName(month) : '';
 
   return (
-    <DashboardCard
+    <Card
       title="Spending"
       icon={<ChartDonut size={18} />}
       className={className}
@@ -145,6 +146,6 @@ export default function SpendingCard({ className = '' }: { className?: string })
           <ArrowRight size={14} className={styles.attentionArrow} aria-hidden="true" />
         </Link>
       )}
-    </DashboardCard>
+    </Card>
   );
 }

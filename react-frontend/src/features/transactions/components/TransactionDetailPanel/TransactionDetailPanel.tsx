@@ -10,9 +10,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEve
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { apiClient, errorMessage, toast } from '@/utils';
 import { createTag } from '@/features/tags/store/tagSlice';
-import { getAutoColor } from '@/features/tags/utils';
 import { Popover } from '@/components/common/Popover/Popover';
-import { getCurrencyLocaleString, getLocaleDate, getTodaysDate } from '@/utils/date.utils';
+import { getLocaleDate, getTodaysDate } from '@/utils/date.utils';
 import {
   TransactionStatus,
   type CipherPrediction,
@@ -22,18 +21,19 @@ import {
   type TransactionSource,
   type TransactionStatus as TransactionStatusType,
 } from '../../types/transaction.types';
-import { AccountDropdown } from '../popovers/AccountPopover';
-import { PayeeDropdown } from '../popovers/PayeePopover';
-import { CategoryDropdown } from '../popovers/CategoryPopover';
-import { DateDropdown } from '../popovers/DatePopover';
-import { BankLogo } from '@/features/accounts/components/BankLogo/BankLogo';
+import { AccountDropdown } from '@/features/accounts/components/AccountDropdown';
+import { PayeeDropdown } from '@/features/payees/components/PayeeDropdown';
+import { CategoryDropdown } from '@/features/category/components/CategoryDropdown';
+import { DateDropdown } from '@/components/common/pickers/DateDropdown';
+import { AccountLogo } from '@/features/accounts/components/BankLogo/AccountLogo';
 import { TransactionLocationSection } from './TransactionLocationSection';
 import { TransactionDocumentsSection } from './TransactionDocumentsSection';
 import { TransactionSources } from './TransactionSources';
 import { formatSourceTime, transactionTime } from '../../utils/sourceTime';
 import { useTransactionSources } from '../../hooks/useTransactionSources';
 import styles from './TransactionDetailPanel.module.css';
-import { tagLabel, tagMatches } from '@/features/tags/utils';
+import { getAutoColor, tagColor, tagLabel, tagMatches } from '@/features/tags/utils';
+import { confidenceLevel, confidencePercent, formatAmount, formatConfidence } from '@/utils/format';
 
 type TransactionStatusAction = Extract<
   TransactionStatusType,
@@ -70,19 +70,13 @@ function getDisplayAmount(txn: Transaction) {
 function getSignedDisplayAmount(txn: Transaction) {
   const { value, isInflow } = getDisplayAmount(txn);
   const sign = isInflow ? '+' : '-';
-  return `${sign}${getCurrencyLocaleString(value)}`;
-}
-
-function formatConfidence(value?: number | null) {
-  if (value === null || value === undefined) return '-';
-  const percent = value <= 1 ? value * 100 : value;
-  return `${percent.toFixed(percent >= 10 ? 0 : 1)}%`;
+  return `${sign}${formatAmount(value)}`;
 }
 
 function formatOptionalAmount(value?: number | null) {
   if (value === null || value === undefined) return '-';
   const sign = value >= 0 ? '+' : '-';
-  return `${sign}${getCurrencyLocaleString(Math.abs(value))}`;
+  return `${sign}${formatAmount(Math.abs(value))}`;
 }
 
 function PanelFrame({
@@ -289,7 +283,7 @@ function TagList({ tags }: { tags: DisplayTag[] }) {
 function TagChip({ tag }: { tag: DisplayTag }) {
   return (
     <span className={styles.tagBadge} title={tag.name}>
-      <span className={styles.tagDot} style={{ backgroundColor: tag.color || '#6366f1' }} aria-hidden="true" />
+      <span className={styles.tagDot} style={{ backgroundColor: tagColor(tag) }} aria-hidden="true" />
       {tagLabel(tag.name)}
     </span>
   );
@@ -403,7 +397,7 @@ function DetailTagPicker({
               className={styles.tagPickerItem}
               onClick={() => toggleTag(tag.id)}
               aria-pressed={selectedSet.has(tag.id)}>
-              <span className={styles.tagDot} style={{ backgroundColor: tag.color || '#6366f1' }} aria-hidden="true" />
+              <span className={styles.tagDot} style={{ backgroundColor: tagColor(tag) }} aria-hidden="true" />
               <span className={styles.tagPickerName} title={tag.name}>{tagLabel(tag.name)}</span>
               {selectedSet.has(tag.id) && <CheckIcon size={14} weight="bold" className={styles.tagPickerCheck} />}
             </button>
@@ -423,11 +417,6 @@ function DetailRow({ label, children, mono = false }: { label: string; children:
   );
 }
 
-function confidencePercent(value?: number | null) {
-  if (value === null || value === undefined) return null;
-  return Math.max(0, Math.min(value <= 1 ? value * 100 : value, 100));
-}
-
 function PredictionMetric({
   label,
   value,
@@ -437,15 +426,17 @@ function PredictionMetric({
   value?: string | null;
   confidence?: number | null;
 }) {
-  const percent = confidencePercent(confidence);
-  const tone = percent === null ? '' : percent >= 80 ? styles.confidenceHigh : percent >= 50 ? styles.confidenceMid : styles.confidenceLow;
+  const percent = confidence == null ? 0 : confidencePercent(confidence);
+  const tone = { high: styles.confidenceHigh, medium: styles.confidenceMid, low: styles.confidenceLow, unknown: '' }[
+    confidenceLevel(confidence)
+  ];
   return (
     <div className={`${styles.predictionMetric} ${tone}`}>
       <span className={styles.detailLabel}>{label}</span>
       <strong className={styles.predictionValue}>{value || '-'}</strong>
       <span className={styles.predictionConfidence}>{formatConfidence(confidence)}</span>
       <span className={styles.confidenceMeter} aria-hidden="true">
-        <span style={{ width: `${percent ?? 0}%` }} />
+        <span style={{ width: `${percent}%` }} />
       </span>
     </div>
   );
@@ -604,7 +595,6 @@ function TransactionView({
     [allTags, txn.tagIds],
   );
 
-  const account = allAccounts.find((acc) => acc.id === txn.accountId);
 
   const linkedAccount = useMemo(
     () => allAccounts.find((account) => account.id === txn.transferAccountId) ?? null,
@@ -687,7 +677,7 @@ function TransactionView({
         <div className={styles.fact}>
           <dt>Account</dt>
           <dd className={styles.factEditable}>
-            <BankLogo name={txn.accountName} bank={account?.bank} type={account?.type} size="sm" />
+            <AccountLogo accountId={txn.accountId} name={txn.accountName} size="sm" />
             <AccountDropdown value={txn.accountName} onClick={onSelectChange('accountId', 'accountName')} variant="ghost" />
           </dd>
         </div>
@@ -782,11 +772,6 @@ function ReviewActions({ onStatusChange }: { onStatusChange: (status: Transactio
   );
 }
 
-function PanelAccountLogo({ txn }: { txn: Transaction }) {
-  const account = useAppSelector((state) => state.accounts.allAccounts.find((acc) => acc.id === txn.accountId));
-  return <BankLogo name={txn.accountName} bank={account?.bank} type={account?.type} size="md" />;
-}
-
 export function TransactionDetailPanel({
   selectedTxn,
   isAddingNew,
@@ -833,7 +818,7 @@ export function TransactionDetailPanel({
 
   return (
     <PanelFrame
-      leading={<PanelAccountLogo txn={selectedTxn} />}
+      leading={<AccountLogo accountId={selectedTxn.accountId} name={selectedTxn.accountName} size="md" />}
       eyebrow={selectedTxn.accountName || 'Transaction'}
       title={selectedTxn.payeeName || 'Transaction'}
       isClosing={isClosing}

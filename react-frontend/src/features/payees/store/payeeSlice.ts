@@ -34,7 +34,7 @@ export const refreshPayeeData = createAsyncThunk('payees/refreshPayeeData', asyn
 });
 
 export const createPayee = createAsyncThunk<Payee, string>('payees/createPayee', async (name, { dispatch }) => {
-  const created = await apiClient.post<Payee>('payees', { name } as Partial<Payee>);
+  const created = await apiClient.post<Payee>('payees', { name });
   await dispatch(refreshPayeeData());
   return created;
 });
@@ -42,7 +42,7 @@ export const createPayee = createAsyncThunk<Payee, string>('payees/createPayee',
 export const renamePayee = createAsyncThunk<void, { id: string; name: string }>(
   'payees/renamePayee',
   async ({ id, name }, { dispatch }) => {
-    await apiClient.patch(`payees/${id}`, { name } as Partial<Payee>);
+    await apiClient.patch(`payees/${id}`, { name });
     await dispatch(fetchAllPayees());
   },
 );
@@ -88,7 +88,7 @@ export const savePayeeRule = createAsyncThunk<void, PayeeRuleInput>(
       matchString: input.matchString,
       matchType: input.matchType,
       categoryId: input.categoryId || undefined,
-    } as Partial<PayeeRule>;
+    };
     const isMove = Boolean(input.ruleId && input.originalPayeeId && input.originalPayeeId !== input.payeeId);
 
     if (input.ruleId && !isMove) {

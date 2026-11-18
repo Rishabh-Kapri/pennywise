@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAppSelector } from '@/app/hooks';
 import type { JobUpdate } from '@/features/jobs/types/job.types';
-import { apiClient } from '@/utils';
+import { apiClient, errorMessage } from '@/utils';
 import type {
   StatementCreateItem,
   StatementCreateResult,
@@ -54,23 +54,9 @@ function useStatementRefresh(processing: boolean, reload: () => unknown) {
   }, [processing, reload]);
 }
 
-/**
- * Opens the uploaded PDF in a new tab. The file needs auth headers, so it is
- * fetched as a blob first. The tab is opened before the fetch, while the click
- * still counts as a user action, or the popup blocker would stop it.
- */
-export async function openStatementPdf(id: string): Promise<void> {
-  const tab = window.open('', '_blank');
-  try {
-    const url = await apiClient.fetchBlobUrl(`statements/${id}/file`);
-    if (tab) tab.location.href = url;
-    else window.location.href = url;
-    // the tab has loaded it by then; the URL only holds the blob in memory
-    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-  } catch (err) {
-    tab?.close();
-    throw err;
-  }
+/** Opens the uploaded PDF in a new tab. */
+export function openStatementPdf(id: string): Promise<void> {
+  return apiClient.openFile(`statements/${id}/file`);
 }
 
 export interface UploadOutcome {
@@ -91,7 +77,7 @@ export function useStatementList() {
       setImports(list ?? []);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load statements');
+      setError(errorMessage(err, 'Failed to load statements'));
     } finally {
       setIsLoading(false);
     }
@@ -127,7 +113,7 @@ export function useStatementList() {
           outcomes.push({
             fileName: file.name,
             ok: false,
-            message: err instanceof Error ? err.message : 'Upload failed',
+            message: errorMessage(err, 'Upload failed'),
           });
         }
       }
@@ -173,7 +159,7 @@ export function useStatementReconciliation(id: string | null) {
       setError(null);
     } catch (err) {
       if (currentId.current !== id) return;
-      setError(err instanceof Error ? err.message : 'Failed to load statement');
+      setError(errorMessage(err, 'Failed to load statement'));
     } finally {
       if (currentId.current === id) setIsLoading(false);
     }

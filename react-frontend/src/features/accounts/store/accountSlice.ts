@@ -1,7 +1,6 @@
 import {
   createAsyncThunk,
   createSlice,
-  type PayloadAction,
 } from '@reduxjs/toolkit';
 import {
   BudgetAccountType,
@@ -11,11 +10,10 @@ import {
   type AccountState,
 } from '../types/account.types';
 import { apiClient, LoadingState } from '@/utils';
-import type { RootState } from '@/app';
+import type { RootState } from '@/app/store';
 import { fetchAllPayees } from '@/features/payees/store/payeeSlice';
 
 const initialState: AccountState = {
-  selectedAccount: null,
   allAccounts: [],
   trackingAccounts: [],
   budgetAccounts: [],
@@ -61,7 +59,8 @@ export const fetchAllAccounts = createAsyncThunk<Account[]>(
   },
 );
 
-export type NewAccount = Pick<Account, 'name' | 'type' | 'bank' | 'suffix'>;
+/** A loan account starts with its (negative) balance; other accounts start at zero. */
+export type NewAccount = Pick<Account, 'name' | 'type'> & Partial<Pick<Account, 'bank' | 'suffix' | 'balance'>>;
 
 /** Opens an account, then reloads the list (the API also adds its transfer payee). */
 export const createAccount = createAsyncThunk<Account, NewAccount>(
@@ -88,20 +87,7 @@ export const updateAccount = createAsyncThunk<Account, { id: string; edits: Acco
 const accountSlice = createSlice({
   name: 'accounts',
   initialState,
-  reducers: {
-    setSelectedAccount: (state, action: PayloadAction<Account>) => {
-      state.selectedAccount = action.payload;
-    },
-    setBudgetAccounts: (state) => {
-      state.budgetAccounts = filterBudgetAccounts(state.allAccounts);
-    },
-    setTrackingAccounts: (state) => {
-      state.trackingAccounts = filterTrackingAccounts(state.allAccounts);
-    },
-    setLoanAccounts: (state) => {
-      state.loanAccounts = filterLoanAccounts(state.allAccounts);
-    },
-  },
+  reducers: {},
   extraReducers: (builder) => {
     builder
       .addCase(fetchAllAccounts.pending, (state) => {
@@ -126,13 +112,6 @@ const accountSlice = createSlice({
       });
   },
 });
-
-export const {
-  setSelectedAccount,
-  setBudgetAccounts,
-  setTrackingAccounts,
-  setLoanAccounts,
-} = accountSlice.actions;
 
 export default accountSlice.reducer;
 

@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { ChartBar, HandCoins, ProhibitInset } from '@phosphor-icons/react';
-import { DashboardCard, Segmented } from '@/features/dashboard/components/DashboardCard';
-import { formatCurrency } from '@/features/dashboard/utils';
+import { Card } from '@/components/common/Card/Card';
+import { Segmented } from '@/components/common/Card/Segmented';
+import { formatCurrency } from '@/utils/format';
 import { formatPercent, monthLabel, type CashFlowSummary, type IncomeSourceSummary } from '../cashFlow';
 import { useCashFlowSummary } from '../hooks/useCashFlowSummary';
 import { AXIS_TICK, COLORS, CURSOR_FILL, GRID_COLOR, SERIES, axisCurrency, formatMonthTick } from '../chartTheme';
@@ -44,9 +45,9 @@ export default function IncomeReport() {
           <TrendCard summary={summary} named={named} rest={rest} />
         </>
       ) : (
-        <DashboardCard title="Income sources" icon={<HandCoins size={18} />}>
+        <Card title="Income sources" icon={<HandCoins size={18} />}>
           <EmptyState>No earned income in the selected period</EmptyState>
-        </DashboardCard>
+        </Card>
       )}
       <NotIncomeCard summary={summary} />
     </div>
@@ -64,7 +65,7 @@ function SourcesCard({
   const max = Math.max(...summary.incomeSources.map((source) => source.total), 1);
 
   return (
-    <DashboardCard title="Income sources" icon={<HandCoins size={18} />}>
+    <Card title="Income sources" icon={<HandCoins size={18} />}>
       <ul className={styles.list}>
         <li className={styles.headRow} aria-hidden="true">
           <span>Source</span>
@@ -90,7 +91,7 @@ function SourcesCard({
           </li>
         ))}
       </ul>
-    </DashboardCard>
+    </Card>
   );
 }
 
@@ -121,7 +122,7 @@ function TrendCard({
   });
 
   return (
-    <DashboardCard
+    <Card
       title="Income by month"
       icon={<ChartBar size={18} />}
       actions={<Segmented label="View" options={VIEW_OPTIONS} value={view} onChange={setView} />}
@@ -196,7 +197,7 @@ function TrendCard({
           ]}
         />
       )}
-    </DashboardCard>
+    </Card>
   );
 }
 
@@ -207,7 +208,7 @@ function NotIncomeCard({ summary }: { summary: CashFlowSummary }) {
   if (withdrawals.length === 0 && borrowing.length === 0 && summary.opening <= 0) return null;
 
   return (
-    <DashboardCard title="Came in, but not counted as income" icon={<ProhibitInset size={18} />}>
+    <Card title="Came in, but not counted as income" icon={<ProhibitInset size={18} />}>
       <p className={styles.help}>
         This money landed in your budget accounts, but it wasn't earned, so it's left out of income and the spend rate.
       </p>
@@ -245,6 +246,6 @@ function NotIncomeCard({ summary }: { summary: CashFlowSummary }) {
           </li>
         )}
       </ul>
-    </DashboardCard>
+    </Card>
   );
 }

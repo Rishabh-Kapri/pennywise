@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Bank, ChartBar, PiggyBank } from '@phosphor-icons/react';
-import { DashboardCard, Segmented } from '@/features/dashboard/components/DashboardCard';
-import { formatCurrency } from '@/features/dashboard/utils';
+import { Card } from '@/components/common/Card/Card';
+import { Segmented } from '@/components/common/Card/Segmented';
+import { formatCurrency } from '@/utils/format';
 import { monthLabel, type AccountFlowSummary, type CashFlowSummary } from '../cashFlow';
 import { useCashFlowSummary } from '../hooks/useCashFlowSummary';
 import { AXIS_TICK, COLORS, CURSOR_FILL, GRID_COLOR, axisCurrency, formatMonthTick } from '../chartTheme';
@@ -81,7 +82,7 @@ function MonthlyCard({ summary }: { summary: CashFlowSummary }) {
   });
 
   return (
-    <DashboardCard
+    <Card
       title="Net invested by month"
       icon={<ChartBar size={18} />}
       actions={<Segmented label="View" options={VIEW_OPTIONS} value={view} onChange={setView} />}
@@ -147,7 +148,7 @@ function MonthlyCard({ summary }: { summary: CashFlowSummary }) {
           ]}
         />
       )}
-    </DashboardCard>
+    </Card>
   );
 }
 
@@ -155,7 +156,7 @@ function AccountsCard({ summary }: { summary: CashFlowSummary }) {
   const savingGroups = summary.groups.filter((group) => group.treatment === 'saving');
 
   return (
-    <DashboardCard title="By account" icon={<PiggyBank size={18} />}>
+    <Card title="By account" icon={<PiggyBank size={18} />}>
       <table className={styles.table}>
         <thead>
           <tr>
@@ -196,13 +197,13 @@ function AccountsCard({ summary }: { summary: CashFlowSummary }) {
           ))}
         </tbody>
       </table>
-    </DashboardCard>
+    </Card>
   );
 }
 
 function DebtCard({ accounts }: { accounts: AccountFlowSummary[] }) {
   return (
-    <DashboardCard title="Loans & debt" icon={<Bank size={18} />}>
+    <Card title="Loans & debt" icon={<Bank size={18} />}>
       <table className={styles.table}>
         <thead>
           <tr>
@@ -226,6 +227,6 @@ function DebtCard({ accounts }: { accounts: AccountFlowSummary[] }) {
           ))}
         </tbody>
       </table>
-    </DashboardCard>
+    </Card>
   );
 }

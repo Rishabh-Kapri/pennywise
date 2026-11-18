@@ -66,14 +66,3 @@ export function hasActiveFilters(filters: TransactionFilters): boolean {
   );
 }
 
-export function countActiveFilters(filters: TransactionFilters): number {
-  let count = 0;
-  if (filters.note.trim()) count++;
-  if (filters.dateFrom || filters.dateTo) count++;
-  if (filters.accountIds.length > 0) count++;
-  if (filters.payeeIds.length > 0) count++;
-  if (filters.categoryIds.length > 0) count++;
-  if (filters.tagIds.length > 0) count++;
-  if (filters.pendingOnly) count++;
-  return count;
-}

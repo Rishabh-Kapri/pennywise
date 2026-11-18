@@ -1,5 +1,6 @@
 import { apiClient, LoadingState } from '@/utils';
-import type { RootState } from '@/app';
+import { isStatementJob } from '../jobTree';
+import type { RootState } from '@/app/store';
 import { createAsyncThunk, createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import type { JobDetail, JobFilters, JobList, JobsState, JobUpdate } from '../types/job.types';
 
@@ -81,7 +82,7 @@ const jobSlice = createSlice({
       state.liveVersion += 1;
       const { jobId, type, status, progress } = action.payload;
       state.latest[jobId] = { ...state.latest[jobId], ...action.payload, progress: progress ?? state.latest[jobId]?.progress };
-      if (type?.startsWith('statement.') && status !== 'queued' && status !== 'running') {
+      if (isStatementJob(type) && status !== 'queued' && status !== 'running') {
         state.statementVersion += 1;
       }
       for (const tree of state.list?.trees ?? []) {

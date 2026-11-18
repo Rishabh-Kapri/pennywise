@@ -116,7 +116,7 @@ function MailRow({ connection, connecting, readOnly, onReconnect, onSetPaused, o
       </li>
       {importing && canPause && !readOnly && (
         <li className={styles.backfill}>
-          <EmailBackfill connectionId={connection.id} onImported={() => Promise.resolve()} />
+          <EmailBackfill connectionId={connection.id} />
         </li>
       )}
     </>

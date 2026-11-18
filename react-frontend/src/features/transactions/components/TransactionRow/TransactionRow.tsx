@@ -1,10 +1,10 @@
 import { type CSSProperties, type MouseEvent, useCallback, useEffect, useRef, useState } from 'react';
-import type { TransactionColumns } from '@/types/common.types';
+import type { TransactionColumns } from '@/features/transactions/types/transaction.types';
 import { type Transaction, type ListItem } from '../../types/transaction.types';
 import styles from '../Transaction/Transaction.module.css';
-import { TransactionCell } from '../TransactionCell';
+import { TransactionCell } from '@/features/transactions/components/TransactionCell/TransactionCell';
 import type { RowComponentProps } from 'react-window';
-import { formatBudgetAmount } from '@/features/category/components/budgetFormat';
+import { formatBudgetAmount } from '@/utils/format';
 
 const INLINE_EDIT_TRANSACTION_KEYS = new Set<keyof Transaction>([
   'payeeName',
@@ -129,24 +129,11 @@ export function TransactionRow({
       handleSelectedTxnChange(nameKey, nextName);
       // auto-save for existing transactions after a dropdown selection
       if (!isAddingNew && onAutoSave) {
-        if (idKey === 'date') {
-          onAutoSave({ date: id });
-          resetInlineEdit();
-        }
-        if (idKey === 'payeeId' || idKey === 'categoryId') {
-          onAutoSave({ [idKey]: nextId, [nameKey]: nextName });
-          resetInlineEdit();
-        }
+        onAutoSave(idKey === nameKey ? { [idKey]: nextId } : { [idKey]: nextId, [nameKey]: nextName });
+        resetInlineEdit();
       }
     },
     [handleSelectedTxnChange, isAddingNew, onAutoSave, resetInlineEdit],
-  );
-
-  const handleTagsChange = useCallback(
-    (tagIds: string[]) => {
-      handleSelectedTxnChange('tagIds', tagIds);
-    },
-    [handleSelectedTxnChange],
   );
 
   if (item.type === 'header') {
@@ -207,7 +194,6 @@ export function TransactionRow({
                 autoFocus={isActiveInlineEditCell}
                 onFieldChange={handleInputChange}
                 onSelectChange={createSelectHandler}
-                onTagsChange={handleTagsChange}
                 onBlur={(key, value) => {
                   handleInputBlur(key, value);
                 }}

@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { ArrowLeft, ArrowRight, LockSimple } from '@phosphor-icons/react';
 import { useAppSelector } from '@/app/hooks';
-import { selectIsDemoUser } from '@/features/auth/store';
+import { selectIsDemoUser } from '@/features/auth/store/authSlice';
 import { AIProvidersPanel, type AISetup } from '../AIProvidersPanel';
 import { usableModels } from '../../types';
 import type { StepProps } from '../OnboardingWizard';

@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
-import { budgetOnboardingUpdated } from '@/features/budget';
+import { budgetOnboardingUpdated } from '@/features/budget/store/budgetSlice';
 import type { RootState } from '@/app/store';
 import { updateOnboarding } from '../api';
 import { ONBOARDING_STEPS, type BudgetOnboarding, type OnboardingStep, type UpdateOnboardingPayload } from '../types';

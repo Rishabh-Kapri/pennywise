@@ -1,1 +1,0 @@
-export { TransactionMobile } from './TransactionMobile';

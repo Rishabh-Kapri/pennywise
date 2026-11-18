@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { CheckCircle, Info, Warning, XCircle } from '@phosphor-icons/react';
-import { CategoryDropdown } from '@/features/transactions/components/popovers/CategoryPopover';
-import { SearchSelect } from '@/features/transactions/components/popovers/SearchSelect';
+import { CategoryDropdown } from '@/features/category/components/CategoryDropdown';
+import { SearchSelect } from '@/components/common/pickers/SearchSelect';
 import type { Payee, PayeeMatchType, PayeeRule } from '../types/payee.types';
 import type { PayeeRuleInput } from '../store/payeeSlice';
 import { hasWildcard, ruleMatches } from '../payeeUtils';

@@ -9,12 +9,13 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { toast } from '@/utils';
 import { suggestCategoryDescription, updateCategoryDetails } from '../store/categorySlice';
-import { selectSelectedMonth } from '@/features/budget';
+import { selectSelectedMonth } from '@/features/budget/store/budgetSlice';
 import { getLocaleDate, getPreviousMonthKey } from '@/utils/date.utils';
 import { useAssignedEditor } from '../hooks/useAssignedEditor';
-import { formatBudgetAmount } from './budgetFormat';
+import { formatBudgetAmount } from '@/utils/format';
 import { GoalSection } from './GoalSection';
 import { CategoryActions } from './CategoryActions';
+import { ALMOST_SPENT_SHARE } from '../spending';
 
 interface CategoryInfoProps {
   category: Category;
@@ -24,7 +25,7 @@ interface CategoryInfoProps {
 
 function statusOf(available: number, assigned: number, spent: number) {
   if (available < 0) return { label: 'Overspent', className: styles.statusOver };
-  if (assigned > 0 && spent >= assigned * 0.85) return { label: 'Almost spent', className: styles.statusWarn };
+  if (assigned > 0 && spent >= assigned * ALMOST_SPENT_SHARE) return { label: 'Almost spent', className: styles.statusWarn };
   if (assigned > 0 || available > 0) return { label: 'On track', className: styles.statusOk };
   return { label: 'Not funded', className: styles.statusIdle };
 }

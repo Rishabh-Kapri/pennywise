@@ -1,7 +1,7 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 import type { LoanMetadata, LoanState } from '../types/loan.types';
 import { apiClient, LoadingState } from '@/utils';
-import type { RootState } from '@/app';
+import type { RootState } from '@/app/store';
 
 // Async thunks for API calls
 export const fetchAllLoanMetadata = createAsyncThunk<LoanMetadata[]>(
@@ -95,10 +95,6 @@ const loanSlice = createSlice({
 export default loanSlice.reducer;
 
 // Selectors
-export const selectLoanByAccountId = (accountId: string) => (state: RootState) =>
-  state.loans.loanMetadata[accountId] ?? null;
-
 export const selectAllLoanMetadata = (state: RootState) =>
   state.loans.loanMetadata;
 
-export const selectLoanLoading = (state: RootState) => state.loans.loading;

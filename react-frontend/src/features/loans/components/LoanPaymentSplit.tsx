@@ -1,5 +1,5 @@
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { formatCompactCurrency, formatCurrency } from '@/features/dashboard/utils';
+import { formatCompactCurrency, formatCurrency } from '@/utils/format';
 import type { LoanMonth } from '../types/loan.types';
 import styles from './LoanPaymentSplit.module.css';
 

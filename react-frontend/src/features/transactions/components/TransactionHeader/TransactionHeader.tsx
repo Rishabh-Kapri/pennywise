@@ -7,8 +7,8 @@ import {
   PlusIcon as Plus,
   MagnifyingGlassIcon as Search,
 } from '@phosphor-icons/react';
-import { getCurrencyLocaleString } from '@/utils/date.utils';
 import styles from './TransactionHeader.module.css';
+import { formatAmount } from '@/utils/format';
 
 export type MobileFilter = 'all' | 'incoming' | 'outgoing' | 'week';
 
@@ -49,7 +49,7 @@ export function TransactionHeader({
             <span>{name}</span>
           </h2>
           <div className={balance < 0 ? `${styles.negative} ${styles.amount}` : styles.amount}>
-            <h3>{getCurrencyLocaleString(balance)}</h3>
+            <h3>{formatAmount(balance)}</h3>
           </div>
         </>
       )}

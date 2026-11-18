@@ -1,15 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
-import { selectIsDemoUser } from '@/features/auth/store';
+import { selectIsDemoUser } from '@/features/auth/store/authSlice';
 import { Check, CaretRight as ChevronRight } from '@phosphor-icons/react';
-import {
-  createBudget,
-  fetchAllBudgets,
-  selectAllBudgets,
-  selectBudgetError,
-  selectBudgetLoading,
-} from '../store';
+import { createBudget, fetchAllBudgets, selectAllBudgets, selectBudgetError, selectBudgetLoading } from '@/features/budget/store/budgetSlice';
 import {
   DEFAULT_SELECTED_TEMPLATE_GROUPS,
   STARTER_BUDGET_TEMPLATE_GROUPS,

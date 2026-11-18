@@ -138,7 +138,7 @@ export const updateTransactionLocation = createAsyncThunk<Transaction, UpdateTra
   'transactions/updateTransactionLocation',
   async ({ id, location }: UpdateTransactionLocationArgs) => {
     const url = `transactions/${id}/location`;
-    return await apiClient.patch<Transaction>(url, location as Partial<Transaction>);
+    return await apiClient.patch<Transaction>(url, location);
   },
 );
 
@@ -204,9 +204,8 @@ const transactionSlice = createSlice({
         state.loading = LoadingState.PENDING;
         state.error = null;
       })
-      .addCase(deleteTransactionById.fulfilled, (state, action) => {
+      .addCase(deleteTransactionById.fulfilled, (state) => {
         state.loading = LoadingState.SUCCESS;
-        console.log('transaction deleted', state, action);
       })
       .addCase(createTransaction.pending, (state) => {
         state.loading = LoadingState.PENDING;

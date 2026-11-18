@@ -12,9 +12,11 @@ import {
   selectDashboardActivity,
 } from '../../store/dashboardSlice';
 import { useExcludedAccounts } from '../../hooks/useExcludedAccounts';
-import { addDays, buildBalanceHistory, formatCurrency, formatDayMonth, formatSignedCurrency } from '../../utils';
-import { Amount } from '../Amount';
-import { DashboardCard, Segmented } from '../DashboardCard';
+import { addDays, buildBalanceHistory, formatDayMonth } from '../../utils';
+import { formatCurrency, formatSignedCurrency } from '@/utils/format';
+import { Amount } from '@/components/common/Amount/Amount';
+import { Card } from '@/components/common/Card/Card';
+import { Segmented } from '@/components/common/Card/Segmented';
 import BalanceChart from './BalanceChart';
 import styles from './BalanceCard.module.css';
 
@@ -64,7 +66,7 @@ export default function BalanceCard({ className = '' }: { className?: string }) 
   const includedCount = includedIds.size;
 
   return (
-    <DashboardCard
+    <Card
       title="Balance"
       icon={<Wallet size={18} />}
       className={className}
@@ -152,6 +154,6 @@ export default function BalanceCard({ className = '' }: { className?: string }) 
           </div>
         </div>
       )}
-    </DashboardCard>
+    </Card>
   );
 }

@@ -68,7 +68,6 @@ export interface CategoryGroup {
 export interface CategoryState {
   allCategories: Category[];
   allCategoryGroups: CategoryGroup[];
-  collapseAllGroups: boolean;
   inflowAmount: number;
   loading: LoadingState;
   inflowLoading: LoadingState;

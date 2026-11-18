@@ -1,5 +1,5 @@
 /* Filter tray: a grid of labelled fields that share the form-field look
-   (popovers/Popover.module.css .formInput/.formTrigger), 2.5rem tall. */
+   (common/pickers/Picker.module.css .formInput/.formTrigger), 2.5rem tall. */
 
 .filterRow {
   display: grid;

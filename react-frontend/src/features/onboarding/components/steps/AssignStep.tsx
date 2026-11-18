@@ -7,7 +7,7 @@ import {
   fetchInflowAmount,
   updateCategoryBudget,
 } from '@/features/category/store/categorySlice';
-import { formatCurrency } from '@/features/dashboard/utils';
+import { formatCurrency } from '@/utils/format';
 import { errorMessage, getCurrentMonthKey, toast } from '@/utils';
 import type { StepProps } from '../OnboardingWizard';
 import styles from './steps.module.css';

@@ -29,7 +29,7 @@ const initialState: BudgetState = {
   allBudgets: [],
   selectedBudget: null,
   selectedMonth: '',
-  loading: 'idle',
+  loading: LoadingState.IDLE,
   error: null,
 };
 
@@ -45,7 +45,7 @@ export const createBudget = createAsyncThunk<Budget, CreateBudgetPayload>(
   async (budget) => {
     return await apiClient.post<Budget>(
       'budgets',
-      budget as unknown as Partial<Budget>,
+      budget,
     );
   },
 );
@@ -146,8 +146,6 @@ export const { setSelectedMonth, setSelectedBudget, budgetOnboardingUpdated } = 
 export default budgetSlice.reducer;
 
 // Selectors
-// const selectBudgetState = (state: RootState) => state.budget;
-// const selectAllBudget = (state: RootState) => state.budget.allBudgets;
 export const selectSelectedMonth = (state: RootState) => state.budgets.selectedMonth;
 export const selectSelectedBudget = (state: RootState) => state.budgets.selectedBudget;
 export const selectAllBudgets = (state: RootState) => state.budgets.allBudgets;

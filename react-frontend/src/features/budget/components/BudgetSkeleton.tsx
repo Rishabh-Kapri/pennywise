@@ -1,4 +1,4 @@
-import { Skeleton } from '@/components/common/Skeleton';
+import { Skeleton } from '@/components/common/Skeleton/Skeleton';
 import styles from './BudgetSkeleton.module.css';
 
 const ROWS_PER_GROUP = [3, 2, 3, 2];

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { BankLogo } from '@/features/accounts/components/BankLogo/BankLogo';
-import { money, type StatementIdentity as Identity } from '../statementIdentity';
+import type { StatementIdentity as Identity } from '../statementIdentity';
+import { formatDecimal } from '@/utils/format';
 import styles from './StatementReconcile.module.css';
 
 /**
@@ -45,7 +46,7 @@ export function StatementIdentity({
           {identity.period ? <span>{identity.period}</span> : <span className={styles.muted}>Period not printed</span>}
           {identity.totalDue !== undefined && (
             <span className={styles.identityDue}>
-              Due <strong>{money(identity.totalDue)}</strong>
+              Due <strong>{formatDecimal(identity.totalDue)}</strong>
               {identity.dueBy && <> by {identity.dueBy}</>}
             </span>
           )}

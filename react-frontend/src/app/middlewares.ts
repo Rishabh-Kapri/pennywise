@@ -1,91 +1,57 @@
+import { createListenerMiddleware, isAnyOf } from '@reduxjs/toolkit';
 import { fetchAllAccounts } from '@/features/accounts/store/accountSlice';
-import { fetchAllBudgets, setSelectedBudget, setSelectedMonth } from '@/features/budget';
-import type { Middleware } from '@reduxjs/toolkit';
-import { fetchAllCategoryGroups, fetchInflowAmount } from '@/features';
-import type { AppDispatch, RootState } from '.';
-import { fetchAllPayees } from '@/features/payees/store/payeeSlice';
+import { fetchAllBudgets, setSelectedBudget, setSelectedMonth } from '@/features/budget/store/budgetSlice';
 import {
-    fetchAllCategories,
+  fetchAllCategories,
+  fetchAllCategoryGroups,
   fetchCategoryById,
+  fetchInflowAmount,
   updateCategoryBudget,
 } from '@/features/category/store/categorySlice';
 import { fetchAllLoanMetadata } from '@/features/loans/store/loanSlice';
-import { fetchAllTransaction } from '@/features/transactions/store/transactionSlice';
+import { fetchAllPayees } from '@/features/payees/store/payeeSlice';
 import { fetchAllTags } from '@/features/tags/store/tagSlice';
-
-/*
- * Fetch all data on app start
- */
-export const dataFetchMiddleware: Middleware =
-  (store) => (next) => (action) => {
-    const result = next(action);
-    // const dispatch = useAppDispatch();
-
-    const dispatch = store.dispatch as AppDispatch;
-
-    const month = (store.getState() as RootState).budgets.selectedMonth;
-    // A new user has no budget yet, and these all need one. Creating it fetches
-    // the budgets again, which lands back here.
-    if (fetchAllBudgets.fulfilled.match(action) && (store.getState() as RootState).budgets.selectedBudget) {
-      dispatch(fetchAllAccounts());
-      dispatch(fetchAllTransaction());
-      dispatch(fetchAllCategoryGroups(month));
-      dispatch(fetchAllCategories());
-      dispatch(fetchInflowAmount());
-      dispatch(fetchAllPayees());
-      dispatch(fetchAllLoanMetadata());
-      dispatch(fetchAllTags());
-      // fetch inflow category from selected budget metadata
-      const selectedBudget = (store.getState() as RootState).budgets
-        .selectedBudget;
-      if (selectedBudget?.metadata?.inflowCategoryId) {
-        dispatch(fetchCategoryById(selectedBudget.metadata.inflowCategoryId));
-      }
-    }
-
-    if (setSelectedBudget.match(action)) {
-      dispatch(fetchAllAccounts());
-      dispatch(fetchAllTransaction());
-      dispatch(fetchAllCategoryGroups(month));
-      dispatch(fetchAllCategories());
-      dispatch(fetchInflowAmount());
-      dispatch(fetchAllPayees());
-      dispatch(fetchAllLoanMetadata());
-      dispatch(fetchAllTags());
-      if (action.payload.metadata?.inflowCategoryId) {
-        dispatch(fetchCategoryById(action.payload.metadata.inflowCategoryId));
-      }
-    }
-    return result;
-  };
+import { fetchAllTransaction } from '@/features/transactions/store/transactionSlice';
+import type { AppDispatch, RootState } from './store';
 
 /**
- * Listen to the date change and fetch the category budget data
+ * Loads what every screen reads from the store: whenever the selected budget
+ * is known or changes, the month changes, or a budgeted amount changes Ready
+ * to Assign.
  */
-export const dateChangeMiddleware: Middleware =
-  (store) => (next) => (action) => {
-    const result = next(action);
+export const appDataListener = createListenerMiddleware();
+const startListening = appDataListener.startListening.withTypes<RootState, AppDispatch>();
 
-    const dispatch = store.dispatch as AppDispatch;
+startListening({
+  matcher: isAnyOf(fetchAllBudgets.fulfilled, setSelectedBudget),
+  effect: (_action, { dispatch, getState }) => {
+    const { selectedBudget, selectedMonth } = getState().budgets;
+    // A new user has no budget yet, and these all need one. Creating it
+    // fetches the budgets again, which lands back here.
+    if (!selectedBudget) return;
+    dispatch(fetchAllAccounts());
+    dispatch(fetchAllTransaction());
+    dispatch(fetchAllCategoryGroups(selectedMonth));
+    dispatch(fetchAllCategories());
+    dispatch(fetchInflowAmount());
+    dispatch(fetchAllPayees());
+    dispatch(fetchAllLoanMetadata());
+    dispatch(fetchAllTags());
+    const inflowCategoryId = selectedBudget.metadata?.inflowCategoryId;
+    if (inflowCategoryId) dispatch(fetchCategoryById(inflowCategoryId));
+  },
+});
 
-    if (setSelectedMonth.match(action)) {
-      dispatch(fetchAllCategoryGroups(action.payload));
-    }
+startListening({
+  actionCreator: setSelectedMonth,
+  effect: (action, { dispatch }) => {
+    dispatch(fetchAllCategoryGroups(action.payload));
+  },
+});
 
-    return result;
-  };
-
-/**
- * Listen to the budget change and fetch the inflow amount
- */
-export const budgetUpdateMiddleware: Middleware =
-  (store) => (next) => (action) => {
-    const result = next(action);
-    const dispatch = store.dispatch as AppDispatch;
-
-    if (updateCategoryBudget.fulfilled.match(action)) {
-      dispatch(fetchInflowAmount());
-    }
-
-    return result;
-  };
+startListening({
+  actionCreator: updateCategoryBudget.fulfilled,
+  effect: (_action, { dispatch }) => {
+    dispatch(fetchInflowAmount());
+  },
+});

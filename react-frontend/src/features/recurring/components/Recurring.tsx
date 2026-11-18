@@ -9,11 +9,11 @@ import {
   XIcon,
 } from '@phosphor-icons/react';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
-import { LoadingState } from '@/utils';
-import { getCurrencyLocaleString, getLocaleDate, getTodaysDate } from '@/utils/date.utils';
-import { AccountDropdown } from '@/features/transactions/components/popovers/AccountPopover';
-import { PayeeDropdown } from '@/features/transactions/components/popovers/PayeePopover';
-import { CategoryDropdown } from '@/features/transactions/components/popovers/CategoryPopover';
+import { LoadingState, errorText } from '@/utils';
+import { getLocaleDate, getTodaysDate } from '@/utils/date.utils';
+import { AccountDropdown } from '@/features/accounts/components/AccountDropdown';
+import { PayeeDropdown } from '@/features/payees/components/PayeeDropdown';
+import { CategoryDropdown } from '@/features/category/components/CategoryDropdown';
 import {
   createRecurringTransaction,
   deleteRecurringTransaction,
@@ -33,6 +33,7 @@ import {
   type RecurringTransactionDraft,
 } from '../types/recurring.types';
 import styles from './Recurring.module.css';
+import { formatAmount } from '@/utils/format';
 
 const FREQUENCIES: { value: RecurringFrequency; label: string }[] = [
   { value: 'DAILY', label: 'Daily' },
@@ -72,7 +73,7 @@ const EMPTY_FORM: FormState = {
   note: '',
   frequency: 'MONTHLY',
   intervalCount: '1',
-  nextDate: getTodaysDate(),
+  nextDate: '',
   endDate: '',
   paused: false,
 };
@@ -314,10 +315,15 @@ export default function Recurring() {
   const handleSubmit = async () => {
     if (!form) return;
     const draft = toDraft(form);
-    if (editingId) {
-      await dispatch(updateRecurringTransaction({ id: editingId, draft }));
-    } else {
-      await dispatch(createRecurringTransaction(draft));
+    try {
+      if (editingId) {
+        await dispatch(updateRecurringTransaction({ id: editingId, draft })).unwrap();
+      } else {
+        await dispatch(createRecurringTransaction(draft)).unwrap();
+      }
+    } catch {
+      // The slice's error shows above the list; the form stays open with what was typed.
+      return;
     }
     setForm(null);
     setEditingId(null);
@@ -356,7 +362,7 @@ export default function Recurring() {
             className={styles.primaryBtn}
             onClick={() => {
               setEditingId(null);
-              setForm({ ...EMPTY_FORM });
+              setForm({ ...EMPTY_FORM, nextDate: getTodaysDate() });
             }}>
             <PlusIcon size={16} />
             New
@@ -364,7 +370,7 @@ export default function Recurring() {
         </div>
       </div>
 
-      {error && <div className={styles.error}>{error}</div>}
+      {error && <div className={styles.error}>{errorText(error)}</div>}
       {lastRun && (
         <div className={styles.runResult}>
           Created {lastRun.created} transaction{lastRun.created === 1 ? '' : 's'}
@@ -422,7 +428,7 @@ export default function Recurring() {
                 <div className={styles.ruleRight}>
                   <span className={rule.amount > 0 ? styles.amountInflow : styles.amountOutflow}>
                     {rule.amount > 0 ? '+' : '−'}
-                    {getCurrencyLocaleString(Math.abs(rule.amount))}
+                    {formatAmount(Math.abs(rule.amount))}
                   </span>
                   <div className={styles.ruleActions}>
                     {confirmDeleteId === rule.id ? (

@@ -49,19 +49,3 @@ export interface PredictionReviewState {
   error: string | null;
 }
 
-/** Confidence buckets drive the chip colour and the "needs a look" ordering. */
-export type ConfidenceLevel = 'high' | 'medium' | 'low' | 'unknown';
-
-export function confidenceLevel(value?: number | null): ConfidenceLevel {
-  if (value === null || value === undefined) return 'unknown';
-  const percent = value <= 1 ? value * 100 : value;
-  if (percent >= 80) return 'high';
-  if (percent >= 50) return 'medium';
-  return 'low';
-}
-
-export function formatConfidence(value?: number | null): string {
-  if (value === null || value === undefined) return '—';
-  const percent = value <= 1 ? value * 100 : value;
-  return `${percent.toFixed(0)}%`;
-}

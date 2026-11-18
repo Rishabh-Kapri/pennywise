@@ -1,12 +1,8 @@
 /** Filter for the budget-wide document library. */
 export type DocumentKind = '' | 'image' | 'pdf';
 
-/**
- * A document plus the transaction context needed to render a library tile.
- * Mirrors `model.DocumentListItem` on the API — the embedded document fields
- * are flattened into the same JSON object by Go's struct embedding.
- */
-export interface DocumentListItem {
+/** A receipt or other file attached to a transaction (`model.Document`). */
+export interface DocumentFile {
   id: string;
   budgetId: string;
   transactionId: string;
@@ -15,6 +11,14 @@ export interface DocumentListItem {
   sizeBytes: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * A document plus the transaction context needed to render a library tile.
+ * Mirrors `model.DocumentListItem` on the API — the embedded document fields
+ * are flattened into the same JSON object by Go's struct embedding.
+ */
+export interface DocumentListItem extends DocumentFile {
   transactionDate: string;
   transactionAmount: number;
   payeeName?: string;

@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { Popover } from '@/components/common/Popover/Popover';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
-import { selectSelectedMonth } from '@/features/budget';
+import { selectSelectedMonth } from '@/features/budget/store/budgetSlice';
 import { toast } from '@/utils';
 import { evaluateAmount } from '@/utils/expression';
-import type { Category, CategoryGroup } from '../../types/category.types';
-import { selectCategoryGroups, updateCategoryBudget } from '../../store';
+import type { Category } from '../../types/category.types';
+import { selectCategoryGroups, updateCategoryBudget } from '@/features/category/store/categorySlice';
 import { AmountCell } from '../AmountCell';
 import styles from './Popover.module.css';
+import { isUserGroup } from '@/features/category/store/categorySlice';
 
 interface Props {
   triggerRef: React.RefObject<HTMLElement | null>;
@@ -19,8 +20,6 @@ interface Props {
   onClose: () => void;
 }
 
-const transformGroups = (groups: CategoryGroup[]) =>
-  groups.filter((group) => !group.isSystem && group.name !== 'Hidden');
 
 /**
  * Move money between categories for the selected month. A positive balance
@@ -31,7 +30,7 @@ export function MovePopover({ triggerRef, isOpen, categoryId, categoryName, amou
   const dispatch = useAppDispatch();
   const selectedMonth = useAppSelector(selectSelectedMonth);
   const { allCategoryGroups } = useAppSelector(selectCategoryGroups);
-  const groups = transformGroups(allCategoryGroups);
+  const groups = allCategoryGroups.filter(isUserGroup);
   const covering = amount < 0;
 
   const [draft, setDraft] = useState('');

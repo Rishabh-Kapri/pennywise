@@ -7,7 +7,8 @@ import { toast } from '@/utils';
 import { selectInflowCategory, updateCategoryBudget } from '../store/categorySlice';
 import { getGoalProgress } from '../goals/goalProgress';
 import { getLocaleDate, getPreviousMonthKey } from '@/utils/date.utils';
-import { formatBudgetAmount } from './budgetFormat';
+import { formatBudgetAmount } from '@/utils/format';
+import { spentIn } from '../spending';
 
 interface MonthSummaryProps {
   groups: CategoryGroup[];
@@ -17,8 +18,6 @@ interface MonthSummaryProps {
 
 const TOP_SPENDING_LIMIT = 5;
 const ATTENTION_LIMIT = 4;
-
-const spentIn = (category: Category, month: string) => Math.max(-(category.activity?.[month] ?? 0), 0);
 
 /** Shown in the inspector column while no category is selected. */
 export function MonthSummary({ groups, month, onSelectCategory }: MonthSummaryProps) {

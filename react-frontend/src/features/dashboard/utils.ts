@@ -1,62 +1,6 @@
 import type { Transaction } from '@/features/transactions/types/transaction.types';
-import type { BalancePoint } from './types';
-
-/**
- * Format an amount as whole-rupee INR, e.g. ₹1,23,456.
- * Pass the raw value; the sign is dropped so callers control +/− display.
- */
-export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(Math.abs(amount));
-}
-
-/**
- * Compact INR for axis ticks and dense labels, e.g. ₹1.2L, ₹45K.
- */
-export function formatCompactCurrency(amount: number): string {
-  const abs = Math.abs(amount);
-  const sign = amount < 0 ? '-' : '';
-  if (abs >= 10000000) return `${sign}₹${trimZero(abs / 10000000)}Cr`;
-  if (abs >= 100000) return `${sign}₹${trimZero(abs / 100000)}L`;
-  if (abs >= 1000) return `${sign}₹${trimZero(abs / 1000)}K`;
-  return `${sign}₹${Math.round(abs)}`;
-}
-
-/**
- * Compact INR for a chart axis whose ticks are `step` apart: as many decimals
- * as the step needs (₹2.75L, ₹3L), so neighbouring ticks never read the same.
- */
-export function formatTickCurrency(amount: number, step: number): string {
-  const abs = Math.abs(amount);
-  const sign = amount < 0 ? '−' : '';
-  const [unit, suffix] = abs >= 1e7 ? [1e7, 'Cr'] : abs >= 1e5 ? [1e5, 'L'] : abs >= 1e3 ? [1e3, 'K'] : [1, ''];
-  const ratio = step / unit;
-  let decimals = 0;
-  while (decimals < 2 && Math.abs(ratio * 10 ** decimals - Math.round(ratio * 10 ** decimals)) > 1e-6) decimals += 1;
-  const digits = (abs / unit).toFixed(decimals);
-  return `${sign}₹${decimals ? digits.replace(/\.?0+$/, '') : digits}${suffix}`;
-}
-
-function trimZero(value: number): string {
-  return value.toFixed(1).replace(/\.0$/, '');
-}
-
-/** −₹1,191 / +₹500 (with `plus`) / ₹0. Uses a true minus sign. */
-export function formatSignedCurrency(amount: number, plus = false): string {
-  const rounded = Math.round(amount);
-  if (rounded < 0) return `−${formatCurrency(rounded)}`;
-  if (rounded > 0 && plus) return `+${formatCurrency(rounded)}`;
-  return formatCurrency(rounded);
-}
-
-/** Whole rupees without the symbol, e.g. 1,59,006. */
-export function formatDigits(amount: number): string {
-  return new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(Math.abs(Math.round(amount)));
-}
+import { transactionNet } from '@/features/transactions/utils/amount';
+import type { BalancePoint } from './types/dashboard.types';
 
 // ── Dates (transaction dates are plain YYYY-MM-DD strings) ──
 
@@ -98,8 +42,6 @@ export function formatMonthName(month: string, style: 'long' | 'short' = 'long')
 
 // ── Balance history ──
 
-/** Net effect of a transaction on its account's balance. */
-export const transactionNet = (txn: Transaction) => (txn.inflow ?? 0) - (txn.outflow ?? 0);
 
 /**
  * End-of-day balance of the given accounts for every day from `start` to

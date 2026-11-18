@@ -1,6 +1,6 @@
 import { forwardRef } from 'react';
-import { getCurrencyLocaleString } from '@/utils/date.utils';
 import styles from './AmountCell.module.css';
+import { formatBudgetAmount } from '@/utils/format';
 
 type AmountVariant = 'default' | 'balance';
 
@@ -79,10 +79,7 @@ export const AmountCell = forwardRef<HTMLSpanElement, AmountCellProps>(
         onClick={onClick}
         {...ariaProps}>
         {/* `|| 0` normalizes -0 so it never renders as "-₹0" */}
-        {getCurrencyLocaleString(valueNum || 0, 'INR', 'en-IN', {
-          minimumFractionDigits: 0,
-          maximumFractionDigits: 2,
-        })}
+        {formatBudgetAmount(valueNum)}
       </span>
     );
   },

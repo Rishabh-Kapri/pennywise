@@ -32,14 +32,13 @@ import { StatementIdentity } from './StatementIdentity';
 import { StatementCsvPanel, type CsvLineRequest } from './StatementCsvPanel';
 import { StatementPdfPanel, type PdfPageRequest } from './StatementPdfPanel';
 import styles from './StatementReconcile.module.css';
+import { formatFileSize } from '@/utils/format';
 
 const MAX_BYTES = 20 * 1024 * 1024;
 
 const longDate = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 
-const fileSize = (bytes: number) =>
-  bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
 /** The day a statement is for: its statement date, else its period's end, else the upload. */
 function statementDay(imp: StatementImport): string {
@@ -431,7 +430,7 @@ export default function StatementReconcile({ accountId: cardId }: { accountId?: 
                   </span>
                   <div className={styles.fileText}>
                     <strong title={f.name}>{f.name}</strong>
-                    <span>{fileSize(f.size)}</span>
+                    <span>{formatFileSize(f.size)}</span>
                   </div>
                   <button
                     type="button"

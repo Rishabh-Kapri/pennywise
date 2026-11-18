@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAppDispatch } from '@/app/hooks';
-import { openBudget } from '@/features/budget/store';
+import { openBudget } from '@/features/budget/store/budgetSlice';
 import { errorMessage, toast } from '@/utils';
 import { acceptInvite, declineInvite, listMyInvites } from '../api';
 import type { BudgetInvite } from '../types';

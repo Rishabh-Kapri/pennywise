@@ -6,9 +6,10 @@ import { AmountCell } from './AmountCell';
 import { CategoryActions } from './CategoryActions';
 import { ActivityPopover } from './ActivityModal';
 import { useAssignedEditor } from '../hooks/useAssignedEditor';
-import { formatBudgetAmount } from './budgetFormat';
+import { formatBudgetAmount } from '@/utils/format';
 import { getGoalProgress, type GoalProgress } from '../goals/goalProgress';
 import { describeProgress } from '../goals/goalText';
+import { ALMOST_SPENT_SHARE, spentIn } from '../spending';
 
 interface Props {
   month: string;
@@ -28,7 +29,7 @@ type MeterStatus = 'healthy' | 'warning' | 'danger';
 
 function getMeterStatus(balance: number, percentUsed: number): MeterStatus {
   if (balance < 0) return 'danger';
-  if (percentUsed >= 80) return 'warning';
+  if (percentUsed >= ALMOST_SPENT_SHARE * 100) return 'warning';
   return 'healthy';
 }
 
@@ -65,7 +66,7 @@ export function CategoryItem({
   const assigned = editor.assigned;
   const activity = category.activity?.[month] ?? 0;
   const balance = category.balance?.[month] ?? 0;
-  const spent = Math.max(-activity, 0);
+  const spent = spentIn(category, month);
   const percentUsed = assigned > 0 ? (spent / assigned) * 100 : spent > 0 ? 100 : 0;
   const goal = getGoalProgress(category, month);
   const showMeter = goal !== null || assigned > 0 || spent > 0;

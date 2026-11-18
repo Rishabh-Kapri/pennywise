@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { Plus, Trash, Warning, X } from '@phosphor-icons/react';
-import { Modal } from '@/components/common/Modal';
+import { Modal } from '@/components/common/Modal/Modal';
 import type { Payee } from '../types/payee.types';
 import { normalizePayeeName } from '../payeeUtils';
 import styles from './Payees.module.css';

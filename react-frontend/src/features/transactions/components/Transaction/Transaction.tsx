@@ -2,22 +2,13 @@ import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowsLeftRightIcon } from '@phosphor-icons/react';
-import {
-  createTransaction,
-  deleteTransactionById,
-  fetchAllTransaction,
-  updateTransaction,
-  updateTransactionStatus,
-  bulkDeleteTransactions,
-  fetchPendingApprovalCount,
-} from '../../store';
+import { createTransaction, deleteTransactionById, fetchAllTransaction, updateTransaction, updateTransactionStatus, bulkDeleteTransactions, fetchPendingApprovalCount } from '@/features/transactions/store/transactionSlice';
 import { LoadingState } from '@/utils';
 import { apiClient, errorMessage, toast } from '@/utils';
 import type { PaginationResponse } from '@/utils/common.constants';
 import styles from './Transaction.module.css';
-import { useHeader } from '@/context/HeaderContext';
-import { useSidePanel } from '@/context/SidePanelContext';
-import { formatBudgetAmount } from '@/features/category/components/budgetFormat';
+import { useHeader, useSidePanel } from '@/components/layout/slots';
+import { formatBudgetAmount, formatPoints } from '@/utils/format';
 import { selectAccountInfoFromId } from '@/features/accounts/store/accountSlice';
 import { BankLogo } from '@/features/accounts/components/BankLogo/BankLogo';
 import {
@@ -37,18 +28,20 @@ import {
   type TransactionFilters,
   type TransactionsLocationState,
 } from '../../types/filter.types';
-import { TransactionSkeleton } from '../TransactionSkeleton';
+import { TransactionSkeleton } from '@/features/transactions/components/TransactionSkeleton/TransactionSkeleton';
 import { List } from 'react-window';
-import { TransactionRow } from '../TransactionRow';
-import { TransactionDetailPanel } from '../TransactionDetailPanel';
+import { TransactionRow } from '@/features/transactions/components/TransactionRow/TransactionRow';
+import { TransactionDetailPanel } from '@/features/transactions/components/TransactionDetailPanel/TransactionDetailPanel';
 import { fetchAllAccounts } from '@/features/accounts/store/accountSlice';
-import { runJobAction } from '@/features/jobs/store';
-import { ActiveFilterChips, TransactionFilterPanel } from '../TransactionFilterPanel';
-import { selectSelectedBudget } from '@/features/budget';
-import { TransactionMobile } from '../TransactionMobile';
-import { TransactionHeader, type MobileFilter } from '../TransactionHeader';
+import { runJobAction } from '@/features/jobs/store/jobSlice';
+import { ActiveFilterChips } from '@/features/transactions/components/TransactionFilterPanel/ActiveFilterChips';
+import { TransactionFilterPanel } from '@/features/transactions/components/TransactionFilterPanel/TransactionFilterPanel';
+import { selectSelectedBudget } from '@/features/budget/store/budgetSlice';
+import { TransactionMobile } from '@/features/transactions/components/TransactionMobile/TransactionMobile';
+import { TransactionHeader, type MobileFilter } from '@/features/transactions/components/TransactionHeader/TransactionHeader';
 import {
-  applyParsedInputValue,
+  approvedByEdit,
+  parseInputValue,
   buildTransactionPayload,
   createEmptyTransaction,
   filterTransactions,
@@ -112,7 +105,6 @@ function StickyMonthHeader({ stickyHeader }: { stickyHeader: NonNullable<StickyH
 // ── Main component ────────────────────────────────────────────────────────────
 
 /** "+1,234 pts", or "−40 pts" when more points were taken back than earned. */
-const formatPoints = (n: number) => `${n < 0 ? '−' : '+'}${Math.abs(n).toLocaleString('en-IN')} pts`;
 
 export function Transaction({ accountId, embedded = false }: { accountId?: string; embedded?: boolean } = {}) {
   const { setHeaderContent } = useHeader();
@@ -152,35 +144,49 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
     return payee ? { ...EMPTY_FILTERS, payeeIds: [payee.id], payeeNames: [payee.name] } : EMPTY_FILTERS;
   });
   const [filters, setFilters] = useDebounce<TransactionFilters>(initialFilters, 250);
+  // The list's query: the filters plus the account an account page is scoped to.
+  const listArgs = useMemo(() => {
+    const { accountIds, categoryIds, payeeIds, tagIds, note, dateFrom, dateTo, pendingOnly } = filters;
+    return {
+      accountIds: paramId ? [paramId] : accountIds,
+      categoryIds,
+      payeeIds,
+      tagIds,
+      note,
+      startDate: dateFrom,
+      endDate: dateTo,
+      status: pendingOnly ? TransactionStatus.UNAPPROVED : undefined,
+    };
+  }, [filters, paramId]);
+  const listArgsRef = useRef(listArgs);
+  listArgsRef.current = listArgs;
   // The filter fields stay folded behind the toolbar's Filters button until asked for.
   const [filtersOpen, setFiltersOpen] = useState(() => hasActiveFilters(initialFilters));
   const [stickyHeader, setStickyHeader] = useState<StickyHeaderState>(null);
   const cols = useMemo(() => getTransactionColumns(paramId), [paramId]);
   const isMobile = useIsMobile();
 
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        dismissJobIdRef.current = null;
-        setSelectedTxn(null);
-        setInlineEditingTxnId(null);
-        setIsDetailPanelOpen(false);
-        setIsAddingNew(false);
-        setSidePanelContent(null);
-      }
-    };
+  const resetSelectedTxn = useCallback(() => {
+    dismissJobIdRef.current = null;
     setSelectedTxn(null);
     setInlineEditingTxnId(null);
     setIsDetailPanelOpen(false);
     setIsAddingNew(false);
     setSidePanelContent(null);
-    dispatch(fetchAllTransaction({ accountIds: paramId ? [paramId] : [] }));
+  }, [setSidePanelContent]);
+
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') resetSelectedTxn();
+    };
+    resetSelectedTxn();
+    dispatch(fetchAllTransaction(listArgsRef.current));
     document.addEventListener('keydown', handleEscape);
     return () => {
       document.removeEventListener('keydown', handleEscape);
       setSidePanelContent(null);
     };
-  }, [paramId, selectedBudgetId, dispatch, setSidePanelContent]);
+  }, [paramId, selectedBudgetId, dispatch, resetSelectedTxn, setSidePanelContent]);
 
   // Runs after the reset above, so the form it opens stays open.
   useEffect(() => {
@@ -294,15 +300,6 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
     }
   }, [syncUrl, openTxnId, routeTxnId, navigate]);
 
-  const resetSelectedTxn = useCallback(() => {
-    dismissJobIdRef.current = null;
-    setSelectedTxn(null);
-    setInlineEditingTxnId(null);
-    setIsDetailPanelOpen(false);
-    setIsAddingNew(false);
-    setSidePanelContent(null);
-  }, [setSidePanelContent]);
-
   const handleSelectedTxnChange = useCallback((key: keyof Transaction, value: Transaction[keyof Transaction]) => {
     setSelectedTxn((prev) => {
       if (!prev) return null;
@@ -310,44 +307,10 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
     });
   }, []);
 
-  const handleInputBlur = useCallback(
-    (key: keyof Transaction, value: string | number) => {
-      if (!selectedTxn || !value) return;
-      try {
-        const updatedTxn = applyParsedInputValue(selectedTxn, key, value);
-        const optimisticTxn: Transaction = {
-          ...updatedTxn,
-          status: updatedTxn.status === TransactionStatus.UNAPPROVED ? TransactionStatus.APPROVED : updatedTxn.status,
-        };
-        setSelectedTxn(updatedTxn);
-        if (!isAddingNew && updatedTxn.id) {
-          dispatch(
-            updateTransaction({
-              payload: buildTransactionPayload(optimisticTxn),
-              optimisticTransaction: optimisticTxn,
-            }),
-          )
-            .unwrap()
-            .then(() => toast.success('Changes saved', { description: describeTxn(optimisticTxn) }))
-            .catch((err) =>
-              toast.error("Couldn't save your change", { description: errorMessage(err, 'Please try again.') }),
-            );
-        }
-      } catch (err) {
-        console.log('handleInputBlur:', err);
-      }
-    },
-    [selectedTxn, isAddingNew, dispatch],
-  );
-
   const handleAutoSave = useCallback(
     (overrides: Partial<Transaction>) => {
       if (!selectedTxn || isAddingNew || !selectedTxn.id) return;
-      const updatedTxn: Transaction = { ...selectedTxn, ...overrides };
-      const optimisticTxn: Transaction = {
-        ...updatedTxn,
-        status: updatedTxn.status === TransactionStatus.UNAPPROVED ? TransactionStatus.APPROVED : updatedTxn.status,
-      };
+      const optimisticTxn = approvedByEdit({ ...selectedTxn, ...overrides });
       dispatch(
         updateTransaction({
           payload: buildTransactionPayload(optimisticTxn),
@@ -361,6 +324,22 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
         );
     },
     [selectedTxn, isAddingNew, dispatch],
+  );
+
+  const handleInputBlur = useCallback(
+    (key: keyof Transaction, value: string | number) => {
+      if (!selectedTxn || !value) return;
+      let changes: Partial<Transaction>;
+      try {
+        changes = parseInputValue(key, value);
+      } catch {
+        toast.error("That amount doesn't add up", { description: 'Use a number or a sum like 1200+300.' });
+        return;
+      }
+      setSelectedTxn({ ...selectedTxn, ...changes });
+      handleAutoSave(changes);
+    },
+    [selectedTxn, handleAutoSave],
   );
 
   const addTransaction = useCallback(() => {
@@ -391,16 +370,9 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
           // The transaction is saved either way; the email just stays in Jobs.
           dispatch(runJobAction({ id: dismissJobIdRef.current, action: 'dismiss' }));
         }
-        const accountIds = paramId ? [paramId] : [];
-        const params = {
-          ...(accountIds.length && { accountIds: accountIds }),
-        };
-        dispatch(fetchAllTransaction(params));
+        dispatch(fetchAllTransaction(listArgs));
       } else {
-        const optimisticTxn: Transaction = {
-          ...selectedTxn,
-          status: selectedTxn.status === TransactionStatus.UNAPPROVED ? TransactionStatus.APPROVED : selectedTxn.status,
-        };
+        const optimisticTxn = approvedByEdit(selectedTxn);
         await dispatch(
           updateTransaction({
             payload: buildTransactionPayload(optimisticTxn),
@@ -415,23 +387,19 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
         description: errorMessage(err, 'Please try again.'),
       });
     }
-  }, [selectedTxn, isAddingNew, dispatch, paramId, resetSelectedTxn]);
+  }, [selectedTxn, isAddingNew, dispatch, listArgs, resetSelectedTxn]);
 
   const handleDelete = useCallback(async () => {
     if (!selectedTxn?.id) return;
     try {
       await dispatch(deleteTransactionById(selectedTxn.id)).unwrap();
-      const accountIds = paramId ? [paramId] : [];
-      const params = {
-        ...(accountIds.length && { accountIds: accountIds }),
-      };
-      dispatch(fetchAllTransaction(params));
+      dispatch(fetchAllTransaction(listArgs));
       toast.success('Transaction deleted', { description: describeTxn(selectedTxn) });
       resetSelectedTxn();
     } catch (err) {
       toast.error("Couldn't delete the transaction", { description: errorMessage(err, 'Please try again.') });
     }
-  }, [selectedTxn, dispatch, paramId, resetSelectedTxn]);
+  }, [selectedTxn, dispatch, listArgs, resetSelectedTxn]);
 
   const handleStatusChange = useCallback(
     async (
@@ -546,19 +514,6 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
     [isMobile, listItems],
   );
 
-  const listArgs = useMemo(() => {
-    const { accountIds, categoryIds, payeeIds, tagIds, note, dateFrom, dateTo, pendingOnly } = filters;
-    return {
-      accountIds: paramId ? [paramId] : accountIds,
-      categoryIds,
-      payeeIds,
-      tagIds,
-      note,
-      startDate: dateFrom,
-      endDate: dateTo,
-      status: pendingOnly ? TransactionStatus.UNAPPROVED : undefined,
-    };
-  }, [filters, paramId]);
 
   const filtersActive = hasActiveFilters(filters);
   const filteredTotals = useFilteredTotals(listArgs, filtersActive && !embedded, transactions);

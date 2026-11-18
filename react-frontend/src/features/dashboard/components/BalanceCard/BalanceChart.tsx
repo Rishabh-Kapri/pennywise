@@ -1,13 +1,8 @@
 import { useId, useMemo } from 'react';
 import { Area, AreaChart, CartesianGrid, ReferenceDot, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import type { BalancePoint } from '../../types';
-import {
-  formatDayMonth,
-  formatSignedCurrency,
-  formatTickCurrency,
-  formatWeekdayDate,
-  niceTicks,
-} from '../../utils';
+import type { BalancePoint } from '../../types/dashboard.types';
+import { formatDayMonth, formatWeekdayDate, niceTicks } from '../../utils';
+import { formatSignedCurrency, formatTickCurrency } from '@/utils/format';
 import styles from './BalanceCard.module.css';
 
 // SVG presentation colors follow the shared theme.

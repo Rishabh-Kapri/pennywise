@@ -1,18 +1,17 @@
 
 import { ArrowLeft, CalendarDots as CalendarDays, CaretLeft as ChevronLeft, CaretRight as ChevronRight, FileText, Info, PencilLine, Receipt as ReceiptText } from '@phosphor-icons/react';
-import { getCurrencyLocaleString } from '@/utils/date.utils';
 import type { Transaction } from '../../types/transaction.types';
 import { formatSourceTime } from '../../utils/sourceTime';
 import styles from '../Transaction/Transaction.module.css';
 import { useEffect, useMemo, useState } from 'react';
-import { useAppSelector } from '@/app/hooks';
-import { BankLogo } from '@/features/accounts/components/BankLogo/BankLogo';
+import { AccountLogo } from '@/features/accounts/components/BankLogo/AccountLogo';
+import { formatAmount } from '@/utils/format';
+import { transactionNet } from '../../utils/amount';
 
 function MobileAccount({ txn }: { txn: Transaction }) {
-  const account = useAppSelector((state) => state.accounts.allAccounts.find((acc) => acc.id === txn.accountId));
   return (
     <span className={styles.mobileAccountLabel}>
-      <BankLogo name={txn.accountName} bank={account?.bank} type={account?.type} size="xs" />
+      <AccountLogo accountId={txn.accountId} name={txn.accountName} size="xs" />
       <span>{txn.accountName || 'Account'}</span>
     </span>
   );
@@ -23,14 +22,6 @@ interface TransactionMobileProps {
   selectedTransactionId?: string;
   showAccountName: boolean;
   onSelectTransaction: (index: number, transaction: Transaction) => void;
-}
-
-function getTransactionAmount(txn: Transaction) {
-  if ((txn.inflow ?? 0) !== 0) {
-    return txn.inflow ?? 0;
-  }
-
-  return -(txn.outflow ?? 0);
 }
 
 function getTransactionDate(txn: Transaction) {
@@ -83,7 +74,7 @@ function groupTransactionsByDate(transactions: Transaction[]) {
 
   transactions.forEach((txn, index) => {
     const key = txn.date;
-    const amount = getTransactionAmount(txn);
+    const amount = transactionNet(txn);
     const cardView: TransactionCardView = {
       amount,
       cardDateLabel: getCardDateLabel(txn),
@@ -129,7 +120,7 @@ export function TransactionMobile({
     [activeIndex, transactions],
   );
   const activeAmount = useMemo(
-    () => (activeTransaction ? getTransactionAmount(activeTransaction) : 0),
+    () => (activeTransaction ? transactionNet(activeTransaction) : 0),
     [activeTransaction],
   );
   const canGoPrevious = useMemo(
@@ -202,7 +193,7 @@ export function TransactionMobile({
               isInflow ? styles.mobileTxnInflow : ''
             }`}>
             {isInflow ? '+' : '-'}{' '}
-            {getCurrencyLocaleString(Math.abs(activeAmount))}
+            {formatAmount(Math.abs(activeAmount))}
           </div>
           <div className={styles.mobileDetailCategory}>
             {activeTransaction.categoryName || 'Uncategorized'}
@@ -298,7 +289,7 @@ export function TransactionMobile({
                         card.isInflow ? styles.mobileTxnInflow : ''
                       }`}>
                       {card.isInflow ? '+' : '-'}{' '}
-                      {getCurrencyLocaleString(Math.abs(card.amount))}
+                      {formatAmount(Math.abs(card.amount))}
                     </span>
                     <span className={styles.mobileTxnCategory}>
                       {/* <Banknote size={18} /> */}

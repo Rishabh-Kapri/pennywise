@@ -8,9 +8,9 @@ import {
   Square,
 } from '@phosphor-icons/react';
 import { useMemo, useState } from 'react';
-import { CategoryDropdown } from '@/features/transactions/components/popovers/CategoryPopover';
+import { CategoryDropdown } from '@/features/category/components/CategoryDropdown';
 import { errorMessage, toast } from '@/utils';
-import { money } from '../statementIdentity';
+import { formatDecimal } from '@/utils/format';
 import {
   signedAmount,
   type StatementDifferenceRequest,
@@ -25,7 +25,7 @@ function day(date: string): string {
   return Number.isNaN(d.getTime()) ? date : d.toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
 }
 
-const signed = (v: number) => `${v < 0 ? '−' : '+'}${money(Math.abs(v))}`;
+const signed = (v: number) => `${v < 0 ? '−' : '+'}${formatDecimal(Math.abs(v))}`;
 
 const dayNumber = (date: string) => Date.parse(`${date.slice(0, 10)}T00:00:00Z`) / 86_400_000;
 
@@ -68,7 +68,7 @@ export function LinkCandidates({
   const needle = query.trim().toLowerCase();
   const shown = needle
     ? sorted.filter((t) =>
-        [t.payeeName, t.note, t.categoryName, money(Math.abs(t.amount)), String(Math.abs(t.amount))]
+        [t.payeeName, t.note, t.categoryName, formatDecimal(Math.abs(t.amount)), String(Math.abs(t.amount))]
           .filter(Boolean)
           .some((v) => v!.toLowerCase().includes(needle)),
       )
@@ -137,7 +137,7 @@ export function LinkCandidates({
                     </span>
                     <span className={styles.linkAmount}>
                       <span className={t.amount < 0 ? styles.outflow : styles.inflow}>{signed(t.amount)}</span>
-                      {!on && apart !== 0 && <small>{money(Math.abs(apart))} apart</small>}
+                      {!on && apart !== 0 && <small>{formatDecimal(Math.abs(apart))} apart</small>}
                     </span>
                   </button>
                 </li>
@@ -150,7 +150,7 @@ export function LinkCandidates({
                 ? 'Pick one or more.'
                 : left === 0
                   ? `${picked.length} picked · adds up exactly`
-                  : `${picked.length} picked · ${money(Math.abs(left))} ${left > 0 ? 'short' : 'over'}; you can book the difference after linking`}
+                  : `${picked.length} picked · ${formatDecimal(Math.abs(left))} ${left > 0 ? 'short' : 'over'}; you can book the difference after linking`}
             </span>
             <button
               type="button"
@@ -199,7 +199,7 @@ export function DifferenceForm({
   return (
     <div className={styles.differenceForm}>
       <span>
-        {difference > 0 ? 'Statement has' : 'Pennywise has'} <strong>{money(Math.abs(difference))}</strong> more. Add it
+        {difference > 0 ? 'Statement has' : 'Pennywise has'} <strong>{formatDecimal(Math.abs(difference))}</strong> more. Add it
         as its own transaction:
       </span>
       <input
@@ -311,7 +311,7 @@ export function RowPicker({
                 ? 'Pick one or more.'
                 : left === 0
                   ? `${picked.length} picked · adds up exactly`
-                  : `${picked.length} picked · ${money(Math.abs(left))} ${left < 0 ? 'more on the statement' : 'more in Pennywise'}`}
+                  : `${picked.length} picked · ${formatDecimal(Math.abs(left))} ${left < 0 ? 'more on the statement' : 'more in Pennywise'}`}
             </span>
             <button
               type="button"
@@ -428,7 +428,7 @@ export function RowEditor({
             type="button"
             className={styles.textButton}
             disabled={busy}
-            title={`Read as ${row.edited.description}, ${row.edited.direction === 'debit' ? '−' : '+'}${money(row.edited.amount)} on ${day(row.edited.date)}${row.edited.time ? ` at ${row.edited.time}` : ''}`}
+            title={`Read as ${row.edited.description}, ${row.edited.direction === 'debit' ? '−' : '+'}${formatDecimal(row.edited.amount)} on ${day(row.edited.date)}${row.edited.time ? ` at ${row.edited.time}` : ''}`}
             onClick={() => void run(onRevert, "Couldn't restore the row")}
           >
             <ArrowCounterClockwise size={15} /> Restore what was read

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ArrowLeft, ArrowRight, CheckCircle, CircleNotch, Envelope, ShieldCheck, Warning } from '@phosphor-icons/react';
-import { EmailBackfill } from '@/features/mail/EmailBackfill';
+import { BACKFILL_DAYS, EmailBackfill } from '@/features/mail/EmailBackfill';
 import { useMailConnections } from '@/features/mail/useMailConnections';
 import { useOnboarding } from '../../hooks/useOnboarding';
 import { fetchHasChatModel } from '../../api';
@@ -27,7 +27,7 @@ export function EmailStep({ onNext, onBack, goTo, busy }: StepProps) {
       <h1 className={styles.title}>Turn bank emails into transactions</h1>
       <p className={styles.lead}>
         Connect the Gmail account that receives your bank alerts, and new ones become transactions for you to approve.
-        You can also import the last two weeks.
+        You can also import the last {BACKFILL_DAYS} days.
       </p>
 
       <div className={`${styles.section} ${styles.panel}`}>

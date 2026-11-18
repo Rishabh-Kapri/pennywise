@@ -1,10 +1,12 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { X } from '@phosphor-icons/react';
-import { useAppDispatch } from '@/app/hooks';
-import { fetchAllAccounts } from '@/features/accounts/store/accountSlice';
+import { useAppDispatch, useAppSelector } from '@/app/hooks';
+import { createAccount } from '@/features/accounts/store/accountSlice';
+import { selectSelectedMonth } from '@/features/budget/store/budgetSlice';
+import { getTodaysDate } from '@/utils/date.utils';
 import { createLoanMetadata, updateLoanMetadata } from '../store/loanSlice';
 import { LoanAccountNames, type LoanAccountType } from '@/features/accounts/types/account.types';
-import { apiClient, toast } from '@/utils';
+import { apiClient, errorMessage, toast } from '@/utils';
 import { fetchAllCategoryGroups } from '@/features/category/store/categorySlice';
 import type { LoanMetadata } from '../types/loan.types';
 import styles from './LoanAccountForm.module.css';
@@ -22,6 +24,7 @@ interface LoanAccountFormProps {
 
 export default function LoanAccountForm({ isOpen, onClose, editData }: LoanAccountFormProps) {
   const dispatch = useAppDispatch();
+  const selectedMonth = useAppSelector(selectSelectedMonth);
   const isEditMode = !!editData;
 
   const [name, setName] = useState('');
@@ -81,12 +84,11 @@ export default function LoanAccountForm({ isOpen, onClose, editData }: LoanAccou
         // Create mode — create account + category group + category + loan metadata
         const absBalance = Math.abs(parseFloat(balance));
 
-        // 1. Create the account via existing API — balance is negative for loans
-        const account = await apiClient.post<Record<string, unknown>>('accounts', {
-          name: name.trim(),
-          type: loanType,
-          balance: -absBalance,
-        });
+        // 1. Create the account (a loan's balance is negative); this also
+        //    reloads accounts and payees, the transfer payee included
+        const account = await dispatch(
+          createAccount({ name: name.trim(), type: loanType, balance: -absBalance }),
+        ).unwrap();
 
         // 2. Create a paired budget category group for loan payments
         let categoryId: string | undefined;
@@ -113,15 +115,13 @@ export default function LoanAccountForm({ isOpen, onClose, editData }: LoanAccou
             interestRate: parseFloat(interestRate),
             originalBalance: absBalance,
             monthlyPayment: parseFloat(monthlyPayment),
-            loanStartDate: new Date().toISOString().split('T')[0],
+            loanStartDate: getTodaysDate(),
             categoryId,
           }),
         ).unwrap();
 
-        // 5. Refresh accounts and categories list
-        dispatch(fetchAllAccounts());
-        const month = new Date().toISOString().slice(0, 7); // YYYY-MM
-        dispatch(fetchAllCategoryGroups(month));
+        // 5. Show the new loan category group on the budget
+        dispatch(fetchAllCategoryGroups(selectedMonth));
 
         toast.success('Loan account created');
 
@@ -133,9 +133,9 @@ export default function LoanAccountForm({ isOpen, onClose, editData }: LoanAccou
         onClose();
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to save loan account';
+      const msg = errorMessage(err, 'Failed to save loan account');
       setError(msg);
-      toast.error(msg);
+      toast.error("Couldn't save the loan account", { description: msg });
     } finally {
       setSubmitting(false);
     }

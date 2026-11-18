@@ -2,9 +2,10 @@ import { ArrowDown, ArrowDownLeft, ArrowUp, ArrowUpRight, ArrowsDownUp } from '@
 import { useAppSelector } from '@/app/hooks';
 import { addMonths } from '@/utils/date.utils';
 import { selectCashFlowRefreshing, selectMonthCashFlow } from '../../store/dashboardSlice';
-import { formatCompactCurrency, formatCurrency, formatMonthName } from '../../utils';
-import { Amount } from '../Amount';
-import { DashboardCard } from '../DashboardCard';
+import { formatMonthName } from '../../utils';
+import { formatCompactCurrency, formatCurrency } from '@/utils/format';
+import { Amount } from '@/components/common/Amount/Amount';
+import { Card } from '@/components/common/Card/Card';
 import styles from './CashFlowCard.module.css';
 
 interface ChangeProps {
@@ -38,9 +39,9 @@ export default function CashFlowCard({ className = '' }: { className?: string })
 
   if (!flow) {
     return (
-      <DashboardCard title="Cash flow" icon={<ArrowsDownUp size={18} />} className={className}>
+      <Card title="Cash flow" icon={<ArrowsDownUp size={18} />} className={className}>
         <p className={styles.empty}>Cash flow will show up once there are transactions.</p>
-      </DashboardCard>
+      </Card>
     );
   }
 
@@ -49,7 +50,7 @@ export default function CashFlowCard({ className = '' }: { className?: string })
   const overspent = flow.net < 0;
 
   return (
-    <DashboardCard
+    <Card
       title="Cash flow"
       icon={<ArrowsDownUp size={18} />}
       className={className}
@@ -134,6 +135,6 @@ export default function CashFlowCard({ className = '' }: { className?: string })
           <span className={styles.averageLabel}>Averages appear after your first full month.</span>
         )}
       </footer>
-    </DashboardCard>
+    </Card>
   );
 }

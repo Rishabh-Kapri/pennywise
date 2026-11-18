@@ -1,19 +1,21 @@
-import type { TransactionColumns } from '@/types/common.types';
+import type { TransactionColumns } from '@/features/transactions/types/transaction.types';
 import styles from '../Transaction/Transaction.module.css';
 import { getLocaleDate } from '@/utils/date.utils';
-import { formatBudgetAmount } from '@/features/category/components/budgetFormat';
+import { formatBudgetAmount } from '@/utils/format';
 import type { Transaction } from '../../types/transaction.types';
 import { formatSourceTime } from '../../utils/sourceTime';
 import { AccountLabel } from './AccountLabel';
+import { transactionNet } from '../../utils/amount';
 
 function renderAmount(txn: Transaction) {
-  if ((txn.inflow ?? 0) !== 0) {
-    return <span className={`${styles.amountCell} ${styles.amountInflow}`}>+{formatBudgetAmount(txn.inflow ?? 0)}</span>;
-  }
-  if ((txn.outflow ?? 0) !== 0) {
-    return <span className={`${styles.amountCell} ${styles.amountOutflow}`}>-{formatBudgetAmount(txn.outflow ?? 0)}</span>;
-  }
-  return '–';
+  const net = transactionNet(txn);
+  if (net === 0) return '–';
+  return (
+    <span className={`${styles.amountCell} ${net > 0 ? styles.amountInflow : styles.amountOutflow}`}>
+      {net > 0 ? '+' : '-'}
+      {formatBudgetAmount(Math.abs(net))}
+    </span>
+  );
 }
 
 function renderDate(txn: Transaction) {

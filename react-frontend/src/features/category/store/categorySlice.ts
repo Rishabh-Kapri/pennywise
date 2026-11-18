@@ -11,7 +11,7 @@ import type {
   CategoryGroup,
 } from '../types/category.types';
 import { apiClient, LoadingState } from '@/utils';
-import type { RootState } from '@/app';
+import type { RootState } from '@/app/store';
 
 interface CreateCategoryPayload {
   name: string;
@@ -31,7 +31,6 @@ interface CreateCategoryResponse {
 const initialCategoryState: CategoryState = {
   allCategories: [],
   allCategoryGroups: [],
-  collapseAllGroups: false,
   inflowAmount: 0,
   loading: LoadingState.IDLE,
   inflowLoading: LoadingState.IDLE,
@@ -73,11 +72,9 @@ export const updateCategoryBudget = createAsyncThunk<
 >(
   'categories/updateCategoryBudget',
   async ({ budgeted, categoryId, month }) => {
-    console.log('updateCategoryBudget', budgeted, categoryId, month);
     await apiClient.patch(`categories/${categoryId}/${month}`, {
       budgeted: budgeted,
     });
-    console.log('updateCategoryBudget.fulfilled', budgeted, categoryId, month);
     return { budgeted, categoryId, month };
   },
 );
@@ -120,6 +117,11 @@ export const deleteCategoryGoal = createAsyncThunk<void, string>(
 
 // The API lists hidden categories under this synthetic group, whatever group they belong to.
 export const HIDDEN_GROUP_ID = '00000000-0000-0000-0000-000000000000';
+
+/** A group the user made: not a system group, not the hidden-categories group. */
+export function isUserGroup(group: CategoryGroup): boolean {
+  return !group.isSystem && group.id !== HIDDEN_GROUP_ID;
+}
 
 export type CategoryChanges = Partial<Pick<Category, 'name' | 'hidden' | 'categoryGroupId'>>;
 
@@ -180,7 +182,7 @@ export const fetchAllCategoryGroups = createAsyncThunk<CategoryGroup[], string>(
       `category-groups?month=${month}`,
     );
     return res.map((group) => {
-      if (group.id === '00000000-0000-0000-0000-000000000000') {
+      if (group.id === HIDDEN_GROUP_ID) {
         group.collapsed = true;
       }
       return group;
