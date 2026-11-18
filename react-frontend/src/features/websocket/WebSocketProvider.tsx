@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { config } from '@/config/env';
 import { selectCurrentAgentStreamId } from '@/features/agent/store';
-import { refreshAccessToken, selectAccessToken, selectUser } from '@/features/auth/store';
+import { selectAccessToken, selectUser } from '@/features/auth/store';
 import { selectSelectedBudget } from '@/features/budget';
 import { jobsMayHaveChanged, jobUpdated } from '@/features/jobs/store';
 import type { JobUpdate } from '@/features/jobs/types/job.types';
 import { fetchAllTransaction } from '@/features/transactions/store';
+import { apiClient } from '@/utils/api';
 import { parseJWT } from '@/utils/auth.utils';
 import {
   AGENT_CHAT_WEBSOCKET_EVENT,
@@ -181,8 +182,7 @@ export function WebSocketProvider() {
       let token = accessToken;
       if (isTokenExpiringSoon(token)) {
         try {
-          const refreshedToken = await dispatch(refreshAccessToken()).unwrap();
-          token = refreshedToken.accessToken;
+          token = await apiClient.refreshSession();
         } catch (error) {
           // A dead session clears the token, which ends this effect. Anything
           // else is a server that's away, so keep trying.

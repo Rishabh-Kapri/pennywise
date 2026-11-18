@@ -138,7 +138,7 @@ export const updateTransactionLocation = createAsyncThunk<Transaction, UpdateTra
   'transactions/updateTransactionLocation',
   async ({ id, location }: UpdateTransactionLocationArgs) => {
     const url = `transactions/${id}/location`;
-    return await apiClient.patch<Transaction>(url, location as Partial<Transaction>);
+    return await apiClient.patch<Transaction>(url, location);
   },
 );
 

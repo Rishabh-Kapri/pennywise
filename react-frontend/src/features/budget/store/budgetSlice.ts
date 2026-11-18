@@ -45,7 +45,7 @@ export const createBudget = createAsyncThunk<Budget, CreateBudgetPayload>(
   async (budget) => {
     return await apiClient.post<Budget>(
       'budgets',
-      budget as unknown as Partial<Budget>,
+      budget,
     );
   },
 );

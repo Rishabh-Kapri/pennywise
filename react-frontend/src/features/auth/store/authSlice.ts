@@ -9,23 +9,18 @@ import type {
   AuthState,
   AuthTokens,
   LoginResponse,
-  User,
 } from '../types/auth.types';
-import { ApiError, apiClient } from '@/utils';
+import { apiClient, type RefreshedToken } from '@/utils/api';
 
 const AUTH_STORAGE_KEY = 'pennywise_auth';
 
-// Helper to load auth state from localStorage
-const loadAuthFromStorage = (): {
-  user: User | null;
-  tokens: AuthTokens | null;
-} => {
+function loadSession(): Pick<AuthState, 'user' | 'tokens'> {
   try {
     const stored = localStorage.getItem(AUTH_STORAGE_KEY);
     if (stored) {
       const data = JSON.parse(stored);
-      // Keep auth if we have tokens — the interceptor will handle
-      // refreshing an expired access token via the refresh token
+      // An expired access token is fine: apiClient refreshes it with the
+      // refresh token on the first 401.
       if (data.tokens?.refreshToken) {
         return data;
       }
@@ -35,33 +30,20 @@ const loadAuthFromStorage = (): {
     console.error('Error loading auth from storage:', e);
   }
   return { user: null, tokens: null };
-};
+}
 
-// Helper to save auth state to localStorage
-const saveAuthToStorage = (user: User, tokens: AuthTokens) => {
+/** Keeps localStorage in step with the session; the store calls it on every change. */
+export function saveSession({ user, tokens }: AuthState) {
   try {
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ user, tokens }));
+    if (user && tokens) localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ user, tokens }));
+    else localStorage.removeItem(AUTH_STORAGE_KEY);
   } catch (e) {
     console.error('Error saving auth to storage:', e);
   }
-};
-
-// Helper to clear auth from localStorage
-const clearAuthFromStorage = () => {
-  try {
-    localStorage.removeItem(AUTH_STORAGE_KEY);
-  } catch (e) {
-    console.error('Error clearing auth from storage:', e);
-  }
-};
-
-// Initial state with data from localStorage
-const storedAuth = loadAuthFromStorage();
+}
 
 const initialState: AuthState = {
-  user: storedAuth.user,
-  tokens: storedAuth.tokens,
-  isAuthenticated: !!storedAuth.tokens,
+  ...loadSession(),
   loading: LoadingState.IDLE,
   error: null,
 };
@@ -75,7 +57,7 @@ export const loginWithGoogle = createAsyncThunk<
   try {
     const response = await apiClient.post<LoginResponse>('auth/google', {
       code,
-    } as unknown as Partial<LoginResponse>);
+    });
     return response;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Login failed';
@@ -92,49 +74,13 @@ export const loginAsDemo = createAsyncThunk<
   try {
     const response = await apiClient.post<LoginResponse>(
       'auth/demo',
-      {} as Partial<LoginResponse>,
+      {},
     );
     return response;
   } catch (error) {
     const message =
       error instanceof Error ? error.message : 'Demo login failed';
     return rejectWithValue(message);
-  }
-});
-
-interface RefreshFailure {
-  message: string;
-  sessionExpired: boolean; // false when the server just couldn't be reached
-}
-
-// Async thunk to refresh access token
-export const refreshAccessToken = createAsyncThunk<
-  { accessToken: string; expiresIn: number },
-  void,
-  { state: RootState; rejectValue: RefreshFailure }
->('auth/refreshToken', async (_, { getState, rejectWithValue }) => {
-  try {
-    const { tokens } = getState().auth;
-    if (!tokens?.refreshToken) {
-      return rejectWithValue({
-        message: 'No refresh token available',
-        sessionExpired: true,
-      });
-    }
-    const response = await apiClient.post<{
-      accessToken: string;
-      expiresIn: number;
-    }>('auth/refresh', {
-      refreshToken: tokens.refreshToken,
-    } as unknown as Partial<{ accessToken: string; expiresIn: number }>);
-    return response;
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : 'Token refresh failed';
-    return rejectWithValue({
-      message,
-      sessionExpired: error instanceof ApiError && error.status === 401,
-    });
   }
 });
 
@@ -160,19 +106,14 @@ const authSlice = createSlice({
   name: 'auth',
   initialState,
   reducers: {
-    // Clear any auth errors
-    clearError: (state) => {
-      state.error = null;
+    /** apiClient got a new access token. */
+    tokenRefreshed: (state, action: PayloadAction<RefreshedToken>) => {
+      if (!state.tokens) return;
+      state.tokens.accessToken = action.payload.accessToken;
+      state.tokens.expiresAt = Date.now() + action.payload.expiresIn * 1000;
     },
-    // Reset auth state (for local-only logout scenarios)
-    resetAuth: (state) => {
-      state.user = null;
-      state.tokens = null;
-      state.isAuthenticated = false;
-      state.loading = LoadingState.IDLE;
-      state.error = null;
-      clearAuthFromStorage();
-    },
+    /** Signed out, here or because the session ended on the server. */
+    sessionEnded: () => ({ user: null, tokens: null, loading: LoadingState.IDLE, error: null }),
   },
   extraReducers: (builder) => {
     // Shared login handlers (Google and demo logins behave identically)
@@ -184,7 +125,6 @@ const authSlice = createSlice({
       state: AuthState,
       action: PayloadAction<LoginResponse>,
     ) => {
-      console.log('Login successful:', action.payload);
       const { user, accessToken, refreshToken, expiresIn } = action.payload;
       const tokens: AuthTokens = {
         accessToken,
@@ -193,10 +133,8 @@ const authSlice = createSlice({
       };
       state.user = user;
       state.tokens = tokens;
-      state.isAuthenticated = true;
       state.loading = LoadingState.SUCCESS;
       state.error = null;
-      saveAuthToStorage(user, tokens);
     };
     const loginRejected = (
       state: AuthState,
@@ -204,7 +142,6 @@ const authSlice = createSlice({
     ) => {
       state.loading = LoadingState.ERROR;
       state.error = action.payload ?? 'Login failed';
-      state.isAuthenticated = false;
     };
 
     // Login with Google
@@ -219,56 +156,18 @@ const authSlice = createSlice({
       .addCase(loginAsDemo.fulfilled, loginFulfilled)
       .addCase(loginAsDemo.rejected, loginRejected);
 
-    // Refresh token
-    builder
-      .addCase(refreshAccessToken.fulfilled, (state, action) => {
-        if (state.tokens) {
-          state.tokens.accessToken = action.payload.accessToken;
-          state.tokens.expiresAt = Date.now() + action.payload.expiresIn * 1000;
-          if (state.user) {
-            saveAuthToStorage(state.user, state.tokens);
-          }
-        }
-      })
-      .addCase(refreshAccessToken.rejected, (state, action) => {
-        if (!action.payload?.sessionExpired) {
-          return;
-        }
-        state.user = null;
-        state.tokens = null;
-        state.isAuthenticated = false;
-        clearAuthFromStorage();
-      });
-
-    // Logout
+    // logout swallows server errors: the local session ends either way.
     builder
       .addCase(logout.pending, (state) => {
         state.loading = LoadingState.PENDING;
       })
-      .addCase(logout.fulfilled, (state) => {
-        state.user = null;
-        state.tokens = null;
-        state.isAuthenticated = false;
-        state.loading = LoadingState.IDLE;
-        state.error = null;
-        clearAuthFromStorage();
-      })
-      .addCase(logout.rejected, (state) => {
-        // Even if logout fails on server, clear local state
-        state.user = null;
-        state.tokens = null;
-        state.isAuthenticated = false;
-        state.loading = LoadingState.IDLE;
-        clearAuthFromStorage();
-      });
+      .addCase(logout.fulfilled, () => ({ user: null, tokens: null, loading: LoadingState.IDLE, error: null }));
   },
 });
 
 // Selectors
-export const selectAuth = (state: RootState) => state.auth;
 export const selectUser = (state: RootState) => state.auth.user;
-export const selectIsAuthenticated = (state: RootState) =>
-  state.auth.isAuthenticated;
+export const selectIsAuthenticated = (state: RootState) => !!state.auth.tokens;
 export const selectAuthLoading = (state: RootState) => state.auth.loading;
 export const selectAuthError = (state: RootState) => state.auth.error;
 export const selectAccessToken = (state: RootState) =>
@@ -278,5 +177,5 @@ export const DEMO_USER_EMAIL = 'demo@pennywise.local';
 export const selectIsDemoUser = (state: RootState) =>
   state.auth.user?.email === DEMO_USER_EMAIL;
 
-export const { clearError, resetAuth } = authSlice.actions;
+export const { tokenRefreshed, sessionEnded } = authSlice.actions;
 export default authSlice.reducer;

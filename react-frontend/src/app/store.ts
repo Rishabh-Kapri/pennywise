@@ -4,7 +4,7 @@ import budgets from '../features/budget/store/budgetSlice';
 import { categorySlice } from '@/features/category/store';
 import payees from '@/features/payees/store';
 import transactions from '@/features/transactions/store';
-import authSlice from '@/features/auth/store';
+import authSlice, { saveSession, sessionEnded, tokenRefreshed } from '@/features/auth/store';
 import { dashboardSlice } from '@/features/dashboard/store';
 import loans from '@/features/loans/store/loanSlice';
 import tags from '@/features/tags/store';
@@ -36,8 +36,24 @@ export const store = configureStore({
   middleware: (getDefaultMiddleware) => getDefaultMiddleware().prepend(appDataListener.middleware),
 });
 
-apiClient.setGetState(store.getState);
-apiClient.setDispatch(store.dispatch);
+apiClient.connect({
+  accessToken: () => store.getState().auth.tokens?.accessToken,
+  refreshToken: () => store.getState().auth.tokens?.refreshToken,
+  budgetId: () => store.getState().budgets.selectedBudget?.id,
+  tokenRefreshed: (token) => store.dispatch(tokenRefreshed(token)),
+  expired: () => {
+    store.dispatch(sessionEnded());
+    window.location.href = '/login';
+  },
+});
+
+let savedAuth = store.getState().auth;
+store.subscribe(() => {
+  const { auth } = store.getState();
+  if (auth.user === savedAuth.user && auth.tokens === savedAuth.tokens) return;
+  savedAuth = auth;
+  saveSession(auth);
+});
 
 export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;

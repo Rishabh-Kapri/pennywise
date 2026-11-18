@@ -1,7 +1,4 @@
-import type { RootState } from '@/app';
 import { config } from '@/config/env';
-
-type AppDispatch = (action: unknown) => unknown;
 
 /** A response from the server, as opposed to not reaching it at all. */
 export class ApiError extends Error {
@@ -14,222 +11,138 @@ export class ApiError extends Error {
   }
 }
 
+export interface RefreshedToken {
+  accessToken: string;
+  expiresIn: number;
+}
+
+/**
+ * What the client needs from the signed-in session. The store provides it
+ * (`app/store.ts`), so this module depends on nothing above it.
+ */
+export interface ApiSession {
+  accessToken(): string | undefined;
+  refreshToken(): string | undefined;
+  budgetId(): string | undefined;
+  tokenRefreshed(token: RefreshedToken): void;
+  /** The refresh token was refused: the user has to sign in again. */
+  expired(): void;
+}
+
+type Body = { json: unknown } | { form: FormData } | undefined;
+
+const PUBLIC_AUTH_ENDPOINTS = new Set(['auth/google', 'auth/refresh', 'auth/demo']);
+
 class ApiClient {
-  private baseUrl: string;
-  private getState: (() => RootState) | null = null;
-  private dispatch: AppDispatch | null = null;
+  private readonly baseUrl = config.apiBaseUrl;
+  private session: ApiSession | null = null;
   private refreshPromise: Promise<string> | null = null;
 
-  constructor() {
-    this.baseUrl = config.apiBaseUrl;
+  connect(session: ApiSession) {
+    this.session = session;
   }
 
-  setGetState(getState: () => RootState) {
-    this.getState = getState;
-  }
-
-  setDispatch(dispatch: AppDispatch) {
-    this.dispatch = dispatch;
-  }
-
-  private getHeaders(endpoint: string): HeadersInit {
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    };
-
-    if (this.getState) {
-      const state = this.getState();
-
-      // Add Authorization header if user is authenticated
-      const accessToken = state.auth?.tokens?.accessToken;
-      if (accessToken && !this.isPublicAuthEndpoint(endpoint)) {
-        headers['Authorization'] = `Bearer ${accessToken}`;
-      }
-
-      const selectedBudget = state.budgets.selectedBudget;
-      if (selectedBudget?.id && !endpoint.includes('budgets')) {
-        console.log('skipping budget header for route', endpoint);
-        headers['x-budget-id'] = selectedBudget.id;
-      }
+  private headers(endpoint: string, body: Body, accessToken?: string): Record<string, string> {
+    // A form leaves Content-Type unset so the browser adds the boundary itself.
+    const headers: Record<string, string> = body && 'form' in body ? {} : { 'Content-Type': 'application/json' };
+    const token = accessToken ?? this.session?.accessToken();
+    if (token && !PUBLIC_AUTH_ENDPOINTS.has(endpoint)) {
+      headers['Authorization'] = `Bearer ${token}`;
     }
-
+    const budgetId = this.session?.budgetId();
+    if (budgetId && !endpoint.includes('budgets')) {
+      headers['x-budget-id'] = budgetId;
+    }
     return headers;
   }
 
-  private isPublicAuthEndpoint(endpoint: string): boolean {
-    return (
-      endpoint === 'auth/google' ||
-      endpoint === 'auth/refresh' ||
-      endpoint === 'auth/demo'
-    );
-  }
-
-  private isRefreshEndpoint(endpoint: string): boolean {
-    return endpoint === 'auth/refresh';
-  }
-
-  private async expireSession(): Promise<never> {
-    if (this.dispatch) {
-      const { resetAuth } = await import('@/features/auth/store/authSlice');
-      this.dispatch(resetAuth());
-    }
-    window.location.href = '/login';
-    throw new Error('Session expired');
-  }
-
-  private async tryRefreshToken(): Promise<string> {
-    // If a refresh is already in flight, reuse it (prevents parallel refresh calls)
-    if (this.refreshPromise) {
-      return this.refreshPromise;
-    }
-
-    this.refreshPromise = (async () => {
-      try {
-        const state = this.getState?.();
-        const refreshToken = state?.auth?.tokens?.refreshToken;
-        if (!refreshToken) {
-          return await this.expireSession();
-        }
-
-        const res = await fetch(`${this.baseUrl}/auth/refresh`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refreshToken }),
-        });
-
-        // Only a 401 means the session is over. A server that's down or
-        // failing says nothing about it, so the user stays signed in.
-        if (res.status === 401) {
-          return await this.expireSession();
-        }
-        if (!res.ok) {
-          throw new ApiError('Refresh failed', res.status);
-        }
-
-        const data = await res.json();
-        // Dispatch the refresh success to update store + localStorage
-        if (this.dispatch) {
-          const { refreshAccessToken } = await import(
-            '@/features/auth/store/authSlice'
-          );
-          this.dispatch(refreshAccessToken.fulfilled(data, '', undefined));
-        }
-        return data.accessToken as string;
-      } finally {
-        this.refreshPromise = null;
-      }
-    })();
-
-    return this.refreshPromise;
-  }
-
-  private async handleResponse<T>(
-    res: Response,
-    method: string,
-    endpoint: string,
-    body?: unknown,
-  ): Promise<T> {
-    // On 401 for non-auth endpoints, try refreshing the token and retry once
-    if (res.status === 401 && !this.isRefreshEndpoint(endpoint)) {
-      const newAccessToken = await this.tryRefreshToken();
-
-      const headers = this.getHeaders(endpoint) as Record<string, string>;
-      headers['Authorization'] = `Bearer ${newAccessToken}`;
-
-      const retryRes = await fetch(`${this.baseUrl}/${endpoint}`, {
+  /** Sends a request; on a 401 refreshes the access token once and retries. */
+  private async send(method: string, endpoint: string, body?: Body): Promise<Response> {
+    const request = (accessToken?: string) =>
+      fetch(`${this.baseUrl}/${endpoint}`, {
         method,
-        headers,
-        body: body ? JSON.stringify(body) : undefined,
+        headers: this.headers(endpoint, body, accessToken),
+        body: body ? ('form' in body ? body.form : JSON.stringify(body.json)) : undefined,
+        credentials: 'include',
       });
-      return this.parseResponse<T>(retryRes);
-    }
 
-    return this.parseResponse<T>(res);
+    const res = await request();
+    if (res.status !== 401 || endpoint === 'auth/refresh') return res;
+    return request(await this.refreshSession());
   }
 
-  private async parseResponse<T>(res: Response): Promise<T> {
+  private async json<T>(res: Response): Promise<T> {
     const text = await res.text();
-    let data: T;
+    let data = {} as T;
     try {
-      data = text ? JSON.parse(text) : ({} as T);
+      if (text) data = JSON.parse(text);
     } catch (error) {
-      console.error('Failed to parse response:', text);
-      throw error;
+      // an error page that isn't JSON still ends up as an ApiError below
+      if (res.ok) {
+        console.error('Failed to parse response:', text);
+        throw error;
+      }
     }
     if (!res.ok) {
-      const message =
-        (data as Record<string, unknown>)?.error ?? res.statusText;
+      const message = (data as Record<string, unknown>)?.error ?? res.statusText;
       throw new ApiError(String(message), res.status);
     }
     return data;
   }
 
-  async get<T>(endpoint: string): Promise<T> {
-    const res = await fetch(`${this.baseUrl}/${endpoint}`, {
-      method: 'GET',
-      headers: this.getHeaders(endpoint),
-      credentials: 'include',
-    });
-    return this.handleResponse<T>(res, 'GET', endpoint);
+  /**
+   * Gets a new access token with the refresh token. Concurrent callers share
+   * one request. Only a 401 ends the session: a server that's down or failing
+   * says nothing about it, so the user stays signed in.
+   */
+  refreshSession(): Promise<string> {
+    this.refreshPromise ??= (async () => {
+      try {
+        const refreshToken = this.session?.refreshToken();
+        const res = refreshToken
+          ? await fetch(`${this.baseUrl}/auth/refresh`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ refreshToken }),
+            })
+          : null;
+        if (!res || res.status === 401) {
+          this.session?.expired();
+          throw new ApiError('Session expired', 401);
+        }
+        const token = await this.json<RefreshedToken>(res);
+        this.session?.tokenRefreshed(token);
+        return token.accessToken;
+      } finally {
+        this.refreshPromise = null;
+      }
+    })();
+    return this.refreshPromise;
   }
 
-  // B defaults to Partial<T> so existing call sites are unchanged; pass it
-  // explicitly when the request body isn't a subset of the response shape
-  async post<T, B = Partial<T>>(endpoint: string, data: B): Promise<T> {
-    const res = await fetch(`${this.baseUrl}/${endpoint}`, {
-      method: 'POST',
-      headers: this.getHeaders(endpoint),
-      body: JSON.stringify(data),
-      credentials: 'include',
-    });
-    return this.handleResponse<T>(res, 'POST', endpoint, data);
+  async get<T>(endpoint: string): Promise<T> {
+    return this.json<T>(await this.send('GET', endpoint));
   }
 
   async delete<T>(endpoint: string): Promise<T> {
-    const res = await fetch(`${this.baseUrl}/${endpoint}`, {
-      method: 'DELETE',
-      headers: this.getHeaders(endpoint),
-      credentials: 'include',
-    });
-    return this.handleResponse<T>(res, 'DELETE', endpoint);
+    return this.json<T>(await this.send('DELETE', endpoint));
   }
 
-  /**
-   * POST multipart/form-data (file uploads). Content-Type is left unset so the
-   * browser adds the boundary itself.
-   */
+  async post<T, B = unknown>(endpoint: string, data: B): Promise<T> {
+    return this.json<T>(await this.send('POST', endpoint, { json: data }));
+  }
+
+  async patch<T, B = unknown>(endpoint: string, data: B): Promise<T> {
+    return this.json<T>(await this.send('PATCH', endpoint, { json: data }));
+  }
+
+  async put<T, B = unknown>(endpoint: string, data: B): Promise<T> {
+    return this.json<T>(await this.send('PUT', endpoint, { json: data }));
+  }
+
+  /** POST multipart/form-data (file uploads). */
   async postForm<T>(endpoint: string, form: FormData): Promise<T> {
-    const headers = this.getHeaders(endpoint) as Record<string, string>;
-    delete headers['Content-Type'];
-
-    let res = await fetch(`${this.baseUrl}/${endpoint}`, {
-      method: 'POST',
-      headers,
-      body: form,
-      credentials: 'include',
-    });
-
-    if (res.status === 401 && !this.isRefreshEndpoint(endpoint)) {
-      const newAccessToken = await this.tryRefreshToken();
-      headers['Authorization'] = `Bearer ${newAccessToken}`;
-      res = await fetch(`${this.baseUrl}/${endpoint}`, {
-        method: 'POST',
-        headers,
-        body: form,
-        credentials: 'include',
-      });
-    }
-
-    return this.parseResponse<T>(res);
-  }
-
-  /**
-   * Fetch a binary endpoint with auth headers and return an object URL for use
-   * in <img>/<a> (plain src URLs can't carry the Authorization header).
-   * Callers must URL.revokeObjectURL when done.
-   */
-  async fetchBlobUrl(endpoint: string): Promise<string> {
-    return URL.createObjectURL(await this.fetchBlob(endpoint));
+    return this.json<T>(await this.send('POST', endpoint, { form }));
   }
 
   /**
@@ -238,59 +151,37 @@ class ApiClient {
    * doesn't allow blob: URLs.
    */
   async fetchBlob(endpoint: string): Promise<Blob> {
-    const headers = this.getHeaders(endpoint) as Record<string, string>;
-    delete headers['Content-Type'];
-
-    let res = await fetch(`${this.baseUrl}/${endpoint}`, {
-      method: 'GET',
-      headers,
-      credentials: 'include',
-    });
-
-    if (res.status === 401 && !this.isRefreshEndpoint(endpoint)) {
-      const newAccessToken = await this.tryRefreshToken();
-      headers['Authorization'] = `Bearer ${newAccessToken}`;
-      res = await fetch(`${this.baseUrl}/${endpoint}`, {
-        method: 'GET',
-        headers,
-        credentials: 'include',
-      });
-    }
-
-    if (!res.ok) {
-      let message = res.statusText;
-      try {
-        const data = await res.json();
-        message = String(data?.error ?? message);
-      } catch {
-        // non-JSON error body, keep statusText
-      }
-      throw new Error(message);
-    }
-
+    const res = await this.send('GET', endpoint);
+    if (!res.ok) await this.json(res);
     return res.blob();
   }
 
-  // B defaults to Partial<T> so existing call sites are unchanged; pass it
-  // explicitly when the request body isn't a subset of the response shape
-  async patch<T, B = Partial<T>>(endpoint: string, data: B): Promise<T> {
-    const res = await fetch(`${this.baseUrl}/${endpoint}`, {
-      method: 'PATCH',
-      headers: this.getHeaders(endpoint),
-      body: JSON.stringify(data),
-      credentials: 'include',
-    });
-    return this.handleResponse<T>(res, 'PATCH', endpoint, data);
+  /**
+   * Fetch a binary endpoint and return an object URL for use in <img>/<a>
+   * (plain src URLs can't carry the Authorization header). Callers must
+   * URL.revokeObjectURL when done.
+   */
+  async fetchBlobUrl(endpoint: string): Promise<string> {
+    return URL.createObjectURL(await this.fetchBlob(endpoint));
   }
 
-  async put<T, B = Partial<T>>(endpoint: string, data: B): Promise<T> {
-    const res = await fetch(`${this.baseUrl}/${endpoint}`, {
-      method: 'PUT',
-      headers: this.getHeaders(endpoint),
-      body: JSON.stringify(data),
-      credentials: 'include',
-    });
-    return this.handleResponse<T>(res, 'PUT', endpoint, data);
+  /**
+   * Opens an authed file in a new tab. The tab is opened before the fetch,
+   * while the click still counts as a user action, or the popup blocker would
+   * stop it.
+   */
+  async openFile(endpoint: string): Promise<void> {
+    const tab = window.open('', '_blank');
+    try {
+      const url = await this.fetchBlobUrl(endpoint);
+      if (tab) tab.location.href = url;
+      else window.location.href = url;
+      // the tab has loaded it by then; the URL only holds the blob in memory
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      tab?.close();
+      throw err;
+    }
   }
 }
 
