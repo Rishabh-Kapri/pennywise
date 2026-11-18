@@ -1,4 +1,4 @@
-import type { TransactionColumns } from '@/types/common.types';
+import type { TransactionColumns } from '@/features/transactions/types/transaction.types';
 import styles from '../Transaction/Transaction.module.css';
 import { getLocaleDate } from '@/utils/date.utils';
 import { formatBudgetAmount } from '@/utils/format';

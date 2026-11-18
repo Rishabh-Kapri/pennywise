@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { LoadingState } from "@/utils";
 
 export const TransactionStatus = {
@@ -176,3 +177,18 @@ export interface MonthGroupStats {
 export type ListItem =
   | { type: 'header'; key: string; label: string; stats: MonthGroupStats }
   | { type: 'row'; txn: Transaction; originalIndex: number };
+
+/** A column of the transactions table. */
+export interface TransactionColumns {
+  key: keyof Transaction;
+  label: string;
+  layout: {
+    flex: string;
+    textAlign: 'left' | 'right' | 'center' | 'justify';
+    minWidth?: number | string;
+    overflow?: string;
+  };
+  className?: string[];
+  headerClassName?: string[];
+  render?: (txn: Transaction) => ReactNode;
+}

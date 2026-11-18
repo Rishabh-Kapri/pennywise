@@ -1,4 +1,4 @@
-import type { TransactionColumns } from '@/types/common.types';
+import type { TransactionColumns } from '@/features/transactions/types/transaction.types';
 import type { Transaction } from '../../types/transaction.types';
 import { AccountDropdown } from '@/features/accounts/components/AccountDropdown';
 import { PayeeDropdown } from '@/features/payees/components/PayeeDropdown';

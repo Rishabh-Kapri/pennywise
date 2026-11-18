@@ -1,5 +1,5 @@
 import { type CSSProperties, type MouseEvent, useCallback, useEffect, useRef, useState } from 'react';
-import type { TransactionColumns } from '@/types/common.types';
+import type { TransactionColumns } from '@/features/transactions/types/transaction.types';
 import { type Transaction, type ListItem } from '../../types/transaction.types';
 import styles from '../Transaction/Transaction.module.css';
 import { TransactionCell } from '@/features/transactions/components/TransactionCell/TransactionCell';
