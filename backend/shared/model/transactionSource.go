@@ -25,7 +25,10 @@ type TransactionSource struct {
 	Currency    *string    `json:"currency,omitempty"`
 	OccurredOn  *string    `json:"occurredOn,omitempty"` // YYYY-MM-DD
 	OccurredAt  *time.Time `json:"occurredAt,omitempty"`
-	CreatedAt   time.Time  `json:"createdAt"`
+	// RewardPoints is what a card statement printed for this line (negative
+	// for points taken back). Nil for messages and lines without points.
+	RewardPoints *int      `json:"rewardPoints,omitempty"`
+	CreatedAt    time.Time `json:"createdAt"`
 }
 
 // StatementLineSource is a statement row recorded as the source of the

@@ -14,6 +14,7 @@ import (
 type AgentHandler interface {
 	GetConversations(c *gin.Context)
 	GetConversationMessages(c *gin.Context)
+	ConversationUsage(c *gin.Context)
 	CreateRun(c *gin.Context)
 	GetRun(c *gin.Context)
 	CancelRun(c *gin.Context)
@@ -59,6 +60,21 @@ func (h *agentHandler) GetConversationMessages(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, messages)
+}
+
+// ConversationUsage is GET /agent/conversations/:id/usage.
+func (h *agentHandler) ConversationUsage(c *gin.Context) {
+	id, err := parseQueryID(c, "id")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	usage, err := h.service.ConversationUsage(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(agentErrorStatus(err), gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, usage)
 }
 
 func (h *agentHandler) CreateRun(c *gin.Context) {

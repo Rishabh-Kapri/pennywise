@@ -72,7 +72,7 @@
   padding: 0 0.95rem 0 0.8rem;
   background: var(--color-primary);
   box-shadow: 0 1px 2px rgb(16 24 40 / 0.18), inset 0 1px 0 rgb(255 255 255 / 0.14);
-  color: #fff;
+  color: var(--on-accent);
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import type { TransactionSource, TransactionSourceKind } from '../../types/transaction.types';
 import { formatSourceTime } from '../../utils/sourceTime';
 import styles from './TransactionDetailPanel.module.css';
-import { formatAmount } from '@/utils/format';
+import { formatAmount, formatPoints } from '@/utils/format';
 
 const KIND_LABELS: Record<TransactionSourceKind, string> = {
   EMAIL: 'Email',
@@ -40,6 +40,9 @@ function SourceCard({ source }: { source: TransactionSource }) {
           {source.amount !== undefined
             ? `${source.direction === 'CREDIT' ? '+' : source.direction === 'DEBIT' ? '-' : ''}${formatAmount(source.amount)}`
             : undefined}
+        </SourceFact>
+        <SourceFact label="Reward points">
+          {source.rewardPoints !== undefined ? formatPoints(source.rewardPoints) : undefined}
         </SourceFact>
       </dl>
       {/* bank text, shown as text and never as HTML */}

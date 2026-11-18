@@ -227,6 +227,14 @@ const (
 // go-pennywise-api reads them from for its websockets.
 const AgentEventsRedisStream = "pubsub"
 
+// Agent keys (agent_key enum): who an agent run belongs to.
+const (
+	AgentKeyChat = "chat"
+	// AgentKeyPipeline is a pipeline job that calls models (message steps,
+	// statement reading): one run per job, its id on jobs.agent_run_id.
+	AgentKeyPipeline = "pipeline"
+)
+
 type AgentRunStatus string
 
 const (
@@ -255,14 +263,17 @@ const (
 )
 
 type AgentConversation struct {
-	ID        uuid.UUID      `json:"id"`
-	AgentKey  string         `json:"agentKey"`
-	UserID    uuid.UUID      `json:"userId"`
-	BudgetID  uuid.UUID      `json:"budgetId"`
-	Title     *string        `json:"title,omitempty"`
-	Metadata  map[string]any `json:"metadata,omitempty"`
-	CreatedAt time.Time      `json:"createdAt"`
-	UpdatedAt time.Time      `json:"updatedAt"`
+	ID       uuid.UUID      `json:"id"`
+	AgentKey string         `json:"agentKey"`
+	UserID   uuid.UUID      `json:"userId"`
+	BudgetID uuid.UUID      `json:"budgetId"`
+	Title    *string        `json:"title,omitempty"`
+	Metadata map[string]any `json:"metadata,omitempty"`
+	// Usage totals the model calls of the conversation's runs. Only the
+	// conversation list fills it.
+	Usage     *ModelUsage `json:"usage,omitempty"`
+	CreatedAt time.Time   `json:"createdAt"`
+	UpdatedAt time.Time   `json:"updatedAt"`
 }
 
 type MessagePart struct {

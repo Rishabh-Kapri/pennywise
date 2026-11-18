@@ -12,14 +12,15 @@ import {
   View,
   type ListRenderItem
 } from 'react-native';
-import { Bot, ChevronDown, MessagesSquare, Plus, Send, Sparkles, Trash2, X } from 'lucide-react-native';
+import { ChevronDown, ChevronLeft, MessagesSquare, Plus, Send, Sparkles, Trash2, X } from 'lucide-react-native';
 import Markdown from 'react-native-markdown-display';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import { useAppDispatch, useAppSelector } from '../../../app/hooks';
 import { AppText } from '../../../components/AppText';
 import { PickerModal } from '../../../components/Picker';
 import { LoadingState } from '../../../utils/constants';
-import { colors, radii, spacing, tabBarClearance } from '../../../theme';
+import { colors, radii, spacing } from '../../../theme';
 import {
   AGENT_MODEL_OPTIONS,
   clearAgentChat,
@@ -194,6 +195,8 @@ function ChatMessage({ message }: { message: AgentChatMessage }) {
 
 export function AgentChat() {
   const dispatch = useAppDispatch();
+  const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const agentMessages = useAppSelector(selectAgentMessages);
   const chatHistory = useAppSelector(selectAgentChatHistory);
   const createRunLoading = useAppSelector(selectAgentCreateRunLoading);
@@ -397,9 +400,14 @@ export function AgentChat() {
       <SafeAreaView style={styles.modalSafe} edges={['top', 'left', 'right']}>
           <KeyboardAvoidingView style={styles.panel} behavior="padding" keyboardVerticalOffset={0}>
             <View style={styles.header}>
-              <View style={styles.agentMark}>
-                <Bot size={18} color={colors.primary} />
-              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Go back"
+                style={({ pressed }) => [styles.agentMark, pressed && styles.pressed]}
+                onPress={() => navigation.goBack()}
+              >
+                <ChevronLeft size={20} color={colors.text} />
+              </Pressable>
               <View style={styles.headerText}>
                 <AppText variant="heading" numberOfLines={1}>
                   {headerTitle}
@@ -476,7 +484,7 @@ export function AgentChat() {
               }
             />
 
-            <View style={[styles.composer, isKeyboardVisible && styles.composerKeyboard]}>
+            <View style={[styles.composer, isKeyboardVisible ? styles.composerKeyboard : { marginBottom: spacing.md + insets.bottom }]}>
               <TextInput
                 value={composerValue}
                 editable={!isSending && hasSelectedBudget}
@@ -749,7 +757,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 20,
-    backgroundColor: colors.primaryMuted
+    backgroundColor: colors.surfaceStrong
   },
   headerText: {
     flex: 1,
@@ -923,8 +931,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     marginHorizontal: spacing.lg,
     marginTop: spacing.md,
-    // Clear the floating tab bar, which overlays the bottom of every tab screen.
-    marginBottom: tabBarClearance - spacing.xl,
+    marginBottom: spacing.md,
     padding: spacing.lg,
     borderRadius: 24,
     backgroundColor: colors.surface

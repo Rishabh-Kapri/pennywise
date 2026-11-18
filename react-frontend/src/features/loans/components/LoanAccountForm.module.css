@@ -133,7 +133,7 @@
 
 .submitBtn {
   background: var(--color-primary);
-  color: #fff;
+  color: var(--on-accent);
   border: none;
   border-radius: 0.5rem;
   padding: 0.6rem 1.25rem;

@@ -100,6 +100,7 @@ func main() {
 	}
 	router.Use(sharedMiddleware.InternalRequestAuth(config.InternalAuthToken, serviceAuth))
 	router.Use(sharedMiddleware.RequestLogger())
+	router.Use(sharedMiddleware.ETagMiddleware())
 	router.Use(otelgin.Middleware(otelConfig.ServiceName))
 
 	router.Use(cors.New(cors.Config{
@@ -297,6 +298,7 @@ func main() {
 		llmCredentialsBox,
 		isDemoUser,
 	))
+	aiUsageHandler := handler.NewAIUsageHandler(service.NewAIUsageService(database.LLMUsage))
 	aiModelHandler := handler.NewAIModelHandler(service.NewAIModelService(
 		database.UserLLMModel,
 		service.NewCipherModelTester(cipherTransportClient),
@@ -501,6 +503,11 @@ func main() {
 				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
 				agentHandler.GetConversationMessages,
 			)
+			agentGroup.GET(
+				"/conversations/:id/usage",
+				middleware.RouteAuthMiddleware(sharedModel.ScopeRead),
+				agentHandler.ConversationUsage,
+			)
 			agentGroup.PATCH(
 				"/conversations/:conversationId",
 				middleware.RouteAuthMiddleware(sharedModel.ScopeWrite),
@@ -665,6 +672,16 @@ func main() {
 			)
 			aiModelGroup.POST("/:id/test", middleware.RouteAuthMiddleware(sharedModel.ScopeWrite), aiModelHandler.Test)
 			aiModelGroup.DELETE("/:id", middleware.RouteAuthMiddleware(sharedModel.ScopeDelete), aiModelHandler.Delete)
+		}
+		{
+			// What the budget's model calls used and cost. Owner only: they run
+			// on the owner's keys.
+			aiUsageGroup := router.Group("/api/ai-usage")
+			aiUsageGroup.Use(
+				authMiddleware, rateLimitMiddleware, budgetMiddleware,
+				sharedMiddleware.RequireBudgetRole(sharedModel.BudgetRoleOwner),
+			)
+			aiUsageGroup.GET("", middleware.RouteAuthMiddleware(sharedModel.ScopeRead), aiUsageHandler.Summary)
 		}
 		{
 			accountGroup := router.Group("/api/accounts")

@@ -638,7 +638,7 @@ th.numeric {
 .primaryButton {
   border: 0;
   background: var(--color-primary);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .secondaryButton {

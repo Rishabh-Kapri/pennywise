@@ -38,6 +38,7 @@ export function MovePopover({ triggerRef, isOpen, categoryId, categoryName, amou
   const [toReady, setToReady] = useState(false);
   const [listOpen, setListOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [missingTarget, setMissingTarget] = useState(false);
   const pickerRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
@@ -48,6 +49,7 @@ export function MovePopover({ triggerRef, isOpen, categoryId, categoryName, amou
       setToReady(false);
       setListOpen(false);
       setBusy(false);
+      setMissingTarget(false);
     }
   }, [isOpen, amount]);
 
@@ -63,6 +65,14 @@ export function MovePopover({ triggerRef, isOpen, categoryId, categoryName, amou
     setOther(category);
     setToReady(category === null);
     setListOpen(false);
+    setMissingTarget(false);
+  };
+
+  /** Enter or Space picks an option, as a click does. */
+  const onOptionKey = (category: Category | null) => (e: React.KeyboardEvent) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    if (category?.id !== categoryId) pick(category);
   };
 
   const move = async () => {
@@ -76,7 +86,9 @@ export function MovePopover({ triggerRef, isOpen, categoryId, categoryName, amou
       return;
     }
     if (!other && !toReady) {
-      toast.error(covering ? 'Choose where to take it from' : 'Choose where to move it');
+      // Show where to choose instead of failing quietly.
+      setMissingTarget(true);
+      setListOpen(true);
       return;
     }
     value = Math.round(value * 100) / 100;
@@ -109,6 +121,9 @@ export function MovePopover({ triggerRef, isOpen, categoryId, categoryName, amou
     <Popover id={`popover-content-${categoryId}`} isOpen={isOpen} width={280} triggerRef={triggerRef} onClose={onClose}>
       <form
         className={styles.moveContainer}
+        // The popover is portaled, but React still bubbles its clicks to the
+        // category row, which would select and unselect the category behind.
+        onClick={(e) => e.stopPropagation()}
         onSubmit={(e) => {
           e.preventDefault();
           void move();
@@ -134,13 +149,18 @@ export function MovePopover({ triggerRef, isOpen, categoryId, categoryName, amou
             id={`move-to-${categoryId}`}
             ref={pickerRef}
             type="button"
-            className={`${styles.input} ${styles.movePicker}`}
+            className={`${styles.input} ${styles.movePicker} ${missingTarget ? styles.moveMissing : ''}`}
             aria-haspopup="listbox"
             aria-expanded={listOpen}
             onClick={() => setListOpen((open) => !open)}
           >
             {otherLabel || <span className={styles.movePlaceholder}>Choose a category</span>}
           </button>
+          {missingTarget && (
+            <span className={styles.moveHint} role="alert">
+              {covering ? 'Choose where to take it from' : 'Choose where to move it'}
+            </span>
+          )}
           <Popover
             triggerRef={pickerRef}
             id={`popover-content-moveTo-${categoryId}`}
@@ -148,13 +168,14 @@ export function MovePopover({ triggerRef, isOpen, categoryId, categoryName, amou
             onClose={() => setListOpen(false)}
             zIndex={1001}
           >
-            <div role="listbox" className={styles.moveList}>
+            <div role="listbox" className={styles.moveList} onClick={(e) => e.stopPropagation()}>
               {!covering && (
                 <div
                   role="option"
                   aria-selected={toReady}
                   tabIndex={0}
                   className={styles.category}
+                  onKeyDown={onOptionKey(null)}
                   onMouseDown={(e) => {
                     e.preventDefault();
                     pick(null);
@@ -173,6 +194,8 @@ export function MovePopover({ triggerRef, isOpen, categoryId, categoryName, amou
                       aria-selected={other?.id === category.id}
                       tabIndex={0}
                       className={`${styles.category} ${categoryId === category.id ? styles.disabled : ''}`}
+                      aria-disabled={categoryId === category.id}
+                      onKeyDown={onOptionKey(category)}
                       onMouseDown={(e) => {
                         e.preventDefault();
                         if (categoryId !== category.id) pick(category);
@@ -196,7 +219,7 @@ export function MovePopover({ triggerRef, isOpen, categoryId, categoryName, amou
           <button type="button" className={styles.moveCancel} onClick={onClose}>
             Cancel
           </button>
-          <button type="submit" className={styles.moveSubmit} disabled={busy || (!other && !toReady)}>
+          <button type="submit" className={styles.moveSubmit} disabled={busy}>
             {busy ? 'Moving…' : 'Move'}
           </button>
         </div>

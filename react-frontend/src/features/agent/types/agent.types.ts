@@ -1,3 +1,4 @@
+import type { ModelUsage } from '@/features/jobs/types/job.types';
 import type { LoadingState } from '@/utils';
 
 export type AgentRunStatus =
@@ -44,8 +45,16 @@ export type AgentConversation = {
   budgetId: string;
   title?: string;
   metadata?: Record<string, unknown>;
+  /** What the conversation's model calls cost so far (the list carries it). */
+  usage?: ModelUsage;
   createdAt: string;
   updatedAt: string;
+};
+
+/** GET /agent/conversations/:id/usage: in all, and per run (one answer). */
+export type ConversationUsage = {
+  total: ModelUsage;
+  runs: Record<string, ModelUsage>;
 };
 
 export type ConversationMessage = {
@@ -142,4 +151,8 @@ export type AgentState = {
   createRunLoading: LoadingState;
   error: string | null;
   nextMessageId: number;
+  /** Each conversation's total, from the list and from its usage. */
+  usageByConversation: Record<string, ModelUsage>;
+  /** Each run's usage, for the answer it wrote. */
+  usageByRun: Record<string, ModelUsage>;
 };

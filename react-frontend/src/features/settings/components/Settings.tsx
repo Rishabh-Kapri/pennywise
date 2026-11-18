@@ -38,6 +38,7 @@ const Jobs = lazy(() => import('@/features/jobs/components/Jobs'));
 const DocumentLibrary = lazy(() => import('@/features/documents/components/DocumentLibrary'));
 const StatementReconcile = lazy(() => import('@/features/reconcile/components/StatementReconcile'));
 import styles from './Settings.module.css';
+import { AppLoader } from '@/components/common/AppLoader/AppLoader';
 
 type GroupId = 'account' | 'budget' | 'automation';
 
@@ -303,7 +304,7 @@ export default function Settings() {
           </header>
         )}
 
-        <Suspense fallback={<div className={styles.loading}>Loading…</div>}>
+        <Suspense fallback={<AppLoader />}>
           <Section />
         </Suspense>
       </div>

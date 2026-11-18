@@ -18,8 +18,6 @@ export type AppTabParamList = {
       }
     | undefined;
   Reports: undefined;
-  Payees: undefined;
-  Penny: undefined;
 };
 
 export type RootStackParamList = {
@@ -33,4 +31,8 @@ export type RootStackParamList = {
   Pipelines: undefined;
   AI: undefined;
   Loans: undefined;
+  Payees: undefined;
+  Penny: undefined;
+  /** a budget category, for the budget's selected month */
+  Category: { id: string };
 };

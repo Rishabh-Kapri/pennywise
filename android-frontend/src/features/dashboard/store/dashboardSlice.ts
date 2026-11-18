@@ -288,3 +288,20 @@ export const selectNeedsReviewCount = createSelector(
   [(state: RootState) => state.dashboard.activity],
   (activity) => activity.filter((txn) => txn.status === TransactionStatus.UNAPPROVED).length
 );
+
+export interface MonthSpending {
+  month: string;
+  spending: number;
+}
+
+/** Spending for the last six months of the report, ending at its end month. */
+export const selectMonthlySpending = createSelector(
+  [(state: RootState) => state.dashboard.cashFlow],
+  (report): MonthSpending[] => {
+    if (!report) return [];
+    return report.months
+      .filter((month) => month <= report.endMonth)
+      .slice(-6)
+      .map((month) => ({ month, spending: report.expense.totals[month] ?? 0 }));
+  }
+);

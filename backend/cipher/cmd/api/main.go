@@ -314,6 +314,7 @@ func main() {
 
 			StatementPasswords: database.StatementPassword,
 			SecretBox:          llmCredentialsBox,
+			AgentRuns:          database.Agent,
 		})
 		if err != nil {
 			workerErr <- err

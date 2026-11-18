@@ -99,7 +99,7 @@
 .month.isSelected {
   background: var(--color-primary);
   box-shadow: none;
-  color: #fff;
+  color: var(--on-accent);
   font-weight: 600;
   opacity: 1;
 }

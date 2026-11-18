@@ -274,7 +274,7 @@
 
 .primaryBtn {
   background: var(--color-primary);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .acceptBtn:disabled,

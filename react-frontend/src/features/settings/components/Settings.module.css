@@ -184,11 +184,6 @@
   font-size: 0.925rem;
 }
 
-.loading {
-  color: var(--color-text-secondary);
-  font-size: 0.9rem;
-}
-
 /* ── Cards (shared by all sections) ──────────────────────────── */
 
 .avatar,

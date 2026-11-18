@@ -7,6 +7,9 @@ import { Login } from '@/features/auth/components/Login';
 import { ProtectedRoute } from '@/features/auth/components/ProtectedRoute';
 import Homepage from '@/features/home/components/Homepage';
 import LegalPage from '@/features/home/components/LegalPage';
+import { AppLoader } from '@/components/common/AppLoader/AppLoader';
+import { useAppSelector } from './hooks';
+import { selectIsAuthenticated } from '@/features/auth/store/authSlice';
 
 const Dashboard = lazy(() => import('@/features/dashboard/components/Dashboard/Dashboard'));
 const Budget = lazy(() => import('@/features/budget/components/Budget'));
@@ -30,12 +33,19 @@ function LoansRedirect() {
   return <Navigate to={target} replace />;
 }
 
+/** The landing page for visitors; someone already signed in goes to the app. */
+function HomeRoute() {
+  const isAuthenticated = useAppSelector(selectIsAuthenticated);
+  if (isAuthenticated) return <Navigate to="/dashboard" replace />;
+  return <Homepage />;
+}
+
 function App() {
   return (
     <Provider store={store}>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Homepage />} />
+          <Route path="/" element={<HomeRoute />} />
           <Route path="/terms" element={<LegalPage />} />
           <Route path="/privacy" element={<LegalPage />} />
 
@@ -46,7 +56,7 @@ function App() {
             path="/budget/new"
             element={
               <ProtectedRoute>
-                <Suspense fallback={<div>Loading...</div>}>
+                <Suspense fallback={<AppLoader fullScreen />}>
                   <BudgetOnboarding />
                 </Suspense>
               </ProtectedRoute>

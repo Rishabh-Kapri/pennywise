@@ -44,8 +44,8 @@ body,
   /* Primary color */
   /* --color-primary: #81b2ca; */
   /* --color-primary: #5d9cbb; */
-  --color-primary: #4483a2;
-  --color-primary-light: #aec2dd;
+  --color-primary: #2c6a8c; /* the logo's deep blue; theme.css sets the rest */
+  --color-primary-light: #a9cbe0;
 
   /* --color-primary-dark: #edf4f8; */
 

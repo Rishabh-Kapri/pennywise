@@ -11,6 +11,7 @@ import { AgentChat } from '@/features/agent/components/AgentChat';
 import { selectIsDemoUser } from '@/features/auth/store/authSlice';
 import { selectOnboarding } from '@/features/onboarding/hooks/useOnboarding';
 import { isOwner } from '@/features/sharing/types';
+import { AppLoader } from '@/components/common/AppLoader/AppLoader';
 
 const OnboardingWizard = lazy(() => import('@/features/onboarding/components/OnboardingWizard'));
 
@@ -38,7 +39,7 @@ function MainWithSidePanel() {
   return (
     <div className={styles.mainWrapper}>
       <main className={`${styles.mainContent} ${isDashboard ? styles.dashboardMainContent : ''}`}>
-        <Suspense fallback={<div>Loading...</div>}>
+        <Suspense fallback={<AppLoader />}>
           <Outlet />
         </Suspense>
       </main>
@@ -60,6 +61,12 @@ export default function Layout() {
     dispatch(fetchAllBudgets()).finally(() => setHasLoadedBudgets(true));
   }, [dispatch]);
 
+  // The first load decides what to show (the app, setup or a new budget), so
+  // wait for it instead of drawing an empty app.
+  if (!hasLoadedBudgets && budgets.length === 0) {
+    return <AppLoader fullScreen label="Opening your budget" />;
+  }
+
   if (hasLoadedBudgets && budgets.length === 0) {
     return <BudgetOnboarding />;
   }
@@ -72,7 +79,7 @@ export default function Layout() {
     return (
       <>
         <WebSocketProvider />
-        <Suspense fallback={null}>
+        <Suspense fallback={<AppLoader fullScreen />}>
           <OnboardingWizard />
         </Suspense>
       </>

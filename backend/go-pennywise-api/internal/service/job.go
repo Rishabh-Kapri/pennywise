@@ -52,13 +52,17 @@ type JobSummary struct {
 	StatementRows *int `json:"statementRows,omitempty"`
 	// TransactionIDs are what a finished transaction.create made (or found
 	// already there), so the client can open them. Nil for other jobs.
-	TransactionIDs []uuid.UUID     `json:"transactionIds,omitempty"`
-	Progress       json.RawMessage `json:"progress,omitempty"`
-	LastError      string          `json:"lastError,omitempty"`
-	RunAt          time.Time       `json:"runAt"`
-	StartedAt      *time.Time      `json:"startedAt,omitempty"`
-	CompletedAt    *time.Time      `json:"completedAt,omitempty"`
-	CreatedAt      time.Time       `json:"createdAt"`
+	TransactionIDs []uuid.UUID `json:"transactionIds,omitempty"`
+	// AgentRunID and Usage are set for a step that called models: its agent
+	// run, and what its calls used (tokens, cost) so far.
+	AgentRunID  *uuid.UUID      `json:"agentRunId,omitempty"`
+	Usage       *job.ModelUsage `json:"usage,omitempty"`
+	Progress    json.RawMessage `json:"progress,omitempty"`
+	LastError   string          `json:"lastError,omitempty"`
+	RunAt       time.Time       `json:"runAt"`
+	StartedAt   *time.Time      `json:"startedAt,omitempty"`
+	CompletedAt *time.Time      `json:"completedAt,omitempty"`
+	CreatedAt   time.Time       `json:"createdAt"`
 }
 
 // JobTreeView is a top-level job and everything under it, oldest first.
@@ -729,6 +733,8 @@ func summarizeJob(j *job.Job) JobSummary {
 		Source:         messageSource(j),
 		StatementRows:  statementRows(j),
 		TransactionIDs: createdTransactions(j),
+		AgentRunID:     j.AgentRunID,
+		Usage:          j.Usage,
 		Progress:       j.Progress,
 		LastError:      j.LastError,
 		RunAt:          j.RunAt,

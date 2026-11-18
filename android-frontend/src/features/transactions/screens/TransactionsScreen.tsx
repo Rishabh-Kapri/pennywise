@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { ArrowLeftRight, Check, Plus, ReceiptText, Search, Sparkles, X } from 'lucide-react-native';
+import { Hatch } from '../../../components/Hatch';
 import { useAppDispatch, useAppSelector } from '../../../app/hooks';
 import { Screen } from '../../../components/Screen';
 import { AppText } from '../../../components/AppText';
@@ -17,7 +18,7 @@ import { EmptyState } from '../../../components/EmptyState';
 import { InitialAvatar } from '../../../components/InitialAvatar';
 import { apiClient } from '../../../utils/api';
 import type { PaginationResponse } from '../../../utils/constants';
-import { formatRelativeDay, formatSignedCurrency, getSelectedMonthInHumanFormat } from '../../../utils/date';
+import { formatCurrency, formatRelativeDay, formatSignedCurrency, getSelectedMonthInHumanFormat } from '../../../utils/date';
 import { colors, radii, spacing, tabBarClearance } from '../../../theme';
 import type { AppTabParamList } from '../../../navigation/types';
 import type { Tag } from '../../tags/types';
@@ -61,6 +62,20 @@ function TagChips({ tagIds, tags }: { tagIds: string[]; tags: Tag[] }) {
   );
 }
 
+function statusText(status?: TransactionStatus): { label: string; tone: 'success' | 'faint' | 'danger' } | null {
+  switch (status) {
+    case TransactionStatus.APPROVED:
+      return { label: 'Approved', tone: 'success' };
+    case TransactionStatus.MANUAL:
+      return { label: 'Manual entry', tone: 'faint' };
+    case TransactionStatus.REJECTED:
+      return { label: 'Rejected', tone: 'danger' };
+    default:
+      return null;
+  }
+}
+
+/** One transaction as a card: payee and amount on top, category and status in a footer strip. */
 function TransactionRow({
   txn,
   tags,
@@ -77,54 +92,48 @@ function TransactionRow({
   const unapproved = txn.status === TransactionStatus.UNAPPROVED;
   const uncategorized = !txn.categoryId && !transfer;
   const name = txn.payeeName || 'Unknown payee';
+  const status = statusText(txn.status);
 
   return (
-    <Pressable
-      android_ripple={{ color: colors.surfaceTertiary }}
-      style={({ pressed }) => [styles.txnRow, pressed && styles.rowPressed]}
-      onPress={onPress}
-    >
-      {transfer ? (
-        <View style={styles.transferIcon}>
-          <ArrowLeftRight size={17} color={colors.muted} />
+    <Pressable style={({ pressed }) => [styles.txnCard, pressed && styles.rowPressed]} onPress={onPress}>
+      <View style={styles.txnTop}>
+        <View style={styles.txnTile}>
+          {transfer ? <ArrowLeftRight size={18} color={colors.muted} /> : <InitialAvatar name={name} size={32} />}
         </View>
-      ) : (
-        <InitialAvatar name={name} size={38} />
-      )}
-      <View style={styles.txnMain}>
-        <AppText weight="medium" numberOfLines={1}>
-          {name}
-        </AppText>
-        <AppText variant="caption" muted numberOfLines={1}>
-          <AppText variant="caption" style={uncategorized ? styles.warnText : undefined}>
-            {transfer ? 'Transfer' : txn.categoryName ?? 'Uncategorized'}
+        <View style={styles.txnMain}>
+          <AppText weight="semibold" numberOfLines={1}>
+            {name}
           </AppText>
-          {` · ${txn.accountName}`}
-        </AppText>
-        {txn.note ? (
-          <AppText variant="caption" tone="faint" numberOfLines={1}>
-            {txn.note}
+          <AppText variant="caption" muted numberOfLines={1}>
+            {txn.note ? `${txn.accountName} · ${txn.note}` : txn.accountName}
           </AppText>
-        ) : null}
-        <TagChips tagIds={txn.tagIds ?? []} tags={tags} />
-      </View>
-      <View style={styles.amountBlock}>
-        <AppText weight="semibold" tone={amount > 0 && !transfer ? 'success' : 'default'} tabular>
+          <TagChips tagIds={txn.tagIds ?? []} tags={tags} />
+        </View>
+        <AppText weight="bold" tone={amount > 0 && !transfer ? 'success' : 'default'} tabular>
           {formatSignedCurrency(amount, !transfer)}
+        </AppText>
+      </View>
+      <View style={styles.txnFoot}>
+        <AppText variant="caption" muted numberOfLines={1} style={[styles.txnMain, uncategorized && styles.warnText]}>
+          {transfer ? 'Transfer' : txn.categoryName ?? 'Uncategorized'}
         </AppText>
         {unapproved ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Approve"
-            hitSlop={6}
+            hitSlop={8}
             style={({ pressed }) => [styles.approveButton, pressed && styles.pressed]}
             onPress={onApprove}
           >
-            <Check size={13} color={colors.success} />
+            <Check size={12} color={colors.success} />
             <AppText variant="caption" weight="semibold" tone="success">
               Approve
             </AppText>
           </Pressable>
+        ) : status ? (
+          <AppText variant="caption" weight="semibold" tone={status.tone}>
+            {status.label}
+          </AppText>
         ) : null}
       </View>
     </Pressable>
@@ -216,6 +225,11 @@ export function TransactionsScreen() {
     return grouped;
   }, [filtered]);
 
+  const scopedNet = useMemo(
+    () => filtered.reduce((sum, txn) => (txn.transferAccountId ? sum : sum + (txn.inflow ?? 0) - (txn.outflow ?? 0)), 0),
+    [filtered]
+  );
+
   const reviewCount = useMemo(
     () => source.filter((txn) => txn.status === TransactionStatus.UNAPPROVED).length,
     [source]
@@ -246,18 +260,37 @@ export function TransactionsScreen() {
           style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
           onPress={() => openDraft(createDraft())}
         >
-          <Plus size={22} color={colors.onPrimary} />
+          <Plus size={18} color={colors.onHero} />
+          <AppText variant="caption" weight="semibold" style={styles.onHero}>
+            Add
+          </AppText>
         </Pressable>
       </View>
 
       {scopeKey ? (
-        <Pressable style={({ pressed }) => [styles.scopeChip, pressed && styles.pressed]} onPress={clearScope}>
-          <AppText variant="caption" weight="semibold" tone="primary" numberOfLines={1} style={styles.scopeText}>
-            {scopeName}
-            {month ? ` · ${getSelectedMonthInHumanFormat(month)}` : ''}
-          </AppText>
-          <X size={14} color={colors.primary} />
-        </Pressable>
+        <View style={styles.scopeCard}>
+          <Hatch color={colors.onHero} gap={9} opacity={0.05} />
+          <View style={styles.scopeText}>
+            <AppText variant="caption" style={styles.onHeroMuted} numberOfLines={1}>
+              {month ? `${scopeName} · ${getSelectedMonthInHumanFormat(month)}` : scopeName}
+            </AppText>
+            <AppText variant="title" tabular style={styles.onHero} numberOfLines={1} adjustsFontSizeToFit>
+              {formatCurrency(Math.abs(scopedNet))}
+            </AppText>
+            <AppText variant="caption" style={styles.onHeroMuted}>
+              {`${scopedNet > 0 ? 'In' : 'Out'} across ${filtered.length} ${filtered.length === 1 ? 'transaction' : 'transactions'}`}
+            </AppText>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Show all transactions"
+            hitSlop={8}
+            style={({ pressed }) => [styles.scopeClose, pressed && styles.pressed]}
+            onPress={clearScope}
+          >
+            <X size={16} color={colors.onHero} />
+          </Pressable>
+        </View>
       ) : null}
 
       <View style={styles.searchBox}>
@@ -285,7 +318,7 @@ export function TransactionsScreen() {
               style={[styles.filterChip, active && styles.filterChipActive]}
               onPress={() => setFilter(option.id)}
             >
-              {option.id === 'review' ? <Sparkles size={12} color={active ? colors.primary : colors.muted} /> : null}
+              {option.id === 'review' ? <Sparkles size={12} color={active ? colors.background : colors.muted} /> : null}
               <AppText variant="caption" weight="semibold" style={active ? styles.filterActiveText : styles.filterText}>
                 {option.label}
                 {option.id === 'review' && reviewCount ? ` ${reviewCount}` : ''}
@@ -312,9 +345,10 @@ export function TransactionsScreen() {
         }
         renderSectionHeader={({ section }) => (
           <View style={styles.dayHeader}>
-            <AppText variant="label" tone="faint">
+            <AppText variant="caption" tone="faint">
               {formatRelativeDay(section.title)}
             </AppText>
+            <View style={styles.dayRule} />
             {Math.round(section.total) !== 0 ? (
               <AppText variant="caption" tone="faint" tabular>
                 {formatSignedCurrency(section.total, true)}
@@ -390,34 +424,54 @@ const styles = StyleSheet.create({
     gap: 2
   },
   addButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.primary,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center'
+    gap: 6,
+    height: 42,
+    borderRadius: 21,
+    paddingHorizontal: spacing.lg,
+    backgroundColor: colors.hero,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.heroBorder
+  },
+  onHero: {
+    color: colors.onHero
+  },
+  onHeroMuted: {
+    color: colors.onHeroMuted
   },
   pressed: {
     opacity: 0.7
   },
-  scopeChip: {
+  scopeCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
-    gap: spacing.sm,
-    borderRadius: radii.full,
-    backgroundColor: colors.primaryMuted,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm - 2
+    gap: spacing.md,
+    borderRadius: radii.lg,
+    backgroundColor: colors.hero,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.heroBorder,
+    padding: 14,
+    overflow: 'hidden'
   },
   scopeText: {
-    flexShrink: 1
+    flex: 1,
+    minWidth: 0,
+    gap: 2
+  },
+  scopeClose: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.heroControl
   },
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    minHeight: 46,
+    minHeight: 44,
     backgroundColor: colors.surface,
     borderRadius: radii.full,
     paddingHorizontal: spacing.lg
@@ -435,19 +489,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    minHeight: 32,
+    minHeight: 34,
     paddingHorizontal: spacing.md,
     borderRadius: radii.full,
     backgroundColor: colors.surface
   },
   filterChipActive: {
-    backgroundColor: colors.primaryMuted
+    backgroundColor: colors.text
   },
   filterText: {
     color: colors.muted
   },
   filterActiveText: {
-    color: colors.primary
+    color: colors.background
   },
   listContent: {
     paddingBottom: tabBarClearance
@@ -455,10 +509,15 @@ const styles = StyleSheet.create({
   dayHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: spacing.sm,
     paddingHorizontal: spacing.xs,
-    paddingTop: spacing.lg,
+    paddingTop: spacing.md,
     paddingBottom: spacing.sm
+  },
+  dayRule: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.borderLight
   },
   scopedLoading: {
     paddingVertical: spacing.xxl
@@ -466,24 +525,26 @@ const styles = StyleSheet.create({
   footerSpinner: {
     paddingVertical: spacing.lg
   },
-  txnRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
+  txnCard: {
     backgroundColor: colors.surface,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    marginBottom: spacing.xs,
+    borderRadius: radii.lg,
+    marginBottom: spacing.sm,
     overflow: 'hidden'
   },
   rowPressed: {
-    backgroundColor: colors.surfaceStrong
+    opacity: 0.85
   },
-  transferIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+  txnTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10
+  },
+  txnTile: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.surfaceStrong
@@ -491,14 +552,19 @@ const styles = StyleSheet.create({
   txnMain: {
     flex: 1,
     minWidth: 0,
-    gap: 2
+    gap: 1
+  },
+  txnFoot: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    minHeight: 32,
+    backgroundColor: colors.surfaceStrong,
+    paddingHorizontal: 12,
+    paddingVertical: 6
   },
   warnText: {
     color: colors.warning
-  },
-  amountBlock: {
-    alignItems: 'flex-end',
-    gap: spacing.sm
   },
   approveButton: {
     flexDirection: 'row',
@@ -507,22 +573,23 @@ const styles = StyleSheet.create({
     borderRadius: radii.full,
     backgroundColor: colors.successMuted,
     paddingHorizontal: spacing.sm + 2,
-    paddingVertical: 4
+    paddingVertical: 3
   },
   tagRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.xs,
-    marginTop: 2
+    marginTop: 3
   },
   tagChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: colors.surfaceStrong,
+    borderWidth: 1,
+    borderColor: colors.border,
     borderRadius: radii.full,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 2
+    paddingVertical: 1
   },
   tagDot: {
     width: 7,

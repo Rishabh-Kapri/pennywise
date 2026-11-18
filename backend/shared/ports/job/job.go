@@ -3,6 +3,7 @@ package job
 import (
 	"context"
 	"encoding/json"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
 	"time"
 
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
@@ -43,6 +44,13 @@ type Job struct {
 	Progress json.RawMessage // updated while running
 	Result   json.RawMessage // the final output fo the step
 
+	// AgentRunID is the agent run a pipeline step that calls models recorded
+	// (one per job; retries add to it). Nil for jobs that call no model.
+	AgentRunID *uuid.UUID
+	// Usage totals the model calls of AgentRunID, read from llm_usage. Only
+	// JobStore's reads fill it; nil when the job has no run.
+	Usage *ModelUsage
+
 	RunAt       time.Time // when this job is scheduled at
 	StartedAt   *time.Time
 	CompletedAt *time.Time
@@ -54,6 +62,9 @@ type Job struct {
 	UpdatedAt time.Time
 	DeletedAt *time.Time
 }
+
+// ModelUsage is what a job's model calls used (see model.ModelUsage).
+type ModelUsage = model.ModelUsage
 
 type JobFilter struct {
 	Status   JobStatus

@@ -74,7 +74,7 @@ func (r *transactionSourceRepo) ListByTransaction(
 ) ([]model.TransactionSource, error) {
 	rows, err := r.Executor(ctx).Query(ctx, `
 		SELECT id, kind, origin, raw_text, channel, merchant, vpa, ref, account_hint, direction,
-		       amount::float8, currency, to_char(occurred_on, 'YYYY-MM-DD'), occurred_at, created_at
+		       amount::float8, currency, to_char(occurred_on, 'YYYY-MM-DD'), occurred_at, rewards_points, created_at
 		FROM transaction_sources
 		WHERE budget_id = $1 AND transaction_id = $2
 		ORDER BY created_at, id
@@ -89,7 +89,7 @@ func (r *transactionSourceRepo) ListByTransaction(
 		var s model.TransactionSource
 		if err := rows.Scan(
 			&s.ID, &s.Kind, &s.Origin, &s.RawText, &s.Channel, &s.Merchant, &s.VPA, &s.Ref, &s.AccountHint,
-			&s.Direction, &s.Amount, &s.Currency, &s.OccurredOn, &s.OccurredAt, &s.CreatedAt,
+			&s.Direction, &s.Amount, &s.Currency, &s.OccurredOn, &s.OccurredAt, &s.RewardPoints, &s.CreatedAt,
 		); err != nil {
 			return nil, err
 		}

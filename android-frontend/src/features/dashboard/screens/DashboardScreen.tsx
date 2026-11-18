@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Image, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -13,6 +13,7 @@ import {
   ArrowUpRight,
   Check,
   CheckCircle2,
+  ChevronRight,
   Landmark,
   Sparkles,
   TriangleAlert,
@@ -22,10 +23,13 @@ import type { RootStackParamList } from '../../../navigation/types';
 import { useAppDispatch, useAppSelector } from '../../../app/hooks';
 import { AppText } from '../../../components/AppText';
 import { Card } from '../../../components/Card';
-import { LineChart, Ring, Segmented } from '../../../components/charts';
+import { CircleButton, LetterTile, PillBars, SectionHead } from '../../../components/Blocks';
+import { Hatch, HatchMeter } from '../../../components/Hatch';
+import { ProgressBar } from '../../../components/ProgressBar';
+import { LineChart, Segmented } from '../../../components/charts';
 import { InitialAvatar } from '../../../components/InitialAvatar';
 import { Screen } from '../../../components/Screen';
-import { chartSeries, colors, radii, spacing } from '../../../theme';
+import { chartSeries, colors, radii, screenPadding, spacing } from '../../../theme';
 import {
   addDays,
   formatCompactCurrency,
@@ -37,6 +41,7 @@ import {
   shiftMonth,
   todayKey
 } from '../../../utils/date';
+import { CardWalletRow } from '../../accounts/components/CardWallet';
 import { fetchAllAccounts } from '../../accounts/store/accountSlice';
 import { fetchAllCategoryGroups, fetchInflowAmount } from '../../category/store/categorySlice';
 import { RecentDocumentsCard } from '../../documents/components/RecentDocumentsCard';
@@ -49,6 +54,7 @@ import {
   selectActivityWindow,
   selectDashboardAccounts,
   selectMonthCashFlow,
+  selectMonthlySpending,
   selectNeedsReviewCount,
   selectSpendingSummary,
   type SpendingGroup
@@ -107,12 +113,17 @@ function useExcludedAccounts(budgetId?: string) {
   return [excluded, toggle] as const;
 }
 
-function CardTitle({ title, right }: { title: string; right?: React.ReactNode }) {
+function CardTitle({ title, subtitle, right }: { title: string; subtitle?: string; right?: ReactNode }) {
   return (
     <View style={styles.cardHead}>
-      <AppText variant="heading" style={styles.grow}>
-        {title}
-      </AppText>
+      <View style={styles.grow}>
+        <AppText variant="heading">{title}</AppText>
+        {subtitle ? (
+          <AppText variant="caption" muted numberOfLines={1}>
+            {subtitle}
+          </AppText>
+        ) : null}
+      </View>
       {right}
     </View>
   );
@@ -127,15 +138,39 @@ const RANGES = [
 ] as const;
 type Range = (typeof RANGES)[number]['value'];
 
-function BalanceCard() {
+/** Ready-to-assign state as a chip on the hero card. */
+function ReadyChip({ onPress }: { onPress: () => void }) {
+  const inflowAmount = useAppSelector((state) => state.categories.inflowAmount);
+  const inflowSuccess = useAppSelector((state) => state.categories.inflowLoading === 'success');
+  // keep the chip up through refetches; only the very first load hides it
+  const [loaded, setLoaded] = useState(inflowSuccess);
+  if (!loaded && inflowSuccess) setLoaded(true);
+  if (!loaded) return null;
+
+  const over = inflowAmount < 0;
+  const done = inflowAmount === 0;
+  return (
+    <Pressable style={[styles.readyChip, over && styles.readyChipOver]} onPress={onPress} accessibilityRole="button">
+      {over ? <TriangleAlert size={12} color={colors.danger} /> : done ? <CheckCircle2 size={12} color={colors.success} /> : null}
+      <AppText variant="caption" weight="semibold" style={styles.onHero} numberOfLines={1}>
+        {over
+          ? `Assigned ${formatCurrency(Math.abs(inflowAmount))} too much`
+          : done
+            ? 'Every rupee has a job'
+            : `${formatCurrency(inflowAmount)} ready to assign`}
+      </AppText>
+      <ChevronRight size={12} color={colors.onHeroMuted} />
+    </Pressable>
+  );
+}
+
+function useBalance() {
   const accounts = useAppSelector(selectDashboardAccounts);
   const activity = useAppSelector((state) => state.dashboard.activity);
   const activityWindow = useAppSelector(selectActivityWindow);
   const budgetId = useAppSelector((state) => state.budgets.selectedBudget?.id);
   const [excluded, toggle] = useExcludedAccounts(budgetId);
   const [range, setRange] = useState<Range>('3m');
-  const [showAccounts, setShowAccounts] = useState(false);
-  const [selected, setSelected] = useState<number | null>(null);
   const today = todayKey();
 
   const { ids, total } = useMemo(() => {
@@ -157,6 +192,57 @@ function BalanceCard() {
     return buildBalanceHistory(total, activity, ids, start, today);
   }, [activity, activityWindow, ids, range, today, total]);
 
+  return { accounts, ids, total, history, range, setRange, toggle };
+}
+
+type Balance = ReturnType<typeof useBalance>;
+
+function BalanceHero({ balance, onReady }: { balance: Balance; onReady: () => void }) {
+  const { accounts, ids, total, history } = balance;
+  const first = history[0];
+  const change = first ? total - first.balance : 0;
+
+  return (
+    <View style={styles.hero}>
+      <Hatch color={colors.onHero} gap={9} opacity={0.05} />
+      <ReadyChip onPress={onReady} />
+      <AppText variant="caption" style={[styles.onHeroMuted, styles.heroLabel]}>
+        {ids.size === accounts.length
+          ? `Balance across ${accounts.length === 1 ? 'your account' : `all ${accounts.length} accounts`}`
+          : `Balance across ${ids.size} of ${accounts.length} accounts`}
+      </AppText>
+      <AppText variant="display" tabular style={[styles.onHero, styles.heroAmount]} numberOfLines={1} adjustsFontSizeToFit>
+        {formatSignedCurrency(total)}
+      </AppText>
+      {first && history.length > 1 ? (
+        <View style={[styles.inline, styles.centerRow]}>
+          {Math.round(change) === 0 ? (
+            <AppText variant="caption" style={styles.onHeroMuted}>
+              No change
+            </AppText>
+          ) : (
+            <>
+              {change > 0 ? <ArrowUp size={13} color={colors.heroPositive} /> : <ArrowDown size={13} color={colors.heroNegative} />}
+              <AppText variant="caption" weight="semibold" tabular style={{ color: change > 0 ? colors.heroPositive : colors.heroNegative }}>
+                {formatSignedCurrency(change, true)}
+              </AppText>
+            </>
+          )}
+          <AppText variant="caption" style={styles.onHeroMuted}>
+            {' '}
+            since {formatDayMonth(first.date)}
+          </AppText>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function BalanceTrendCard({ balance }: { balance: Balance }) {
+  const { accounts, ids, history, range, setRange, toggle } = balance;
+  const [showAccounts, setShowAccounts] = useState(false);
+  const [selected, setSelected] = useState<number | null>(null);
+
   // a point per day is too fine for a phone-width line; sample down to ~45
   const points = useMemo(() => {
     const step = Math.max(1, Math.ceil(history.length / 45));
@@ -164,72 +250,41 @@ function BalanceCard() {
       .filter((_, i) => i % step === 0 || i === history.length - 1)
       .map((point) => ({ key: point.date, label: formatDayMonth(point.date), values: { balance: point.balance } }));
   }, [history]);
-
-  const first = history[0];
-  const change = first ? total - first.balance : 0;
   const pick = selected != null ? points[selected] : null;
 
   return (
     <Card style={styles.card}>
       <CardTitle
-        title="Balance"
+        title="Balance trend"
+        subtitle={pick ? `${pick.label} · ${formatSignedCurrency(pick.values.balance)}` : 'Tap the line for a day'}
         right={<Segmented options={RANGES} value={range} onChange={(value) => { setRange(value); setSelected(null); }} />}
       />
-      <View>
-        <AppText variant="caption" muted>
-          {pick
-            ? pick.label
-            : ids.size === accounts.length
-              ? `Across ${accounts.length === 1 ? 'your account' : `all ${accounts.length} accounts`}`
-              : `Across ${ids.size} of ${accounts.length} accounts`}
-        </AppText>
-        <AppText variant="display" tabular>
-          {formatSignedCurrency(pick ? pick.values.balance : total)}
-        </AppText>
-        {first && history.length > 1 && !pick ? (
-          <View style={styles.inline}>
-            {Math.round(change) === 0 ? (
-              <AppText variant="caption" muted>
-                No change
-              </AppText>
-            ) : (
-              <>
-                {change > 0 ? <ArrowUp size={13} color={colors.success} /> : <ArrowDown size={13} color={colors.danger} />}
-                <AppText variant="caption" weight="semibold" tone={change > 0 ? 'success' : 'danger'} tabular>
-                  {formatSignedCurrency(change, true)}
-                </AppText>
-              </>
-            )}
-            <AppText variant="caption" tone="faint">
-              {' '}
-              since {formatDayMonth(first.date)}
-            </AppText>
-          </View>
-        ) : null}
+      <View style={styles.inset}>
+        {points.length > 1 ? (
+          <LineChart
+            points={points}
+            series={[{ key: 'balance', label: 'Balance', color: chartSeries[0] }]}
+            height={140}
+            selected={selected}
+            onSelect={(index) => setSelected((current) => (current === index ? null : index))}
+          />
+        ) : (
+          <AppText variant="caption" tone="faint">
+            {ids.size === 0 ? 'Tick an account to chart its balance.' : 'Not enough history yet.'}
+          </AppText>
+        )}
       </View>
-      {points.length > 1 ? (
-        <LineChart
-          points={points}
-          series={[{ key: 'balance', label: 'Balance', color: chartSeries[0] }]}
-          height={140}
-          selected={selected}
-          onSelect={(index) => setSelected((current) => (current === index ? null : index))}
-        />
-      ) : ids.size === 0 ? (
-        <AppText variant="caption" tone="faint">
-          Tick an account to chart its balance.
-        </AppText>
-      ) : null}
 
-      <Pressable style={styles.linkRow} onPress={() => setShowAccounts((open) => !open)}>
-        <AppText variant="caption" weight="semibold" tone="primary">
-          {showAccounts ? 'Hide accounts' : `${accounts.length} accounts`}
+      <Pressable style={styles.linkRowBox} onPress={() => setShowAccounts((open) => !open)} accessibilityRole="button">
+        <AppText weight="medium" style={styles.grow}>
+          {showAccounts ? 'Hide accounts' : `Choose accounts · ${ids.size} of ${accounts.length}`}
         </AppText>
+        <ArrowRight size={18} color={colors.text} style={showAccounts ? styles.rotateDown : undefined} />
       </Pressable>
       {showAccounts
         ? accounts.map((account) => {
             const included = Boolean(account.id && ids.has(account.id));
-            const balance = account.balance ?? 0;
+            const accountBalance = account.balance ?? 0;
             return (
               <Pressable
                 key={account.id}
@@ -247,8 +302,8 @@ function BalanceCard() {
                     {ACCOUNT_TYPE[account.type] ?? 'Account'}
                   </AppText>
                 </View>
-                <AppText weight="semibold" tabular tone={balance < 0 ? 'danger' : undefined}>
-                  {formatSignedCurrency(balance)}
+                <AppText weight="semibold" tabular tone={accountBalance < 0 ? 'danger' : undefined}>
+                  {formatSignedCurrency(accountBalance)}
                 </AppText>
               </Pressable>
             );
@@ -258,7 +313,7 @@ function BalanceCard() {
   );
 }
 
-// ── Cash flow ──
+// ── This month ──
 
 function Change({ current, previous, upIsGood, against }: { current: number; previous: number | null; upIsGood: boolean; against: string }) {
   if (previous === null) return null;
@@ -286,7 +341,7 @@ function Change({ current, previous, upIsGood, against }: { current: number; pre
   );
 }
 
-function CashFlowCard() {
+function ThisMonthCard({ onReports }: { onReports: () => void }) {
   const flow = useAppSelector(selectMonthCashFlow);
   if (!flow) return null;
   const prevName = formatMonthName(shiftMonth(flow.month, -1), 'short');
@@ -295,115 +350,139 @@ function CashFlowCard() {
 
   return (
     <Card style={styles.card}>
-      <CardTitle
-        title="Cash flow"
-        right={
+      <View style={styles.cardHead}>
+        <View style={styles.grow}>
           <AppText variant="caption" muted>
-            {formatMonthName(flow.month)}
+            Spent in {formatMonthName(flow.month)}
           </AppText>
-        }
-      />
-      <View style={styles.flowRow}>
-        <View style={styles.flowCell}>
-          <View style={styles.inline}>
-            <View style={[styles.flowIcon, { backgroundColor: colors.successMuted }]}>
-              <ArrowDownLeft size={14} color={colors.success} />
-            </View>
-            <AppText variant="caption" muted>
-              Income
-            </AppText>
-          </View>
-          <AppText variant="heading" tabular tone="success">
+          <AppText variant="title" tabular numberOfLines={1} adjustsFontSizeToFit>
+            {formatCurrency(flow.spending)}
+          </AppText>
+          <Change current={flow.spending} previous={flow.prevSpending} upIsGood={false} against={prevName} />
+        </View>
+        <CircleButton label="Open reports" onPress={onReports}>
+          <ArrowUpRight size={18} color={colors.text} />
+        </CircleButton>
+      </View>
+
+      <View style={styles.tilePair}>
+        <View style={styles.statTile}>
+          <AppText variant="caption" muted>
+            Income
+          </AppText>
+          <AppText weight="bold" tabular tone="success" numberOfLines={1} adjustsFontSizeToFit style={styles.statValue}>
             {formatSignedCurrency(flow.income, true)}
           </AppText>
           <Change current={flow.income} previous={flow.prevIncome} upIsGood against={prevName} />
         </View>
-        <View style={styles.flowCell}>
-          <View style={styles.inline}>
-            <View style={[styles.flowIcon, { backgroundColor: colors.surfaceStrong }]}>
-              <ArrowUpRight size={14} color={colors.muted} />
-            </View>
-            <AppText variant="caption" muted>
-              Spending
-            </AppText>
-          </View>
-          <AppText variant="heading" tabular>
-            {formatSignedCurrency(-flow.spending)}
+        <View style={styles.statTile}>
+          <AppText variant="caption" muted>
+            {overspent ? 'Overspent' : 'Left over'}
           </AppText>
-          <Change current={flow.spending} previous={flow.prevSpending} upIsGood={false} against={prevName} />
+          <AppText weight="bold" tabular tone={overspent ? 'danger' : 'default'} numberOfLines={1} adjustsFontSizeToFit style={styles.statValue}>
+            {formatCurrency(Math.abs(flow.net))}
+          </AppText>
+          <AppText variant="caption" tone="faint">
+            {spentShare === null ? 'No income yet' : `${Math.round(spentShare * 100)}% of income spent`}
+          </AppText>
         </View>
       </View>
 
-      <View style={styles.netBox}>
+      <View style={styles.box}>
+        <HatchMeter percent={spentShare === null ? 0 : spentShare * 100} />
         <View style={styles.cardHead}>
           <AppText variant="caption" muted style={styles.grow}>
-            {overspent ? 'Overspent' : 'Left over'}
+            Of income
           </AppText>
-          <AppText weight="semibold" tabular tone={overspent ? 'danger' : undefined}>
-            {formatCurrency(Math.abs(flow.net))}
+          <AppText variant="caption" muted tabular>
+            <AppText variant="caption" weight="semibold">
+              {formatCurrency(flow.spending)}
+            </AppText>
+            {` / ${formatCurrency(flow.income)}`}
           </AppText>
         </View>
-        <View style={styles.meter}>
-          <View
-            style={[
-              styles.meterFill,
-              spentShare !== null && spentShare > 1 && styles.meterOver,
-              { width: `${spentShare === null ? 0 : Math.min(spentShare, 1) * 100}%` }
-            ]}
-          />
-        </View>
-        <AppText variant="caption" tone="faint">
-          {spentShare === null
-            ? flow.spending > 0
-              ? 'No income recorded this month'
-              : 'Nothing in or out yet'
-            : spentShare <= 1
-              ? `${Math.round(spentShare * 100)}% of income spent`
-              : `Spent ${formatCurrency(flow.spending - flow.income)} more than came in`}
-        </AppText>
       </View>
-      <AppText variant="caption" tone="faint">
-        {flow.avgMonths > 0
-          ? `Monthly average, last ${flow.avgMonths === 1 ? 'month' : `${flow.avgMonths} months`}: +${formatCurrency(flow.avgIncome)} in · −${formatCurrency(flow.avgSpending)} out`
-          : 'Averages appear after your first full month.'}
-      </AppText>
+
+      {flow.avgMonths > 0 ? (
+        <AppText variant="caption" tone="faint">
+          {`Monthly average, last ${flow.avgMonths === 1 ? 'month' : `${flow.avgMonths} months`}: +${formatCurrency(flow.avgIncome)} in · −${formatCurrency(flow.avgSpending)} out`}
+        </AppText>
+      ) : null}
     </Card>
   );
 }
 
-// ── Spending ──
+// ── Spending by month ──
 
-function CategoryTile({ name, spent, budgeted }: { name: string; spent: number; budgeted: number }) {
+function SpendingBarsCard() {
+  const months = useAppSelector(selectMonthlySpending);
+  if (months.length < 2) return null;
+  return (
+    <Card>
+      <PillBars title="Spending analytics" points={months.map((m) => ({ month: m.month, value: m.spending }))} />
+    </Card>
+  );
+}
+
+// ── Categories ──
+
+function CategoryGoal({ name, spent, budgeted, color, onPress }: { name: string; spent: number; budgeted: number; color: string; onPress: () => void }) {
   const hasBudget = budgeted > 0;
   const over = hasBudget && spent > budgeted;
   const percent = hasBudget ? (spent / budgeted) * 100 : 0;
   return (
-    <View style={styles.tile}>
-      <Ring percent={percent} size={58} stroke={6} color={over ? colors.danger : hasBudget ? colors.primary : colors.surfaceTertiary}>
-        <AppText variant="caption" weight="semibold" tabular style={styles.ringText}>
-          {hasBudget ? `${Math.round(percent)}%` : '—'}
+    <Pressable style={({ pressed }) => [styles.goalCard, pressed && styles.pressed]} onPress={onPress} accessibilityRole="button">
+      <View style={styles.cardHead}>
+        <LetterTile name={name} color={color} />
+        <AppText weight="semibold" numberOfLines={1} style={styles.grow}>
+          {name}
         </AppText>
-      </Ring>
-      <AppText variant="caption" numberOfLines={1} style={styles.center}>
-        {name}
-      </AppText>
-      <AppText variant="caption" weight="semibold" tabular>
-        {formatCurrency(spent)}
-      </AppText>
-      <AppText variant="caption" tone={over ? 'danger' : 'faint'} numberOfLines={1} style={styles.tileStatus}>
-        {over
-          ? `${formatCurrency(spent - budgeted)} over`
-          : !hasBudget
-            ? 'Not budgeted'
-            : spent === budgeted
-              ? 'Fully spent'
-              : `${formatCurrency(budgeted - spent)} left`}
-      </AppText>
-    </View>
+        <CircleButton label={`Open ${name}`}>
+          <ChevronRight size={16} color={colors.text} />
+        </CircleButton>
+      </View>
+      <View style={styles.goalBox}>
+        <View style={styles.cardHead}>
+          <AppText weight="bold" tabular style={styles.grow}>
+            {formatCurrency(spent)}
+          </AppText>
+          <AppText variant="caption" tone="faint" tabular>
+            {hasBudget ? formatCurrency(budgeted) : 'Not budgeted'}
+          </AppText>
+        </View>
+        <ProgressBar percent={percent} height={4} color={over ? colors.danger : color} />
+        <View style={styles.cardHead}>
+          <AppText variant="caption" tone={over ? 'danger' : 'muted'} numberOfLines={1} style={styles.grow}>
+            {over
+              ? `${formatCurrency(spent - budgeted)} over`
+              : !hasBudget
+                ? 'Nothing assigned'
+                : spent === budgeted
+                  ? 'Fully spent'
+                  : `${formatCurrency(budgeted - spent)} left`}
+          </AppText>
+          {hasBudget ? (
+            <AppText variant="caption" weight="bold" tabular>
+              {`${Math.round(percent)}%`}
+            </AppText>
+          ) : null}
+        </View>
+      </View>
+    </Pressable>
   );
 }
 
-function SpendingCard({ onUncategorized }: { onUncategorized: () => void }) {
+const MAX_CATEGORIES = 5;
+
+function CategoriesSection({
+  onBudget,
+  onUncategorized,
+  onCategory
+}: {
+  onBudget: () => void;
+  onUncategorized: () => void;
+  onCategory: (id: string) => void;
+}) {
   const summary = useAppSelector(selectSpendingSummary);
   const activity = useAppSelector((state) => state.dashboard.activity);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -413,65 +492,53 @@ function SpendingCard({ onUncategorized }: { onUncategorized: () => void }) {
     (txn) => txn.date.startsWith(month) && !txn.categoryId && !txn.transferAccountId
   ).length;
   const groups = summary.groups;
-  const selected: SpendingGroup | undefined = groups.find((group) => group.id === selectedId) ?? groups[0];
+  const selectedIndex = Math.max(0, groups.findIndex((group) => group.id === selectedId));
+  const selected: SpendingGroup | undefined = groups[selectedIndex];
+  const color = chartSeries[selectedIndex % chartSeries.length];
+  const categories = selected ? [...selected.categories].sort((a, b) => b.spent - a.spent).slice(0, MAX_CATEGORIES) : [];
 
   return (
-    <Card style={styles.card}>
-      <CardTitle
-        title="Spending"
-        right={
-          summary.total > 0 ? (
-            <AppText variant="caption" muted tabular>
-              <AppText variant="caption" weight="semibold">
-                {formatCurrency(summary.total)}
-              </AppText>
-              {summary.budgeted > 0 ? ` of ${formatCurrency(summary.budgeted)}` : ''}
-            </AppText>
-          ) : null
-        }
-      />
+    <View style={styles.section}>
+      <SectionHead title="Your categories" onViewAll={onBudget} />
       {!selected ? (
-        <AppText variant="caption" tone="faint">
-          No spending in {formatMonthName(month)} yet.
-        </AppText>
+        <Card>
+          <AppText variant="caption" tone="faint">
+            No spending in {formatMonthName(month)} yet.
+          </AppText>
+        </Card>
       ) : (
         <>
-          {groups.slice(0, 6).map((group) => {
-            const share = summary.total > 0 ? (group.spent / summary.total) * 100 : 0;
-            const active = group.id === selected.id;
-            return (
-              <Pressable
-                key={group.id}
-                style={[styles.groupRow, active && styles.groupRowActive]}
-                onPress={() => setSelectedId(group.id)}
-              >
-                <View style={styles.cardHead}>
-                  <AppText weight={active ? 'semibold' : 'medium'} numberOfLines={1} style={styles.grow}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsBleed} contentContainerStyle={styles.chips}>
+            {groups.map((group) => {
+              const active = group.id === selected.id;
+              return (
+                <Pressable
+                  key={group.id}
+                  style={[styles.chip, active && styles.chipActive]}
+                  onPress={() => setSelectedId(group.id)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                >
+                  <AppText variant="caption" weight="semibold" style={active ? styles.chipActiveText : undefined} numberOfLines={1}>
                     {group.name}
                   </AppText>
-                  <AppText weight="semibold" tabular>
-                    {formatCurrency(group.spent)}
+                  <AppText variant="caption" tabular style={active ? styles.chipActiveSub : styles.chipSub}>
+                    {formatCompactCurrency(group.spent)}
                   </AppText>
-                </View>
-                <View style={styles.bar}>
-                  <View style={[styles.barFill, { width: `${Math.max(share, 1.5)}%` }]} />
-                </View>
-              </Pressable>
-            );
-          })}
-          <View style={styles.tilesHead}>
-            <AppText weight="semibold" style={styles.grow} numberOfLines={1}>
-              {selected.name}
-            </AppText>
-            <AppText variant="caption" tone="faint">
-              {selected.budgeted > 0 ? `of ${formatCurrency(selected.budgeted)} assigned` : 'Nothing assigned'}
-            </AppText>
-          </View>
-          <View style={styles.tiles}>
-            {selected.categories.map((category) => (
-              <CategoryTile key={category.id} name={category.name} spent={category.spent} budgeted={category.budgeted} />
-            ))}
-          </View>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+          {categories.map((category) => (
+            <CategoryGoal
+              key={category.id}
+              name={category.name}
+              spent={category.spent}
+              budgeted={category.budgeted}
+              color={color}
+              onPress={() => onCategory(category.id)}
+            />
+          ))}
         </>
       )}
       {uncategorized > 0 ? (
@@ -483,7 +550,7 @@ function SpendingCard({ onUncategorized }: { onUncategorized: () => void }) {
           <ArrowRight size={14} color={colors.warning} />
         </Pressable>
       ) : null}
-    </Card>
+    </View>
   );
 }
 
@@ -496,6 +563,8 @@ const FILTERS = [
 ] as const;
 type Filter = (typeof FILTERS)[number]['value'];
 
+const RECENT_LIMIT = 8;
+
 function RecentActivity({ onSeeAll }: { onSeeAll: () => void }) {
   const activity = useAppSelector((state) => state.dashboard.activity);
   const needsReview = useAppSelector(selectNeedsReviewCount);
@@ -504,103 +573,91 @@ function RecentActivity({ onSeeAll }: { onSeeAll: () => void }) {
   const [filter, setFilter] = useState<Filter>('all');
   const today = todayKey();
 
-  const days = useMemo(() => {
+  const recent = useMemo(() => {
     const matches = (txn: Transaction) => {
       if (filter === 'all') return true;
       if (txn.transferAccountId) return false;
       return filter === 'in' ? (txn.inflow ?? 0) > 0 : (txn.outflow ?? 0) > 0;
     };
-    const grouped: { date: string; transactions: Transaction[] }[] = [];
-    for (const txn of activity.filter((t) => t.date <= today && matches(t)).slice(0, 12)) {
-      const last = grouped[grouped.length - 1];
-      if (last?.date === txn.date) last.transactions.push(txn);
-      else grouped.push({ date: txn.date, transactions: [txn] });
-    }
-    return grouped;
+    return activity.filter((t) => t.date <= today && matches(t)).slice(0, RECENT_LIMIT);
   }, [activity, filter, today]);
 
   return (
-    <Card style={styles.card}>
-      <CardTitle
-        title="Recent activity"
-        right={
-          <Pressable style={styles.inline} onPress={onSeeAll} hitSlop={8}>
-            <AppText variant="caption" weight="semibold" tone="primary">
-              See all
-            </AppText>
-            <ArrowRight size={13} color={colors.primary} />
-          </Pressable>
-        }
-      />
-      <View style={styles.cardHead}>
-        <Segmented options={FILTERS} value={filter} onChange={setFilter} />
-        {needsReview > 0 ? (
-          <Pressable style={styles.reviewPill} onPress={onSeeAll}>
-            <Sparkles size={12} color={colors.primary} />
-            <AppText variant="caption" weight="semibold" tone="primary">
-              {needsReview} to review
-            </AppText>
-          </Pressable>
-        ) : null}
-      </View>
-      {days.length === 0 ? (
-        <AppText variant="caption" tone="faint">
-          {filter === 'all' ? 'No transactions yet.' : `No ${filter === 'in' ? 'income' : 'spending'} lately.`}
-        </AppText>
-      ) : (
-        days.map((day) => (
-          <View key={day.date} style={styles.day}>
-            <AppText variant="label" tone="faint">
-              {formatRelativeDay(day.date, today)}
-            </AppText>
-            {day.transactions.map((txn) => {
-              const net = (txn.inflow ?? 0) - (txn.outflow ?? 0);
-              const transfer = Boolean(txn.transferAccountId);
-              const income = !transfer && inflowCategoryId && txn.categoryId === inflowCategoryId;
-              const other = transfer ? accounts.find((account) => account.id === txn.transferAccountId)?.name : null;
-              const title = transfer ? `${net < 0 ? 'To' : 'From'} ${other ?? 'another account'}` : txn.payeeName || 'Unknown payee';
-              const detail = transfer ? 'Transfer' : income ? 'Ready to assign' : txn.categoryName || 'Uncategorized';
-              return (
-                <View key={txn.id} style={styles.activityRow}>
-                  {transfer ? (
-                    <View style={styles.roundIcon}>
-                      <ArrowLeftRight size={16} color={colors.muted} />
-                    </View>
-                  ) : income ? (
-                    <View style={[styles.roundIcon, { backgroundColor: colors.successMuted }]}>
-                      <ArrowDownLeft size={16} color={colors.success} />
-                    </View>
-                  ) : (
-                    <InitialAvatar name={title} size={36} />
-                  )}
+    <View style={styles.section}>
+      <SectionHead title="Recent transactions" onViewAll={onSeeAll} />
+      <Card style={styles.card}>
+        <View style={styles.cardHead}>
+          <Segmented options={FILTERS} value={filter} onChange={setFilter} />
+          {needsReview > 0 ? (
+            <Pressable style={styles.reviewPill} onPress={onSeeAll}>
+              <Sparkles size={12} color={colors.primary} />
+              <AppText variant="caption" weight="semibold" tone="primary">
+                {needsReview} to review
+              </AppText>
+            </Pressable>
+          ) : null}
+        </View>
+        {recent.length === 0 ? (
+          <AppText variant="caption" tone="faint">
+            {filter === 'all' ? 'No transactions yet.' : `No ${filter === 'in' ? 'income' : 'spending'} lately.`}
+          </AppText>
+        ) : (
+          recent.map((txn) => {
+            const net = (txn.inflow ?? 0) - (txn.outflow ?? 0);
+            const transfer = Boolean(txn.transferAccountId);
+            const income = !transfer && inflowCategoryId && txn.categoryId === inflowCategoryId;
+            const other = transfer ? accounts.find((account) => account.id === txn.transferAccountId)?.name : null;
+            const title = transfer ? `${net < 0 ? 'To' : 'From'} ${other ?? 'another account'}` : txn.payeeName || 'Unknown payee';
+            const detail = transfer ? 'Transfer' : income ? 'Ready to assign' : txn.categoryName || 'Uncategorized';
+            const review = txn.status === TransactionStatus.UNAPPROVED;
+            return (
+              <View key={txn.id} style={styles.txnCard}>
+                <View style={styles.txnMain}>
+                  <View style={styles.txnTile}>
+                    {transfer ? (
+                      <ArrowLeftRight size={18} color={colors.muted} />
+                    ) : income ? (
+                      <ArrowDownLeft size={18} color={colors.success} />
+                    ) : (
+                      <InitialAvatar name={title} size={34} />
+                    )}
+                  </View>
                   <View style={styles.grow}>
-                    <AppText weight="medium" numberOfLines={1}>
+                    <AppText weight="semibold" numberOfLines={1}>
                       {title}
                     </AppText>
                     <AppText variant="caption" muted numberOfLines={1}>
-                      <AppText variant="caption" style={!transfer && !txn.categoryId ? styles.warnText : undefined}>
-                        {detail}
-                      </AppText>
-                      {` · ${txn.accountName}`}
+                      {txn.accountName}
                     </AppText>
                   </View>
-                  <View style={styles.activityEnd}>
-                    <AppText weight="semibold" tabular tone={net > 0 && !transfer ? 'success' : undefined}>
+                  <View style={styles.endText}>
+                    <AppText weight="bold" tabular tone={net > 0 && !transfer ? 'success' : undefined}>
                       {formatSignedCurrency(net, !transfer)}
                     </AppText>
-                    {txn.status === TransactionStatus.UNAPPROVED ? (
-                      <AppText variant="caption" tone="primary">
-                        Review
-                      </AppText>
-                    ) : null}
+                    <AppText variant="caption" tone="faint">
+                      {formatRelativeDay(txn.date, today)}
+                    </AppText>
                   </View>
                 </View>
-              );
-            })}
-          </View>
-        ))
-      )}
-    </Card>
+                <View style={styles.txnFoot}>
+                  <AppText
+                    variant="caption"
+                    muted
+                    numberOfLines={1}
+                    style={[styles.grow, !transfer && !txn.categoryId ? styles.warnText : undefined]}
+                  >
+                    {detail}
+                  </AppText>
+                  <AppText variant="caption" weight="semibold" tone={review ? 'primary' : 'success'}>
+                    {review ? 'Needs review' : 'Approved'}
+                  </AppText>
+                </View>
+              </View>
+            );
+          })
+        )}
+      </Card>
+    </View>
   );
 }
 
@@ -611,18 +668,15 @@ export function DashboardScreen() {
   const navigation = useNavigation<Nav>();
   const user = useAppSelector((state) => state.auth.user);
   const budgetId = useAppSelector((state) => state.budgets.selectedBudget?.id);
+  const budgetName = useAppSelector((state) => state.budgets.selectedBudget?.name);
   const month = useAppSelector((state) => state.budgets.selectedMonth);
   const revision = useAppSelector((state) => state.dashboard.revision);
   const error = useAppSelector((state) => state.dashboard.error);
-  const inflowAmount = useAppSelector((state) => state.categories.inflowAmount);
-  const inflowSuccess = useAppSelector((state) => state.categories.inflowLoading === 'success');
-  // keep the pill up through refetches; only the very first load hides it
-  const [inflowLoaded, setInflowLoaded] = useState(inflowSuccess);
-  if (!inflowLoaded && inflowSuccess) setInflowLoaded(true);
   const loanAccounts = useAppSelector((state) => state.accounts.loanAccounts);
   const refreshing = useAppSelector(
     (state) => state.dashboard.activityLoading === 'pending' || state.dashboard.cashFlowLoading === 'pending'
   );
+  const balance = useBalance();
 
   // balance history walks back from the current balances through the
   // activity, so both reload together whenever a transaction changes
@@ -645,6 +699,11 @@ export function DashboardScreen() {
   };
 
   const goTransactions = () => navigation.navigate('Main', { screen: 'Transactions' });
+  const goBudget = () => navigation.navigate('Main', { screen: 'Budget' });
+  const goReports = () => navigation.navigate('Main', { screen: 'Reports' });
+  // the category screen reads the budget's selected month, which is also the
+  // month the dashboard's spending report ends on
+  const goCategory = (categoryId: string) => navigation.navigate('Category', { id: categoryId });
   const firstName = user?.name?.trim().split(/\s+/)[0];
 
   return (
@@ -653,12 +712,6 @@ export function DashboardScreen() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} />}
     >
       <View style={styles.headerRow}>
-        <View style={styles.grow}>
-          <AppText variant="caption" muted>
-            {new Intl.DateTimeFormat('en-IN', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())}
-          </AppText>
-          <AppText variant="title">{`${greeting()}${firstName ? `, ${firstName}` : ''}`}</AppText>
-        </View>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Open settings"
@@ -671,28 +724,23 @@ export function DashboardScreen() {
             <UserRound size={20} color={colors.primary} />
           )}
         </Pressable>
-      </View>
-
-      {inflowLoaded ? (
-        <Pressable
-          style={[styles.ready, inflowAmount < 0 && styles.readyOver, inflowAmount === 0 && styles.readyDone]}
-          onPress={() => navigation.navigate('Main', { screen: 'Budget' })}
-        >
-          {inflowAmount < 0 ? (
-            <TriangleAlert size={15} color={colors.danger} />
-          ) : inflowAmount === 0 ? (
-            <CheckCircle2 size={15} color={colors.success} />
-          ) : null}
-          <AppText variant="caption" weight="semibold" style={styles.grow}>
-            {inflowAmount < 0
-              ? `Assigned ${formatCurrency(Math.abs(inflowAmount))} more than you have`
-              : inflowAmount === 0
-                ? 'Every rupee has a job'
-                : `${formatCurrency(inflowAmount)} ready to assign`}
+        <View style={styles.grow}>
+          <AppText variant="heading" numberOfLines={1}>{`${greeting()}${firstName ? `, ${firstName}` : ''}`}</AppText>
+          <AppText variant="caption" muted numberOfLines={1}>
+            {[budgetName, new Intl.DateTimeFormat('en-IN', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date())]
+              .filter(Boolean)
+              .join(' · ')}
           </AppText>
-          <ArrowRight size={14} color={colors.muted} />
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Ask Penny"
+          style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
+          onPress={() => navigation.navigate('Penny')}
+        >
+          <Sparkles size={18} color={colors.text} />
         </Pressable>
-      ) : null}
+      </View>
 
       {error ? (
         <Pressable style={styles.errorBox} onPress={refresh}>
@@ -703,23 +751,30 @@ export function DashboardScreen() {
         </Pressable>
       ) : null}
 
-      <BalanceCard />
-      <CashFlowCard />
-      <SpendingCard onUncategorized={goTransactions} />
+      <BalanceHero balance={balance} onReady={goBudget} />
+      <CardWalletRow />
+      <ThisMonthCard onReports={goReports} />
+      <SpendingBarsCard />
+      <CategoriesSection onBudget={goBudget} onUncategorized={goTransactions} onCategory={goCategory} />
       <RecentActivity onSeeAll={goTransactions} />
+      <BalanceTrendCard balance={balance} />
 
       {loanAccounts.length ? (
-        <Pressable style={styles.loansRow} onPress={() => navigation.navigate('Loans')}>
-          <View style={[styles.roundIcon, { backgroundColor: colors.primaryMuted }]}>
-            <Landmark size={16} color={colors.primary} />
+        <Pressable style={styles.goalCard} onPress={() => navigation.navigate('Loans')}>
+          <View style={styles.cardHead}>
+            <View style={styles.loanTile}>
+              <Landmark size={18} color={colors.primary} />
+            </View>
+            <View style={styles.grow}>
+              <AppText weight="semibold">Loans</AppText>
+              <AppText variant="caption" muted>
+                {loanAccounts.length === 1 ? loanAccounts[0].name : `${loanAccounts.length} loans`} · payoff progress
+              </AppText>
+            </View>
+            <CircleButton label="Open loans">
+              <ChevronRight size={16} color={colors.text} />
+            </CircleButton>
           </View>
-          <View style={styles.grow}>
-            <AppText weight="medium">Loans</AppText>
-            <AppText variant="caption" muted>
-              {loanAccounts.length === 1 ? loanAccounts[0].name : `${loanAccounts.length} loans`} · payoff progress
-            </AppText>
-          </View>
-          <ArrowRight size={16} color={colors.muted} />
         </Pressable>
       ) : null}
 
@@ -730,14 +785,14 @@ export function DashboardScreen() {
 
 const styles = StyleSheet.create({
   screen: {
-    gap: spacing.lg
+    gap: spacing.md
+  },
+  section: {
+    gap: spacing.sm
   },
   grow: {
     flex: 1,
     minWidth: 0
-  },
-  center: {
-    textAlign: 'center'
   },
   pressed: {
     opacity: 0.7
@@ -748,33 +803,65 @@ const styles = StyleSheet.create({
     gap: spacing.md
   },
   avatarButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.primaryMuted,
     overflow: 'hidden'
   },
   avatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21
+    width: 44,
+    height: 44,
+    borderRadius: 22
   },
-  ready: {
+  headerButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface
+  },
+  hero: {
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderRadius: radii.xl,
+    backgroundColor: colors.hero,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.heroBorder,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
+    overflow: 'hidden'
+  },
+  heroLabel: {
+    marginTop: spacing.sm
+  },
+  heroAmount: {
+    textAlign: 'center'
+  },
+  centerRow: {
+    justifyContent: 'center'
+  },
+  onHero: {
+    color: colors.onHero
+  },
+  onHeroMuted: {
+    color: colors.onHeroMuted
+  },
+  readyChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: 6,
+    maxWidth: '100%',
     borderRadius: radii.full,
-    backgroundColor: colors.primaryMuted,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md
+    backgroundColor: colors.heroControl,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6
   },
-  readyOver: {
-    backgroundColor: colors.dangerMuted
-  },
-  readyDone: {
-    backgroundColor: colors.successMuted
+  readyChipOver: {
+    backgroundColor: 'rgba(239, 107, 107, 0.22)'
   },
   errorBox: {
     flexDirection: 'row',
@@ -785,20 +872,66 @@ const styles = StyleSheet.create({
     padding: spacing.md
   },
   card: {
-    gap: spacing.md
+    gap: 10
   },
   cardHead: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm
+    gap: spacing.md
   },
   inline: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4
   },
-  linkRow: {
-    alignSelf: 'flex-start'
+  endText: {
+    alignItems: 'flex-end',
+    maxWidth: '45%'
+  },
+  // a bordered panel inside a card
+  box: {
+    gap: spacing.sm,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 10
+  },
+  // a grey panel inside a card (charts)
+  inset: {
+    gap: spacing.sm,
+    borderRadius: radii.md,
+    backgroundColor: colors.surfaceStrong,
+    padding: 10
+  },
+  tilePair: {
+    flexDirection: 'row',
+    gap: spacing.sm
+  },
+  statTile: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 2,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm
+  },
+  statValue: {
+    fontSize: 17
+  },
+  linkRowBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10
+  },
+  rotateDown: {
+    transform: [{ rotate: '90deg' }]
   },
   accountRow: {
     flexDirection: 'row',
@@ -819,83 +952,47 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderColor: colors.primary
   },
-  flowRow: {
+  chipsBleed: {
+    marginHorizontal: -screenPadding
+  },
+  chips: {
+    paddingHorizontal: screenPadding,
+    gap: spacing.sm
+  },
+  chip: {
     flexDirection: 'row',
-    gap: spacing.lg
-  },
-  flowCell: {
-    flex: 1,
-    gap: spacing.xs
-  },
-  flowIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
     alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 4
+    gap: 6,
+    borderRadius: radii.full,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm
   },
-  netBox: {
+  chipActive: {
+    backgroundColor: colors.text
+  },
+  chipActiveText: {
+    color: colors.background
+  },
+  chipSub: {
+    color: colors.faint
+  },
+  chipActiveSub: {
+    color: colors.background,
+    opacity: 0.7
+  },
+  goalCard: {
     gap: spacing.sm,
-    borderRadius: radii.md,
-    backgroundColor: colors.surfaceStrong,
-    padding: spacing.md
+    borderRadius: radii.lg,
+    backgroundColor: colors.surface,
+    padding: 10
   },
-  meter: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.surfaceTertiary,
-    overflow: 'hidden'
-  },
-  meterFill: {
-    height: '100%',
-    borderRadius: 4,
-    backgroundColor: colors.primary
-  },
-  meterOver: {
-    backgroundColor: colors.danger
-  },
-  groupRow: {
+  goalBox: {
     gap: 6,
     borderRadius: radii.md,
-    padding: spacing.sm
-  },
-  groupRowActive: {
-    backgroundColor: colors.surfaceStrong
-  },
-  bar: {
-    height: 5,
-    borderRadius: 3,
     backgroundColor: colors.surfaceStrong,
-    overflow: 'hidden'
-  },
-  barFill: {
-    height: '100%',
-    borderRadius: 3,
-    backgroundColor: chartSeries[0]
-  },
-  tilesHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginTop: spacing.sm
-  },
-  tiles: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    rowGap: spacing.lg
-  },
-  tile: {
-    width: '33.33%',
-    alignItems: 'center',
-    gap: 2,
-    paddingHorizontal: 2
-  },
-  ringText: {
-    fontSize: 12
-  },
-  tileStatus: {
-    fontSize: 11
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10
   },
   attention: {
     flexDirection: 'row',
@@ -917,31 +1014,43 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 6
   },
-  day: {
-    gap: spacing.sm
+  txnCard: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden'
   },
-  activityRow: {
+  txnMain: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md
+    gap: spacing.md,
+    paddingHorizontal: 10,
+    paddingVertical: spacing.sm
   },
-  activityEnd: {
-    alignItems: 'flex-end'
-  },
-  roundIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  txnTile: {
+    width: 40,
+    height: 40,
+    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.surfaceStrong
   },
-  loansRow: {
+  loanTile: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface
+  },
+  txnFoot: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
-    borderRadius: radii.lg,
-    backgroundColor: colors.surface,
-    padding: spacing.lg
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceStrong,
+    paddingHorizontal: 10,
+    paddingVertical: 6
   }
 });

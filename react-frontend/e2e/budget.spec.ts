@@ -90,3 +90,68 @@ test('budget resources require authentication', async ({ request }) => {
   const response = await request.get('/api/accounts');
   expect(response.status()).toBe(401);
 });
+
+async function moveOne(page: import('@playwright/test').Page, positive: boolean) {
+  await page.goto('/login');
+  await page.getByRole('button', { name: 'Try Demo' }).click();
+  await expect(page.getByRole('button', { name: 'Select active budget' })).toHaveText('Demo Budget');
+  await page.goto('/budget');
+
+  const pills = page.getByRole('button', { name: /^Move money from / });
+  await expect(pills.first()).toBeVisible();
+  const pill = pills.filter(positive ? { hasNotText: '-' } : { hasText: '-' }).first();
+  const from = (await pill.getAttribute('aria-label'))!.replace('Move money from ', '');
+  await pill.click();
+
+  const dialog = page.locator('form').filter({ hasText: `"${from}"` });
+  await dialog.getByRole('textbox').fill('1');
+  await dialog.getByRole('button', { name: /^(From|To)$/ }).click();
+  const target = page
+    .getByRole('option')
+    .filter({ hasNotText: from })
+    .filter({ hasNotText: 'Ready to Assign' })
+    .first();
+  const to = (await target.locator('span').first().textContent())!.trim();
+  await target.click();
+  await expect(dialog.getByRole('button', { name: /^(From|To)$/ })).toHaveText(to);
+
+  const patches: string[] = [];
+  page.on('response', (r) => {
+    if (r.request().method() === 'PATCH' && r.url().includes('/api/categories/') && r.ok()) patches.push(r.url());
+  });
+  await dialog.getByRole('button', { name: 'Move', exact: true }).click();
+  await expect(page.getByText('Money moved')).toBeVisible();
+  await expect.poll(() => patches.length).toBe(2);
+}
+
+test('covering overspending moves money between categories', async ({ page }) => {
+  await moveOne(page, false);
+});
+
+test('moving a positive balance moves money between categories', async ({ page }) => {
+  await moveOne(page, true);
+});
+
+test('moving money works on a narrow window', async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 800 });
+  await moveOne(page, true);
+});
+
+test('moving money without a target says what is missing', async ({ page }) => {
+  await page.goto('/login');
+  await page.getByRole('button', { name: 'Try Demo' }).click();
+  await expect(page.getByRole('button', { name: 'Select active budget' })).toHaveText('Demo Budget');
+  await page.goto('/budget');
+  const pill = page.getByRole('button', { name: /^Move money from / }).first();
+  const from = (await pill.getAttribute('aria-label'))!.replace('Move money from ', '');
+  await pill.click();
+  await page.getByRole('button', { name: 'Move', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: /Choose where to (move it|take it from)/ })).toBeVisible();
+  // The list opens to choose from, and the keyboard can pick in it.
+  const option = page.getByRole('option').filter({ hasNotText: from }).first();
+  const name = (await option.locator('span').first().textContent())!.trim();
+  await option.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('button', { name: /^(From|To)$/ })).toHaveText(name);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+});

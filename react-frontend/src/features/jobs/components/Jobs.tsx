@@ -58,6 +58,7 @@ import { formatAgo, formatTime } from '../jobTime';
 import { PipelineView } from './PipelineView';
 import { ScheduleView } from './ScheduleView';
 import { messagePrefill } from '../messagePrefill';
+import { RowCost, UsageReceipt } from './UsageReceipt';
 import { MessageReviewPanel } from './MessageReviewPanel';
 
 const LIVE_RELOAD_MS = 1500;
@@ -476,6 +477,7 @@ function RowDetails({ row }: { row: JobRow }) {
           )}
         </>
       )}
+      <UsageReceipt jobs={jobs} />
       {!summary && detailLoading === LoadingState.ERROR && (
         <p className={styles.muted}>Couldn't load the details of this job.</p>
       )}
@@ -643,6 +645,7 @@ function EmailRow({ row, open, onToggle }: { row: JobRow; open: boolean; onToggl
           <span className={styles.emailTitle}>{rowTitle(row)}</span>
           {full && <span className={styles.emailMeta}>{rowSubtitle(row)}</span>}
         </span>
+        <RowCost jobs={rowJobs(row)} />
         {(full || group === 'active') && (
           <span className={`${styles.status} ${styles[`status_${statusClass}`]}`}>{rowStatus(row)}</span>
         )}
@@ -1095,6 +1098,19 @@ export default function Jobs() {
     const shown = allRuns.filter((run) => !isEmptySync(run) && (source === 'all' || runSource(run) === source));
     return filtering ? shown : mergeBySource(shown);
   }, [allRuns, filtering, source]);
+
+  // ?job=<id> (from a notification) finds that job's message and opens it.
+  const linkedJobId = searchParams.get('job');
+  useEffect(() => {
+    if (!linkedJobId || !UUID_PATTERN.test(linkedJobId)) return;
+    setSearch(linkedJobId);
+    dispatch(jobFiltersChanged({ jobId: linkedJobId }));
+  }, [dispatch, linkedJobId]);
+  useEffect(() => {
+    if (!linkedJobId) return;
+    const row = allRuns.flatMap((run) => run.rows).find((r) => rowJobs(r).some((job) => job.id === linkedJobId));
+    if (row) setOpenRowId(row.jobs[0].id);
+  }, [allRuns, linkedJobId]);
 
   const changeSearch = (value: string) => {
     setSearch(value);

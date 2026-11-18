@@ -28,6 +28,15 @@ type CreateAgentRunParams struct {
 	Metadata       map[string]any
 }
 
+// StartJobRunParams starts (or restarts, on a retry) the agent run of a
+// pipeline job that calls models.
+type StartJobRunParams struct {
+	JobID    uuid.UUID
+	BudgetID uuid.UUID
+	AgentKey string // model.AgentKeyPipeline
+	Metadata map[string]any
+}
+
 type CreateConversationMessageParams struct {
 	ConversationID uuid.UUID
 	RunID          *uuid.UUID
@@ -59,7 +68,12 @@ type AgentRepository interface {
 		budgetID uuid.UUID,
 		agentKey string,
 	) (*model.AgentConversation, error)
+	// GetAllConversations lists the user's conversations, newest first, each
+	// with the usage of its runs.
 	GetAllConversations(ctx context.Context, userID uuid.UUID, budgetID uuid.UUID) ([]model.AgentConversation, error)
+	// ConversationUsage totals the model calls of a conversation's runs, in
+	// all and per run, from llm_usage (every purpose: turns, title, memory).
+	ConversationUsage(ctx context.Context, budgetID, conversationID uuid.UUID) (model.ConversationUsage, error)
 	GetAllConversationRuns(ctx context.Context, runID uuid.UUID) ([]model.AgentRun, error)
 	GetConversation(
 		ctx context.Context,
@@ -68,6 +82,11 @@ type AgentRepository interface {
 		budgetID uuid.UUID,
 	) (*model.AgentConversation, error)
 	CreateRun(ctx context.Context, params CreateAgentRunParams) (*model.AgentRun, error)
+	// StartJobRun marks a job's agent run RUNNING and returns it. The first
+	// attempt creates the run, for the budget's owner, and saves its id on the
+	// job (jobs.agent_run_id); a retry reuses that run, so every attempt's
+	// model calls add up in one place.
+	StartJobRun(ctx context.Context, params StartJobRunParams) (*model.AgentRun, error)
 	GetRun(ctx context.Context, userID uuid.UUID, budgetID uuid.UUID, id uuid.UUID) (*model.AgentRun, error)
 	UpdateRunStatus(
 		ctx context.Context,
@@ -101,7 +120,8 @@ type AgentRepository interface {
 	) error
 	// RecordRunResult saves a finished run's tool invocations and sets its
 	// metric columns (tokens, cost, resolved model, turn and tool-call counts
-	// rolled up from llm_usage and tool_invocations) in one transaction. It
+	// rolled up from llm_usage and tool_invocations) in one transaction. A chat
+	// run counts only its agent_turn calls; any other agent counts every call. It
 	// replaces the run's earlier invocations, so a retry doesn't add them twice.
 	RecordRunResult(ctx context.Context, result RecordAgentRunResult) error
 	UpdateEntityMetadata(

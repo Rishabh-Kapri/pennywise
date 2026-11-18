@@ -751,7 +751,7 @@
 
 .page .primaryButton {
   background: var(--color-primary);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .page .primaryButton:hover:not(:disabled) {
@@ -1013,4 +1013,85 @@
 .page .openLinks a {
   color: var(--color-text);
   text-decoration: none;
+}
+
+/* AI cost of a row (UsageReceipt, RowCost) */
+
+.usage {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.usageLines {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 10px;
+  font-size: 0.875rem;
+}
+
+.page .usageLine {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.usageLine + .usageLine {
+  border-top: 1px dashed var(--color-border-muted);
+}
+
+.usageLine dt {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-width: 0;
+  color: var(--color-text);
+}
+
+.usageLine dd {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex: none;
+}
+
+.usageModel {
+  overflow: hidden;
+  color: var(--color-text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usageTokens {
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+}
+
+.usageCost {
+  min-width: 4.5rem;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.usageTotal {
+  font-weight: 600;
+}
+
+.rowCost {
+  flex: none;
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  .usageTokens {
+    display: none;
+  }
 }

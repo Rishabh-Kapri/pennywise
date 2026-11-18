@@ -1,0 +1,123 @@
+.loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 240px;
+  padding: 48px 16px;
+  color: var(--muted);
+  /* Don't flash for loads that finish at once. */
+  animation: appear 200ms ease-out 150ms both;
+}
+
+.fullScreen {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  min-height: 100vh;
+  background: var(--page-bg);
+}
+
+.mark {
+  width: 56px;
+  height: 56px;
+  overflow: visible;
+}
+
+.fullScreen .mark {
+  width: 72px;
+  height: 72px;
+}
+
+.layer {
+  --layer: var(--brand-soft, #a9cbe0);
+  fill: var(--layer);
+  fill-opacity: 0;
+  stroke: var(--layer);
+  stroke-width: 10;
+  stroke-linejoin: round;
+  /* pathLength is 100, so every layer draws at the same pace */
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: draw 2.4s ease-in-out infinite;
+}
+
+.base {
+  --layer: var(--brand-soft, #a9cbe0);
+}
+
+.middle {
+  --layer: var(--brand, #5d9cbb);
+  animation-delay: 150ms;
+}
+
+.top {
+  --layer: var(--brand-deep, #2c6a8c);
+  animation-delay: 300ms;
+}
+
+.label {
+  font-size: 13px;
+  letter-spacing: 0.01em;
+}
+
+/* Trace the outline, fill it in, hold, then fade and start again. */
+@keyframes draw {
+  0% {
+    opacity: 1;
+    fill-opacity: 0;
+    stroke-dashoffset: 100;
+  }
+  45% {
+    fill-opacity: 0;
+    stroke-dashoffset: 0;
+  }
+  60% {
+    fill-opacity: 1;
+    stroke-dashoffset: 0;
+  }
+  85% {
+    opacity: 1;
+    fill-opacity: 1;
+    stroke-dashoffset: 0;
+  }
+  100% {
+    opacity: 0;
+    fill-opacity: 1;
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes appear {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* No drawing: the whole mark, softly pulsing. */
+  .layer {
+    fill-opacity: 1;
+    stroke-dashoffset: 0;
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  .middle,
+  .top {
+    animation-delay: 0ms;
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}

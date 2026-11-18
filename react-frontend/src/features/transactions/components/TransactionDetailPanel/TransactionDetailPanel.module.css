@@ -1170,3 +1170,15 @@
 .hiddenFileInput {
   display: none;
 }
+
+.fact dd.rewards {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--color-success);
+  font-variant-numeric: tabular-nums;
+}
+
+.fact dd.rewardsReversed {
+  color: var(--color-error);
+}

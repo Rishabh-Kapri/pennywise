@@ -73,8 +73,10 @@ func TestReplaceStatementLinesKeepsTime(t *testing.T) {
 		txnID, budgetID, accountID)
 
 	at := time.Date(2026, 8, 6, 15, 19, 0, 0, time.UTC)
+	points := 12
 	err := sources.ReplaceStatementLines(ctx, budgetID, importID, []model.StatementLineSource{{
 		TransactionID: txnID, RawText: "ACME", Direction: "DEBIT", Amount: 100, OccurredOn: "2026-08-06", OccurredAt: &at,
+		RewardsPoints: &points,
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -88,5 +90,13 @@ func TestReplaceStatementLinesKeepsTime(t *testing.T) {
 	}
 	if got == nil || !got.Equal(at) {
 		t.Fatalf("occurred_at = %v, want %v from the statement line", got, at)
+	}
+	// The detail panel's sources carry the points the statement printed.
+	listed, err := sources.ListByTransaction(ctx, budgetID, txnID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 1 || listed[0].RewardPoints == nil || *listed[0].RewardPoints != points {
+		t.Fatalf("sources = %+v, want one with %d reward points", listed, points)
 	}
 }

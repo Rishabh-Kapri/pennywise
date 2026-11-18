@@ -1282,7 +1282,7 @@ input[type='date']::-webkit-calendar-picker-indicator {
 
 .bulkApprove {
   background: var(--color-primary);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .bulkApprove:hover:not(:disabled) {

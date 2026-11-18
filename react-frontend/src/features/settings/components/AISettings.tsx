@@ -20,6 +20,7 @@ import { apiClient, errorMessage, toast } from '@/utils';
 import settingsStyles from './Settings.module.css';
 import styles from './AISettings.module.css';
 import { formatCount, formatSignedCurrency } from '@/utils/format';
+import { AIUsageCard } from './AIUsageCard';
 
 /* ────────────────────────────────────────────────────────────── */
 /*  Types & constants                                            */
@@ -712,7 +713,10 @@ export function AISettings() {
   return (
     <div className={styles.aiSection}>
       {owner ? (
-        <ProvidersCard />
+        <>
+          <ProvidersCard />
+          <AIUsageCard />
+        </>
       ) : (
         // The API refuses AI settings to members: a shared budget runs on
         // its owner's keys and models.

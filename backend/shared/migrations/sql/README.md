@@ -37,6 +37,8 @@ top to bottom with no ALTER history to replay.
 | `00028_statement_import_file_paths` | backfills `statement_imports.file_path` for uploads that stored their PDF without recording its key |
 | `00029_agent_run_metrics` | `agent_runs` metric columns (stop reason, tokens, cost, prompt version, resolved model, turn and tool-call counts; rolled up from `llm_usage`, no backfill) and `tool_invocations` (a run's tool calls, bounded input/output); not granted to the agent role |
 | `00030_llm_usage` | `llm_usage`: one row per model call (agent turns, pipeline steps, embeddings, titles, ...), no prompt or response text; not granted to the agent role |
+| `00031_llm_provider_lumo` | adds `lumo` to `llm_provider` (chat only) |
+| `00032_pipeline_agent_runs` | adds `pipeline` to `agent_key`; `jobs.agent_run_id`: the agent run a model-calling pipeline job recorded (one per job, retries included) |
 
 ## Commands (from `backend/go-pennywise-api`)
 

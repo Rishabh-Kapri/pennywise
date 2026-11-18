@@ -181,7 +181,7 @@
   border: none;
   border-radius: 12px;
   background: var(--color-primary);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;

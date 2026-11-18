@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	stderrors "errors"
+	"time"
 
 	errs "github.com/Rishabh-Kapri/pennywise/backend/shared/errors"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
@@ -64,7 +65,102 @@ func (r *agentRepo) GetAllConversations(
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	if len(conversations) == 0 {
+		return conversations, nil
+	}
+
+	ids := make([]uuid.UUID, len(conversations))
+	for i, c := range conversations {
+		ids[i] = c.ID
+	}
+	usage, err := r.usageGroupedBy(ctx, `ar.conversation_id`,
+		`ar.budget_id = $1 AND ar.conversation_id = ANY($2)`, budgetID, ids)
+	if err != nil {
+		return nil, err
+	}
+	for i := range conversations {
+		if u, ok := usage[conversations[i].ID]; ok {
+			conversations[i].Usage = &u.ModelUsage
+		}
+	}
 	return conversations, nil
+}
+
+// ConversationUsage implements [repository.AgentRepository].
+func (r *agentRepo) ConversationUsage(
+	ctx context.Context,
+	budgetID, conversationID uuid.UUID,
+) (model.ConversationUsage, error) {
+	out := model.ConversationUsage{Runs: map[uuid.UUID]model.ModelUsage{}}
+	runs, err := r.usageGroupedBy(ctx, `ar.id`,
+		`ar.budget_id = $1 AND ar.conversation_id = $2`, budgetID, conversationID)
+	if err != nil {
+		return out, err
+	}
+	total := model.ModelUsage{}
+	var lastAt time.Time
+	add := func(sum **int64, v *int64) {
+		if v == nil {
+			return
+		}
+		if *sum == nil {
+			*sum = new(int64)
+		}
+		**sum += *v
+	}
+	for id, u := range runs {
+		out.Runs[id] = u.ModelUsage
+		total.Calls += u.Calls
+		add(&total.InputTokens, u.InputTokens)
+		add(&total.OutputTokens, u.OutputTokens)
+		add(&total.CostMicros, u.CostMicros)
+		if u.lastAt.After(lastAt) {
+			lastAt, total.Model = u.lastAt, u.Model
+		}
+	}
+	out.Total = total
+	return out, nil
+}
+
+type groupedUsage struct {
+	model.ModelUsage
+	lastAt time.Time
+}
+
+// usageGroupedBy totals llm_usage rows of agent runs (alias ar) matching where,
+// grouped by key (a UUID column).
+func (r *agentRepo) usageGroupedBy(
+	ctx context.Context,
+	key, where string,
+	args ...any,
+) (map[uuid.UUID]groupedUsage, error) {
+	rows, err := r.Executor(ctx).Query(ctx, `
+		SELECT `+key+`, count(*), sum(u.input_tokens), sum(u.output_tokens), sum(u.cost_micros),
+			(array_agg(u.model ORDER BY u.created_at DESC, u.id DESC))[1], max(u.created_at)
+		FROM llm_usage u
+		JOIN agent_runs ar ON ar.id = u.agent_run_id
+		WHERE `+where+`
+		GROUP BY 1`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[uuid.UUID]groupedUsage{}
+	for rows.Next() {
+		var (
+			id  uuid.UUID
+			g   groupedUsage
+			mdl *string
+		)
+		if err := rows.Scan(&id, &g.Calls, &g.InputTokens, &g.OutputTokens, &g.CostMicros, &mdl, &g.lastAt); err != nil {
+			return nil, err
+		}
+		if mdl != nil {
+			g.Model = *mdl
+		}
+		out[id] = g
+	}
+	return out, rows.Err()
 }
 
 func (r *agentRepo) CreateConversation(
@@ -318,6 +414,72 @@ func (r *agentRepo) CreateRun(ctx context.Context, params repository.CreateAgent
 		metadata,
 	)
 	return scanAgentRun(row)
+}
+
+func (r *agentRepo) StartJobRun(ctx context.Context, params repository.StartJobRunParams) (*model.AgentRun, error) {
+	metadata, err := marshalAgentMetadata(params.Metadata)
+	if err != nil {
+		return nil, err
+	}
+	var run *model.AgentRun
+	err = r.InTx(ctx, func(ctx context.Context) error {
+		exec := r.Executor(ctx)
+		// Lock the job so two claims of it (a reaped attempt still finishing)
+		// can't each make a run.
+		var existing *uuid.UUID
+		if err := exec.QueryRow(ctx,
+			`SELECT agent_run_id FROM jobs WHERE id = $1 FOR UPDATE`, params.JobID,
+		).Scan(&existing); err != nil {
+			if stderrors.Is(err, pgx.ErrNoRows) {
+				return notFoundError("Job")
+			}
+			return err
+		}
+		if existing != nil {
+			// A retry: the run goes back to running and keeps what earlier
+			// attempts spent.
+			row := exec.QueryRow(ctx,
+				`UPDATE agent_runs
+				SET status = 'RUNNING'::agent_run_status, completed_at = NULL, error = NULL,
+					started_at = COALESCE(started_at, now()), updated_at = now()
+				WHERE id = $1 AND budget_id = $2
+				RETURNING `+agentRunColumns,
+				*existing, params.BudgetID)
+			found, err := scanAgentRun(row)
+			if err == nil {
+				run = found
+				return nil
+			}
+			if !stderrors.Is(err, pgx.ErrNoRows) {
+				return err
+			}
+			// The run was deleted: start a new one.
+		}
+		row := exec.QueryRow(ctx,
+			`INSERT INTO agent_runs (agent_key, user_id, budget_id, status, metadata, started_at)
+			SELECT $1::agent_key, b.user_id, b.id, 'RUNNING'::agent_run_status, $3::jsonb, now()
+			FROM budgets b WHERE b.id = $2
+			RETURNING `+agentRunColumns,
+			params.AgentKey, params.BudgetID, metadata)
+		created, err := scanAgentRun(row)
+		if err != nil {
+			if stderrors.Is(err, pgx.ErrNoRows) {
+				return notFoundError("Budget")
+			}
+			return err
+		}
+		if _, err := exec.Exec(ctx,
+			`UPDATE jobs SET agent_run_id = $2, updated_at = now() WHERE id = $1`,
+			params.JobID, created.ID); err != nil {
+			return err
+		}
+		run = created
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return run, nil
 }
 
 func (r *agentRepo) GetRun(
@@ -684,7 +846,11 @@ func (r *agentRepo) RecordRunResult(ctx context.Context, result repository.Recor
 					(array_agg(provider ORDER BY created_at DESC, id DESC))[1] AS provider,
 					(array_agg(model ORDER BY created_at DESC, id DESC))[1] AS model
 				FROM llm_usage
-				WHERE agent_run_id = $1 AND purpose = 'agent_turn'
+				WHERE agent_run_id = $1
+					-- A chat run's titles and embeddings aren't its turns; a
+					-- pipeline run's every call is its work.
+					AND (purpose = 'agent_turn'
+						OR (SELECT agent_key FROM agent_runs WHERE id = $1) <> 'chat'::agent_key)
 			) u
 			WHERE ar.id = $1 AND ar.budget_id = $2`,
 			result.RunID, result.BudgetID, stopReason, promptVersion,

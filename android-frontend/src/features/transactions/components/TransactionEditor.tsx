@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Alert, Keyboard, Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import {
+  ArrowLeftRight,
   CalendarDays,
   Check,
   ChevronRight,
@@ -15,6 +16,8 @@ import { AmountKeypad, ExpressionPreview, pressKey } from '../../../components/A
 import { AppText } from '../../../components/AppText';
 import { Button } from '../../../components/Button';
 import { DatePickerOverlay } from '../../../components/DatePicker';
+import { Hatch } from '../../../components/Hatch';
+import { InitialAvatar } from '../../../components/InitialAvatar';
 import { PickerOverlay, type PickerOption } from '../../../components/Picker';
 import { SheetOverlay } from '../../../components/Sheet';
 import { colors, radii, spacing } from '../../../theme';
@@ -344,8 +347,7 @@ export function TransactionEditor({
       onRequestClose={handleBack}
     >
       <SheetOverlay
-        title={draft.id ? 'Edit transaction' : 'New transaction'}
-        subtitle={label ?? undefined}
+        title={draft.id ? 'Transaction details' : 'New transaction'}
         onClose={onClose}
         size="tall"
         footer={
@@ -395,31 +397,34 @@ export function TransactionEditor({
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.directionToggle}>
-            {(['outflow', 'inflow'] as const).map((direction) => {
-              const active = draft.direction === direction;
-              return (
-                <Pressable
-                  key={direction}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  style={[
-                    styles.directionOption,
-                    active && (direction === 'outflow' ? styles.directionOutflow : styles.directionInflow)
-                  ]}
-                  onPress={() => update({ direction })}
-                >
-                  <AppText
-                    variant="caption"
-                    weight="semibold"
-                    style={active ? (direction === 'outflow' ? styles.outflowText : styles.inflowText) : styles.directionText}
-                  >
-                    {direction === 'outflow' ? 'Outflow' : 'Inflow'}
-                  </AppText>
-                </Pressable>
-              );
-            })}
-          </View>
+          {draft.id ? (
+            <View style={styles.summary}>
+              <View style={styles.summaryTop}>
+                <View style={styles.avatarTile}>
+                  {isTransfer ? <ArrowLeftRight size={20} color={colors.muted} /> : <InitialAvatar name={payeeName ?? '?'} size={36} />}
+                </View>
+                {label ? (
+                  <View style={[styles.statusBadge, draft.status === TransactionStatus.UNAPPROVED && styles.statusBadgeReview]}>
+                    <AppText
+                      variant="caption"
+                      weight="semibold"
+                      tone={draft.status === TransactionStatus.UNAPPROVED ? 'primary' : draft.status === TransactionStatus.REJECTED ? 'danger' : 'success'}
+                    >
+                      {label}
+                    </AppText>
+                  </View>
+                ) : null}
+              </View>
+              <AppText variant="title" numberOfLines={2}>
+                {payeeName ?? 'Unknown payee'}
+              </AppText>
+              <AppText variant="caption" muted numberOfLines={1}>
+                {[isTransfer && !draft.categoryId ? 'Transfer' : categoryName ?? 'Uncategorized', accountName, formatRelativeDay(draft.date)]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </AppText>
+            </View>
+          ) : null}
 
           <Pressable
             accessibilityRole="button"
@@ -428,14 +433,42 @@ export function TransactionEditor({
               Keyboard.dismiss();
               setKeypadOpen((open) => !open);
             }}
-            style={[styles.amountBox, keypadOpen && styles.amountBoxActive]}
+            style={[styles.amountCard, keypadOpen && styles.amountCardActive]}
           >
-            <AppText variant="display" tabular style={[styles.amountSign, inflow ? styles.inflowText : styles.outflowText]}>
-              {inflow ? '+' : '−'}₹
-            </AppText>
-            <View style={styles.amountValue}>
-              <ExpressionPreview expression={draft.amount} />
+            <Hatch color={colors.onHero} gap={9} opacity={0.05} />
+            <View style={styles.directionToggle}>
+              {(['outflow', 'inflow'] as const).map((direction) => {
+                const active = draft.direction === direction;
+                return (
+                  <Pressable
+                    key={direction}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    style={[styles.directionOption, active && styles.directionActive]}
+                    onPress={() => update({ direction })}
+                  >
+                    <AppText
+                      variant="caption"
+                      weight="semibold"
+                      style={active ? (direction === 'outflow' ? styles.outflowText : styles.inflowText) : styles.directionText}
+                    >
+                      {direction === 'outflow' ? 'Outflow' : 'Inflow'}
+                    </AppText>
+                  </Pressable>
+                );
+              })}
             </View>
+            <View style={styles.amountRow}>
+              <AppText variant="display" tabular style={[styles.amountSign, inflow ? styles.inflowText : styles.outflowText]}>
+                {inflow ? '+' : '−'}₹
+              </AppText>
+              <View style={styles.amountValue}>
+                <ExpressionPreview expression={draft.amount} onDark />
+              </View>
+            </View>
+            <AppText variant="caption" style={styles.amountHint}>
+              {keypadOpen ? 'Sums work too, like 450+120' : 'Tap to change the amount'}
+            </AppText>
           </Pressable>
 
           {keypadOpen ? (
@@ -451,7 +484,7 @@ export function TransactionEditor({
 
           <View style={styles.fieldGroup}>
             <FieldRow
-              icon={<Store size={18} color={colors.primary} />}
+              icon={<Store size={18} color={colors.text} />}
               label="Payee"
               value={payeeName}
               placeholder="Choose payee"
@@ -460,7 +493,7 @@ export function TransactionEditor({
             />
             <View style={styles.divider} />
             <FieldRow
-              icon={<FolderOpen size={18} color={colors.primary} />}
+              icon={<FolderOpen size={18} color={colors.text} />}
               label="Category"
               value={isTransfer && !draft.categoryId ? 'Transfer' : categoryName}
               placeholder="Uncategorized"
@@ -468,7 +501,7 @@ export function TransactionEditor({
             />
             <View style={styles.divider} />
             <FieldRow
-              icon={<WalletCards size={18} color={colors.primary} />}
+              icon={<WalletCards size={18} color={colors.text} />}
               label="Account"
               value={accountName}
               placeholder="Choose account"
@@ -477,7 +510,7 @@ export function TransactionEditor({
             />
             <View style={styles.divider} />
             <FieldRow
-              icon={<CalendarDays size={18} color={colors.primary} />}
+              icon={<CalendarDays size={18} color={colors.text} />}
               label="Date"
               value={formatRelativeDay(draft.date)}
               placeholder="Pick a date"
@@ -486,7 +519,7 @@ export function TransactionEditor({
             <View style={styles.divider} />
             <View style={styles.fieldRow}>
               <View style={styles.fieldIcon}>
-                <NotebookPen size={18} color={colors.primary} />
+                <NotebookPen size={18} color={colors.text} />
               </View>
               <TextInput
                 value={draft.note}
@@ -502,9 +535,7 @@ export function TransactionEditor({
 
           {tags.length ? (
             <View style={styles.section}>
-              <AppText variant="label" tone="faint">
-                Tags
-              </AppText>
+              <AppText weight="semibold">Tags</AppText>
               <View style={styles.tagRow}>
                 {tags.map((tag) => {
                   const selected = Boolean(tag.id && draft.tagIds.includes(tag.id));
@@ -515,7 +546,7 @@ export function TransactionEditor({
                       onPress={() => toggleTag(tag.id)}
                     >
                       {selected ? (
-                        <Check size={13} color={colors.primary} />
+                        <Check size={13} color={colors.background} />
                       ) : (
                         <View style={[styles.tagDot, { backgroundColor: tag.color || colors.primary }]} />
                       )}
@@ -598,54 +629,81 @@ export function TransactionEditor({
 
 const styles = StyleSheet.create({
   scroll: {
-    gap: spacing.lg,
+    gap: spacing.md,
     paddingBottom: spacing.lg
   },
   pressed: {
     opacity: 0.7
   },
+  summary: {
+    gap: 2
+  },
+  summaryTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm
+  },
+  avatarTile: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border
+  },
+  statusBadge: {
+    borderRadius: radii.full,
+    backgroundColor: colors.successMuted,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 4
+  },
+  statusBadgeReview: {
+    backgroundColor: colors.primaryMuted
+  },
+  amountCard: {
+    gap: spacing.sm,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.heroBorder,
+    backgroundColor: colors.hero,
+    padding: 14,
+    overflow: 'hidden'
+  },
+  amountCardActive: {
+    borderColor: colors.primaryLight
+  },
   directionToggle: {
     flexDirection: 'row',
-    backgroundColor: colors.surfaceStrong,
+    alignSelf: 'flex-start',
+    backgroundColor: colors.heroControl,
     borderRadius: radii.full,
     padding: 3
   },
   directionOption: {
-    flex: 1,
-    minHeight: 36,
+    minHeight: 30,
+    paddingHorizontal: spacing.lg,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radii.full
   },
+  directionActive: {
+    backgroundColor: 'rgba(255, 255, 255, 0.16)'
+  },
   directionText: {
-    color: colors.muted
-  },
-  directionOutflow: {
-    backgroundColor: colors.dangerMuted
-  },
-  directionInflow: {
-    backgroundColor: colors.successMuted
+    color: colors.onHeroMuted
   },
   outflowText: {
-    color: colors.danger
+    color: colors.heroNegative
   },
   inflowText: {
-    color: colors.success
+    color: colors.heroPositive
   },
-  amountBox: {
+  amountRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.md,
-    minHeight: 76,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: 'transparent',
-    backgroundColor: colors.surfaceStrong,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md
-  },
-  amountBoxActive: {
-    borderColor: colors.primary
+    gap: spacing.md
   },
   amountSign: {
     fontSize: 26,
@@ -655,29 +713,33 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0
   },
+  amountHint: {
+    color: colors.onHeroMuted
+  },
   fieldGroup: {
     borderRadius: radii.lg,
-    backgroundColor: colors.surfaceStrong,
+    borderWidth: 1,
+    borderColor: colors.border,
     overflow: 'hidden'
   },
   fieldRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    minHeight: 58,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm
+    minHeight: 54,
+    paddingHorizontal: 12,
+    paddingVertical: 6
   },
   fieldRowPressed: {
-    backgroundColor: colors.surfaceTertiary
+    backgroundColor: colors.surfaceStrong
   },
   fieldIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.primaryMuted
+    backgroundColor: colors.surfaceStrong
   },
   fieldText: {
     flex: 1,
@@ -692,7 +754,7 @@ const styles = StyleSheet.create({
   divider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: colors.border,
-    marginLeft: spacing.lg + 32 + spacing.md
+    marginLeft: 12 + 36 + spacing.md
   },
   noteInput: {
     flex: 1,
@@ -712,13 +774,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    minHeight: 34,
+    minHeight: 32,
     paddingHorizontal: spacing.md,
     borderRadius: radii.full,
-    backgroundColor: colors.surfaceStrong
+    borderWidth: 1,
+    borderColor: colors.border
   },
   tagChoiceSelected: {
-    backgroundColor: colors.primaryMuted
+    backgroundColor: colors.text,
+    borderColor: colors.text
   },
   tagDot: {
     width: 8,
@@ -729,7 +793,7 @@ const styles = StyleSheet.create({
     color: colors.muted
   },
   tagSelectedText: {
-    color: colors.primary
+    color: colors.background
   },
   footer: {
     gap: spacing.sm

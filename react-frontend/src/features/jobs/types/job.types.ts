@@ -17,6 +17,17 @@ export interface JobUpdate {
   progress?: JobProgress;
 }
 
+/** What a job's model calls used. A total is absent when no call reported it. */
+export interface ModelUsage {
+  calls: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  /** Millionths of a US dollar, as the providers reported it. */
+  costMicros?: number;
+  /** The last model that answered. */
+  model?: string;
+}
+
 export interface JobSummary {
   id: string;
   parentId?: string;
@@ -33,6 +44,10 @@ export interface JobSummary {
   statementRows?: number;
   /** What a finished transaction.create made (or found already there). */
   transactionIds?: string[];
+  /** The agent run of a step that called models. */
+  agentRunId?: string;
+  /** What the step's model calls used so far. Absent for steps that call none. */
+  usage?: ModelUsage;
   /** What it's doing while it runs. Empty until the job reports something. */
   progress?: JobProgress;
   lastError?: string;
@@ -149,4 +164,25 @@ export interface JobsState {
   detailLoading: LoadingState;
   /** The job a retry or cancel is running for. */
   actingJobId: string | null;
+}
+
+/** Where one bank message stands (GET /messages). */
+export interface InboundMessage {
+  id: string;
+  source: string;
+  status: string;
+  outcome: string;
+  reason?: string;
+  review?: MessageReview;
+  transactionIds: string[];
+  /** The pipeline.report job that ended its run; opens it in Jobs. */
+  reportJobId: string;
+  reportedAt: string;
+}
+
+export interface InboundMessageList {
+  status: string;
+  items: InboundMessage[];
+  /** Messages per status, beyond the page of items. */
+  counts: Record<string, number>;
 }

@@ -15,14 +15,31 @@ import {
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
-import { AGENT_MODEL_OPTIONS, appendAgentEvent, appendAgentMessagePart, appendAgentReasoningDelta, appendAgentTextDelta, clearAgentChat, createAgentRun, deleteAgentConversation, fetchAgentConversationMessages, listAgentConversations, selectAgentChatHistory, selectAgentCreateRunLoading, selectAgentMessages, selectCurrentAgentConversationId, selectAgentConversation, selectSelectedAgentModelKey, setSelectedAgentModel, updateAgentConversationTitle } from '@/features/agent/store/agentSlice';
+import { AGENT_MODEL_OPTIONS, appendAgentEvent, appendAgentMessagePart, appendAgentReasoningDelta, appendAgentTextDelta, clearAgentChat, createAgentRun, deleteAgentConversation, fetchAgentConversationMessages, fetchAgentConversationUsage, listAgentConversations, selectConversationUsage, selectRunUsage, selectAgentChatHistory, selectAgentCreateRunLoading, selectAgentMessages, selectCurrentAgentConversationId, selectAgentConversation, selectSelectedAgentModelKey, setSelectedAgentModel, updateAgentConversationTitle } from '@/features/agent/store/agentSlice';
 import { selectSelectedBudget } from '@/features/budget/store/budgetSlice';
 import type { WebSocketMessage } from '@/features/websocket/events';
 import { AGENT_STREAM_EVENT, AgentMessageKind, conversationIdFromRoom, subscribeAgentMessages } from '../protocol';
 import type { AgentChatHistoryItem, AgentChatMessage, AgentEventMessageData, MessagePart } from '@/features/agent/types/agent.types';
 import { LoadingState } from '@/utils';
 import { apiClient } from '@/utils';
+import { formatTokens, formatUsd } from '@/utils/format';
+import type { ModelUsage } from '@/features/jobs/types/job.types';
 import styles from './AgentChat.module.css';
+
+/** "$0.0031 · 4.2k tokens", or the tokens alone when no cost was reported. */
+function usageText(usage: ModelUsage): string {
+  const tokens = (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0);
+  const parts = [
+    usage.costMicros !== undefined ? formatUsd(usage.costMicros) : null,
+    tokens > 0 ? `${formatTokens(tokens)} tokens` : null,
+  ].filter(Boolean);
+  return parts.join(' · ');
+}
+
+function usageTitle(usage: ModelUsage, what: string): string {
+  const cost = usage.costMicros !== undefined ? formatUsd(usage.costMicros) : 'cost not reported';
+  return `${what}: ${cost}, ${formatTokens(usage.inputTokens ?? 0)} in / ${formatTokens(usage.outputTokens ?? 0)} out over ${usage.calls} model calls${usage.model ? ` (${usage.model})` : ''}`;
+}
 
 const SUGGESTIONS = ['Summarize my spending', 'Find unusual transactions', 'Help plan next month'];
 const AGENT_ERROR_FALLBACK_TEXT = 'Penny ran into an error while responding. Please try again.';
@@ -229,6 +246,11 @@ export function AgentChat() {
   const currentConversationId = useAppSelector(selectCurrentAgentConversationId);
   const selectedModelKey = useAppSelector(selectSelectedAgentModelKey);
   const selectedBudget = useAppSelector(selectSelectedBudget);
+  const conversationUsage = useAppSelector((state) => selectConversationUsage(state, currentConversationId));
+  const runUsage = useAppSelector(selectRunUsage);
+  const usageByConversation = useAppSelector((state) => state.agent.usageByConversation);
+  // Bumped when an answer finishes, so its cost is loaded.
+  const [usageVersion, setUsageVersion] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -268,6 +290,11 @@ export function AgentChat() {
         },
       ]
     : agentMessages;
+  // An answer can be several messages (tools, then text); its cost goes under the last.
+  const lastOfRun = new Map<string, string>();
+  for (const message of agentMessages) {
+    if (message.role === 'assistant' && message.runId) lastOfRun.set(message.runId, message.id);
+  }
   const selectedConversation = currentConversationId
     ? chatHistory.find((conversation) => conversation.id === currentConversationId)
     : undefined;
@@ -520,6 +547,7 @@ export function AgentChat() {
         setIsRunActive(false);
         setActiveRunId(null);
         setRunPhase('Finished');
+        setUsageVersion((v) => v + 1);
         return;
       }
 
@@ -579,6 +607,13 @@ export function AgentChat() {
 
     dispatch(listAgentConversations());
   }, [dispatch, isOpen, selectedBudget?.id]);
+
+  // What the open conversation and each of its answers cost; again after an
+  // answer finishes (its model calls are recorded before the stream closes).
+  useEffect(() => {
+    if (!isOpen || !currentConversationId) return;
+    dispatch(fetchAgentConversationUsage(currentConversationId));
+  }, [dispatch, isOpen, currentConversationId, usageVersion]);
 
   useEffect(() => {
     if (!currentConversationId) {
@@ -807,6 +842,11 @@ export function AgentChat() {
           </div>
           <div className={styles.headerText}>
             <h2 id="agent-chat-title">{headerTitle}</h2>
+            {conversationUsage && usageText(conversationUsage) && (
+              <span className={styles.headerUsage} title={usageTitle(conversationUsage, 'This chat')}>
+                {usageText(conversationUsage)} this chat
+              </span>
+            )}
           </div>
           <div className={styles.headerActions}>
             <button type="button" className={styles.closeButton}
@@ -840,7 +880,12 @@ export function AgentChat() {
                         role="menuitem"
                         className={styles.historyOption}
                         onClick={() => handleSelectChat(conversation.id)}>
-                        {conversation.title}
+                        <span className={styles.historyTitle}>{conversation.title}</span>
+                        {usageByConversation[conversation.id]?.costMicros !== undefined && (
+                          <span className={styles.historyCost}>
+                            {formatUsd(usageByConversation[conversation.id].costMicros!)}
+                          </span>
+                        )}
                       </button>
                       <button
                         type="button"
@@ -898,6 +943,12 @@ export function AgentChat() {
               {message.role === 'assistant' && message.text.trim() && <button type="button"
                 className={styles.copyMessageButton} aria-label="Copy answer"
                 onClick={() => copyText(message.text)}><CopyIcon size={14} /> Copy</button>}
+              {message.role === 'assistant' && message.runId && lastOfRun.get(message.runId) === message.id
+                && runUsage[message.runId] && usageText(runUsage[message.runId]) && (
+                <span className={styles.messageUsage} title={usageTitle(runUsage[message.runId], 'This answer')}>
+                  {usageText(runUsage[message.runId])}
+                </span>
+              )}
             </div>
           ))}
         </div>

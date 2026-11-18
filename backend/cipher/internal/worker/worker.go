@@ -34,6 +34,10 @@ type WorkerDeps struct {
 	// Either nil: only a typed password is tried.
 	StatementPasswords repository.StatementPasswordRepository
 	SecretBox          *utils.SecretBox
+
+	// AgentRuns records an agent run for each job of a step that calls
+	// models (withAgentRun). Nil: no runs are recorded.
+	AgentRuns AgentRuns
 }
 
 // Setup builds cipher's worker on the broker main already opened, registers
@@ -55,12 +59,12 @@ func Setup(ctx context.Context, deps WorkerDeps) error {
 		return errs.Wrap(errs.CodeWorkerCreateError, "create job worker failed", err)
 	}
 
-	w.RegisterJobHandler(sharedModel.JobTypeMessageReceived, messageReceived(deps))
-	w.RegisterJobHandler(sharedModel.JobTypeMessageExtract, messageExtract(deps))
-	w.RegisterJobHandler(sharedModel.JobTypeMessageVerify, messageVerify(deps))
+	w.RegisterJobHandler(sharedModel.JobTypeMessageReceived, withAgentRun(deps, messageReceived(deps)))
+	w.RegisterJobHandler(sharedModel.JobTypeMessageExtract, withAgentRun(deps, messageExtract(deps)))
+	w.RegisterJobHandler(sharedModel.JobTypeMessageVerify, withAgentRun(deps, messageVerify(deps)))
 	w.RegisterJobHandler(sharedModel.JobTypeMessageLookup, messageLookup(deps))
-	w.RegisterJobHandler(sharedModel.JobTypeMessagePredict, messagePredict(deps))
-	w.RegisterJobHandler(sharedModel.JobTypeStatementExtract, statementExtract(deps))
+	w.RegisterJobHandler(sharedModel.JobTypeMessagePredict, withAgentRun(deps, messagePredict(deps)))
+	w.RegisterJobHandler(sharedModel.JobTypeStatementExtract, withAgentRun(deps, statementExtract(deps)))
 
 	if err := w.Run(ctx); err != nil {
 		return errs.Wrap(errs.CodeWorkerRunError, "worker run failed", err)

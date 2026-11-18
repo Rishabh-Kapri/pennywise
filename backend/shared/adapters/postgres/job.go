@@ -27,7 +27,7 @@ import (
 const jobColumns = `id, budget_id, type, queue, idempotency_key, payload, status, priority,
 	max_attempts, attempt, metadata, root_job_id, parent_id, schedule_id,
 	scheduled_for, progress, result, run_at, started_at, completed_at, locked_at,
-	locked_by, last_error, created_at, updated_at, deleted_at`
+	locked_by, last_error, created_at, updated_at, deleted_at, agent_run_id`
 
 type jobBroker struct {
 	BaseRepository
@@ -297,7 +297,60 @@ func (s *jobStore) GetJobByID(ctx context.Context, id uuid.UUID) (*job.Job, erro
 	if err != nil {
 		return nil, errs.Wrap(errs.CodeJobLookupFailed, "get job", err, errs.WithDetail("job_id", id))
 	}
+	if err := s.attachUsage(ctx, []*job.Job{j}); err != nil {
+		return nil, err
+	}
 	return j, nil
+}
+
+// attachUsage fills Usage on the jobs that recorded an agent run, totalled
+// live from llm_usage so a running job shows what it has spent so far.
+func (s *jobStore) attachUsage(ctx context.Context, jobs []*job.Job) error {
+	byRun := map[uuid.UUID][]*job.Job{}
+	runIDs := []uuid.UUID{}
+	for _, j := range jobs {
+		if j.AgentRunID == nil {
+			continue
+		}
+		if _, ok := byRun[*j.AgentRunID]; !ok {
+			runIDs = append(runIDs, *j.AgentRunID)
+		}
+		byRun[*j.AgentRunID] = append(byRun[*j.AgentRunID], j)
+	}
+	if len(runIDs) == 0 {
+		return nil
+	}
+	rows, err := s.Executor(ctx).Query(ctx, `
+		SELECT agent_run_id, count(*), sum(input_tokens), sum(output_tokens), sum(cost_micros),
+			(array_agg(model ORDER BY created_at DESC, id DESC))[1]
+		FROM llm_usage
+		WHERE agent_run_id = ANY($1)
+		GROUP BY agent_run_id`, runIDs)
+	if err != nil {
+		return errs.Wrap(errs.CodeJobLookupFailed, "load job usage", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			runID uuid.UUID
+			u     job.ModelUsage
+			model *string
+		)
+		if err := rows.Scan(&runID, &u.Calls, &u.InputTokens, &u.OutputTokens, &u.CostMicros, &model); err != nil {
+			return errs.Wrap(errs.CodeJobLookupFailed, "scan job usage", err)
+		}
+		if model != nil {
+			u.Model = *model
+		}
+		for _, j := range byRun[runID] {
+			usage := u
+			j.Usage = &usage
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return errs.Wrap(errs.CodeJobLookupFailed, "load job usage", err)
+	}
+	return nil
 }
 
 // ListByRoot implements [job.JobStore]: the root job and every job it
@@ -324,6 +377,13 @@ func (s *jobStore) ListByRoot(ctx context.Context, rootID uuid.UUID) ([]job.Job,
 	if err := rows.Err(); err != nil {
 		return nil, errs.Wrap(errs.CodeJobLookupFailed, "list jobs by root", err,
 			errs.WithDetail("root_job_id", rootID))
+	}
+	ptrs := make([]*job.Job, len(jobs))
+	for i := range jobs {
+		ptrs[i] = &jobs[i]
+	}
+	if err := s.attachUsage(ctx, ptrs); err != nil {
+		return nil, err
 	}
 	return jobs, nil
 }
@@ -482,6 +542,15 @@ func (s *jobStore) ListTrees(ctx context.Context, f job.JobTreeFilter) ([]job.Jo
 	}
 	if err := members.Err(); err != nil {
 		return nil, 0, errs.Wrap(errs.CodeJobLookupFailed, "list job tree members", err)
+	}
+	var all []*job.Job
+	for i := range trees {
+		for k := range trees[i].Jobs {
+			all = append(all, &trees[i].Jobs[k])
+		}
+	}
+	if err := s.attachUsage(ctx, all); err != nil {
+		return nil, 0, err
 	}
 	return trees, total, nil
 }
@@ -758,7 +827,7 @@ func scanJob(row pgx.Row, extra ...any) (*job.Job, error) {
 		&j.ID, &j.BudgetID, &j.Type, &j.Queue, &key, &j.Payload, &status, &j.Priority,
 		&j.MaxAttempts, &j.Attempt, &meta, &j.RootJobID, &j.ParentID, &j.ScheduleID,
 		&j.ScheduledFor, &j.Progress, &j.Result, &j.RunAt, &j.StartedAt, &j.CompletedAt, &j.LockedAt,
-		&j.LockedBy, &lastErr, &j.CreatedAt, &j.UpdatedAt, &j.DeletedAt,
+		&j.LockedBy, &lastErr, &j.CreatedAt, &j.UpdatedAt, &j.DeletedAt, &j.AgentRunID,
 	}
 	if err := row.Scan(append(dest, extra...)...); err != nil {
 		return nil, err

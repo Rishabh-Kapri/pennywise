@@ -25,9 +25,10 @@ import { EmptyState } from '../../../components/EmptyState';
 import { InitialAvatar } from '../../../components/InitialAvatar';
 import { PickerModal, PickerOverlay, type PickerOption } from '../../../components/Picker';
 import { Screen } from '../../../components/Screen';
+import { StackHeader } from '../../../components/StackHeader';
 import { Sheet, SheetOverlay } from '../../../components/Sheet';
 import type { AppTabParamList } from '../../../navigation/types';
-import { colors, radii, spacing, tabBarClearance } from '../../../theme';
+import { colors, radii, spacing } from '../../../theme';
 import { formatCurrency } from '../../../utils/date';
 import { findDuplicateGroups, formatLastUsed, hasWildcard, normalizePayeeName, testRules } from '../payeeUtils';
 import {
@@ -733,13 +734,11 @@ export function PayeesScreen() {
 
   return (
     <Screen scroll={false} style={styles.screen}>
-      <View style={styles.header}>
-        <View style={styles.grow}>
-          <AppText variant="title">Payees</AppText>
-          <AppText variant="caption" muted>
-            {counts.all} payees · {rules.length} rules
-          </AppText>
-        </View>
+      <StackHeader
+        title="Payees"
+        subtitle={`${counts.all} payees · ${rules.length} rules`}
+        right={
+          <View style={styles.headerActions}>
         <Pressable
           accessibilityLabel="Sort"
           style={({ pressed }) => [styles.roundButton, showSort && styles.roundButtonActive, pressed && styles.pressed]}
@@ -754,7 +753,9 @@ export function PayeesScreen() {
         >
           <Plus size={22} color={colors.onPrimary} />
         </Pressable>
-      </View>
+          </View>
+        }
+      />
 
       <View style={styles.searchBox}>
         <Search size={17} color={colors.faint} />
@@ -990,7 +991,12 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: spacing.xs,
-    paddingBottom: tabBarClearance
+    paddingBottom: spacing.xxl
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm
   },
   listNote: {
     marginBottom: spacing.sm

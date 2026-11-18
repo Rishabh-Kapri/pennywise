@@ -11,6 +11,7 @@ import type {
   AgentRunCreateRequest,
   AgentState,
   ConversationMessage,
+  ConversationUsage,
   MessageContent,
   MessagePart,
 } from '../types/agent.types';
@@ -82,6 +83,8 @@ const initialState: AgentState = {
   createRunLoading: LoadingState.IDLE,
   error: null,
   nextMessageId: 0,
+  usageByConversation: {},
+  usageByRun: {},
 };
 
 type CreateAgentRunArgs = Pick<
@@ -452,6 +455,14 @@ export const listAgentConversations = createAsyncThunk<AgentConversation[]>(
   },
 );
 
+export const fetchAgentConversationUsage = createAsyncThunk<
+  { conversationId: string; usage: ConversationUsage },
+  string
+>('agent/fetchConversationUsage', async (conversationId) => ({
+  conversationId,
+  usage: await apiClient.get<ConversationUsage>(`agent/conversations/${conversationId}/usage`),
+}));
+
 export const fetchAgentConversationMessages = createAsyncThunk<
   { conversationId: string; messages: ConversationMessage[] },
   string
@@ -653,6 +664,14 @@ const agentSlice = createSlice({
       })
       .addCase(listAgentConversations.fulfilled, (state, action) => {
         mergeConversationHistory(state, action.payload);
+        for (const conversation of action.payload ?? []) {
+          if (conversation.usage) state.usageByConversation[conversation.id] = conversation.usage;
+        }
+      })
+      .addCase(fetchAgentConversationUsage.fulfilled, (state, action) => {
+        const { conversationId, usage } = action.payload;
+        if (usage.total.calls > 0) state.usageByConversation[conversationId] = usage.total;
+        Object.assign(state.usageByRun, usage.runs);
       })
       .addCase(fetchAgentConversationMessages.fulfilled, (state, action) => {
         const existing = state.chatHistoryById[action.payload.conversationId];
@@ -712,3 +731,7 @@ export const selectSelectedAgentModelKey = (state: RootState) =>
   state.agent.selectedModelKey;
 
 export default agentSlice.reducer;
+
+export const selectConversationUsage = (state: RootState, conversationId: string | null) =>
+  conversationId ? state.agent.usageByConversation[conversationId] : undefined;
+export const selectRunUsage = (state: RootState) => state.agent.usageByRun;

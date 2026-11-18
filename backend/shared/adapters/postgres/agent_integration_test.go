@@ -3,8 +3,10 @@ package postgres
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/model"
+	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/job"
 	"github.com/Rishabh-Kapri/pennywise/backend/shared/ports/repository"
 
 	"github.com/google/uuid"
@@ -179,4 +181,150 @@ func TestLLMUsageRecordWithoutBudgetOrUsage(t *testing.T) {
 	require.Equal(t, "ok", status)
 	require.Zero(t, latency)
 	require.Nil(t, input)
+}
+
+func TestAgentStartJobRunSavesTheRunOnTheJob(t *testing.T) {
+	pool := testPool(t)
+	s := newSeed(t, pool)
+	ctx := context.Background()
+	ownerID := uuid.New()
+	_, err := pool.Exec(ctx, `INSERT INTO auth_users (id) VALUES ($1)`, ownerID)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `UPDATE budgets SET user_id = $2 WHERE id = $1`, s.budgetID, ownerID)
+	require.NoError(t, err)
+
+	broker := NewPgJobBrokerAdapter(pool)
+	store := NewPgJobStoreAdapter(pool)
+	enq, err := broker.Enqueue(ctx, model.JobTypeMessageExtract, []byte(`{}`),
+		job.WithQueue(model.QueueCipher), job.WithBudgetID(&s.budgetID))
+	require.NoError(t, err)
+
+	repo := NewAgentRepository(pool)
+	usage := NewLLMUsageRepository(pool)
+	params := repository.StartJobRunParams{
+		JobID: enq.JobID, BudgetID: s.budgetID, AgentKey: model.AgentKeyPipeline,
+		Metadata: map[string]any{"jobType": model.JobTypeMessageExtract},
+	}
+	run, err := repo.StartJobRun(ctx, params)
+	require.NoError(t, err)
+	require.Equal(t, model.AgentKeyPipeline, run.AgentKey)
+	require.Equal(t, model.AgentRunStatusRunning, run.Status)
+	require.Nil(t, run.ConversationID)
+	require.Equal(t, ownerID, *run.UserID, "the run belongs to the budget's owner")
+
+	got, err := store.GetJobByID(ctx, enq.JobID)
+	require.NoError(t, err)
+	require.Equal(t, run.ID, *got.AgentRunID)
+
+	cost := int64(1500)
+	in, out := 400, 20
+	record := func(purpose model.LLMUsagePurpose) {
+		require.NoError(t, usage.Record(ctx, model.LLMUsage{
+			BudgetID: &s.budgetID, UserID: &ownerID, AgentRunID: &run.ID, Purpose: purpose,
+			Provider: "openrouter", Model: "small", InputTokens: &in, OutputTokens: &out, CostMicros: &cost,
+			LatencyMs: 300, Status: model.LLMUsageStatusOK,
+		}))
+	}
+	record(model.LLMPurposePipelineExtract)
+	_, err = repo.UpdateRunStatus(ctx, run.ID, s.budgetID, model.AgentRunStatusFailed, nil)
+	require.NoError(t, err)
+
+	// A retry resumes the same run, and its calls add up with the first attempt's.
+	again, err := repo.StartJobRun(ctx, params)
+	require.NoError(t, err)
+	require.Equal(t, run.ID, again.ID)
+	require.Equal(t, model.AgentRunStatusRunning, again.Status)
+	require.Nil(t, again.CompletedAt)
+	record(model.LLMPurposeDecision)
+
+	require.NoError(t, repo.RecordRunResult(ctx, repository.RecordAgentRunResult{
+		RunID: run.ID, BudgetID: s.budgetID, StopReason: "end_turn",
+	}))
+	done, err := repo.GetRun(ctx, ownerID, s.budgetID, run.ID)
+	require.NoError(t, err)
+	require.Equal(t, 2, *done.TurnCount, "a pipeline run counts every call, whatever its purpose")
+	require.Equal(t, int64(3000), *done.CostMicros)
+	require.Equal(t, 800, *done.InputTokens)
+
+	got, err = store.GetJobByID(ctx, enq.JobID)
+	require.NoError(t, err)
+	require.NotNil(t, got.Usage)
+	require.Equal(t, 2, got.Usage.Calls)
+	require.Equal(t, int64(3000), *got.Usage.CostMicros)
+	require.Equal(t, "small", got.Usage.Model)
+
+	summary, err := usage.Summary(ctx, s.budgetID, time.Now().Add(-time.Hour), "Asia/Kolkata")
+	require.NoError(t, err)
+	require.Equal(t, 2, summary.Totals.Calls)
+	require.Equal(t, int64(3000), summary.Totals.CostMicros)
+	require.Len(t, summary.Days, 1)
+	require.Len(t, summary.ByPurpose, 2)
+	require.Len(t, summary.ByModel, 1)
+	require.Equal(t, "openrouter", summary.ByModel[0].Provider)
+}
+
+func TestAgentConversationUsage(t *testing.T) {
+	pool := testPool(t)
+	s := newSeed(t, pool)
+	ctx := context.Background()
+	userID := uuid.New()
+	_, err := pool.Exec(ctx, `INSERT INTO auth_users (id) VALUES ($1)`, userID)
+	require.NoError(t, err)
+
+	repo := NewAgentRepository(pool)
+	usage := NewLLMUsageRepository(pool)
+	conv, err := repo.CreateConversation(ctx, repository.CreateAgentConversationParams{
+		UserID: userID, BudgetID: s.budgetID, AgentKey: "chat",
+	})
+	require.NoError(t, err)
+	quiet, err := repo.CreateConversation(ctx, repository.CreateAgentConversationParams{
+		UserID: userID, BudgetID: s.budgetID, AgentKey: "chat",
+	})
+	require.NoError(t, err)
+	newRun := func() uuid.UUID {
+		run, err := repo.CreateRun(ctx, repository.CreateAgentRunParams{
+			UserID: userID, BudgetID: s.budgetID, AgentKey: "chat", ConversationID: conv.ID,
+		})
+		require.NoError(t, err)
+		return run.ID
+	}
+	first, second := newRun(), newRun()
+	record := func(run uuid.UUID, purpose model.LLMUsagePurpose, mdl string, in, out int, cost *int64) {
+		require.NoError(t, usage.Record(ctx, model.LLMUsage{
+			BudgetID: &s.budgetID, UserID: &userID, AgentRunID: &run, Purpose: purpose,
+			Provider: "openrouter", Model: mdl, InputTokens: &in, OutputTokens: &out, CostMicros: cost,
+			LatencyMs: 100, Status: model.LLMUsageStatusOK,
+		}))
+	}
+	c := func(v int64) *int64 { return &v }
+	record(first, model.LLMPurposeAgentTurn, "a", 1000, 100, c(2000))
+	record(first, model.LLMPurposeTitle, "a", 50, 5, c(10))
+	record(second, model.LLMPurposeAgentTurn, "b", 1500, 200, nil) // no cost reported
+
+	got, err := repo.ConversationUsage(ctx, s.budgetID, conv.ID)
+	require.NoError(t, err)
+	require.Len(t, got.Runs, 2)
+	require.Equal(t, 2, got.Runs[first].Calls, "an answer's cost includes its title call")
+	require.Equal(t, int64(2010), *got.Runs[first].CostMicros)
+	require.Nil(t, got.Runs[second].CostMicros, "no call reported a cost")
+	require.Equal(t, 3, got.Total.Calls)
+	require.Equal(t, int64(2010), *got.Total.CostMicros)
+	require.Equal(t, int64(2550), *got.Total.InputTokens)
+	require.Equal(t, "b", got.Total.Model, "the last model that answered")
+
+	other, err := repo.ConversationUsage(ctx, uuid.New(), conv.ID)
+	require.NoError(t, err)
+	require.Empty(t, other.Runs, "another budget sees nothing")
+
+	list, err := repo.GetAllConversations(ctx, userID, s.budgetID)
+	require.NoError(t, err)
+	for _, item := range list {
+		switch item.ID {
+		case conv.ID:
+			require.NotNil(t, item.Usage)
+			require.Equal(t, int64(2010), *item.Usage.CostMicros)
+		case quiet.ID:
+			require.Nil(t, item.Usage, "a conversation with no calls has no usage")
+		}
+	}
 }

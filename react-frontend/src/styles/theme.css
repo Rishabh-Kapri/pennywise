@@ -1,7 +1,12 @@
 :root[data-theme] {
+  /* The logo's three blues (public/logo-mark.svg), deepest first. Both themes
+     use them as they are: the accent is the logo's deep blue. */
+  --brand-deep: #2c6a8c;
+  --brand: #5d9cbb;
+  --brand-soft: #a9cbe0;
   /* Light: neutral, slightly cool greys so white cards read clearly against the
      page, with saturated status colours that hold AA contrast on white. */
-  --accent: #2c6a8c;
+  --accent: var(--brand-deep);
   --accent-hover: #225673;
   --on-accent: #ffffff;
   --page-bg: #f3f4f6;
@@ -54,9 +59,9 @@
   --shadow-popover: 0 12px 32px -6px #10182833, 0 2px 6px #10182814;
 }
 :root[data-theme='dark'] {
-  /* Restore the repository's original palette, before the homepage redesign. */
-  --color-primary: #4483a2;
-  --color-primary-light: #aec2dd;
+  /* Neutral greys from the original palette; the blues are the logo's (--brand-*). */
+  --color-primary: var(--brand-deep);
+  --color-primary-light: var(--brand-soft);
   --color-secondary: #f6f6f6;
   --color-accent: #f6f6f6;
   --color-background: #1f1f1e;
@@ -90,7 +95,7 @@
   --skeleton-base: rgba(128, 128, 128, 0.2);
   --skeleton-highlight: rgba(128, 128, 128, 0.1);
   --accent: var(--color-primary);
-  --accent-hover: #5d9cbb;
+  --accent-hover: var(--brand);
   --on-accent: #ffffff;
   --text: var(--color-text);
   --muted: var(--color-text-secondary);

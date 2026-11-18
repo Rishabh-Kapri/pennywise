@@ -16,6 +16,7 @@ import { cloneElement, useState, useEffect, type ReactElement } from 'react';
 import { useLocation } from 'react-router-dom';
 import BudgetSwitcher from '@/features/budget/components/BudgetSwitcher';
 import { UserMenu } from './UserMenu';
+import { ReviewBell } from '@/features/jobs/components/ReviewBell';
 
 type NavIcon = ReactElement<IconProps>;
 
@@ -78,6 +79,7 @@ export function Navbar() {
         <div className={styles.navRight}>
           <ThemeToggle />
           <BudgetSwitcher />
+          <ReviewBell />
           <UserMenu />
           <button
             type="button"

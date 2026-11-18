@@ -78,15 +78,30 @@ export function AmountKeypad({ onKey, onDone }: { onKey: (key: string) => void; 
 }
 
 /** The typed expression with its running result underneath once it's a sum. */
-export function ExpressionPreview({ expression, placeholder = '0' }: { expression: string; placeholder?: string }) {
+export function ExpressionPreview({
+  expression,
+  placeholder = '0',
+  onDark = false
+}: {
+  expression: string;
+  placeholder?: string;
+  /** drawn on the dark hero card */
+  onDark?: boolean;
+}) {
   const value = evaluateAmount(expression);
   return (
     <View style={styles.preview}>
-      <AppText variant="title" tabular numberOfLines={1} adjustsFontSizeToFit style={!expression && styles.placeholder}>
+      <AppText
+        variant="title"
+        tabular
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        style={[onDark && styles.onDark, !expression && (onDark ? styles.onDarkPlaceholder : styles.placeholder)]}
+      >
         {expression || placeholder}
       </AppText>
       {isExpression(expression) ? (
-        <AppText variant="caption" tabular tone={value === null ? 'danger' : 'primary'}>
+        <AppText variant="caption" tabular tone={value === null ? 'danger' : 'primary'} style={onDark && value !== null ? styles.onDarkResult : undefined}>
           {value === null ? 'Not a valid sum' : `= ${formatCurrency(value)}`}
         </AppText>
       ) : null}
@@ -187,6 +202,15 @@ const styles = StyleSheet.create({
   },
   doneText: {
     color: colors.onPrimary
+  },
+  onDark: {
+    color: colors.onHero
+  },
+  onDarkPlaceholder: {
+    color: colors.onHeroMuted
+  },
+  onDarkResult: {
+    color: colors.primaryLight
   },
   preview: {
     alignItems: 'flex-end',

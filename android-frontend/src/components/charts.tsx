@@ -497,7 +497,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.sm
   },
   selectedColumn: {
-    backgroundColor: 'rgba(255,255,255,0.05)'
+    backgroundColor: chartColors.track
   },
   dim: {
     opacity: 0.55

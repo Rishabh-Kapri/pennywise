@@ -65,6 +65,26 @@ type LLMUsage struct {
 	CreatedAt        time.Time      `json:"createdAt"`
 }
 
+// ModelUsage totals some model calls (a job's, an agent run's, a
+// conversation's). A total is nil when no call reported it: a provider that
+// doesn't report cost, a call still running.
+type ModelUsage struct {
+	Calls        int    `json:"calls"`
+	InputTokens  *int64 `json:"inputTokens,omitempty"`
+	OutputTokens *int64 `json:"outputTokens,omitempty"`
+	// CostMicros is millionths of a US dollar, as the providers reported it.
+	CostMicros *int64 `json:"costMicros,omitempty"`
+	// Model is the last model that answered.
+	Model string `json:"model,omitempty"`
+}
+
+// ConversationUsage is what a chat conversation's model calls used: in all,
+// and per agent run (one run is one answer, with its title and memory calls).
+type ConversationUsage struct {
+	Total ModelUsage               `json:"total"`
+	Runs  map[uuid.UUID]ModelUsage `json:"runs"`
+}
+
 // Agent run stop reasons beyond the model's own StopReason: the run spent a
 // budget and was made to answer with what it had.
 const (
@@ -90,4 +110,41 @@ type ToolInvocation struct {
 	Truncated   bool            `json:"truncated"`
 	DurationMs  *int            `json:"durationMs,omitempty"`
 	CreatedAt   time.Time       `json:"createdAt"`
+}
+
+// LLMUsageTotals adds up model calls. CostMicros sums only the calls whose
+// provider reported a cost; UnpricedCalls counts the rest (local models count
+// as priced at 0).
+type LLMUsageTotals struct {
+	Calls           int   `json:"calls"`
+	FailedCalls     int   `json:"failedCalls"`
+	UnpricedCalls   int   `json:"unpricedCalls"`
+	InputTokens     int64 `json:"inputTokens"`
+	OutputTokens    int64 `json:"outputTokens"`
+	CacheReadTokens int64 `json:"cacheReadTokens"`
+	CostMicros      int64 `json:"costMicros"`
+}
+
+// LLMUsageDay is one day's totals, the day in the caller's time zone.
+type LLMUsageDay struct {
+	Date string `json:"date"` // YYYY-MM-DD
+	LLMUsageTotals
+}
+
+// LLMUsageGroup is the totals of one purpose, or of one provider's model.
+type LLMUsageGroup struct {
+	Key      string `json:"key"`                // purpose, or the model
+	Provider string `json:"provider,omitempty"` // set when grouped by model
+	LLMUsageTotals
+}
+
+// LLMUsageSummary is a budget's model use since Since: the totals, each day
+// that had calls (oldest first), and the totals by purpose and by model, most
+// expensive first.
+type LLMUsageSummary struct {
+	Since     time.Time       `json:"since"`
+	Totals    LLMUsageTotals  `json:"totals"`
+	Days      []LLMUsageDay   `json:"days"`
+	ByPurpose []LLMUsageGroup `json:"byPurpose"`
+	ByModel   []LLMUsageGroup `json:"byModel"`
 }

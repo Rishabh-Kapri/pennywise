@@ -1,0 +1,187 @@
+.hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem 2rem;
+}
+
+.heroValue {
+  display: block;
+  color: var(--color-text);
+  font-size: 2rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.heroLabel {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+}
+
+.stats dt {
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+}
+
+.stats dd {
+  color: var(--color-text);
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.note,
+.empty {
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+}
+
+.chart {
+  width: 100%;
+  min-height: 160px;
+}
+
+.placeholder {
+  height: 220px;
+  border-radius: 10px;
+  background: linear-gradient(90deg, var(--skeleton-base), var(--skeleton-highlight), var(--skeleton-base));
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.chart .tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--color-border-muted);
+  border-radius: 8px;
+  background: var(--color-popover, var(--card-bg));
+  box-shadow: var(--shadow-popover);
+  font-size: 0.8rem;
+  padding: 6px 10px;
+}
+
+.tooltipDate,
+.tooltipMeta {
+  color: var(--color-text-secondary);
+}
+
+.tooltipValue {
+  color: var(--color-text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.table summary {
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.table table {
+  width: 100%;
+  margin-top: 0.5rem;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.table th,
+.table td {
+  border-bottom: 1px solid var(--color-border-muted);
+  text-align: left;
+  padding: 4px 8px;
+}
+
+.table th {
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.5rem;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.groupTitle {
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.groupList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  list-style: none;
+}
+
+.groupRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(40px, 1fr) auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.groupName {
+  overflow: hidden;
+  color: var(--color-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.groupBar {
+  display: block;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--track-bg, var(--color-border-muted));
+}
+
+.groupBar span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+}
+
+.groupCost {
+  min-width: 4rem;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.groupCalls {
+  grid-column: 1;
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+}
+
+.groupRest .groupName {
+  color: var(--color-text-secondary);
+}

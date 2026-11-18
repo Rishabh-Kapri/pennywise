@@ -82,6 +82,27 @@ export function formatPoints(n: number): string {
   return `${n < 0 ? '−' : '+'}${formatCount(Math.abs(n))} pts`;
 }
 
+/**
+ * What model calls cost, from millionths of a US dollar (as the providers
+ * report it). Small amounts keep two significant digits, since one message
+ * often costs a fraction of a cent: $0, <$0.0001, $0.0042, $0.42, $12.30.
+ */
+export function formatUsd(micros: number): string {
+  const dollars = micros / 1_000_000;
+  if (dollars === 0) return '$0';
+  if (dollars < 0.0001) return '<$0.0001';
+  if (dollars < 0.01) return `$${dollars.toPrecision(2).replace(/0+$/, '')}`;
+  if (dollars < 1000) return `$${dollars.toFixed(2)}`;
+  return `$${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(dollars)}`;
+}
+
+/** A token count, short: 840, 4.1k, 2.3M. */
+export function formatTokens(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) return `${trimZero(n / 1000)}k`;
+  return `${trimZero(n / 1_000_000)}M`;
+}
+
 /** 512 B, 84 KB, 2.3 MB */
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

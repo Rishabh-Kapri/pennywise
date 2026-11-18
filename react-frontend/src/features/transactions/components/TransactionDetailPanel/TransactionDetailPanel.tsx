@@ -3,6 +3,7 @@ import {
   CheckIcon,
   PlusIcon,
   ReceiptIcon,
+  SparkleIcon,
   TrashIcon as Trash2,
   XIcon,
 } from '@phosphor-icons/react';
@@ -33,7 +34,7 @@ import { formatSourceTime, transactionTime } from '../../utils/sourceTime';
 import { useTransactionSources } from '../../hooks/useTransactionSources';
 import styles from './TransactionDetailPanel.module.css';
 import { getAutoColor, tagColor, tagLabel, tagMatches } from '@/features/tags/utils';
-import { confidenceLevel, confidencePercent, formatAmount, formatConfidence } from '@/utils/format';
+import { confidenceLevel, confidencePercent, formatAmount, formatConfidence, formatPoints } from '@/utils/format';
 
 type TransactionStatusAction = Extract<
   TransactionStatusType,
@@ -56,6 +57,16 @@ interface Props {
   onClose: () => void;
   onStatusChange: (status: TransactionStatusAction) => void;
   onAnimationEnd?: () => void;
+}
+
+/** The reward points card statements printed for this transaction, if any. */
+function rewardPoints(sources: TransactionSource[]): { points: number; statements: number } | null {
+  const withPoints = sources.filter((source) => source.rewardPoints !== undefined && source.rewardPoints !== null);
+  if (withPoints.length === 0) return null;
+  return {
+    points: withPoints.reduce((sum, source) => sum + (source.rewardPoints ?? 0), 0),
+    statements: withPoints.length,
+  };
 }
 
 function getDisplayAmount(txn: Transaction) {
@@ -589,6 +600,7 @@ function TransactionView({
   const { sources, isLoading: isSourcesLoading, error: sourcesError } = useTransactionSources(txn.id);
   // the list already carries it; the sources cover a row opened before it did
   const time = formatSourceTime(txn.occurredAt) || transactionTime(sources);
+  const rewards = rewardPoints(sources);
 
   const selectedTags = useMemo(
     () => allTags.filter((tag) => (txn.tagIds ?? []).includes(tag.id)),
@@ -681,6 +693,18 @@ function TransactionView({
             <AccountDropdown value={txn.accountName} onClick={onSelectChange('accountId', 'accountName')} variant="ghost" />
           </dd>
         </div>
+        {rewards && (
+          <div className={styles.fact}>
+            <dt>Rewards</dt>
+            <dd
+              className={`${styles.rewards} ${rewards.points < 0 ? styles.rewardsReversed : ''}`}
+              title={`Printed on ${rewards.statements === 1 ? 'a card statement' : `${rewards.statements} card statements`}`}
+            >
+              <SparkleIcon size={14} weight="fill" aria-hidden="true" />
+              {formatPoints(rewards.points)}
+            </dd>
+          </div>
+        )}
         {hasLinkedTransfer && (
           <>
             <div className={styles.fact}>

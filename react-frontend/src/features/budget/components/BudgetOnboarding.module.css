@@ -242,7 +242,7 @@
 .createButton {
   flex: 1;
   background: var(--color-primary);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .createButton:disabled,

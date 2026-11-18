@@ -145,7 +145,7 @@
 
 .monthButtonActive {
   background: var(--color-primary);
-  color: white;
+  color: var(--on-accent);
 }
 
 .monthButtonActive:hover {

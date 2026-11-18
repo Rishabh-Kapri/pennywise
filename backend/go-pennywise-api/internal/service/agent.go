@@ -64,6 +64,9 @@ func (c *cipherAgentClient) CancelRun(ctx context.Context, id uuid.UUID) (*share
 type AgentService interface {
 	GetConversations(ctx context.Context) ([]sharedModel.AgentConversation, error)
 	GetConversationMessages(ctx context.Context, id uuid.UUID) ([]sharedModel.ConversationMessage, error)
+	// ConversationUsage is what the user's conversation cost, in all and per
+	// run. CodeAgentConversationNotFound for one that isn't theirs.
+	ConversationUsage(ctx context.Context, id uuid.UUID) (sharedModel.ConversationUsage, error)
 	CreateRun(ctx context.Context, req sharedModel.AgentRunCreateRequest) (*sharedModel.AgentRun, error)
 	GetRun(ctx context.Context, id uuid.UUID) (*sharedModel.AgentRun, error)
 	CancelRun(ctx context.Context, id uuid.UUID) (*sharedModel.AgentRun, error)
@@ -98,6 +101,25 @@ func (s *agentService) GetConversationMessages(
 	_ = utils.MustUserID(ctx)
 
 	return s.repo.ListConversationMessages(ctx, id, nil)
+}
+
+func (s *agentService) ConversationUsage(
+	ctx context.Context,
+	id uuid.UUID,
+) (sharedModel.ConversationUsage, error) {
+	userID, budgetID, err := agentContext(ctx)
+	if err != nil {
+		return sharedModel.ConversationUsage{}, err
+	}
+	if _, err := s.repo.GetConversation(ctx, id, userID, budgetID); err != nil {
+		return sharedModel.ConversationUsage{}, wrapAgentRepoError(
+			errs.CodeAgentConversationLookupFailed, "failed to get conversation", err)
+	}
+	usage, err := s.repo.ConversationUsage(ctx, budgetID, id)
+	if err != nil {
+		return usage, errs.Wrap(errs.CodeAgentConversationLookupFailed, "failed to total conversation usage", err)
+	}
+	return usage, nil
 }
 
 func (s *agentService) continueRun(

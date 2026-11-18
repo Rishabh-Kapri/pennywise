@@ -148,6 +148,8 @@ export interface TransactionSource {
   currency?: string;
   occurredOn?: string;
   occurredAt?: string;
+  /** Points a card statement printed for this line (negative: taken back). */
+  rewardPoints?: number;
   createdAt: string;
 }
 
