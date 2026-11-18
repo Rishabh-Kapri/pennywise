@@ -33,7 +33,7 @@ import { formatSourceTime, transactionTime } from '../../utils/sourceTime';
 import { useTransactionSources } from '../../hooks/useTransactionSources';
 import styles from './TransactionDetailPanel.module.css';
 import { getAutoColor, tagColor, tagLabel, tagMatches } from '@/features/tags/utils';
-import { formatAmount } from '@/utils/format';
+import { confidenceLevel, confidencePercent, formatAmount, formatConfidence } from '@/utils/format';
 
 type TransactionStatusAction = Extract<
   TransactionStatusType,
@@ -71,12 +71,6 @@ function getSignedDisplayAmount(txn: Transaction) {
   const { value, isInflow } = getDisplayAmount(txn);
   const sign = isInflow ? '+' : '-';
   return `${sign}${formatAmount(value)}`;
-}
-
-function formatConfidence(value?: number | null) {
-  if (value === null || value === undefined) return '-';
-  const percent = value <= 1 ? value * 100 : value;
-  return `${percent.toFixed(percent >= 10 ? 0 : 1)}%`;
 }
 
 function formatOptionalAmount(value?: number | null) {
@@ -423,11 +417,6 @@ function DetailRow({ label, children, mono = false }: { label: string; children:
   );
 }
 
-function confidencePercent(value?: number | null) {
-  if (value === null || value === undefined) return null;
-  return Math.max(0, Math.min(value <= 1 ? value * 100 : value, 100));
-}
-
 function PredictionMetric({
   label,
   value,
@@ -437,15 +426,17 @@ function PredictionMetric({
   value?: string | null;
   confidence?: number | null;
 }) {
-  const percent = confidencePercent(confidence);
-  const tone = percent === null ? '' : percent >= 80 ? styles.confidenceHigh : percent >= 50 ? styles.confidenceMid : styles.confidenceLow;
+  const percent = confidence == null ? 0 : confidencePercent(confidence);
+  const tone = { high: styles.confidenceHigh, medium: styles.confidenceMid, low: styles.confidenceLow, unknown: '' }[
+    confidenceLevel(confidence)
+  ];
   return (
     <div className={`${styles.predictionMetric} ${tone}`}>
       <span className={styles.detailLabel}>{label}</span>
       <strong className={styles.predictionValue}>{value || '-'}</strong>
       <span className={styles.predictionConfidence}>{formatConfidence(confidence)}</span>
       <span className={styles.confidenceMeter} aria-hidden="true">
-        <span style={{ width: `${percent ?? 0}%` }} />
+        <span style={{ width: `${percent}%` }} />
       </span>
     </div>
   );

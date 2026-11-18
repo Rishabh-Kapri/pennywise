@@ -88,3 +88,29 @@ export function formatFileSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+/**
+ * A model's confidence as a percentage. Steps report it as 0–1 and some older
+ * records as 0–100, so a value up to 1 is read as a share.
+ */
+export function confidencePercent(value: number): number {
+  return Math.max(0, Math.min(value <= 1 ? value * 100 : value, 100));
+}
+
+/** 87%, 4.5%, or — when there's no confidence. */
+export function formatConfidence(value?: number | null): string {
+  if (value === null || value === undefined) return '—';
+  const percent = confidencePercent(value);
+  return `${percent.toFixed(percent >= 10 ? 0 : 1)}%`;
+}
+
+export type ConfidenceLevel = 'high' | 'medium' | 'low' | 'unknown';
+
+/** How sure a prediction was, in the buckets chips and meters are coloured by. */
+export function confidenceLevel(value?: number | null): ConfidenceLevel {
+  if (value === null || value === undefined) return 'unknown';
+  const percent = confidencePercent(value);
+  if (percent >= 80) return 'high';
+  if (percent >= 50) return 'medium';
+  return 'low';
+}

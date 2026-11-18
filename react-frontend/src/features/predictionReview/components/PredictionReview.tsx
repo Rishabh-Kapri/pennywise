@@ -15,11 +15,8 @@ import {
   selectReviewSubmittingId,
   setIncludeReviewed,
 } from '../store/predictionReviewSlice';
-import {
-  confidenceLevel,
-  formatConfidence,
-  type PredictionReviewItem,
-} from '../types/predictionReview.types';
+import type { PredictionReviewItem } from '../types/predictionReview.types';
+import { confidenceLevel, formatConfidence } from '@/utils/format';
 import styles from './PredictionReview.module.css';
 import { formatAmount } from '@/utils/format';
 
