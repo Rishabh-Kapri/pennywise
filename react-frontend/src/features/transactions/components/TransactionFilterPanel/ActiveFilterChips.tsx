@@ -1,7 +1,7 @@
 import { XIcon } from '@phosphor-icons/react';
 import { useAppSelector } from '@/app/hooks';
 import { selectAllTags } from '@/features/tags/store/tagSlice';
-import { getAutoColor, tagLabel } from '@/features/tags/utils';
+import { tagColor, tagLabel } from '@/features/tags/utils';
 import { getLocaleDate } from '@/utils/date.utils';
 import { EMPTY_FILTERS, hasActiveFilters, type TransactionFilters } from '../../types/filter.types';
 import styles from './ActiveFilterChips.module.css';
@@ -88,7 +88,7 @@ export function ActiveFilterChips({
       key: `tag-${id}`,
       kind: 'Tag',
       label: tag ? tagLabel(tag.name) : 'Unknown tag',
-      color: tag ? tag.color || getAutoColor(tag.name) : undefined,
+      color: tag ? tagColor(tag) : undefined,
       remove: () =>
         set({
           tagIds: next,

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useAppSelector } from '@/app/hooks';
 import { selectAllTags } from '@/features/tags/store/tagSlice';
-import { getAutoColor, tagLabel } from '@/features/tags/utils';
+import { tagColor, tagLabel } from '@/features/tags/utils';
 import { MultiSelectMenu } from '@/components/common/pickers/MultiSelectMenu';
 import styles from '@/components/common/pickers/MultiSelectMenu.module.css';
 
@@ -24,7 +24,7 @@ export function TagFilterDropdown({ selectedIds, onChange, placeholder, counts }
           name: tagLabel(tag.name),
           searchText: tag.name,
           leading: (
-            <span className={styles.tagDot} style={{ backgroundColor: tag.color || getAutoColor(tag.name) }} />
+            <span className={styles.tagDot} style={{ backgroundColor: tagColor(tag) }} />
           ),
         })),
     [allTags],

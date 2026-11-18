@@ -13,13 +13,12 @@ import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { Popover } from '@/components/common/Popover/Popover';
 import { createTag, deleteTag, selectAllTags, updateTag } from '@/features/tags/store/tagSlice';
 import type { Tag } from '@/features/tags/types/tag.types';
-import { type DatedTag, TAG_COLORS, getAutoColor, parseDatedTag } from '@/features/tags/utils';
+import { type DatedTag, TAG_COLORS, getAutoColor, parseDatedTag, tagColor, tagMatches } from '@/features/tags/utils';
 import { errorMessage, toast } from '@/utils';
 import settingsStyles from './Settings.module.css';
 import styles from './TagSettings.module.css';
 
 const normalize = (name: string) => name.trim().toLowerCase();
-const colorOf = (tag: Tag) => tag.color || getAutoColor(tag.name);
 
 /** A colour dot that opens a swatch picker. */
 function ColorPicker({
@@ -224,7 +223,7 @@ function TagRow({
       {dated && <span className={styles.month}>{dated.monthLabel}</span>}
       <ColorPicker
         id={`tag-color-${tag.id}`}
-        color={colorOf(tag)}
+        color={tagColor(tag)}
         onSelect={(color) => color !== tag.color && save({ color })}
         label={`Change colour of ${tag.name}`}
       />
@@ -332,11 +331,7 @@ export function TagSettings() {
     const q = normalize(query);
     const entries = allTags
       .map((tag) => ({ tag, dated: parseDatedTag(tag.name) }))
-      .filter(({ tag, dated }) => {
-        if (!q) return true;
-        const haystack = dated ? `${tag.name} ${dated.place} ${dated.monthLabel} ${dated.year}` : tag.name;
-        return haystack.toLowerCase().includes(q);
-      });
+      .filter(({ tag }) => tagMatches(tag.name, q));
     return entries.length ? groupTags(entries) : [];
   }, [allTags, query]);
 

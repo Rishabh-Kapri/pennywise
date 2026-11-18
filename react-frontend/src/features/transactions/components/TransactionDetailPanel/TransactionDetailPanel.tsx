@@ -10,7 +10,6 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEve
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { apiClient, errorMessage, toast } from '@/utils';
 import { createTag } from '@/features/tags/store/tagSlice';
-import { getAutoColor } from '@/features/tags/utils';
 import { Popover } from '@/components/common/Popover/Popover';
 import { getLocaleDate, getTodaysDate } from '@/utils/date.utils';
 import {
@@ -33,7 +32,7 @@ import { TransactionSources } from './TransactionSources';
 import { formatSourceTime, transactionTime } from '../../utils/sourceTime';
 import { useTransactionSources } from '../../hooks/useTransactionSources';
 import styles from './TransactionDetailPanel.module.css';
-import { tagLabel, tagMatches } from '@/features/tags/utils';
+import { getAutoColor, tagColor, tagLabel, tagMatches } from '@/features/tags/utils';
 import { formatAmount } from '@/utils/format';
 
 type TransactionStatusAction = Extract<
@@ -290,7 +289,7 @@ function TagList({ tags }: { tags: DisplayTag[] }) {
 function TagChip({ tag }: { tag: DisplayTag }) {
   return (
     <span className={styles.tagBadge} title={tag.name}>
-      <span className={styles.tagDot} style={{ backgroundColor: tag.color || '#6366f1' }} aria-hidden="true" />
+      <span className={styles.tagDot} style={{ backgroundColor: tagColor(tag) }} aria-hidden="true" />
       {tagLabel(tag.name)}
     </span>
   );
@@ -404,7 +403,7 @@ function DetailTagPicker({
               className={styles.tagPickerItem}
               onClick={() => toggleTag(tag.id)}
               aria-pressed={selectedSet.has(tag.id)}>
-              <span className={styles.tagDot} style={{ backgroundColor: tag.color || '#6366f1' }} aria-hidden="true" />
+              <span className={styles.tagDot} style={{ backgroundColor: tagColor(tag) }} aria-hidden="true" />
               <span className={styles.tagPickerName} title={tag.name}>{tagLabel(tag.name)}</span>
               {selectedSet.has(tag.id) && <CheckIcon size={14} weight="bold" className={styles.tagPickerCheck} />}
             </button>
