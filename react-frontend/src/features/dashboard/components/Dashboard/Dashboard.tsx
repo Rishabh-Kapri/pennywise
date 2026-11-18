@@ -26,7 +26,7 @@ const getGreeting = (): string => {
   return 'Good evening';
 };
 
-/** Same wording as the Budget page, so the two never disagree. */
+/** The same three states the Budget page shows: over-assigned, all assigned, money left. */
 function ReadyToAssign({ amount }: { amount: number }) {
   if (amount < 0) {
     return (

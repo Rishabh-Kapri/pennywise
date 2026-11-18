@@ -144,35 +144,49 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
     return payee ? { ...EMPTY_FILTERS, payeeIds: [payee.id], payeeNames: [payee.name] } : EMPTY_FILTERS;
   });
   const [filters, setFilters] = useDebounce<TransactionFilters>(initialFilters, 250);
+  // The list's query: the filters plus the account an account page is scoped to.
+  const listArgs = useMemo(() => {
+    const { accountIds, categoryIds, payeeIds, tagIds, note, dateFrom, dateTo, pendingOnly } = filters;
+    return {
+      accountIds: paramId ? [paramId] : accountIds,
+      categoryIds,
+      payeeIds,
+      tagIds,
+      note,
+      startDate: dateFrom,
+      endDate: dateTo,
+      status: pendingOnly ? TransactionStatus.UNAPPROVED : undefined,
+    };
+  }, [filters, paramId]);
+  const listArgsRef = useRef(listArgs);
+  listArgsRef.current = listArgs;
   // The filter fields stay folded behind the toolbar's Filters button until asked for.
   const [filtersOpen, setFiltersOpen] = useState(() => hasActiveFilters(initialFilters));
   const [stickyHeader, setStickyHeader] = useState<StickyHeaderState>(null);
   const cols = useMemo(() => getTransactionColumns(paramId), [paramId]);
   const isMobile = useIsMobile();
 
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        dismissJobIdRef.current = null;
-        setSelectedTxn(null);
-        setInlineEditingTxnId(null);
-        setIsDetailPanelOpen(false);
-        setIsAddingNew(false);
-        setSidePanelContent(null);
-      }
-    };
+  const resetSelectedTxn = useCallback(() => {
+    dismissJobIdRef.current = null;
     setSelectedTxn(null);
     setInlineEditingTxnId(null);
     setIsDetailPanelOpen(false);
     setIsAddingNew(false);
     setSidePanelContent(null);
-    dispatch(fetchAllTransaction({ accountIds: paramId ? [paramId] : [] }));
+  }, [setSidePanelContent]);
+
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') resetSelectedTxn();
+    };
+    resetSelectedTxn();
+    dispatch(fetchAllTransaction(listArgsRef.current));
     document.addEventListener('keydown', handleEscape);
     return () => {
       document.removeEventListener('keydown', handleEscape);
       setSidePanelContent(null);
     };
-  }, [paramId, selectedBudgetId, dispatch, setSidePanelContent]);
+  }, [paramId, selectedBudgetId, dispatch, resetSelectedTxn, setSidePanelContent]);
 
   // Runs after the reset above, so the form it opens stays open.
   useEffect(() => {
@@ -286,15 +300,6 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
     }
   }, [syncUrl, openTxnId, routeTxnId, navigate]);
 
-  const resetSelectedTxn = useCallback(() => {
-    dismissJobIdRef.current = null;
-    setSelectedTxn(null);
-    setInlineEditingTxnId(null);
-    setIsDetailPanelOpen(false);
-    setIsAddingNew(false);
-    setSidePanelContent(null);
-  }, [setSidePanelContent]);
-
   const handleSelectedTxnChange = useCallback((key: keyof Transaction, value: Transaction[keyof Transaction]) => {
     setSelectedTxn((prev) => {
       if (!prev) return null;
@@ -365,11 +370,7 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
           // The transaction is saved either way; the email just stays in Jobs.
           dispatch(runJobAction({ id: dismissJobIdRef.current, action: 'dismiss' }));
         }
-        const accountIds = paramId ? [paramId] : [];
-        const params = {
-          ...(accountIds.length && { accountIds: accountIds }),
-        };
-        dispatch(fetchAllTransaction(params));
+        dispatch(fetchAllTransaction(listArgs));
       } else {
         const optimisticTxn = approvedByEdit(selectedTxn);
         await dispatch(
@@ -386,23 +387,19 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
         description: errorMessage(err, 'Please try again.'),
       });
     }
-  }, [selectedTxn, isAddingNew, dispatch, paramId, resetSelectedTxn]);
+  }, [selectedTxn, isAddingNew, dispatch, listArgs, resetSelectedTxn]);
 
   const handleDelete = useCallback(async () => {
     if (!selectedTxn?.id) return;
     try {
       await dispatch(deleteTransactionById(selectedTxn.id)).unwrap();
-      const accountIds = paramId ? [paramId] : [];
-      const params = {
-        ...(accountIds.length && { accountIds: accountIds }),
-      };
-      dispatch(fetchAllTransaction(params));
+      dispatch(fetchAllTransaction(listArgs));
       toast.success('Transaction deleted', { description: describeTxn(selectedTxn) });
       resetSelectedTxn();
     } catch (err) {
       toast.error("Couldn't delete the transaction", { description: errorMessage(err, 'Please try again.') });
     }
-  }, [selectedTxn, dispatch, paramId, resetSelectedTxn]);
+  }, [selectedTxn, dispatch, listArgs, resetSelectedTxn]);
 
   const handleStatusChange = useCallback(
     async (
@@ -517,19 +514,6 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
     [isMobile, listItems],
   );
 
-  const listArgs = useMemo(() => {
-    const { accountIds, categoryIds, payeeIds, tagIds, note, dateFrom, dateTo, pendingOnly } = filters;
-    return {
-      accountIds: paramId ? [paramId] : accountIds,
-      categoryIds,
-      payeeIds,
-      tagIds,
-      note,
-      startDate: dateFrom,
-      endDate: dateTo,
-      status: pendingOnly ? TransactionStatus.UNAPPROVED : undefined,
-    };
-  }, [filters, paramId]);
 
   const filtersActive = hasActiveFilters(filters);
   const filteredTotals = useFilteredTotals(listArgs, filtersActive && !embedded, transactions);
