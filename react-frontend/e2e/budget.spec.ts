@@ -65,6 +65,8 @@ test('demo transaction changes balances and survives reload', async ({ page }, t
     await expect(page.getByText(note, { exact: true })).toBeVisible();
     // Payee, date, category, account and note edit in place; the amount opens the panel.
     const row = page.getByTestId(`transaction-${transactionId}`);
+    // boundingBox doesn't wait: the list can still be re-rendering after the reload.
+    await expect(row).toBeVisible();
     const box = await row.boundingBox();
     await row.click({ position: { x: box!.width - 24, y: box!.height / 2 } });
     await page.getByPlaceholder("Anything you'd like to remember about this?").fill(`${note} edited`);
