@@ -7,23 +7,25 @@ React 19 + Vite + Redux Toolkit web client for Pennywise.
 - `npm run build` — `tsc -b && vite build` (type-check is the test gate)
 - `npm run lint` — ESLint (clean; keep it that way)
 - `npm run preview` — serve the build
-- No test suite. Don't look for `*.test.*` / `*.spec.*`.
+- `npm run test:e2e` — Playwright (`e2e/`) against a running demo stack with the real API and PostgreSQL; from the repo root `make smoke` starts a disposable one, runs it and tears it down. There are no unit tests.
 
 ## Layout
-- `src/app/` — `store.ts` (root reducer + middleware), `App.tsx` (router), `hooks.ts`, `middlewares.ts`
-- `src/features/<name>/` — `components/`, `hooks/`, `store/`, `types/` (+ `goals/` in category)
-- `src/components/common/` — shared widgets (Modal, Popover, DateSelector, AgentChat, …)
-- `src/components/layout/` — `Layout`, `Navbar`, `Dashboard`, `Header`; `Sidebar` is exported but not mounted
-- `src/utils/api.ts` — `apiClient` singleton; `src/config/env.ts` — env flags
+- `src/app/` — `store.ts` (root reducer, wires `apiClient` to the session, saves the session), `App.tsx` (router), `hooks.ts`, `middlewares.ts` (the listener that loads budget data when the budget or month changes)
+- `src/features/<name>/` — `components/`, `hooks/`, `store/`, `types/` (+ `goals/` in category). A feature's page lives in it too (the dashboard page is `features/dashboard/components/Dashboard`).
+- `src/components/common/` — widgets with no feature data: `Modal`, `Popover`, `Card` (+ `Segmented`), `Amount`, `Skeleton`, `ToastHost`, `pickers/`
+- `src/components/layout/` — `Layout` (header bar, side panel, AgentChat), `Navbar`, `slots.ts` (`useHeader` / `useSidePanel`, how a page fills the header bar and side panel)
+- `src/components/theme/` — `ThemeProvider`, `ThemeToggle`
+- `src/utils/` — `api.ts` (`apiClient`), `format.ts` (every money, count, points and file-size format), `date.utils.ts`, `errorText.ts`, `toast.utils.ts`; `src/config/env.ts` — every `import.meta.env` read
 - `src/styles/` — `index.css` (`@import '@heroui/styles'`, which brings Tailwind v4), `theme.css` (app palette; also maps HeroUI v3's tokens such as `--overlay`, `--surface`, `--border` onto it)
 
 ## Conventions
 - Redux Toolkit slices per feature in `features/*/store/`, wired in `src/app/store.ts`.
 - Use `useAppDispatch` / `useAppSelector` from `src/app/hooks.ts`, not the raw react-redux hooks.
-- `apiClient` (`src/utils/api.ts`) injects `Authorization` and `x-budget-id` from store state. Don't pass the budget id by hand. Skips the header for endpoints containing `budgets`.
-- On 401, `apiClient` refreshes the token once and retries; a failed refresh resets auth and goes to `/login`.
+- `apiClient` (`src/utils/api.ts`) injects `Authorization` and `x-budget-id` from the session `app/store.ts` gives it (`apiClient.connect`); `utils/` imports nothing from the store or features. Don't pass the budget id by hand. Skips the header for endpoints containing `budgets`.
+- On 401, `apiClient` refreshes the token once and retries; a refused refresh ends the session (`sessionEnded`) and goes to `/login`. `apiClient.refreshSession()` is the only refresh path (the websocket uses it too). `apiClient.openFile` opens an authed file in a new tab.
 - UI: HeroUI v3 (`@heroui/react`; compound API such as `Popover.Content`, no provider; only Popover, Tooltip and Toast are used), `@phosphor-icons/react` icons, Tailwind v4 utilities, CSS Modules (`*.module.css`, the dominant styling pattern), Recharts for charts.
-- Path alias `@/` → `src/`.
+- Path alias `@/` → `src/`. Import the module you use (`features/x/store/xSlice`, `features/x/components/Y`); features have no index barrels. `@/utils` is the one barrel.
+- Write amounts with `utils/format.ts` (`formatCurrency`, `formatBudgetAmount`, `formatAmount`, …), never a local `Intl.NumberFormat`.
 - Explicit TypeScript interfaces; `strict` is on.
 
 ## Navigation
@@ -60,6 +62,7 @@ React 19 + Vite + Redux Toolkit web client for Pennywise.
 - Tag names are shown through `tagLabel` (`features/tags/utils.ts`): `<place>-<month>-<year>` names (`goa-dec-2025`) read "Goa · Dec 2025", and Settings → Tags groups them by year. The stored name never changes; search goes through `tagMatches` so both forms hit. Keep the ⓘ format help in `TagSettings` in step with `parseDatedTag`.
 - Sharing (`features/sharing`, Settings → Sharing): a budget's members and invites. `budget.role` (`owner`/`editor`/`viewer`) and `memberCount` come with `GET /budgets`; a budget without a role is the user's own (`isOwner`, `canWrite`). The API enforces roles; the UI only hides what it would refuse. Only the owner sees the setup wizard, AI keys and the invite form. `PendingInvites` (invites to the signed-in user) renders nothing when there are none and sits in Sharing and on `BudgetOnboarding`, so a new user can join instead of creating a budget; accepting opens the budget (`openBudget`). Selecting a budget sends only `{ isSelected: true }`: a name in the body reads as a rename, which members can't do.
 - HeroUI v3 overlay triggers: wrap a link or other element that must stay unwrapped in react-aria `Focusable` (a `Tooltip.Trigger`/`Popover.Trigger` adds a `div role="button"` around its children); use a react-aria `Button` as a popover trigger instead of nesting a `<button>`.
+- Websocket (`features/websocket/WebSocketProvider`): routes each event to the slice it changes. Agent chat events (`features/agent/protocol.ts`: event names mirroring `backend/shared/model/agent.go`, stream chunk types, room ids) go to `AgentChat` through `publishAgentMessage` / `subscribeAgentMessages`.
 - Toasts: use `toast` from `@/utils` (rendered and styled by `components/common/ToastHost`); give a short title plus a `description`, and use `errorMessage(err, fallback)` for failures instead of putting raw server errors in the title.
 
 ## Key files
