@@ -62,7 +62,6 @@ export const LoanAccountNames: Array<{ value: LoanAccountType; name: string }> =
 ];
 
 export interface AccountState {
-  selectedAccount: Account | null;
   allAccounts: Account[];
   trackingAccounts: Account[];
   budgetAccounts: Account[];

@@ -1,7 +1,6 @@
 import {
   createAsyncThunk,
   createSlice,
-  type PayloadAction,
 } from '@reduxjs/toolkit';
 import {
   BudgetAccountType,
@@ -15,7 +14,6 @@ import type { RootState } from '@/app/store';
 import { fetchAllPayees } from '@/features/payees/store/payeeSlice';
 
 const initialState: AccountState = {
-  selectedAccount: null,
   allAccounts: [],
   trackingAccounts: [],
   budgetAccounts: [],
@@ -88,20 +86,7 @@ export const updateAccount = createAsyncThunk<Account, { id: string; edits: Acco
 const accountSlice = createSlice({
   name: 'accounts',
   initialState,
-  reducers: {
-    setSelectedAccount: (state, action: PayloadAction<Account>) => {
-      state.selectedAccount = action.payload;
-    },
-    setBudgetAccounts: (state) => {
-      state.budgetAccounts = filterBudgetAccounts(state.allAccounts);
-    },
-    setTrackingAccounts: (state) => {
-      state.trackingAccounts = filterTrackingAccounts(state.allAccounts);
-    },
-    setLoanAccounts: (state) => {
-      state.loanAccounts = filterLoanAccounts(state.allAccounts);
-    },
-  },
+  reducers: {},
   extraReducers: (builder) => {
     builder
       .addCase(fetchAllAccounts.pending, (state) => {
@@ -126,13 +111,6 @@ const accountSlice = createSlice({
       });
   },
 });
-
-export const {
-  setSelectedAccount,
-  setBudgetAccounts,
-  setTrackingAccounts,
-  setLoanAccounts,
-} = accountSlice.actions;
 
 export default accountSlice.reducer;
 

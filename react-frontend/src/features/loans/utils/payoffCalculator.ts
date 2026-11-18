@@ -72,12 +72,6 @@ export function calculateAmortizationSchedule(
 /**
  * Calculate projected payoff date
  */
-export function calculatePayoffDate(input: PayoffSimulatorInput): Date {
-  const schedule = calculateAmortizationSchedule(input);
-  if (schedule.length === 0) return new Date();
-  return new Date(schedule[schedule.length - 1].date);
-}
-
 /**
  * Calculate total interest over the life of the loan
  */

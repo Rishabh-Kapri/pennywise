@@ -31,7 +31,6 @@ interface CreateCategoryResponse {
 const initialCategoryState: CategoryState = {
   allCategories: [],
   allCategoryGroups: [],
-  collapseAllGroups: false,
   inflowAmount: 0,
   loading: LoadingState.IDLE,
   inflowLoading: LoadingState.IDLE,

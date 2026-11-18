@@ -705,7 +705,6 @@ export const selectAgentChatHistory = (state: RootState) =>
     .filter((conversation): conversation is AgentChatHistoryItem => Boolean(conversation));
 export const selectAgentCreateRunLoading = (state: RootState) =>
   state.agent.createRunLoading;
-export const selectAgentError = (state: RootState) => state.agent.error;
 export const selectCurrentAgentConversationId = (state: RootState) =>
   state.agent.currentConversationId;
 export const selectCurrentAgentStreamId = (state: RootState) => state.agent.currentStreamId;
