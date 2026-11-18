@@ -39,6 +39,9 @@ import {
   messageSteps,
   rowJobs,
   rowOutcome,
+  outcomeLabel,
+  outcomeReason,
+  isMessageRow,
   rowState,
   statementRowCount,
   statementSteps,
@@ -71,26 +74,6 @@ const STATE_LABELS: Record<JobState, string> = {
   retrying: 'Retrying',
   failed: 'Failed',
   cancelled: 'Cancelled',
-};
-
-const OUTCOME_LABELS: Record<string, string> = {
-  not_transaction: 'Not a transaction',
-  unverified: 'Not verified',
-  no_prediction: 'No category found',
-  needs_review: 'Needs review',
-  transaction_created: 'Transaction created',
-  transaction_duplicate: 'Already added',
-  statement: 'Statement',
-};
-
-const OUTCOME_REASONS: Record<string, string> = {
-  not_transaction: "The check decided this email isn't a transaction.",
-  unverified: "Marked as a transaction, but it couldn't be verified.",
-  no_prediction: "Couldn't work out a payee and category for it.",
-  needs_review: 'A step was not sure about this email, so it is waiting for you.',
-  transaction_created: 'A transaction was created from this email.',
-  transaction_duplicate: 'This matches a transaction that already exists, so nothing new was added.',
-  statement: 'A statement email: its PDF was sent to Reconcile to be read.',
 };
 
 type ShowFilter = 'all' | 'attention' | 'active' | 'created' | 'skipped';
@@ -180,7 +163,7 @@ function rowStatus(row: JobRow): string {
   const state = rowState(row);
   if (state !== 'done') return STATE_LABELS[state];
   const outcome = rowOutcome(row);
-  return outcome ? (OUTCOME_LABELS[outcome] ?? outcome) : STATE_LABELS.done;
+  return outcome ? outcomeLabel(outcome) : STATE_LABELS.done;
 }
 
 /** Only shown on rows that need attention; the section explains the others. */
@@ -207,7 +190,7 @@ function rowReason(row: JobRow, reason?: string): string {
     return `Read ${found}. They are waiting for you to review.`;
   }
   const outcome = rowOutcome(row) ?? '';
-  return reason || OUTCOME_REASONS[outcome] || STATE_LABELS[rowState(row)];
+  return reason || outcomeReason(outcome) || STATE_LABELS[rowState(row)];
 }
 
 /** The email a pipeline job carries: on its own, or under `message`. */
@@ -431,7 +414,7 @@ function RowDetails({ row }: { row: JobRow }) {
   const shownId = pickedId && jobs.some((job) => job.id === pickedId) ? pickedId : focus.id;
   const summary = details[focus.id];
   const shown = details[shownId];
-  const isMessage = row.jobs[0].type === 'message.received';
+  const isMessage = isMessageRow(row);
   const { sender, receivedAt, reason } = jobMessage(summary);
   const parked = isParked(row);
   const review = parked ? jobReview(summary) : undefined;
@@ -892,7 +875,7 @@ function Progress({ run, current }: { run: JobRun; current: JobRow | null }) {
             transition={{ duration: 0.6, ease: EASE_OUT }}
           />
         </div>
-        {current?.jobs[0].type === 'message.received' && <NowProcessing row={current} />}
+        {current && isMessageRow(current) && <NowProcessing row={current} />}
       </div>
     </motion.div>
   );

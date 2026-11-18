@@ -112,12 +112,60 @@ export function rowOutcome(row: JobRow): string | null {
   return row.jobs.find((job) => job.type === 'pipeline.report')?.label ?? null;
 }
 
-/** Outcomes where the message ended without a transaction it should have had. */
-const STOPPED_OUTCOMES = ['unverified', 'no_prediction', 'needs_review'];
+/**
+ * How a message can end: the `pipeline.report` label cipher writes. `stopped`
+ * marks an end without a transaction it should have had.
+ */
+const OUTCOMES: Record<string, { label: string; reason: string; stopped?: boolean }> = {
+  not_transaction: { label: 'Not a transaction', reason: "The check decided this email isn't a transaction." },
+  unverified: {
+    label: 'Not verified',
+    reason: "Marked as a transaction, but it couldn't be verified.",
+    stopped: true,
+  },
+  no_prediction: {
+    label: 'No category found',
+    reason: "Couldn't work out a payee and category for it.",
+    stopped: true,
+  },
+  needs_review: {
+    label: 'Needs review',
+    reason: 'A step was not sure about this email, so it is waiting for you.',
+    stopped: true,
+  },
+  transaction_created: { label: 'Transaction created', reason: 'A transaction was created from this email.' },
+  transaction_duplicate: {
+    label: 'Already added',
+    reason: 'This matches a transaction that already exists, so nothing new was added.',
+  },
+  statement: { label: 'Statement', reason: 'A statement email: its PDF was sent to Reconcile to be read.' },
+};
+
+export function outcomeLabel(outcome: string): string {
+  return OUTCOMES[outcome]?.label ?? outcome;
+}
+
+export function outcomeReason(outcome: string): string | undefined {
+  return OUTCOMES[outcome]?.reason;
+}
+
+function isStoppedOutcome(outcome: string | null): boolean {
+  return Boolean(outcome && OUTCOMES[outcome]?.stopped);
+}
+
+/** A row for one message (an email, SMS or API call). */
+export function isMessageRow(row: JobRow | null | undefined): boolean {
+  return row?.jobs[0]?.type === 'message.received';
+}
+
+/** A statement job finished, so statement screens should reload. */
+export function isStatementJob(type: string | undefined): boolean {
+  return Boolean(type?.startsWith('statement.'));
+}
 
 /** The pipeline ended this message on purpose, so there's no failed job to retry. */
 export function isStopped(row: JobRow): boolean {
-  return rowState(row) === 'done' && STOPPED_OUTCOMES.includes(rowOutcome(row) ?? '');
+  return rowState(row) === 'done' && isStoppedOutcome(rowOutcome(row));
 }
 
 /** A step wasn't sure, so the message is waiting for a person. */
@@ -145,7 +193,7 @@ export function messageSteps(row: JobRow): MessageStep[] {
     (step) => step.type !== 'pipeline.report' && (step.type !== 'transaction.learn' || known.has(step.type)),
   );
   const lastRan = steps.reduce((last, step, index) => (known.has(step.type) ? index : last), -1);
-  const stopped = STOPPED_OUTCOMES.includes(rowOutcome(row) ?? '');
+  const stopped = isStoppedOutcome(rowOutcome(row));
 
   return steps.map(({ type, label }, index) => {
     const job = known.get(type);
@@ -202,7 +250,7 @@ export function emailGroup(row: JobRow): EmailGroup {
   if (isStatementRow(row)) return statementRowCount(row) === 0 ? 'skipped' : 'created';
   const outcome = rowOutcome(row);
   if (outcome === 'transaction_created') return 'created';
-  return STOPPED_OUTCOMES.includes(outcome ?? '') ? 'attention' : 'skipped';
+  return isStoppedOutcome(outcome) ? 'attention' : 'skipped';
 }
 
 /** One top-level job: a mailbox sync with its emails, or a job on its own. */
