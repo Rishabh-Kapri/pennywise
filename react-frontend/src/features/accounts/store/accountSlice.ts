@@ -59,7 +59,8 @@ export const fetchAllAccounts = createAsyncThunk<Account[]>(
   },
 );
 
-export type NewAccount = Pick<Account, 'name' | 'type' | 'bank' | 'suffix'>;
+/** A loan account starts with its (negative) balance; other accounts start at zero. */
+export type NewAccount = Pick<Account, 'name' | 'type'> & Partial<Pick<Account, 'bank' | 'suffix' | 'balance'>>;
 
 /** Opens an account, then reloads the list (the API also adds its transfer payee). */
 export const createAccount = createAsyncThunk<Account, NewAccount>(
