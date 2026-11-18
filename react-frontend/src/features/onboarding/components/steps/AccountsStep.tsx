@@ -3,22 +3,17 @@ import { ArrowLeft, ArrowRight, Info } from '@phosphor-icons/react';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { createAccount, fetchAllAccounts } from '@/features/accounts/store/accountSlice';
 import { BANK_BRANDS, bankLogoUrl, getBankBrand } from '@/features/accounts/bankLogos';
-import { BudgetAccountNames, type BudgetAccountType } from '@/features/accounts/types/account.types';
+import { BudgetAccountNames, type Account, type BudgetAccountType } from '@/features/accounts/types/account.types';
 import { fetchInflowAmount } from '@/features/category/store/categorySlice';
 import { createTransaction } from '@/features/transactions/store/transactionSlice';
 import { SearchSelect } from '@/components/common/pickers/SearchSelect';
 import { formatCurrency } from '@/utils/format';
 import { errorMessage, toast } from '@/utils';
+import { getTodaysDate } from '@/utils/date.utils';
 import type { StepProps } from '../OnboardingWizard';
 import styles from './steps.module.css';
 
 const NO_BANK = 'none';
-
-function today(): string {
-  const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-}
 
 /**
  * Accounts with their last digits (how bank emails are matched to them) and
@@ -72,10 +67,20 @@ export function AccountsStep({ onNext, onBack, busy }: StepProps) {
     event.preventDefault();
     if (!canAdd || !budget?.id) return;
     setSaving(true);
+    let account: Account;
     try {
-      const account = await dispatch(
+      account = await dispatch(
         createAccount({ name: shownName.trim(), type, bank: bank?.id ?? '', suffix }),
       ).unwrap();
+    } catch (err) {
+      toast.error('Could not add the account', { description: errorMessage(err, 'Try again.') });
+      setSaving(false);
+      return;
+    }
+    // The account exists from here on, so the form resets whatever happens to
+    // its opening balance: trying again would add it twice.
+    reset();
+    try {
       const payeeId = budget.metadata?.startingBalPayeeId;
       if (amount > 0 && account.id && payeeId) {
         // Cash counts toward Ready to Assign; card debt has no category,
@@ -86,7 +91,7 @@ export function AccountsStep({ onNext, onBack, busy }: StepProps) {
             accountId: account.id,
             payeeId,
             categoryId: isCard ? null : (budget.metadata?.inflowCategoryId ?? null),
-            date: today(),
+            date: getTodaysDate(),
             amount: isCard ? -amount : amount,
           }),
         ).unwrap();
@@ -94,9 +99,10 @@ export function AccountsStep({ onNext, onBack, busy }: StepProps) {
         dispatch(fetchInflowAmount());
       }
       toast.success(`${account.name} added`);
-      reset();
     } catch (err) {
-      toast.error('Could not add the account', { description: errorMessage(err, 'Try again.') });
+      toast.error(`${account.name} added without its balance`, {
+        description: errorMessage(err, 'Add the opening balance as a transaction.'),
+      });
     } finally {
       setSaving(false);
     }

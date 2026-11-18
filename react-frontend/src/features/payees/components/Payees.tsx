@@ -160,12 +160,12 @@ export default function Payees() {
 
   const handleMerge = async (targetId: string, sourceIds: string[], name: string) => {
     const target = allPayees.find((payee) => payee.id === targetId);
-    const result = await run(async () => {
-      const merged = await dispatch(mergePayees({ targetId, sourceIds })).unwrap();
-      if (target && name && name !== target.name) await dispatch(renamePayee({ id: targetId, name })).unwrap();
-      return merged;
-    }, "Couldn't merge payees");
+    const result = await run(() => dispatch(mergePayees({ targetId, sourceIds })).unwrap(), "Couldn't merge payees");
     if (!result) return;
+    // The merge has happened even if the rename then fails, so they fail apart.
+    if (target && name && name !== target.name) {
+      await run(() => dispatch(renamePayee({ id: targetId, name })).unwrap(), "Merged, but couldn't rename the payee");
+    }
     setMerge(null);
     setCheckedIds([]);
     setParams({ view: 'payees', payee: targetId });
