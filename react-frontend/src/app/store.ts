@@ -9,7 +9,7 @@ import dashboardSlice from '@/features/dashboard/store/dashboardSlice';
 import loans from '@/features/loans/store/loanSlice';
 import tags from '@/features/tags/store/tagSlice';
 import agent from '@/features/agent/store/agentSlice';
-import reports from '@/features/reports/store/reportSlice';
+import reports, { saveTreatments } from '@/features/reports/store/reportSlice';
 import jobs from '@/features/jobs/store/jobSlice';
 import recurring from '@/features/recurring/store/recurringSlice';
 import predictionReview from '@/features/predictionReview/store/predictionReviewSlice';
@@ -47,12 +47,13 @@ apiClient.connect({
   },
 });
 
-let savedAuth = store.getState().auth;
+// What outlives a reload is saved here, so reducers stay free of storage.
+let saved = store.getState();
 store.subscribe(() => {
-  const { auth } = store.getState();
-  if (auth.user === savedAuth.user && auth.tokens === savedAuth.tokens) return;
-  savedAuth = auth;
-  saveSession(auth);
+  const state = store.getState();
+  if (state.auth.user !== saved.auth.user || state.auth.tokens !== saved.auth.tokens) saveSession(state.auth);
+  if (state.reports.groupTreatments !== saved.reports.groupTreatments) saveTreatments(state.reports.groupTreatments);
+  saved = state;
 });
 
 export type RootState = ReturnType<typeof store.getState>;

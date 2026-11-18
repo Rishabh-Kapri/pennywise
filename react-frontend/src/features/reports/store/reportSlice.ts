@@ -53,6 +53,15 @@ export const fetchNetWorthReport = createAsyncThunk<NetWorthReport, ReportQueryA
 // unique, so one map serves every budget.
 const TREATMENTS_KEY = 'pennywise.reports.groupTreatments';
 
+/** Keeps localStorage in step with the treatments; the store calls it on every change. */
+export function saveTreatments(treatments: Record<string, GroupTreatment>) {
+  try {
+    localStorage.setItem(TREATMENTS_KEY, JSON.stringify(treatments));
+  } catch {
+    // storage can be full or disabled; the choice then lasts this session
+  }
+}
+
 function loadTreatments(): Record<string, GroupTreatment> {
   try {
     return JSON.parse(localStorage.getItem(TREATMENTS_KEY) ?? '{}') as Record<string, GroupTreatment>;
@@ -98,7 +107,6 @@ const reportSlice = createSlice({
       } else {
         state.groupTreatments[groupId] = treatment;
       }
-      localStorage.setItem(TREATMENTS_KEY, JSON.stringify(state.groupTreatments));
     },
   },
   extraReducers: (builder) => {
