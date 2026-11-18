@@ -11,10 +11,7 @@ export function getCurrentMonthKey(): string {
 }
 
 export function getPreviousMonthKey(monthKey: string): string {
-  const [year, currentMonth] = monthKey.split('-');
-  const date = new Date(parseInt(year, 10), parseInt(currentMonth, 10) - 2);
-  const month = pad((date.getMonth() + 1).toString());
-  return `${date.getFullYear()}-${month}`;
+  return addMonths(monthKey, -1);
 }
 
 /**
@@ -25,7 +22,10 @@ export function getLocaleDate(
   options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' },
   locales: string[] = ['en-US'],
 ): string {
-  const date = new Date(dateStr);
+  // A bare YYYY-MM or YYYY-MM-DD is a local day; new Date() would read it as UTC midnight.
+  const date = /^\d{4}-\d{2}(-\d{2})?$/.test(dateStr)
+    ? new Date(`${dateStr.length === 7 ? `${dateStr}-01` : dateStr}T00:00:00`)
+    : new Date(dateStr);
 
   return date.toLocaleDateString(locales, options);
 }
@@ -56,17 +56,6 @@ export function addMonths(monthKey: string, delta: number): string {
   const [year, month] = monthKey.split('-');
   const date = new Date(parseInt(year, 10), parseInt(month, 10) - 1 + delta);
   return getMonthKey(date.getFullYear(), date.getMonth());
-}
-
-/**
- * Returns every month key from startKey to endKey inclusive (yyyy-mm)
- */
-export function getMonthRange(startKey: string, endKey: string): string[] {
-  const months: string[] = [];
-  for (let key = startKey; key <= endKey; key = addMonths(key, 1)) {
-    months.push(key);
-  }
-  return months;
 }
 
 export function getSelectedMonthInHumanFormat(key: string): string {

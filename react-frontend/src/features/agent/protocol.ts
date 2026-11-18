@@ -9,16 +9,6 @@ import type { WebSocketMessage } from '@/features/websocket/events';
 export const AGENT_SUBSCRIBE_EVENT = 'pennywise::agent::chat::subscribe';
 export const AGENT_STREAM_EVENT = 'pennywise::agent::chat::stream';
 
-/** `type` of an AGENT_STREAM_EVENT's data, as cipher's agent runtime sends them. */
-export type AgentStreamChunkType =
-  | 'text_delta'
-  | 'reasoning_delta'
-  | 'tool_call_start'
-  | 'tool_call'
-  | 'error'
-  | 'run_completed'
-  | 'title_update';
-
 /** What kind of entry a chat message is, as stored in `agentSlice`. */
 export const AgentMessageKind = {
   text: 'agent::chat::text_delta',

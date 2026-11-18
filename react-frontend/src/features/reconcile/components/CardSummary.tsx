@@ -1,17 +1,9 @@
 import type { StatementSectionReconciliation } from '../types/reconcile.types';
 import styles from './StatementReconcile.module.css';
 import { formatCount, formatDecimal } from '@/utils/format';
+import { longDay, parseDay } from '../statementIdentity';
 
 
-const parseDay = (date: string) => {
-  const d = new Date(`${date}T00:00:00`);
-  return Number.isNaN(d.getTime()) ? null : d;
-};
-
-function longDay(date: string): string {
-  const d = parseDay(date);
-  return d ? d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : date;
-}
 
 /**
  * "today" or "in 6 days" for a due date still ahead; '' once it has passed.
@@ -103,7 +95,7 @@ export function CardSummary({ section }: { section: StatementSectionReconciliati
           {section.dueDate && (
             <div>
               <span className={styles.figureLabel}>Pay by</span>
-              <strong>{longDay(section.dueDate)}</strong>
+              <strong>{longDay(section.dueDate) || section.dueDate}</strong>
               {countdown && <span className={styles.figureNote}>{countdown}</span>}
             </div>
           )}

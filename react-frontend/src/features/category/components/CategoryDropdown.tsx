@@ -12,7 +12,6 @@ import { MultiSelectMenu } from '@/components/common/pickers/MultiSelectMenu';
 import { formatAmount } from '@/utils/format';
 import { isUserGroup } from '@/features/category/store/categorySlice';
 
-const transformGroups = (groups: CategoryGroup[]) => groups.filter(isUserGroup);
 
 export function CategoryDropdown({
   value,
@@ -28,7 +27,7 @@ export function CategoryDropdown({
   const { allCategoryGroups } = useAppSelector(selectCategoryGroups);
   const inflowCategory = useAppSelector(selectInflowCategory);
 
-  const transformedGroups = useMemo(() => transformGroups(allCategoryGroups), [allCategoryGroups]);
+  const transformedGroups = useMemo(() => allCategoryGroups.filter(isUserGroup), [allCategoryGroups]);
 
   const groupsWithInflow = useMemo(() => {
     if (inflowCategory) {

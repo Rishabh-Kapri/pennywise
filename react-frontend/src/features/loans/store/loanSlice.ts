@@ -95,10 +95,6 @@ const loanSlice = createSlice({
 export default loanSlice.reducer;
 
 // Selectors
-export const selectLoanByAccountId = (accountId: string) => (state: RootState) =>
-  state.loans.loanMetadata[accountId] ?? null;
-
 export const selectAllLoanMetadata = (state: RootState) =>
   state.loans.loanMetadata;
 
-export const selectLoanLoading = (state: RootState) => state.loans.loading;

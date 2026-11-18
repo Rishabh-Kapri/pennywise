@@ -35,7 +35,7 @@ export function accountEnding(number: string): string {
   return digits.length >= 4 ? digits.slice(-4) : '';
 }
 
-const parseDay = (d?: string) => {
+export const parseDay = (d?: string) => {
   if (!d) return null;
   const date = new Date(`${d}T00:00:00`);
   return Number.isNaN(date.getTime()) ? null : date;
