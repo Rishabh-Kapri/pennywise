@@ -14,11 +14,7 @@ import jobs from '@/features/jobs/store';
 import recurring from '@/features/recurring/store';
 import predictionReview from '@/features/predictionReview/store';
 import { apiClient } from '@/utils';
-import {
-  budgetUpdateMiddleware,
-  dataFetchMiddleware,
-  dateChangeMiddleware,
-} from './middlewares';
+import { appDataListener } from './middlewares';
 
 export const store = configureStore({
   reducer: {
@@ -37,17 +33,7 @@ export const store = configureStore({
     recurring: recurring,
     predictionReview: predictionReview,
   },
-  middleware: (getDefaultMiddleWare) =>
-    getDefaultMiddleWare({
-      // serializableCheck: {
-      //   ignoredActions: [''],
-      // },
-    }).concat([
-      dataFetchMiddleware,
-      dateChangeMiddleware,
-      budgetUpdateMiddleware,
-    ]),
-  devTools: true,
+  middleware: (getDefaultMiddleware) => getDefaultMiddleware().prepend(appDataListener.middleware),
 });
 
 apiClient.setGetState(store.getState);
