@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowClockwise, CheckCircle, Warning, WarningCircle } from '@phosphor-icons/react';
-import { useHeader } from '../../../context/HeaderContext';
+import { useHeader } from '@/components/layout/slots';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
-import { DateSelector, Skeleton } from '@/components/common';
+import { Skeleton } from '@/components/common/Skeleton/Skeleton';
+import DateSelector from '@/features/budget/components/DateSelector';
 import { fetchAllAccounts } from '@/features/accounts/store/accountSlice';
 import { selectUser } from '@/features/auth/store/authSlice';
 import { selectSelectedBudget, selectSelectedMonth } from '@/features/budget/store/budgetSlice';

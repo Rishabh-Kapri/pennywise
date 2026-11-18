@@ -1,14 +1,13 @@
 import { Provider } from 'react-redux';
 import { store } from './store';
 import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
-import '../styles/index.css';
-import { Layout } from '@/components/layout';
+import Layout from '@/components/layout/Layout/Layout';
 import { lazy, Suspense } from 'react';
 import { Login, ProtectedRoute } from '@/features/auth';
 import Homepage from '@/features/home/components/Homepage';
 import LegalPage from '@/features/home/components/LegalPage';
 
-const Dashboard = lazy(() => import('@/components/layout/Dashboard/Dashboard'));
+const Dashboard = lazy(() => import('@/features/dashboard/components/Dashboard/Dashboard'));
 const Budget = lazy(() => import('@/features/budget/components/Budget'));
 const BudgetOnboarding = lazy(
   () => import('@/features/budget/components/BudgetOnboarding'),
@@ -39,23 +38,8 @@ function App() {
           <Route path="/terms" element={<LegalPage />} />
           <Route path="/privacy" element={<LegalPage />} />
 
-          {/* Public route - Login */}
-          <Route
-            path="/login"
-            element={
-              <Suspense fallback={<div>Loading...</div>}>
-                <Login />
-              </Suspense>
-            }
-          />
-          <Route
-            path="/signup"
-            element={
-              <Suspense fallback={<div>Loading...</div>}>
-                <Login />
-              </Suspense>
-            }
-          />
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Login />} />
 
           <Route
             path="/budget/new"
@@ -75,63 +59,14 @@ function App() {
                 <Layout />
               </ProtectedRoute>
             }>
-            <Route
-              path="/dashboard"
-              element={
-                <Suspense fallback={<div>Loading...</div>}>
-                  <Dashboard />
-                </Suspense>
-              }
-            />
-            <Route
-              path="/budget"
-              element={
-                <Suspense fallback={<div>Loading...</div>}>
-                  <Budget />
-                </Suspense>
-              }
-            />
-            <Route
-              path="/settings"
-              element={
-                <Suspense fallback={<div>Loading...</div>}>
-                  <Settings />
-                </Suspense>
-              }
-            />
-            <Route
-              path="/transactions/:id?"
-              element={
-                <Suspense fallback={<div>Loading...</div>}>
-                  <Transaction />
-                </Suspense>
-              }
-            />
-            <Route
-              path="/accounts"
-              element={
-                <Suspense fallback={<div>Loading...</div>}>
-                  <Accounts />
-                </Suspense>
-              }
-            />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/budget" element={<Budget />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/transactions/:id?" element={<Transaction />} />
+            <Route path="/accounts" element={<Accounts />} />
             <Route path="/loans/:id?" element={<LoansRedirect />} />
-            <Route
-              path="/payees"
-              element={
-                <Suspense fallback={<div>Loading...</div>}>
-                  <Payees />
-                </Suspense>
-              }
-            />
-            <Route
-              path="/reports"
-              element={
-                <Suspense fallback={<div>Loading...</div>}>
-                  <Reports />
-                </Suspense>
-              }
-            />
+            <Route path="/payees" element={<Payees />} />
+            <Route path="/reports" element={<Reports />} />
             {/* These all live in Settings now; keep the old paths working */}
             <Route path="/activity" element={<Navigate to="/settings?section=jobs" replace />} />
             <Route

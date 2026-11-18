@@ -9,11 +9,6 @@ import { Check } from '@phosphor-icons/react';
 import styles from './Login.module.css';
 import { useGoogleLogin } from '@react-oauth/google';
 
-// Google OAuth Client ID
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
-
-// Google Identity Services types
-
 // Logo SVG component matching the design
 const LogoIcon = () => (
   <svg
@@ -43,9 +38,7 @@ function GoogleSignInButton() {
           toast.error(message);
         });
     },
-    onError: (error) => {
-      console.log('inside onError', error);
-    },
+    onError: () => toast.error('Google sign-in failed'),
   });
 
   return <button className={styles.googleButton} onClick={() => onGoogleLogin()}>
@@ -125,8 +118,8 @@ export function Login() {
           </div>
         ) : (
           <div className={styles.googleButtonContainer}>
-            {!GOOGLE_CLIENT_ID && !config.demoMode && <div className={styles.error}>Google Login Not Enabled</div>}
-            {GOOGLE_CLIENT_ID && (
+            {!config.googleClientId && !config.demoMode && <div className={styles.error}>Google Login Not Enabled</div>}
+            {config.googleClientId && (
               <GoogleSignInButton />
             )}
             {config.demoMode && (

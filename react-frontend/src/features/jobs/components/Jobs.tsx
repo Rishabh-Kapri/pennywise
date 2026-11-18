@@ -1,5 +1,5 @@
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
-import { useHeader } from '@/context/HeaderContext';
+import { useHeader } from '@/components/layout/slots';
 import { selectIsDemoUser } from '@/features/auth/store/authSlice';
 import { LoadingState, errorMessage, explainError, toast } from '@/utils';
 import {

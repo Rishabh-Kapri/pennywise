@@ -2,7 +2,7 @@ import { Envelope as Mail, Warning } from '@phosphor-icons/react';
 import { useState } from 'react';
 import { useAppDispatch } from '@/app/hooks';
 import { logout } from '@/features/auth';
-import { Modal } from '@/components/common/Modal';
+import { Modal } from '@/components/common/Modal/Modal';
 import { apiClient } from '@/utils';
 import styles from './Settings.module.css';
 

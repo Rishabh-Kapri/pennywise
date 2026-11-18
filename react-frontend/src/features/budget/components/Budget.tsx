@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react';
-import { useHeader } from '../../../context/HeaderContext';
-import { DateSelector, Skeleton } from '@/components/common';
+import { useHeader } from '@/components/layout/slots';
+import { Skeleton } from '@/components/common/Skeleton/Skeleton';
+import DateSelector from './DateSelector';
 import styles from './Budget.module.css';
 import { CheckCircle } from '@phosphor-icons/react';
 import { CategoryGroup } from '@/features/category';

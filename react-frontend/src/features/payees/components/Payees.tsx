@@ -1,5 +1,5 @@
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
-import { useHeader } from '@/context/HeaderContext';
+import { useHeader } from '@/components/layout/slots';
 import { selectInflowCategory } from '@/features/category/store/categorySlice';
 import {
   createPayee,

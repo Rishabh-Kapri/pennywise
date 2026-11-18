@@ -5,7 +5,7 @@ import { ThemeContext, type Theme } from './ThemeContext';
 const storageKey = 'pennywise-theme';
 function readTheme(): Theme {
   try {
-    return (localStorage.getItem(storageKey) ?? localStorage.getItem('pennywise-home-theme')) === 'light'
+    return localStorage.getItem(storageKey) === 'light'
       ? 'light'
       : 'dark';
   } catch {

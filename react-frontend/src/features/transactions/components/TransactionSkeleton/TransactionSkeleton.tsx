@@ -1,4 +1,4 @@
-import { Skeleton } from '@/components/common';
+import { Skeleton } from '@/components/common/Skeleton/Skeleton';
 import styles from './TransactionSkeleton.module.css';
 
 const GROUPS = [4, 5, 3];
