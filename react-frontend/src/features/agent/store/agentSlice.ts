@@ -1,6 +1,7 @@
 import { createAsyncThunk, createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import type { RootState } from '@/app/store';
 import { apiClient, LoadingState } from '@/utils';
+import { AgentMessageKind } from '../protocol';
 import type {
   AgentConversation,
   AgentChatHistoryItem,
@@ -14,7 +15,6 @@ import type {
   MessagePart,
 } from '../types/agent.types';
 
-const TEXT_DELTA_EVENT = 'agent::chat::text_delta';
 
 export const AGENT_MODEL_OPTIONS: AgentModelOption[] = [
   {
@@ -486,7 +486,7 @@ const agentSlice = createSlice({
       let target = findAssistantMessageForStream(state, messageId);
       if (!target) {
         appendAssistantMessage(state, {
-          eventName: TEXT_DELTA_EVENT,
+          eventName: AgentMessageKind.text,
           text: '',
           parts: [],
           runId: state.currentRunId ?? undefined,
@@ -512,14 +512,14 @@ const agentSlice = createSlice({
       const targetMessage = findAssistantMessageForStream(state, action.payload.messageId);
       if (targetMessage) {
         appendStreamText(targetMessage, text);
-        targetMessage.eventName = targetMessage.eventName ?? TEXT_DELTA_EVENT;
+        targetMessage.eventName = targetMessage.eventName ?? AgentMessageKind.text;
         targetMessage.streamMessageId = action.payload.messageId ?? targetMessage.streamMessageId;
         syncCurrentChatHistory(state);
         return;
       }
 
       appendAssistantMessage(state, {
-        eventName: TEXT_DELTA_EVENT,
+        eventName: AgentMessageKind.text,
         text,
         parts: [{ type: 'TEXT', content: text }],
         runId: state.currentRunId ?? undefined,
@@ -547,14 +547,14 @@ const agentSlice = createSlice({
           targetMessage.parts = [{ type: 'TEXT', content: targetMessage.text }];
         }
         targetMessage.parts = [...(targetMessage.parts ?? []), incoming];
-        targetMessage.eventName = action.payload.eventName ?? targetMessage.eventName ?? TEXT_DELTA_EVENT;
+        targetMessage.eventName = action.payload.eventName ?? targetMessage.eventName ?? AgentMessageKind.text;
         targetMessage.streamMessageId = action.payload.messageId ?? targetMessage.streamMessageId;
         syncCurrentChatHistory(state);
         return;
       }
 
       appendAssistantMessage(state, {
-        eventName: action.payload.eventName ?? TEXT_DELTA_EVENT,
+        eventName: action.payload.eventName ?? AgentMessageKind.text,
         text: '',
         parts: [action.payload.part],
         runId: state.currentRunId ?? undefined,
@@ -626,7 +626,7 @@ const agentSlice = createSlice({
 
         if (action.payload.finalMessage) {
           appendAssistantMessage(state, {
-            eventName: 'agent::chat::message',
+            eventName: AgentMessageKind.message,
             text: action.payload.finalMessage,
             runId: action.payload.id,
           });
@@ -646,7 +646,7 @@ const agentSlice = createSlice({
         state.createRunLoading = LoadingState.ERROR;
         state.error = errorMessage;
         appendAssistantMessage(state, {
-          eventName: 'agent::chat::error',
+          eventName: AgentMessageKind.error,
           text: errorMessage,
         });
         syncCurrentChatHistory(state);

@@ -1,6 +1,5 @@
-export const AGENT_CHAT_WEBSOCKET_EVENT = 'pennywise:agent::chat::message';
-export const AGENT_CHAT_SUBSCRIBE_EVENT = 'pennywise::agent::chat::subscribe'
-// Mirrors EventJobUpdate in backend/shared/model/websocket.go
+// Mirror the Event* constants in backend/shared/model/websocket.go.
+export const TRANSACTION_CREATED_EVENT = 'pennywise::transaction::created';
 export const JOB_UPDATE_EVENT = 'pennywise::jobs::update';
 
 export type WebSocketMessage = {
@@ -11,18 +10,4 @@ export type WebSocketMessage = {
   roomId?: string;
   conversationId?: string;
   data?: string;
-};
-
-export type WebSocketSubscriptionMessage = {
-  eventName: typeof AGENT_CHAT_SUBSCRIBE_EVENT;
-  budgetId: string;
-  userId: string;
-  roomId: string;
-  data: {
-    kind: 'agent-stream';
-    streamId: string;
-    budgetId: string;
-    userId: string;
-    roomId: string;
-  };
 };

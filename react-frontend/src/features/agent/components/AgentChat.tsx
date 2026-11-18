@@ -17,17 +17,14 @@ import remarkGfm from 'remark-gfm';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { AGENT_MODEL_OPTIONS, appendAgentEvent, appendAgentMessagePart, appendAgentReasoningDelta, appendAgentTextDelta, clearAgentChat, createAgentRun, deleteAgentConversation, fetchAgentConversationMessages, listAgentConversations, selectAgentChatHistory, selectAgentCreateRunLoading, selectAgentMessages, selectCurrentAgentConversationId, selectAgentConversation, selectSelectedAgentModelKey, setSelectedAgentModel, updateAgentConversationTitle } from '@/features/agent/store/agentSlice';
 import { selectSelectedBudget } from '@/features/budget/store/budgetSlice';
-import { AGENT_CHAT_WEBSOCKET_EVENT, type WebSocketMessage } from '@/features/websocket/events';
+import type { WebSocketMessage } from '@/features/websocket/events';
+import { AGENT_STREAM_EVENT, AgentMessageKind, conversationIdFromRoom, subscribeAgentMessages } from '../protocol';
 import type { AgentChatHistoryItem, AgentChatMessage, AgentEventMessageData, MessagePart } from '@/features/agent/types/agent.types';
 import { LoadingState } from '@/utils';
 import { apiClient } from '@/utils';
 import styles from './AgentChat.module.css';
 
 const SUGGESTIONS = ['Summarize my spending', 'Find unusual transactions', 'Help plan next month'];
-const TEXT_DELTA_EVENT = 'agent::chat::text_delta';
-const AGENT_CHAT_STREAM_EVENT = 'pennywise::agent::chat::stream';
-const AGENT_LOADING_EVENT = 'agent::chat::loading';
-const AGENT_ERROR_EVENT = 'agent::chat::error';
 const AGENT_ERROR_FALLBACK_TEXT = 'Penny ran into an error while responding. Please try again.';
 const TEXT_DELTA_CHARS_PER_SECOND = 90;
 const TEXT_DELTA_MAX_FRAME_CHARS = 8;
@@ -89,13 +86,8 @@ function agentStreamMessageId(data: AgentEventMessageData | null) {
 
 function agentMessageLabel(eventName: string) {
   if (
-    eventName === TEXT_DELTA_EVENT ||
-    eventName === AGENT_CHAT_STREAM_EVENT ||
-    eventName === 'agent::chat::message' ||
-    eventName === AGENT_LOADING_EVENT ||
-    eventName === AGENT_ERROR_EVENT ||
-    eventName === 'agent::chat::tool_call' ||
-    eventName === 'agent::chat::tool_call_start'
+    eventName === AGENT_STREAM_EVENT ||
+    Object.values(AgentMessageKind).includes(eventName as (typeof AgentMessageKind)[keyof typeof AgentMessageKind])
   ) {
     return 'Penny';
   }
@@ -185,7 +177,7 @@ function toolCallStartPart(message: unknown): MessagePart {
 }
 
 function AgentMessageBody({ message }: { message: AgentChatMessage }) {
-  if (message.eventName === AGENT_LOADING_EVENT) {
+  if (message.eventName === AgentMessageKind.loading) {
     return (
       <div className={styles.loadingMessage}>
         <span className={styles.loadingSpinner} aria-hidden />
@@ -271,7 +263,7 @@ export function AgentChat() {
         {
           id: 'agent-response-loader',
           role: 'assistant' as const,
-          eventName: AGENT_LOADING_EVENT,
+          eventName: AgentMessageKind.loading,
           text: '',
         },
       ]
@@ -444,12 +436,11 @@ export function AgentChat() {
   }, [isModelOpen]);
 
   useEffect(() => {
-    const handleAgentEvent = (event: Event) => {
-      const message = (event as CustomEvent<WebSocketMessage>).detail;
+    const handleAgentEvent = (message: WebSocketMessage) => {
       const parsedMsgData = parseAgentStreamData(message.data);
       const streamMessageId = agentStreamMessageId(parsedMsgData);
 
-      if (message.eventName === AGENT_CHAT_STREAM_EVENT && parsedMsgData?.type === 'text_delta') {
+      if (message.eventName === AGENT_STREAM_EVENT && parsedMsgData?.type === 'text_delta') {
         setRunPhase('Writing answer');
         const text = typeof parsedMsgData.message === 'string' ? parsedMsgData.message : '';
         if (
@@ -466,7 +457,7 @@ export function AgentChat() {
         return;
       }
 
-      if (message.eventName === AGENT_CHAT_STREAM_EVENT && parsedMsgData?.type === 'reasoning_delta') {
+      if (message.eventName === AGENT_STREAM_EVENT && parsedMsgData?.type === 'reasoning_delta') {
         flushPendingTextDelta();
         setRunPhase('Reasoning');
         dispatch(appendAgentReasoningDelta({
@@ -476,7 +467,7 @@ export function AgentChat() {
         return;
       }
 
-      if (message.eventName === AGENT_CHAT_STREAM_EVENT && parsedMsgData?.type === 'tool_call_start') {
+      if (message.eventName === AGENT_STREAM_EVENT && parsedMsgData?.type === 'tool_call_start') {
         flushPendingTextDelta();
         const toolMessage = streamToolMessage(parsedMsgData.message);
         setRunPhase(`Using ${typeof toolMessage.name === 'string' ? toolMessage.name : 'tool'}`);
@@ -488,7 +479,7 @@ export function AgentChat() {
       }
 
       if (
-        message.eventName === AGENT_CHAT_STREAM_EVENT &&
+        message.eventName === AGENT_STREAM_EVENT &&
         parsedMsgData?.type === 'tool_call' &&
         parsedMsgData.message &&
         typeof parsedMsgData.message === 'object'
@@ -511,7 +502,7 @@ export function AgentChat() {
         return;
       }
 
-      if (message.eventName === AGENT_CHAT_STREAM_EVENT && parsedMsgData?.type === 'error') {
+      if (message.eventName === AGENT_STREAM_EVENT && parsedMsgData?.type === 'error') {
         flushPendingTextDelta();
         setIsRunActive(false);
         setActiveRunId(null);
@@ -520,11 +511,11 @@ export function AgentChat() {
           typeof parsedMsgData.message === 'string' && parsedMsgData.message.trim()
             ? parsedMsgData.message
             : AGENT_ERROR_FALLBACK_TEXT;
-        dispatch(appendAgentEvent({ eventName: AGENT_ERROR_EVENT, text: errorText }));
+        dispatch(appendAgentEvent({ eventName: AgentMessageKind.error, text: errorText }));
         return;
       }
 
-      if (message.eventName === AGENT_CHAT_STREAM_EVENT && parsedMsgData?.type === 'run_completed') {
+      if (message.eventName === AGENT_STREAM_EVENT && parsedMsgData?.type === 'run_completed') {
         flushPendingTextDelta();
         setIsRunActive(false);
         setActiveRunId(null);
@@ -532,15 +523,10 @@ export function AgentChat() {
         return;
       }
 
-      if (message.eventName === AGENT_CHAT_STREAM_EVENT && parsedMsgData?.type === 'title_update') {
+      if (message.eventName === AGENT_STREAM_EVENT && parsedMsgData?.type === 'title_update') {
         const title = parsedMsgData.message as string;
         setHeaderTitle(title);
-        let conversationId = currentConversationId;
-        if (message.roomId && message.roomId.includes(':chat/')) {
-          conversationId = message.roomId.split(':chat/')[1];
-        } else if (message.streamId) {
-          conversationId = message.streamId;
-        }
+        const conversationId = conversationIdFromRoom(message.roomId) ?? message.streamId ?? currentConversationId;
         if (conversationId) {
           dispatch(updateAgentConversationTitle({ conversationId, title }));
         }
@@ -552,9 +538,9 @@ export function AgentChat() {
       dispatch(appendAgentEvent({ eventName: message.eventName, text }));
     };
 
-    window.addEventListener(AGENT_CHAT_WEBSOCKET_EVENT, handleAgentEvent);
+    const unsubscribe = subscribeAgentMessages(handleAgentEvent);
     return () => {
-      window.removeEventListener(AGENT_CHAT_WEBSOCKET_EVENT, handleAgentEvent);
+      unsubscribe();
       if (textDeltaAnimationFrameRef.current !== null) {
         window.cancelAnimationFrame(textDeltaAnimationFrameRef.current);
         textDeltaAnimationFrameRef.current = null;
@@ -637,7 +623,7 @@ export function AgentChat() {
 
     if (
       lastMessage?.role === 'assistant' &&
-      (lastMessage.text.trim() || (lastMessage.parts?.length ?? 0) > 0 || lastMessage.eventName === 'agent::chat::error')
+      (lastMessage.text.trim() || (lastMessage.parts?.length ?? 0) > 0 || lastMessage.eventName === AgentMessageKind.error)
     ) {
       setIsAwaitingAgentResponse(false);
     }
@@ -900,12 +886,12 @@ export function AgentChat() {
               className={
                 message.role === 'user'
                   ? styles.userMessage
-                  : `${styles.agentMessage} ${message.eventName === AGENT_ERROR_EVENT ? styles.errorMessage : ''}`
+                  : `${styles.agentMessage} ${message.eventName === AgentMessageKind.error ? styles.errorMessage : ''}`
               }>
 
               {message.role === 'assistant' && (
                 <span className={styles.messageLabel}>
-                  {agentMessageLabel(message.eventName ?? 'agent::chat::message')}
+                  {agentMessageLabel(message.eventName ?? AgentMessageKind.message)}
                 </span>
               )}
               {message.role === 'assistant' ? <AgentMessageBody message={message} /> : <p>{message.text}</p>}
