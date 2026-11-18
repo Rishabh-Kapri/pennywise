@@ -1,4 +1,4 @@
-import { formatDigits, formatSignedCurrency } from '../../utils';
+import { formatDigits, formatSignedCurrency } from '@/utils/format';
 import styles from './Amount.module.css';
 
 interface AmountProps {
@@ -12,7 +12,7 @@ interface AmountProps {
  * A headline figure: the rupee sign set small and raised, so the digits
  * carry the weight. Size it with the parent's font-size.
  */
-export default function Amount({ value, signed = false, className = '' }: AmountProps) {
+export function Amount({ value, signed = false, className = '' }: AmountProps) {
   const rounded = Math.round(value);
   const sign = rounded < 0 ? '−' : signed && rounded > 0 ? '+' : '';
 

@@ -8,13 +8,8 @@ import {
 } from '@phosphor-icons/react';
 import { useEffect, useRef, useState } from 'react';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
-import { selectIsDemoUser } from '@/features/auth/store';
-import {
-  selectAllBudgets,
-  selectSelectedBudget,
-  setSelectedBudget,
-  updateBudgetSelection,
-} from '../store';
+import { selectIsDemoUser } from '@/features/auth/store/authSlice';
+import { selectAllBudgets, selectSelectedBudget, setSelectedBudget, updateBudgetSelection } from '@/features/budget/store/budgetSlice';
 import { useNavigate } from 'react-router-dom';
 import { useMyInvites } from '@/features/sharing/hooks/useMyInvites';
 import { ROLE_LABELS } from '@/features/sharing/types';

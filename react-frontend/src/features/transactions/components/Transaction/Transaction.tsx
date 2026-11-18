@@ -2,21 +2,13 @@ import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowsLeftRightIcon } from '@phosphor-icons/react';
-import {
-  createTransaction,
-  deleteTransactionById,
-  fetchAllTransaction,
-  updateTransaction,
-  updateTransactionStatus,
-  bulkDeleteTransactions,
-  fetchPendingApprovalCount,
-} from '../../store';
+import { createTransaction, deleteTransactionById, fetchAllTransaction, updateTransaction, updateTransactionStatus, bulkDeleteTransactions, fetchPendingApprovalCount } from '@/features/transactions/store/transactionSlice';
 import { LoadingState } from '@/utils';
 import { apiClient, errorMessage, toast } from '@/utils';
 import type { PaginationResponse } from '@/utils/common.constants';
 import styles from './Transaction.module.css';
 import { useHeader, useSidePanel } from '@/components/layout/slots';
-import { formatBudgetAmount } from '@/features/category/components/budgetFormat';
+import { formatBudgetAmount, formatPoints } from '@/utils/format';
 import { selectAccountInfoFromId } from '@/features/accounts/store/accountSlice';
 import { BankLogo } from '@/features/accounts/components/BankLogo/BankLogo';
 import {
@@ -36,16 +28,17 @@ import {
   type TransactionFilters,
   type TransactionsLocationState,
 } from '../../types/filter.types';
-import { TransactionSkeleton } from '../TransactionSkeleton';
+import { TransactionSkeleton } from '@/features/transactions/components/TransactionSkeleton/TransactionSkeleton';
 import { List } from 'react-window';
-import { TransactionRow } from '../TransactionRow';
-import { TransactionDetailPanel } from '../TransactionDetailPanel';
+import { TransactionRow } from '@/features/transactions/components/TransactionRow/TransactionRow';
+import { TransactionDetailPanel } from '@/features/transactions/components/TransactionDetailPanel/TransactionDetailPanel';
 import { fetchAllAccounts } from '@/features/accounts/store/accountSlice';
-import { runJobAction } from '@/features/jobs/store';
-import { ActiveFilterChips, TransactionFilterPanel } from '../TransactionFilterPanel';
-import { selectSelectedBudget } from '@/features/budget';
-import { TransactionMobile } from '../TransactionMobile';
-import { TransactionHeader, type MobileFilter } from '../TransactionHeader';
+import { runJobAction } from '@/features/jobs/store/jobSlice';
+import { ActiveFilterChips } from '@/features/transactions/components/TransactionFilterPanel/ActiveFilterChips';
+import { TransactionFilterPanel } from '@/features/transactions/components/TransactionFilterPanel/TransactionFilterPanel';
+import { selectSelectedBudget } from '@/features/budget/store/budgetSlice';
+import { TransactionMobile } from '@/features/transactions/components/TransactionMobile/TransactionMobile';
+import { TransactionHeader, type MobileFilter } from '@/features/transactions/components/TransactionHeader/TransactionHeader';
 import {
   applyParsedInputValue,
   buildTransactionPayload,
@@ -111,7 +104,6 @@ function StickyMonthHeader({ stickyHeader }: { stickyHeader: NonNullable<StickyH
 // ── Main component ────────────────────────────────────────────────────────────
 
 /** "+1,234 pts", or "−40 pts" when more points were taken back than earned. */
-const formatPoints = (n: number) => `${n < 0 ? '−' : '+'}${Math.abs(n).toLocaleString('en-IN')} pts`;
 
 export function Transaction({ accountId, embedded = false }: { accountId?: string; embedded?: boolean } = {}) {
   const { setHeaderContent } = useHeader();

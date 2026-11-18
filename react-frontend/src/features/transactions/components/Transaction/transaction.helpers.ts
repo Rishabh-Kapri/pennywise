@@ -1,8 +1,8 @@
 import { parseAmount } from '@/utils/expression';
 import { getTodaysDate } from '@/utils/date.utils';
 import type { TransactionColumns } from '@/types/common.types';
-import { allAccountTxnCols, specificAccountTxnCols } from '../TransactionColumns';
-import type { MobileFilter } from '../TransactionHeader';
+import { allAccountTxnCols, specificAccountTxnCols } from '@/features/transactions/components/TransactionColumns/TransactionColumns';
+import type { MobileFilter } from '@/features/transactions/components/TransactionHeader/TransactionHeader';
 import {
   TransactionStatus,
   type ListItem,

@@ -3,7 +3,8 @@ import { store } from './store';
 import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import Layout from '@/components/layout/Layout/Layout';
 import { lazy, Suspense } from 'react';
-import { Login, ProtectedRoute } from '@/features/auth';
+import { Login } from '@/features/auth/components/Login';
+import { ProtectedRoute } from '@/features/auth/components/ProtectedRoute';
 import Homepage from '@/features/home/components/Homepage';
 import LegalPage from '@/features/home/components/LegalPage';
 
@@ -15,7 +16,7 @@ const BudgetOnboarding = lazy(
 const Settings = lazy(() => import('@/features/settings/components/Settings'));
 const Accounts = lazy(() => import('@/features/accounts/components/Accounts'));
 const Transaction = lazy(() =>
-  import('@/features/transactions/components/Transaction').then((module) => ({
+  import('@/features/transactions/components/Transaction/Transaction').then((module) => ({
     default: module.Transaction,
   })),
 );

@@ -5,7 +5,7 @@ import { Button } from 'react-aria-components';
 import styles from './DateSelector.module.css';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { LoadingState } from '@/utils';
-import { selectMonthInHumanFormat, setSelectedMonth } from '@/features/budget';
+import { selectMonthInHumanFormat, setSelectedMonth } from '@/features/budget/store/budgetSlice';
 import { getMonthKey } from '@/utils/date.utils';
 
 const MONTHS = [

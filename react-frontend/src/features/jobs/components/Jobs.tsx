@@ -22,16 +22,7 @@ import {
 import { AnimatePresence, MotionConfig, motion } from 'framer-motion';
 import { useEffect, useRef, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import {
-  JOBS_MAX_LIMIT,
-  JOBS_PAGE_SIZE,
-  fetchJobDetail,
-  fetchJobs,
-  jobDetailsCleared,
-  jobFiltersChanged,
-  retryFailedJobs,
-  runJobAction,
-} from '../store';
+import { JOBS_MAX_LIMIT, JOBS_PAGE_SIZE, fetchJobDetail, fetchJobs, jobDetailsCleared, jobFiltersChanged, retryFailedJobs, runJobAction } from '@/features/jobs/store/jobSlice';
 import {
   buildAttempts,
   buildRun,

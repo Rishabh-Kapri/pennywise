@@ -10,7 +10,7 @@ import {
 } from '@phosphor-icons/react';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { LoadingState } from '@/utils';
-import { getCurrencyLocaleString, getLocaleDate, getTodaysDate } from '@/utils/date.utils';
+import { getLocaleDate, getTodaysDate } from '@/utils/date.utils';
 import { AccountDropdown } from '@/features/accounts/components/AccountDropdown';
 import { PayeeDropdown } from '@/features/payees/components/PayeeDropdown';
 import { CategoryDropdown } from '@/features/category/components/CategoryDropdown';
@@ -33,6 +33,7 @@ import {
   type RecurringTransactionDraft,
 } from '../types/recurring.types';
 import styles from './Recurring.module.css';
+import { formatAmount } from '@/utils/format';
 
 const FREQUENCIES: { value: RecurringFrequency; label: string }[] = [
   { value: 'DAILY', label: 'Daily' },
@@ -422,7 +423,7 @@ export default function Recurring() {
                 <div className={styles.ruleRight}>
                   <span className={rule.amount > 0 ? styles.amountInflow : styles.amountOutflow}>
                     {rule.amount > 0 ? '+' : '−'}
-                    {getCurrencyLocaleString(Math.abs(rule.amount))}
+                    {formatAmount(Math.abs(rule.amount))}
                   </span>
                   <div className={styles.ruleActions}>
                     {confirmDeleteId === rule.id ? (

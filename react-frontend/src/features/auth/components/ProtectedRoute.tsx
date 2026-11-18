@@ -1,6 +1,6 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAppSelector } from '@/app/hooks';
-import { selectAuthLoading, selectIsAuthenticated } from '../store';
+import { selectAuthLoading, selectIsAuthenticated } from '@/features/auth/store/authSlice';
 import { LoadingState } from '@/utils';
 
 interface ProtectedRouteProps {

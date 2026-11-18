@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Popover } from '@/components/common/Popover/Popover';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
-import { selectSelectedMonth } from '@/features/budget';
+import { selectSelectedMonth } from '@/features/budget/store/budgetSlice';
 import { toast } from '@/utils';
 import { evaluateAmount } from '@/utils/expression';
 import type { Category, CategoryGroup } from '../../types/category.types';
-import { selectCategoryGroups, updateCategoryBudget } from '../../store';
+import { selectCategoryGroups, updateCategoryBudget } from '@/features/category/store/categorySlice';
 import { AmountCell } from '../AmountCell';
 import styles from './Popover.module.css';
 

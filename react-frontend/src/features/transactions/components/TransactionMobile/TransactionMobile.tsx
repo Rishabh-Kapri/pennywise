@@ -1,12 +1,12 @@
 
 import { ArrowLeft, CalendarDots as CalendarDays, CaretLeft as ChevronLeft, CaretRight as ChevronRight, FileText, Info, PencilLine, Receipt as ReceiptText } from '@phosphor-icons/react';
-import { getCurrencyLocaleString } from '@/utils/date.utils';
 import type { Transaction } from '../../types/transaction.types';
 import { formatSourceTime } from '../../utils/sourceTime';
 import styles from '../Transaction/Transaction.module.css';
 import { useEffect, useMemo, useState } from 'react';
 import { useAppSelector } from '@/app/hooks';
 import { BankLogo } from '@/features/accounts/components/BankLogo/BankLogo';
+import { formatAmount } from '@/utils/format';
 
 function MobileAccount({ txn }: { txn: Transaction }) {
   const account = useAppSelector((state) => state.accounts.allAccounts.find((acc) => acc.id === txn.accountId));
@@ -202,7 +202,7 @@ export function TransactionMobile({
               isInflow ? styles.mobileTxnInflow : ''
             }`}>
             {isInflow ? '+' : '-'}{' '}
-            {getCurrencyLocaleString(Math.abs(activeAmount))}
+            {formatAmount(Math.abs(activeAmount))}
           </div>
           <div className={styles.mobileDetailCategory}>
             {activeTransaction.categoryName || 'Uncategorized'}
@@ -298,7 +298,7 @@ export function TransactionMobile({
                         card.isInflow ? styles.mobileTxnInflow : ''
                       }`}>
                       {card.isInflow ? '+' : '-'}{' '}
-                      {getCurrencyLocaleString(Math.abs(card.amount))}
+                      {formatAmount(Math.abs(card.amount))}
                     </span>
                     <span className={styles.mobileTxnCategory}>
                       {/* <Banknote size={18} /> */}

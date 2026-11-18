@@ -1,9 +1,7 @@
 import type { StatementSectionReconciliation } from '../types/reconcile.types';
 import styles from './StatementReconcile.module.css';
+import { formatCount, formatDecimal } from '@/utils/format';
 
-const money = (value: number) =>
-  new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
-const points = (value: number) => new Intl.NumberFormat('en-IN').format(value);
 
 const parseDay = (date: string) => {
   const d = new Date(`${date}T00:00:00`);
@@ -31,7 +29,7 @@ function dueIn(date: string): string {
 
 /** Rupees large, paise small: the figure the eye lands on. */
 function BigMoney({ value }: { value: number }) {
-  const [whole, paise] = money(value).split('.');
+  const [whole, paise] = formatDecimal(value).split('.');
   return (
     <>
       {whole}
@@ -92,14 +90,14 @@ export function CardSummary({ section }: { section: StatementSectionReconciliati
                 <BigMoney value={section.totalDue} />
               </strong>
               {section.minimumDue !== undefined && (
-                <span className={styles.figureNote}>Minimum due {money(section.minimumDue)}</span>
+                <span className={styles.figureNote}>Minimum due {formatDecimal(section.minimumDue)}</span>
               )}
             </div>
           )}
           {section.totalDue === undefined && section.minimumDue !== undefined && (
             <div>
               <span className={styles.figureLabel}>Minimum due</span>
-              <strong>{money(section.minimumDue)}</strong>
+              <strong>{formatDecimal(section.minimumDue)}</strong>
             </div>
           )}
           {section.dueDate && (
@@ -112,7 +110,7 @@ export function CardSummary({ section }: { section: StatementSectionReconciliati
           {section.creditLimit !== undefined && (
             <div>
               <span className={styles.figureLabel}>Credit limit</span>
-              <strong>{money(section.creditLimit)}</strong>
+              <strong>{formatDecimal(section.creditLimit)}</strong>
               {used !== null && (
                 <span className={styles.figureNote}>
                   <span className={styles.meter} aria-hidden>
@@ -132,7 +130,7 @@ export function CardSummary({ section }: { section: StatementSectionReconciliati
             <section>
               <header>
                 <h4>Cashback</h4>
-                <strong className={styles.inflow}>+{money(cashback.amount)}</strong>
+                <strong className={styles.inflow}>+{formatDecimal(cashback.amount)}</strong>
               </header>
               <p>
                 From {cashback.count} line{cashback.count === 1 ? '' : 's'} on this statement, after reversals.
@@ -144,7 +142,7 @@ export function CardSummary({ section }: { section: StatementSectionReconciliati
             <section>
               <header>
                 <h4>Charges</h4>
-                <strong>{money(chargesTotal)}</strong>
+                <strong>{formatDecimal(chargesTotal)}</strong>
               </header>
               <dl>
                 {charges.map((c) => (
@@ -155,7 +153,7 @@ export function CardSummary({ section }: { section: StatementSectionReconciliati
                         {c.count} line{c.count === 1 ? '' : 's'}
                       </small>
                     </dt>
-                    <dd>{money(c.amount)}</dd>
+                    <dd>{formatDecimal(c.amount)}</dd>
                   </div>
                 ))}
               </dl>
@@ -166,7 +164,7 @@ export function CardSummary({ section }: { section: StatementSectionReconciliati
             <section>
               <header>
                 <h4>Reward points</h4>
-                {rewards?.closing !== undefined && <strong>{points(rewards.closing)}</strong>}
+                {rewards?.closing !== undefined && <strong>{formatCount(rewards.closing)}</strong>}
               </header>
               <dl>
                 {rewardRows.map(([label, value, sign]) => (
@@ -174,7 +172,7 @@ export function CardSummary({ section }: { section: StatementSectionReconciliati
                     <dt>{label}</dt>
                     <dd className={sign === '+' ? styles.inflow : undefined}>
                       {sign}
-                      {points(value)}
+                      {formatCount(value)}
                     </dd>
                   </div>
                 ))}
@@ -184,7 +182,7 @@ export function CardSummary({ section }: { section: StatementSectionReconciliati
                       Printed on rows
                       <small>added up</small>
                     </dt>
-                    <dd>{points(section.rewardPointsOnRows)}</dd>
+                    <dd>{formatCount(section.rewardPointsOnRows)}</dd>
                   </div>
                 )}
               </dl>
@@ -198,7 +196,7 @@ export function CardSummary({ section }: { section: StatementSectionReconciliati
           <header>
             <h4>EMIs</h4>
             <span>
-              <strong>{money(plans.reduce((sum, p) => sum + (p.outstanding ?? 0), 0))}</strong> still to pay
+              <strong>{formatDecimal(plans.reduce((sum, p) => sum + (p.outstanding ?? 0), 0))}</strong> still to pay
             </span>
           </header>
           <table>
@@ -237,9 +235,9 @@ export function CardSummary({ section }: { section: StatementSectionReconciliati
                         '—'
                       )}
                     </td>
-                    <td className={styles.num}>{p.monthlyAmount !== undefined ? money(p.monthlyAmount) : '—'}</td>
+                    <td className={styles.num}>{p.monthlyAmount !== undefined ? formatDecimal(p.monthlyAmount) : '—'}</td>
                     <td className={styles.num}>{p.interestRate !== undefined ? `${p.interestRate}%` : '—'}</td>
-                    <td className={styles.num}>{p.outstanding !== undefined ? money(p.outstanding) : '—'}</td>
+                    <td className={styles.num}>{p.outstanding !== undefined ? formatDecimal(p.outstanding) : '—'}</td>
                   </tr>
                 );
               })}

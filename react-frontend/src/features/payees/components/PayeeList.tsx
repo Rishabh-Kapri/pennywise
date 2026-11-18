@@ -1,6 +1,6 @@
 import { type KeyboardEvent, useEffect, useMemo, useRef } from 'react';
 import { CaretRight, GitMerge, ListChecks, Sparkle, Trash, X } from '@phosphor-icons/react';
-import { formatBudgetAmount } from '@/features/category/components/budgetFormat';
+import { formatBudgetAmount } from '@/utils/format';
 import type { Payee, PayeeRule, PayeeStats } from '../types/payee.types';
 import { type DuplicateGroup, formatLastUsed } from '../payeeUtils';
 import { PayeeAvatar } from './PayeeAvatar';

@@ -12,7 +12,7 @@ import { apiClient, errorMessage, toast } from '@/utils';
 import { createTag } from '@/features/tags/store/tagSlice';
 import { getAutoColor } from '@/features/tags/utils';
 import { Popover } from '@/components/common/Popover/Popover';
-import { getCurrencyLocaleString, getLocaleDate, getTodaysDate } from '@/utils/date.utils';
+import { getLocaleDate, getTodaysDate } from '@/utils/date.utils';
 import {
   TransactionStatus,
   type CipherPrediction,
@@ -34,6 +34,7 @@ import { formatSourceTime, transactionTime } from '../../utils/sourceTime';
 import { useTransactionSources } from '../../hooks/useTransactionSources';
 import styles from './TransactionDetailPanel.module.css';
 import { tagLabel, tagMatches } from '@/features/tags/utils';
+import { formatAmount } from '@/utils/format';
 
 type TransactionStatusAction = Extract<
   TransactionStatusType,
@@ -70,7 +71,7 @@ function getDisplayAmount(txn: Transaction) {
 function getSignedDisplayAmount(txn: Transaction) {
   const { value, isInflow } = getDisplayAmount(txn);
   const sign = isInflow ? '+' : '-';
-  return `${sign}${getCurrencyLocaleString(value)}`;
+  return `${sign}${formatAmount(value)}`;
 }
 
 function formatConfidence(value?: number | null) {
@@ -82,7 +83,7 @@ function formatConfidence(value?: number | null) {
 function formatOptionalAmount(value?: number | null) {
   if (value === null || value === undefined) return '-';
   const sign = value >= 0 ? '+' : '-';
-  return `${sign}${getCurrencyLocaleString(Math.abs(value))}`;
+  return `${sign}${formatAmount(Math.abs(value))}`;
 }
 
 function PanelFrame({

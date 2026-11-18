@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { CheckIcon, PencilSimpleIcon, RobotIcon, XIcon } from '@phosphor-icons/react';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { LoadingState } from '@/utils';
-import { getCurrencyLocaleString, getLocaleDate } from '@/utils/date.utils';
+import { getLocaleDate } from '@/utils/date.utils';
 import { PayeeDropdown } from '@/features/payees/components/PayeeDropdown';
 import { CategoryDropdown } from '@/features/category/components/CategoryDropdown';
 import {
@@ -21,6 +21,7 @@ import {
   type PredictionReviewItem,
 } from '../types/predictionReview.types';
 import styles from './PredictionReview.module.css';
+import { formatAmount } from '@/utils/format';
 
 function ConfidenceChip({ label, value }: { label: string; value?: number | null }) {
   const level = confidenceLevel(value);
@@ -79,7 +80,7 @@ function ReviewCard({ item }: { item: PredictionReviewItem }) {
           </span>
           <span className={styles.txnAmount}>
             {item.transactionAmount > 0 ? '+' : '−'}
-            {getCurrencyLocaleString(Math.abs(item.transactionAmount))}
+            {formatAmount(Math.abs(item.transactionAmount))}
           </span>
           {item.accountName && <span className={styles.txnAccount}>{item.accountName}</span>}
           {item.reviewedAt && <span className={styles.reviewedBadge}>Reviewed</span>}

@@ -1,7 +1,7 @@
 import type { TransactionColumns } from '@/types/common.types';
 import styles from '../Transaction/Transaction.module.css';
 import { getLocaleDate } from '@/utils/date.utils';
-import { formatBudgetAmount } from '@/features/category/components/budgetFormat';
+import { formatBudgetAmount } from '@/utils/format';
 import type { Transaction } from '../../types/transaction.types';
 import { formatSourceTime } from '../../utils/sourceTime';
 import { AccountLabel } from './AccountLabel';

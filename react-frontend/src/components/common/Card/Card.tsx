@@ -1,7 +1,7 @@
 import { useId, type ReactNode } from 'react';
-import styles from './DashboardCard.module.css';
+import styles from './Card.module.css';
 
-interface DashboardCardProps {
+interface CardProps {
   title: string;
   icon?: ReactNode;
   /** Right side of the header: a range toggle, a link. */
@@ -12,15 +12,15 @@ interface DashboardCardProps {
   children: ReactNode;
 }
 
-/** The floating card every dashboard widget sits in. */
-export default function DashboardCard({
+/** The floating card the dashboard and report widgets sit in. */
+export function Card({
   title,
   icon,
   actions,
   refreshing = false,
   className = '',
   children,
-}: DashboardCardProps) {
+}: CardProps) {
   const headingId = useId();
 
   return (

@@ -9,10 +9,10 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { toast } from '@/utils';
 import { suggestCategoryDescription, updateCategoryDetails } from '../store/categorySlice';
-import { selectSelectedMonth } from '@/features/budget';
+import { selectSelectedMonth } from '@/features/budget/store/budgetSlice';
 import { getLocaleDate, getPreviousMonthKey } from '@/utils/date.utils';
 import { useAssignedEditor } from '../hooks/useAssignedEditor';
-import { formatBudgetAmount } from './budgetFormat';
+import { formatBudgetAmount } from '@/utils/format';
 import { GoalSection } from './GoalSection';
 import { CategoryActions } from './CategoryActions';
 

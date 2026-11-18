@@ -15,7 +15,7 @@ import { TransactionStatus, type Transaction } from '@/features/transactions/typ
 import { apiClient, LoadingState } from '@/utils';
 import type { PaginationResponse } from '@/utils/common.constants';
 import { addMonths, getTodaysDate } from '@/utils/date.utils';
-import type { DashboardState, MonthCashFlow, SpendingGroup, SpendingSummary } from '../types';
+import type { DashboardState, MonthCashFlow, SpendingGroup, SpendingSummary } from '../types/dashboard.types';
 import { addDays } from '../utils';
 
 /** Days of history behind the balance chart's longest range. */

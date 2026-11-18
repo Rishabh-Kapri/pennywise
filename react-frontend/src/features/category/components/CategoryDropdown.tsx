@@ -2,14 +2,14 @@ import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react'
 import { X } from '@phosphor-icons/react';
 import styles from '@/components/common/pickers/Picker.module.css';
 import { useAppSelector } from '@/app/hooks';
-import { selectCategoryGroups } from '@/features/category';
+import { selectCategoryGroups } from '@/features/category/store/categorySlice';
 import { Popover } from '@/components/common/Popover/Popover';
 import type { Category, CategoryGroup } from '@/features/category/types/category.types';
-import { selectSelectedMonth } from '@/features/budget';
-import { getCurrencyLocaleString } from '@/utils/date.utils';
+import { selectSelectedMonth } from '@/features/budget/store/budgetSlice';
 import { selectInflowCategory } from '@/features/category/store/categorySlice';
 import type { DropdownProps } from '@/components/common/pickers/types';
 import { MultiSelectMenu } from '@/components/common/pickers/MultiSelectMenu';
+import { formatAmount } from '@/utils/format';
 
 const transformGroups = (groups: CategoryGroup[]) => {
   return groups.filter((group) => !group.isSystem && group.name !== 'Hidden');
@@ -222,7 +222,7 @@ export function CategoryDropdown({
                             : styles.overspent
                         }`}
                     >
-                      {getCurrencyLocaleString(category.balance?.[selectedMonth] ?? 0)}
+                      {formatAmount(category.balance?.[selectedMonth] ?? 0)}
                     </div>
                   </div>
                 );

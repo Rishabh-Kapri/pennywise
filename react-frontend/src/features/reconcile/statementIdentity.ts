@@ -28,8 +28,6 @@ export interface StatementIdentity {
   dueBy: string;
 }
 
-export const money = (value: number) =>
-  new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
 
 /** last four digits of a printed, usually masked, account number */
 export function accountEnding(number: string): string {

@@ -11,7 +11,6 @@ import {
 } from '@phosphor-icons/react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getCurrencyLocaleString } from '@/utils/date.utils';
 import { useDocumentLibrary } from '../hooks/useDocumentLibrary';
 import {
   EMPTY_DOCUMENT_FILTERS,
@@ -20,18 +19,14 @@ import {
   type DocumentListItem,
 } from '../types/document.types';
 import styles from './DocumentLibrary.module.css';
+import { formatFileSize } from '@/utils/format';
+import { formatAmount } from '@/utils/format';
 
 const KIND_TABS: { id: DocumentKind; label: string }[] = [
   { id: '', label: 'All' },
   { id: 'image', label: 'Photos' },
   { id: 'pdf', label: 'PDFs' },
 ];
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 function formatDate(date: string): string {
   const parsed = new Date(date);
@@ -77,10 +72,10 @@ function DocumentTile({
           {doc.payeeName ?? doc.fileName}
         </strong>
         <span className={styles.metaLine}>
-          {formatDate(doc.transactionDate)} · {getCurrencyLocaleString(Math.abs(doc.transactionAmount))}
+          {formatDate(doc.transactionDate)} · {formatAmount(Math.abs(doc.transactionAmount))}
         </span>
         <span className={styles.metaFaint} title={doc.fileName}>
-          {doc.fileName} · {formatSize(doc.sizeBytes)}
+          {doc.fileName} · {formatFileSize(doc.sizeBytes)}
         </span>
       </div>
 

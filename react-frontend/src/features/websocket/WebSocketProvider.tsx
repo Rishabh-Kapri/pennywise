@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { config } from '@/config/env';
-import { selectCurrentAgentStreamId } from '@/features/agent/store';
-import { selectAccessToken, selectUser } from '@/features/auth/store';
-import { selectSelectedBudget } from '@/features/budget';
-import { jobsMayHaveChanged, jobUpdated } from '@/features/jobs/store';
+import { selectCurrentAgentStreamId } from '@/features/agent/store/agentSlice';
+import { selectAccessToken, selectUser } from '@/features/auth/store/authSlice';
+import { selectSelectedBudget } from '@/features/budget/store/budgetSlice';
+import { jobsMayHaveChanged, jobUpdated } from '@/features/jobs/store/jobSlice';
 import type { JobUpdate } from '@/features/jobs/types/job.types';
-import { fetchAllTransaction } from '@/features/transactions/store';
+import { fetchAllTransaction } from '@/features/transactions/store/transactionSlice';
 import { apiClient } from '@/utils/api';
 import { parseJWT } from '@/utils/auth.utils';
 import {

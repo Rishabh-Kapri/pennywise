@@ -12,7 +12,7 @@ import {
   Warning,
   X,
 } from '@phosphor-icons/react';
-import { formatBudgetAmount } from '@/features/category/components/budgetFormat';
+import { formatBudgetAmount, formatCount } from '@/utils/format';
 import { getLocaleDate } from '@/utils/date.utils';
 import type { Payee, PayeeRule, PayeeStats } from '../types/payee.types';
 import type { PayeeRuleInput } from '../store/payeeSlice';
@@ -180,7 +180,7 @@ export function PayeeDetail({
       <dl className={styles.statGrid}>
         <div>
           <dt>Transactions</dt>
-          <dd>{count.toLocaleString('en-IN')}</dd>
+          <dd>{formatCount(count)}</dd>
         </div>
         <div>
           <dt>Spent</dt>

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
-import { Amount } from '@/features/dashboard/components/Amount';
-import { formatCurrency } from '@/features/dashboard/utils';
+import { Amount } from '@/components/common/Amount/Amount';
+import { formatCurrency } from '@/utils/format';
 import { formatPercent, monthLabel, shareOfIncome, type Monthly } from '../cashFlow';
 import styles from './ReportParts.module.css';
 

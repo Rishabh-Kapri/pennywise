@@ -4,7 +4,7 @@ import { Skeleton } from '@/components/common/Skeleton/Skeleton';
 import DateSelector from './DateSelector';
 import styles from './Budget.module.css';
 import { CheckCircle } from '@phosphor-icons/react';
-import { CategoryGroup } from '@/features/category';
+import CategoryGroup from '@/features/category/components/CategoryGroup';
 import { useAppSelector } from '@/app/hooks';
 import {
   selectCategoryGroups,
@@ -12,10 +12,10 @@ import {
   selectInflowAmount,
   selectInflowLoading,
 } from '@/features/category/store/categorySlice';
-import { selectSelectedMonth } from '../store';
+import { selectSelectedMonth } from '@/features/budget/store/budgetSlice';
 import { LoadingState } from '@/utils';
 import { BudgetTableSkeleton } from './BudgetSkeleton';
-import { formatBudgetAmount } from '@/features/category/components/budgetFormat';
+import { formatBudgetAmount } from '@/utils/format';
 
 function readyToAssignCopy(amount: number) {
   if (amount < 0) return { label: 'Assigned more than you have', tone: styles.toneOver };

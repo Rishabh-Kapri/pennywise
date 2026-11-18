@@ -1,4 +1,4 @@
-import type { BudgetTemplateGroupInput } from '../store';
+import type { BudgetTemplateGroupInput } from '@/features/budget/store/budgetSlice';
 
 export const STARTER_BUDGET_TEMPLATE_GROUPS: BudgetTemplateGroupInput[] = [
   {

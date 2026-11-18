@@ -6,7 +6,7 @@ import { AmountCell } from './AmountCell';
 import { CategoryActions } from './CategoryActions';
 import { ActivityPopover } from './ActivityModal';
 import { useAssignedEditor } from '../hooks/useAssignedEditor';
-import { formatBudgetAmount } from './budgetFormat';
+import { formatBudgetAmount } from '@/utils/format';
 import { getGoalProgress, type GoalProgress } from '../goals/goalProgress';
 import { describeProgress } from '../goals/goalText';
 

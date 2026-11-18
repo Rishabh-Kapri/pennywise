@@ -10,8 +10,8 @@ import {
   WarningCircle,
 } from '@phosphor-icons/react';
 import { useAppSelector } from '@/app/hooks';
-import { selectIsDemoUser } from '@/features/auth/store';
-import { selectSelectedBudget } from '@/features/budget/store';
+import { selectIsDemoUser } from '@/features/auth/store/authSlice';
+import { selectSelectedBudget } from '@/features/budget/store/budgetSlice';
 import { isOwner } from '@/features/sharing/types';
 import { AIProvidersPanel, type AISetup } from '@/features/onboarding/components/AIProvidersPanel';
 import { usableModels } from '@/features/onboarding/types';
@@ -19,6 +19,7 @@ import type { CipherPrediction } from '@/features/transactions/types/transaction
 import { apiClient, errorMessage, toast } from '@/utils';
 import settingsStyles from './Settings.module.css';
 import styles from './AISettings.module.css';
+import { formatCount, formatSignedCurrency } from '@/utils/format';
 
 /* ────────────────────────────────────────────────────────────── */
 /*  Types & constants                                            */
@@ -77,15 +78,7 @@ function formatDate(dateStr?: string): string {
   return new Date(dateStr).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-const formatCurrency = (amount: number): string =>
-  new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
 
-const formatCount = (n: number) => new Intl.NumberFormat('en-IN').format(n);
 
 function payeeChanged(p: CipherPrediction) {
   return Boolean(p.hasUserCorrected && p.actualPayeeId && p.actualPayeeId !== p.predictedPayeeId);
@@ -355,7 +348,7 @@ function HistoryDetails({ row }: { row: HistoryRow }) {
           <dt>Payee</dt>
           <dd>{row.extractedPayee || '—'}</dd>
           <dt>Amount</dt>
-          <dd>{row.amount != null ? formatCurrency(row.amount) : '—'}</dd>
+          <dd>{row.amount != null ? formatSignedCurrency(row.amount) : '—'}</dd>
           <dt>Confidence</dt>
           <dd>
             payee {formatPercent(row.payeeConfidence)} · category {formatPercent(row.categoryConfidence)}

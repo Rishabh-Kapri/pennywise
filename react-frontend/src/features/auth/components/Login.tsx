@@ -2,7 +2,7 @@ import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
-import { loginWithGoogle, loginAsDemo, selectAuthLoading, selectAuthError, selectIsAuthenticated } from '../store';
+import { loginWithGoogle, loginAsDemo, selectAuthLoading, selectAuthError, selectIsAuthenticated } from '@/features/auth/store/authSlice';
 import { LoadingState, toast } from '@/utils';
 import { config } from '@/config/env';
 import { Check } from '@phosphor-icons/react';

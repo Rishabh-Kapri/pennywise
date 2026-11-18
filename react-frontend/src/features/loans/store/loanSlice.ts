@@ -1,7 +1,7 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 import type { LoanMetadata, LoanState } from '../types/loan.types';
 import { apiClient, LoadingState } from '@/utils';
-import type { RootState } from '@/app';
+import type { RootState } from '@/app/store';
 
 // Async thunks for API calls
 export const fetchAllLoanMetadata = createAsyncThunk<LoanMetadata[]>(

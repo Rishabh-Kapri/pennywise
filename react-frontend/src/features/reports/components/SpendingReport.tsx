@@ -2,8 +2,9 @@ import { Fragment, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { CaretDown, CaretRight, ChartBar, ListBullets } from '@phosphor-icons/react';
 import { useAppDispatch } from '@/app/hooks';
-import { DashboardCard, Segmented } from '@/features/dashboard/components/DashboardCard';
-import { formatCurrency } from '@/features/dashboard/utils';
+import { Card } from '@/components/common/Card/Card';
+import { Segmented } from '@/components/common/Card/Segmented';
+import { formatCurrency } from '@/utils/format';
 import {
   defaultTreatment,
   formatPercent,
@@ -140,7 +141,7 @@ function GroupsCard({ summary, colors }: { summary: CashFlowSummary; colors: Map
   };
 
   return (
-    <DashboardCard title="Spending by group" icon={<ListBullets size={18} />}>
+    <Card title="Spending by group" icon={<ListBullets size={18} />}>
       <p className={styles.help}>
         Mark groups that won't recur (a house, a wedding) as <strong>One-off</strong> to see your everyday spend rate,
         and groups that are really money set aside as <strong>Saving</strong> to count them with your investments.
@@ -162,7 +163,7 @@ function GroupsCard({ summary, colors }: { summary: CashFlowSummary; colors: Map
           </>
         )}
       </ul>
-    </DashboardCard>
+    </Card>
   );
 }
 
@@ -204,7 +205,7 @@ function TrendCard({ summary, colors }: { summary: CashFlowSummary; colors: Map<
   ]);
 
   return (
-    <DashboardCard
+    <Card
       title="Spending trend"
       icon={<ChartBar size={18} />}
       actions={<Segmented label="View" options={VIEW_OPTIONS} value={view} onChange={setView} />}
@@ -273,6 +274,6 @@ function TrendCard({ summary, colors }: { summary: CashFlowSummary; colors: Map<
       ) : (
         <MonthTable months={summary.months} rows={tableRows} />
       )}
-    </DashboardCard>
+    </Card>
   );
 }

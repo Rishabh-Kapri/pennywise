@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
-import { selectIsDemoUser, selectUser } from '@/features/auth/store';
-import { fetchAllBudgets, selectSelectedBudget } from '@/features/budget/store';
+import { selectIsDemoUser, selectUser } from '@/features/auth/store/authSlice';
+import { fetchAllBudgets, selectSelectedBudget } from '@/features/budget/store/budgetSlice';
 import { errorMessage, toast } from '@/utils';
 import { leaveBudget } from '../api';
 import { useBudgetSharing } from '../hooks/useBudgetSharing';

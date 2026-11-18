@@ -3,12 +3,12 @@ import { lazy, Suspense, useContext, useEffect, useMemo, useState, type ReactNod
 import { Navbar } from '../Navbar/Navbar';
 import { LayoutSlotContentContext, LayoutSlotSettersContext } from '../slots';
 import styles from './Layout.module.css';
-import { fetchAllBudgets, selectAllBudgets, selectSelectedBudget } from '@/features/budget';
+import { fetchAllBudgets, selectAllBudgets, selectSelectedBudget } from '@/features/budget/store/budgetSlice';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import BudgetOnboarding from '@/features/budget/components/BudgetOnboarding';
 import { WebSocketProvider } from '@/features/websocket/WebSocketProvider';
 import { AgentChat } from '@/features/agent/components/AgentChat';
-import { selectIsDemoUser } from '@/features/auth/store';
+import { selectIsDemoUser } from '@/features/auth/store/authSlice';
 import { selectOnboarding } from '@/features/onboarding/hooks/useOnboarding';
 import { isOwner } from '@/features/sharing/types';
 

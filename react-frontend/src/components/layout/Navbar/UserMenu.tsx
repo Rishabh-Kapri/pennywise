@@ -2,7 +2,7 @@ import { GearSix as Settings, SignOut, UserCircle } from '@phosphor-icons/react'
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppDispatch } from '@/app/hooks';
-import { logout } from '@/features/auth';
+import { logout } from '@/features/auth/store/authSlice';
 import { apiClient } from '@/utils';
 import styles from './Navbar.module.css';
 

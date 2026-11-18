@@ -5,8 +5,10 @@ import { useAppSelector } from '@/app/hooks';
 import { TransactionStatus, type Transaction } from '@/features/transactions/types/transaction.types';
 import { getTodaysDate } from '@/utils/date.utils';
 import { selectDashboardActivity, selectNeedsReviewCount } from '../../store/dashboardSlice';
-import { formatRelativeDay, formatSignedCurrency, transactionNet } from '../../utils';
-import { DashboardCard, Segmented } from '../DashboardCard';
+import { formatRelativeDay, transactionNet } from '../../utils';
+import { formatSignedCurrency } from '@/utils/format';
+import { Card } from '@/components/common/Card/Card';
+import { Segmented } from '@/components/common/Card/Segmented';
 import styles from './RecentActivity.module.css';
 
 const RECENT_LIMIT = 40;
@@ -75,7 +77,7 @@ export default function RecentActivity({ className = '' }: { className?: string 
   }, [activity, filter, today]);
 
   return (
-    <DashboardCard
+    <Card
       title="Recent activity"
       icon={<Receipt size={18} />}
       className={`${styles.card} ${className}`}
@@ -146,6 +148,6 @@ export default function RecentActivity({ className = '' }: { className?: string 
           ))}
         </div>
       )}
-    </DashboardCard>
+    </Card>
   );
 }

@@ -1,6 +1,6 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
 import { apiClient, LoadingState } from '@/utils';
-import type { RootState } from '@/app';
+import type { RootState } from '@/app/store';
 import type {
   RecurringRunResult,
   RecurringState,

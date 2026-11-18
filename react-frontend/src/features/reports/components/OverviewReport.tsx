@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { ChartBar, Info, Scales } from '@phosphor-icons/react';
-import { DashboardCard, Segmented } from '@/features/dashboard/components/DashboardCard';
-import { formatCurrency } from '@/features/dashboard/utils';
+import { Card } from '@/components/common/Card/Card';
+import { Segmented } from '@/components/common/Card/Segmented';
+import { formatCurrency } from '@/utils/format';
 import { formatPercent, monthLabel, shareOfIncome, type CashFlowSummary } from '../cashFlow';
 import { useCashFlowSummary } from '../hooks/useCashFlowSummary';
 import { AXIS_TICK, COLORS, CURSOR_FILL, GRID_COLOR, axisCurrency, formatMonthTick } from '../chartTheme';
@@ -84,9 +85,9 @@ export default function OverviewReport() {
         />
       </StatRow>
 
-      <DashboardCard title="Where the money came from and went" icon={<Scales size={18} />}>
+      <Card title="Where the money came from and went" icon={<Scales size={18} />}>
         <MoneyFlow summary={summary} />
-      </DashboardCard>
+      </Card>
 
       <MonthlyCard summary={summary} />
 
@@ -213,7 +214,7 @@ function MonthlyCard({ summary }: { summary: CashFlowSummary }) {
   };
 
   return (
-    <DashboardCard
+    <Card
       title="Month by month"
       icon={<ChartBar size={18} />}
       actions={<Segmented label="View" options={VIEW_OPTIONS} value={view} onChange={setView} />}
@@ -316,7 +317,7 @@ function MonthlyCard({ summary }: { summary: CashFlowSummary }) {
           ]}
         />
       )}
-    </DashboardCard>
+    </Card>
   );
 }
 

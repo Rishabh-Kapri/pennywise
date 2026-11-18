@@ -15,29 +15,10 @@ import {
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
-import {
-  AGENT_MODEL_OPTIONS,
-  appendAgentEvent,
-  appendAgentMessagePart,
-  appendAgentReasoningDelta,
-  appendAgentTextDelta,
-  clearAgentChat,
-  createAgentRun,
-  deleteAgentConversation,
-  fetchAgentConversationMessages,
-  listAgentConversations,
-  selectAgentChatHistory,
-  selectAgentCreateRunLoading,
-  selectAgentMessages,
-  selectCurrentAgentConversationId,
-  selectAgentConversation,
-  selectSelectedAgentModelKey,
-  setSelectedAgentModel,
-  updateAgentConversationTitle,
-} from '@/features/agent/store';
-import { selectSelectedBudget } from '@/features/budget';
+import { AGENT_MODEL_OPTIONS, appendAgentEvent, appendAgentMessagePart, appendAgentReasoningDelta, appendAgentTextDelta, clearAgentChat, createAgentRun, deleteAgentConversation, fetchAgentConversationMessages, listAgentConversations, selectAgentChatHistory, selectAgentCreateRunLoading, selectAgentMessages, selectCurrentAgentConversationId, selectAgentConversation, selectSelectedAgentModelKey, setSelectedAgentModel, updateAgentConversationTitle } from '@/features/agent/store/agentSlice';
+import { selectSelectedBudget } from '@/features/budget/store/budgetSlice';
 import { AGENT_CHAT_WEBSOCKET_EVENT, type WebSocketMessage } from '@/features/websocket/events';
-import type { AgentChatHistoryItem, AgentChatMessage, AgentEventMessageData, MessagePart } from '@/features/agent';
+import type { AgentChatHistoryItem, AgentChatMessage, AgentEventMessageData, MessagePart } from '@/features/agent/types/agent.types';
 import { LoadingState } from '@/utils';
 import { apiClient } from '@/utils';
 import styles from './AgentChat.module.css';

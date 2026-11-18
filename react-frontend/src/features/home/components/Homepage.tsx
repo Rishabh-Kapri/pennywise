@@ -17,6 +17,7 @@ import {
   Sparkle,
   Wallet,
 } from '@phosphor-icons/react';
+import { formatCurrency } from '@/utils/format';
 import styles from './Homepage.module.css';
 
 const categories = [
@@ -24,7 +25,6 @@ const categories = [
   { name: 'Everyday spending', spent: 18240, assigned: 31750, color: 'blue' },
   { name: 'Future plans', spent: 4250, assigned: 26000, color: 'peach' },
 ];
-const inr = (value: number) => `₹${value.toLocaleString('en-IN')}`;
 const steps = [
   {
     icon: EnvelopeSimple,
@@ -95,7 +95,7 @@ function BudgetPreview() {
               <div>
                 <span>{category.name}</span>
                 <span>
-                  {inr(category.spent)} <em>/ {inr(category.assigned)}</em>
+                  {formatCurrency(category.spent)} <em>/ {formatCurrency(category.assigned)}</em>
                 </span>
               </div>
               <div className={styles.track}>

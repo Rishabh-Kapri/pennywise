@@ -1,16 +1,7 @@
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { useHeader } from '@/components/layout/slots';
 import { selectInflowCategory } from '@/features/category/store/categorySlice';
-import {
-  createPayee,
-  deletePayeeRule,
-  deletePayees,
-  mergePayees,
-  type PayeeRuleInput,
-  refreshPayeeData,
-  renamePayee,
-  savePayeeRule,
-} from '@/features/payees/store';
+import { createPayee, deletePayeeRule, deletePayees, mergePayees, type PayeeRuleInput, refreshPayeeData, renamePayee, savePayeeRule } from '@/features/payees/store/payeeSlice';
 import type { PayeeRule } from '@/features/payees/types/payee.types';
 import type { TransactionsLocationState } from '@/features/transactions/types/filter.types';
 import { LoadingState, errorMessage, toast } from '@/utils';

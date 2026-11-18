@@ -1,8 +1,8 @@
 import type { ReactNode } from 'react';
-import { getCurrencyLocaleString } from '@/utils/date.utils';
 import type { TransactionSource, TransactionSourceKind } from '../../types/transaction.types';
 import { formatSourceTime } from '../../utils/sourceTime';
 import styles from './TransactionDetailPanel.module.css';
+import { formatAmount } from '@/utils/format';
 
 const KIND_LABELS: Record<TransactionSourceKind, string> = {
   EMAIL: 'Email',
@@ -38,7 +38,7 @@ function SourceCard({ source }: { source: TransactionSource }) {
         <SourceFact label="Account">{source.accountHint ? `••${source.accountHint}` : undefined}</SourceFact>
         <SourceFact label="Amount">
           {source.amount !== undefined
-            ? `${source.direction === 'CREDIT' ? '+' : source.direction === 'DEBIT' ? '-' : ''}${getCurrencyLocaleString(source.amount)}`
+            ? `${source.direction === 'CREDIT' ? '+' : source.direction === 'DEBIT' ? '-' : ''}${formatAmount(source.amount)}`
             : undefined}
         </SourceFact>
       </dl>

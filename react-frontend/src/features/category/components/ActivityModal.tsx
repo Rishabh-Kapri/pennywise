@@ -5,7 +5,7 @@ import type { Transaction } from '@/features/transactions/types/transaction.type
 import { apiClient } from '@/utils';
 import { type PaginationResponse } from '@/utils/common.constants';
 import { getLocaleDate } from '@/utils/date.utils';
-import { formatBudgetAmount } from './budgetFormat';
+import { formatBudgetAmount } from '@/utils/format';
 import styles from './ActivityModal.module.css';
 
 interface ActivityPopoverProps {

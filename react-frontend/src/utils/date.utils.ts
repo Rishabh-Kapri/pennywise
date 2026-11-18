@@ -1,15 +1,4 @@
-function pad(
-  value: string,
-  padLength: number,
-  padValue: string,
-  isStart: boolean = true,
-) {
-  if (isStart) {
-    return value.padStart(padLength, padValue);
-  } else {
-    return value.padEnd(padLength, padValue);
-  }
-}
+const pad = (value: string) => value.padStart(2, '0');
 
 /**
  * Returns the month key in format yyyy-mm
@@ -17,14 +6,14 @@ function pad(
  */
 export function getCurrentMonthKey(): string {
   const date = new Date();
-  const month = pad((date.getMonth() + 1).toString(), 2, '0');
+  const month = pad((date.getMonth() + 1).toString());
   return `${date.getFullYear()}-${month}`;
 }
 
 export function getPreviousMonthKey(monthKey: string): string {
   const [year, currentMonth] = monthKey.split('-');
   const date = new Date(parseInt(year, 10), parseInt(currentMonth, 10) - 2);
-  const month = pad((date.getMonth() + 1).toString(), 2, '0');
+  const month = pad((date.getMonth() + 1).toString());
   return `${date.getFullYear()}-${month}`;
 }
 
@@ -46,7 +35,7 @@ export function getLocaleDate(
  * JS months start from 0, incrementing by 1 to match human language
  */
 export function getMonthKey(year: number, month: number): string {
-  const monthStr = pad((month + 1).toString(), 2, '0');
+  const monthStr = pad((month + 1).toString());
   return `${year}-${monthStr}`;
 }
 
@@ -55,8 +44,8 @@ export function getMonthKey(year: number, month: number): string {
  */
 export function getTodaysDate(): string {
   const date = new Date();
-  const month = pad((date.getMonth() + 1).toString(), 2, '0');
-  const day = pad(date.getDate().toString(), 2, '0');
+  const month = pad((date.getMonth() + 1).toString());
+  const day = pad(date.getDate().toString());
   return `${date.getFullYear()}-${month}-${day}`;
 }
 
@@ -88,13 +77,4 @@ export function getSelectedMonthInHumanFormat(key: string): string {
   const date = new Date(yearInt, monthInt - 1, 1);
 
   return `${date.toLocaleString('en-us', { month: 'short' })}, ${year}`;
-}
-
-export function getCurrencyLocaleString(
-  value: number,
-  currency: string = 'INR',
-  locale = 'en-IN',
-  options: Intl.NumberFormatOptions = {},
-) {
-  return value.toLocaleString(locale, { style: 'currency', currency, ...options });
 }

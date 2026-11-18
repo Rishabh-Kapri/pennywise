@@ -11,7 +11,7 @@ import type {
   CategoryGroup,
 } from '../types/category.types';
 import { apiClient, LoadingState } from '@/utils';
-import type { RootState } from '@/app';
+import type { RootState } from '@/app/store';
 
 interface CreateCategoryPayload {
   name: string;

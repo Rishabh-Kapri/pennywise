@@ -1,4 +1,4 @@
-import styles from './DashboardCard.module.css';
+import styles from './Card.module.css';
 
 interface SegmentedProps<T extends string> {
   label: string;
@@ -8,7 +8,7 @@ interface SegmentedProps<T extends string> {
 }
 
 /** A small pill toggle for a card-level view option. */
-export default function Segmented<T extends string>({ label, options, value, onChange }: SegmentedProps<T>) {
+export function Segmented<T extends string>({ label, options, value, onChange }: SegmentedProps<T>) {
   return (
     <div className={styles.segmented} role="group" aria-label={label}>
       {options.map((option) => (

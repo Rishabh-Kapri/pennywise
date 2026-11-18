@@ -2,9 +2,9 @@ import { type CSSProperties, type MouseEvent, useCallback, useEffect, useRef, us
 import type { TransactionColumns } from '@/types/common.types';
 import { type Transaction, type ListItem } from '../../types/transaction.types';
 import styles from '../Transaction/Transaction.module.css';
-import { TransactionCell } from '../TransactionCell';
+import { TransactionCell } from '@/features/transactions/components/TransactionCell/TransactionCell';
 import type { RowComponentProps } from 'react-window';
-import { formatBudgetAmount } from '@/features/category/components/budgetFormat';
+import { formatBudgetAmount } from '@/utils/format';
 
 const INLINE_EDIT_TRANSACTION_KEYS = new Set<keyof Transaction>([
   'payeeName',

@@ -1,5 +1,5 @@
 import { apiClient, LoadingState } from '@/utils';
-import type { RootState } from '@/app';
+import type { RootState } from '@/app/store';
 import { createAsyncThunk, createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import type { JobDetail, JobFilters, JobList, JobsState, JobUpdate } from '../types/job.types';
 

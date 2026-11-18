@@ -13,14 +13,7 @@ import LoanPaymentSplit from './LoanPaymentSplit';
 import PayoffSimulator from './PayoffSimulator';
 import LoanAccountForm from './LoanAccountForm';
 import styles from './LoanOverview.module.css';
-
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(value);
-}
+import { formatCurrency } from '@/utils/format';
 
 export default function LoanOverview() {
   // rendered as a Settings section, so the selected loan rides on ?account=

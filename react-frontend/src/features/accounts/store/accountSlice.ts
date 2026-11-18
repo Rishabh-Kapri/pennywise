@@ -11,7 +11,7 @@ import {
   type AccountState,
 } from '../types/account.types';
 import { apiClient, LoadingState } from '@/utils';
-import type { RootState } from '@/app';
+import type { RootState } from '@/app/store';
 import { fetchAllPayees } from '@/features/payees/store/payeeSlice';
 
 const initialState: AccountState = {

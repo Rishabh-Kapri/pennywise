@@ -1,4 +1,4 @@
-import { formatCompactCurrency } from '@/features/dashboard/utils';
+import { formatCompactCurrency } from '@/utils/format';
 import { monthLabel } from './cashFlow';
 
 /**

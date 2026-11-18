@@ -1,6 +1,6 @@
 import { getLocaleDate } from '@/utils/date.utils';
 import type { CategoryGoal } from '../types/category.types';
-import { formatBudgetAmount } from '../components/budgetFormat';
+import { formatBudgetAmount } from '@/utils/format';
 import type { GoalProgress } from './goalProgress';
 
 export const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];

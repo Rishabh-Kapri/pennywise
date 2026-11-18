@@ -3,7 +3,7 @@ import {
   createAsyncThunk,
   type PayloadAction,
 } from '@reduxjs/toolkit';
-import type { RootState } from '@/app';
+import type { RootState } from '@/app/store';
 import { LoadingState } from '@/utils';
 import type {
   AuthState,

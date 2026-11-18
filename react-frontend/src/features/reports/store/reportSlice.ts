@@ -12,7 +12,7 @@ import {
 import { apiClient, LoadingState } from '@/utils';
 import { addMonths, getCurrentMonthKey } from '@/utils/date.utils';
 import { setSelectedBudget } from '@/features/budget/store/budgetSlice';
-import type { RootState } from '@/app';
+import type { RootState } from '@/app/store';
 
 export interface ReportQueryArgs {
   range: ReportRange;

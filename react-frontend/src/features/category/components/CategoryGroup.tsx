@@ -8,9 +8,9 @@ import { CategoryInfo } from './CategoryInfo';
 import { MonthSummary } from './MonthSummary';
 import { GroupRenameButton } from './CategoryActions';
 import { useAppDispatch } from '@/app/hooks';
-import { createCategory, HIDDEN_GROUP_ID, toggleGroupCollapse } from '../store';
+import { createCategory, HIDDEN_GROUP_ID, toggleGroupCollapse } from '@/features/category/store/categorySlice';
 import { toast } from '@/utils';
-import { formatBudgetAmount } from './budgetFormat';
+import { formatBudgetAmount } from '@/utils/format';
 
 interface CategoryGroupProps {
   groups: CategoryGroup[];

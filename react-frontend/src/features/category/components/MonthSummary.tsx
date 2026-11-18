@@ -7,7 +7,7 @@ import { toast } from '@/utils';
 import { selectInflowCategory, updateCategoryBudget } from '../store/categorySlice';
 import { getGoalProgress } from '../goals/goalProgress';
 import { getLocaleDate, getPreviousMonthKey } from '@/utils/date.utils';
-import { formatBudgetAmount } from './budgetFormat';
+import { formatBudgetAmount } from '@/utils/format';
 
 interface MonthSummaryProps {
   groups: CategoryGroup[];

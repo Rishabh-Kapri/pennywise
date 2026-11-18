@@ -9,15 +9,12 @@ import { fetchAllAccounts } from '@/features/accounts/store/accountSlice';
 import { selectUser } from '@/features/auth/store/authSlice';
 import { selectSelectedBudget, selectSelectedMonth } from '@/features/budget/store/budgetSlice';
 import { fetchInflowAmount, selectInflowAmount, selectInflowLoading } from '@/features/category/store/categorySlice';
-import { BalanceCard, CashFlowCard, RecentActivity, SpendingCard } from '@/features/dashboard/components';
-import {
-  fetchDashboardActivity,
-  fetchDashboardCashFlow,
-  selectDashboardError,
-  selectDashboardReady,
-  selectDashboardRevision,
-} from '@/features/dashboard/store';
-import { formatCurrency } from '@/features/dashboard/utils';
+import BalanceCard from '@/features/dashboard/components/BalanceCard/BalanceCard';
+import CashFlowCard from '@/features/dashboard/components/CashFlowCard/CashFlowCard';
+import RecentActivity from '@/features/dashboard/components/RecentActivity/RecentActivity';
+import SpendingCard from '@/features/dashboard/components/SpendingCard/SpendingCard';
+import { fetchDashboardActivity, fetchDashboardCashFlow, selectDashboardError, selectDashboardReady, selectDashboardRevision } from '@/features/dashboard/store/dashboardSlice';
+import { formatCurrency } from '@/utils/format';
 import { GettingStartedChecklist } from '@/features/onboarding/components/GettingStartedChecklist';
 import { LoadingState } from '@/utils';
 import styles from './Dashboard.module.css';
