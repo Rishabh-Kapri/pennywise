@@ -8,6 +8,7 @@ import type { Category, CategoryGroup } from '../../types/category.types';
 import { selectCategoryGroups, updateCategoryBudget } from '@/features/category/store/categorySlice';
 import { AmountCell } from '../AmountCell';
 import styles from './Popover.module.css';
+import { isUserGroup } from '@/features/category/store/categorySlice';
 
 interface Props {
   triggerRef: React.RefObject<HTMLElement | null>;
@@ -19,8 +20,7 @@ interface Props {
   onClose: () => void;
 }
 
-const transformGroups = (groups: CategoryGroup[]) =>
-  groups.filter((group) => !group.isSystem && group.name !== 'Hidden');
+const transformGroups = (groups: CategoryGroup[]) => groups.filter(isUserGroup);
 
 /**
  * Move money between categories for the selected month. A positive balance

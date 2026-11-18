@@ -16,7 +16,7 @@ import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { errorMessage, toast } from '@/utils';
 import type { Category, CategoryGroup } from '../types/category.types';
 import {
-  HIDDEN_GROUP_ID,
+  isUserGroup,
   renameCategoryGroup,
   selectCategoryGroups,
   updateCategory,
@@ -106,7 +106,7 @@ export function CategoryActions({ category }: CategoryActionsProps) {
     }
   };
 
-  const destinations = allCategoryGroups.filter((g) => !g.isSystem && g.id !== HIDDEN_GROUP_ID);
+  const destinations = allCategoryGroups.filter(isUserGroup);
 
   return (
     <>
@@ -209,7 +209,7 @@ export function GroupRenameButton({ group }: { group: CategoryGroup }) {
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const [isOpen, setIsOpen] = useState(false);
 
-  if (group.isSystem || !group.id || group.id === HIDDEN_GROUP_ID) return null;
+  if (!group.id || !isUserGroup(group)) return null;
 
   const save = async (name: string) => {
     try {

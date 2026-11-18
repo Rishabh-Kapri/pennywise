@@ -10,10 +10,9 @@ import { selectInflowCategory } from '@/features/category/store/categorySlice';
 import type { DropdownProps } from '@/components/common/pickers/types';
 import { MultiSelectMenu } from '@/components/common/pickers/MultiSelectMenu';
 import { formatAmount } from '@/utils/format';
+import { isUserGroup } from '@/features/category/store/categorySlice';
 
-const transformGroups = (groups: CategoryGroup[]) => {
-  return groups.filter((group) => !group.isSystem && group.name !== 'Hidden');
-};
+const transformGroups = (groups: CategoryGroup[]) => groups.filter(isUserGroup);
 
 export function CategoryDropdown({
   value,
