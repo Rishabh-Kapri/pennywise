@@ -4,27 +4,8 @@ import { useAppDispatch } from '@/app/hooks';
 import { logout } from '@/features/auth/store/authSlice';
 import { Modal } from '@/components/common/Modal/Modal';
 import { apiClient } from '@/utils';
+import { useAccountProfile, type ConnectedProvider } from '@/features/auth/hooks/useAccountProfile';
 import styles from './Settings.module.css';
-
-interface ConnectedProvider {
-  providerType: string;
-  providerId: string;
-  email?: string;
-  name?: string;
-  picture?: string;
-}
-
-interface CurrentUser {
-  id: string;
-  email: string;
-  name: string;
-  picture?: string;
-  providers: ConnectedProvider[];
-}
-
-interface Props {
-  user: CurrentUser | null;
-}
 
 /** One sign-in has a row per app (web, Android) with the same provider ID. */
 function uniqueProviders(providers: ConnectedProvider[] = []): ConnectedProvider[] {
@@ -32,7 +13,8 @@ function uniqueProviders(providers: ConnectedProvider[] = []): ConnectedProvider
   return [...byId.values()];
 }
 
-export function GeneralSettings({ user }: Props) {
+export function GeneralSettings() {
+  const user = useAccountProfile();
   const providers = uniqueProviders(user?.providers);
   const dispatch = useAppDispatch();
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);

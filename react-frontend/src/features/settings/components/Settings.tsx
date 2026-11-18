@@ -16,17 +16,16 @@ import {
 import {
   lazy,
   Suspense,
-  useEffect,
   useRef,
   useState,
   type ComponentType,
   type KeyboardEvent,
 } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { apiClient } from '@/utils';
 import { GeneralSettings } from './GeneralSettings';
 import { AISettings } from './AISettings';
 import { TagSettings } from './TagSettings';
+import { MailSettings } from './MailSettings';
 import { SharingSettings } from '@/features/sharing/components/SharingSettings';
 
 // heavier, data-driven sections: keep them out of the settings entry chunk
@@ -38,46 +37,12 @@ const LoanOverview = lazy(() => import('@/features/loans/components/LoanOverview
 const Jobs = lazy(() => import('@/features/jobs/components/Jobs'));
 const DocumentLibrary = lazy(() => import('@/features/documents/components/DocumentLibrary'));
 const StatementReconcile = lazy(() => import('@/features/reconcile/components/StatementReconcile'));
-import { MailSettings } from './MailSettings';
 import styles from './Settings.module.css';
-
-/* ────────────────────────────────────────────────────────────── */
-/*  Types                                                        */
-/* ────────────────────────────────────────────────────────────── */
-
-interface ConnectedProvider {
-  providerType: string;
-  providerId: string;
-  email?: string;
-  name?: string;
-  picture?: string;
-}
-
-interface CurrentUser {
-  id: string;
-  email: string;
-  name: string;
-  picture?: string;
-  providers: ConnectedProvider[];
-}
-
-type SectionId =
-  | 'general'
-  | 'sharing'
-  | 'loans'
-  | 'recurring'
-  | 'documents'
-  | 'reconcile'
-  | 'mail'
-  | 'jobs'
-  | 'review'
-  | 'tags'
-  | 'ai';
 
 type GroupId = 'account' | 'budget' | 'automation';
 
 interface SectionDef {
-  id: SectionId;
+  id: string;
   group: GroupId;
   label: string;
   icon: ComponentType<IconProps>;
@@ -86,6 +51,7 @@ interface SectionDef {
   keywords?: string;
   /** The section renders its own title, so the page header is left out. */
   ownHeader?: boolean;
+  component: ComponentType;
 }
 
 const GROUPS: { id: GroupId; label: string }[] = [
@@ -94,9 +60,10 @@ const GROUPS: { id: GroupId; label: string }[] = [
   { id: 'automation', label: 'Automation' },
 ];
 
-const SECTIONS: SectionDef[] = [
+const SECTIONS = [
   {
     id: 'general',
+    component: GeneralSettings,
     group: 'account',
     label: 'General',
     icon: GearSix,
@@ -105,6 +72,7 @@ const SECTIONS: SectionDef[] = [
   },
   {
     id: 'sharing',
+    component: SharingSettings,
     group: 'budget',
     label: 'Sharing',
     icon: UsersThree,
@@ -113,6 +81,7 @@ const SECTIONS: SectionDef[] = [
   },
   {
     id: 'loans',
+    component: LoanOverview,
     group: 'budget',
     label: 'Loans',
     icon: Banknote,
@@ -121,6 +90,7 @@ const SECTIONS: SectionDef[] = [
   },
   {
     id: 'recurring',
+    component: Recurring,
     ownHeader: true,
     group: 'budget',
     label: 'Recurring',
@@ -130,6 +100,7 @@ const SECTIONS: SectionDef[] = [
   },
   {
     id: 'documents',
+    component: DocumentLibrary,
     ownHeader: true,
     group: 'budget',
     label: 'Documents',
@@ -139,6 +110,7 @@ const SECTIONS: SectionDef[] = [
   },
   {
     id: 'reconcile',
+    component: StatementReconcile,
     ownHeader: true,
     group: 'budget',
     label: 'Reconcile',
@@ -148,6 +120,7 @@ const SECTIONS: SectionDef[] = [
   },
   {
     id: 'tags',
+    component: TagSettings,
     ownHeader: true,
     group: 'budget',
     label: 'Tags',
@@ -157,6 +130,7 @@ const SECTIONS: SectionDef[] = [
   },
   {
     id: 'ai',
+    component: AISettings,
     group: 'automation',
     label: 'AI & Predictions',
     icon: Sparkle,
@@ -165,6 +139,7 @@ const SECTIONS: SectionDef[] = [
   },
   {
     id: 'review',
+    component: PredictionReview,
     ownHeader: true,
     group: 'automation',
     label: 'Prediction Review',
@@ -174,6 +149,7 @@ const SECTIONS: SectionDef[] = [
   },
   {
     id: 'mail',
+    component: MailSettings,
     group: 'automation',
     label: 'Email sync',
     icon: EnvelopeSimple,
@@ -182,13 +158,16 @@ const SECTIONS: SectionDef[] = [
   },
   {
     id: 'jobs',
+    component: Jobs,
     group: 'automation',
     label: 'Jobs',
     icon: TreeStructure,
     description: 'What happened to each email, and why anything stopped.',
     keywords: 'queue worker retry failed error mailbox message',
   },
-];
+] as const satisfies readonly SectionDef[];
+
+type SectionId = (typeof SECTIONS)[number]['id'];
 
 /* ────────────────────────────────────────────────────────────── */
 /*  Components                                                   */
@@ -286,14 +265,11 @@ function SidebarNav({
   );
 }
 
-const SECTION_IDS = SECTIONS.map((section) => section.id);
-
 function isSectionId(value: string | null): value is SectionId {
-  return value !== null && (SECTION_IDS as string[]).includes(value);
+  return SECTIONS.some((section) => section.id === value);
 }
 
 export default function Settings() {
-  const [user, setUser] = useState<CurrentUser | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
 
   // ?section= keeps sections linkable now that they aren't routes of their own
@@ -305,16 +281,8 @@ export default function Settings() {
     setSearchParams(id === 'general' ? {} : { section: id }, { replace: true });
   };
 
-
-  useEffect(() => {
-    apiClient
-      .get<CurrentUser>('auth/users/me')
-      .then(setUser)
-      .catch(() => setUser(null));
-  }, []);
-
-  const section = SECTIONS.find((s) => s.id === activeSection) ?? SECTIONS[0];
-  const loading = <div className={styles.loading}>Loading…</div>;
+  const section: SectionDef = SECTIONS.find((s) => s.id === activeSection) ?? SECTIONS[0];
+  const Section = section.component;
 
   return (
     <section className={styles.page}>
@@ -335,41 +303,9 @@ export default function Settings() {
           </header>
         )}
 
-        {activeSection === 'general' && <GeneralSettings user={user} />}
-        {activeSection === 'sharing' && <SharingSettings />}
-        {activeSection === 'loans' && (
-          <Suspense fallback={loading}>
-            <LoanOverview />
-          </Suspense>
-        )}
-        {activeSection === 'recurring' && (
-          <Suspense fallback={loading}>
-            <Recurring />
-          </Suspense>
-        )}
-        {activeSection === 'documents' && (
-          <Suspense fallback={loading}>
-            <DocumentLibrary />
-          </Suspense>
-        )}
-        {activeSection === 'reconcile' && (
-          <Suspense fallback={loading}>
-            <StatementReconcile />
-          </Suspense>
-        )}
-        {activeSection === 'mail' && <MailSettings />}
-        {activeSection === 'jobs' && (
-          <Suspense fallback={loading}>
-            <Jobs />
-          </Suspense>
-        )}
-        {activeSection === 'review' && (
-          <Suspense fallback={loading}>
-            <PredictionReview />
-          </Suspense>
-        )}
-        {activeSection === 'tags' && <TagSettings />}
-        {activeSection === 'ai' && <AISettings />}
+        <Suspense fallback={<div className={styles.loading}>Loading…</div>}>
+          <Section />
+        </Suspense>
       </div>
     </section>
   );
