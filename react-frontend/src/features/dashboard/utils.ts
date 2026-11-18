@@ -1,4 +1,5 @@
 import type { Transaction } from '@/features/transactions/types/transaction.types';
+import { transactionNet } from '@/features/transactions/utils/amount';
 import type { BalancePoint } from './types/dashboard.types';
 
 // ── Dates (transaction dates are plain YYYY-MM-DD strings) ──
@@ -41,8 +42,6 @@ export function formatMonthName(month: string, style: 'long' | 'short' = 'long')
 
 // ── Balance history ──
 
-/** Net effect of a transaction on its account's balance. */
-export const transactionNet = (txn: Transaction) => (txn.inflow ?? 0) - (txn.outflow ?? 0);
 
 /**
  * End-of-day balance of the given accounts for every day from `start` to

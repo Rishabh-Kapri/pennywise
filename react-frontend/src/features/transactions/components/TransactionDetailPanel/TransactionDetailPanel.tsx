@@ -25,7 +25,7 @@ import { AccountDropdown } from '@/features/accounts/components/AccountDropdown'
 import { PayeeDropdown } from '@/features/payees/components/PayeeDropdown';
 import { CategoryDropdown } from '@/features/category/components/CategoryDropdown';
 import { DateDropdown } from '@/components/common/pickers/DateDropdown';
-import { BankLogo } from '@/features/accounts/components/BankLogo/BankLogo';
+import { AccountLogo } from '@/features/accounts/components/BankLogo/AccountLogo';
 import { TransactionLocationSection } from './TransactionLocationSection';
 import { TransactionDocumentsSection } from './TransactionDocumentsSection';
 import { TransactionSources } from './TransactionSources';
@@ -595,7 +595,6 @@ function TransactionView({
     [allTags, txn.tagIds],
   );
 
-  const account = allAccounts.find((acc) => acc.id === txn.accountId);
 
   const linkedAccount = useMemo(
     () => allAccounts.find((account) => account.id === txn.transferAccountId) ?? null,
@@ -678,7 +677,7 @@ function TransactionView({
         <div className={styles.fact}>
           <dt>Account</dt>
           <dd className={styles.factEditable}>
-            <BankLogo name={txn.accountName} bank={account?.bank} type={account?.type} size="sm" />
+            <AccountLogo accountId={txn.accountId} name={txn.accountName} size="sm" />
             <AccountDropdown value={txn.accountName} onClick={onSelectChange('accountId', 'accountName')} variant="ghost" />
           </dd>
         </div>
@@ -773,11 +772,6 @@ function ReviewActions({ onStatusChange }: { onStatusChange: (status: Transactio
   );
 }
 
-function PanelAccountLogo({ txn }: { txn: Transaction }) {
-  const account = useAppSelector((state) => state.accounts.allAccounts.find((acc) => acc.id === txn.accountId));
-  return <BankLogo name={txn.accountName} bank={account?.bank} type={account?.type} size="md" />;
-}
-
 export function TransactionDetailPanel({
   selectedTxn,
   isAddingNew,
@@ -824,7 +818,7 @@ export function TransactionDetailPanel({
 
   return (
     <PanelFrame
-      leading={<PanelAccountLogo txn={selectedTxn} />}
+      leading={<AccountLogo accountId={selectedTxn.accountId} name={selectedTxn.accountName} size="md" />}
       eyebrow={selectedTxn.accountName || 'Transaction'}
       title={selectedTxn.payeeName || 'Transaction'}
       isClosing={isClosing}
