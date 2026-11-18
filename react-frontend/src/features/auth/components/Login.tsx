@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { loginWithGoogle, loginAsDemo, selectAuthLoading, selectAuthError, selectIsAuthenticated } from '@/features/auth/store/authSlice';
-import { LoadingState, toast } from '@/utils';
+import { LoadingState, errorText, toast } from '@/utils';
 import { config } from '@/config/env';
 import { Check } from '@phosphor-icons/react';
 import styles from './Login.module.css';
@@ -30,14 +30,8 @@ function GoogleSignInButton() {
   const dispatch = useAppDispatch();
   const onGoogleLogin = useGoogleLogin({
     flow: 'auth-code', // the library adds `openid profile email`; Gmail is granted in Settings → Email sync
-    onSuccess: async (codeResponse) => {
-      dispatch(loginWithGoogle(codeResponse.code))
-        .unwrap()
-        .catch((err: unknown) => {
-          const message = err instanceof Error ? err.message : typeof err === 'string' ? err : 'Login failed';
-          toast.error(message);
-        });
-    },
+    // a failed sign-in shows under the buttons, from the auth slice
+    onSuccess: (codeResponse) => void dispatch(loginWithGoogle(codeResponse.code)),
     onError: () => toast.error('Google sign-in failed'),
   });
 
@@ -59,32 +53,7 @@ export function Login() {
     }
   }, [isAuthenticated, navigate]);
 
-  // const handleGoogleCallback = useCallback(
-  //   (response: { credential: string }) => {
-  //     dispatch(loginWithGoogle(response.credential))
-  //       .unwrap()
-  //       .catch((err: unknown) => {
-  //         const message =
-  //           err instanceof Error
-  //             ? err.message
-  //             : typeof err === 'string'
-  //               ? err
-  //               : 'Login failed';
-  //         toast.error(message);
-  //       });
-  //   },
-  //   [dispatch],
-  // );
-
-
-  const onDemoLogin = () => {
-    dispatch(loginAsDemo())
-      .unwrap()
-      .catch((err: unknown) => {
-        const message = err instanceof Error ? err.message : typeof err === 'string' ? err : 'Demo login failed';
-        toast.error(message);
-      });
-  };
+  const onDemoLogin = () => void dispatch(loginAsDemo());
 
   const isLoading = loading === LoadingState.PENDING;
 
@@ -131,7 +100,7 @@ export function Login() {
         )}
 
         {/* Error */}
-        {error && <div className={styles.error}>⚠️ {error}</div>}
+        {error && <div className={styles.error}>⚠️ {errorText(error)}</div>}
 
         {/* Features */}
         <div className={styles.features}>

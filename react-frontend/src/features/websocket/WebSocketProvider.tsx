@@ -134,7 +134,6 @@ export function WebSocketProvider() {
   currentUserIdRef.current = currentUser?.id;
 
   const subscribeToAgentRoom = useCallback((streamId?: string | null, budgetId?: string, userId?: string) => {
-    console.log('subscribing to agent room', streamId, budgetId, userId);
     const socket = socketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN || !budgetId || !userId || !streamId) {
       return;
@@ -211,13 +210,6 @@ export function WebSocketProvider() {
 
       socket.onmessage = (event) => {
         try {
-          console.log('message received', event);
-          // {
-          //   "eventName": "pennywise::agent::chat::stream",
-          //   "data": "{\"message\":\".\",\"type\":\"text_delta\"}",
-          //   "budgetId": "2166418d-3fa2-4acc-b92c-ab9f36c18d76",
-          //   "roomId": "2166418d-3fa2-4acc-b92c-ab9f36c18d76:fb7c7893-84f7-4344-a861-064985d442f7:chat/511bda0e-6e6d-40c1-80ea-053de764f601"
-          // }
           const message = JSON.parse(event.data) as WebSocketMessage;
 
           if (message.budgetId !== budgetId) {

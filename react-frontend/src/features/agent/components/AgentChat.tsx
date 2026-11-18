@@ -87,19 +87,6 @@ function agentStreamMessageId(data: AgentEventMessageData | null) {
   return undefined;
 }
 
-// function agentStreamText(data: unknown) {
-//   if (typeof data === 'string') {
-//     return data;
-//   }
-//   if (!data || typeof data !== 'object') {
-//     return '';
-//   }
-//
-//   const payload = data as Record<string, unknown>;
-//   const value = payload.message ?? payload.text ?? payload.delta ?? payload.content;
-//   return typeof value === 'string' ? value : '';
-// }
-
 function agentMessageLabel(eventName: string) {
   if (
     eventName === TEXT_DELTA_EVENT ||

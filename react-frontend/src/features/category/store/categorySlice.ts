@@ -73,11 +73,9 @@ export const updateCategoryBudget = createAsyncThunk<
 >(
   'categories/updateCategoryBudget',
   async ({ budgeted, categoryId, month }) => {
-    console.log('updateCategoryBudget', budgeted, categoryId, month);
     await apiClient.patch(`categories/${categoryId}/${month}`, {
       budgeted: budgeted,
     });
-    console.log('updateCategoryBudget.fulfilled', budgeted, categoryId, month);
     return { budgeted, categoryId, month };
   },
 );

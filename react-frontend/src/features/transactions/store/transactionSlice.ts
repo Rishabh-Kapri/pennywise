@@ -204,9 +204,8 @@ const transactionSlice = createSlice({
         state.loading = LoadingState.PENDING;
         state.error = null;
       })
-      .addCase(deleteTransactionById.fulfilled, (state, action) => {
+      .addCase(deleteTransactionById.fulfilled, (state) => {
         state.loading = LoadingState.SUCCESS;
-        console.log('transaction deleted', state, action);
       })
       .addCase(createTransaction.pending, (state) => {
         state.loading = LoadingState.PENDING;

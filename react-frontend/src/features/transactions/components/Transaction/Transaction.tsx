@@ -40,7 +40,8 @@ import { selectSelectedBudget } from '@/features/budget/store/budgetSlice';
 import { TransactionMobile } from '@/features/transactions/components/TransactionMobile/TransactionMobile';
 import { TransactionHeader, type MobileFilter } from '@/features/transactions/components/TransactionHeader/TransactionHeader';
 import {
-  applyParsedInputValue,
+  approvedByEdit,
+  parseInputValue,
   buildTransactionPayload,
   createEmptyTransaction,
   filterTransactions,
@@ -301,44 +302,10 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
     });
   }, []);
 
-  const handleInputBlur = useCallback(
-    (key: keyof Transaction, value: string | number) => {
-      if (!selectedTxn || !value) return;
-      try {
-        const updatedTxn = applyParsedInputValue(selectedTxn, key, value);
-        const optimisticTxn: Transaction = {
-          ...updatedTxn,
-          status: updatedTxn.status === TransactionStatus.UNAPPROVED ? TransactionStatus.APPROVED : updatedTxn.status,
-        };
-        setSelectedTxn(updatedTxn);
-        if (!isAddingNew && updatedTxn.id) {
-          dispatch(
-            updateTransaction({
-              payload: buildTransactionPayload(optimisticTxn),
-              optimisticTransaction: optimisticTxn,
-            }),
-          )
-            .unwrap()
-            .then(() => toast.success('Changes saved', { description: describeTxn(optimisticTxn) }))
-            .catch((err) =>
-              toast.error("Couldn't save your change", { description: errorMessage(err, 'Please try again.') }),
-            );
-        }
-      } catch (err) {
-        console.log('handleInputBlur:', err);
-      }
-    },
-    [selectedTxn, isAddingNew, dispatch],
-  );
-
   const handleAutoSave = useCallback(
     (overrides: Partial<Transaction>) => {
       if (!selectedTxn || isAddingNew || !selectedTxn.id) return;
-      const updatedTxn: Transaction = { ...selectedTxn, ...overrides };
-      const optimisticTxn: Transaction = {
-        ...updatedTxn,
-        status: updatedTxn.status === TransactionStatus.UNAPPROVED ? TransactionStatus.APPROVED : updatedTxn.status,
-      };
+      const optimisticTxn = approvedByEdit({ ...selectedTxn, ...overrides });
       dispatch(
         updateTransaction({
           payload: buildTransactionPayload(optimisticTxn),
@@ -352,6 +319,22 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
         );
     },
     [selectedTxn, isAddingNew, dispatch],
+  );
+
+  const handleInputBlur = useCallback(
+    (key: keyof Transaction, value: string | number) => {
+      if (!selectedTxn || !value) return;
+      let changes: Partial<Transaction>;
+      try {
+        changes = parseInputValue(key, value);
+      } catch {
+        toast.error("That amount doesn't add up", { description: 'Use a number or a sum like 1200+300.' });
+        return;
+      }
+      setSelectedTxn({ ...selectedTxn, ...changes });
+      handleAutoSave(changes);
+    },
+    [selectedTxn, handleAutoSave],
   );
 
   const addTransaction = useCallback(() => {
@@ -388,10 +371,7 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
         };
         dispatch(fetchAllTransaction(params));
       } else {
-        const optimisticTxn: Transaction = {
-          ...selectedTxn,
-          status: selectedTxn.status === TransactionStatus.UNAPPROVED ? TransactionStatus.APPROVED : selectedTxn.status,
-        };
+        const optimisticTxn = approvedByEdit(selectedTxn);
         await dispatch(
           updateTransaction({
             payload: buildTransactionPayload(optimisticTxn),

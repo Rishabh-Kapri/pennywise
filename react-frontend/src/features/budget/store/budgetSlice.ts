@@ -146,8 +146,6 @@ export const { setSelectedMonth, setSelectedBudget, budgetOnboardingUpdated } = 
 export default budgetSlice.reducer;
 
 // Selectors
-// const selectBudgetState = (state: RootState) => state.budget;
-// const selectAllBudget = (state: RootState) => state.budget.allBudgets;
 export const selectSelectedMonth = (state: RootState) => state.budgets.selectedMonth;
 export const selectSelectedBudget = (state: RootState) => state.budgets.selectedBudget;
 export const selectAllBudgets = (state: RootState) => state.budgets.allBudgets;
