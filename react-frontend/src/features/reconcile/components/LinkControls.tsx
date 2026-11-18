@@ -8,7 +8,7 @@ import {
   Square,
 } from '@phosphor-icons/react';
 import { useMemo, useState } from 'react';
-import { CategoryDropdown } from '@/features/transactions/components/popovers/CategoryPopover';
+import { CategoryDropdown } from '@/features/category/components/CategoryDropdown';
 import { errorMessage, toast } from '@/utils';
 import { money } from '../statementIdentity';
 import {

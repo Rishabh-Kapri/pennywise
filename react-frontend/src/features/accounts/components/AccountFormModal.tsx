@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { CreditCardIcon } from '@phosphor-icons/react';
 import { Modal } from '@/components/common/Modal/Modal';
 import { useAppDispatch } from '@/app/hooks';
-import { SearchSelect } from '@/features/transactions/components/popovers/SearchSelect';
+import { SearchSelect } from '@/components/common/pickers/SearchSelect';
 import { apiClient, errorMessage, toast } from '@/utils';
 import { createAccount, updateAccount } from '../store/accountSlice';
 import {

@@ -1,6 +1,6 @@
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { X } from '@phosphor-icons/react';
-import styles from './Popover.module.css';
+import styles from '@/components/common/pickers/Picker.module.css';
 import { useAppSelector } from '@/app/hooks';
 import { selectCategoryGroups } from '@/features/category';
 import { Popover } from '@/components/common/Popover/Popover';
@@ -8,8 +8,8 @@ import type { Category, CategoryGroup } from '@/features/category/types/category
 import { selectSelectedMonth } from '@/features/budget';
 import { getCurrencyLocaleString } from '@/utils/date.utils';
 import { selectInflowCategory } from '@/features/category/store/categorySlice';
-import type { TransactionDropdownProps } from './types';
-import { MultiSelectMenu } from './MultiSelectMenu';
+import type { DropdownProps } from '@/components/common/pickers/types';
+import { MultiSelectMenu } from '@/components/common/pickers/MultiSelectMenu';
 
 const transformGroups = (groups: CategoryGroup[]) => {
   return groups.filter((group) => !group.isSystem && group.name !== 'Hidden');
@@ -25,7 +25,7 @@ export function CategoryDropdown({
   onChangeMultiple,
   placeholder,
   counts,
-}: TransactionDropdownProps) {
+}: DropdownProps) {
   const { allCategoryGroups } = useAppSelector(selectCategoryGroups);
   const inflowCategory = useAppSelector(selectInflowCategory);
 

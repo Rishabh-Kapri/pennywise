@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
 import { useAppSelector } from '@/app/hooks';
-import type { TransactionDropdownProps } from './types';
-import { MultiSelectMenu } from './MultiSelectMenu';
-import { SearchSelect } from './SearchSelect';
+import type { DropdownProps } from '@/components/common/pickers/types';
+import { MultiSelectMenu } from '@/components/common/pickers/MultiSelectMenu';
+import { SearchSelect } from '@/components/common/pickers/SearchSelect';
 
 export function PayeeDropdown({
   value,
@@ -15,7 +15,7 @@ export function PayeeDropdown({
   placeholder,
   counts,
   onCreate,
-}: TransactionDropdownProps) {
+}: DropdownProps) {
   const { allPayees } = useAppSelector((state) => state.payees);
 
   const payeeItems = useMemo(

@@ -6,7 +6,7 @@ import { BANK_BRANDS, bankLogoUrl, getBankBrand } from '@/features/accounts/bank
 import { BudgetAccountNames, type BudgetAccountType } from '@/features/accounts/types/account.types';
 import { fetchInflowAmount } from '@/features/category/store/categorySlice';
 import { createTransaction } from '@/features/transactions/store/transactionSlice';
-import { SearchSelect } from '@/features/transactions/components/popovers/SearchSelect';
+import { SearchSelect } from '@/components/common/pickers/SearchSelect';
 import { formatCurrency } from '@/features/dashboard/utils';
 import { errorMessage, toast } from '@/utils';
 import type { StepProps } from '../OnboardingWizard';

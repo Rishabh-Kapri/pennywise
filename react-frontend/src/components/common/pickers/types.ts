@@ -1,7 +1,7 @@
 /** inline: in a table row; form: labelled form field; ghost: borderless until hovered (detail panel rows). */
 export type DropdownVariant = 'inline' | 'form' | 'ghost';
 
-export interface TransactionDropdownProps {
+export interface DropdownProps {
   value: string;
   onClick: (id: string, name: string) => void;
   autoFocus?: boolean;

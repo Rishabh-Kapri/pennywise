@@ -1,9 +1,9 @@
 import type { TransactionColumns } from '@/types/common.types';
 import type { Transaction } from '../../types/transaction.types';
-import { AccountDropdown } from '../popovers/AccountPopover';
-import { PayeeDropdown } from '../popovers/PayeePopover';
-import { CategoryDropdown } from '../popovers/CategoryPopover';
-import { DateDropdown } from '../popovers/DatePopover';
+import { AccountDropdown } from '@/features/accounts/components/AccountDropdown';
+import { PayeeDropdown } from '@/features/payees/components/PayeeDropdown';
+import { CategoryDropdown } from '@/features/category/components/CategoryDropdown';
+import { DateDropdown } from '@/components/common/pickers/DateDropdown';
 import styles from '../Transaction/Transaction.module.css';
 
 type DropdownColKey = 'accountName' | 'payeeName' | 'categoryName' | 'date';

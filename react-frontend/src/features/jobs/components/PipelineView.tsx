@@ -1,6 +1,6 @@
 import { AI_PROVIDERS } from '@/features/onboarding/aiProviders';
 import { fetchAIModels, fetchAIProviders } from '@/features/onboarding/api';
-import { SearchSelect } from '@/features/transactions/components/popovers/SearchSelect';
+import { SearchSelect } from '@/components/common/pickers/SearchSelect';
 import { usableModels, type AIModel, type AIModelKind } from '@/features/onboarding/types';
 import { ApiError } from '@/utils/api';
 import { errorMessage, toast } from '@/utils';

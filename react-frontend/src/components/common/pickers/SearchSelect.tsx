@@ -1,7 +1,7 @@
 import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Popover } from '@/components/common/Popover/Popover';
-import styles from './Popover.module.css';
-import type { DropdownVariant } from './types';
+import styles from '@/components/common/pickers/Picker.module.css';
+import type { DropdownVariant } from '@/components/common/pickers/types';
 
 export interface SearchSelectItem {
   id: string;

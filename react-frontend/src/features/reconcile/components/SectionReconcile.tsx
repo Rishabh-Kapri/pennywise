@@ -27,8 +27,8 @@ import {
 } from '../types/reconcile.types';
 import { accountEnding, formatPeriod, money } from '../statementIdentity';
 import type { Account } from '@/features/accounts/types/account.types';
-import { CategoryDropdown } from '@/features/transactions/components/popovers/CategoryPopover';
-import { PayeeDropdown } from '@/features/transactions/components/popovers/PayeePopover';
+import { CategoryDropdown } from '@/features/category/components/CategoryDropdown';
+import { PayeeDropdown } from '@/features/payees/components/PayeeDropdown';
 import { AccountPicker } from './AccountPicker';
 import { CardSummary } from './CardSummary';
 import { DifferenceForm, LinkCandidates, RowEditor, RowPicker } from './LinkControls';

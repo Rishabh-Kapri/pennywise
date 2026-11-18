@@ -11,7 +11,7 @@ import {
   Warning,
   WarningCircle,
 } from '@phosphor-icons/react';
-import { SearchSelect } from '@/features/transactions/components/popovers/SearchSelect';
+import { SearchSelect } from '@/components/common/pickers/SearchSelect';
 import { errorMessage, toast } from '@/utils';
 import {
   createAIModel,

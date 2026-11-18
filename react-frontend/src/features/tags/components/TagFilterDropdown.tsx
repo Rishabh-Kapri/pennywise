@@ -2,8 +2,8 @@ import { useMemo } from 'react';
 import { useAppSelector } from '@/app/hooks';
 import { selectAllTags } from '@/features/tags/store/tagSlice';
 import { getAutoColor, tagLabel } from '@/features/tags/utils';
-import { MultiSelectMenu } from './MultiSelectMenu';
-import styles from './MultiSelectMenu.module.css';
+import { MultiSelectMenu } from '@/components/common/pickers/MultiSelectMenu';
+import styles from '@/components/common/pickers/MultiSelectMenu.module.css';
 
 interface TagFilterDropdownProps {
   selectedIds: string[];

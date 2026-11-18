@@ -693,7 +693,7 @@
   color: var(--color-text-secondary);
 }
 
-/* same box as the payee/account editors (popovers/Popover.module.css .input) */
+/* same box as the payee/account editors (common/pickers/Picker.module.css .input) */
 .input {
   width: 100%;
   padding: 0.45rem 0.75rem;

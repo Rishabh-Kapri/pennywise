@@ -11,9 +11,9 @@ import {
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { LoadingState } from '@/utils';
 import { getCurrencyLocaleString, getLocaleDate, getTodaysDate } from '@/utils/date.utils';
-import { AccountDropdown } from '@/features/transactions/components/popovers/AccountPopover';
-import { PayeeDropdown } from '@/features/transactions/components/popovers/PayeePopover';
-import { CategoryDropdown } from '@/features/transactions/components/popovers/CategoryPopover';
+import { AccountDropdown } from '@/features/accounts/components/AccountDropdown';
+import { PayeeDropdown } from '@/features/payees/components/PayeeDropdown';
+import { CategoryDropdown } from '@/features/category/components/CategoryDropdown';
 import {
   createRecurringTransaction,
   deleteRecurringTransaction,

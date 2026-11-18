@@ -1,10 +1,10 @@
 import { useCallback } from 'react';
 import { XIcon } from '@phosphor-icons/react';
-import { AccountDropdown } from '../popovers/AccountPopover';
-import { PayeeDropdown } from '../popovers/PayeePopover';
-import { CategoryDropdown } from '../popovers/CategoryPopover';
-import { DateDropdown } from '../popovers/DatePopover';
-import { TagFilterDropdown } from '../popovers/TagFilterDropdown';
+import { AccountDropdown } from '@/features/accounts/components/AccountDropdown';
+import { PayeeDropdown } from '@/features/payees/components/PayeeDropdown';
+import { CategoryDropdown } from '@/features/category/components/CategoryDropdown';
+import { DateDropdown } from '@/components/common/pickers/DateDropdown';
+import { TagFilterDropdown } from '@/features/tags/components/TagFilterDropdown';
 import type { TransactionFacets } from '../../hooks/useTransactionFacets';
 import {
   EMPTY_FILTERS,

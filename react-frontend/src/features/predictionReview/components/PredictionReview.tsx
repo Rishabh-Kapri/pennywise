@@ -3,8 +3,8 @@ import { CheckIcon, PencilSimpleIcon, RobotIcon, XIcon } from '@phosphor-icons/r
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { LoadingState } from '@/utils';
 import { getCurrencyLocaleString, getLocaleDate } from '@/utils/date.utils';
-import { PayeeDropdown } from '@/features/transactions/components/popovers/PayeePopover';
-import { CategoryDropdown } from '@/features/transactions/components/popovers/CategoryPopover';
+import { PayeeDropdown } from '@/features/payees/components/PayeeDropdown';
+import { CategoryDropdown } from '@/features/category/components/CategoryDropdown';
 import {
   fetchReviewQueue,
   reviewPrediction,

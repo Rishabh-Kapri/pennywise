@@ -1,8 +1,8 @@
 import { TrashIcon } from '@phosphor-icons/react';
 import { useAppDispatch, useAppSelector } from '@/app/hooks';
-import { AccountDropdown } from '@/features/transactions/components/popovers/AccountPopover';
-import { CategoryDropdown } from '@/features/transactions/components/popovers/CategoryPopover';
-import { TagFilterDropdown } from '@/features/transactions/components/popovers/TagFilterDropdown';
+import { AccountDropdown } from '@/features/accounts/components/AccountDropdown';
+import { CategoryDropdown } from '@/features/category/components/CategoryDropdown';
+import { TagFilterDropdown } from '@/features/tags/components/TagFilterDropdown';
 import { selectReportFilters, setReportFilters } from '../store/reportSlice';
 import {
   EMPTY_REPORT_FILTERS,

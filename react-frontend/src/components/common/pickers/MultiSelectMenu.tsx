@@ -1,9 +1,9 @@
 import { CheckIcon, MagnifyingGlassIcon } from '@phosphor-icons/react';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Popover } from '@/components/common/Popover/Popover';
-import popoverStyles from './Popover.module.css';
-import styles from './MultiSelectMenu.module.css';
-import type { DropdownVariant } from './types';
+import popoverStyles from '@/components/common/pickers/Picker.module.css';
+import styles from '@/components/common/pickers/MultiSelectMenu.module.css';
+import type { DropdownVariant } from '@/components/common/pickers/types';
 
 export interface MultiSelectItem {
   id: string;

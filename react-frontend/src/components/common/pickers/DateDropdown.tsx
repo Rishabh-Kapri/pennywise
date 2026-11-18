@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Popover } from '@/components/common/Popover/Popover';
-import { MiniCalendar } from './MiniCalendar';
-import styles from './Popover.module.css';
+import { MiniCalendar } from '@/components/common/pickers/MiniCalendar';
+import styles from '@/components/common/pickers/Picker.module.css';
 import { getLocaleDate } from '@/utils/date.utils';
-import type { DropdownVariant, TransactionDropdownProps } from './types';
+import type { DropdownVariant, DropdownProps } from '@/components/common/pickers/types';
 
 const triggerClass: Record<DropdownVariant, string> = {
   inline: styles.dateTrigger,
@@ -11,7 +11,7 @@ const triggerClass: Record<DropdownVariant, string> = {
   ghost: styles.ghostTrigger,
 };
 
-export function DateDropdown({ value, onClick, autoFocus, variant = 'inline', placeholder }: TransactionDropdownProps) {
+export function DateDropdown({ value, onClick, autoFocus, variant = 'inline', placeholder }: DropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
 

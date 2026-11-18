@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { GitMerge, Warning, X } from '@phosphor-icons/react';
 import { Modal } from '@/components/common/Modal/Modal';
-import { SearchSelect } from '@/features/transactions/components/popovers/SearchSelect';
+import { SearchSelect } from '@/components/common/pickers/SearchSelect';
 import type { Payee, PayeeStats } from '../types/payee.types';
 import { formatLastUsed } from '../payeeUtils';
 import { PayeeAvatar } from './PayeeAvatar';

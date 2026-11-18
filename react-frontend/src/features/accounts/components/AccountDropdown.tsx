@@ -1,9 +1,9 @@
 import { useMemo } from 'react';
 import { useAppSelector } from '@/app/hooks';
 import { BankLogo } from '@/features/accounts/components/BankLogo/BankLogo';
-import type { TransactionDropdownProps } from './types';
-import { MultiSelectMenu } from './MultiSelectMenu';
-import { SearchSelect } from './SearchSelect';
+import type { DropdownProps } from '@/components/common/pickers/types';
+import { MultiSelectMenu } from '@/components/common/pickers/MultiSelectMenu';
+import { SearchSelect } from '@/components/common/pickers/SearchSelect';
 
 export function AccountDropdown({
   value,
@@ -15,7 +15,7 @@ export function AccountDropdown({
   onChangeMultiple,
   placeholder,
   counts,
-}: TransactionDropdownProps) {
+}: DropdownProps) {
   const { allAccounts } = useAppSelector((state) => state.accounts);
   // every account type (loans and tracking too); closed ones can't take new transactions
   const pickableAccounts = useMemo(
