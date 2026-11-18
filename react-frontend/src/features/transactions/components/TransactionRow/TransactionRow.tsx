@@ -142,13 +142,6 @@ export function TransactionRow({
     [handleSelectedTxnChange, isAddingNew, onAutoSave, resetInlineEdit],
   );
 
-  const handleTagsChange = useCallback(
-    (tagIds: string[]) => {
-      handleSelectedTxnChange('tagIds', tagIds);
-    },
-    [handleSelectedTxnChange],
-  );
-
   if (item.type === 'header') {
     return <MonthGroupHeader item={item} style={style} />;
   }
@@ -207,7 +200,6 @@ export function TransactionRow({
                 autoFocus={isActiveInlineEditCell}
                 onFieldChange={handleInputChange}
                 onSelectChange={createSelectHandler}
-                onTagsChange={handleTagsChange}
                 onBlur={(key, value) => {
                   handleInputBlur(key, value);
                 }}
