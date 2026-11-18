@@ -29,7 +29,7 @@ const initialState: BudgetState = {
   allBudgets: [],
   selectedBudget: null,
   selectedMonth: '',
-  loading: 'idle',
+  loading: LoadingState.IDLE,
   error: null,
 };
 

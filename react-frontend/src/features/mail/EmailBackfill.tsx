@@ -3,7 +3,8 @@ import { CircleNotch } from '@phosphor-icons/react';
 import { useEffect, useState } from 'react';
 import styles from './EmailBackfill.module.css';
 
-const BACKFILL_DAYS = 30;
+/** How far back an import reaches. */
+export const BACKFILL_DAYS = 30;
 
 interface BackfillCandidate {
   externalId: string;
@@ -34,7 +35,8 @@ export function EmailBackfill({
   onImported,
 }: {
   connectionId: string;
-  onImported: () => Promise<unknown>;
+  /** Called once the import has started (onboarding records it). */
+  onImported?: () => Promise<unknown>;
 }) {
   const [candidates, setCandidates] = useState<BackfillCandidate[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -87,7 +89,7 @@ export function EmailBackfill({
       setStarted(true);
       // Remembered on the budget so this step doesn't offer it again. Queuing the
       // same emails twice is harmless, so a failure here isn't worth showing.
-      await onImported().catch(() => undefined);
+      await onImported?.().catch(() => undefined);
     } catch (err) {
       setImportError(errorMessage(err, "Couldn't import your emails."));
     } finally {

@@ -165,7 +165,6 @@ export function Popover({
   );
 
   const updateWidth = useCallback(() => {
-    // if width is provided, don't update position
     if (width) {
       return;
     }
@@ -217,12 +216,6 @@ export function Popover({
 
   useEffect(() => {
     updateWidth();
-
-    window.removeEventListener('resize', updateWidth);
-
-    return () => {
-      window.removeEventListener('resize', updateWidth);
-    };
   }, [updateWidth]);
 
   if (!isOpen) {
@@ -236,7 +229,7 @@ export function Popover({
       data-popover=""
       role="dialog"
       aria-modal="true"
-      className={`${styles.overlay} ${isOpen ? styles.open : styles.closed}`}
+      className={`${styles.overlay} ${styles.open}`}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       style={{

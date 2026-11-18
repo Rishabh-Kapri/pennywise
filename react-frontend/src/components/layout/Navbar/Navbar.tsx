@@ -25,18 +25,21 @@ const NAV_ITEMS: {
   label: string;
   icon: NavIcon;
   exact: boolean;
+  /** Also in the phone's bottom bar, which has room for four. */
+  inBottomBar?: boolean;
 }[] = [
-  { path: '/dashboard', key: 'home', label: 'Home', icon: <ChartPie size={16} strokeWidth={1.75} />, exact: true },
+  { path: '/dashboard', key: 'home', label: 'Home', icon: <ChartPie size={16} strokeWidth={1.75} />, exact: true, inBottomBar: true },
   {
     path: '/transactions',
     key: 'transactions',
     label: 'Transactions',
     icon: <ReceiptIndianRupee size={16} strokeWidth={1.75} />,
     exact: false,
+    inBottomBar: true,
   },
-  { path: '/budget', key: 'budget', label: 'Budget', icon: <WalletCards size={16} strokeWidth={1.75} />, exact: false },
+  { path: '/budget', key: 'budget', label: 'Budget', icon: <WalletCards size={16} strokeWidth={1.75} />, exact: false, inBottomBar: true },
   { path: '/accounts', key: 'accounts', label: 'Accounts', icon: <Bank size={16} strokeWidth={1.75} />, exact: true },
-  { path: '/payees', key: 'payees', label: 'Payees', icon: <UsersRound size={16} strokeWidth={1.75} />, exact: false },
+  { path: '/payees', key: 'payees', label: 'Payees', icon: <UsersRound size={16} strokeWidth={1.75} />, exact: false, inBottomBar: true },
   { path: '/reports', key: 'reports', label: 'Reports', icon: <ChartBar size={16} strokeWidth={1.75} />, exact: false },
 ];
 
@@ -116,7 +119,7 @@ export function Navbar() {
 
       {/* Bottom mobile nav bar */}
       <nav className={styles.bottomNav}>
-        {NAV_ITEMS.filter((item) => item.key !== 'accounts').slice(0, 4).map((item) => (
+        {NAV_ITEMS.filter((item) => item.inBottomBar).map((item) => (
           <NavLink
             key={item.key}
             to={item.path}
