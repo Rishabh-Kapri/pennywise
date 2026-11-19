@@ -1,13 +1,15 @@
 :root[data-theme] {
-  /* The logo's three blues (public/logo-mark.svg), deepest first. Both themes
-     use them as they are: the accent is the logo's deep blue. */
-  --brand-deep: #2c6a8c;
-  --brand: #5d9cbb;
-  --brand-soft: #a9cbe0;
+  /* The app's blues, deepest first; the icon (public/logo-mark.svg) is drawn
+     with --brand (sky) and --brand-soft (lines), so change them together.
+     Light uses the deep one as its accent, dark the middle one; both keep AA
+     for white text. */
+  --brand-deep: #25699d;
+  --brand: #3176aa;
+  --brand-soft: #add2eb;
   /* Light: neutral, slightly cool greys so white cards read clearly against the
      page, with saturated status colours that hold AA contrast on white. */
   --accent: var(--brand-deep);
-  --accent-hover: #225673;
+  --accent-hover: #1e5680;
   --on-accent: #ffffff;
   --page-bg: #f3f4f6;
   --card-bg: #ffffff;
@@ -59,8 +61,8 @@
   --shadow-popover: 0 12px 32px -6px #10182833, 0 2px 6px #10182814;
 }
 :root[data-theme='dark'] {
-  /* Neutral greys from the original palette; the blues are the logo's (--brand-*). */
-  --color-primary: var(--brand-deep);
+  /* Neutral greys from the original palette; the blues are --brand-*. */
+  --color-primary: var(--brand);
   --color-primary-light: var(--brand-soft);
   --color-secondary: #f6f6f6;
   --color-accent: #f6f6f6;
@@ -72,14 +74,14 @@
   --shadow-popover: 0 16px 40px -8px rgb(0 0 0 / 0.6), 0 2px 8px rgb(0 0 0 / 0.35);
   --color-text: #f6f6f6;
   --color-text-secondary: #a9a9a9;
-  --color-text-tertiary: #646cff;
+  --color-text-tertiary: #7bb8e0;
   --color-text-quaternary: #333333;
   --color-success: #10b981;
   --color-error: #ef4444;
   --color-warning: #f59e0b;
   --color-info: #3b82f6;
   --color-border: #626262;
-  --color-border-light: #788dba;
+  --color-border-light: #5e95ba;
   --color-border-muted: color(srgb 0.384314 0.384314 0.384314 / 0.5);
   --color-budget-positive: #73eb95;
   --color-budget-negative: #ff6363;
@@ -95,7 +97,7 @@
   --skeleton-base: rgba(128, 128, 128, 0.2);
   --skeleton-highlight: rgba(128, 128, 128, 0.1);
   --accent: var(--color-primary);
-  --accent-hover: var(--brand);
+  --accent-hover: #3a82ba;
   --on-accent: #ffffff;
   --text: var(--color-text);
   --muted: var(--color-text-secondary);

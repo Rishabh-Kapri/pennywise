@@ -34,10 +34,13 @@ export async function getCurrentCoords(): Promise<{ lat: number; lng: number } |
  */
 export function TransactionLocationRow({
   transactionId,
+  version,
   location,
   onDraftChange
 }: {
   transactionId?: string;
+  /** The transaction's version when the editor opened, sent as If-Match. */
+  version?: number;
   location: DraftLocation;
   onDraftChange: (location: DraftLocation) => void;
 }) {
@@ -53,6 +56,7 @@ export function TransactionLocationRow({
       void dispatch(
         updateTransactionLocation({
           id: transactionId,
+          version,
           location: { lat: next.lat, lng: next.lng, source: next.source ?? LocationSource.MANUAL }
         })
       );

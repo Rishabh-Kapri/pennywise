@@ -48,6 +48,11 @@ export interface Transaction {
   deleted?: boolean;
   createdAt?: string;
   updatedAt?: string;
+  /**
+   * Goes up by one on every write to the row. Sent back as If-Match so a save
+   * from an old copy is refused (412) instead of overwriting a newer change.
+   */
+  version?: number;
 }
 
 export interface TransactionPrediction {

@@ -44,7 +44,45 @@ function applyOptimisticTransaction(transaction: Transaction, optimisticTransact
   Object.assign(transaction, optimisticTransaction, {
     status,
     tagIds: [...(optimisticTransaction.tagIds ?? [])],
+    // The edit was made on a copy that may be older than the row; the row's
+    // version is the last one the server confirmed.
+    version: transaction.version,
   });
+}
+
+/** The part of the root state these thunks read; the store imports this file. */
+type TransactionsRoot = { transactions: TransactionState };
+
+/** The server version of a loaded transaction, sent as If-Match. */
+function storedVersion(state: TransactionsRoot, id: string): number | undefined {
+  return state.transactions.transactions.find((txn) => txn.id === id)?.version;
+}
+
+const writeQueues = new Map<string, Promise<unknown>>();
+
+/**
+ * Runs one transaction's writes one after another. Each write sends the
+ * version the previous one returned; two in flight together (an autosave on
+ * blur, then another) would both send the old version and the second would
+ * be refused as a conflict.
+ */
+function queueWrite<T>(id: string, write: () => Promise<T>): Promise<T> {
+  const previous = writeQueues.get(id) ?? Promise.resolve();
+  const next = previous.catch(() => undefined).then(write);
+  writeQueues.set(id, next);
+  next
+    .finally(() => {
+      if (writeQueues.get(id) === next) writeQueues.delete(id);
+    })
+    .catch(() => undefined);
+  return next;
+}
+
+/** The server refused a write because the transaction changed after it was loaded. */
+export function isVersionConflict(error: unknown): boolean {
+  return (
+    !!error && typeof error === 'object' && 'code' in error && error.code === 'TRANSACTION_VERSION_CONFLICT'
+  );
 }
 
 /** The query string of `transactions/normalized` for these filters. */
@@ -100,12 +138,14 @@ export const fetchPendingApprovalCount = createAsyncThunk<number, string | undef
   },
 );
 
-export const deleteTransactionById = createAsyncThunk<Transaction[], string>(
+export const deleteTransactionById = createAsyncThunk<Transaction[], string, { state: TransactionsRoot }>(
   'transactions/deleteTransaction',
-  async (transactionId: string) => {
-    const url = `transactions/${transactionId}`;
-    return await apiClient.delete(url);
-  },
+  async (transactionId: string, { getState }) =>
+    queueWrite(transactionId, () =>
+      apiClient.delete<Transaction[]>(`transactions/${transactionId}`, {
+        ifMatch: storedVersion(getState(), transactionId),
+      }),
+    ),
 );
 
 export const bulkDeleteTransactions = createAsyncThunk<{ deleted: number }, string[]>(
@@ -121,35 +161,46 @@ export const createTransaction = createAsyncThunk<TransactionDTO, TransactionDTO
   },
 );
 
-export const updateTransaction = createAsyncThunk<TransactionDTO, UpdateTransactionArgs>(
-  'transactions/updateTransaction',
-  async ({ payload }: UpdateTransactionArgs) => {
-    const url = `transactions/${payload.id}`;
-    return await apiClient.patch(url, payload);
-  },
-);
+export const updateTransaction = createAsyncThunk<
+  TransactionDTO & { version?: number },
+  UpdateTransactionArgs,
+  { state: TransactionsRoot }
+>('transactions/updateTransaction', async ({ payload }: UpdateTransactionArgs, { getState }) => {
+  const url = `transactions/${payload.id}`;
+  if (!payload.id) return await apiClient.patch(url, payload);
+  const id = payload.id;
+  return queueWrite(id, () => apiClient.patch(url, payload, { ifMatch: storedVersion(getState(), id) }));
+});
 
 type UpdateTransactionLocationArgs = {
   id: string;
   location: TransactionLocationDTO;
 };
 
-export const updateTransactionLocation = createAsyncThunk<Transaction, UpdateTransactionLocationArgs>(
-  'transactions/updateTransactionLocation',
-  async ({ id, location }: UpdateTransactionLocationArgs) => {
-    const url = `transactions/${id}/location`;
-    return await apiClient.patch<Transaction>(url, location);
-  },
+export const updateTransactionLocation = createAsyncThunk<
+  Transaction,
+  UpdateTransactionLocationArgs,
+  { state: TransactionsRoot }
+>('transactions/updateTransactionLocation', async ({ id, location }: UpdateTransactionLocationArgs, { getState }) =>
+  queueWrite(id, () =>
+    apiClient.patch<Transaction>(`transactions/${id}/location`, location, { ifMatch: storedVersion(getState(), id) }),
+  ),
 );
 
-export const updateTransactionStatus = createAsyncThunk<TransactionStatusDTO, TransactionStatusDTO>(
-  'transactions/updateTransactionStatus',
-  async ({ id, status }: TransactionStatusDTO) => {
-    const url = `transactions/${id}/status`;
-    await apiClient.patch(url, { status });
-    return { id, status };
-  },
-);
+export const updateTransactionStatus = createAsyncThunk<
+  TransactionStatusDTO & { version?: number },
+  TransactionStatusDTO,
+  { state: TransactionsRoot }
+>('transactions/updateTransactionStatus', async ({ id, status }: TransactionStatusDTO, { getState }) => {
+  const res = await queueWrite(id, () =>
+    apiClient.patch<{ version?: number } | null>(
+      `transactions/${id}/status`,
+      { status },
+      { ifMatch: storedVersion(getState(), id) },
+    ),
+  );
+  return { id, status, version: res?.version };
+});
 
 const transactionSlice = createSlice({
   name: 'transactions',
@@ -232,8 +283,12 @@ const transactionSlice = createSlice({
       .addCase(updateTransaction.fulfilled, (state, action) => {
         state.loading = LoadingState.SUCCESS;
         state.error = null;
-        if (action.meta.arg.payload.id) {
-          delete state.optimisticTransactions[action.meta.arg.payload.id];
+        const id = action.meta.arg.payload.id;
+        if (!id) return;
+        delete state.optimisticTransactions[id];
+        const transaction = state.transactions.find((txn) => txn.id === id);
+        if (transaction && typeof action.payload?.version === 'number') {
+          transaction.version = action.payload.version;
         }
       })
       .addCase(updateTransaction.rejected, (state, action) => {
@@ -244,7 +299,8 @@ const transactionSlice = createSlice({
         const previous = state.optimisticTransactions[id];
         const index = state.transactions.findIndex((txn) => txn.id === id);
         if (previous && index !== -1) {
-          state.transactions[index] = previous;
+          // An earlier save may have moved the row on since the snapshot.
+          state.transactions[index] = { ...previous, version: state.transactions[index].version };
         }
         delete state.optimisticTransactions[id];
       })
@@ -255,6 +311,7 @@ const transactionSlice = createSlice({
           transaction.locationLng = action.payload.locationLng ?? null;
           transaction.locationName = action.payload.locationName ?? null;
           transaction.locationSource = action.payload.locationSource ?? null;
+          if (typeof action.payload.version === 'number') transaction.version = action.payload.version;
         }
       })
       .addCase(updateTransactionLocation.rejected, (state, action) => {
@@ -270,6 +327,7 @@ const transactionSlice = createSlice({
         const transaction = state.transactions.find((txn) => txn.id === action.payload.id);
         if (transaction) {
           transaction.status = action.payload.status;
+          if (typeof action.payload.version === 'number') transaction.version = action.payload.version;
         }
       })
       .addCase(updateTransactionStatus.rejected, (state, action) => {

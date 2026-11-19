@@ -3,12 +3,28 @@ import { config } from '@/config/env';
 /** A response from the server, as opposed to not reaching it at all. */
 export class ApiError extends Error {
   readonly status: number;
+  /**
+   * The server's machine-readable code (its `code` field), when it sent one.
+   * Kept as `code` because Redux Toolkit keeps that field, and not `status`,
+   * when a thunk rejects with this error.
+   */
+  readonly code?: string;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, code?: string) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.code = code;
   }
+}
+
+/** Extra request options. */
+export interface RequestOptions {
+  /**
+   * The version of the row the client last read, sent as `If-Match`. The
+   * server refuses the write with 412 if the row has changed since.
+   */
+  ifMatch?: number;
 }
 
 export interface RefreshedToken {
@@ -42,7 +58,7 @@ class ApiClient {
     this.session = session;
   }
 
-  private headers(endpoint: string, body: Body, accessToken?: string): Record<string, string> {
+  private headers(endpoint: string, body: Body, accessToken?: string, options?: RequestOptions): Record<string, string> {
     // A form leaves Content-Type unset so the browser adds the boundary itself.
     const headers: Record<string, string> = body && 'form' in body ? {} : { 'Content-Type': 'application/json' };
     const token = accessToken ?? this.session?.accessToken();
@@ -53,15 +69,18 @@ class ApiClient {
     if (budgetId && !endpoint.includes('budgets')) {
       headers['x-budget-id'] = budgetId;
     }
+    if (options?.ifMatch !== undefined) {
+      headers['If-Match'] = `"${options.ifMatch}"`;
+    }
     return headers;
   }
 
   /** Sends a request; on a 401 refreshes the access token once and retries. */
-  private async send(method: string, endpoint: string, body?: Body): Promise<Response> {
+  private async send(method: string, endpoint: string, body?: Body, options?: RequestOptions): Promise<Response> {
     const request = (accessToken?: string) =>
       fetch(`${this.baseUrl}/${endpoint}`, {
         method,
-        headers: this.headers(endpoint, body, accessToken),
+        headers: this.headers(endpoint, body, accessToken, options),
         body: body ? ('form' in body ? body.form : JSON.stringify(body.json)) : undefined,
         credentials: 'include',
       });
@@ -84,8 +103,10 @@ class ApiClient {
       }
     }
     if (!res.ok) {
-      const message = (data as Record<string, unknown>)?.error ?? res.statusText;
-      throw new ApiError(String(message), res.status);
+      const record = data as Record<string, unknown>;
+      const message = record?.error ?? res.statusText;
+      const code = typeof record?.code === 'string' ? record.code : undefined;
+      throw new ApiError(String(message), res.status, code);
     }
     return data;
   }
@@ -124,16 +145,16 @@ class ApiClient {
     return this.json<T>(await this.send('GET', endpoint));
   }
 
-  async delete<T>(endpoint: string): Promise<T> {
-    return this.json<T>(await this.send('DELETE', endpoint));
+  async delete<T>(endpoint: string, options?: RequestOptions): Promise<T> {
+    return this.json<T>(await this.send('DELETE', endpoint, undefined, options));
   }
 
   async post<T, B = unknown>(endpoint: string, data: B): Promise<T> {
     return this.json<T>(await this.send('POST', endpoint, { json: data }));
   }
 
-  async patch<T, B = unknown>(endpoint: string, data: B): Promise<T> {
-    return this.json<T>(await this.send('PATCH', endpoint, { json: data }));
+  async patch<T, B = unknown>(endpoint: string, data: B, options?: RequestOptions): Promise<T> {
+    return this.json<T>(await this.send('PATCH', endpoint, { json: data }, options));
   }
 
   async put<T, B = unknown>(endpoint: string, data: B): Promise<T> {

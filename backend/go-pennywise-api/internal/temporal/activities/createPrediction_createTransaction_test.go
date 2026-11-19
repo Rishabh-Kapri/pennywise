@@ -94,15 +94,17 @@ func (f *fakeTransactionService) GetFacets(context.Context, *model.TransactionFi
 	return model.TransactionFacets{}, nil
 }
 
-func (f *fakeTransactionService) Update(context.Context, uuid.UUID, model.Transaction) error {
-	return nil
+func (f *fakeTransactionService) Update(context.Context, uuid.UUID, model.Transaction, *int64) (int64, error) {
+	return 0, nil
 }
 
-func (f *fakeTransactionService) UpdateStatus(context.Context, uuid.UUID, model.TransactionStatus) error {
-	return nil
+func (f *fakeTransactionService) UpdateStatus(context.Context, uuid.UUID, model.TransactionStatus, *int64) (int64, error) {
+	return 0, nil
 }
 
-func (f *fakeTransactionService) UpdateLocation(context.Context, uuid.UUID, model.TransactionLocationReq) (*model.Transaction, error) {
+func (f *fakeTransactionService) UpdateLocation(
+	context.Context, uuid.UUID, model.TransactionLocationReq, *int64,
+) (*model.Transaction, error) {
 	return nil, nil
 }
 
@@ -133,7 +135,7 @@ func (f *fakeTransactionService) CreateDeduped(ctx context.Context, txn model.Tr
 	return &created[0], true, nil
 }
 
-func (f *fakeTransactionService) DeleteById(context.Context, uuid.UUID) error {
+func (f *fakeTransactionService) DeleteById(context.Context, uuid.UUID, *int64) error {
 	return nil
 }
 

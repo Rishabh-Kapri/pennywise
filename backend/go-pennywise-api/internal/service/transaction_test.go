@@ -27,6 +27,29 @@ type mockTransactionRepo struct {
 	mock.Mock
 }
 
+// calledMethod reports whether any call to method was recorded.
+func (m *mockTransactionRepo) calledMethod(method string) bool {
+	for _, call := range m.Calls {
+		if call.Method == method {
+			return true
+		}
+	}
+	return false
+}
+
+// LockVersion implements repository.TransactionRepository. Tests that don't
+// set a "LockVersion" expectation get version 1, so the many tests that don't
+// care about versions needn't mention it.
+func (m *mockTransactionRepo) LockVersion(ctx context.Context, budgetId, id uuid.UUID) (int64, error) {
+	for _, call := range m.ExpectedCalls {
+		if call.Method == "LockVersion" {
+			args := m.Called(ctx, budgetId, id)
+			return args.Get(0).(int64), args.Error(1)
+		}
+	}
+	return 1, nil
+}
+
 // Create implements repository.TransactionRepository.
 func (m *mockTransactionRepo) Create(
 	ctx context.Context,
@@ -839,7 +862,7 @@ func TestUpdateStatusRejectedOnlyUpdatesStatus(t *testing.T) {
 	txnRepo.On("GetById", mock.Anything, budgetId, txnId).Return(pending, nil).Once()
 	txnRepo.On("TransitionStatus", mock.Anything, budgetId, txnId, model.TransactionStatusUnapproved, model.TransactionStatusRejected).Return(true, nil).Once()
 
-	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusRejected)
+	_, err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusRejected, nil)
 
 	require.NoError(t, err)
 	txnRepo.AssertExpectations(t)
@@ -866,7 +889,7 @@ func TestUpdateStatusApprovedWithoutCipherPredictionOnlyUpdatesStatus(t *testing
 	cipherPredictionRepo.On("GetByTransactionID", mock.Anything, budgetId, txnId).Return(nil, repository.ErrNotFound).Once()
 	txnRepo.On("TransitionStatus", mock.Anything, budgetId, txnId, model.TransactionStatusUnapproved, model.TransactionStatusApproved).Return(true, nil).Once()
 
-	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved)
+	_, err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved, nil)
 
 	require.NoError(t, err)
 	txnRepo.AssertExpectations(t)
@@ -907,7 +930,7 @@ func TestUpdateStatusApprovedWithNonLLMCipherPredictionDoesNotEmbed(t *testing.T
 	}, nil).Once()
 	txnRepo.On("TransitionStatus", mock.Anything, budgetId, txnId, model.TransactionStatusUnapproved, model.TransactionStatusApproved).Return(true, nil).Once()
 
-	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved)
+	_, err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved, nil)
 
 	require.NoError(t, err)
 	txnRepo.AssertExpectations(t)
@@ -951,7 +974,7 @@ func TestUpdateStatusApprovedWithLLMCipherPredictionDoesNotEmbed(t *testing.T) {
 	}, nil).Once()
 	txnRepo.On("TransitionStatus", mock.Anything, budgetId, txnId, model.TransactionStatusUnapproved, model.TransactionStatusApproved).Return(true, nil).Once()
 
-	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved)
+	_, err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved, nil)
 
 	require.NoError(t, err)
 	txnRepo.AssertExpectations(t)
@@ -1038,7 +1061,7 @@ func TestUpdateWithCipherPredictionMappingChangeMarksCorrection(t *testing.T) {
 			txn.Status == model.TransactionStatusRejected
 	})).Return(nil).Once()
 
-	err := svc.Update(ctx, txnId, toUpdate)
+	_, err := svc.Update(ctx, txnId, toUpdate, nil)
 
 	require.NoError(t, err)
 	txnRepo.AssertExpectations(t)
@@ -1468,7 +1491,7 @@ func TestUpdateStatus_GetByIdError_ReturnsError(t *testing.T) {
 
 	txnRepo.On("GetById", mock.Anything, budgetId, txnId).Return(nil, assert.AnError).Once()
 
-	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved)
+	_, err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved, nil)
 	require.Error(t, err)
 	txnRepo.AssertExpectations(t)
 }
@@ -1482,7 +1505,7 @@ func TestUpdateStatus_NotFoundNilTxn_ReturnsError(t *testing.T) {
 
 	txnRepo.On("GetById", mock.Anything, budgetId, txnId).Return((*model.Transaction)(nil), nil).Once()
 
-	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved)
+	_, err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved, nil)
 	require.Error(t, err)
 	var appErr *errs.Error
 	require.ErrorAs(t, err, &appErr)
@@ -1513,7 +1536,7 @@ func TestUpdateStatus_NilCipherPredictionRepo_ReturnsError(t *testing.T) {
 	}
 	txnRepo.On("GetById", mock.Anything, budgetId, txnId).Return(txn, nil).Once()
 
-	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved)
+	_, err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved, nil)
 	require.Error(t, err)
 	var appErr *errs.Error
 	require.ErrorAs(t, err, &appErr)
@@ -1543,7 +1566,7 @@ func TestUpdateStatus_CipherPredictionGetError_ReturnsError(t *testing.T) {
 	txnRepo.On("GetById", mock.Anything, budgetId, txnId).Return(txn, nil).Once()
 	cipherPredictionRepo.On("GetByTransactionID", mock.Anything, budgetId, txnId).Return(nil, assert.AnError).Once()
 
-	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved)
+	_, err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved, nil)
 	require.Error(t, err)
 	txnRepo.AssertExpectations(t)
 	cipherPredictionRepo.AssertExpectations(t)
@@ -1570,7 +1593,7 @@ func TestUpdateStatus_NilPayeeID_ReturnsError(t *testing.T) {
 	txnRepo.On("GetById", mock.Anything, budgetId, txnId).Return(txn, nil).Once()
 	cipherPredictionRepo.On("GetByTransactionID", mock.Anything, budgetId, txnId).Return(&model.CipherPredictionRecord{}, nil).Once()
 
-	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved)
+	_, err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved, nil)
 	require.Error(t, err)
 	var appErr *errs.Error
 	require.ErrorAs(t, err, &appErr)
@@ -1598,7 +1621,7 @@ func TestUpdateStatus_NilCategoryID_ReturnsError(t *testing.T) {
 	txnRepo.On("GetById", mock.Anything, budgetId, txnId).Return(txn, nil).Once()
 	cipherPredictionRepo.On("GetByTransactionID", mock.Anything, budgetId, txnId).Return(&model.CipherPredictionRecord{}, nil).Once()
 
-	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved)
+	_, err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved, nil)
 	require.Error(t, err)
 	var appErr *errs.Error
 	require.ErrorAs(t, err, &appErr)
@@ -1626,7 +1649,7 @@ func TestUpdateStatus_NilRawBankText_ReturnsError(t *testing.T) {
 	txnRepo.On("GetById", mock.Anything, budgetId, txnId).Return(txn, nil).Once()
 	cipherPredictionRepo.On("GetByTransactionID", mock.Anything, budgetId, txnId).Return(&model.CipherPredictionRecord{}, nil).Once()
 
-	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved)
+	_, err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved, nil)
 	require.Error(t, err)
 	var appErr *errs.Error
 	require.ErrorAs(t, err, &appErr)
@@ -1655,7 +1678,7 @@ func TestUpdateStatus_BlankRawBankText_ReturnsError(t *testing.T) {
 	txnRepo.On("GetById", mock.Anything, budgetId, txnId).Return(txn, nil).Once()
 	cipherPredictionRepo.On("GetByTransactionID", mock.Anything, budgetId, txnId).Return(&model.CipherPredictionRecord{}, nil).Once()
 
-	err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved)
+	_, err := svc.UpdateStatus(ctx, txnId, model.TransactionStatusApproved, nil)
 	require.Error(t, err)
 	var appErr *errs.Error
 	require.ErrorAs(t, err, &appErr)
@@ -1789,7 +1812,7 @@ func TestUpdateApprovingUnchangedPredictionDoesNotMarkCorrected(t *testing.T) {
 		return txn.ID == txnId && txn.Status == model.TransactionStatusApproved
 	})).Return(nil).Once()
 
-	err := svc.Update(ctx, txnId, toUpdate)
+	_, err := svc.Update(ctx, txnId, toUpdate, nil)
 
 	require.NoError(t, err)
 	cipherPredictionRepo.AssertNotCalled(t, "MarkUserCorrected",
@@ -1970,3 +1993,7 @@ func (m *mockCipherPredictionRepo) DeleteByTransactionID(_ context.Context, _ uu
 func (m *mockTransactionRepo) LockForDedupe(context.Context, uuid.UUID, uuid.UUID, float64) error {
 	return nil
 }
+
+// errOf drops the version Update and UpdateStatus return, for assertions that
+// only look at the error.
+func errOf(_ int64, err error) error { return err }

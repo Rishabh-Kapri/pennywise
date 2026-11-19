@@ -44,8 +44,8 @@ body,
   /* Primary color */
   /* --color-primary: #81b2ca; */
   /* --color-primary: #5d9cbb; */
-  --color-primary: #2c6a8c; /* the logo's deep blue; theme.css sets the rest */
-  --color-primary-light: #a9cbe0;
+  --color-primary: #25699d; /* --brand-deep; theme.css sets the rest */
+  --color-primary-light: #add2eb;
 
   /* --color-primary-dark: #edf4f8; */
 
@@ -73,7 +73,7 @@ body,
 
   /* Borders and dividers */
   --color-border: #626262;
-  --color-border-light: #788dba;
+  --color-border-light: #5e95ba;
   --color-border-muted: color(srgb 0.384314 0.384314 0.384314 / 0.5);
 
   /* Budget specific colors */

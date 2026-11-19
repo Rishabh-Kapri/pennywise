@@ -28,15 +28,25 @@ type TransactionService interface {
 	// the filter matches. See model.TransactionFacets.
 	GetFacets(ctx context.Context, filter *model.TransactionFilter) (model.TransactionFacets, error)
 	// GetById(ctx context.Context, id uuid.UUID) (*model.Transaction, error)
-	Update(ctx context.Context, id uuid.UUID, txn model.Transaction) error
-	UpdateLocation(ctx context.Context, id uuid.UUID, req model.TransactionLocationReq) (*model.Transaction, error)
-	UpdateStatus(ctx context.Context, id uuid.UUID, status model.TransactionStatus) error
+	// Update, UpdateLocation, UpdateStatus and DeleteById take ifMatch, the
+	// version the caller read (the If-Match header). When it's set and the
+	// transaction has moved on, they refuse with
+	// errs.CodeTransactionVersionConflict and write nothing. nil skips the
+	// check. Update and UpdateStatus return the version after the write.
+	Update(ctx context.Context, id uuid.UUID, txn model.Transaction, ifMatch *int64) (int64, error)
+	UpdateLocation(
+		ctx context.Context,
+		id uuid.UUID,
+		req model.TransactionLocationReq,
+		ifMatch *int64,
+	) (*model.Transaction, error)
+	UpdateStatus(ctx context.Context, id uuid.UUID, status model.TransactionStatus, ifMatch *int64) (int64, error)
 	Create(ctx context.Context, txn model.Transaction) ([]model.Transaction, error)
 	// CreateInTx creates txn without location enrichment, inside the
 	// transaction carried in ctx or a new one.
 	CreateInTx(ctx context.Context, txn model.Transaction) ([]model.Transaction, error)
 	CreateDeduped(ctx context.Context, txn model.Transaction) (*model.Transaction, bool, error)
-	DeleteById(ctx context.Context, id uuid.UUID) error
+	DeleteById(ctx context.Context, id uuid.UUID, ifMatch *int64) error
 	// BulkDelete soft-deletes ids together, or none of them, and returns how
 	// many it deleted. An id that's already gone is skipped: picking both legs
 	// of a transfer is normal, and deleting one removes the other.
@@ -1014,7 +1024,12 @@ func (s *transactionService) createDeduped(
 	return final, true, nil
 }
 
-func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model.Transaction) error {
+func (s *transactionService) Update(
+	ctx context.Context,
+	id uuid.UUID,
+	txn model.Transaction,
+	ifMatch *int64,
+) (int64, error) {
 	// Create a shorter context for each individual transaction attempt
 	txCtx, txCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer txCancel()
@@ -1026,13 +1041,25 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 	toUpdate := txn
 
 	if err := s.validateTransactionPayload(toUpdate, budgetId); err != nil {
-		return err
+		return 0, err
 	}
 
 	s.enrichLocation(txCtx, &toUpdate)
 
 	var learningTxn *model.Transaction
-	err := s.dbTxn.Do(txCtx, func(txCtx context.Context) error {
+	var version int64
+	err := s.dbTxn.Do(txCtx, func(txCtx context.Context) (err error) {
+		if err := s.checkVersion(txCtx, budgetId, id, ifMatch); err != nil {
+			return err
+		}
+		// Read the version the write left while the row is still locked, so a
+		// later write can't be mistaken for this one.
+		defer func() {
+			if err == nil {
+				version, err = s.currentVersion(txCtx, budgetId, id)
+			}
+		}()
+
 		foundTxn, err := s.repo.GetById(txCtx, budgetId, id)
 		if err != nil {
 			return errs.Wrap(errs.CodeTransactionLookupFailed, "error getting transaction", err)
@@ -1094,13 +1121,45 @@ func (s *transactionService) Update(ctx context.Context, id uuid.UUID, txn model
 		return nil
 	})
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if learningTxn != nil {
 		s.queueAliasConfirm(ctx, budgetId, *learningTxn)
 	}
 
+	return version, nil
+}
+
+// checkVersion refuses a write made from a stale copy: it locks the row until
+// the database transaction ends, so nothing can change it between the check
+// and the write, and compares its version with ifMatch. nil ifMatch (a client
+// that sends no If-Match) skips the check. Call it first inside dbTxn.Do.
+func (s *transactionService) checkVersion(ctx context.Context, budgetId, id uuid.UUID, ifMatch *int64) error {
+	if ifMatch == nil {
+		return nil
+	}
+	current, err := s.currentVersion(ctx, budgetId, id)
+	if err != nil {
+		return err
+	}
+	if current != *ifMatch {
+		return errs.New(errs.CodeTransactionVersionConflict,
+			"the transaction changed after you loaded it (now version %d, you had %d); reload and try again",
+			current, *ifMatch)
+	}
 	return nil
+}
+
+// currentVersion locks the live transaction and returns its version.
+func (s *transactionService) currentVersion(ctx context.Context, budgetId, id uuid.UUID) (int64, error) {
+	version, err := s.repo.LockVersion(ctx, budgetId, id)
+	if errors.Is(err, repository.ErrNotFound) {
+		return 0, errs.New(errs.CodeTransactionLookupFailed, "transaction not found for id %v", id)
+	}
+	if err != nil {
+		return 0, errs.Wrap(errs.CodeTransactionLookupFailed, "error reading transaction version", err)
+	}
+	return version, nil
 }
 
 // enrichLocation fills in a missing place name via reverse geocoding and
@@ -1136,6 +1195,7 @@ func (s *transactionService) UpdateLocation(
 	ctx context.Context,
 	id uuid.UUID,
 	req model.TransactionLocationReq,
+	ifMatch *int64,
 ) (*model.Transaction, error) {
 	txCtx, txCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer txCancel()
@@ -1172,16 +1232,24 @@ func (s *transactionService) UpdateLocation(
 		}
 	}
 
+	var updated *model.Transaction
 	err := s.dbTxn.Do(txCtx, func(txCtx context.Context) error {
-		return s.repo.UpdateLocation(txCtx, budgetId, id, lat, lng, name, source)
+		if err := s.checkVersion(txCtx, budgetId, id, ifMatch); err != nil {
+			return err
+		}
+		if err := s.repo.UpdateLocation(txCtx, budgetId, id, lat, lng, name, source); err != nil {
+			return errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating transaction location", err)
+		}
+		// Reloaded in the same database transaction, so the version returned
+		// is the one this write left.
+		var err error
+		if updated, err = s.repo.GetById(txCtx, budgetId, id); err != nil {
+			return errs.Wrap(errs.CodeTransactionLookupFailed, "error reloading transaction", err)
+		}
+		return nil
 	})
 	if err != nil {
-		return nil, errs.Wrap(errs.CodeTransactionUpdateFailed, "error updating transaction location", err)
-	}
-
-	updated, err := s.repo.GetById(txCtx, budgetId, id)
-	if err != nil {
-		return nil, errs.Wrap(errs.CodeTransactionLookupFailed, "error reloading transaction", err)
+		return nil, err
 	}
 	return updated, nil
 }
@@ -1189,19 +1257,34 @@ func (s *transactionService) UpdateLocation(
 // UpdateStatus moves a transaction through review (model.TransactionStatus
 // .CanMoveTo). Asking for the status it already has does nothing, so approving
 // twice can't teach the pipeline twice. A transfer's other half moves with it.
-func (s *transactionService) UpdateStatus(ctx context.Context, id uuid.UUID, status model.TransactionStatus) error {
+func (s *transactionService) UpdateStatus(
+	ctx context.Context,
+	id uuid.UUID,
+	status model.TransactionStatus,
+	ifMatch *int64,
+) (int64, error) {
 	txCtx, txCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer txCancel()
 	budgetId := utils.MustBudgetID(ctx)
 	logger.Logger(txCtx).Info("updating transaction status", "id", id, "status", status)
 
 	if !status.Valid() {
-		return errs.New(errs.CodeInvalidArgument, "unknown transaction status %q", status)
+		return 0, errs.New(errs.CodeInvalidArgument, "unknown transaction status %q", status)
 	}
 
 	var found *model.Transaction
+	var version int64
 	learn := false
-	err := s.dbTxn.Do(txCtx, func(txCtx context.Context) error {
+	err := s.dbTxn.Do(txCtx, func(txCtx context.Context) (err error) {
+		if err := s.checkVersion(txCtx, budgetId, id, ifMatch); err != nil {
+			return err
+		}
+		defer func() {
+			if err == nil {
+				version, err = s.currentVersion(txCtx, budgetId, id)
+			}
+		}()
+
 		current, err := s.getForStatusChange(txCtx, budgetId, id)
 		if err != nil {
 			return err
@@ -1251,13 +1334,13 @@ func (s *transactionService) UpdateStatus(ctx context.Context, id uuid.UUID, sta
 		return nil
 	})
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	if learn {
 		s.queueAliasConfirm(ctx, budgetId, *found)
 	}
-	return nil
+	return version, nil
 }
 
 // getForStatusChange loads a live transaction, mapping a miss to a lookup error.
@@ -1301,7 +1384,7 @@ func (s *transactionService) approvalLearns(ctx context.Context, budgetId uuid.U
 	return true, nil
 }
 
-func (s *transactionService) DeleteById(ctx context.Context, id uuid.UUID) error {
+func (s *transactionService) DeleteById(ctx context.Context, id uuid.UUID, ifMatch *int64) error {
 	txCtx, txCancel := context.WithTimeout(ctx, 30*time.Second)
 	defer txCancel()
 
@@ -1309,6 +1392,9 @@ func (s *transactionService) DeleteById(ctx context.Context, id uuid.UUID) error
 	logger.Logger(ctx).Info("deleting transaction", "id", id)
 
 	return s.dbTxn.Do(txCtx, func(txCtx context.Context) error {
+		if err := s.checkVersion(txCtx, budgetId, id, ifMatch); err != nil {
+			return err
+		}
 		foundTxn, err := s.repo.GetById(txCtx, budgetId, id)
 		if err != nil {
 			return errs.Wrap(errs.CodeTransactionLookupFailed, "error getting transaction", err)

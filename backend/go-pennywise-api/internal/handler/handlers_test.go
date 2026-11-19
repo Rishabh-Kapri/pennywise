@@ -1338,14 +1338,22 @@ func (m *mockTransactionService) GetFacets(ctx context.Context, filter *model.Tr
 	}
 	return model.TransactionFacets{}, args.Error(1)
 }
-func (m *mockTransactionService) Update(ctx context.Context, id uuid.UUID, txn model.Transaction) error {
-	return m.Called(ctx, id, txn).Error(0)
+func (m *mockTransactionService) Update(
+	ctx context.Context, id uuid.UUID, txn model.Transaction, ifMatch *int64,
+) (int64, error) {
+	args := m.Called(ctx, id, txn, ifMatch)
+	return args.Get(0).(int64), args.Error(1)
 }
-func (m *mockTransactionService) UpdateStatus(ctx context.Context, id uuid.UUID, status model.TransactionStatus) error {
-	return m.Called(ctx, id, status).Error(0)
+func (m *mockTransactionService) UpdateStatus(
+	ctx context.Context, id uuid.UUID, status model.TransactionStatus, ifMatch *int64,
+) (int64, error) {
+	args := m.Called(ctx, id, status, ifMatch)
+	return args.Get(0).(int64), args.Error(1)
 }
-func (m *mockTransactionService) UpdateLocation(ctx context.Context, id uuid.UUID, req model.TransactionLocationReq) (*model.Transaction, error) {
-	args := m.Called(ctx, id, req)
+func (m *mockTransactionService) UpdateLocation(
+	ctx context.Context, id uuid.UUID, req model.TransactionLocationReq, ifMatch *int64,
+) (*model.Transaction, error) {
+	args := m.Called(ctx, id, req, ifMatch)
 	if v := args.Get(0); v != nil {
 		return v.(*model.Transaction), args.Error(1)
 	}
@@ -1378,8 +1386,8 @@ func (m *mockTransactionService) BulkDelete(ctx context.Context, ids []uuid.UUID
 	return args.Int(0), args.Error(1)
 }
 
-func (m *mockTransactionService) DeleteById(ctx context.Context, id uuid.UUID) error {
-	return m.Called(ctx, id).Error(0)
+func (m *mockTransactionService) DeleteById(ctx context.Context, id uuid.UUID, ifMatch *int64) error {
+	return m.Called(ctx, id, ifMatch).Error(0)
 }
 
 func (m *mockTransactionService) LearnFromTransaction(ctx context.Context, txn model.Transaction) {
@@ -1495,7 +1503,7 @@ func TestTransactionHandler_Update(t *testing.T) {
 	id := uuid.New()
 	t.Run("updates_transaction", func(t *testing.T) {
 		svc := &mockTransactionService{}
-		svc.On("Update", mock.Anything, id, mock.Anything).Return(nil)
+		svc.On("Update", mock.Anything, id, mock.Anything, (*int64)(nil)).Return(int64(2), nil)
 		w, c := makeReq("PATCH", "/transactions/"+id.String(), model.Transaction{Amount: -200})
 		c.Params = gin.Params{{Key: "id", Value: id.String()}}
 		NewTransactionHandler(svc).Update(c)
@@ -1509,7 +1517,7 @@ func TestTransactionHandler_Update(t *testing.T) {
 	})
 	t.Run("service_error_returns_400", func(t *testing.T) {
 		svc := &mockTransactionService{}
-		svc.On("Update", mock.Anything, id, mock.Anything).Return(assert.AnError)
+		svc.On("Update", mock.Anything, id, mock.Anything, mock.Anything).Return(int64(0), assert.AnError)
 		w, c := makeReq("PATCH", "/transactions/"+id.String(), model.Transaction{Amount: -200})
 		c.Params = gin.Params{{Key: "id", Value: id.String()}}
 		NewTransactionHandler(svc).Update(c)
@@ -1521,7 +1529,7 @@ func TestTransactionHandler_UpdateStatus(t *testing.T) {
 	id := uuid.New()
 	t.Run("updates_status", func(t *testing.T) {
 		svc := &mockTransactionService{}
-		svc.On("UpdateStatus", mock.Anything, id, model.TransactionStatusApproved).Return(nil)
+		svc.On("UpdateStatus", mock.Anything, id, model.TransactionStatusApproved, (*int64)(nil)).Return(int64(2), nil)
 		w, c := makeReq("PATCH", "/transactions/"+id.String()+"/status", model.TransactionStatusReq{Status: model.TransactionStatusApproved})
 		c.Params = gin.Params{{Key: "id", Value: id.String()}}
 		NewTransactionHandler(svc).UpdateStatus(c)
@@ -1529,7 +1537,7 @@ func TestTransactionHandler_UpdateStatus(t *testing.T) {
 	})
 	t.Run("service_error_returns_400", func(t *testing.T) {
 		svc := &mockTransactionService{}
-		svc.On("UpdateStatus", mock.Anything, id, mock.Anything).Return(assert.AnError)
+		svc.On("UpdateStatus", mock.Anything, id, mock.Anything, mock.Anything).Return(int64(0), assert.AnError)
 		w, c := makeReq("PATCH", "/transactions/"+id.String()+"/status", model.TransactionStatusReq{Status: model.TransactionStatusRejected})
 		c.Params = gin.Params{{Key: "id", Value: id.String()}}
 		NewTransactionHandler(svc).UpdateStatus(c)
@@ -1537,8 +1545,8 @@ func TestTransactionHandler_UpdateStatus(t *testing.T) {
 	})
 	t.Run("move_not_allowed_returns_409", func(t *testing.T) {
 		svc := &mockTransactionService{}
-		svc.On("UpdateStatus", mock.Anything, id, mock.Anything).
-			Return(errs.New(errs.CodeTransactionInvalidStatus, "a MANUAL transaction can't be marked APPROVED"))
+		svc.On("UpdateStatus", mock.Anything, id, mock.Anything, mock.Anything).
+			Return(int64(0), errs.New(errs.CodeTransactionInvalidStatus, "a MANUAL transaction can't be marked APPROVED"))
 		w, c := makeReq("PATCH", "/transactions/"+id.String()+"/status", model.TransactionStatusReq{Status: model.TransactionStatusApproved})
 		c.Params = gin.Params{{Key: "id", Value: id.String()}}
 		NewTransactionHandler(svc).UpdateStatus(c)
@@ -1551,7 +1559,7 @@ func TestTransactionHandler_DeleteById(t *testing.T) {
 	id := uuid.New()
 	t.Run("deletes_transaction", func(t *testing.T) {
 		svc := &mockTransactionService{}
-		svc.On("DeleteById", mock.Anything, id).Return(nil)
+		svc.On("DeleteById", mock.Anything, id, (*int64)(nil)).Return(nil)
 		w, c := makeReq("DELETE", "/transactions/"+id.String(), nil)
 		c.Params = gin.Params{{Key: "id", Value: id.String()}}
 		NewTransactionHandler(svc).DeleteById(c)
@@ -1565,11 +1573,65 @@ func TestTransactionHandler_DeleteById(t *testing.T) {
 	})
 	t.Run("service_error_returns_500", func(t *testing.T) {
 		svc := &mockTransactionService{}
-		svc.On("DeleteById", mock.Anything, id).Return(assert.AnError)
+		svc.On("DeleteById", mock.Anything, id, mock.Anything).Return(assert.AnError)
 		w, c := makeReq("DELETE", "/transactions/"+id.String(), nil)
 		c.Params = gin.Params{{Key: "id", Value: id.String()}}
 		NewTransactionHandler(svc).DeleteById(c)
 		assert.Equal(t, http.StatusInternalServerError, w.Code)
+	})
+}
+
+func TestTransactionHandler_IfMatch(t *testing.T) {
+	id := uuid.New()
+	patch := func(svc *mockTransactionService, ifMatch string) *httptest.ResponseRecorder {
+		w, c := makeReq("PATCH", "/transactions/"+id.String(), model.Transaction{Amount: -200})
+		c.Params = gin.Params{{Key: "id", Value: id.String()}}
+		if ifMatch != "" {
+			c.Request.Header.Set("If-Match", ifMatch)
+		}
+		NewTransactionHandler(svc).Update(c)
+		return w
+	}
+
+	t.Run("passes_the_version_and_returns_the_new_one", func(t *testing.T) {
+		svc := &mockTransactionService{}
+		svc.On("Update", mock.Anything, id, mock.Anything, mock.MatchedBy(func(v *int64) bool {
+			return v != nil && *v == 7
+		})).Return(int64(8), nil)
+		w := patch(svc, `"7"`)
+		assert.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, `"8"`, w.Header().Get("ETag"))
+		assert.Contains(t, w.Body.String(), `"version":8`)
+	})
+	t.Run("star_skips_the_check", func(t *testing.T) {
+		svc := &mockTransactionService{}
+		svc.On("Update", mock.Anything, id, mock.Anything, (*int64)(nil)).Return(int64(2), nil)
+		assert.Equal(t, http.StatusOK, patch(svc, "*").Code)
+	})
+	for _, bad := range []string{`W/"7"`, `7`, `"7", "8"`, `"abc"`, `"0"`} {
+		t.Run("rejects_"+bad, func(t *testing.T) {
+			svc := &mockTransactionService{}
+			assert.Equal(t, http.StatusBadRequest, patch(svc, bad).Code)
+			svc.AssertNotCalled(t, "Update", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+	t.Run("stale_version_returns_412", func(t *testing.T) {
+		svc := &mockTransactionService{}
+		svc.On("Update", mock.Anything, id, mock.Anything, mock.Anything).
+			Return(int64(0), errs.New(errs.CodeTransactionVersionConflict, "changed"))
+		w := patch(svc, `"7"`)
+		assert.Equal(t, http.StatusPreconditionFailed, w.Code)
+		assert.Contains(t, w.Body.String(), string(errs.CodeTransactionVersionConflict))
+	})
+	t.Run("stale_delete_returns_412", func(t *testing.T) {
+		svc := &mockTransactionService{}
+		svc.On("DeleteById", mock.Anything, id, mock.Anything).
+			Return(errs.New(errs.CodeTransactionVersionConflict, "changed"))
+		w, c := makeReq("DELETE", "/transactions/"+id.String(), nil)
+		c.Params = gin.Params{{Key: "id", Value: id.String()}}
+		c.Request.Header.Set("If-Match", `"3"`)
+		NewTransactionHandler(svc).DeleteById(c)
+		assert.Equal(t, http.StatusPreconditionFailed, w.Code)
 	})
 }
 
@@ -2422,7 +2484,7 @@ func TestTransactionHandler_ListNormalized_ServiceError(t *testing.T) {
 func TestTransactionHandler_Update_ServiceError(t *testing.T) {
 	id := uuid.New()
 	svc := &mockTransactionService{}
-	svc.On("Update", mock.Anything, id, mock.Anything).Return(assert.AnError)
+	svc.On("Update", mock.Anything, id, mock.Anything, mock.Anything).Return(int64(0), assert.AnError)
 	w, c := makeReq("PATCH", "/transactions/"+id.String(), model.Transaction{})
 	c.Params = gin.Params{{Key: "id", Value: id.String()}}
 	NewTransactionHandler(svc).Update(c)
@@ -2432,7 +2494,8 @@ func TestTransactionHandler_Update_ServiceError(t *testing.T) {
 func TestTransactionHandler_UpdateStatus_ServiceError(t *testing.T) {
 	id := uuid.New()
 	svc := &mockTransactionService{}
-	svc.On("UpdateStatus", mock.Anything, id, model.TransactionStatusApproved).Return(assert.AnError)
+	svc.On("UpdateStatus", mock.Anything, id, model.TransactionStatusApproved, mock.Anything).
+		Return(int64(0), assert.AnError)
 	w, c := makeReq("PATCH", "/transactions/"+id.String()+"/status", model.TransactionStatusReq{Status: model.TransactionStatusApproved})
 	c.Params = gin.Params{{Key: "id", Value: id.String()}}
 	NewTransactionHandler(svc).UpdateStatus(c)
@@ -2442,7 +2505,7 @@ func TestTransactionHandler_UpdateStatus_ServiceError(t *testing.T) {
 func TestTransactionHandler_DeleteById_ServiceError(t *testing.T) {
 	id := uuid.New()
 	svc := &mockTransactionService{}
-	svc.On("DeleteById", mock.Anything, id).Return(assert.AnError)
+	svc.On("DeleteById", mock.Anything, id, mock.Anything).Return(assert.AnError)
 	w, c := makeReq("DELETE", "/transactions/"+id.String(), nil)
 	c.Params = gin.Params{{Key: "id", Value: id.String()}}
 	NewTransactionHandler(svc).DeleteById(c)

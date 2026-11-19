@@ -606,7 +606,7 @@ func TestTxnUpdate_WriteFailureRollsBackCarryoverChanges(t *testing.T) {
 
 	edited := f.txn()
 	edited.Amount = -400
-	err := svc.Update(f.ctx, f.txnID, edited)
+	_, err := svc.Update(f.ctx, f.txnID, edited, nil)
 
 	require.Error(t, err)
 	assert.Equal(t, errs.CodeTransactionUpdateFailed, appCode(t, err))
@@ -625,7 +625,7 @@ func TestTxnUpdate_UnchangedTransactionCommitsWithoutWrites(t *testing.T) {
 	found.Status = model.TransactionStatusManual
 	d.repo.On("GetById", txCtx, f.budgetID, f.txnID).Return(&found, nil).Once()
 
-	err := svc.Update(f.ctx, f.txnID, f.txn())
+	_, err := svc.Update(f.ctx, f.txnID, f.txn(), nil)
 
 	require.NoError(t, err)
 	assert.Zero(t, d.mb.updateCalls)
@@ -648,7 +648,7 @@ func TestTxnUpdate_ApprovingAnUnapprovedTransaction(t *testing.T) {
 		return t.Status == model.TransactionStatusApproved
 	})).Return(nil).Once()
 
-	err := svc.Update(f.ctx, f.txnID, f.txn())
+	_, err := svc.Update(f.ctx, f.txnID, f.txn(), nil)
 
 	require.NoError(t, err)
 	d.assertExpectations(t)
@@ -660,7 +660,7 @@ func TestTxnUpdate_LookupFailures(t *testing.T) {
 		f := newTxnFixture()
 		d.repo.On("GetById", txCtx, f.budgetID, f.txnID).Return(nil, repository.ErrNotFound).Once()
 
-		err := svc.Update(f.ctx, f.txnID, f.txn())
+		_, err := svc.Update(f.ctx, f.txnID, f.txn(), nil)
 
 		require.ErrorIs(t, err, repository.ErrNotFound)
 		assert.Equal(t, errs.CodeTransactionLookupFailed, appCode(t, err))
@@ -671,7 +671,7 @@ func TestTxnUpdate_LookupFailures(t *testing.T) {
 		f := newTxnFixture()
 		d.repo.On("GetById", txCtx, f.budgetID, f.txnID).Return(nil, nil).Once()
 
-		err := svc.Update(f.ctx, f.txnID, f.txn())
+		_, err := svc.Update(f.ctx, f.txnID, f.txn(), nil)
 
 		assert.Equal(t, errs.CodeTransactionLookupFailed, appCode(t, err))
 	})
@@ -681,10 +681,83 @@ func TestTxnUpdate_LookupFailures(t *testing.T) {
 		f := newTxnFixture()
 		d.repo.On("GetById", txCtx, f.budgetID, f.txnID).Return(&model.Transaction{ID: uuid.New()}, nil).Once()
 
-		err := svc.Update(f.ctx, f.txnID, f.txn())
+		_, err := svc.Update(f.ctx, f.txnID, f.txn(), nil)
 
 		assert.Equal(t, errs.CodeTransactionLookupFailed, appCode(t, err))
 	})
+}
+
+// ─── If-Match versions ───────────────────────────────────────────────────────
+
+func TestTxnVersion_StaleIfMatchWritesNothing(t *testing.T) {
+	stale := int64(3)
+	writes := map[string]func(svc TransactionService, f txnFixture) error{
+		"Update": func(svc TransactionService, f txnFixture) error {
+			_, err := svc.Update(f.ctx, f.txnID, f.txn(), &stale)
+			return err
+		},
+		"UpdateStatus": func(svc TransactionService, f txnFixture) error {
+			_, err := svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusApproved, &stale)
+			return err
+		},
+		"UpdateLocation": func(svc TransactionService, f txnFixture) error {
+			_, err := svc.UpdateLocation(f.ctx, f.txnID, model.TransactionLocationReq{}, &stale)
+			return err
+		},
+		"DeleteById": func(svc TransactionService, f txnFixture) error {
+			return svc.DeleteById(f.ctx, f.txnID, &stale)
+		},
+	}
+	for name, write := range writes {
+		t.Run(name, func(t *testing.T) {
+			svc, d := newTxnSvc()
+			f := newTxnFixture()
+			d.repo.On("LockVersion", txCtx, f.budgetID, f.txnID).Return(int64(4), nil).Once()
+
+			err := write(svc, f)
+
+			assert.Equal(t, errs.CodeTransactionVersionConflict, appCode(t, err))
+			for _, method := range []string{"GetById", "Update", "UpdateLocation", "TransitionStatus", "DeleteById"} {
+				assert.False(t, d.repo.calledMethod(method), "%s ran after the version check failed", method)
+			}
+			_, committed, rolledBack := d.dbTxn.counts()
+			assert.Equal(t, [2]int{0, 1}, [2]int{committed, rolledBack})
+		})
+	}
+}
+
+func TestTxnVersion_MatchingIfMatchWritesAndReturnsTheNewVersion(t *testing.T) {
+	svc, d := newTxnSvc()
+	f := newTxnFixture()
+	found := f.txn()
+	found.ID = f.txnID
+	found.Status = model.TransactionStatusManual
+	current := int64(4)
+	// Checked before the write, read again after it.
+	d.repo.On("LockVersion", txCtx, f.budgetID, f.txnID).Return(current, nil).Once()
+	d.repo.On("LockVersion", txCtx, f.budgetID, f.txnID).Return(current+1, nil).Once()
+	d.repo.On("GetById", txCtx, f.budgetID, f.txnID).Return(&found, nil).Once()
+	f.expectDependencies(d)
+	d.repo.On("Update", txCtx, f.budgetID, f.txnID, mock.Anything).Return(nil).Once()
+
+	edited := f.txn()
+	edited.Amount = -400
+	version, err := svc.Update(f.ctx, f.txnID, edited, &current)
+
+	require.NoError(t, err)
+	assert.Equal(t, int64(5), version)
+	d.assertExpectations(t)
+}
+
+func TestTxnVersion_IfMatchOnAMissingTransaction(t *testing.T) {
+	svc, d := newTxnSvc()
+	f := newTxnFixture()
+	d.repo.On("LockVersion", txCtx, f.budgetID, f.txnID).Return(int64(0), repository.ErrNotFound).Once()
+	v := int64(1)
+
+	err := svc.DeleteById(f.ctx, f.txnID, &v)
+
+	assert.Equal(t, errs.CodeTransactionLookupFailed, appCode(t, err))
 }
 
 // ─── DeleteById ──────────────────────────────────────────────────────────────
@@ -701,7 +774,7 @@ func TestTxnDelete_TransferRemovesBothLegsAndReversesCarryover(t *testing.T) {
 	d.repo.On("DeleteById", txCtx, f.budgetID, counterpartID).Return(nil).Once()
 	d.repo.On("DeleteById", txCtx, f.budgetID, f.txnID).Return(nil).Once()
 
-	err := svc.DeleteById(f.ctx, f.txnID)
+	err := svc.DeleteById(f.ctx, f.txnID, nil)
 
 	require.NoError(t, err)
 	require.Len(t, d.mb.upserts, 1)
@@ -720,7 +793,7 @@ func TestTxnDelete_FailureRollsBack(t *testing.T) {
 	d.budget.On("GetById", txCtx, f.budgetID).Return(f.budget, nil).Once()
 	d.repo.On("DeleteById", txCtx, f.budgetID, f.txnID).Return(errors.New("fk violation")).Once()
 
-	err := svc.DeleteById(f.ctx, f.txnID)
+	err := svc.DeleteById(f.ctx, f.txnID, nil)
 
 	require.Error(t, err)
 	assert.Equal(t, errs.CodeTransactionDeleteFailed, appCode(t, err))
@@ -735,7 +808,7 @@ func TestTxnDelete_MissingTransaction(t *testing.T) {
 	f := newTxnFixture()
 	d.repo.On("GetById", txCtx, f.budgetID, f.txnID).Return(nil, nil).Once()
 
-	err := svc.DeleteById(f.ctx, f.txnID)
+	err := svc.DeleteById(f.ctx, f.txnID, nil)
 
 	assert.Equal(t, errs.CodeTransactionLookupFailed, appCode(t, err))
 	d.repo.AssertNotCalled(t, "DeleteById", mock.Anything, mock.Anything, mock.Anything)
@@ -772,7 +845,7 @@ func TestTxnUpdateStatus_RejectMovesInsideATransaction(t *testing.T) {
 	d.repo.On("TransitionStatus", txCtx, f.budgetID, f.txnID,
 		model.TransactionStatusUnapproved, model.TransactionStatusRejected).Return(true, nil).Once()
 
-	require.NoError(t, svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusRejected))
+	require.NoError(t, errOf(svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusRejected, nil)))
 
 	_, committed, _ := d.dbTxn.counts()
 	assert.Equal(t, 1, committed)
@@ -790,7 +863,7 @@ func TestTxnUpdateStatus_ApprovalWithoutPredictionDoesNotLearn(t *testing.T) {
 	d.repo.On("TransitionStatus", txCtx, f.budgetID, f.txnID,
 		model.TransactionStatusUnapproved, model.TransactionStatusApproved).Return(true, nil).Once()
 
-	require.NoError(t, svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusApproved))
+	require.NoError(t, errOf(svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusApproved, nil)))
 	assert.Equal(t, 0, broker.queued)
 	d.assertExpectations(t)
 }
@@ -809,12 +882,12 @@ func TestTxnUpdateStatus_ApprovingAPredictionLearnsOnce(t *testing.T) {
 	d.repo.On("TransitionStatus", txCtx, f.budgetID, f.txnID,
 		model.TransactionStatusUnapproved, model.TransactionStatusApproved).Return(true, nil).Once()
 
-	require.NoError(t, svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusApproved))
+	require.NoError(t, errOf(svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusApproved, nil)))
 	assert.Equal(t, 1, broker.queued)
 
 	// Approving again finds it approved: no write, no second round of learning.
 	d.repo.On("GetById", txCtx, f.budgetID, f.txnID).Return(&approved, nil).Once()
-	require.NoError(t, svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusApproved))
+	require.NoError(t, errOf(svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusApproved, nil)))
 	assert.Equal(t, 1, broker.queued)
 	d.repo.AssertNumberOfCalls(t, "TransitionStatus", 1)
 	d.assertExpectations(t)
@@ -839,7 +912,7 @@ func TestTxnUpdateStatus_RefusesMovesOutsideTheTable(t *testing.T) {
 			found.Status = tt.from
 			d.repo.On("GetById", txCtx, f.budgetID, f.txnID).Return(&found, nil).Once()
 
-			err := svc.UpdateStatus(f.ctx, f.txnID, tt.to)
+			_, err := svc.UpdateStatus(f.ctx, f.txnID, tt.to, nil)
 
 			assert.Equal(t, errs.CodeTransactionInvalidStatus, appCode(t, err))
 			d.repo.AssertNotCalled(t, "TransitionStatus",
@@ -859,7 +932,7 @@ func TestTxnUpdateStatus_UndoRejection(t *testing.T) {
 	d.repo.On("TransitionStatus", txCtx, f.budgetID, f.txnID,
 		model.TransactionStatusRejected, model.TransactionStatusUnapproved).Return(true, nil).Once()
 
-	require.NoError(t, svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusUnapproved))
+	require.NoError(t, errOf(svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusUnapproved, nil)))
 	d.assertExpectations(t)
 }
 
@@ -867,7 +940,7 @@ func TestTxnUpdateStatus_UnknownStatusIsInvalid(t *testing.T) {
 	svc, d := newTxnSvc()
 	f := newTxnFixture()
 
-	err := svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatus("MAYBE"))
+	_, err := svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatus("MAYBE"), nil)
 
 	assert.Equal(t, errs.CodeInvalidArgument, appCode(t, err))
 	d.repo.AssertNotCalled(t, "GetById", mock.Anything, mock.Anything, mock.Anything)
@@ -878,7 +951,7 @@ func TestTxnUpdateStatus_MissingTransaction(t *testing.T) {
 	f := newTxnFixture()
 	d.repo.On("GetById", txCtx, f.budgetID, f.txnID).Return(nil, repository.ErrNotFound).Once()
 
-	err := svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusRejected)
+	_, err := svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusRejected, nil)
 
 	assert.Equal(t, errs.CodeTransactionLookupFailed, appCode(t, err))
 }
@@ -895,7 +968,7 @@ func TestTxnUpdateStatus_TransferMovesBothHalves(t *testing.T) {
 	d.repo.On("TransitionStatus", txCtx, f.budgetID, counterpartID,
 		model.TransactionStatusUnapproved, model.TransactionStatusRejected).Return(true, nil).Once()
 
-	require.NoError(t, svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusRejected))
+	require.NoError(t, errOf(svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusRejected, nil)))
 	d.assertExpectations(t)
 }
 
@@ -914,7 +987,7 @@ func TestTxnUpdateStatus_LosingARaceToTheSameStatusSucceedsWithoutLearning(t *te
 		model.TransactionStatusUnapproved, model.TransactionStatusApproved).Return(false, nil).Once()
 	d.repo.On("GetById", txCtx, f.budgetID, f.txnID).Return(&approved, nil).Once()
 
-	require.NoError(t, svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusApproved))
+	require.NoError(t, errOf(svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusApproved, nil)))
 	assert.Equal(t, 0, broker.queued, "the request that won the race queued the learning")
 	d.assertExpectations(t)
 }
@@ -931,7 +1004,7 @@ func TestTxnUpdateStatus_LosingARaceToAnotherStatusConflicts(t *testing.T) {
 		model.TransactionStatusUnapproved, model.TransactionStatusApproved).Return(false, nil).Once()
 	d.repo.On("GetById", txCtx, f.budgetID, f.txnID).Return(&rejected, nil).Once()
 
-	err := svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusApproved)
+	_, err := svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusApproved, nil)
 
 	assert.Equal(t, errs.CodeTransactionInvalidStatus, appCode(t, err))
 }
@@ -946,7 +1019,7 @@ func TestTxnUpdateStatus_WriteFailureIsWrapped(t *testing.T) {
 	d.repo.On("TransitionStatus", txCtx, f.budgetID, f.txnID,
 		model.TransactionStatusUnapproved, model.TransactionStatusApproved).Return(false, errors.New("boom")).Once()
 
-	err := svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusApproved)
+	_, err := svc.UpdateStatus(f.ctx, f.txnID, model.TransactionStatusApproved, nil)
 
 	assert.Equal(t, errs.CodeTransactionUpdateFailed, appCode(t, err))
 	d.client.AssertNotCalled(t, "GenerateTransactionEmbedding", mock.Anything, mock.Anything)
@@ -969,7 +1042,7 @@ func TestTxnUpdateLocation_Validation(t *testing.T) {
 			svc, d := newTxnSvc()
 			f := newTxnFixture()
 
-			_, err := svc.UpdateLocation(f.ctx, f.txnID, req)
+			_, err := svc.UpdateLocation(f.ctx, f.txnID, req, nil)
 
 			assert.Equal(t, errs.CodeInvalidArgument, appCode(t, err))
 			begun, _, _ := d.dbTxn.counts()
@@ -988,9 +1061,11 @@ func TestTxnUpdateLocation_GeocodesMissingNameAndDefaultsSource(t *testing.T) {
 		mock.MatchedBy(func(s *model.LocationSource) bool { return s != nil && *s == model.LocationSourceManual }),
 	).Return(nil).Once()
 	reloaded := &model.Transaction{ID: f.txnID}
-	d.repo.On("GetById", outsideTx, f.budgetID, f.txnID).Return(reloaded, nil).Once()
+	// Reloaded inside the write's database transaction, so the version it
+	// carries is the one this write left.
+	d.repo.On("GetById", txCtx, f.budgetID, f.txnID).Return(reloaded, nil).Once()
 
-	got, err := svc.UpdateLocation(f.ctx, f.txnID, model.TransactionLocationReq{Lat: &lat, Lng: &lng, Source: "bogus"})
+	got, err := svc.UpdateLocation(f.ctx, f.txnID, model.TransactionLocationReq{Lat: &lat, Lng: &lng, Source: "bogus"}, nil)
 
 	require.NoError(t, err)
 	assert.Same(t, reloaded, got)
@@ -1006,7 +1081,7 @@ func TestTxnUpdateLocation_KeepsGivenNameAndSource(t *testing.T) {
 	d.repo.On("UpdateLocation", txCtx, f.budgetID, f.txnID, &lat, &lng, &name, &auto).Return(nil).Once()
 	d.repo.On("GetById", mock.Anything, f.budgetID, f.txnID).Return(&model.Transaction{ID: f.txnID}, nil).Once()
 
-	_, err := svc.UpdateLocation(f.ctx, f.txnID, model.TransactionLocationReq{Lat: &lat, Lng: &lng, Name: &name, Source: auto})
+	_, err := svc.UpdateLocation(f.ctx, f.txnID, model.TransactionLocationReq{Lat: &lat, Lng: &lng, Name: &name, Source: auto}, nil)
 
 	require.NoError(t, err)
 	assert.Zero(t, d.geo.calls)
@@ -1021,7 +1096,7 @@ func TestTxnUpdateLocation_GeocodeFailureStillSavesCoordinates(t *testing.T) {
 	d.repo.On("UpdateLocation", txCtx, f.budgetID, f.txnID, &lat, &lng, (*string)(nil), mock.Anything).Return(nil).Once()
 	d.repo.On("GetById", mock.Anything, f.budgetID, f.txnID).Return(&model.Transaction{ID: f.txnID}, nil).Once()
 
-	_, err := svc.UpdateLocation(f.ctx, f.txnID, model.TransactionLocationReq{Lat: &lat, Lng: &lng})
+	_, err := svc.UpdateLocation(f.ctx, f.txnID, model.TransactionLocationReq{Lat: &lat, Lng: &lng}, nil)
 
 	require.NoError(t, err)
 	d.assertExpectations(t)
@@ -1034,7 +1109,7 @@ func TestTxnUpdateLocation_ClearingPassesNils(t *testing.T) {
 		(*float64)(nil), (*float64)(nil), (*string)(nil), (*model.LocationSource)(nil)).Return(nil).Once()
 	d.repo.On("GetById", mock.Anything, f.budgetID, f.txnID).Return(&model.Transaction{ID: f.txnID}, nil).Once()
 
-	_, err := svc.UpdateLocation(f.ctx, f.txnID, model.TransactionLocationReq{})
+	_, err := svc.UpdateLocation(f.ctx, f.txnID, model.TransactionLocationReq{}, nil)
 
 	require.NoError(t, err)
 	assert.Zero(t, d.geo.calls)
@@ -1048,7 +1123,7 @@ func TestTxnUpdateLocation_Failures(t *testing.T) {
 		d.repo.On("UpdateLocation", txCtx, f.budgetID, f.txnID, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(repository.ErrNotFound).Once()
 
-		_, err := svc.UpdateLocation(f.ctx, f.txnID, model.TransactionLocationReq{})
+		_, err := svc.UpdateLocation(f.ctx, f.txnID, model.TransactionLocationReq{}, nil)
 
 		assert.Equal(t, errs.CodeTransactionUpdateFailed, appCode(t, err))
 		assert.ErrorIs(t, err, repository.ErrNotFound)
@@ -1062,7 +1137,7 @@ func TestTxnUpdateLocation_Failures(t *testing.T) {
 			Return(nil).Once()
 		d.repo.On("GetById", mock.Anything, f.budgetID, f.txnID).Return(nil, errors.New("boom")).Once()
 
-		_, err := svc.UpdateLocation(f.ctx, f.txnID, model.TransactionLocationReq{})
+		_, err := svc.UpdateLocation(f.ctx, f.txnID, model.TransactionLocationReq{}, nil)
 
 		assert.Equal(t, errs.CodeTransactionLookupFailed, appCode(t, err))
 	})

@@ -51,6 +51,11 @@ const (
 	// one asked for (model.TransactionStatus.CanMoveTo), e.g. approving a
 	// manual transaction. Maps to 409.
 	CodeTransactionInvalidStatus Code = "TRANSACTION_INVALID_STATUS"
+
+	// CodeTransactionVersionConflict: the caller's If-Match version is not the
+	// transaction's current one, so it was changed after the caller read it.
+	// Maps to 412.
+	CodeTransactionVersionConflict Code = "TRANSACTION_VERSION_CONFLICT"
 )
 
 // Payee/Account/Category error codes

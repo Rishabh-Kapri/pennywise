@@ -37,7 +37,11 @@ func ETagMiddleware() gin.HandlerFunc {
 		rawBytes := writer.body.Bytes()
 		contentType := c.Writer.Header().Get("Content-Type")
 
-		if len(rawBytes) > 0 && strings.Contains(contentType, "application/json") {
+		// A handler that set its own ETag (a transaction's version, which
+		// clients send back in If-Match) keeps it: a body hash would replace
+		// the value the next write must match.
+		if len(rawBytes) > 0 && strings.Contains(contentType, "application/json") &&
+			c.Writer.Header().Get("ETag") == "" {
 			hash := calculateHash(string(rawBytes))
 			c.Writer.Header().Set("etag", hash)
 

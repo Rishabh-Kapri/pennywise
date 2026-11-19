@@ -65,7 +65,8 @@ func (r *transactionRepo) GetAll(
 			location_name,
 			location_source,
 			created_at,
-			updated_at
+			updated_at,
+			version
 		FROM transactions
 		WHERE deleted = FALSE AND budget_id = $1`
 	args := []any{budgetId}
@@ -120,6 +121,7 @@ func (r *transactionRepo) GetAll(
 			&txn.LocationSource,
 			&txn.CreatedAt,
 			&txn.UpdatedAt,
+			&txn.Version,
 		)
 		if err != nil {
 			return nil, err
@@ -159,6 +161,7 @@ func (r *transactionRepo) GetById(ctx context.Context, budgetId uuid.UUID, id uu
 				transactions.location_source,
 				transactions.created_at,
 				transactions.updated_at,
+				transactions.version,
 				accounts.name AS account_name,
 				payees.name AS payee_name,
 				categories.name AS category_name
@@ -189,6 +192,7 @@ func (r *transactionRepo) GetById(ctx context.Context, budgetId uuid.UUID, id uu
 		&txn.LocationSource,
 		&txn.CreatedAt,
 		&txn.UpdatedAt,
+		&txn.Version,
 		&txn.AccountName,
 		&txn.PayeeName,
 		&txn.CategoryName,
@@ -300,6 +304,7 @@ func (r *transactionRepo) GetAllNormalized(
 			"transactions.location_source",
 			"transactions.created_at",
 			"transactions.updated_at",
+			"transactions.version",
 			"accounts.name AS account_name",
 			"payees.name AS payee_name",
 			"categories.name AS category_name",
@@ -426,6 +431,7 @@ func (r *transactionRepo) GetAllNormalized(
 			&txn.LocationSource,
 			&txn.CreatedAt,
 			&txn.UpdatedAt,
+			&txn.Version,
 			&txn.AccountName,
 			&txn.PayeeName,
 			&txn.CategoryName,
@@ -619,7 +625,7 @@ func (r *transactionRepo) Create(ctx context.Context, txn model.Transaction) ([]
 		  location_name,
 		  location_source
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-		RETURNING id, amount, budget_id, status, summary`,
+		RETURNING id, amount, budget_id, status, summary, version`,
 		txn.BudgetID,
 		txn.Date,
 		txn.PayeeID,
@@ -638,7 +644,7 @@ func (r *transactionRepo) Create(ctx context.Context, txn model.Transaction) ([]
 		txn.LocationLng,
 		txn.LocationName,
 		txn.LocationSource,
-	).Scan(&createdTxn.ID, &createdTxn.Amount, &createdTxn.BudgetID, &createdTxn.Status, &createdTxn.Summary)
+	).Scan(&createdTxn.ID, &createdTxn.Amount, &createdTxn.BudgetID, &createdTxn.Status, &createdTxn.Summary, &createdTxn.Version)
 	if err != nil {
 		return nil, err
 	}
@@ -687,7 +693,7 @@ func (r *transactionRepo) CreateDeduped(
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 		ON CONFLICT (budget_id, dedupe_hash) WHERE dedupe_hash IS NOT NULL and deleted = FALSE
 		DO NOTHING
-		RETURNING id, amount, budget_id, status, summary`,
+		RETURNING id, amount, budget_id, status, summary, version`,
 		txn.BudgetID,
 		txn.Date,
 		txn.PayeeID,
@@ -706,7 +712,7 @@ func (r *transactionRepo) CreateDeduped(
 		txn.LocationLng,
 		txn.LocationName,
 		txn.LocationSource,
-	).Scan(&createdTxn.ID, &createdTxn.Amount, &createdTxn.BudgetID, &createdTxn.Status, &createdTxn.Summary)
+	).Scan(&createdTxn.ID, &createdTxn.Amount, &createdTxn.BudgetID, &createdTxn.Status, &createdTxn.Summary, &createdTxn.Version)
 	if err == nil {
 		return &createdTxn, true, nil
 	}
@@ -737,6 +743,17 @@ func (r *transactionRepo) LockForDedupe(
 	return err
 }
 
+// LockVersion implements [repository.TransactionRepository].
+func (r *transactionRepo) LockVersion(ctx context.Context, budgetId, id uuid.UUID) (int64, error) {
+	var version int64
+	err := r.Executor(ctx).QueryRow(ctx, `
+		SELECT version FROM transactions
+		WHERE budget_id = $1 AND id = $2 AND deleted = FALSE
+		FOR UPDATE`, budgetId, id,
+	).Scan(&version)
+	return version, err
+}
+
 // FindByDedupeHash implements [repository.TransactionRepository].
 func (r *transactionRepo) FindByDedupeHash(
 	ctx context.Context,
@@ -747,14 +764,14 @@ func (r *transactionRepo) FindByDedupeHash(
 	var existingStatus *model.TransactionStatus
 	err := r.Executor(ctx).QueryRow(
 		ctx,
-		`SELECT id, amount, budget_id, status, summary, payee_id, category_id, created_at
+		`SELECT id, amount, budget_id, status, summary, payee_id, category_id, created_at, version
 		 FROM transactions
 		 WHERE budget_id = $1 AND dedupe_hash = $2 AND deleted = FALSE`,
 		budgetID,
 		hash,
 	).Scan(
 		&existing.ID, &existing.Amount, &existing.BudgetID, &existingStatus, &existing.Summary,
-		&existing.PayeeID, &existing.CategoryID, &existing.CreatedAt,
+		&existing.PayeeID, &existing.CategoryID, &existing.CreatedAt, &existing.Version,
 	)
 	if errors.Is(err, pgx.ErrNoRows) || errors.Is(err, repository.ErrNotFound) {
 		return nil, nil
@@ -789,7 +806,8 @@ func (r *transactionRepo) Update(
 				location_lng = $12,
 				location_name = $13,
 				location_source = $14,
-				updated_at = NOW()
+				updated_at = NOW(),
+				version = version + 1
 		  WHERE budget_id = $15 AND id = $16
 		`, txn.Date,
 		txn.PayeeID,
@@ -835,7 +853,8 @@ func (r *transactionRepo) UpdateLocation(
 				location_lng = $2,
 				location_name = $3,
 				location_source = $4,
-				updated_at = NOW()
+				updated_at = NOW(),
+				version = version + 1
 			WHERE budget_id = $5 AND id = $6 AND deleted = FALSE
 		`, lat, lng, name, source, budgetId, id,
 	)
@@ -857,7 +876,7 @@ func (r *transactionRepo) TransitionStatus(
 	from, to model.TransactionStatus,
 ) (bool, error) {
 	cmdTag, err := r.Executor(ctx).Exec(ctx, `
-		UPDATE transactions SET status = $1
+		UPDATE transactions SET status = $1, version = version + 1
 		WHERE budget_id = $2 AND id = $3 AND status = $4 AND deleted = FALSE`,
 		to, budgetId, id, from,
 	)
@@ -871,7 +890,7 @@ func (r *transactionRepo) DeleteById(ctx context.Context, budgetId uuid.UUID, id
 	cmdTag, err := r.Executor(ctx).Exec(
 		ctx, `
 			UPDATE transactions 
-			SET deleted = TRUE WHERE budget_id = $1 AND id = $2 
+			SET deleted = TRUE, version = version + 1 WHERE budget_id = $1 AND id = $2 
 			`, budgetId, id,
 	)
 	if err != nil {

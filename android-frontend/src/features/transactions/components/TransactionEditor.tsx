@@ -30,7 +30,8 @@ import {
   createTransaction,
   deleteTransactionById,
   updateTransaction,
-  updateTransactionStatus
+  updateTransactionStatus,
+  isVersionConflict
 } from '../store/transactionSlice';
 import { TransactionAttachments } from './TransactionAttachments';
 import { TransactionLocationRow, getCurrentCoords, type DraftLocation } from './TransactionLocationRow';
@@ -49,7 +50,20 @@ export type TxnDraft = {
   tagIds: string[];
   status?: TransactionStatus;
   location: DraftLocation;
+  /** The version the draft was opened at, sent as If-Match when saving. */
+  version?: number;
 };
+
+/** A failed write in words; a version conflict says what happened and what to do. */
+function errorLine(err: unknown, fallback: string): string {
+  if (isVersionConflict(err)) {
+    return 'This transaction changed on another device or in the pipeline. Close it and open it again to see the latest, then make your change.';
+  }
+  if (err && typeof err === 'object' && 'message' in err && typeof err.message === 'string' && err.message) {
+    return err.message;
+  }
+  return fallback;
+}
 
 export function createDraft(txn?: Transaction): TxnDraft {
   const inflow = txn?.inflow ?? 0;
@@ -66,6 +80,7 @@ export function createDraft(txn?: Transaction): TxnDraft {
     note: txn?.note ?? '',
     tagIds: txn?.tagIds ?? [],
     status: txn?.status,
+    version: txn?.version,
     location: {
       lat: txn?.locationLat ?? null,
       lng: txn?.locationLng ?? null,
@@ -281,7 +296,8 @@ export function TransactionEditor({
       locationLat: draft.location.lat,
       locationLng: draft.location.lng,
       locationName: draft.location.name,
-      locationSource: draft.location.lat != null ? (draft.location.source ?? LocationSource.MANUAL) : null
+      locationSource: draft.location.lat != null ? (draft.location.source ?? LocationSource.MANUAL) : null,
+      version: draft.version
     };
     setSaving(true);
     setError(null);
@@ -290,7 +306,7 @@ export function TransactionEditor({
       else await dispatch(createTransaction(payload)).unwrap();
       onSaved();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Couldn't save the transaction");
+      setError(errorLine(err, "Couldn't save the transaction"));
     } finally {
       setSaving(false);
     }
@@ -298,7 +314,7 @@ export function TransactionEditor({
 
   const setStatus = (status: TransactionStatus) => {
     if (!draft.id) return;
-    dispatch(updateTransactionStatus({ id: draft.id, status }));
+    dispatch(updateTransactionStatus({ id: draft.id, status, version: draft.version }));
     onClose();
   };
 
@@ -310,8 +326,12 @@ export function TransactionEditor({
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
-          await dispatch(deleteTransactionById(draft.id as string)).unwrap();
-          onSaved();
+          try {
+            await dispatch(deleteTransactionById({ id: draft.id as string, version: draft.version })).unwrap();
+            onSaved();
+          } catch (err) {
+            Alert.alert("Couldn't delete the transaction", errorLine(err, 'Please try again.'));
+          }
         }
       }
     ]);
@@ -562,6 +582,7 @@ export function TransactionEditor({
 
           <TransactionLocationRow
             transactionId={draft.id}
+            version={draft.version}
             location={draft.location}
             onDraftChange={(location) => update({ location })}
           />

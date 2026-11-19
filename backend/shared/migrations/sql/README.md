@@ -39,6 +39,7 @@ top to bottom with no ALTER history to replay.
 | `00030_llm_usage` | `llm_usage`: one row per model call (agent turns, pipeline steps, embeddings, titles, ...), no prompt or response text; not granted to the agent role |
 | `00031_llm_provider_lumo` | adds `lumo` to `llm_provider` (chat only) |
 | `00032_pipeline_agent_runs` | adds `pipeline` to `agent_key`; `jobs.agent_run_id`: the agent run a model-calling pipeline job recorded (one per job, retries included) |
+| `00033_transaction_version` | `transactions.version`: bumped on every write, the ETag that update and delete check against |
 
 ## Commands (from `backend/go-pennywise-api`)
 

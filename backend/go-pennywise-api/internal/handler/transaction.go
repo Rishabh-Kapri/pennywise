@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/Rishabh-Kapri/pennywise/backend/go-pennywise-api/internal/service"
@@ -56,6 +57,45 @@ func bindTransactionID(c *gin.Context) (uuid.UUID, bool) {
 	}
 	// The uuid rule already checked the format.
 	return uuid.MustParse(uri.ID), true
+}
+
+// bindIfMatch reads the If-Match header: the transaction version the client
+// last read, sent as a strong ETag ("7"). No header, or "*", means the client
+// isn't checking (older apps), so it returns nil. Anything else answers 400
+// and returns false: a weak ETag (W/"...") or a list can never match a single
+// version, and silently skipping the check would hide the client's bug.
+func bindIfMatch(c *gin.Context) (*int64, bool) {
+	raw := strings.TrimSpace(c.GetHeader("If-Match"))
+	if raw == "" || raw == "*" {
+		return nil, true
+	}
+	unquoted, err := strconv.Unquote(raw)
+	if err != nil || !strings.HasPrefix(raw, `"`) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": `If-Match must be one strong ETag, like "7"`})
+		return nil, false
+	}
+	version, err := strconv.ParseInt(unquoted, 10, 64)
+	if err != nil || version < 1 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "If-Match must hold a transaction version"})
+		return nil, false
+	}
+	return &version, true
+}
+
+// setVersionETag sends the transaction's version as its ETag, the value the
+// client puts in If-Match on its next write.
+func setVersionETag(c *gin.Context, version int64) {
+	c.Header("ETag", strconv.Quote(strconv.FormatInt(version, 10)))
+}
+
+// versionConflict answers 412 when err says the client's copy is stale, and
+// reports whether it did.
+func versionConflict(c *gin.Context, err error) bool {
+	if !errs.HasCode(err, errs.CodeTransactionVersionConflict) {
+		return false
+	}
+	c.JSON(http.StatusPreconditionFailed, gin.H{"error": err.Error(), "code": errs.CodeTransactionVersionConflict})
+	return true
 }
 
 // listTransactionsQuery is the query string of ListNormalized. Each ID
@@ -271,17 +311,28 @@ func (h *transactionHandler) Update(c *gin.Context) {
 		return
 	}
 
+	ifMatch, ok := bindIfMatch(c)
+	if !ok {
+		return
+	}
+
 	var body model.Transaction
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	err := h.service.Update(ctx, parsedId, body)
+	version, err := h.service.Update(ctx, parsedId, body, ifMatch)
 	if err != nil {
+		if versionConflict(c, err) {
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	body.ID = parsedId
+	body.Version = version
+	setVersionETag(c, version)
 	c.JSON(http.StatusOK, body)
 }
 
@@ -292,17 +343,26 @@ func (h *transactionHandler) UpdateLocation(c *gin.Context) {
 		return
 	}
 
+	ifMatch, ok := bindIfMatch(c)
+	if !ok {
+		return
+	}
+
 	var body model.TransactionLocationReq
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	updated, err := h.service.UpdateLocation(ctx, parsedId, body)
+	updated, err := h.service.UpdateLocation(ctx, parsedId, body, ifMatch)
 	if err != nil {
+		if versionConflict(c, err) {
+			return
+		}
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	setVersionETag(c, updated.Version)
 	c.JSON(http.StatusOK, updated)
 }
 
@@ -313,13 +373,21 @@ func (h *transactionHandler) UpdateStatus(c *gin.Context) {
 		return
 	}
 
+	ifMatch, ok := bindIfMatch(c)
+	if !ok {
+		return
+	}
+
 	var body model.TransactionStatusReq
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	err := h.service.UpdateStatus(ctx, parsedId, body.Status)
+	version, err := h.service.UpdateStatus(ctx, parsedId, body.Status, ifMatch)
 	if err != nil {
+		if versionConflict(c, err) {
+			return
+		}
 		if errs.HasCode(err, errs.CodeTransactionInvalidStatus) {
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": errs.CodeTransactionInvalidStatus})
 			return
@@ -327,7 +395,8 @@ func (h *transactionHandler) UpdateStatus(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, nil)
+	setVersionETag(c, version)
+	c.JSON(http.StatusOK, gin.H{"version": version})
 }
 
 // LearningStatus reports how many of the budget's predictions have taught the
@@ -407,8 +476,16 @@ func (h *transactionHandler) DeleteById(c *gin.Context) {
 		return
 	}
 
-	err := h.service.DeleteById(ctx, parsedId)
+	ifMatch, ok := bindIfMatch(c)
+	if !ok {
+		return
+	}
+
+	err := h.service.DeleteById(ctx, parsedId, ifMatch)
 	if err != nil {
+		if versionConflict(c, err) {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

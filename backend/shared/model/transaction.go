@@ -103,6 +103,9 @@ type Transaction struct {
 	Deleted    bool       `json:"deleted"`
 	CreatedAt  time.Time  `json:"createdAt"`
 	UpdatedAt  time.Time  `json:"updatedAt"`
+	// Version goes up by one on every write to the row. Clients send it back
+	// (If-Match) so a save made from an old copy is refused.
+	Version int64 `json:"version"`
 }
 
 type LocationSource string

@@ -665,6 +665,54 @@ func TestTransactionRepo_UpdateRewritesFieldsAndBumpsUpdatedAt(t *testing.T) {
 	assert.Equal(t, before.CreatedAt, after.CreatedAt)
 }
 
+func TestTransactionRepo_EveryWriteBumpsTheVersion(t *testing.T) {
+	_, repo, s := setup(t)
+	ctx := context.Background()
+	created := mustCreate(t, repo, newTxn(s, "2026-10-12", -10))
+	assert.Equal(t, int64(1), created.Version, "a new transaction starts at 1")
+
+	version := func() int64 {
+		t.Helper()
+		v, err := repo.LockVersion(ctx, s.budgetID, created.ID)
+		require.NoError(t, err)
+		return v
+	}
+	require.Equal(t, int64(1), version())
+
+	got, err := repo.GetById(ctx, s.budgetID, created.ID)
+	require.NoError(t, err)
+	got.Note = "edited"
+	require.NoError(t, repo.Update(ctx, s.budgetID, created.ID, *got))
+	assert.Equal(t, int64(2), version(), "Update")
+
+	lat, lng := 12.97, 77.64
+	require.NoError(t, repo.UpdateLocation(ctx, s.budgetID, created.ID, &lat, &lng, nil, nil))
+	assert.Equal(t, int64(3), version(), "UpdateLocation")
+
+	moved, err := repo.TransitionStatus(ctx, s.budgetID, created.ID, model.TransactionStatusManual, model.TransactionStatusApproved)
+	require.NoError(t, err)
+	require.True(t, moved)
+	assert.Equal(t, int64(4), version(), "TransitionStatus")
+
+	listed, err := repo.GetAllNormalized(ctx, s.budgetID, nil)
+	require.NoError(t, err)
+	require.Len(t, listed.Data, 1)
+	assert.Equal(t, int64(4), listed.Data[0].Version, "the list carries each row's version")
+
+	require.NoError(t, repo.DeleteById(ctx, s.budgetID, created.ID))
+	_, err = repo.LockVersion(ctx, s.budgetID, created.ID)
+	assert.ErrorIs(t, err, repository.ErrNotFound, "a deleted transaction has no version to check")
+}
+
+func TestTransactionRepo_LockVersionIsBudgetScoped(t *testing.T) {
+	pool, repo, s := setup(t)
+	other := newSeed(t, pool)
+	created := mustCreate(t, repo, newTxn(s, "2026-10-12", -10))
+
+	_, err := repo.LockVersion(context.Background(), other.budgetID, created.ID)
+	assert.ErrorIs(t, err, repository.ErrNotFound)
+}
+
 func TestTransactionRepo_LinksTransferLegs(t *testing.T) {
 	_, repo, s := setup(t)
 	ctx := context.Background()

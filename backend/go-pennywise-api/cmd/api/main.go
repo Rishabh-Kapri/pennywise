@@ -121,6 +121,7 @@ func main() {
 			"Origin",
 			"Content-Type",
 			"Authorization",
+			"If-Match",
 			utils.HeaderAPIKey,
 			utils.HeaderBudgetID,
 			utils.HeaderCorrelationID,
@@ -129,7 +130,7 @@ func main() {
 			utils.HeaderInternalToken,
 			utils.HeaderInternalService,
 		},
-		ExposeHeaders:    []string{"Content-Length"},
+		ExposeHeaders:    []string{"Content-Length", "ETag"},
 		AllowCredentials: true,
 	}))
 

@@ -96,7 +96,7 @@ func (s *predictionReviewService) Review(
 
 		// Update owns the correction side effects: it marks the cipher
 		// prediction user-corrected and queues the payee-rule learning
-		if err := s.transactionService.Update(ctx, item.TransactionID, *txn); err != nil {
+		if _, err := s.transactionService.Update(ctx, item.TransactionID, *txn, nil); err != nil {
 			return nil, err
 		}
 		if err := s.repo.MarkReviewed(ctx, budgetID, id, nil, nil); err != nil {

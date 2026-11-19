@@ -2498,7 +2498,7 @@ func TestUpdateStatus_TxnNotFound(t *testing.T) {
 		cipherPredictionRepo: cipherPredRepo,
 	}
 	ctx := utils.WithBudgetID(context.Background(), budgetID)
-	err := svc.UpdateStatus(ctx, txnID, model.TransactionStatusApproved)
+	_, err := svc.UpdateStatus(ctx, txnID, model.TransactionStatusApproved, nil)
 	assert.Error(t, err)
 }
 
@@ -2513,7 +2513,7 @@ func TestUpdateStatus_NilCipherPredRepo(t *testing.T) {
 		cipherPredictionRepo: nil,
 	}
 	ctx := utils.WithBudgetID(context.Background(), budgetID)
-	err := svc.UpdateStatus(ctx, txnID, model.TransactionStatusApproved)
+	_, err := svc.UpdateStatus(ctx, txnID, model.TransactionStatusApproved, nil)
 	assert.Error(t, err)
 }
 
@@ -2530,7 +2530,7 @@ func TestUpdateStatus_CipherPredRepoError(t *testing.T) {
 		cipherPredictionRepo: cipherPredRepo,
 	}
 	ctx := utils.WithBudgetID(context.Background(), budgetID)
-	err := svc.UpdateStatus(ctx, txnID, model.TransactionStatusApproved)
+	_, err := svc.UpdateStatus(ctx, txnID, model.TransactionStatusApproved, nil)
 	assert.Error(t, err)
 }
 
@@ -2550,7 +2550,7 @@ func TestUpdateStatus_PayeeIDNil(t *testing.T) {
 		cipherPredictionRepo: cipherPredRepo,
 	}
 	ctx := utils.WithBudgetID(context.Background(), budgetID)
-	err := svc.UpdateStatus(ctx, txnID, model.TransactionStatusApproved)
+	_, err := svc.UpdateStatus(ctx, txnID, model.TransactionStatusApproved, nil)
 	assert.Error(t, err)
 }
 
@@ -2570,7 +2570,7 @@ func TestUpdateStatus_CategoryIDNil(t *testing.T) {
 		cipherPredictionRepo: cipherPredRepo,
 	}
 	ctx := utils.WithBudgetID(context.Background(), budgetID)
-	err := svc.UpdateStatus(ctx, txnID, model.TransactionStatusApproved)
+	_, err := svc.UpdateStatus(ctx, txnID, model.TransactionStatusApproved, nil)
 	assert.Error(t, err)
 }
 
@@ -2590,7 +2590,7 @@ func TestUpdateStatus_RawBankTextNil(t *testing.T) {
 		cipherPredictionRepo: cipherPredRepo,
 	}
 	ctx := utils.WithBudgetID(context.Background(), budgetID)
-	err := svc.UpdateStatus(ctx, txnID, model.TransactionStatusApproved)
+	_, err := svc.UpdateStatus(ctx, txnID, model.TransactionStatusApproved, nil)
 	assert.Error(t, err)
 }
 
@@ -2606,6 +2606,6 @@ func TestTransactionService_Update_ValidationFails(t *testing.T) {
 	wrongBudgetID := uuid.New()
 	txn := model.Transaction{BudgetID: wrongBudgetID, Date: "2025-01-15"}
 	ctx := utils.WithBudgetID(context.Background(), budgetID)
-	err := svc.Update(ctx, txnID, txn)
+	_, err := svc.Update(ctx, txnID, txn, nil)
 	assert.Error(t, err)
 }

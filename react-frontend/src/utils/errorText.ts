@@ -29,6 +29,10 @@ const KNOWN: Record<string, KnownError> = {
   PIPELINE_REPORT_FAILED: { title: "Couldn't record how the message ended" },
   TRANSACTION_CREATE_FAILED: { title: "Couldn't create the transaction" },
   TRANSACTION_LEARN_FAILED: { title: "Couldn't learn from the transaction" },
+  TRANSACTION_VERSION_CONFLICT: {
+    title: 'This transaction changed somewhere else',
+    detail: 'It was edited on another device or by the pipeline. The list has been reloaded; check it and make your change again.',
+  },
   STATEMENT_EXTRACT_FAILED: { title: "Couldn't read the statement" },
   STATEMENT_PASSWORD_REQUIRED: {
     title: 'This PDF is locked',

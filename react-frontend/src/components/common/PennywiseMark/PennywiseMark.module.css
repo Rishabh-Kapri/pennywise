@@ -1,0 +1,75 @@
+/* Keyframes from the design mockup; docs/logo/pennywise-icon-animated.svg has
+   the same loop, and android's PennywiseMark.tsx plays it too. Only applied
+   under .animated, so the still mark is the loop's last frame. */
+.animated .tile {
+  transform-origin: 50% 50%;
+  animation: tile 8s cubic-bezier(0.2, 0.8, 0.2, 1) infinite both;
+}
+
+.animated .env {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: env 8s cubic-bezier(0.55, 0, 0.75, 0.2) infinite both;
+}
+
+.animated .line {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation: line 8s cubic-bezier(0.22, 1, 0.36, 1) infinite both;
+}
+
+.animated .sun {
+  animation: sun 8s cubic-bezier(0.22, 1, 0.36, 1) infinite both;
+}
+
+.animated .d1 {
+  animation-delay: 0.7s;
+}
+.animated .d2 {
+  animation-delay: 1.4s;
+}
+.animated .d3 {
+  animation-delay: 2.1s;
+}
+
+@keyframes tile {
+  0% { opacity: 0; transform: scale(0.94); }
+  4% { opacity: 1; transform: scale(1); }
+  92% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.97); }
+}
+
+/* An envelope falls from the top of the sky and squashes into the horizon. */
+@keyframes env {
+  0% { opacity: 0; transform: translateY(-280px) scaleY(1); }
+  2% { opacity: 1; }
+  11% { opacity: 1; transform: translateY(0) scaleY(1); }
+  14% { opacity: 0; transform: translateY(10px) scaleY(0.15); }
+  100% { opacity: 0; transform: translateY(10px) scaleY(0.15); }
+}
+
+/* ...and comes up as a line in the water. */
+@keyframes line {
+  0%, 13% { opacity: 0; transform: scaleX(0); }
+  18% { opacity: 1; transform: scaleX(1.08); }
+  22% { transform: scaleX(1); }
+  88% { opacity: 1; transform: scaleX(1); }
+  96%, 100% { opacity: 0; transform: scaleX(1); }
+}
+
+@keyframes sun {
+  0%, 44% { transform: translateY(124px); }
+  60%, 100% { transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animated .tile,
+  .animated .line,
+  .animated .sun {
+    animation: none;
+  }
+  .animated .env {
+    animation: none;
+    opacity: 0;
+  }
+}

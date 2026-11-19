@@ -39,11 +39,12 @@ const config: ExpoConfig = {
     package: 'dev.pennywise.cloud',
     googleServicesFile,
     adaptiveIcon: {
-      // The drawer-stack mark (docs/logo) sits inside the 66dp safe zone on the
-      // icon's own near-black, so its cut-out drawer handle shows that colour
-      // under every launcher mask.
+      // The whole icon (docs/logo/pennywise-icon.svg) as a full-bleed square:
+      // sky over water, with the sun and lines inside the 66dp safe zone, so
+      // every launcher mask only trims sky and water. The background is the
+      // water's colour and never shows.
       foregroundImage: './assets/adaptive-icon.png',
-      backgroundColor: '#0B0B10'
+      backgroundColor: '#0D1A26'
     },
     permissions: [
       'android.permission.ACCESS_COARSE_LOCATION',
@@ -59,9 +60,11 @@ const config: ExpoConfig = {
   },
   plugins: [
     [
-      // The native launch screen: the icon's mark on its background. The JS
-      // BootSplash (src/components/BootSplash.tsx) draws the same mark at the
-      // same size and animates it, so keep colour, image and width in step.
+      // The native launch screen: the icon's opening frame (the tile before the
+      // sun and lines) on its background. The JS BootSplash
+      // (src/components/BootSplash.tsx) draws the same tile at the same size
+      // and plays the icon's loop from there, so keep colour, image and width
+      // in step.
       'expo-splash-screen',
       {
         backgroundColor: '#0B0B10',
@@ -83,7 +86,7 @@ const config: ExpoConfig = {
         // channel only, so this asset is white-on-transparent; anything with
         // colour would come out as a solid blob.
         icon: './assets/notification-icon.png',
-        color: '#5D9CBB'
+        color: '#3176AA'
       }
     ],
     [

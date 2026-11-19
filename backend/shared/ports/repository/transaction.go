@@ -33,4 +33,9 @@ type TransactionRepository interface {
 	// FindByDedupeHash returns the transaction with this hash, or nil if none.
 	FindByDedupeHash(ctx context.Context, budgetID uuid.UUID, hash string) (*model.Transaction, error)
 	DeleteById(ctx context.Context, budgetId uuid.UUID, id uuid.UUID) error
+	// LockVersion returns a live transaction's version and locks the row until
+	// the caller's database transaction ends, so the version can't change
+	// between checking it and writing. Outside a transaction the lock is
+	// released at once. ErrNotFound when there is no such live transaction.
+	LockVersion(ctx context.Context, budgetId, id uuid.UUID) (int64, error)
 }

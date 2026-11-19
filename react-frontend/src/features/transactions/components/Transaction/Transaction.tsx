@@ -2,7 +2,7 @@ import { useAppDispatch, useAppSelector } from '@/app/hooks';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowsLeftRightIcon } from '@phosphor-icons/react';
-import { createTransaction, deleteTransactionById, fetchAllTransaction, updateTransaction, updateTransactionStatus, bulkDeleteTransactions, fetchPendingApprovalCount } from '@/features/transactions/store/transactionSlice';
+import { createTransaction, deleteTransactionById, fetchAllTransaction, updateTransaction, updateTransactionStatus, bulkDeleteTransactions, fetchPendingApprovalCount, isVersionConflict } from '@/features/transactions/store/transactionSlice';
 import { LoadingState } from '@/utils';
 import { apiClient, errorMessage, toast } from '@/utils';
 import type { PaginationResponse } from '@/utils/common.constants';
@@ -307,6 +307,15 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
     });
   }, []);
 
+  // A save refused because the transaction changed elsewhere: load the list
+  // again so the next save starts from the current version.
+  const reloadIfStale = useCallback(
+    (err: unknown) => {
+      if (isVersionConflict(err)) dispatch(fetchAllTransaction(listArgs));
+    },
+    [dispatch, listArgs],
+  );
+
   const handleAutoSave = useCallback(
     (overrides: Partial<Transaction>) => {
       if (!selectedTxn || isAddingNew || !selectedTxn.id) return;
@@ -319,11 +328,12 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
       )
         .unwrap()
         .then(() => toast.success('Changes saved', { description: describeTxn(optimisticTxn) }))
-        .catch((err) =>
-          toast.error("Couldn't save your change", { description: errorMessage(err, 'Please try again.') }),
-        );
+        .catch((err) => {
+          reloadIfStale(err);
+          toast.error("Couldn't save your change", { description: errorMessage(err, 'Please try again.') });
+        });
     },
-    [selectedTxn, isAddingNew, dispatch],
+    [selectedTxn, isAddingNew, dispatch, reloadIfStale],
   );
 
   const handleInputBlur = useCallback(
@@ -383,11 +393,12 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
       }
       resetSelectedTxn();
     } catch (err) {
+      reloadIfStale(err);
       toast.error(isAddingNew ? "Couldn't add the transaction" : "Couldn't update the transaction", {
         description: errorMessage(err, 'Please try again.'),
       });
     }
-  }, [selectedTxn, isAddingNew, dispatch, listArgs, resetSelectedTxn]);
+  }, [selectedTxn, isAddingNew, dispatch, listArgs, resetSelectedTxn, reloadIfStale]);
 
   const handleDelete = useCallback(async () => {
     if (!selectedTxn?.id) return;
@@ -397,9 +408,10 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
       toast.success('Transaction deleted', { description: describeTxn(selectedTxn) });
       resetSelectedTxn();
     } catch (err) {
+      reloadIfStale(err);
       toast.error("Couldn't delete the transaction", { description: errorMessage(err, 'Please try again.') });
     }
-  }, [selectedTxn, dispatch, listArgs, resetSelectedTxn]);
+  }, [selectedTxn, dispatch, listArgs, resetSelectedTxn, reloadIfStale]);
 
   const handleStatusChange = useCallback(
     async (
@@ -413,13 +425,14 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
         });
         resetSelectedTxn();
       } catch (err) {
+        reloadIfStale(err);
         toast.error(
           status === TransactionStatus.APPROVED ? "Couldn't approve the transaction" : "Couldn't reject the transaction",
           { description: errorMessage(err, 'Please try again.') },
         );
       }
     },
-    [selectedTxn, dispatch, resetSelectedTxn],
+    [selectedTxn, dispatch, resetSelectedTxn, reloadIfStale],
   );
 
   const handlePanelSelectChange = useCallback(
@@ -572,6 +585,7 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
       if (failed.length === 0) {
         toast.success(`${label} approved`);
       } else {
+        reloadIfStale(lastError);
         toast.error(`Couldn't approve ${failed.length} of ${label}`, {
           description: errorMessage(lastError, 'The rest were approved. Please try again.'),
         });
@@ -584,7 +598,7 @@ export function Transaction({ accountId, embedded = false }: { accountId?: strin
     } finally {
       setBulkApproving(false);
     }
-  }, [bulkApprovableIds, dispatch, resetSelectedTxn, selectedTxn?.id]);
+  }, [bulkApprovableIds, dispatch, resetSelectedTxn, selectedTxn?.id, reloadIfStale]);
 
   const handleRowsRendered = useCallback(
     ({ startIndex, stopIndex }: { startIndex: number; stopIndex: number }) => {

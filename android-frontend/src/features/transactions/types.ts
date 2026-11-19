@@ -39,6 +39,11 @@ export interface Transaction {
   locationLng?: number | null;
   locationName?: string | null;
   locationSource?: LocationSource | null;
+  /**
+   * Goes up by one on every write to the row. Sent back as If-Match so a save
+   * from an old copy is refused (412) instead of overwriting a newer change.
+   */
+  version?: number;
 }
 
 export interface TransactionPrediction {
@@ -103,6 +108,8 @@ export interface TransactionDTO {
   locationLng?: number | null;
   locationName?: string | null;
   locationSource?: LocationSource | null;
+  /** The version the edit started from; sent as If-Match, not in the body. */
+  version?: number;
 }
 
 /** Payload for PATCH /transactions/:id/location; null lat/lng clears the pin. */

@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Pennywise: emails fall into the water and become its reflection lines">
+  <style>
+    .tile{transform-origin:50% 50%;animation:tile 8s cubic-bezier(.2,.8,.2,1) infinite both}
+    .env{transform-box:fill-box;transform-origin:50% 100%;animation:env 8s cubic-bezier(.55,0,.75,.2) infinite both}
+    .line{transform-box:fill-box;transform-origin:50% 50%;animation:line 8s cubic-bezier(.22,1,.36,1) infinite both}
+    .sun{animation:sun 8s cubic-bezier(.22,1,.36,1) infinite both}
+    .d2{animation-delay:.7s}.d3{animation-delay:1.4s}.d4{animation-delay:2.1s}
+    @keyframes tile{0%{opacity:0;transform:scale(.94)}4%{opacity:1;transform:scale(1)}92%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(.97)}}
+    @keyframes env{0%{opacity:0;transform:translateY(-280px) scaleY(1)}2%{opacity:1}11%{opacity:1;transform:translateY(0) scaleY(1)}14%{opacity:0;transform:translateY(10px) scaleY(.15)}100%{opacity:0;transform:translateY(10px) scaleY(.15)}}
+    @keyframes line{0%,13%{opacity:0;transform:scaleX(0)}18%{opacity:1;transform:scaleX(1.08)}22%{transform:scaleX(1)}88%{opacity:1;transform:scaleX(1)}96%,100%{opacity:0;transform:scaleX(1)}}
+    @keyframes sun{0%,44%{transform:translateY(124px)}60%,100%{transform:translateY(0)}}
+    @media (prefers-reduced-motion:reduce){.tile,.line,.sun{animation:none}.env{animation:none;opacity:0}}
+  </style>
+  <defs>
+    <clipPath id="pwTile"><rect width="512" height="512" rx="116"/></clipPath>
+    <clipPath id="pwSky"><rect width="512" height="282"/></clipPath>
+    <g id="pwEnv"><rect x="226" y="240" width="60" height="42" rx="8" fill="#FFFFFF"/><path d="M235 251L256 266L277 251" fill="none" stroke="#3176AA" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></g>
+  </defs>
+  <g class="tile" clip-path="url(#pwTile)">
+    <rect width="512" height="290" fill="#3176AA"/>
+    <rect y="282" width="512" height="230" fill="#0D1A26"/>
+    <g clip-path="url(#pwSky)">
+      <path class="sun" d="M144 282A112 112 0 0 1 368 282Z" fill="#FFFFFF"/>
+      <g class="env"><use href="#pwEnv"/></g>
+      <g class="env d2"><use href="#pwEnv"/></g>
+      <g class="env d3"><use href="#pwEnv"/></g>
+      <g class="env d4"><use href="#pwEnv"/></g>
+    </g>
+    <g fill="#ADD2EB">
+      <rect class="line" x="160" y="300" width="192" height="12" rx="6"/>
+      <rect class="line d2" x="188" y="326" width="136" height="12" rx="6"/>
+      <rect class="line d3" x="216" y="352" width="80" height="12" rx="6"/>
+      <rect class="line d4" x="240" y="378" width="32" height="12" rx="6"/>
+    </g>
+  </g>
+</svg>

@@ -240,7 +240,7 @@ func (r *payeeRepo) merge(
 
 	var err error
 	if result.Transactions, err = repoint(`
-		UPDATE transactions SET payee_id = $1, updated_at = NOW()
+		UPDATE transactions SET payee_id = $1, updated_at = NOW(), version = version + 1
 		WHERE payee_id = ANY($2) AND budget_id = $3`); err != nil {
 		return nil, err
 	}

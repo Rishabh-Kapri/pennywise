@@ -389,7 +389,7 @@ export function TransactionsScreen() {
             tags={tags}
             onPress={() => openDraft(createDraft(item))}
             onApprove={() =>
-              item.id && dispatch(updateTransactionStatus({ id: item.id, status: TransactionStatus.APPROVED }))
+              item.id && dispatch(updateTransactionStatus({ id: item.id, status: TransactionStatus.APPROVED, version: item.version }))
             }
           />
         )}

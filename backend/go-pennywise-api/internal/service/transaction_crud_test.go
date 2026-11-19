@@ -265,7 +265,7 @@ func TestUpdate(t *testing.T) {
 	t.Run("validation_error", func(t *testing.T) {
 		service := newTestTransactionService(nil, nil, nil, nil, nil, nil, nil)
 		invalidTxn := model.Transaction{}
-		err := service.Update(ctx, txnId, invalidTxn)
+		_, err := service.Update(ctx, txnId, invalidTxn, nil)
 		assert.Error(t, err)
 	})
 
@@ -274,7 +274,7 @@ func TestUpdate(t *testing.T) {
 		service := newTestTransactionService(mockRepo, nil, nil, nil, nil, nil, nil)
 		mockRepo.On("GetById", mock.Anything, budgetId, txnId).Return(nil, assert.AnError).Once()
 
-		err := service.Update(ctx, txnId, validTxn)
+		_, err := service.Update(ctx, txnId, validTxn, nil)
 		assert.Error(t, err)
 	})
 
@@ -283,7 +283,7 @@ func TestUpdate(t *testing.T) {
 		service := newTestTransactionService(mockRepo, nil, nil, nil, nil, nil, nil)
 		mockRepo.On("GetById", mock.Anything, budgetId, txnId).Return(nil, nil).Once()
 
-		err := service.Update(ctx, txnId, validTxn)
+		_, err := service.Update(ctx, txnId, validTxn, nil)
 		assert.Error(t, err)
 	})
 
@@ -296,7 +296,7 @@ func TestUpdate(t *testing.T) {
 
 		mockRepo.On("GetById", mock.Anything, budgetId, txnId).Return(&existingTxn, nil).Once()
 
-		err := service.Update(ctx, txnId, validTxn)
+		_, err := service.Update(ctx, txnId, validTxn, nil)
 		assert.NoError(t, err)
 	})
 
@@ -333,7 +333,7 @@ func TestUpdate(t *testing.T) {
 		// To cause reconcileTransfer to fail, make createCounterpartTxn fail
 		mockRepo.On("Create", mock.Anything, mock.Anything).Return(nil, assert.AnError).Once()
 
-		err := service.Update(ctx, txnId, validTxn)
+		_, err := service.Update(ctx, txnId, validTxn, nil)
 		assert.Error(t, err) // It fails and propagates!
 	})
 
@@ -361,7 +361,7 @@ func TestUpdate(t *testing.T) {
 			return txn.Status == model.TransactionStatusRejected
 		})).Return(nil).Once()
 
-		err := service.Update(ctx, txnId, validTxn)
+		_, err := service.Update(ctx, txnId, validTxn, nil)
 		assert.NoError(t, err)
 		mockPrediction.AssertNotCalled(t, "GetByTxnId", mock.Anything, budgetId, txnId)
 	})
@@ -409,7 +409,7 @@ func TestUpdate(t *testing.T) {
 				txn.TransferTransactionID != nil && *txn.TransferTransactionID == counterpartId
 		})).Return(nil).Once()
 
-		err := service.Update(ctx, txnId, updatedTxn)
+		_, err := service.Update(ctx, txnId, updatedTxn, nil)
 
 		assert.NoError(t, err)
 		mockRepo.AssertExpectations(t)
@@ -437,7 +437,7 @@ func TestUpdate(t *testing.T) {
 			return txn.Status == model.TransactionStatusApproved
 		})).Return(nil).Once()
 
-		err := service.Update(ctx, txnId, validTxn)
+		_, err := service.Update(ctx, txnId, validTxn, nil)
 		assert.NoError(t, err)
 	})
 
@@ -461,7 +461,7 @@ func TestUpdate(t *testing.T) {
 
 		mockRepo.On("Update", mock.Anything, budgetId, txnId, mock.Anything).Return(assert.AnError).Once()
 
-		err := service.Update(ctx, txnId, validTxn)
+		_, err := service.Update(ctx, txnId, validTxn, nil)
 		assert.Error(t, err)
 	})
 }
@@ -477,7 +477,7 @@ func TestDeleteById(t *testing.T) {
 		service := newTestTransactionService(mockRepo, nil, nil, nil, nil, nil, nil)
 		mockRepo.On("GetById", mock.Anything, budgetId, txnId).Return(nil, assert.AnError).Once()
 
-		err := service.DeleteById(ctx, txnId)
+		err := service.DeleteById(ctx, txnId, nil)
 		assert.Error(t, err)
 	})
 
@@ -486,7 +486,7 @@ func TestDeleteById(t *testing.T) {
 		service := newTestTransactionService(mockRepo, nil, nil, nil, nil, nil, nil)
 		mockRepo.On("GetById", mock.Anything, budgetId, txnId).Return(nil, nil).Once()
 
-		err := service.DeleteById(ctx, txnId)
+		err := service.DeleteById(ctx, txnId, nil)
 		assert.Error(t, err)
 	})
 
@@ -509,7 +509,7 @@ func TestDeleteById(t *testing.T) {
 		// Delete main transaction
 		mockRepo.On("DeleteById", mock.Anything, budgetId, txnId).Return(nil).Once()
 
-		err := service.DeleteById(ctx, txnId)
+		err := service.DeleteById(ctx, txnId, nil)
 		assert.NoError(t, err)
 		mockRepo.AssertExpectations(t)
 	})
@@ -527,7 +527,7 @@ func TestDeleteById(t *testing.T) {
 		mockRepo.On("GetById", mock.Anything, budgetId, txnId).Return(&foundTxn, nil).Once()
 		mockRepo.On("DeleteById", mock.Anything, budgetId, transferTxnId).Return(assert.AnError).Once()
 
-		err := service.DeleteById(ctx, txnId)
+		err := service.DeleteById(ctx, txnId, nil)
 		assert.Error(t, err)
 	})
 
@@ -542,7 +542,7 @@ func TestDeleteById(t *testing.T) {
 		mockRepo.On("GetById", mock.Anything, budgetId, txnId).Return(&model.Transaction{ID: txnId}, nil).Once()
 		mockRepo.On("DeleteById", mock.Anything, budgetId, txnId).Return(nil).Once()
 
-		assert.NoError(t, service.DeleteById(ctx, txnId))
+		assert.NoError(t, service.DeleteById(ctx, txnId, nil))
 		assert.Equal(t, []uuid.UUID{txnId}, predictions.deletedFor)
 	})
 
@@ -558,7 +558,7 @@ func TestDeleteById(t *testing.T) {
 		mockRepo.On("GetById", mock.Anything, budgetId, txnId).Return(&foundTxn, nil).Once()
 		mockRepo.On("DeleteById", mock.Anything, budgetId, txnId).Return(assert.AnError).Once()
 
-		err := service.DeleteById(ctx, txnId)
+		err := service.DeleteById(ctx, txnId, nil)
 		assert.Error(t, err)
 	})
 }

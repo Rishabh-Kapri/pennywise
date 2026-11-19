@@ -1,11 +1,12 @@
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { colors, spacing } from '../theme';
 import { AppText } from './AppText';
+import { PennywiseMark } from './PennywiseMark';
 
 export function LoadingStateView({ label = 'Loading' }: { label?: string }) {
   return (
     <View style={styles.container}>
-      <ActivityIndicator color={colors.primary} />
+      <PennywiseMark size={56} animated />
       <AppText variant="caption" muted>{label}</AppText>
     </View>
   );

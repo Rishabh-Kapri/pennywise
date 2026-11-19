@@ -6,12 +6,27 @@ type AppDispatch = (action: unknown) => unknown;
 /** A response from the server, as opposed to not reaching it at all. */
 export class ApiError extends Error {
   readonly status: number;
+  /**
+   * The server's machine-readable code (its `code` field), when it sent one.
+   * Redux Toolkit keeps `code`, not `status`, when a thunk rejects with this.
+   */
+  readonly code?: string;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, code?: string) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.code = code;
   }
+}
+
+/** Extra request options. */
+export interface RequestOptions {
+  /**
+   * The version of the row the app last read, sent as `If-Match`. The server
+   * refuses the write with 412 if the row has changed since.
+   */
+  ifMatch?: number;
 }
 
 /**
@@ -44,7 +59,7 @@ class ApiClient {
     return endpoint === 'auth/refresh';
   }
 
-  private getHeaders(endpoint: string): HeadersInit {
+  private getHeaders(endpoint: string, options?: RequestOptions): HeadersInit {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json'
     };
@@ -58,6 +73,10 @@ class ApiClient {
     const selectedBudget = state?.budgets.selectedBudget;
     if (selectedBudget?.id && !endpoint.includes('budgets')) {
       headers['x-budget-id'] = selectedBudget.id;
+    }
+
+    if (options?.ifMatch !== undefined) {
+      headers['If-Match'] = `"${options.ifMatch}"`;
     }
 
     return headers;
@@ -94,7 +113,8 @@ class ApiClient {
     const text = await res.text();
     const data = text ? JSON.parse(text) : {};
     if (!res.ok) {
-      throw new ApiError(String(data?.error ?? res.statusText), res.status);
+      const code = typeof data?.code === 'string' ? data.code : undefined;
+      throw new ApiError(String(data?.error ?? res.statusText), res.status, code);
     }
     return data as T;
   }
@@ -115,7 +135,8 @@ class ApiClient {
     res: Response,
     method: string,
     endpoint: string,
-    body?: unknown
+    body?: unknown,
+    options?: RequestOptions
   ): Promise<T> {
     // Public auth endpoints (login, refresh) return 401 for their own failures;
     // there is no session to refresh, so surface the server's error directly.
@@ -127,7 +148,7 @@ class ApiClient {
         if (isSessionExpired(error)) await this.handleSessionExpired();
         throw error;
       }
-      const headers = this.getHeaders(endpoint) as Record<string, string>;
+      const headers = this.getHeaders(endpoint, options) as Record<string, string>;
       headers.Authorization = `Bearer ${newAccessToken}`;
       const retryRes = await fetch(`${this.baseUrl}/${endpoint}`, {
         method,
@@ -165,21 +186,21 @@ class ApiClient {
     return this.handleResponse<T>(res, 'PUT', endpoint, data);
   }
 
-  async patch<T>(endpoint: string, data: unknown): Promise<T> {
+  async patch<T>(endpoint: string, data: unknown, options?: RequestOptions): Promise<T> {
     const res = await fetch(`${this.baseUrl}/${endpoint}`, {
       method: 'PATCH',
-      headers: this.getHeaders(endpoint),
+      headers: this.getHeaders(endpoint, options),
       body: JSON.stringify(data)
     });
-    return this.handleResponse<T>(res, 'PATCH', endpoint, data);
+    return this.handleResponse<T>(res, 'PATCH', endpoint, data, options);
   }
 
-  async delete<T>(endpoint: string): Promise<T> {
+  async delete<T>(endpoint: string, options?: RequestOptions): Promise<T> {
     const res = await fetch(`${this.baseUrl}/${endpoint}`, {
       method: 'DELETE',
-      headers: this.getHeaders(endpoint)
+      headers: this.getHeaders(endpoint, options)
     });
-    return this.handleResponse<T>(res, 'DELETE', endpoint);
+    return this.handleResponse<T>(res, 'DELETE', endpoint, undefined, options);
   }
 
   /**
